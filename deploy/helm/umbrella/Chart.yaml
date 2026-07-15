@@ -50,19 +50,19 @@ dependencies:
   # the Chart.yaml there can be any version; a hard pin breaks `helm dep update`.
   - name: vpc
     version: ">= 0.0.0"
-    repository: file://../../../kacho-vpc/deploy
+    repository: file://../../../services/vpc/deploy
   - name: compute
     version: ">= 0.0.0"
-    repository: file://../../../kacho-compute/deploy
+    repository: file://../../../services/compute/deploy
   # kacho-nlb L4 NLB control-plane (NetworkLoadBalancer / Listener / TargetGroup).
   # Condition-gated so clusters without NLB skip it entirely.
   - name: kacho-nlb
     version: ">= 0.0.0"
-    repository: file://../../../kacho-nlb/deploy
+    repository: file://../../../services/nlb/deploy
     condition: kacho-nlb.enabled
   - name: api-gateway
     version: ">= 0.0.0"
-    repository: file://../../../kacho-api-gateway/deploy
+    repository: file://../../../gateway/deploy
   # Legacy monolithic console (kacho-ui). Superseded by the federated ui-future
   # console (host + dashboard/vpc/iam/nlb/registry/system Module-Federation remotes),
   # deployed as its own `uif` release (see kacho-ui-future/deploy). Condition-gated so
@@ -72,7 +72,7 @@ dependencies:
   # the hand-applied LoadBalancer) is tracked separately — see the epic tracking issue.
   - name: ui
     version: ">= 0.0.0"
-    repository: file://../../../kacho-ui/deploy
+    repository: file://../../../../kacho-ui/deploy
     condition: ui.enabled
   # Federated ui-future console (host + dashboard/vpc/iam/nlb/registry/system
   # Module-Federation remotes). Chart is named `uif` (renamed from `ui` in
@@ -86,13 +86,13 @@ dependencies:
   # uif-lb LoadBalancer is out-of-band and untouched → Beget IP preserved). See #161.
   - name: uif
     version: ">= 0.0.0"
-    repository: file://../../../kacho-ui-future/deploy
+    repository: file://../../../../kacho-ui-future/deploy
     condition: uif.enabled
   # kacho-registry — OCI registry control-plane (gRPC + data-plane :8080) + zot
   # StatefulSet (OCI blob backend). Condition-gated; own Postgres (pg-registry).
   - name: registry
     version: ">= 0.0.0"
-    repository: file://../../../kacho-registry/deploy
+    repository: file://../../../services/registry/deploy
     condition: registry.enabled
   - name: postgresql
     alias: pg-registry
@@ -107,7 +107,7 @@ dependencies:
   # (InternalVolumeService attach/detach).
   - name: storage
     version: ">= 0.0.0"
-    repository: file://../../../kacho-storage/deploy
+    repository: file://../../../services/storage/deploy
     condition: storage.enabled
   - name: postgresql
     alias: pg-storage

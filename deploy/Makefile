@@ -12,7 +12,7 @@ CLUSTER_NAME := kacho
 # `kacho-ui:dev`. Этот target закрывает blocker; вызывается из `dev-up`.
 build-ui:
 	@echo "=== build kacho-ui:dev ==="
-	docker build -t kacho-ui:dev ../kacho-ui
+	docker build -t kacho-ui:dev ../../kacho-ui
 	kind load docker-image kacho-ui:dev --name $(CLUSTER_NAME)
 
 # KAC-228: build + kind-load all backend service images. The dev deployments
@@ -27,7 +27,8 @@ SERVICES := iam vpc compute api-gateway nlb
 build-services:
 	@for svc in $(SERVICES); do \
 	  echo "=== build kacho-$$svc:dev ==="; \
-	  ( cd .. && docker build -f kacho-$$svc/Dockerfile -t kacho-$$svc:dev kacho-$$svc ) || exit 1; \
+	  d=$$(test "$$svc" = api-gateway && echo gateway || echo services/$$svc); \
+	  ( cd .. && docker build -f $$d/Dockerfile -t kacho-$$svc:dev . ) || exit 1; \
 	  kind load docker-image kacho-$$svc:dev --name $(CLUSTER_NAME) || exit 1; \
 	done
 
@@ -120,9 +121,10 @@ endif
 		exit 0; \
 	fi; \
 	if [ "$(SVC)" = "ui" ]; then \
-		docker build -t kacho-ui:dev ../kacho-ui; \
+		docker build -t kacho-ui:dev ../../kacho-ui; \
 	else \
-		cd .. && docker build -f kacho-$(SVC)/Dockerfile -t kacho-$(SVC):dev kacho-$(SVC); \
+		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
+		cd .. && docker build -f $$d/Dockerfile -t kacho-$(SVC):dev .; \
 	fi && \
 	kind load docker-image kacho-$(SVC):dev --name $(CLUSTER_NAME) && \
 	kubectl rollout restart -n kacho deployment/$$DEPLOY_NAME
@@ -142,7 +144,7 @@ endif
 seed-ipam:
 	@echo "seed-ipam: NOOP. Auto-seeding отключён — admin должен явно создать AddressPool через kachoctl-ipam."
 	@echo
-	@echo "  cd ../kacho-vpc && make build-ipam"
+	@echo "  cd ../services/vpc && make build-ipam"
 	@echo "  kubectl -n kacho port-forward svc/vpc 19091:9091 &"
 	@echo "  ./bin/kachoctl-ipam -addr localhost:19091 pool create \\"
 	@echo "    --folder <real_folder_id_from_resource_manager> \\"
@@ -233,7 +235,7 @@ OPENFGA_CLI_IMAGE ?= openfga/cli:v0.7.13
 # KAC-127 RC-2b: canonical FGA model source. The ConfigMap below is GENERATED —
 # both the `model.fga` block (byte-identical copy) and the `model.json` block
 # (openfga/cli transform) are derived from this single artifact.
-OPENFGA_CANONICAL_FGA ?= ../kacho-proto/proto/kacho/cloud/iam/v1/fga_model.fga
+OPENFGA_CANONICAL_FGA ?= ../proto/kacho/cloud/iam/v1/fga_model.fga
 openfga-model-json:
 	@echo "Regenerating openfga-model-stub configmap from canonical fga_model.fga..."
 	python3 scripts/gen-openfga-model-configmap.py \
