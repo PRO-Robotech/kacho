@@ -93,7 +93,7 @@ func TestOpsProxy_Get_RmLegacyPrefixesRemoved(t *testing.T) {
 
 	removedPrefixes := []string{"rm_abc", "resourcemanager_x", "org_y", "organizationmanager_z"}
 	for _, id := range removedPrefixes {
-		id := id
+
 		t.Run(id, func(t *testing.T) {
 			_, err := proxy.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: id})
 			if err == nil {
@@ -130,7 +130,7 @@ func TestOpsProxy_Get_RmPrefixIs_InvalidArgument(t *testing.T) {
 	proxy := opsproxy.New(map[string]*grpc.ClientConn{"vpc": vpcConn})
 
 	for _, id := range []string{"b1g0123456789abcdefg", "bpf0123456789abcdefg"} {
-		id := id
+
 		t.Run(id, func(t *testing.T) {
 			_, err := proxy.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: id})
 			if err == nil {

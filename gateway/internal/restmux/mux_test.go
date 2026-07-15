@@ -191,7 +191,7 @@ func TestIsInternalPath(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			if got := isInternalPath(tc.path); got != tc.want {
 				t.Errorf("isInternalPath(%q) = %v, want %v", tc.path, got, tc.want)
@@ -241,7 +241,7 @@ func TestNewMux_RegistersNLBRoutes(t *testing.T) {
 		{"GET", "/nlb/v1/targetGroups/tgr-1"},
 	}
 	for _, tc := range nlbPublicPaths {
-		tc := tc
+
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			rec := httptest.NewRecorder()
@@ -312,7 +312,7 @@ func TestNewMux_RegistersInternalClusterRoutes(t *testing.T) {
 		{"DELETE", "/iam/v1/internal/cluster/admins/usr"}, // RevokeAdmin
 	}
 	for _, tc := range internalClusterPaths {
-		tc := tc
+
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// Internal-origin marker → dedicated cluster-internal admin listener,

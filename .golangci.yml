@@ -1,0 +1,93 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# golangci-lint config (v2 schema) — ЕДИНЫЙ на всю монорепу.
+#
+# Раньше конфиг был у КАЖДОГО репо (8 копий, уже разъехавшихся: 71 строка у
+# vpc/compute/geo/storage/corelib, 79 у iam, 23 у api-gateway). В монорепе линтер
+# запускается из КОРНЯ, поэтому per-service конфиги в подкаталогах не подхватываются —
+# без корневого работали бы дефолты, и, например, errcheck начинал ругаться на
+# `defer ln.Close()` в тестах gateway (реально сломало CI-джобу).
+#
+# Здесь объединены все три варианта: база vpc/geo/storage/corelib + QF1008/QF1011 из
+# api-gateway + staticcheck-исключения слоёв iam.
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - revive
+    - bodyclose
+    - copyloopvar
+
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+          # acronym-fixes (Ip→IP, Smtp→SMTP, Id→ID) ломают proto-mirror naming
+          # в domain/. Поля обязаны совпадать с proto, не trivially переименуешь.
+          # Оставляем правило, но exclusions ниже скрывают domain-/handler-файлы.
+        - name: package-comments
+          disabled: true   # по умолчанию комментарии не пишем
+        - name: exported
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+        - name: unused-receiver
+          disabled: true
+    errcheck:
+      # defer X.Close() — стандартная практика, не баг. Ошибки на close не
+      # actionable (мы уже выходим из функции).
+      exclude-functions:
+        - (*github.com/jackc/pgx/v5/pgxpool.Pool).Close
+        - (*google.golang.org/grpc.ClientConn).Close
+        - (*database/sql.DB).Close
+        - (*os.File).Close
+        - (io.Closer).Close
+
+  exclusions:
+    rules:
+      # Сгенерённые стабы (buf generate → pkg/api). Их пишет генератор — линтить
+      # бессмысленно. Был путь polyrepo `gen/go/`; в монорепе стабы в pkg/api/.
+      - path: 'pkg/api/'
+        linters: [revive, staticcheck, unused, govet, errcheck]
+      - path: '_test\.go$'
+        linters: [revive, errcheck, unused, staticcheck, bodyclose]
+      # Acronym ревайв-правила vs proto-mirror naming.
+      # Поля типа IpVersion / OutgoingSmtpCapability / DnsOptions и метод
+      # SetDefaultSecurityGroupId — точные копии proto. Service/handler/domain
+      # слои зеркалят это naming, не переименовать без breaking changes
+      # proto-API.
+      # proto-mirror naming (IpVersion / OutgoingSmtpCapability / SetDefaultSecurityGroupId):
+      # поля и методы — точные копии proto, переименование = breaking change API.
+      # Путь расширен на apps/kacho/{api,services}: там ровно тот же зеркальный naming,
+      # а прежний список (domain|handler|service) его не покрывал.
+      - path: 'internal/(domain|handler|service|apps/kacho/(api|services))/'
+        linters: [revive]
+        text: 'var-naming'
+      # Из конфига api-gateway: косметические staticcheck-quickfix'ы. QF1011 вдобавок
+      # воюет с НАМЕРЕННЫМИ compile-time type-assertion'ами.
+      - linters: [staticcheck]
+        text: 'QF1008|QF1011'
+      # Из конфига iam: слои, зеркалящие proto/доменные имена.
+      - path: 'services/iam/internal/(domain|errors|repo|service|apps/kacho/api)/'
+        linters: [staticcheck]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-same-issues: 50
+  max-issues-per-linter: 100

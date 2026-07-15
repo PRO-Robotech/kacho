@@ -125,7 +125,7 @@ func TestAuthz_InstanceGroupService_CatalogGated(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, rt := range routes {
-		rt := rt
+
 		t.Run(rt.FQN, func(t *testing.T) {
 			// 1. Present in the catalog (was: MUST be absent).
 			entry, found := catalog.Lookup(rt.FQN)

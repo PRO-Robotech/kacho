@@ -33,7 +33,7 @@ func TestGateway_Registry_PublicVsInternal(t *testing.T) {
 		"/kacho.cloud.registry.v1.RegistryService/RenameRepository",
 	}
 	for _, m := range publicMethods {
-		m := m
+
 		t.Run("public/"+m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("публичный registry-метод %q должен быть в allowlist", m)
@@ -49,7 +49,7 @@ func TestGateway_Registry_PublicVsInternal(t *testing.T) {
 		"/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats",
 	}
 	for _, m := range internalMethods {
-		m := m
+
 		t.Run("internal/"+m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("Internal registry-метод %q НЕ должен быть в allowlist (ban #6)", m)

@@ -123,7 +123,7 @@ func TestRegistry_RESTRouting_SubResourceNotShadowedByCatchAll(t *testing.T) {
 		{"GetRepository_bare", "GET", "/registry/v1/registries/reg-1/repositories/backend/api", "GetRepository:backend/api"},
 	}
 	for _, tc := range cases {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, http.NoBody)
 			w := httptest.NewRecorder()

@@ -67,7 +67,7 @@ func TestRegistry_PublicRoutesRegistered(t *testing.T) {
 		{"POST", "/registry/v1/registries/reg-1/repositories/backend/api:rename"},   // RenameRepository
 	}
 	for _, tc := range publicRoutes {
-		tc := tc
+
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// External is the fail-closed default (no internal-origin marker) —
@@ -99,7 +99,7 @@ func TestRegistry_InternalService_InternalListenerServes(t *testing.T) {
 		{"POST", "/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats"},
 	}
 	for _, tc := range internalRoutes {
-		tc := tc
+
 		t.Run("INT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// Explicit internal-origin marker → dedicated cluster-internal admin
@@ -131,7 +131,7 @@ func TestRegistry_InternalService_ExternalListenerRejected(t *testing.T) {
 		{"POST", "/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats"},
 	}
 	for _, tc := range internalRoutes {
-		tc := tc
+
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// External is the fail-closed default (no internal-origin marker).

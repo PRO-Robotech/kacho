@@ -14,8 +14,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"google.golang.org/grpc"
 

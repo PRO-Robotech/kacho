@@ -29,7 +29,7 @@ func TestGateway_E_Exists_canonical_AllowlistBlocksAllInternalServices(t *testin
 	}
 
 	for _, m := range internalMethods {
-		m := m
+
 		t.Run(m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("метод %q НЕ должен быть в allowlist", m)
@@ -83,7 +83,7 @@ func TestGateway_D3_AllowlistPublicMethodsPresent(t *testing.T) {
 	}
 
 	for _, m := range publicMethods {
-		m := m
+
 		t.Run(m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("публичный метод %q должен быть в allowlist", m)
@@ -102,7 +102,7 @@ func TestGateway_D6_OperationServiceAllowed(t *testing.T) {
 		"/kacho.cloud.operation.OperationService/Cancel",
 	}
 	for _, m := range allowed {
-		m := m
+
 		t.Run(m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("метод %q должен быть в allowlist", m)
@@ -128,7 +128,7 @@ func TestGateway_D7_OldUpsertWatchBlocked(t *testing.T) {
 		"/kacho.cloud.vpc.v1.NetworkService/Watch",
 	}
 	for _, m := range oldMethods {
-		m := m
+
 		t.Run(m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("устаревший метод %q НЕ должен быть в allowlist 1.0", m)
@@ -175,7 +175,7 @@ func TestGateway_D8_LoadbalancerActive(t *testing.T) {
 		"/kacho.cloud.loadbalancer.v1.TargetGroupService/ListOperations",
 	}
 	for _, m := range publicMethods {
-		m := m
+
 		t.Run("public/"+m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("публичный nlb-метод %q должен быть в allowlist", m)
@@ -189,7 +189,7 @@ func TestGateway_D8_LoadbalancerActive(t *testing.T) {
 		"/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe",
 	}
 	for _, m := range internalMethods {
-		m := m
+
 		t.Run("internal/"+m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("Internal nlb-метод %q НЕ должен быть в allowlist", m)
@@ -215,7 +215,7 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 		"/kacho.cloud.compute.v1.DiskTypeService/List",
 	}
 	for _, m := range publicMethods {
-		m := m
+
 		t.Run("public/"+m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("публичный compute-метод %q должен быть в allowlist", m)
@@ -230,7 +230,7 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 		"/kacho.cloud.compute.v1.InternalWatchService/Watch",
 	}
 	for _, m := range internalMethods {
-		m := m
+
 		t.Run("internal/"+m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("Internal compute-метод %q НЕ должен быть в allowlist", m)
@@ -250,7 +250,7 @@ func TestGateway_D9_OldOperationV1Blocked(t *testing.T) {
 		"/kacho.cloud.operation.v1.OperationService/Cancel",
 	}
 	for _, m := range oldMethods {
-		m := m
+
 		t.Run(m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("старый путь %q НЕ должен быть в allowlist", m)
@@ -333,7 +333,7 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 		"/kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog",
 	}
 	for _, m := range publicMethods {
-		m := m
+
 		t.Run("public/"+m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("публичный iam-метод %q должен быть в allowlist", m)
@@ -352,7 +352,7 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 		"/kacho.cloud.iam.v1.UserService/Create",
 	}
 	for _, m := range excludedUserMethods {
-		m := m
+
 		t.Run("excluded/"+m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("метод %q НЕ должен быть в allowlist — Users создаются через InternalUserService.UpsertFromIdentity", m)
@@ -369,7 +369,7 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 		"/kacho.cloud.iam.v1.InternalUserService/Get",
 	}
 	for _, m := range internalMethods {
-		m := m
+
 		t.Run("internal/"+m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("Internal iam-метод %q НЕ должен быть в allowlist", m)
@@ -392,7 +392,7 @@ func TestGateway_D10_OldRMOrganizationServiceBlocked(t *testing.T) {
 		"/kacho.cloud.resourcemanager.v1.OrganizationService/Delete",
 	}
 	for _, m := range oldMethods {
-		m := m
+
 		t.Run(m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("путь %q НЕ должен быть в allowlist — OrganizationService перенесен в organizationmanager.v1", m)

@@ -673,11 +673,25 @@ cat > "$OUT_DIR/authz-fixtures.json" <<EOF
 EOF
 
 if [ "$PATCH_ENV" = "true" ]; then
-  log "    patching newman env files for all 3 services"
-  python3 "$SCRIPT_DIR/patch-env.py" "$OUT_DIR/authz-fixtures.json" \
-    "$WORKSPACE_DIR/project/kacho-vpc/tests/newman/environments/local.postman_environment.json" \
-    "$WORKSPACE_DIR/project/kacho-iam/tests/newman/environments/local.postman_environment.json" \
-    "$WORKSPACE_DIR/project/kacho-compute/tests/newman/environments/local.postman_environment.json"
+  # Монорепа: env-файлы ищем ГЛОБОМ по фактической раскладке (services/<svc>, gateway),
+  # а не захардкоженным списком. Раньше было три пути вида
+  # "$WORKSPACE_DIR/project/kacho-<svc>/tests/newman/..." — polyrepo-раскладка, которой
+  # в монорепе нет (WORKSPACE_DIR тут = корень репо, и путь бил в
+  # kacho/project/kacho-compute/... → patch-env печатал SKIP (missing) и env оставался
+  # непропатченным). Плюс список отставал от жизни: «all 3 services» при семи сервисах —
+  # newman-наборы iam/vpc/compute/nlb/storage/registry просто не получали фикстуры.
+  # Глоб держит это в синхроне сам: новый сервис с newman-набором подхватится без правок.
+  ENV_FILES=()
+  for e in "$WORKSPACE_DIR"/services/*/tests/newman/environments/local.postman_environment.json \
+           "$WORKSPACE_DIR"/gateway/tests/newman/environments/local.postman_environment.json; do
+    [ -f "$e" ] && ENV_FILES+=("$e")
+  done
+  if [ ${#ENV_FILES[@]} -eq 0 ]; then
+    log "    WARN: newman env-файлов не найдено — пропускаю patch-env"
+  else
+    log "    patching newman env files (${#ENV_FILES[@]} шт.)"
+    python3 "$SCRIPT_DIR/patch-env.py" "$OUT_DIR/authz-fixtures.json" "${ENV_FILES[@]}"
+  fi
 fi
 
 log "DONE — fixtures saved to $OUT_DIR/authz-fixtures.json"

@@ -134,7 +134,7 @@ func (c *Client) BlobInRepo(ctx context.Context, registryID, repo, digest string
 			scannedAll = false // дедлайн/отмена — остаток тегов не просканирован
 			break
 		}
-		tag := tag
+
 		g.Go(func() error {
 			if found.Load() {
 				return nil

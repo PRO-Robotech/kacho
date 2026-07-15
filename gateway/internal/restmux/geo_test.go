@@ -48,7 +48,7 @@ func TestGeo_S5_PublicReadRoutesRegistered(t *testing.T) {
 		{"GET", "/geo/v1/zones/ru-central1-a"},
 	}
 	for _, tc := range publicReads {
-		tc := tc
+
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// External is the fail-closed default (no internal-origin marker) —
@@ -84,7 +84,7 @@ func TestGeo_S5_AdminCRUDRoutesRegistered_InternalListener(t *testing.T) {
 		{"DELETE", "/geo/v1/zones/ru-central1-a"},
 	}
 	for _, tc := range adminCRUD {
-		tc := tc
+
 		t.Run("INT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// Explicit internal-origin marker → dedicated cluster-internal admin

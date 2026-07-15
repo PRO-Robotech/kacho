@@ -158,7 +158,7 @@ func (c *Client) Stats(ctx context.Context, registryID string) (*domain.Registry
 	tg, tgctx := errgroup.WithContext(ctx)
 	tg.SetLimit(blobScopeConcurrency)
 	for _, full := range fullNames {
-		full := full
+
 		tg.Go(func() error {
 			tags, terr := c.repoTags(tgctx, full)
 			if terr != nil {
@@ -181,7 +181,7 @@ func (c *Client) Stats(ctx context.Context, registryID string) (*domain.Registry
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(blobScopeConcurrency)
 	for _, p := range pairs {
-		p := p
+
 		g.Go(func() error {
 			if gctx.Err() != nil {
 				return nil

@@ -98,7 +98,7 @@ func TestRestRouter_Geo_S5_PathFQN(t *testing.T) {
 		{"DELETE", "/geo/v1/zones/ru-central1-a", "kacho.cloud.geo.v1.InternalZoneService/Delete"},
 	}
 	for _, tc := range cases {
-		tc := tc
+
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			got, ok := r.Resolve(tc.method, tc.path)
 			require.True(t, ok, "no route for %s %s", tc.method, tc.path)

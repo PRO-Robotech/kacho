@@ -175,7 +175,7 @@ func TestIdempotency_StatusBoundary_499Cached_500NotCached(t *testing.T) {
 		{"500_not_cached", 500, 2, false},
 	}
 	for _, tc := range cases {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			store := NewIdempotencyStore(time.Minute)
 			var calls int

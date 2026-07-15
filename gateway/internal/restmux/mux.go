@@ -79,8 +79,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"google.golang.org/grpc/metadata"
 	"strings"
+
+	"google.golang.org/grpc/metadata"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
@@ -91,9 +92,11 @@ import (
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+
 	// kacho-nlb (loadbalancer.v1) — public RPC под /nlb/v1/*.
 	lbpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+
 	// kacho-registry (registry.v1) — public RPC под /registry/v1/*.
 	registrypb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	// kacho-storage (storage.v1) — public RPC под /storage/v1/*.

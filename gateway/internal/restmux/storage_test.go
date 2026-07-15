@@ -57,7 +57,7 @@ func TestStorage_PublicRoutesRegistered(t *testing.T) {
 		{"GET", "/storage/v1/diskTypes/network-ssd"},
 	}
 	for _, tc := range publicRoutes {
-		tc := tc
+
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// External is the fail-closed default (no internal-origin marker) —
@@ -91,7 +91,7 @@ func TestStorage_InternalVolumeService_InternalListenerServes(t *testing.T) {
 		{"POST", "/kacho.cloud.storage.v1.InternalVolumeService/GetInternal"},
 	}
 	for _, tc := range internalRoutes {
-		tc := tc
+
 		t.Run("INT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			req = req.WithContext(listenerorigin.WithInternal(req.Context()))
@@ -124,7 +124,7 @@ func TestStorage_InternalVolumeService_ExternalListenerRejected(t *testing.T) {
 		{"POST", "/kacho.cloud.storage.v1.InternalVolumeService/GetInternal"},
 	}
 	for _, tc := range internalRoutes {
-		tc := tc
+
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// External is the fail-closed default (no internal-origin marker).

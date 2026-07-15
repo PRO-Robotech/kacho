@@ -108,7 +108,7 @@ func TestRegistry_RepositoryRoutes_DispatchToOwnHandler(t *testing.T) {
 		{"RenameRepository", "POST", "/registry/v1/registries/reg-1/repositories/backend/api:rename", "RenameRepository:backend/api"},
 	}
 	for _, tc := range cases {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, http.NoBody)
 			rec2 := httptest.NewRecorder()

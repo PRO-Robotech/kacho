@@ -651,7 +651,6 @@ func (h *Handler) serveCatalog(w http.ResponseWriter, r *http.Request, subject s
 	g, gctx := errgroup.WithContext(r.Context())
 	g.SetLimit(catalogAuthzConcurrency)
 	for i, full := range window {
-		i, full := i, full
 		g.Go(func() error {
 			allowed, cerr := h.checkAllowed(gctx, subject, relVList, repositoryObjectFull(full))
 			if cerr != nil {

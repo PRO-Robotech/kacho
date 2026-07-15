@@ -85,7 +85,6 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(zotFanout)
 	for i, rs := range window {
-		i, rs := i, rs
 		g.Go(func() error {
 			var data gqlImageListData
 			if err := c.gqlQuery(gctx, imageListQuery(rs.Name), &data); err != nil {

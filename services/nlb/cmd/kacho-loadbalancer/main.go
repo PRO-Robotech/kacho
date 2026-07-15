@@ -51,6 +51,7 @@ import (
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/observability/health"
 	nlbmetrics "github.com/PRO-Robotech/kacho/services/nlb/internal/observability/metrics"
+
 	// dto/type2pb init регистрирует все DTO трансферы (domain ↔ proto) в реестре.
 	// Импортируется здесь (composition root), чтобы registry был полон до старта
 	// gRPC server'ов; handler'ы вызывают dto.Transfer и предполагают, что

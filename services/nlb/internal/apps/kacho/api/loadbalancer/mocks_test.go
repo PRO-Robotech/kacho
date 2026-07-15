@@ -13,6 +13,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+
 	// dto/type2pb init-registrations — handler-слой строит proto через DTO-реестр.
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"

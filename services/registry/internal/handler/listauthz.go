@@ -177,7 +177,6 @@ func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(repoAuthzConcurrency)
 	for i, r := range regs {
-		i, r := i, r
 		g.Go(func() error {
 			ok, err := a.az.Check(gctx, subject, relationVList, registryObjectRef(r.ID))
 			if err != nil {
@@ -216,7 +215,6 @@ func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(repoAuthzConcurrency)
 	for i, r := range repos {
-		i, r := i, r
 		g.Go(func() error {
 			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(registryID, r.Name))
 			if err != nil {
@@ -268,7 +266,7 @@ func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops 
 			keep[i] = true // registry-level op — namespace v_list (interceptor) достаточно
 			continue
 		}
-		i := i
+
 		g.Go(func() error {
 			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(registryID, repository))
 			if err != nil {

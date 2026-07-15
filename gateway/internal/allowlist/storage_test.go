@@ -36,7 +36,7 @@ func TestGateway_Storage_PublicVsInternal(t *testing.T) {
 		"/kacho.cloud.storage.v1.DiskTypeService/List",
 	}
 	for _, m := range publicMethods {
-		m := m
+
 		t.Run("public/"+m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("публичный storage-метод %q должен быть в allowlist", m)
@@ -57,7 +57,7 @@ func TestGateway_Storage_PublicVsInternal(t *testing.T) {
 		"/kacho.cloud.storage.v1.InternalDiskTypeService/Delete",
 	}
 	for _, m := range internalMethods {
-		m := m
+
 		t.Run("internal/"+m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("Internal storage-метод %q НЕ должен быть в allowlist (ban #6)", m)

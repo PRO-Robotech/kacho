@@ -25,6 +25,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+
 	// Blank-import регистрирует TargetGroup/Target/HC DTO трансферы.
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"

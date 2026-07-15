@@ -22,7 +22,7 @@ func TestGateway_S5_GeoActive(t *testing.T) {
 		"/kacho.cloud.geo.v1.ZoneService/List",
 	}
 	for _, m := range publicMethods {
-		m := m
+
 		t.Run("public/"+m, func(t *testing.T) {
 			if !allowlist.IsAllowed(m) {
 				t.Errorf("публичный geo-метод %q должен быть в allowlist (S5)", m)
@@ -42,7 +42,7 @@ func TestGateway_S5_GeoActive(t *testing.T) {
 		"/kacho.cloud.geo.v1.InternalZoneService/Delete",
 	}
 	for _, m := range internalMethods {
-		m := m
+
 		t.Run("internal/"+m, func(t *testing.T) {
 			if allowlist.IsAllowed(m) {
 				t.Errorf("Internal geo-метод %q НЕ должен быть в allowlist (запрет #6)", m)

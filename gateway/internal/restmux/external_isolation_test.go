@@ -59,7 +59,7 @@ func TestExternalListener_RejectsInternalPaths_404(t *testing.T) {
 		t.Fatalf("NewMux: %v", err)
 	}
 	for _, tc := range internalRESTPaths {
-		tc := tc
+
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// External is the fail-closed DEFAULT: a request with no
@@ -87,7 +87,7 @@ func TestInternalListener_ServesInternalPaths(t *testing.T) {
 		t.Fatalf("NewMux: %v", err)
 	}
 	for _, tc := range internalRESTPaths {
-		tc := tc
+
 		t.Run("INT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// Explicit internal-origin marker → dedicated cluster-internal admin
@@ -117,7 +117,7 @@ func TestExternalListener_PublicPathsStillServed(t *testing.T) {
 		{"GET", "/nlb/v1/networkLoadBalancers"},
 	}
 	for _, tc := range publicPaths {
-		tc := tc
+
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			// External is the fail-closed default (no internal-origin marker).

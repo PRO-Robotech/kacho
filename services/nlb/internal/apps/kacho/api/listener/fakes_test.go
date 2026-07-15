@@ -18,6 +18,7 @@ import (
 
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+
 	// Blank-import регистрирует Listener/time DTO трансферы; без него
 	// dto.Transfer Listener возвращает «no transfer
 	// registered» в worker'е.
