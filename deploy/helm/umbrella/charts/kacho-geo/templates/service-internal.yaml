@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{/*
 Cluster-internal listener (:9091) — InternalRegionService / InternalZoneService
 admin CRUD. NOT published on the api-gateway external TLS endpoint (ban #6);

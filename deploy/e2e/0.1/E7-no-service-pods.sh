@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 set -euo pipefail
 for svc in api-gateway resource-manager vpc compute loadbalancer; do
   if kubectl -n kacho get deploy "$svc" >/dev/null 2>&1; then

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # values.prod.yaml is the documented PRODUCTION profile and MUST be fail-closed.
 #
 # Background: the chart DEFAULT (values.yaml) + the dev/CI profile

@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 apiVersion: v2
 name: kratos-selfservice-ui
 version: 0.1.0

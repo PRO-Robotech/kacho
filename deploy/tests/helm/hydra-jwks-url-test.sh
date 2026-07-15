@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # api-gateway must resolve a REACHABLE cluster-internal Hydra JWKS URL.
 #
 # Bug: the api-gateway auth path validates Hydra-issued RS256 login tokens by

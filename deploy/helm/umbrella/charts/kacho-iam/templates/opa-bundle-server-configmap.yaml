@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{- if .Values.opaSidecar.enabled }}
 {{/*
 KAC-127 Phase 3 (acceptance §5.4) — ConfigMap with env vars for kacho-iam

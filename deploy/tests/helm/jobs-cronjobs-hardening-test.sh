@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # INFRA sec-hardening r3 manifest-assertion guard (offline; no kind cluster).
 #
 # Closes the 3rd-audit residual: EVERY umbrella-owned Job/CronJob must carry the

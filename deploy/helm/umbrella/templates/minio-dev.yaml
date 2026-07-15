@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{- if .Values.minioDev.enabled }}
 # KAC-183 — MinIO dev instance for compliance report S3 upload (newman e2e).
 #

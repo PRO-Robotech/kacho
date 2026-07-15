@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{- if .Values.opaSidecar.networkPolicy.enabled }}
 {{/*
 KAC-127 Phase 3 (acceptance §5.7, defense-in-depth) — NetworkPolicy для

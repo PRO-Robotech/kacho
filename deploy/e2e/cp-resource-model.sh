@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # kacho-deploy/e2e/cp-resource-model.sh — integration / e2e test for the public
 # NetworkInterface resource + a negative "infra-info leak" audit of the public
 # REST surface. Runs against a deployed stack via the api-gateway REST endpoint

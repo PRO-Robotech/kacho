@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # INFRA sec-hardening r2 manifest-assertion guard (offline; no kind cluster).
 #
 # Covers the second-audit INFRA findings on the umbrella-owned auxiliary

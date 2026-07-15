@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # cutover-fe3455.sh — fe3455 PROD umbrella FORWARD roll (single coherent cutover).
 # =============================================================================
 # WHAT THIS DOES

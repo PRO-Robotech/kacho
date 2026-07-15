@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{/*
 Internal-port :9091 — отдельный Service для admin/cluster-internal traffic.
 На external TLS endpoint api-gateway эти RPC НЕ публикуются (запрет #6 workspace CLAUDE.md).

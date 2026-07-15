@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{- if and .Values.opaSidecar.enabled .Values.opaSidecar.policiesFallback.enabled }}
 {{/*
 KAC-127 Phase 3 (acceptance §5.5 — Rego policies inline fallback for dev).

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # kacho-geo sub-chart render-guard (epic kacho-geo S6 + S3).
 #
 # Offline manifest-assertion harness (no kind cluster). Renders the VENDORED

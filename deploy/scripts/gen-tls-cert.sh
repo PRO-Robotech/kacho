@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # gen-tls-cert.sh — генерирует self-signed TLS-сертификат для api-gateway
 # и создаёт k8s-secret api-gateway-tls в namespace kacho.
 #

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 set -euo pipefail
 # Симулируем отсутствие kind, временно убрав из PATH
 TMPBIN=$(mktemp -d)

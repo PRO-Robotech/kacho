@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # values.fe3455-prod.yaml — fe3455 PRODUCTION cutover overlay (greenfield stand).
 #
 # Layer order (production, no dev-auth):

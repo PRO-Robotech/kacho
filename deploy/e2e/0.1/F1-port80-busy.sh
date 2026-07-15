@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 set -euo pipefail
 # ПРИМЕЧАНИЕ: этот тест требует sudo для прослушивания порта 80.
 # Запускайте вручную: sudo bash e2e/0.1/F1-port80-busy.sh

@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 #!/usr/bin/env python3
 """Regenerate the openfga-model-stub ConfigMap from the canonical FGA model.
 

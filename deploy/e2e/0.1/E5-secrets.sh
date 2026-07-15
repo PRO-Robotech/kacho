@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 set -euo pipefail
 # Bitnami chart создаёт secret <release>-pg-<svc>
 for svc in resource-manager vpc compute; do

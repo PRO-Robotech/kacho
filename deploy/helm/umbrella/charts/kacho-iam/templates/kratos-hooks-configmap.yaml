@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{/*
 C4 — Kratos web_hook body templates (Jsonnet).
 

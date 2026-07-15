@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # INFRA sec-hardening r5b — per-datastore Postgres ingress-allowlist NetworkPolicy.
 #
 # Each backing Postgres StatefulSet (bitnami `postgresql` sub-chart, aliased

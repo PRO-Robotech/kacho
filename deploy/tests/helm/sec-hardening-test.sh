@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # INFRA sec-hardening manifest-assertion guard (offline; no kind cluster).
 #
 # Asserts the container/pod hardening re-applied on the current chart structure:

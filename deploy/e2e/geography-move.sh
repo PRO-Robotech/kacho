@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # kacho-deploy/e2e/geography-move.sh — integration test for epic KAC-15
 # (Region/Zone moved kacho-vpc -> kacho-compute). Runs against a deployed stack
 # via the api-gateway REST endpoint ($BASE_URL).

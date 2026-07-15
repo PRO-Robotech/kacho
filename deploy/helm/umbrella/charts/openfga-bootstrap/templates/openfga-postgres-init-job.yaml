@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{- if and .Values.openfgaBootstrap.enabled .Values.openfgaBootstrap.initDatabase }}
 {{/*
 KAC-127 Phase 3 (acceptance §5.1) — Postgres bootstrap for `kacho_openfga` DB.

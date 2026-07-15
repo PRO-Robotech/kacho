@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{/*
 Public read-only listener (:9090) — RegionService / ZoneService Get/List.
 Dial-host = `kacho-geo` (server-cert DNS-SAN, mtls.serverHosts). Consumers

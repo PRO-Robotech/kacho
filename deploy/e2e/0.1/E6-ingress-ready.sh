@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 set -euo pipefail
 kubectl -n kacho wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=180s
 

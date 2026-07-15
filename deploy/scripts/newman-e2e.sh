@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # newman-e2e.sh — REPRODUCIBLE newman e2e flow against the running dev stand.
 #
 # Replaces the manual "seed tokens by hand" path with a deterministic,

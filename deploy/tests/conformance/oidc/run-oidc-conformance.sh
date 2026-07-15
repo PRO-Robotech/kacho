@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 #
 # KAC-127 Phase 12 — OpenID Foundation Conformance Suite runner.
 #

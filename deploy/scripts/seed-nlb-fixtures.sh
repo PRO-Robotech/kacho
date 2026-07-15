@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # kacho-deploy/scripts/seed-nlb-fixtures.sh — KAC-NLB
 #
 # Seeds the resources the kacho-nlb newman / e2e suites need to exist BEFORE

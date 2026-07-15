@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{- if .Values.kratosSelfServiceUI.enabled }}
 # kratos-selfservice-ui-node — официальный Ory UI для login/registration/recovery/
 # verification/settings flows. Интегрируется с Kratos через ENV (KRATOS_BROWSER_URL,

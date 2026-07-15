@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # kacho-iam Hydra/Kratos hooks listener (:9092) + Prometheus /metrics listener
 # (:9095) — per-edge server-side TLS, reusing the SEC-F internal-CA server cert.
 #

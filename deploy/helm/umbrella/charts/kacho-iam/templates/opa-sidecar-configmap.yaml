@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 {{- if .Values.opaSidecar.enabled }}
 {{/*
 KAC-127 Phase 3 (acceptance §5.6, P3-D6..D8) — shared ConfigMap для OPA sidecar.
