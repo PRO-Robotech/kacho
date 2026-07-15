@@ -124,13 +124,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
 
-      # ui/ui-future пока ВНЕ монорепы — umbrella ссылается на них file://, поэтому
-      # dep build без этих чекаутов не пройдёт. Пока их не перенесли, гейт проверяет
-      # только сервисные под-чарты (они уже внутри репо).
+      # Только `helm lint`, БЕЗ голого `helm template`.
+      #
+      # `helm template <chart>` без values НЕ является валидным гейтом: часть чартов
+      # ОСОЗНАННО падает без секретов (kacho-nlb: «db.password is required when
+      # db.existingSecret is empty» — fail-closed, дефолтного пароля нет и быть не
+      # должно). Т.е. такой рендер наказывал бы за правильный дизайн.
+      #
+      # Реальную интеграцию проверяет рендер umbrella с профилем, но он требует
+      # file://-чекаутов ui/ui-future, которые ПОКА не перенесены в монорепу. Вернуть
+      # сюда `helm template ./deploy/helm/umbrella -f values.dev.yaml`, как только они
+      # переедут (тогда же покрыть prod-профиль).
       - name: lint сервисных чартов
         run: |
           for c in services/*/deploy gateway/deploy; do
             [ -f "$c/Chart.yaml" ] || continue
             echo "=== $c"; helm lint "$c"
-            helm template t "$c" >/dev/null
           done
+
+      - name: mtls-off список покрывает values.dev.yaml
+        working-directory: deploy
+        run: make check-mtls-off-complete
