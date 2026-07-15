@@ -68,6 +68,32 @@ guard-kind-context:
 	     exit 1 ;; \
 	esac
 
+# MTLS_OFF — глушим mTLS у КАЖДОГО сабчарта на фазе 1 (bootstrap чистого кластера).
+#
+# Зачем: cert-manager — сабчарт этого же umbrella, поэтому его CRD появляются только
+# ПОСЛЕ фазы 1. Любой сабчарт, рендерящий Certificate раньше, валит весь релиз:
+#   no matches for kind "Certificate" in version "cert-manager.io/v1";
+#   ensure CRDs are installed first
+# Фаза 2 включает mTLS обратно — CRD к тому моменту уже есть.
+#
+# Список ОБЯЗАН покрывать все сабчарты, у которых values.dev.yaml включает mtls.enable.
+# Прежде здесь не хватало kacho-geo (добавлен позже, а --set-список не обновили) →
+# bootstrap с нуля был сломан. Не всплывало годами: kind-кластер переиспользовался, CRD
+# в нём уже стояли, и фаза 1 «проходила». Проверяется целью `check-mtls-off-complete`.
+MTLS_SUBCHARTS := vpc compute api-gateway kacho-nlb kacho-iam kacho-geo
+MTLS_OFF := --set mtls.enabled=false $(foreach s,$(MTLS_SUBCHARTS),--set $(s).mtls.enable=false)
+
+# check-mtls-off-complete — CI-гейт: MTLS_SUBCHARTS не отстаёт от values.dev.yaml.
+# Новый сервис с mtls.enable=true, забытый в MTLS_OFF, снова сломает bootstrap с нуля —
+# и снова незаметно, если кластер переиспользуют. Пусть падает здесь.
+check-mtls-off-complete:
+	@python3 -c "import yaml,sys; \
+	d=yaml.safe_load(open('helm/umbrella/values.dev.yaml')); \
+	want={k for k,v in d.items() if isinstance(v,dict) and isinstance(v.get('mtls'),dict) and v['mtls'].get('enable')}; \
+	have=set('$(MTLS_SUBCHARTS)'.split()); \
+	miss=want-have; \
+	sys.exit('ERROR: mtls включён в values.dev.yaml, но НЕ заглушен в MTLS_SUBCHARTS: '+', '.join(sorted(miss))+chr(10)+'       Фаза 1 (до CRD cert-manager) упадёт на Certificate.' ) if miss else print('mtls-off complete:', ' '.join(sorted(have)))"
+
 dev-up: preflight
 	@start=$$(date +%s); \
 	kind get clusters | grep -q "^$(CLUSTER_NAME)$$" || ./kind/create-cluster.sh; \
@@ -91,10 +117,7 @@ dev-up: preflight
 	echo "=== helm phase 1: cert-manager + control-plane (insecure) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  -f ./helm/umbrella/values.dev.yaml \
-	  --set mtls.enabled=false \
-	  --set vpc.mtls.enable=false --set compute.mtls.enable=false \
-	  --set api-gateway.mtls.enable=false --set kacho-nlb.mtls.enable=false \
-	  --set kacho-iam.mtls.enable=false \
+	  $(MTLS_OFF) \
 	  --wait --timeout 10m; \
 	echo "=== waiting for cert-manager webhook (before applying Issuer/Certificate CRs) ==="; \
 	kubectl -n kacho rollout status deploy/kacho-umbrella-cert-manager-webhook --timeout=180s; \
