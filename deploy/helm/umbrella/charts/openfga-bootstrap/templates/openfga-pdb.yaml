@@ -1,0 +1,33 @@
+{{- if and .Values.openfga.enabled (default false .Values.openfgaPdb.enabled) }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.1 NFR) — PodDisruptionBudget для OpenFGA engine.
+==============================================================================
+
+Upstream openfga chart's schema (values.schema.json) rejects `podDisruptionBudget`
+as an additional top-level property, so we emit a separate PDB at umbrella level.
+
+PDB invariants:
+  - HA-mode: replicaCount >= 3 + minAvailable >= 2 (1 disruption-tolerant).
+  - Selector matches openfga upstream chart's default `app.kubernetes.io/name=openfga`.
+  - Production fail-mode: if openfga has zero replicas ready, EVERY authz Check fails
+    closed (acceptance §5.7), so PDB is a critical reliability primitive.
+
+Toggle via `openfgaPdb.enabled` (default false in dev; true in prod).
+*/}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: openfga
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: openfga
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+spec:
+  minAvailable: {{ .Values.openfgaPdb.minAvailable | default 2 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openfga
+{{- end }}

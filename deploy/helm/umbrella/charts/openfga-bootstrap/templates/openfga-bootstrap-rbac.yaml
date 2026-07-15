@@ -1,0 +1,101 @@
+{{- if .Values.openfgaBootstrap.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.1) — ServiceAccount + Role + RoleBinding для
+openfga-bootstrap-job. Расширяет E0 RBAC (KAC-105) для нужд Phase 3:
+  - secrets: create/get/update/patch — store-id Secret + model-id Secret + annotations.
+  - deployments: get/patch — rolling-restart-bump на kacho-iam / api-gateway /
+    vpc / compute / loadbalancer Deployments через `kacho.cloud/openfga-model-id-rev`
+    annotation (P3.GWT-03).
+
+Hook lifecycle:
+  - post-install,post-upgrade, hook-weight=0 — создаётся до job (weight=10).
+  - hook-delete-policy: before-hook-creation — drop stale SA/Role/Binding перед
+    каждым новым install/upgrade. (Без hook-succeeded — RoleBinding нужен
+    оставленным до конца Job-execution; ttlSecondsAfterFinished на самом Job чистит финально.)
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openfga-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: openfga-bootstrap
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openfga-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: openfga-bootstrap
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+rules:
+  # Phase 3: secrets — kacho-iam-openfga-store + openfga-model-id (create/update/annotate).
+  # INFRA sec-hardening (least privilege): the get/update/patch verbs are scoped
+  # with resourceNames to ONLY the two secrets the Job manages, so a compromised
+  # bootstrap SA cannot read namespace-wide secrets (DB creds, HSM PIN, JWKS enc
+  # key, Hydra hook token). `create` cannot be restricted by resourceName (K8s
+  # rejects resourceNames on create) → kept as a separate, create-only rule.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "update", "patch"]
+    resourceNames:
+      - {{ .Values.openfgaBootstrap.storeIdSecretName | default "kacho-iam-openfga-store" | quote }}
+      - {{ .Values.openfgaBootstrap.modelIdSecretName | default "openfga-model-id" | quote }}
+  # Phase 3: deployments — patch annotation `kacho.cloud/openfga-model-id-rev`
+  # на consumer Deployments (P3.GWT-03 rolling-restart on model change).
+  # Scope ограничен read+patch (никакого delete/create — Job не вправе создавать pod'ов).
+  # INFRA sec-hardening (least privilege): get/patch is scoped with resourceNames to
+  # ONLY the consumer Deployments the Job bumps (same list the Job's Step-G loop uses),
+  # so a compromised bootstrap SA cannot patch arbitrary namespace Deployments (swap a
+  # service image, inject a secret-mounting sidecar, drop securityContext).
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+    resourceNames:
+      {{- range .Values.openfgaBootstrap.consumerDeployments }}
+      - {{ . | quote }}
+      {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openfga-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: openfga-bootstrap
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openfga-bootstrap
+subjects:
+  - kind: ServiceAccount
+    name: openfga-bootstrap
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,123 @@
+{{/*
+  Phase 3b — Federation IN (kacho-iam): bootstrap trusted external IdP issuers
+  into Hydra at chart install/upgrade. Hydra v26.2.0 does NOT load issuers
+  from static config — they live in DB, registered via admin trust-grant API
+  (`POST /admin/trust/grants/jwt-bearer/issuers`).
+
+  Idempotent: pre-install hook DELETE Job; per-issuer PUT-or-POST upsert loop.
+  Skip when `kacho-iam.federationIn.enabled=false` or `trustedIssuers` empty.
+*/}}
+{{- $fed := (index .Values "kacho-iam" "federationIn") | default dict -}}
+{{- if and (eq (toString $fed.enabled) "true") (gt (len ($fed.trustedIssuers | default list)) 0) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hydra-trust-grants-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: federation-in
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: federation-in-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      # INFRA sec-hardening r2 — restricted pod floor. The job only runs curl
+      # (writes /tmp/resp.json into the emptyDir /tmp); no root, no writable rootfs.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trust-grants
+          image: alpine/curl:8.10.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: HYDRA_ADMIN_URL
+              value: "http://kacho-umbrella-hydra-admin.{{ .Release.Namespace }}.svc.cluster.local:4445"
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              echo "[trust-grants] waiting for Hydra admin readiness…"
+              for i in $(seq 1 30); do
+                code=$(curl -s -o /dev/null -w '%{http_code}' "$HYDRA_ADMIN_URL/health/ready" || true)
+                [ "$code" = "200" ] && break
+                echo "[trust-grants] hydra not ready (got $code), retry $i/30"
+                sleep 2
+              done
+
+              upsert_issuer() {
+                local issuer="$1" jwks="$2" subj_pat="$3"
+                local exp_at=$(date -u -d '+10 years' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+                              || date -u -v+10y +"%Y-%m-%dT%H:%M:%SZ")
+                local body=$(cat <<EOF
+              {
+                "issuer": "$issuer",
+                "subject": "$subj_pat",
+                "jwk": {"kid":"placeholder","kty":"RSA","alg":"RS256","n":"AAAA","e":"AQAB"},
+                "scope": [],
+                "expires_at": "$exp_at"
+              }
+              EOF
+              )
+                # Try POST (create). If 409 conflict → no-op (already registered).
+                echo "[trust-grants] registering issuer=$issuer subject=$subj_pat"
+                code=$(curl -s -o /tmp/resp.json -w '%{http_code}' \
+                  -X POST "$HYDRA_ADMIN_URL/admin/trust/grants/jwt-bearer/issuers" \
+                  -H "Content-Type: application/json" \
+                  --data "$body" || echo "000")
+                case "$code" in
+                  2*) echo "[trust-grants]   created (HTTP $code)" ;;
+                  409) echo "[trust-grants]   already exists (HTTP 409) — skipping" ;;
+                  *)   echo "[trust-grants]   FAIL HTTP $code"; cat /tmp/resp.json; exit 1 ;;
+                esac
+              }
+
+              # NOTE: Hydra v26 trust-grant API expects an inline JWK, not a jwks_url.
+              # Production deployments should fetch the issuer JWKS once (at registration
+              # time, e.g. via custom init-container or external admin tooling) and POST
+              # each JWK individually. The placeholder JWK below is a TEMPLATE that the
+              # operator MUST replace before production rollout — see
+              # docs/components/21-federation-in.md §«Хранение IdP JWKS keys».
+{{- range $idx, $issuer := $fed.trustedIssuers }}
+{{- range $subjIdx, $subj := $issuer.allowedSubjects }}
+              upsert_issuer "{{ $issuer.issuer }}" "{{ $issuer.jwksUrl }}" "{{ $subj }}"
+{{- end }}
+{{- end }}
+              echo "[trust-grants] done."
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

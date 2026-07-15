@@ -1,0 +1,53 @@
+# values.prorobotech.yaml — overlay for deploying from public docker.io/prorobotech/*
+# images built by each service repo's `docker-build.yml` CI (multi-arch amd64+arm64)
+# on push to main.
+#
+# Usage (e.g. on a managed cluster with its own cert-manager — see values.fe3455.yaml):
+#   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
+#     -f ./helm/umbrella/values.dev.yaml \
+#     -f ./helm/umbrella/values.prorobotech.yaml \
+#     --wait --timeout 15m
+#
+# Tags pinned to the main-branch commit SHA that CI built (multi-arch manifest):
+#   kacho-vpc          main-d752de57   (PR #145 — mTLS leaf cert + cross-compile)
+#   kacho-compute      main-e2a6fded   (PR #48)
+#   kacho-api-gateway  main-1adc9d12   (PR #70)
+#   kacho-nlb          main-ab61eff3   (PR #24)
+#   kacho-iam          main-a1b28f4c   (PR #104 — cross-compile Dockerfile)
+#   kacho-ui           main-75d27127   (no source change; current main image)
+#
+# Image-shape: sibling sub-charts (vpc/compute/api-gateway/ui) take a flat `image:`
+# string; the vendored sub-charts (kacho-iam/kacho-nlb) take map {repository,tag,pullPolicy}.
+# NB: the sub-chart values KEY must equal the Chart.yaml dependency name — `api-gateway`
+# (hyphen), NOT `apiGateway`.
+
+global:
+  imageRegistry: ""
+
+vpc:
+  image: docker.io/prorobotech/kacho-vpc:main-d752de57
+  imagePullPolicy: IfNotPresent
+
+compute:
+  image: docker.io/prorobotech/kacho-compute:main-e2a6fded
+  imagePullPolicy: IfNotPresent
+
+api-gateway:
+  image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
+  imagePullPolicy: IfNotPresent
+
+ui:
+  image: docker.io/prorobotech/kacho-ui:main-75d27127
+  imagePullPolicy: IfNotPresent
+
+kacho-iam:
+  image:
+    repository: docker.io/prorobotech/kacho-iam
+    tag: main-a1b28f4c
+    pullPolicy: IfNotPresent
+
+kacho-nlb:
+  image:
+    repository: docker.io/prorobotech/kacho-nlb
+    tag: main-ab61eff3
+    pullPolicy: IfNotPresent

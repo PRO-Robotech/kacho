@@ -1,0 +1,106 @@
+{{/*
+KAC-127 Phase 2 — JWKS rotator CronJob.
+
+Соответствует acceptance §5.6 (sub-phase 3.2):
+
+  - Daily cron (±2h jitter в worker — на стороне Go-кода `kacho-iam`).
+  - 90d rotation cycle per signing algorithm (RS256 / ES256 / EdDSA).
+  - Single-statement CTE rotation (Phase 1 §2.6 DB-уровень).
+  - PUT /admin/keys/{set} (Hydra-admin) — публикует public-portion нового ключа.
+  - Grace window 30min: old key remains `current=false, rotated_at=now()`;
+    отдельный cleanup-pass удаляет keys WHERE rotated_at < now() - interval '30 minutes'
+    AND current=false.
+  - HA-safety: pg_advisory_lock(0xJWKS_LOCK_ID) — только 1 pod выполняет rotation.
+  - concurrencyPolicy=Forbid в k8s scheduler — backstop поверх advisory_lock.
+
+Worker invocation: `kacho-iam jwks rotate` (single-shot run, exit 0 on success).
+В CronJob deploy строится тот же image, что и serve-pod; различие только в entrypoint.
+*/}}
+{{- if .Values.kacho.iam.jwks.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}-jwks-rotator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+    kacho.cloud/component: jwks-rotator
+spec:
+  schedule: {{ .Values.kacho.iam.jwks.schedule | quote }}
+  concurrencyPolicy: {{ .Values.jwksRotator.concurrencyPolicy | default "Forbid" | quote }}
+  successfulJobsHistoryLimit: {{ .Values.jwksRotator.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.jwksRotator.failedJobsHistoryLimit | default 3 }}
+  # Если CronJob trigger пропущен (нода была down) — не запускаем catch-up;
+  # ежедневный rotation tolerant к single-day skip (90d cycle, не 1d).
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ .Values.jwksRotator.activeDeadlineSeconds | default 3600 }}
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            {{- include "kacho-iam.labels" . | nindent 12 }}
+            kacho.cloud/component: jwks-rotator
+        spec:
+          restartPolicy: OnFailure
+          enableServiceLinks: false
+          serviceAccountName: {{ include "kacho-iam.fullname" . }}
+          # INFRA sec-hardening r3 — the rotator runs the SAME kacho-iam image as
+          # the serve Deployment and handles the JWKS AES key + DB password; apply
+          # the identical restricted pod floor (runAsNonRoot + seccomp).
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          volumes:
+            - name: config
+              configMap:
+                name: {{ include "kacho-iam.fullname" . }}-config
+            # Writable scratch for the read-only rootfs (mirrors the Deployment).
+            - name: tmp
+              emptyDir: {}
+          containers:
+            - name: jwks-rotator
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              # INFRA sec-hardening r3 — restricted container floor, mirroring
+              # charts/kacho-iam/templates/deployment.yaml (non-root, read-only
+              # rootfs, drop ALL caps, no priv-esc, seccomp RuntimeDefault).
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              # Worker entrypoint — sub-command `jwks rotate` (acceptance §5.6).
+              # Worker performs:
+              #   1. pg_advisory_lock(jwks_lock_id) — HA-safety, blocks concurrent pods.
+              #   2. SELECT current key per alg → rotate если age >= rotation_days.
+              #   3. INSERT new + UPDATE old в single CTE (Phase 1 §2.6).
+              #   4. PUT Hydra-admin /admin/keys/hydra.openid.id-token.
+              #   5. Cleanup pass: DELETE keys older 30min grace window.
+              command: ["/usr/local/bin/kacho-iam", "jwks", "rotate"]
+              volumeMounts:
+                - name: config
+                  mountPath: /etc/kacho-iam
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+              env:
+                - name: KACHO_IAM_CONFIG_PATH
+                  value: /etc/kacho-iam/config.yaml
+                - name: KACHO_IAM_DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.db.passwordSecretName }}
+                      key: {{ .Values.db.passwordSecretKey }}
+                - name: KACHO_IAM_JWKS_ENC_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.kacho.iam.jwks.encKeySecretName }}
+                      key: {{ .Values.kacho.iam.jwks.encKeySecretKey }}
+                      optional: true
+                - name: KACHO_IAM_JWKS_ROTATION_DAYS
+                  value: {{ .Values.kacho.iam.jwks.rotationDays | quote }}
+                - name: KACHO_IAM_DOMAIN
+                  value: {{ .Values.kacho.domain | quote }}
+                - name: KACHO_IAM_HYDRA_ADMIN_URL
+                  value: {{ printf "http://kacho-umbrella-hydra-admin.%s.svc.cluster.local:4445" .Release.Namespace | quote }}
+              resources:
+                {{- toYaml .Values.jwksRotator.resources | nindent 16 }}
+{{- end }}

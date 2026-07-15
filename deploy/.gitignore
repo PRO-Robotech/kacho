@@ -1,0 +1,25 @@
+.idea/
+.vscode/
+.DS_Store
+# helm-dep артефакты (Bitnami / OCI / external charts) — большие, скачиваются `helm dep up`.
+# kacho-iam — наш local sub-chart, source-of-truth, поэтому НЕ игнорируем его и его файлы.
+helm/umbrella/charts/*.tgz
+helm/umbrella/charts/ingress-nginx/
+helm/umbrella/charts/postgresql/
+helm/umbrella/charts/zitadel/
+helm/umbrella/charts/openfga/
+helm/umbrella/charts/api-gateway/
+helm/umbrella/charts/compute/
+helm/umbrella/charts/resource-manager/
+helm/umbrella/charts/ui/
+helm/umbrella/charts/vpc/
+# KAC-NLB: kacho-nlb sub-chart is materialised by `helm dep update` from the
+# sibling repo (file://../../../kacho-nlb/deploy). Ignore the extracted copy
+# the same way we do for vpc/compute/api-gateway/ui above.
+helm/umbrella/charts/kacho-nlb/
+helm/umbrella/Chart.lock
+ci/.seeded-ids.env
+# KAC-NLB: seed-nlb-fixtures.sh writes generated ids here for downstream
+# newman / e2e harnesses; never check the values in.
+.seeded-ids.env
+.claude/worktrees/

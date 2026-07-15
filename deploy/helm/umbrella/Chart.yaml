@@ -1,0 +1,184 @@
+apiVersion: v2
+name: kacho-umbrella
+version: 2.0.0
+description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operations). Bundles the control-plane services (api-gateway, vpc, compute, kacho-iam, kacho-nlb, ui) with their per-service Postgres instances, the Ory identity tier (Kratos + Hydra) and OpenFGA ReBAC engine, plus dev infrastructure (ingress-nginx, in-cluster MinIO). Matches the kind dev stand brought up by `make dev-up` (values.dev.yaml)."
+dependencies:
+  - name: ingress-nginx
+    version: 4.x
+    repository: https://kubernetes.github.io/ingress-nginx
+    # condition-gated: clusters that expose via LoadBalancer Services disable the
+    # kind-style ingress-nginx via `ingress-nginx.enabled: false`. Without the
+    # `condition:` the sub-chart installs unconditionally and its controller hangs
+    # Pending (no node-label `ingress-ready=true`) → `helm --wait` timeout.
+    condition: ingress-nginx.enabled
+
+  # ─── Per-service Postgres (database-per-service, workspace CLAUDE.md ban #8) ──
+  - name: postgresql
+    alias: pg-vpc
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+  - name: postgresql
+    alias: pg-compute
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+  - name: postgresql
+    alias: pg-iam
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+  # kacho-geo owns its own Postgres instance (schema kacho_geo, goose migrator).
+  # database-per-service (ban #8). Always on (geo is a core leaf-service like iam).
+  - name: postgresql
+    alias: pg-geo
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+  - name: postgresql
+    alias: pg-openfga
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-openfga.enabled
+  # kacho-nlb owns its own Postgres instance (schema `kacho_nlb`, goose migrator).
+  # Condition-gated so lean clusters can stay without NLB.
+  - name: postgresql
+    alias: pg-nlb
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-nlb.enabled
+
+  # ─── Control-plane services (sibling sub-charts, resolved from sibling repo
+  # checkouts laid out next to kacho-deploy; the `file://` path is branch-agnostic).
+  # Versions left unpinned (`>= 0.0.0`) — CI clones origin/main of each sibling and
+  # the Chart.yaml there can be any version; a hard pin breaks `helm dep update`.
+  - name: vpc
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-vpc/deploy
+  - name: compute
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-compute/deploy
+  # kacho-nlb L4 NLB control-plane (NetworkLoadBalancer / Listener / TargetGroup).
+  # Condition-gated so clusters without NLB skip it entirely.
+  - name: kacho-nlb
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-nlb/deploy
+    condition: kacho-nlb.enabled
+  - name: api-gateway
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-api-gateway/deploy
+  # Legacy monolithic console (kacho-ui). Superseded by the federated ui-future
+  # console (host + dashboard/vpc/iam/nlb/registry/system Module-Federation remotes),
+  # deployed as its own `uif` release (see kacho-ui-future/deploy). Condition-gated so
+  # clusters on the new console disable the legacy one — without a condition a bare
+  # `helm upgrade` would reinstate the retired monolith. Disabled on fe3455 (prod runs
+  # the ui-future console). Folding ui-future INTO this umbrella (own render + adopting
+  # the hand-applied LoadBalancer) is tracked separately — see the epic tracking issue.
+  - name: ui
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-ui/deploy
+    condition: ui.enabled
+  # Federated ui-future console (host + dashboard/vpc/iam/nlb/registry/system
+  # Module-Federation remotes). Chart is named `uif` (renamed from `ui` in
+  # kacho-ui-future so it never collides with the legacy `ui` chart above — two
+  # same-named subcharts make helm's render non-deterministic). Values live under
+  # `uif:`; resources are named from those values (name/dashboard.name/… → uif,
+  # uif-dashboard, …), matching the standalone `uif` release this consolidates.
+  # Condition-gated (`uif.enabled`); default OFF. Enabling it on a cluster that
+  # already runs the standalone `uif` release requires a one-time `helm upgrade …
+  # --take-ownership` to adopt the existing uif-* resources in place (the hand-applied
+  # uif-lb LoadBalancer is out-of-band and untouched → Beget IP preserved). See #161.
+  - name: uif
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-ui-future/deploy
+    condition: uif.enabled
+  # kacho-registry — OCI registry control-plane (gRPC + data-plane :8080) + zot
+  # StatefulSet (OCI blob backend). Condition-gated; own Postgres (pg-registry).
+  - name: registry
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-registry/deploy
+    condition: registry.enabled
+  - name: postgresql
+    alias: pg-registry
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-registry.enabled
+
+  # kacho-storage — Storage control-plane (Volume/VolumeAttachment/Snapshot/DiskType,
+  # gRPC public :9090 + cluster-internal :9091). Condition-gated; own Postgres
+  # (pg-storage, schema kacho_storage). Runtime edges storage→geo (zone_id) +
+  # storage→iam (ProjectService.Get + per-RPC Check); consumed by compute→storage
+  # (InternalVolumeService attach/detach).
+  - name: storage
+    version: ">= 0.0.0"
+    repository: file://../../../kacho-storage/deploy
+    condition: storage.enabled
+  - name: postgresql
+    alias: pg-storage
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-storage.enabled
+
+  # kacho-iam — vendored sub-chart (Account/Project/User/SA/Group/Role/AccessBinding
+  # + OPA sidecar pipeline + Kratos config). Lives under charts/ (file:// relative).
+  - name: kacho-iam
+    version: ">= 1.0.0"
+    repository: file://./charts/kacho-iam
+
+  # kacho-geo — vendored sub-chart (Geography Region/Zone leaf-service + its
+  # compute→geo data-migration hook-Job). Lives under charts/ (file:// relative)
+  # like kacho-iam, so it renders without the sibling-repo `file://` checkouts.
+  - name: kacho-geo
+    version: ">= 1.0.0"
+    repository: file://./charts/kacho-geo
+
+  # ─── Identity / authorization tier ───────────────────────────────────────
+  # openfga-bootstrap — local glue for the external openfga chart: install/upgrade
+  # hooks that provision the OpenFGA store + Authorization Model v2 and manage the
+  # openfga-model-id / kacho-iam-openfga-store Secrets + PDB. Templates self-gate
+  # (openfgaBootstrap.enabled / openfgaPdb.enabled / initDatabase).
+  - name: openfga-bootstrap
+    version: ">= 0.0.0"
+    repository: file://./charts/openfga-bootstrap
+  # kratos-selfservice-ui — Ory Kratos self-service UI (login/registration/recovery),
+  # proxied by kacho-ui. Self-gated (kratosSelfServiceUI.enabled).
+  - name: kratos-selfservice-ui
+    version: ">= 0.0.0"
+    repository: file://./charts/kratos-selfservice-ui
+  # OpenFGA — ReBAC engine for kacho-iam.
+  - name: openfga
+    version: 0.2.x
+    repository: https://openfga.github.io/helm-charts
+    condition: openfga.enabled
+  # Ory stack — Kratos (identity + self-service flows) + Hydra (OAuth2/OIDC).
+  - name: kratos
+    version: 0.x
+    repository: https://k8s.ory.sh/helm/charts
+    condition: kratos.enabled
+  - name: hydra
+    version: 0.x
+    repository: https://k8s.ory.sh/helm/charts
+    condition: hydra.enabled
+  - name: postgresql
+    alias: pg-kratos
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-kratos.enabled
+  - name: postgresql
+    alias: pg-hydra
+    version: 13.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: pg-hydra.enabled
+
+  # ─── cluster-internal mTLS PKI ────────────────────────────────────────────
+  # cert-manager controller + CRDs. Installs into the umbrella release namespace;
+  # its cluster-resource-namespace defaults to that namespace, so the internal-CA
+  # root secret + per-service leaf secrets all live alongside the workloads.
+  # The internal-CA ClusterIssuer chain is in umbrella templates/clusterissuer.yaml;
+  # each component sub-chart owns its own server/client leaf Certificate. All are
+  # post-install/post-upgrade hooks so they are admitted only after the
+  # cert-manager webhook is Ready. Gated on the master mtls.enabled flag.
+  - name: cert-manager
+    version: v1.16.x
+    repository: https://charts.jetstack.io
+    # Gated separately from mtls.enabled so `make dev-up` can bring the controller
+    # up FIRST (phase 1, mtls off) and only then apply the Issuer/Certificate CRs
+    # (phase 2, mtls on) — cert-manager + its own CRs cannot share one fresh apply
+    # (webhook-not-ready race). cert-manager.enabled defaults true wherever mtls is used.
+    condition: cert-manager.enabled

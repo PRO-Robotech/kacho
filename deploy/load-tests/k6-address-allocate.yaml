@@ -1,0 +1,122 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-address-allocate
+  namespace: kacho
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { sleep } from 'k6';
+    import { Trend, Counter, Rate } from 'k6/metrics';
+
+    const BASE_URL = __ENV.BASE_URL || 'http://api-gateway.kacho.svc.cluster.local:8080';
+    const FOLDER_ID = __ENV.FOLDER_ID;
+    const TARGET_RPS = parseInt(__ENV.TARGET_RPS || '10000', 10);
+    const TEST_DURATION = __ENV.TEST_DURATION || '5m';
+
+    const HEADERS = {
+      'Content-Type': 'application/json',
+      'x-kacho-actor': 'lt-allocate@kacho',
+      'x-kacho-folder-id': FOLDER_ID,
+    };
+
+    export const options = {
+      scenarios: {
+        allocate: {
+          executor: 'constant-arrival-rate',
+          rate: TARGET_RPS,
+          timeUnit: '1s',
+          duration: TEST_DURATION,
+          preAllocatedVUs: 2000,
+          maxVUs: 16000,
+        },
+      },
+      thresholds: {
+        http_req_failed:        ['rate<0.005'],
+        'address_alloc_ok':     ['rate>0.99'],
+        'address_alloc_latency': ['p(99)<200'],
+      },
+      summaryTrendStats: ['min','avg','med','p(90)','p(95)','p(99)','max'],
+    };
+
+    const allocLatency = new Trend('address_alloc_latency', true);
+    const allocOk = new Rate('address_alloc_ok');
+    const allocCount = new Counter('addresses_allocated');
+
+    function uid(p) {
+      return `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+    }
+
+    function pollOp(opId, deadlineMs) {
+      const dl = deadlineMs || 3000;
+      const start = Date.now();
+      while (Date.now() - start < dl) {
+        const r = http.get(`${BASE_URL}/operation/v1/operations/${opId}`);
+        if (r.status === 200 && r.json('done') === true) return r;
+        sleep(0.02);
+      }
+      return null;
+    }
+
+    export default function () {
+      const start = Date.now();
+      const r = http.post(
+        `${BASE_URL}/vpc/v1/addresses`,
+        JSON.stringify({
+          folderId: FOLDER_ID,
+          name: uid('addr'),
+          externalIpv4AddressSpec: {},
+        }),
+        { headers: HEADERS }
+      );
+      if (r.status !== 200) { allocOk.add(false); return; }
+
+      const op = pollOp(r.json('id'));
+      if (!op) { allocOk.add(false); return; }
+
+      const addrId = op.json('response.id') || op.json('metadata.addressId');
+      if (!addrId) { allocOk.add(false); return; }
+
+      allocLatency.add(Date.now() - start);
+      allocOk.add(true);
+      allocCount.add(1);
+
+      // Inline cleanup → returns IP to freelist; pool stays steady-state.
+      const delR = http.del(`${BASE_URL}/vpc/v1/addresses/${addrId}`, null, { headers: HEADERS });
+      if (delR.status === 200) { pollOp(delR.json('id')); }
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-address-allocate
+  namespace: kacho
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.55.0
+          imagePullPolicy: IfNotPresent
+          args: ["run", "--quiet", "/scripts/script.js"]
+          env:
+            - name: BASE_URL
+              value: "http://api-gateway.kacho.svc.cluster.local:8080"
+            - name: FOLDER_ID
+              value: "b1gf63pakyt2tb1qjd6v"
+            - name: TARGET_RPS
+              value: "10000"
+            - name: TEST_DURATION
+              value: "5m"
+          resources:
+            requests: { cpu: "4", memory: "4Gi" }
+            limits:   { cpu: "8", memory: "14Gi" }
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts }
+      volumes:
+        - name: scripts
+          configMap: { name: k6-address-allocate }

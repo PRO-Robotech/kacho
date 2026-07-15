@@ -1,0 +1,419 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kacho-iam.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kacho-iam.labels" . | nindent 8 }}
+        # KAC-127 Phase 3: pod label that the OPA-sidecar egress NetworkPolicy
+        # uses to allowlist outbound traffic. Without it, OPA sidecar cannot
+        # reach bundle endpoint (intentional fail-closed for unlabeled pods).
+        kacho.cloud/opa-sidecar: "true"
+      annotations:
+        # ConfigMap-content hash → pod rolling-restart при изменении config.yaml.
+        kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # KAC-127 Phase 3: bump on openfga model-id change (set by
+        # openfga-bootstrap-job patching this Deployment annotation post-install).
+        # Initial value `pending` — replaced by bootstrap-job after WriteAuthorizationModel.
+        kacho.cloud/openfga-model-id-rev: "pending"
+    spec:
+      # KACHO_IAM_* — собственный config-namespace сервиса. К-net auto-инжектит
+      # KACHO_IAM_INTERNAL_PORT=tcp://<ip>:9091 (из Service `kacho-iam-internal`),
+      # что viper-binding путает с config-полями → "too many colons in address" на listen.
+      # Гасим service-link-инъекцию: всё конфигурим из своих env / config.yaml.
+      enableServiceLinks: false
+      serviceAccountName: {{ include "kacho-iam.fullname" . }}
+      # INFRA sec-hardening — pod-level securityContext (runAsNonRoot + seccomp
+      # RuntimeDefault). Per-container floor is applied on each container below.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kacho-iam.fullname" . }}-config
+        # Writable scratch for the read-only-rootfs main container.
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.mtls.enable }}
+        # SEC-H mTLS — cert-manager internal-CA server secret (tls.crt/tls.key/ca.crt).
+        # IAM is a leaf-owner: server-side only (both listeners), no client edge in scope.
+        - name: mtls-server
+          secret:
+            secretName: {{ .Values.mtls.serverSecretName | quote }}
+        {{- end }}
+        {{- if .Values.opaSidecar.enabled }}
+        # KAC-127 Phase 3 (acceptance §5.6) — OPA sidecar config + JWKS public key.
+        # Shared ConfigMaps managed at umbrella level (not per sub-chart).
+        - name: opa-config
+          configMap:
+            name: opa-sidecar-config
+        - name: kacho-iam-jwks
+          configMap:
+            name: {{ .Values.opaSidecar.jwks.configMapName | default "kacho-iam-jwks" }}
+        {{- end }}
+      initContainers:
+        {{- if .Values.initContainer.migrator.enabled }}
+        # skill evgeniy §9 K.1: миграции БД исполняет отдельный binary `kacho-migrator`
+        # (тот же image, отдельный entrypoint). DSN собирается мигратором из
+        # KACHO_IAM_DB_* env (через config-fallback).
+        - name: migrate
+          image: "{{ include "kacho-iam.image" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command:
+            {{- toYaml .Values.initContainer.migrator.command | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kacho-iam
+              readOnly: true
+          env:
+            - name: KACHO_IAM_CONFIG_PATH
+              value: /etc/kacho-iam/config.yaml
+            - name: KACHO_IAM_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.passwordSecretName }}
+                  key: {{ .Values.db.passwordSecretKey }}
+        {{- end }}
+        # KAC-105 / sub-phase-2.0-iam-overview-acceptance NFR-9:
+        # «kacho-iam config-load fails-fast, если OpenFGA недоступен;
+        #  ordering managed через init-container, пингующий OpenFGA HTTP-ready
+        #  endpoint». На E0/E1 коду kacho-iam ещё не нужен OpenFGA (это E3); НО
+        # init-container остаётся в шаблоне как infrastructure-readiness гарантия.
+        # Условие `initContainer.waitForExtAuth.enabled` (default `true`) позволяет
+        # отключить ожидание для E0/E1-стендов где OpenFGA ещё не задеплоен.
+        # KAC-127: wait-for-zitadel удалён — identity/OIDC tier на Ory Kratos + Hydra.
+        {{- if .Values.initContainer.waitForExtAuth.enabled }}
+        - name: wait-for-openfga
+          image: busybox:1.36
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "wait-for-openfga: ожидаем kacho-umbrella-openfga:8080 (max 300s)…"
+              for i in $(seq 1 60); do
+                if nc -z kacho-umbrella-openfga 8080 2>/dev/null; then
+                  echo "wait-for-openfga: OK"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "wait-for-openfga: TIMEOUT — kacho-umbrella-openfga:8080 недоступен"
+              exit 1
+        {{- end }}
+      containers:
+        - name: {{ include "kacho-iam.fullname" . }}
+          image: "{{ include "kacho-iam.image" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["/usr/local/bin/kacho-iam", "serve"]
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.ports.grpc }}
+            - name: grpc-internal
+              containerPort: {{ .Values.ports.internalGrpc }}
+            # KAC-127 Phase 2 — HTTP webhook listener (Hydra token/refresh hooks,
+            # CAEP ingress). KAC-127 deploy#39 — also serves the OPA policy
+            # bundle (/opa/v1/bundle.tar.gz) for the OPA sidecar, which pulls
+            # over HTTP and cannot reach the gRPC :9091 mux. Cluster-internal.
+            - name: http-hooks
+              containerPort: {{ .Values.ports.hooksHttp | default 9092 }}
+            # Docker Registry v2 `/iam/token` auth-server HTTP listener — отдельный,
+            # external-reachable порт (:9096), куда data-plane реестра проксирует
+            # docker-обмен SA-key/user-token → identity-JWT. Отличается от hooks (:9092)
+            # и metrics (:9095). Публикуется как Service-порт registry-token.
+            - name: registry-token
+              containerPort: {{ .Values.ports.registryToken | default 9096 }}
+            # registry-iam-jwks-unify — cluster-INTERNAL Hydra-JWKS proxy listener
+            # (GET /.well-known/jwks.json), one-way server-TLS. The registry data-plane
+            # fetches docker-Bearer verification keys here (Hydra stays signer/issuer).
+            # Exposed ONLY on kacho-iam-internal (never external, ban #6).
+            - name: http-jwks
+              containerPort: {{ .Values.ports.jwksProxy | default 9097 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kacho-iam
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.mtls.enable }}
+            - name: mtls-server
+              mountPath: {{ printf "%s/server" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            {{- end }}
+          env:
+            - name: KACHO_IAM_CONFIG_PATH
+              value: /etc/kacho-iam/config.yaml
+            - name: KACHO_IAM_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.passwordSecretName }}
+                  key: {{ .Values.db.passwordSecretKey }}
+            {{- if .Values.mtls.enable }}
+            {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
+            # SEC-H mTLS server-creds (both listeners) — corelib grpcsrv.TLSServer
+            # via config.LoadPrefixed("KACHO_IAM"). RequireAndVerifyClientCert
+            # against the internal-CA bundle (ca.crt in the server secret). IAM is
+            # a leaf-owner: server-side only, no outgoing peer-dial edge in scope.
+            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- if .Values.mtls.httpListeners }}
+            # Sub-phase 5.5 — HTTP listener TLS (hooks :9092 + /metrics :9095).
+            # These two listeners were served PLAINTEXT; per-edge, default-off
+            # server-side TLS now wraps them (config.MTLSConfig.HooksServerTLSConfig
+            # / MetricsServerTLSConfig → tls.NewListener). The per-edge
+            # CLIENTAUTHMODE selects the TLS ClientAuth mode:
+            #   - server-tls-only → tls.NoClientCert (encryption + server-auth only,
+            #     NO client cert required). The hooks edge carries THREE
+            #     HMAC-authenticated hook endpoints (Hydra token/refresh + Kratos
+            #     provision); all three callers are HTTP clients that present no
+            #     transport client-cert (Ory webhooks cannot) — HMAC
+            #     (X-Kacho-Hook-Token) is the caller-auth. The metrics edge has no
+            #     scrape client cert wired yet → server-tls-only too.
+            #   - mutual → RequireAndVerifyClientCert (option, flip CLIENTAUTHMODE
+            #     to "mutual" when a scrape client is provisioned with a client cert).
+            # They REUSE the SAME SEC-F internal-CA server cert-trio mounted above
+            # (no new PKI).
+            #
+            # SEPARATE toggle from mtls.enable: the dev/newman kind stand runs the
+            # gRPC listeners under mTLS (mtls.enable=true) but keeps hooks/metrics
+            # PLAINTEXT (the Hydra/Kratos hook clients have no client cert there).
+            # mtls.httpListeners stays false on dev → these env are NOT emitted →
+            # hooks/metrics stay plaintext (byte-identical). values.prod.yaml flips
+            # it true with clientAuthMode=server-tls-only.
+            - name: KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
+              value: {{ .Values.mtls.hooksClientAuthMode | default "server-tls-only" | quote }}
+            - name: KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            - name: KACHO_IAM_METRICS_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE
+              value: {{ .Values.mtls.metricsClientAuthMode | default "server-tls-only" | quote }}
+            - name: KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            # registry-iam-jwks-unify — server-TLS for the cluster-INTERNAL Hydra-JWKS
+            # proxy listener (:9097, GET /.well-known/jwks.json). Reuses the SAME SEC-F
+            # internal-CA server cert-trio mounted above (no new PKI). ONE-WAY
+            # (server-tls-only) ON PURPOSE: the route serves PUBLIC OIDC verification
+            # keys and is unauthenticated-by-design — the registry data-plane verifier
+            # fetches it with a plain https client presenting NO client cert, so
+            # RequireAndVerifyClientCert would reject the handshake. Registry trusts
+            # this leaf via the internal-CA it already mounts (SSL_CERT_DIR). Gated on
+            # mtls.httpListeners (same as hooks/metrics) → dev stays plaintext :9097.
+            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE
+              value: {{ .Values.mtls.jwksProxyClientAuthMode | default "server-tls-only" | quote }}
+            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- end }}
+            {{- end }}
+            # OpenFGA store-id создаётся bootstrap-job'ом, см. umbrella/templates/openfga-bootstrap-job.yaml.
+            # На E0 secret может ещё не существовать к моменту первого старта;
+            # `optional: true` позволяет pod'у стартовать без него (kacho-iam
+            # начнёт использовать OpenFGA только в E3, до этого — no-op).
+            - name: KACHO_IAM_OPENFGA_STORE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.config.extapi.openfga.storeIdSecretName }}
+                  key: {{ .Values.config.extapi.openfga.storeIdSecretKey }}
+                  optional: true
+            # ─── KAC-127 Phase 3 — authz core env vars ──────────────────
+            # acceptance §5.2 / P3-D2: pinned authorization_model_id (versioned + immutable).
+            # Источник — Secret openfga-model-id, key `current`, patch'ит openfga-bootstrap-job.
+            # `optional: true` для cold-start до первого bootstrap; кешируется in-memory
+            # после первого успешного fetch, refreshes на NOTIFY `kacho_iam_subjects`.
+            - name: KACHO_IAM_OPENFGA_MODEL_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.openfgaBootstrap.modelIdSecretName | default "openfga-model-id" }}
+                  key: current
+                  optional: true
+            # subject-change push-drainer (W1.2): IAM нотифицирует api-gateway
+            # InternalAuthzCacheService об изменениях subject → инвалидация authz-кэша.
+            # REQUIRED в коде (cmd/kacho-iam/subject_change_wiring.go) — без него pod
+            # падает на старте. api-gateway internal gRPC = cmux-порт 8080 (cluster-internal).
+            - name: KACHO_IAM_GATEWAY_INTERNAL_ADDR
+              value: {{ .Values.gatewayInternalAddr | default "api-gateway.kacho.svc.cluster.local:8080" | quote }}
+            # OPA bundle server — список knobs для build-side bundle generation
+            # (kacho-iam serves bundle.tar.gz). См. opa-bundle-server-configmap.yaml.
+            {{- if .Values.opaSidecar.enabled }}
+            - name: KACHO_BUILD_SHA
+              value: {{ .Values.image.tag | quote }}   # CI sets tag = git sha (or :dev for local).
+            {{- end }}
+            # ─── KAC-127 Phase 2 — AuthN core env vars ──────────────────
+            # Hydra ↔ kacho-iam shared secret для token_hook / refresh_hook.
+            # Создаётся отдельным Secret kacho-iam-hook-token (см. cluster overrides);
+            # optional: true позволяет pod'у стартовать на E0/E1 (до Phase 2 включения).
+            - name: KACHO_IAM_HOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.kacho.hooks.tokenHookSecretName }}
+                  key: {{ .Values.kacho.hooks.tokenHookSecretKey }}
+                  optional: true
+            # AES-GCM key для encrypt-at-rest JWKS private_key_pem (acceptance §2.4).
+            # В prod — KMS-CMK через external-secrets; в dev — раз-сгенерированный
+            # 32-byte base64url в Secret kacho-iam-jwks-enc-key.
+            - name: KACHO_IAM_JWKS_ENC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.kacho.iam.jwks.encKeySecretName }}
+                  key: {{ .Values.kacho.iam.jwks.encKeySecretKey }}
+                  optional: true
+            # Cache knobs (acceptance §2.5 + §2.6) — дублируются как env для
+            # сервисов, читающих их напрямую (api-gateway, kacho-iam).
+            - name: KACHO_IAM_SESSION_REVOCATIONS_CACHE_TTL_SECONDS
+              value: {{ .Values.kacho.iam.sessionRevocations.cacheTTLSeconds | quote }}
+            - name: KACHO_IAM_DPOP_REPLAY_CACHE_TTL_SECONDS
+              value: {{ .Values.kacho.iam.dpopReplay.cacheTTLSeconds | quote }}
+            - name: KACHO_IAM_DPOP_REPLAY_CACHE_SIZE
+              value: {{ .Values.kacho.iam.dpopReplay.cacheSize | quote }}
+            - name: KACHO_IAM_JWKS_ROTATION_DAYS
+              value: {{ .Values.kacho.iam.jwks.rotationDays | quote }}
+            # Domain — для self-issued tokens / OIDC discovery / WebAuthn RP-id.
+            - name: KACHO_IAM_DOMAIN
+              value: {{ .Values.kacho.domain | quote }}
+            - name: KACHO_IAM_HYDRA_ISSUER
+              value: {{ printf "https://%s.%s" .Values.kacho.subdomains.hydra .Values.kacho.domain | quote }}
+            {{- with .Values.kacho.iam.hydraTokenURL }}
+            # In-cluster Hydra token-эндпоинт для client_credentials-обмена в
+            # registry `/iam/token` shim. Без него ResolveHydraTokenURL() падает на
+            # внешний issuer-URL, недостижимый изнутри кластера. Пусто → не эмитится
+            # (dev/local сохраняет прежний fallback).
+            - name: KACHO_IAM_HYDRA_TOKEN_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.kacho.iam.hydraJwksUrl }}
+            # registry-iam-jwks-unify — upstream Hydra PUBLIC JWKS URL that the
+            # cluster-INTERNAL jwks-proxy listener (:9097) mirrors byte-for-byte.
+            # Empty → not emitted → iam falls back to
+            # ResolveHydraIssuer()+"/.well-known/jwks.json" (dev/local unchanged).
+            # Prod sets the in-cluster hydra-public base so the iam→Hydra fetch stays
+            # inside the cluster. Hydra remains the signer/issuer — iam only proxies.
+            - name: KACHO_IAM_HYDRA_JWKS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          {{- if .Values.opaSidecar.enabled }}
+          # KAC-127 Phase 3: bulk-import OPA bundle-server knobs (see
+          # umbrella/templates/opa-bundle-server-configmap.yaml).
+          envFrom:
+            - configMapRef:
+                name: opa-bundle-server-config
+                optional: false
+          {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.opaSidecar.enabled }}
+        # ─── KAC-127 Phase 3 — OPA sidecar (acceptance §5.6, P3-D6) ────────
+        # Per-pod OPA evaluates Rego guardrails after FGA Check allows. Localhost-
+        # only listener (:8181) — no Service, no external access. KAC-127
+        # (deploy#39): bundle pulled over HTTP from kacho-iam's HTTP listener
+        # (:9092, route /opa/v1/bundle.tar.gz) — the OPA bundle plugin speaks
+        # HTTP and cannot use the gRPC :9091 mux.
+        - name: opa
+          image: {{ .Values.opaSidecar.image | default "openpolicyagent/opa:1.0.0-rootless" | quote }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - run
+            - --server
+            - --addr=127.0.0.1:8181
+            - --diagnostic-addr=0.0.0.0:8282
+            - --config-file=/config/config.yaml
+            - --log-level={{ .Values.opaSidecar.logLevel | default "info" }}
+            - --log-format=json
+            - --set=plugins.envoy_ext_authz_grpc.enabled=false
+          volumeMounts:
+            - name: opa-config
+              mountPath: /config
+              readOnly: true
+            - name: kacho-iam-jwks
+              mountPath: /jwks
+              readOnly: true
+          ports:
+            # Diagnostic port (health, metrics) is exposed on 0.0.0.0 for kubelet
+            # probes — Rego eval API stays on 127.0.0.1:8181 (intra-pod only).
+            - name: opa-diag
+              containerPort: 8282
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health?bundles=true
+              port: opa-diag
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: opa-diag
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: {{ .Values.opaSidecar.resources.requests.cpu | default "20m" }}
+              memory: {{ .Values.opaSidecar.resources.requests.memory | default "64Mi" }}
+            limits:
+              cpu: {{ .Values.opaSidecar.resources.limits.cpu | default "200m" }}
+              memory: {{ .Values.opaSidecar.resources.limits.memory | default "256Mi" }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+        {{- end }}

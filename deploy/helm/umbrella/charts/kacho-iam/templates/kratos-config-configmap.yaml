@@ -1,0 +1,303 @@
+{{/*
+KAC-127 Phase 2 — Kratos config ConfigMap (WebAuthn / Passkey enabled).
+
+Соответствует acceptance §5.1 (sub-phase 3.2):
+
+  - webauthn passwordless=true, rp.id = {{ .Values.kacho.domain }} (root domain WebAuthn-RP);
+    rp.origin = https://{app-subdomain}.{{ .Values.kacho.domain }} (UI origin).
+  - password fallback с Argon2id (m=64MB t=3 p=4) + HIBP k-anonymity check;
+  - totp secondary (RFC 6238) для AAL2 fallback;
+  - lookup_secret (backup codes) для recovery-edge;
+  - recovery: magic-link, lifespan 5min (acceptance §2.8 — IP-bound enforced на use-time);
+  - post-registration/post-login web_hook → kacho-iam provisioning HTTP route
+    `/iam/v1/hooks/provision` on the :9092 hooks listener (Service kacho-iam-internal).
+    C4 fix: the previous target was the PURE gRPC :9091 port with a REST-style
+    path that does not exist there → every hook failed silently → users were
+    never mirrored into kacho_iam (no project/namespace). Body = identity-payload.jsonnet
+    (kacho-iam-kratos-hooks ConfigMap), emitting {external_id, email, display_name}.
+  - post-recovery web_hook — left on legacy :9091 gRPC path (TODO(C4-followup):
+    OnRecoveryCompleted is Unimplemented, so no :9092 recovery route exists yet).
+
+Файл маунтится в Kratos pod как `/etc/config/kratos/kratos.yaml`. Hydra/Kratos
+helm subchart'ы умеют читать config из этого ConfigMap через `config.fromConfigMap`
+или через volume-mount + `kratos --config /etc/config/kratos/kratos.yaml`.
+В Phase 2 предпочитаем второй вариант (явный mount) — даёт нам полный контроль
+над структурой YAML без оборачивания в `kratos.config.*` (sub-chart wrapper).
+
+ENV substitution (`$KACHO_IAM_HOOK_TOKEN`) — Kratos выполняет на старте через
+`config.envsubst` (если включён) ИЛИ через KRATOS_*-env-binding (kratos sub-chart
+по умолчанию делает upper-case mapping). В dev это работает через ENV-vars
+проброшенные в Kratos pod из Secret `kacho-iam-hook-token`.
+*/}}
+{{- if .Values.kratos.config.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}-kratos-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+    kacho.cloud/component: kratos-config
+data:
+  kratos.yaml: |
+    version: v1.3.1
+
+    # ─── Serve endpoints ────────────────────────────────────────────────
+    serve:
+      public:
+        base_url: https://{{ .Values.kacho.subdomains.kratos }}.{{ .Values.kacho.domain }}/
+        cors:
+          enabled: true
+          allowed_origins:
+            - https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}
+          allowed_methods: [POST, GET, PUT, PATCH, DELETE]
+          allowed_headers: [Authorization, Cookie, Content-Type]
+          exposed_headers: [Content-Type, Set-Cookie]
+      admin:
+        base_url: http://kacho-umbrella-kratos-admin:80/
+
+    # ─── Identity schema v2 (WebAuthn + email) ──────────────────────────
+    identity:
+      default_schema_id: kacho_user_v2
+      schemas:
+        - id: kacho_user_v2
+          url: file:///etc/config/kratos/identity.schema.json
+
+    # ─── Selfservice flows ──────────────────────────────────────────────
+    selfservice:
+      default_browser_return_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/
+      allowed_return_urls:
+        - https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/
+
+      methods:
+        # WebAuthn / Passkey — primary authentication method (acceptance §5.1).
+        webauthn:
+          enabled: true
+          config:
+            passwordless: true
+            rp:
+              # RP-id = root домен. WebAuthn Level 3 §5.1.3 разрешает RP-id равным
+              # eTLD+1 → credentials работают для всех поддоменов (app., kratos., …).
+              id: {{ .Values.kacho.domain | quote }}
+              display_name: "Kacho Cloud"
+              # Origin строго совпадает с UI origin (acceptance §6.1.4 — phishing-resistance).
+              origins:
+                - https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}
+
+        # Password fallback (acceptance §5.1, §6.3.1):
+        #   - Argon2id m=64MB t=3 p=4 (Kratos default tuned per OWASP 2024).
+        #   - HIBP k-anonymity check enabled (api.pwnedpasswords.com /range/{SHA1-prefix}).
+        #   - identifier_similarity_check_enabled — отвергает passwords containing email.
+        password:
+          enabled: true
+          config:
+            min_password_length: 8
+            identifier_similarity_check_enabled: true
+            haveibeenpwned_enabled: true
+            haveibeenpwned_host: api.pwnedpasswords.com
+
+        # TOTP secondary (acceptance §6.3.2 — для password+TOTP path → AAL2).
+        totp:
+          enabled: true
+          config:
+            issuer: "Kacho Cloud"
+
+        # Backup codes (lookup_secret) — для recovery edge-case (acceptance §2.8).
+        lookup_secret:
+          enabled: true
+
+        # Profile / link / oidc / code — disabled (Phase 2 single-IdP model).
+        link:
+          enabled: false
+        code:
+          enabled: true   # required for recovery magic-link mode
+          config:
+            lifespan: 5m
+        profile:
+          enabled: true
+        oidc:
+          enabled: false  # Federation — Phase 11, не Phase 2.
+
+      flows:
+        # ─── Registration ────────────────────────────────────────────
+        registration:
+          enabled: true
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/registration
+          lifespan: 30m
+          after:
+            webauthn:
+              hooks:
+                # C4 fix: provisioning web_hook → kacho-iam :9092 HTTP hooks
+                # listener (Service kacho-iam-internal). The previous target was
+                # the PURE gRPC :9091 port with a REST-style path that does not
+                # exist there → every hook failed silently → users were never
+                # mirrored into kacho_iam (no project/namespace). The handler
+                # (internal/handler/iamhooks/provision_hook_handler.go) calls the
+                # UpsertFromIdentity use-case in-process.
+                - hook: web_hook
+                  config:
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    method: POST
+                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    auth:
+                      type: api_key
+                      config:
+                        in: header
+                        name: X-Kacho-Hook-Token
+                        value: ${KACHO_IAM_HOOK_TOKEN}
+                - hook: show_verification_ui
+                - hook: session   # Kratos auto-issues session post-registration → AAL2
+            password:
+              hooks:
+                # C4 fix — see webauthn note above (same :9092 HTTP route).
+                - hook: web_hook
+                  config:
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    method: POST
+                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    auth:
+                      type: api_key
+                      config:
+                        in: header
+                        name: X-Kacho-Hook-Token
+                        value: ${KACHO_IAM_HOOK_TOKEN}
+                - hook: show_verification_ui
+
+        # ─── Login ───────────────────────────────────────────────────
+        login:
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/login
+          lifespan: 30m
+          after:
+            webauthn:
+              hooks:
+                # C4 fix — provisioning web_hook → kacho-iam :9092 HTTP route
+                # (see the registration.after note above for the rationale).
+                - hook: web_hook
+                  config:
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    method: POST
+                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    auth:
+                      type: api_key
+                      config:
+                        in: header
+                        name: X-Kacho-Hook-Token
+                        value: ${KACHO_IAM_HOOK_TOKEN}
+                - hook: require_verified_address
+            password:
+              hooks:
+                # C4 fix — provisioning web_hook → kacho-iam :9092 HTTP route.
+                - hook: web_hook
+                  config:
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    method: POST
+                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    auth:
+                      type: api_key
+                      config:
+                        in: header
+                        name: X-Kacho-Hook-Token
+                        value: ${KACHO_IAM_HOOK_TOKEN}
+                - hook: require_verified_address
+
+        # ─── Settings ────────────────────────────────────────────────
+        # Privileged flow — re-authentication every 15min.
+        settings:
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/settings
+          lifespan: 30m
+          privileged_session_max_age: 15m
+          required_aal: highest_available
+
+        # ─── Recovery (magic-link, 5min TTL, IP-bound) ────────────────
+        # acceptance §2.8: single-use, IP-bound (Kratos records issuing IP; on
+        # redemption verifies X-Forwarded-For === issuing IP — strict exact match
+        # в Phase 2; relaxed /24 — Phase 12 hardening per §10 Q5).
+        recovery:
+          enabled: true
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/recovery
+          lifespan: 5m
+          use: code
+          after:
+            hooks:
+              - hook: revoke_active_sessions
+              # TODO(C4-followup): recovery provisioning route once
+              # OnRecoveryCompleted is implemented. The kacho-iam
+              # InternalUserService.OnRecoveryCompleted RPC is currently
+              # Unimplemented (no Go handler), so this web_hook is left pointing
+              # at the legacy :9091 gRPC path — it still fails silently. It is
+              # NOT re-routed to the :9092 HTTP hooks listener in this PR because
+              # there is no /iam/v1/hooks/* recovery handler to serve it yet.
+              - hook: web_hook
+                config:
+                  url: http://kacho-iam.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.ports.internalGrpc }}/iam/v1/internal/users:onRecoveryCompleted
+                  method: POST
+                  body: file:///etc/config/kratos/hooks/recovery-payload.jsonnet
+                  auth:
+                    type: api_key
+                    config:
+                      in: header
+                      name: X-Kacho-Hook-Token
+                      value: ${KACHO_IAM_HOOK_TOKEN}
+
+        # ─── Verification ────────────────────────────────────────────
+        verification:
+          enabled: true
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/verification
+          lifespan: 15m
+          use: code
+
+        # ─── Logout ──────────────────────────────────────────────────
+        logout:
+          after:
+            default_browser_return_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/
+
+        # ─── Error ───────────────────────────────────────────────────
+        error:
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/error
+
+    # ─── Session ────────────────────────────────────────────────────────
+    session:
+      # 24h browser session; Hydra issues 15min access_token / 30d refresh_token
+      # (отдельный жизненный цикл — acceptance §2.3).
+      lifespan: 24h
+      cookie:
+        domain: {{ .Values.kacho.domain | quote }}
+        same_site: Lax
+        path: /
+        persistent: true
+      whoami:
+        required_aal: aal1   # whoami доступен с AAL1; AAL2 — required для protected RPC.
+
+    # ─── Hashers ────────────────────────────────────────────────────────
+    hashers:
+      algorithm: argon2
+      argon2:
+        memory: 64MB
+        iterations: 3
+        parallelism: 4
+        salt_length: 16
+        key_length: 32
+
+    # ─── Courier (SMTP) ─────────────────────────────────────────────────
+    # Email-channel для magic-link recovery + verification. В dev — MailHog
+    # catch-all; в prod — SMTP-relay через external-secrets.
+    courier:
+      smtp:
+        connection_uri: {{ .Values.kratos.config.smtp.connectionURI | quote }}
+        from_address: {{ .Values.kratos.config.smtp.fromAddress | quote }}
+        from_name: {{ .Values.kratos.config.smtp.fromName | quote }}
+
+    # ─── Secrets ────────────────────────────────────────────────────────
+    # Cookie + cipher secrets — 32 bytes random; в prod через external-secrets.
+    secrets:
+      cookie:
+        - ${KRATOS_SECRETS_COOKIE}
+      cipher:
+        - ${KRATOS_SECRETS_CIPHER}
+
+    # ─── Logging ────────────────────────────────────────────────────────
+    log:
+      level: info
+      format: json
+      leak_sensitive_values: false
+{{- end }}

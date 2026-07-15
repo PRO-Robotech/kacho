@@ -1,0 +1,158 @@
+{{/*
+ConfigMap с YAML-конфигом kacho-iam.
+
+Соответствует convention'у kacho-vpc / kacho-compute (skill evgeniy §8 J.1):
+сервис читает config из /etc/kacho-iam/config.yaml; поля можно override через
+ENV `KACHO_IAM_<SECTION>__<KEY>=...`.
+
+DB-пароль НЕ кладётся сюда (secret); подтягивается через
+`repository.postgres.password-from-env: KACHO_IAM_DB_PASSWORD` и Secret-ENV
+в deployment.yaml.
+
+KAC-105: на E0 extapi.openfga endpoints — заглушки (сервис скорее всего ещё
+не использует их в коде до E3). KAC-127: zitadel удалён — Ory Kratos + Hydra.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    logger:
+      level: {{ default "INFO" .Values.config.logger.level | quote }}
+
+    api-server:
+      endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.grpc | quote }}
+      internal-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalGrpc | quote }}
+      graceful-shutdown: {{ default "10s" .Values.config.apiServer.gracefulShutdown | quote }}
+      {{- $rt := .Values.config.apiServer.registryToken | default dict }}
+      {{- if or $rt.issuer $rt.service }}
+      # Docker Registry v2 token shim. `service` также whitelist'ится как audience в
+      # Hydra-клиенте каждого выпускаемого SA-ключа (#321) — расхождение с тем, что
+      # docker шлёт в `?service=`, ломает login (Hydra: audience not whitelisted).
+      registry-token:
+        {{- with $rt.issuer }}
+        issuer: {{ . | quote }}
+        {{- end }}
+        {{- with $rt.service }}
+        service: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+
+    metrics:
+      enable: {{ default true .Values.config.metrics.enable }}
+    healthcheck:
+      enable: {{ default true .Values.config.healthcheck.enable }}
+
+    repository:
+      type: POSTGRES
+      postgres:
+        url: {{ printf "postgres://%s@%s:%v/%s" .Values.db.user .Values.db.host .Values.db.port .Values.db.name | quote }}
+        max-conns: {{ default 0 .Values.config.repository.postgres.maxConns }}
+        ssl-mode: {{ default "disable" .Values.config.repository.postgres.sslMode | quote }}
+        password-from-env: KACHO_IAM_DB_PASSWORD
+
+    authn:
+      mode: {{ default "dev" .Values.config.authn.mode | quote }}
+
+    extapi:
+      def-dial-duration: 10s
+      openfga:
+        # KAC-127 Phase 3: when true, kacho-iam config-validate stops emitting
+        # the `authorization Check disabled` warning. Defaults false (E0/E1
+        # без REBAC); dev/prod values set it true.
+        enabled: {{ .Values.config.extapi.openfga.enabled | default false }}
+        endpoint: {{ .Values.config.extapi.openfga.endpoint | quote }}
+        store-id-from-env: KACHO_IAM_OPENFGA_STORE_ID
+        # ─── KAC-127 Phase 3 — authz core (acceptance §5.2, P3-D2) ─────
+        # Authorization model id is **pinned per Check** (P3-D1 — versioned +
+        # immutable). On every Check FGA request the SDK forwards this id;
+        # implicit "latest" is forbidden. Value comes from Secret
+        # `openfga-model-id` key=`current`, written by openfga-bootstrap-job.
+        authorization-model-id-from-env: KACHO_IAM_OPENFGA_MODEL_ID
+        # Per-RPC Check timeout (acceptance §4.4 latency budget — FGA p95 ≤10ms
+        # cache-miss, ≤1ms cache-hit). Hard timeout ≤200ms to avoid stuck
+        # request workers when FGA is degraded.
+        check-timeout-ms: {{ .Values.config.extapi.openfga.checkTimeoutMs | default 200 | int }}
+        # ListObjects budget (acceptance §4.4 — Phase 4 integration; skeleton
+        # in Phase 3). 1s ceiling because ListObjects fans out to all tuples
+        # for the principal — larger blast radius than Check.
+        list-objects-timeout-ms: {{ .Values.config.extapi.openfga.listObjectsTimeoutMs | default 1000 | int }}
+        # Subject Check-cache (acceptance §2.5, E3 baseline KAC-108). Per-
+        # service in-process LRU; invalidated via LISTEN kacho_iam_subjects
+        # NOTIFY on AccessBinding mutation. TTL covers transient FGA blips.
+        check-cache-ttl-seconds: {{ .Values.config.extapi.openfga.checkCacheTtlSeconds | default 5 | int }}
+
+    # ─── KAC-127 Phase 3 — Conditions evaluator + OPA sidecar contract ───
+    # Acceptance §5.2 — corelib/authz/conditions_context builder.
+    authz:
+      conditions:
+        # Cache TTL for the per-principal Conditions context (the OpenFGA
+        # Check `Context` map[string]any). Conditions evaluate against this
+        # short-lived snapshot; longer than 60s would erode `mfa_fresh`
+        # freshness guarantees.
+        context-cache-ttl-seconds: {{ .Values.config.authz.conditions.contextCacheTtlSeconds | default 60 | int }}
+
+      # OPA bundle server (kacho-iam serves this — Internal RPC). Knobs
+      # are sourced from `opa-bundle-server-config` ConfigMap via envFrom
+      # (see deployment.yaml). Listed here for self-documentation:
+      #   KACHO_OPA_BUNDLE_TTL_SECONDS                  — bundle cache TTL hint
+      #   KACHO_OPA_BUNDLE_SIGNING_ALGORITHM            — ES256
+      #   KACHO_OPA_BUNDLE_SIGNING_KID                  — current key id
+      #   KACHO_OPA_BUNDLE_REVISION_ENV                 — env name with git sha
+      #   KACHO_OPA_BUNDLE_CACHE_STALE_AFTER_SECONDS    — staleness alert
+      #   KACHO_OPA_BUNDLE_KEY_ROTATION_GRACE_SECONDS   — grace for old kid
+
+      # Sidecar contract — backend interceptor uses local OPA at localhost.
+      opa-sidecar:
+        url: {{ .Values.config.authz.opaSidecar.url | default "http://localhost:8181" | quote }}
+        # Hard timeout for OPA decision evaluation. Rego with helpers should
+        # finish in ≤2ms median; 100ms gives generous tail tolerance.
+        timeout-ms: {{ .Values.config.authz.opaSidecar.timeoutMs | default 100 | int }}
+        # Fail-mode (acceptance §5.7 / P3-D16):
+        #   - mutations: ALWAYS fail-closed (cannot be overridden).
+        #   - reads: fail-closed by default; setting read-fail-open=true allows
+        #     read RPCs to proceed when OPA sidecar is unreachable. Logged WARN
+        #     and metric corelib_authz_fail_open_total incremented on every
+        #     such bypass; ops alert if rate > 0 in 1min window.
+        read-fail-open: {{ .Values.config.authz.opaSidecar.readFailOpen | default false }}
+
+    # ─── KAC-127 Phase 2 — AuthN core ──────────────────────────────────
+    # Acceptance §2.5 (session revocations) + §2.6 (DPoP replay) + §2.4 (JWKS).
+    # Конкретные значения переопределяются через ENV KACHO_IAM_* (см. deployment.yaml).
+    authn-core:
+      # Hydra ↔ kacho-iam shared secret для token_hook / refresh_hook. Подтягивается
+      # через KACHO_IAM_HOOK_TOKEN env (Secret kacho-iam-hook-token).
+      hook-token-from-env: KACHO_IAM_HOOK_TOKEN
+
+      # JWKS rotation cycle (acceptance §2.4). Worker rotate'ит ключ при age >= rotation-days.
+      jwks:
+        rotation-days: {{ .Values.kacho.iam.jwks.rotationDays | int }}
+        # AES-GCM key для encrypt-at-rest private_key_pem. ENV — KACHO_IAM_JWKS_ENC_KEY.
+        enc-key-from-env: KACHO_IAM_JWKS_ENC_KEY
+
+      # Session-revocation cache (acceptance §2.5). API-gateway держит in-memory cache;
+      # cache-TTL — баланс latency vs memory. ENV — KACHO_IAM_SESSION_REVOCATIONS_CACHE_TTL_SECONDS.
+      session-revocations:
+        cache-ttl-seconds: {{ .Values.kacho.iam.sessionRevocations.cacheTTLSeconds | int }}
+
+      # DPoP replay cache (acceptance §2.6). Per-pod LRU. ENV —
+      # KACHO_IAM_DPOP_REPLAY_CACHE_TTL_SECONDS / KACHO_IAM_DPOP_REPLAY_CACHE_SIZE.
+      dpop-replay:
+        cache-ttl-seconds: {{ .Values.kacho.iam.dpopReplay.cacheTTLSeconds | int }}
+        cache-size: {{ .Values.kacho.iam.dpopReplay.cacheSize | int }}
+
+    {{- if .Values.compliance }}
+    # ─── KAC-132 — ComplianceReport S3 + signer (dev/e2e) ─────────────────
+    compliance:
+      s3:
+        endpoint: {{ .Values.compliance.s3.endpoint | default "" | quote }}
+        region: {{ .Values.compliance.s3.region | default "us-east-1" | quote }}
+        bucket: {{ .Values.compliance.s3.bucket | default "kacho-compliance-reports" | quote }}
+        path-style: {{ .Values.compliance.s3.pathStyle | default true }}
+        access-key: {{ .Values.compliance.s3.accessKey | default "" | quote }}
+        secret-key: {{ .Values.compliance.s3.secretKey | default "" | quote }}
+    {{- end }}

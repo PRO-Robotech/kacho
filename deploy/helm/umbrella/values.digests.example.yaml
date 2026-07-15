@@ -1,0 +1,58 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# values.digests.example.yaml — IMMUTABLE IMAGE DIGEST PIN OVERRIDE (EXAMPLE)
+#
+# INFRA sec-hardening: pin every kacho-* workload image by sha256 digest instead
+# of a mutable tag (:latest / :main-<sha>), so a node re-pull can never silently
+# swap in different bits (SLSA provenance / CIS Docker 4.x / CWE-1104).
+#
+# HOW TO USE
+#   1. Resolve the digest of each image you actually deploy, e.g.:
+#        docker buildx imagetools inspect docker.io/prorobotech/kacho-iam:main-<sha> \
+#          --format '{{.Manifest.Digest}}'
+#      or:  crane digest docker.io/prorobotech/kacho-iam:main-<sha>
+#   2. Paste the REAL sha256:... values below (replace every REPLACE_WITH_REAL_DIGEST).
+#   3. Layer this file LAST so it wins over the tag-based defaults:
+#        helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
+#          -f values.prod.yaml -f values.digests.yaml
+#
+# The placeholders below are intentionally NOT valid digests — this file is a
+# template, never applied as-is. See docs/security/image-digest-pinning.md.
+#
+# MECHANISM
+#   - kacho-iam: `kacho-iam.image.digest` — when set, the container image renders
+#     as `<repository>@<digest>` (tag ignored). Helper: kacho-iam.image.
+#   - kacho-geo: `kacho-geo.imageDigest` — when set, the trailing `:tag` of
+#     `image` is stripped and `@<digest>` appended. Helper: kacho-geo.image.
+#   - sibling charts (vpc / compute / api-gateway / ui / kacho-nlb) are vendored
+#     from their own repos; pin them by setting their `image.tag` to the
+#     digest-qualified reference their chart accepts, or add an equivalent
+#     `image.digest` field upstream (tracked per sibling chart).
+# ─────────────────────────────────────────────────────────────────────────────
+
+kacho-iam:
+  image:
+    repository: docker.io/prorobotech/kacho-iam
+    digest: "sha256:REPLACE_WITH_REAL_DIGEST"
+
+kacho-geo:
+  image: docker.io/prorobotech/kacho-geo
+  imageDigest: "sha256:REPLACE_WITH_REAL_DIGEST"
+
+# ── Sibling control-plane charts — pin via the reference their chart accepts ──
+# These are illustrative keys; confirm the field name in each sibling's
+# deploy/values.yaml before relying on it.
+vpc:
+  image:
+    tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"
+compute:
+  image:
+    tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"
+api-gateway:
+  image:
+    tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"
+ui:
+  image:
+    tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"
+kacho-nlb:
+  image:
+    tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"

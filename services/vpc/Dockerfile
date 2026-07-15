@@ -14,8 +14,8 @@ RUN go mod download
 # kacho-vpc — gRPC API-сервер (только `serve`).
 # kacho-migrator — CLI миграций (cobra: up|down|status|create), используется
 # init-container'ом перед стартом основного pod'а.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-vpc ./cmd/vpc \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./cmd/migrator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-vpc ./services/vpc/cmd/vpc \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/vpc/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.20
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates

@@ -1,0 +1,17 @@
+{{/*
+Public read-only listener (:9090) — RegionService / ZoneService Get/List.
+Dial-host = `kacho-geo` (server-cert DNS-SAN, mtls.serverHosts). Consumers
+(compute/vpc/nlb) and the api-gateway public mux dial this Service.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: {{ .Values.name }}
+  ports:
+    - name: grpc
+      port: {{ .Values.ports.grpc }}
+      targetPort: grpc

@@ -11,8 +11,8 @@ RUN go mod download
 # kacho-compute  — gRPC API-сервер (только `serve`; не несёт миграции).
 # kacho-migrator — CLI миграций ({up|down|status}), используется init-container'ом
 # перед стартом основного pod'а (least-privilege: serve-образ не может менять схему).
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-compute ./cmd/compute \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./cmd/migrator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-compute ./services/compute/cmd/compute \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/compute/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.20
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates

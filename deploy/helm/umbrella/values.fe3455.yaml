@@ -1,0 +1,233 @@
+# values.fe3455.yaml — overlay for the fe3455 managed cluster (Beget).
+#
+# Layered ON TOP of values.dev.yaml (which enables the full stack + mTLS):
+#   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
+#     -f ./helm/umbrella/values.dev.yaml \
+#     -f ./helm/umbrella/values.fe3455.yaml \
+#     --wait --timeout 15m
+#
+# fe3455 cluster facts that drive this overlay:
+#   - cert-manager is ALREADY installed (ns `beget-cert-manager`) → do NOT install
+#     the umbrella's cert-manager dependency; its --cluster-resource-namespace is
+#     its own ns, so the internal-CA root secret must live THERE. Single helm apply
+#     (no two-phase) because the webhook is already Ready.
+#   - NO StorageClass / dynamic provisioner → every Postgres runs emptyDir
+#     (persistence.enabled=false). Data is ephemeral (greenfield install).
+#   - NO ingress controller / LoadBalancer → ingress-nginx off + service ingresses
+#     off; reach the stack via `kubectl port-forward`.
+#   - images pulled from docker.io/prorobotech/kacho-<svc>:mtls-rc1 (public).
+
+# ── mTLS: keep ON (from values.dev) but reuse the pre-existing cert-manager ──
+cert-manager:
+  enabled: false                 # already installed in ns beget-cert-manager
+mtls:
+  enabled: true
+  internalCA:
+    caNamespace: beget-cert-manager   # cert-manager --cluster-resource-namespace
+
+# ── images: prorobotech registry ──
+# Reconciled to CURRENTLY-LIVE fe3455 images 2026-07-15 (kubectl get deploy,statefulset
+# -n kacho, verified working). NOTE ON LAYER PRECEDENCE: for the 6 core control-plane
+# services (vpc/compute/kacho-geo/api-gateway/kacho-iam/kacho-nlb) the EFFECTIVE image
+# override is carried by values.fe3455-prod.yaml, which layers AFTER this file
+# (-f values.prod -f values.fe3455 -f values.fe3455-prod -f values.fe3455-ory). The
+# pins BELOW are kept in sync with the live tags too so this file is not a stale
+# landmine, but values.fe3455-prod.yaml is authoritative for the render. The `uif:`
+# block (below) is carried ONLY here — no later file overrides it.
+vpc:
+  # main-6fe9c386 — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
+  # values.fe3455-prod.yaml (same tag).
+  image: docker.io/prorobotech/kacho-vpc:main-6fe9c386
+  imagePullPolicy: IfNotPresent
+compute:
+  # main-1678f62c — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
+  # values.fe3455-prod.yaml (same tag).
+  image: docker.io/prorobotech/kacho-compute:main-1678f62c
+  imagePullPolicy: IfNotPresent
+# kacho-geo image: CI-built+pushed. mTLS inherited ON from values.dev. dataMigration
+# OFF (S7): geo serves its own seed (compute no longer owns geography).
+kacho-geo:
+  # main-fc2d945c — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
+  # values.fe3455-prod.yaml (same tag).
+  image: docker.io/prorobotech/kacho-geo:main-fc2d945c
+  imagePullPolicy: IfNotPresent
+api-gateway:
+  # FORWARD ROLL: main-c7dce40d (RG-1 #145 — 6 Repository RPCs + 418-catalog). Kept in
+  # sync with the authoritative override in values.fe3455-prod.yaml (which layers AFTER
+  # this file) so this pin is not a stale landmine. See that file for the full rationale.
+  image: docker.io/prorobotech/kacho-api-gateway:main-c7dce40d
+  imagePullPolicy: IfNotPresent
+ui:
+  # Legacy monolithic console — RETIRED on fe3455. This cluster serves the federated
+  # ui-future console (host + dashboard/vpc/iam/registry/system remotes) as the `uif`
+  # release, reached via kacho.in-cloud.io → uif-lb (45.153.188.119). Disabling the
+  # legacy chart here keeps a bare `helm upgrade kacho-umbrella` from reinstating the
+  # old monolith (Chart.yaml gates it on `ui.enabled`). The image pin is left for
+  # reference / other overlays; it is inert while disabled.
+  enabled: false
+  image: docker.io/prorobotech/kacho-ui:main-09feff2e
+  imagePullPolicy: IfNotPresent
+
+# Federated ui-future console (`uif` sub-chart). ENABLED — the umbrella owns the
+# console on fe3455 (adopted in place via `helm upgrade … --take-ownership` on
+# 2026-07-12, umbrella rev 16). Keep this `true` so a routine `helm upgrade
+# kacho-umbrella` does NOT delete the live console. The hand-applied uif-lb
+# LoadBalancer is out-of-band (not in the chart) → untouched by upgrades → Beget IP
+# 45.153.188.119 preserved.
+#
+# IMAGES reconciled to LIVE 2026-07-15 (kubectl-verified): every host+remote runs
+# docker.io/prorobotech/kacho-ui-future-<remote>:master-e6001c77 (the current merged
+# master build — supersedes the earlier abbreviated kacho-uifut-* / per-remote tags).
+# RESOURCE NAMES are pinned to the live deploy names so the upgrade converges with
+# ZERO rename churn: host=uif, remotes=uif-dashboard/uif-vpc/uif-iam/uif-nlb/
+# uif-registry/uif-compute/uif-storage — EXCEPT `system`, whose live Deployment is
+# `ui-system` (NOT uif-system); keep it as-is or the upgrade would orphan the running
+# one. compute+storage remotes ADDED (new live remotes; the uif sub-chart renders
+# them unconditionally and derives per-remote images, but they are pinned explicitly
+# here for clarity + name-match).
+uif:
+  enabled: true
+  name: uif
+  image: docker.io/prorobotech/kacho-ui-future-host:master-e6001c77
+  imagePullPolicy: Always
+  ingress:
+    enabled: false          # no ingress controller on fe3455 (LB-only exposure)
+  autoscaling:
+    enabled: false          # match the standalone release (no host HPA)
+  dashboard:
+    name: uif-dashboard
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:master-e6001c77
+  vpc:
+    name: uif-vpc
+    image: docker.io/prorobotech/kacho-ui-future-vpc:master-e6001c77
+  iam:
+    name: uif-iam
+    image: docker.io/prorobotech/kacho-ui-future-iam:master-e6001c77
+  nlb:
+    name: uif-nlb
+    image: docker.io/prorobotech/kacho-ui-future-nlb:master-e6001c77
+  registry:
+    name: uif-registry
+    image: docker.io/prorobotech/kacho-ui-future-registry:master-e6001c77
+  system:
+    # LIVE Deployment is `ui-system` (verified kubectl 2026-07-15) — do NOT rename to
+    # uif-system; a rename would create a new Deployment and orphan the running one.
+    name: ui-system
+    image: docker.io/prorobotech/kacho-ui-future-system:master-e6001c77
+  compute:
+    name: uif-compute
+    image: docker.io/prorobotech/kacho-ui-future-compute:master-e6001c77
+  storage:
+    name: uif-storage
+    image: docker.io/prorobotech/kacho-ui-future-storage:master-e6001c77
+kacho-iam:
+  image:
+    repository: docker.io/prorobotech/kacho-iam
+    # FORWARD ROLL: main-c744f956 (#321 audience-union + #323 :9097 JWKS + #325 RG-1
+    # 418-catalog + #326 docker-login issued_at). Kept in sync with the authoritative
+    # override in values.fe3455-prod.yaml (layers AFTER this file).
+    # The earlier main-b3d23769 pin was BLOCKED: that build reverted c300053, so
+    # `issued_at` went back to a bare Unix number and `docker login` broke
+    # («Time.UnmarshalJSON: input is not a JSON string»). kacho-iam#326 re-applied it
+    # onto main (wire-shape regression test locks the RFC3339 STRING) → main c744f95 →
+    # CI published main-c744f956. Blocker resolved; this tag is the forward target.
+    tag: main-c744f956
+    pullPolicy: IfNotPresent
+kacho-nlb:
+  enabled: true
+  image:
+    # main-2c87cac9 — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
+    # values.fe3455-prod.yaml (same tag).
+    repository: docker.io/prorobotech/kacho-nlb
+    tag: main-2c87cac9
+    pullPolicy: IfNotPresent
+
+# ── no dynamic storage → every Postgres emptyDir (ephemeral) ──
+# Capacity: fe3455 is 4 vCPU / 8 GB total → trim every Postgres request to
+# 100m/256Mi (dev defaults pg-vpc to 500m/1Gi, which alone won't fit alongside
+# the rest → pg-vpc stuck Pending). Ephemeral test DBs don't need the footprint.
+pg-vpc:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+pg-compute:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+pg-iam:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+pg-geo:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+pg-openfga:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+pg-nlb:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+pg-kratos:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+pg-hydra:
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+
+# ── capacity trims: single OpenFGA replica + drop the dev MinIO ──
+openfga:
+  replicaCount: 1
+  ingress:
+    enabled: false
+
+# minio-dev (compliance-report S3 sink) isn't needed for the core rollout — drop
+# it to free a pod's worth of CPU/mem on the 4-vCPU cluster.
+minioDev:
+  enabled: false
+
+# ── no ingress controller on this cluster ──
+ingress-nginx:
+  enabled: false
+
+# ── identity: point the Ory self-service UI at the stand's EXTERNAL origin ──
+# Users reach this stand at http://kacho.in-cloud.io (external proxy → in-cluster
+# ui nginx → /.ory/kratos|hydra). The Node self-service UI hands the browser an
+# ABSOLUTE Kratos URL for the login/registration form actions; the dev default is
+# the local port-forward (localhost:28080), which on a remote stand points at the
+# USER's own machine → registration/login POSTs never reach Kratos (no identity
+# created, "invalid credentials"). Kratos' own server config is already origin-
+# relative (serve.public.base_url: /.ory/kratos/public/), so only this one browser
+# URL needs the external origin. Hydra issuer stays as-is (JWT `iss` identity only,
+# never navigated; password flow doesn't use the Hydra OAuth path).
+kratos-selfservice-ui:
+  kratosSelfServiceUI:
+    kratosBrowserUrl: "http://kacho.in-cloud.io/.ory/kratos/public"

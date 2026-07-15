@@ -1,0 +1,344 @@
+# Default values for kacho-iam sub-chart.
+# Все ключи здесь — fallback'и для umbrella values.dev.yaml (которая override'ит через
+# `kacho-iam: { ... }`). НЕ ставить здесь production-secret'ы.
+
+# Phase 2 (KAC-127) — `kacho.domain` пробрасывается из umbrella values.yaml
+# через subchart-import (см. dependencies в umbrella Chart.yaml). Sub-chart
+# читает `.Values.kacho.domain`, но fallback (если subchart запускается
+# standalone, без umbrella) — `api.kacho.cloud`.
+kacho:
+  domain: api.kacho.cloud
+  subdomains:
+    app: app
+    hydra: hydra
+    kratos: kratos
+    api: ""
+  iam:
+    # In-cluster Hydra token-эндпоинт (POST /oauth2/token) для client_credentials-обмена
+    # в registry `/iam/token` shim. Пусто → env не эмитится, сервис падает на внешний
+    # issuer-URL (недостижимый в кластере). Prod-профиль ставит cluster-internal Service.
+    hydraTokenURL: ""
+    # Upstream Hydra PUBLIC JWKS URL that the cluster-INTERNAL jwks-proxy listener
+    # (:9097) mirrors byte-for-byte (env KACHO_IAM_HYDRA_JWKS_URL). Empty → iam falls
+    # back to ResolveHydraIssuer()+"/.well-known/jwks.json". Prod sets the in-cluster
+    # hydra-public base so the iam→Hydra fetch stays inside the cluster. Hydra remains
+    # the token signer/issuer — iam only proxies its JWKS (the served kids are Hydra's).
+    hydraJwksUrl: ""
+    jwks:
+      enabled: true
+      schedule: "0 2 * * *"
+      rotationDays: 90
+      encKeySecretName: kacho-iam-jwks-enc-key
+      encKeySecretKey: enc_key
+    sessionRevocations:
+      cacheTTLSeconds: 5
+    dpopReplay:
+      cacheTTLSeconds: 120
+      cacheSize: 100000
+  hooks:
+    tokenHookSecretName: kacho-iam-hook-token
+    tokenHookSecretKey: token
+
+# Phase 2 (KAC-127) — Kratos identity schema + config ConfigMaps. Управляются
+# флагами; в Phase 2 поднимаются вместе с kacho-iam (один namespace, один Helm
+# release). При желании задеплоить Kratos в отдельный namespace — отключить
+# здесь и завести в стороннем chart'е.
+kratos:
+  identitySchema:
+    enabled: true
+  config:
+    enabled: true
+    smtp:
+      connectionURI: "smtp://mailhog.kacho.svc.cluster.local:1025/?disable_starttls=true"
+      fromAddress: "noreply@kacho.cloud"
+      fromName: "Kacho Cloud"
+
+# Phase 2 (KAC-127) — JWKS rotator CronJob. Image = тот же kacho-iam binary,
+# entrypoint = `kacho-iam jwks rotate`. Pulls private/public keypair generator
+# + Hydra-admin PUT /admin/keys из IAM service.
+jwksRotator:
+  # Если false — CronJob не создаётся (например, для integration-тестов с key-pinning).
+  # Управляется через umbrella values: `.Values.kacho.iam.jwks.enabled`.
+  # Дублируем сюда для standalone-deploy sub-chart'а.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # Activity history — сколько успешных / неудачных Job'ов держать.
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Block concurrent runs — advisory_lock на DB-стороне (acceptance §6.8.5)
+  # дополнительно защищает, но Forbid здесь — single source-of-truth для k8s scheduler.
+  concurrencyPolicy: Forbid
+  # 1h deadline на каждый run; rotation сам по себе ≤ 5s, но Hydra-admin PUT
+  # может ретраиться при transient errors.
+  activeDeadlineSeconds: 3600
+
+name: kacho-iam
+replicas: 1
+image:
+  repository: kacho-iam
+  tag: dev
+  # Optional immutable digest pin. When set (e.g. sha256:...) the container image
+  # is referenced as `repository@digest` and `tag` is ignored — reproducible,
+  # tamper-evident deploys (SLSA provenance). Override per env via
+  # values.digests.example.yaml. Empty by default → tag-based reference.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# INFRA sec-hardening — pod- and per-container securityContext floor applied to
+# EVERY container of this workload (main + migrate/wait-for-openfga init), not
+# just the OPA sidecar. runAsNonRoot + readOnlyRootFilesystem + drop ALL caps +
+# no privilege escalation + seccomp RuntimeDefault (CIS Kubernetes 5.2 / PSS
+# restricted). Overridable per profile; a writable emptyDir is mounted at /tmp
+# so the read-only rootfs does not break scratch writes.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+ports:
+  grpc: 9090
+  internalGrpc: 9091
+  # KAC-127 Phase 2 — HTTP webhook listener (Hydra hooks + CAEP ingress).
+  # KAC-127 deploy#39 — also serves the OPA policy bundle over HTTP.
+  hooksHttp: 9092
+  # Docker Registry v2 `/iam/token` auth-server HTTP listener — external-reachable
+  # (TLS terminated externally), distinct from hooks (:9092) / metrics (:9095). The
+  # registry data-plane TLS-sidecar proxies docker token exchange here.
+  registryToken: 9096
+  # Cluster-INTERNAL Hydra-JWKS proxy HTTP listener (GET /.well-known/jwks.json) — a
+  # short-TTL caching reverse-proxy of Hydra's PUBLIC JWKS. The registry data-plane
+  # fetches its docker-Bearer verification keys from iam HERE instead of dialing Hydra
+  # directly (Hydra stays signer/issuer; served kids are Hydra's). ONE-WAY server-TLS,
+  # exposed ONLY on the kacho-iam-internal Service (never external, ban #6).
+  jwksProxy: 9097
+
+service:
+  public:
+    type: ClusterIP
+    port: 9090
+  internal:
+    type: ClusterIP
+    port: 9091
+    # KAC-127 deploy#39 — HTTP hooks/OPA-bundle port exposed on the internal
+    # Service (cluster-internal only, запрет #6).
+    hooksHttpPort: 9092
+    # Cluster-INTERNAL Hydra-JWKS proxy port (GET /.well-known/jwks.json), exposed
+    # ONLY on kacho-iam-internal (never the public Service, ban #6). Consumed by
+    # service-internal.yaml — the registry data-plane fetches JWKS from here.
+    jwksProxyPort: 9097
+
+db:
+  host: kacho-umbrella-pg-iam
+  port: "5432"
+  user: iam
+  name: kacho_iam
+  passwordSecretName: kacho-umbrella-pg-iam
+  passwordSecretKey: password
+
+config:
+  logger:
+    level: INFO
+  apiServer:
+    gracefulShutdown: 10s
+    # ─── Docker Registry v2 token shim (`/iam/token`, :9096) ──────────────────
+    # Пусто → built-in дефолты (service: registry.kacho.local / issuer:
+    # api.kacho.local), пригодные лишь для локального стенда. На развёрнутом
+    # окружении ОБА поля обязаны нести РЕАЛЬНЫЙ публичный хост реестра.
+    #
+    # `service` — это НЕ только fallback для `?service=`: оно же уходит в
+    # issueUC.RegistryAudience (#321) → whitelist'ится как audience в Hydra-клиенте
+    # КАЖДОГО выпускаемого SA-ключа. Расхождение с тем, что docker шлёт в
+    # `?service=`, ломает login:
+    #   Hydra: "Requested audience '<host>' has not been whitelisted by the
+    #           OAuth 2.0 Client" (400) → shim отдаёт 401 → docker: unauthorized.
+    # ⚠ audience фиксируется в клиенте В МОМЕНТ выпуска ключа → ключи, выпущенные
+    # с неверным значением, надо ПЕРЕВЫПУСТИТЬ.
+    #
+    # `issuer` — `iss` + realm в WWW-Authenticate; должен совпадать с realm'ом
+    # data-plane реестра (KACHO_REGISTRY_TOKEN_REALM).
+    registryToken:
+      issuer: ""
+      service: ""
+  metrics:
+    enable: true
+  healthcheck:
+    enable: true
+  repository:
+    postgres:
+      maxConns: 100
+      sslMode: disable
+  authn:
+    mode: dev
+  extapi:
+    # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
+    openfga:
+      endpoint: openfga:8081
+      storeIdSecretName: kacho-iam-openfga-store
+      storeIdSecretKey: store_id
+      # KAC-127 Phase 3 — Check timing budgets (acceptance §4.4):
+      checkTimeoutMs: 200          # FGA Check hard ceiling
+      listObjectsTimeoutMs: 1000   # ListObjects (Phase 4) hard ceiling
+      checkCacheTtlSeconds: 5      # subject-level Check cache TTL (LISTEN-invalidated)
+  # KAC-127 Phase 3 — authz core (Conditions context + OPA sidecar contract).
+  authz:
+    conditions:
+      contextCacheTtlSeconds: 60   # short-lived per-Principal Conditions context cache
+    opaSidecar:
+      url: http://localhost:8181
+      timeoutMs: 100
+      # read-fail-open=false → fail-closed even for read RPCs (production-safe).
+      # Set to true ONLY for read-only emergencies (logged WARN + Critical alert).
+      readFailOpen: false
+
+initContainer:
+  migrator:
+    enabled: true
+    command: ["/usr/local/bin/kacho-migrator", "up"]
+  # wait-for-openfga init-container. На E0/E1 (без auth) — ставь false
+  # (OpenFGA ещё не задеплоен, pod иначе застрянет в Init).
+  # На E2/E3 — true (стандартная gate-проверка startup-порядка).
+  waitForExtAuth:
+    enabled: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+env: {}
+
+# ─── SEC-H mTLS — server-side, per-edge opt-in (cert-manager internal-CA) ──
+# IAM is a leaf-owner: it terminates inbound service→service mTLS but holds no
+# outgoing peer-dial edges in scope (subject_change drainer is a separate edge,
+# out of SEC-H), so SEC-H wires the SERVER only — both listeners (public :9090 +
+# internal :9091). Strict mirror of the vpc subchart server block (SEC-D).
+#
+# enable=false (default) → NO cert-secret mounted and NO KACHO_IAM_*_SERVER_MTLS_*
+# env emitted → current insecure dev behaviour (zero regression). The umbrella
+# values.mtls.yaml overlay flips kacho-iam.mtls.enable=true for the full-stack
+# profile (КРИТ#3 mapping). When enable=true:
+#   - mounts cert-manager secret kacho-iam-server-tls (tls.crt/tls.key/ca.crt) in
+#     volume mtls-server at <mountPath>/server;
+#   - emits, via corelib LoadPrefixed("KACHO_IAM"):
+#       KACHO_IAM_PUBLIC_SERVER_MTLS_*   (public :9090 listener)
+#       KACHO_IAM_INTERNAL_SERVER_MTLS_* (internal :9091 listener)
+#     each = {ENABLE, CERTFILE, KEYFILE, CLIENTCAFILES} → RequireAndVerifyClientCert
+#     against the internal-CA bundle (ca.crt in the server secret).
+mtls:
+  enable: false
+  # Sub-phase 5.5 — server-side TLS for the HTTP listeners (Hydra/Kratos hooks
+  # :9092 + Prometheus /metrics :9095), which were served PLAINTEXT. SEPARATE
+  # toggle from `enable` ON PURPOSE: the dev/newman kind stand runs the gRPC
+  # listeners under mTLS (enable=true) yet must keep hooks/metrics PLAINTEXT
+  # (the Hydra/Kratos hook clients and the in-pod OPA bundle pull have no client
+  # cert on the dev stand). Default false → no KACHO_IAM_{HOOKS,METRICS}_SERVER_MTLS_*
+  # env emitted → listeners stay plaintext (byte-identical to today). Only the
+  # production profile (values.prod.yaml) flips this true; it REQUIRES enable=true
+  # (the server cert-trio it reuses is mounted only when enable=true — no new PKI).
+  httpListeners: false
+  # Per-edge TLS ClientAuth mode for the HTTP listeners (kacho-iam#137). Default
+  # server-tls-only: the hooks edge carries three HMAC-authed Ory webhook
+  # endpoints (Hydra token/refresh + Kratos provision) that present NO client cert
+  # — RequireAndVerifyClientCert would reject them at the handshake (bug #122); the
+  # metrics edge has no scrape client cert wired yet. server-tls-only encrypts the
+  # transport without an impossible client-cert requirement; HMAC stays the
+  # caller-auth on hooks. Flip to "mutual" per edge when a client cert is
+  # provisioned (e.g. an internal-CA Prometheus scrape client for metrics).
+  hooksClientAuthMode: server-tls-only
+  metricsClientAuthMode: server-tls-only
+  # jwks-proxy (:9097) HTTP listener ClientAuth mode. ONE-WAY server-tls-only ON
+  # PURPOSE: the JWKS route serves PUBLIC OIDC verification keys and is
+  # unauthenticated-by-design (a documented exception to authN-on-every-listener,
+  # security.md) — the registry data-plane verifier fetches it with a plain https
+  # client that presents NO client cert; RequireAndVerifyClientCert would reject the
+  # handshake. Encryption + server-auth via the internal-CA leaf; internal-only surface.
+  jwksProxyClientAuthMode: server-tls-only
+  # ─── internal-CA leaf-cert issuance (this chart owns its Certificate, rule #1) ─
+  # kacho-iam is the authz authority itself → SERVER cert only (no client cert,
+  # no IAM grant needed — it does not dial peers in SEC-H scope). Server-cert SAN
+  # covers both Services (public kacho-iam :9090 + internal kacho-iam-internal :9091)
+  # AND the internal Hydra-JWKS proxy :9097, which shares the kacho-iam-internal DNS
+  # name — SANs are host-based/port-agnostic, so this same leaf terminates the :9097
+  # one-way server-TLS the registry data-plane trusts (registry-iam-jwks-unify).
+  issuer:
+    name: kacho-internal-ca
+    kind: ClusterIssuer   # ClusterIssuer (cluster-scoped), NOT namespaced Issuer
+  serverHosts: ["kacho-iam", "kacho-iam-internal"]
+  spiffe:
+    trustDomain: kacho.cloud
+    namespace: kacho
+    saName: kacho-iam
+  leafDuration: 2160h
+  leafRenewBefore: 720h
+  # cert-manager secret name (SEC-F naming: kacho-<svc>-server-tls).
+  serverSecretName: kacho-iam-server-tls
+  mountPath: /etc/kacho-iam/tls   # <mountPath>/server/{tls.crt,tls.key,ca.crt}
+
+# ─── KAC-127 Phase 3 — OPA sidecar + OpenFGA model id ────────────────────
+# Fallback defaults if umbrella does not override. Umbrella's `opaSidecar.*`
+# section (in values.yaml at top-level) propagates here via subchart import
+# (Helm rule: subchart can read parent values only via `--set` or aliasing;
+# we therefore mirror minimal knobs here for standalone-deploy).
+opaSidecar:
+  enabled: false   # Disabled by default; umbrella `kacho-iam.opaSidecar.*` enables.
+  image: openpolicyagent/opa:1.0.0-rootless
+  logLevel: info
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  # Bundle endpoint topology — OPA pulls the signed Rego bundle from kacho-iam's
+  # Internal RPC (loopback in the same pod). Consumed by opa-sidecar-configmap.yaml.
+  iamInternalHost: kacho-iam-internal
+  iamInternalPort: 9092
+  # Bundle resource path → OPA fetches `<service.url>/<resource>`.
+  bundleResource: bundle.tar.gz
+  # Poll interval (~1h TTL, jittered in [min,max] to avoid thundering herd).
+  bundlePollMinSec: 3000   # ~50min
+  bundlePollMaxSec: 3900   # ~65min
+  # Detached-signature verification of the bundle (dev: off; prod: on).
+  bundleSigningEnabled: false
+  # kid of the current JWS signing key (matches the JWKS rotator output).
+  signingKeyId: kacho-iam-signing-key-current
+  # Bundle server-side knobs (mirrored into opa-bundle-server-config ConfigMap).
+  bundle:
+    ttlSeconds: 3600
+    signingAlgorithm: ES256
+    signingKeyKid: kacho-iam-signing-key-current
+    buildShaEnvVar: KACHO_BUILD_SHA
+    cacheStaleAfterSeconds: 7200
+    keyRotationGraceSeconds: 7200
+  # Public-key ConfigMap (managed by the Phase 2 JWKS rotator at runtime).
+  jwks:
+    configMapName: kacho-iam-jwks
+    bootstrapKeyPem: ""
+  # Dev-only inline policy fallback (bypasses bundle signing). MUST stay off on prod.
+  policiesFallback:
+    enabled: false
+
+# Mirror knob — `openfga-bootstrap-job` writes here at install/upgrade.
+openfgaBootstrap:
+  modelIdSecretName: openfga-model-id

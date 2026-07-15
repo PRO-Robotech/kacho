@@ -11,7 +11,7 @@ WORKDIR /src
 # (go.mod без replace), build-context — этот репо.
 COPY . .
 RUN go mod download
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /api-gateway ./cmd/api-gateway
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /api-gateway ./gateway/cmd/api-gateway
 
 FROM mirror.gcr.io/library/alpine:3.20
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates

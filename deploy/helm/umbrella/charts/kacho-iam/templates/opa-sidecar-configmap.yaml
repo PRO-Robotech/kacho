@@ -1,0 +1,147 @@
+{{- if .Values.opaSidecar.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.6, P3-D6..D8) — shared ConfigMap для OPA sidecar.
+==============================================================================
+
+Single ConfigMap consumed by every kacho-* pod that injects OPA sidecar
+(api-gateway / kacho-iam itself / kacho-vpc / kacho-compute / kacho-loadbalancer).
+The ConfigMap holds OPA's `config.yaml` describing:
+
+  1. **Service endpoint** `kacho-iam`-internal — bundle origin URL
+     (port 9091, see P3-D20 — Internal RPC mux, not public TLS edge).
+  2. **Bundle service** `kacho-iam-guardrails` — points to
+     `bundle.tar.gz` resource path; polling 50-65min jitter
+     (≈1h TTL per design §4 / P3-D7).
+  3. **Signing** keyid + scope — OPA enforces JWS verification before load
+     (P3-D8 ES256 detached signature); tampered/unsigned bundle is rejected.
+  4. **Decision logs** to stdout — Loki picks up via stdout-tail (Phase 9).
+  5. **Status** to stdout — for liveness/readiness probes.
+
+JWS public key (kacho-iam-jwks ConfigMap with PEM-encoded ES256 public key)
+is mounted separately as a volume; this ConfigMap only references it by name
+in `keys[].key` field. The Phase 2 JWKS rotator rotates the key every 90d;
+when key is rotated, kacho-iam must KEEP serving signatures with old key for
+a grace period (until OPA sidecars finish their next poll cycle ≈1h),
+otherwise bundle signature verification would fail across the fleet.
+
+The bundle endpoint URL uses cluster-internal DNS:
+  http://<svc-name>.<namespace>.svc.cluster.local:9091/opa/v1/bundle.tar.gz
+
+NOT the api-gateway external TLS endpoint (запрет #6: Internal RPC stays
+cluster-internal). The service name resolves to kacho-iam's internal-port
+9091 Service (see kacho-iam chart `service-internal.yaml`).
+
+NetworkPolicy (`networkpolicy-opa-egress.yaml`) restricts OPA sidecar egress to
+just this DNS target — sidecar cannot exfiltrate decision logs to arbitrary
+endpoints.
+
+Configurable values (umbrella values.yaml — `opaSidecar.*`):
+  enabled           — toggle whole sidecar pipeline (default false on dev, true on prod).
+  image             — OPA image tag (default openpolicyagent/opa:1.0.0-rootless).
+  bundlePollMinSec  — min poll delay (jitter range) (default 3000 ~50min).
+  bundlePollMaxSec  — max poll delay (default 3900 ~65min).
+  bundleResource    — bundle resource path (default `bundle.tar.gz`).
+  signingKeyId      — JWS `kid` claim that OPA uses to pick the verification key.
+  iamInternalHost   — DNS of kacho-iam internal Service.
+  iamInternalPort   — port 9091.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-sidecar-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: opa-sidecar
+    kacho.cloud/component: opa-sidecar
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+data:
+  config.yaml: |
+    # OPA sidecar config (managed by kacho-deploy helm chart).
+    # See https://www.openpolicyagent.org/docs/latest/configuration/
+    #
+    # KAC-127 Phase 3 — pull mode (P3-D7), signed bundles (P3-D8), ES256 (RFC 7518).
+
+    services:
+      kacho-iam:
+        # KAC-127 (deploy#39): the OPA sidecar pulls the bundle from the
+        # kacho-iam container IN THE SAME POD over loopback (127.0.0.1:9092).
+        # Using the `kacho-iam-internal` Service would dead-lock the rollout:
+        # the Service only routes to Ready pods, but a pod is Ready only after
+        # its OPA sidecar loaded a bundle — circular. Loopback removes the
+        # Service dependency entirely (intra-pod, always reachable).
+        url: http://127.0.0.1:{{ .Values.opaSidecar.iamInternalPort }}/opa/v1
+        response_header_timeout_seconds: 5
+
+    bundles:
+      kacho-iam-guardrails:
+        service: kacho-iam
+        resource: {{ .Values.opaSidecar.bundleResource | quote }}
+        persist: false
+        polling:
+          min_delay_seconds: {{ .Values.opaSidecar.bundlePollMinSec }}
+          max_delay_seconds: {{ .Values.opaSidecar.bundlePollMaxSec }}
+{{- if .Values.opaSidecar.bundleSigningEnabled }}
+        # KAC-127 (deploy#39): in-tarball JWS signing — enabled only when the
+        # kacho-iam OpaBundleService embeds `.signatures.json` into the tarball.
+        # Until then the bundle is unsigned (detached JWS via the separate
+        # gRPC GetBundleSignature RPC) and OPA must NOT require in-bundle signing,
+        # otherwise it refuses to load the bundle. Hardening follow-up.
+        signing:
+          keyid: {{ .Values.opaSidecar.signingKeyId | quote }}
+          scope: kacho-iam-guardrails
+{{- end }}
+
+{{- if .Values.opaSidecar.bundleSigningEnabled }}
+    keys:
+      {{ .Values.opaSidecar.signingKeyId | quote }}:
+        algorithm: ES256
+        # PEM-encoded public key is mounted as a separate volume from
+        # ConfigMap `kacho-iam-jwks` (managed by Phase 2 JWKS rotator).
+        key: |
+          # Loaded at runtime from /jwks/{{ .Values.opaSidecar.signingKeyId }}.pem
+          REPLACE_AT_RUNTIME
+{{- end }}
+
+    decision_logs:
+      console: true
+
+    status:
+      console: true
+
+    # Plugins disabled — sidecar is read-only consumer of bundles.
+    plugins: {}
+
+    # Server: bind to localhost only (intra-pod consumer = backend container).
+    # Default port :8181 — backend interceptors call POST /v1/data/kacho/iam/guardrails/deny.
+    # NetworkPolicy further restricts external access to this port.
+
+  # ── README sidecar (consumed only by humans / kubectl describe operators) ──
+  README.md: |
+    # OPA sidecar configmap
+
+    Shared OPA configuration for kacho-* sidecars. Managed by:
+    `kacho-deploy/helm/umbrella/templates/opa-sidecar-configmap.yaml`.
+
+    ## Bundle pipeline
+
+    kacho-iam OpaBundleService.GetBundle (Internal RPC, port 9091)
+      ├── builds `bundle.tar.gz` from embed.FS policies + DB data
+      ├── signs JWS (ES256) using current oidc_jwks_keys row
+      └── serves at `/opa/v1/bundle.tar.gz` + detached `bundle.tar.gz.sig`
+
+    OPA sidecar (every kacho-* pod):
+      ├── polls bundle every ≈1h (jitter 50-65min)
+      ├── verifies JWS signature with PEM from /jwks/<keyid>.pem
+      └── evaluates Rego policies on POST /v1/data/kacho/iam/guardrails/deny
+
+    ## Troubleshooting
+
+    1. Check sidecar status: `kubectl exec <pod> -c opa -- wget -qO- localhost:8181/health?bundles=true`
+       Expected: `{}`. Errors → see decision_logs (stdout).
+    2. Bundle not loading: check kacho-iam-internal:9091/opa/v1/bundle.tar.gz reachability.
+    3. Signature verification fails (acceptance §6.11): JWKS rotation may have outpaced
+       OPA poll interval — restart OPA sidecar to force re-pull.
+{{- end }}

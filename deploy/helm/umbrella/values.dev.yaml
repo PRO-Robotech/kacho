@@ -1,0 +1,1309 @@
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │ SECURITY — throwaway DEV/CI credentials only.                              │
+# │                                                                           │
+# │ Every credential in this file (DB passwords `changeme-dev-*`, MinIO       │
+# │ `changeme-dev-minio-*`) is a NON-SECRET PLACEHOLDER for the ephemeral kind │
+# │ stand (`make dev-up`) and the newman CI cluster ONLY. They are committed   │
+# │ to git deliberately so the local stand is reproducible — they carry no    │
+# │ confidentiality and MUST NEVER be reused on a shared, staging or           │
+# │ production cluster.                                                        │
+# │                                                                           │
+# │ Production sources every credential from external-secrets / SealedSecret  │
+# │ (values.prod.yaml: minioDev.enabled=false, DB passwords via existingSecret │
+# │ + ssl-mode=require). The prod profile is fail-closed and guarded by        │
+# │ tests/helm/prod-profile-fail-closed-test.sh. Rotate/override these         │
+# │ placeholders before any non-dev use.                                      │
+# │ See docs/security/dev-credentials.md.                                     │
+# └───────────────────────────────────────────────────────────────────────────┘
+
+# yc CLI compatibility shim (kacho-yc-shim repo) — advertised endpoint that
+# yc CLI dials AFTER calling ApiEndpointService.List for service discovery.
+# In dev we use localhost:18443 because that is the port-forward to ingress-nginx
+# (kubectl -n kacho port-forward svc/kacho-umbrella-ingress-nginx-controller 18443:443).
+# In production the value would be api.kacho.local:443.
+# KAC-127 — dev-стенд (kind) использует локально-загруженные образы `:dev`
+# (`kind load docker-image kacho-*:dev`), а не DockerHub. pullPolicy IfNotPresent —
+# образ уже в node-кэше kind. Чтобы тянуть из DockerHub в dev — убрать эти
+# override'ы (вернётся registry/tag из values.yaml).
+
+# KAC-127 — обнуляем global.imageRegistry для dev. В values.yaml он =
+# `docker.io/prorobotech` (DockerHub-namespace для kacho-* образов). Но
+# third-party sub-chart'ы (Ory kratos/hydra/keto, OpenFGA, bitnami postgresql)
+# тоже уважают `global.imageRegistry` и подставляют его перед СВОИМ image →
+# получается несуществующий `docker.io/prorobotech/oryd/hydra`. На dev-стенде
+# kacho-* образы и так заданы явной строкой `image: kacho-*:dev` (flat-string,
+# global.imageRegistry не используется этими sub-chart'ами), поэтому обнуление
+# global безопасно для kacho-сервисов и чинит pull third-party образов
+# (Ory → docker.io/oryd/*, OpenFGA → docker.io/openfga/*).
+global:
+  imageRegistry: ""
+
+# ─── cluster-internal mTLS (default ON for the dev stand) ──────────────────
+# The whole scheme runs on mTLS: cert-manager mints an internal-CA, every
+# component gets a server/client leaf cert, and every service→service edge below
+# is verified mTLS. `make dev-up` brings this up in two phases (cert-manager
+# first, then the Issuer/Certificate CRs + per-edge enable) to avoid the
+# webhook-not-ready race. Set mtls.enabled=false (+ cert-manager.enabled=false)
+# to fall back to the insecure dev stand.
+mtls:
+  enabled: true
+cert-manager:
+  enabled: true
+
+api-gateway:
+  advertisedEndpoint: localhost:18443
+  image: kacho-api-gateway:dev
+  imagePullPolicy: IfNotPresent
+  # sec-hardening (r8): the composition-root prod-guard (validateProductionAuthzConfig)
+  # treats an EMPTY KACHO_APP_ENV as production-class and fails closed when authn.mode=dev
+  # or the dev HMAC secret is set (CWE-347 symmetric-key principal forgery, CWE-1188). The
+  # dev profile runs authn.mode=dev + devSecret intentionally, so it MUST label the env as
+  # dev-class here — otherwise the gateway refuses to boot. Emitted via the subchart's
+  # generic extraEnv passthrough (the fixed env block does not template APP_ENV).
+  #
+  # The var name is KACHO_APP_ENV (domain-LESS): config.go binds it via
+  # `envconfig:"KACHO_APP_ENV"` — a cross-cutting deployment-env label, NOT the
+  # per-domain KACHO_<DOMAIN>_<NAME> scheme. The earlier KACHO_API_GATEWAY_APP_ENV
+  # was read by nothing → cfg.AppEnv stayed "" → prod-guard fired anyway.
+  extraEnv:
+    KACHO_APP_ENV: dev
+  # mTLS: backend-dial client to every backend (cert + per-edge env). Hybrid
+  # external listener (cert-or-JWT). Cert config (issuer/spiffe/secret) — chart values.
+  mtls:
+    enable: true
+    hybridExternal: true
+    # Server leaf for the external listener, issued by kacho-internal-ca (keys
+    # tls.crt/tls.key → tls.certPath/keyPath). Without it the pod mounts the
+    # `api-gateway-tls` secret (tls.enabled=true) that nothing provisions.
+    serverSecretName: api-gateway-tls
+    edges:
+      vpc: true
+      compute: true
+      iam: true
+      nlb: true
+      geo: true        # gateway→geo (+ geoInternal) mTLS; backends.geo uses chart default kacho-geo.* (geo cutover, kacho-workspace#82)
+  # KAC-NLB: pre-wire kacho-nlb public + internal endpoints so that when the
+  # api-gateway proxy un-freezes the loadbalancer domain (see
+  # kacho-api-gateway/internal/allowlist/list.go — `loadbalancer заморожен`),
+  # `kacho-nlb.kacho.svc.cluster.local:9090` / `kacho-nlb-internal:9091` are
+  # already resolvable through the chart's `backends.*` map (template:
+  # kacho-api-gateway/deploy/templates/deployment.yaml emits env vars
+  # conditionally — these become `KACHO_API_GATEWAY_NLB_GRPC` /
+  # `KACHO_API_GATEWAY_NLB_INTERNAL_GRPC` once the sub-chart adds the
+  # corresponding `{{- if .Values.backends.nlb }}` block).
+  backends:
+    vpc: vpc.kacho.svc.cluster.local:9090
+    vpcInternal: vpc.kacho.svc.cluster.local:9091
+    compute: compute.kacho.svc.cluster.local:9090
+    computeInternal: compute.kacho.svc.cluster.local:9091
+    iam: kacho-iam.kacho.svc.cluster.local:9090
+    iamInternal: kacho-iam-internal.kacho.svc.cluster.local:9091
+    nlb: kacho-nlb.kacho.svc.cluster.local:9090
+    nlbInternal: kacho-nlb-internal.kacho.svc.cluster.local:9091
+  # KAC-127 (#40): dev-mode auth-interceptor HS256 secret. Without it every
+  # Bearer JWT is ignored and all principals collapse to system:bootstrap —
+  # anonymous / bootstrap / per-user tokens become indistinguishable, which
+  # makes the authz-deny matrix untestable.
+  #
+  # Dev-ONLY secret. Production (values.prod.yaml) uses authn.mode=production
+  # with Hydra JWKS RS256 and never this value — committing it here is safe
+  # (this is the kind dev stand, not prod). MUST stay in sync with the secret
+  # the authz-fixtures JWT minter signs with
+  # (tests/authz-fixtures/setup.sh DEV_SECRET default).
+  authn:
+    mode: dev
+    devSecret: kacho-dev-jwt-secret-2026
+  # KAC-127: Phase 3 per-RPC authz middleware — ENABLED.
+  #
+  # The two structural blockers that previously forced `enabled: false` are
+  # resolved (kacho-api-gateway#20):
+  #   * Problem 1 — `RestRouter` is now wired (NewRestRouter, route table
+  #     generated from the proto `google.api.http` annotations); REST paths
+  #     resolve to gRPC FQNs so catalog lookups succeed.
+  #   * Problem 2 — the permission catalog is fully populated (264/264 RPCs
+  #     annotated in kacho-proto; the warnings file is empty).
+  #
+  # failOpen=false (fail-closed); iamAuthorizeUrl unset → derived from the
+  # `iam` backend (public 9090); AuthorizeService.Check is the public RPC,
+  # not routed through internal :9091 (loop-prevention #6).
+  authz:
+    enabled: true
+    failOpen: false
+  # KAC-127 Phase 2 — Hydra JWKS for RS256 access-token verification.
+  #
+  # After register+login the SPA carries a Hydra-issued RS256 access token. The
+  # gateway auth path validates it by fetching Hydra's JWKS. config.go derives
+  # the JWKS endpoint from KACHO_HYDRA_ISSUER unless KACHO_HYDRA_JWKS_URL is set
+  # explicitly; the derived default (`https://hydra.api.kacho.cloud/...`) is NOT
+  # reachable from inside the cluster (Hydra's dev self.issuer is
+  # `http://localhost:28080/.ory/hydra/public/`). So point the gateway at the
+  # in-cluster Hydra PUBLIC Service directly.
+  #
+  # Service: `kacho-umbrella-hydra-public` (release kacho-umbrella), port 4444,
+  # JWKS path `/.well-known/jwks.json` (Ory Hydra chart service-public.yaml).
+  # Without this the gateway fetches the unreachable default → Hydra tokens are
+  # never validated → WhoAmI / Account / Project return code 16 AUTHN_REQUIRED.
+  # SEC-J: the verifier does an EXACT-match `iss` check, so the gateway issuer
+  # MUST equal Hydra's `self.issuer` (hydra.config.urls.self.issuer below =
+  # `http://localhost:28080/.ory/hydra/public/`) — the identity-string Hydra
+  # stamps into the token `iss` claim (browser never navigates there). Without
+  # it, KACHO_HYDRA_ISSUER derives the unreachable external default and every
+  # real login token fails the iss check → AUTHN_REQUIRED persists.
+  hydra:
+    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+    issuer: "http://localhost:28080/.ory/hydra/public/"
+
+compute:
+  image: kacho-compute:dev
+  imagePullPolicy: IfNotPresent
+  # Dev kind stack: pg-compute (bitnami postgres) serves NO TLS, so the migrator
+  # + serve DB channel must be sslmode=disable. The compute chart DEFAULTS to
+  # `require` (stricter than vpc/iam, which default to disable), which here fails
+  # with "server refused TLS connection" → the migrate init container
+  # CrashLoopBackOff (pod stuck PodInitializing). Service→service mTLS stays on
+  # (mtls.enable=true below); only the ephemeral in-cluster DB channel is
+  # plaintext — exactly like vpc/iam in this dev profile.
+  db:
+    sslMode: disable
+  # Dev kind stack runs auth.mode=dev (like kacho-geo + vpc/iam): the umbrella
+  # helm install disables server-mTLS for every service (--set
+  # compute.mtls.enable=false), but the compute chart DEFAULTS auth.mode=
+  # production, whose boot-guard REQUIRES server-mTLS on both listeners
+  # (forwarded principal trusted on plaintext → subject spoofing) AND a non-empty
+  # trusted-forwarder list. production + mtls-off = refuse-to-start
+  # CrashLoopBackOff. The chart's deployment.yaml itself notes "dev stand
+  # overrides auth.mode=dev + mtls.enable=false + db.sslMode=disable" — this
+  # supplies the missing auth.mode override (ephemeral CI stand only; prod keeps
+  # production, see values.prod.yaml).
+  auth:
+    mode: dev
+  # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc, compute→geo).
+  mtls:
+    enable: true
+    edges:
+      iamRegister: true
+      iamProject: true
+      iamAuthz: true
+      vpc: true
+      geo: true        # compute→geo zone_id validation (geo cutover, kacho-workspace#82)
+  # KAC-178 follow-up: compute authzIam.grpcAddr дефолт `kacho-iam:9091` в
+  # kacho-compute/deploy/values.yaml неверный — Service `kacho-iam`
+  # экспонирует только port 9090 (public AuthorizeService);
+  # `InternalIAMService.Check` живёт на `kacho-iam-internal:9091`. Без этого
+  # override compute per-RPC authz interceptor бил в closed port → i/o
+  # timeout → "authorization service unavailable" на каждом list/get RPC
+  # (instances/disks/images/snapshots, и т.п.).
+  authzIam:
+    grpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    tls: false
+  # KAC-198 follow-up: write-side FGA for new compute resources
+  # (`compute_<resource>:<id>#project@project:<project_id>`) so per-resource
+  # Get/Update/Delete Checks resolve via `viewer from project` cascade.
+  # Same store + bootstrap-Secrets as vpc/nlb.
+  authz:
+    tupleWrite:
+      enabled: true
+      openfgaEndpoint: kacho-umbrella-openfga:8080
+      storeIdSecretName: kacho-iam-openfga-store
+      storeIdSecretKey: store_id
+      modelIdSecretName: openfga-model-id
+      modelIdSecretKey: current
+      timeoutMs: 2000
+
+# ─── kacho-geo (Geography Region/Zone leaf-service) ─────────────────────────
+# geo is now an external OSS single-repo, consumed as a PUBLISHED dependency
+# (not rebuilt from source in this umbrella). The dev stand + newman-e2e pull
+# the known-good published tag (the build running on the long-lived fe3455
+# stand) instead of a locally-built `kacho-geo:dev` — building from the OSS HEAD
+# produced a runtime-broken image (geo-read 503 → cascading compute failures).
+# Bump this tag in lockstep with newman-e2e.yml KACHO_GEO_IMAGE + the geo
+# sub-chart default when geo cuts a new known-good build.
+# dev = insecure posture (AUTH_MODE=dev) BUT mTLS is ON on the dev stand, so
+# server-creds on both listeners + the geo→iam Check client edge are enabled
+# (mirrors compute/vpc). authzIam stays wired at iam-internal :9091.
+kacho-geo:
+  image: docker.io/prorobotech/kacho-geo:main-84d9d68f
+  imagePullPolicy: IfNotPresent
+  mtls:
+    enable: true
+    edges:
+      iamAuthz: true
+  # S7: the one-time compute→geo geography copy is complete; compute no longer
+  # owns/serves Region/Zone (tables dropped). geo seeds its own baseline, so the
+  # migration Job is obsolete (and would fail reading the dropped kacho_compute
+  # source). Disabled — the gated template stays as a one-time tool only.
+  dataMigration:
+    enabled: false
+
+ui:
+  image: kacho-ui:dev
+  imagePullPolicy: IfNotPresent
+  # Лок-стенд: ingress на host `localhost` (kind host-port 28080) — UI открывается
+  # http://localhost:28080 без записи в /etc/hosts. Kratos/Hydra urls — туда же.
+  ingress:
+    host: localhost
+
+ingress-nginx:
+  controller:
+    # Standard kind+ingress-nginx pattern: hostPort на kind-ноде,
+    # extraPortMappings в kind-config мапит хост:80 → нода:80.
+    hostPort:
+      enabled: true
+      ports:
+        http: 80
+        https: 443
+    service:
+      type: ClusterIP
+    nodeSelector:
+      ingress-ready: "true"
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Equal
+        effect: NoSchedule
+    # На single-node kind кластере с одним replica — без anti-affinity
+    affinity: {}
+    publishService:
+      enabled: false
+    extraArgs:
+      publish-status-address: localhost
+
+# KAC-124: pg-resource-manager values удалён — Postgres-инстанс упразднён вместе с backend'ом.
+
+pg-vpc:
+  auth:
+    username: vpc
+    password: changeme-dev-vpc
+    database: kacho_vpc
+  primary:
+    persistence:
+      # kind: дефолтный StorageClass `standard` (local-path) — данные переживают
+      # рестарт/redeploy пода (но не `kind delete cluster`).
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+      limits:
+        cpu: 4000m
+        memory: 4Gi
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 300
+      shared_buffers = 512MB
+      work_mem = 16MB
+      effective_cache_size = 2GB
+      checkpoint_timeout = 15min
+      max_wal_size = 2GB
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+
+pg-compute:
+  auth:
+    username: compute
+    password: changeme-dev-compute
+    database: kacho_compute
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 300
+      shared_buffers = 256MB
+      work_mem = 16MB
+      effective_cache_size = 1GB
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+
+# kacho-vpc — admin networkpolicy для :9091.
+# В dev-стенде disabled (port-forward kachoctl-ipam должен работать).
+# В prod values эту секцию переопределить enabled=true + adminPodsSelector.
+vpc:
+  # KAC-127 — local kind-loaded image (см. комментарий у api-gateway выше).
+  image: kacho-vpc:dev
+  imagePullPolicy: IfNotPresent
+  # mTLS: server (gateway/compute/nlb dial here) + client (vpc→iam, vpc→compute, vpc→geo).
+  mtls:
+    enable: true
+    edges:
+      iamRegister: true
+      iamProject: true
+      iamAuthz: true
+      compute: true
+      geo: true        # vpc→geo zone_id validation (geo cutover, kacho-workspace#82)
+  networkPolicy:
+    enabled: false
+    adminPodsSelector: {}
+  # KAC-127 issue #22: write-side FGA. Each VPC resource Create publishes
+  # `vpc_<resource>:<id>#project@project:<project_id>` into the shared OpenFGA
+  # store so per-resource Get/Update/Delete Checks resolve. store-id / model-id
+  # are bootstrap-job-populated Secrets, injected as config ENV-override.
+  authz:
+    # KAC-127 Phase 4 — FGA-filtered List: List RPCs return 200 with only the
+    # caller-visible ids instead of a per-RPC 403. Required for the authz
+    # matrix *-LS-*-EMPTY scope-filter cases.
+    listFilter:
+      enabled: true
+      authorizeEndpoint: kacho-iam.kacho.svc.cluster.local:9090
+    tupleWrite:
+      enabled: true
+      # OpenFGA HTTP API (http port 8080; grpc is 8081). Same store kacho-iam
+      # writes its account/project tuples into.
+      openfgaEndpoint: kacho-umbrella-openfga:8080
+      storeIdSecretName: kacho-iam-openfga-store
+      storeIdSecretKey: store_id
+      modelIdSecretName: openfga-model-id
+      modelIdSecretKey: current
+      timeoutMs: 2000
+
+# ─── KAC-105: IAM stack (sub-phase 2.0) ─────────────────────────────────
+# Отдельные Postgres-инстансы (запрет #8: database-per-service):
+#   pg-iam      → kacho-iam (схема kacho_iam)
+#   pg-openfga  → OpenFGA tuple-store (Phase 3)
+# В dev — emptyDir (без persistence), небольшие resource-лимиты.
+# KAC-127: pg-zitadel удалён — auth-tier (identity/OIDC) на Ory (Kratos/Hydra).
+
+pg-iam:
+  auth:
+    username: iam
+    password: changeme-dev-iam
+    database: kacho_iam
+  primary:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 200
+      shared_buffers = 128MB
+      work_mem = 8MB
+      effective_cache_size = 512MB
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+# pg-geo → kacho-geo (schema kacho_geo, database-per-service ban #8). Small
+# footprint: Geography is a couple of read-only catalog tables.
+pg-geo:
+  auth:
+    username: geo
+    password: changeme-dev-geo
+    database: kacho_geo
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 100
+      shared_buffers = 128MB
+      work_mem = 8MB
+      effective_cache_size = 512MB
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+pg-openfga:
+  # KAC-127: backing Postgres для OpenFGA tuple-store — включён вместе с openfga.
+  enabled: true
+  auth:
+    username: openfga
+    password: changeme-dev-openfga
+    database: openfga
+  primary:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+# KAC-NLB — backing Postgres for kacho-nlb (database-per-service, запрет #8).
+# Schema `kacho_nlb`, owned by user `kacho_nlb`. Migrator (goose) runs as an
+# init-container of the kacho-nlb Deployment; this StatefulSet exposes the
+# `kacho-umbrella-pg-nlb` Service that kacho-nlb dials at startup.
+pg-nlb:
+  enabled: true
+  auth:
+    username: kacho_nlb
+    password: changeme-dev-nlb
+    database: kacho_nlb
+  primary:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1500m
+        memory: 1Gi
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 200
+      shared_buffers = 128MB
+      work_mem = 8MB
+      effective_cache_size = 512MB
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
+# KAC-127: Zitadel chart + конфиг удалены — auth-tier (identity/OIDC) на Ory
+# Kratos + Hydra. OIDC issuer для kacho-iam теперь Hydra.
+
+# KAC-183: MinIO dev instance for compliance report S3 upload.
+# values.dev.yaml ↓ also declares KACHO_IAM_COMPLIANCE__S3__ENDPOINT=http://minio-dev:9000
+# (see kacho-iam.env / kacho-iam.compliance.s3 below). Until KAC-183 there was no
+# minio-dev Service in the cluster → ComplianceReportService.GenerateAccessReport
+# failed reproducibly in newman (6 cases) because s3_report_store.doPut retried
+# against an unresolvable DNS name. Prod uses external S3 / managed MinIO with
+# creds from Vault/SealedSecret — `minioDev.enabled=false` in values.prod.yaml.
+minioDev:
+  enabled: true
+  # Dev-only root credentials — match `kacho-iam.compliance.s3.{accessKey,secretKey}`
+  # below. Do NOT use in prod; values.prod.yaml has minioDev.enabled=false and the
+  # service points at an external MinIO/S3 with secrets from Vault/SealedSecret.
+  # INFRA sec-hardening r2: these are materialised into a Secret (minio-dev-root)
+  # and consumed via secretKeyRef — never inline plaintext env in the pod specs
+  # (templates/minio-dev-secret.yaml). An operator may instead point the pods at
+  # a pre-provisioned Secret via `minioDev.existingSecret`.
+  rootUser: changeme-dev-minio-access
+  rootPassword: changeme-dev-minio-secret
+  # Must match `kacho-iam.compliance.s3.bucket` below — init Job creates it.
+  bucket: kacho-compliance-reports
+  image:
+    repository: quay.io/minio/minio
+    # Pinned to a stable RELEASE tag (not :latest) for reproducible CI.
+    tag: "RELEASE.2024-12-18T13-15-44Z"
+  mcImage:
+    repository: quay.io/minio/mc
+    # Stable mc client release — pinned to match server release semantics.
+    tag: "RELEASE.2024-11-21T17-21-54Z"
+
+# KAC-115: Ory stack — Kratos (identity) + Hydra (OIDC) + Keto (REBAC).
+# Включаются вместо Zitadel+OpenFGA через overrides.yaml.
+
+pg-kratos:
+  # KAC-127: backing Postgres для Kratos — включён вместе с kratos.
+  enabled: true
+  global: { security: { allowInsecureImages: true } }
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: "16.4.0-debian-12-r0"
+  auth:
+    username: kratos
+    password: changeme-dev-kratos
+    database: kratos
+  primary:
+    persistence: { enabled: true, size: 1Gi }
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 1, memory: 1Gi }
+
+pg-hydra:
+  # KAC-127: backing Postgres для Hydra — включён вместе с hydra.
+  enabled: true
+  global: { security: { allowInsecureImages: true } }
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: "16.4.0-debian-12-r0"
+  auth:
+    username: hydra
+    password: changeme-dev-hydra
+    database: hydra
+  primary:
+    persistence: { enabled: true, size: 1Gi }
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 1, memory: 1Gi }
+
+kratos:
+  # KAC-127: Phase 2 IAM-стек требует Kratos (identity) включённым для smoke.
+  enabled: true
+  kratos:
+    development: true
+    automigration:
+      enabled: true
+      # KAC-127: type=initContainer вместо дефолтного `job`. Ory-чарт по дефолту
+      # вешает на migration-Job pre-install hook (job.annotations в values чарта) →
+      # Job стартует ДО pg-kratos (обычный release-ресурс) → DNS-резолв
+      # `kacho-umbrella-pg-kratos` фейлится навсегда → hook не завершается →
+      # `helm --wait` блокируется → release failed. initContainer-режим исполняет
+      # миграцию как init-container Kratos-пода — отдельного hook-Job нет.
+      type: initContainer
+    config:
+      dsn: "postgres://kratos:changeme-dev-kratos@kacho-umbrella-pg-kratos:5432/kratos?sslmode=disable"
+      serve:
+        public:
+          # Relative base_url — генерируемые links резолвятся к текущему origin
+          # клиента (на каком бы port-forward порту он ни был — :9091, :18888,
+          # :28080). Cookies остаются same-origin → пользователь должен
+          # использовать ОДИН port в течение session, но любой работает.
+          base_url: "/.ory/kratos/public/"
+          cors:
+            enabled: true
+            # Dev: allow any localhost / 127.0.0.1 port (любое port-forward).
+            allowed_origins: ["*"]
+        admin:
+          base_url: "http://kacho-umbrella-kratos-admin:80/"
+      selfservice:
+        # Все browser-redirect URLs — relative. Браузер сам резолвит к текущему origin.
+        default_browser_return_url: "/"
+        # Whitelist для return_to query — relative (`/`, `/dashboard`, ...) + любой
+        # localhost-port (для programmatic redirect через ?return_to=...).
+        # Kratos schema допускает relative URI в этом списке (uri-reference format).
+        allowed_return_urls:
+          - "/"
+          - "/dashboard"
+          - "http://localhost:9091/"
+          - "http://localhost:18888/"
+          - "http://localhost:28080/"
+          - "http://localhost:8080/"
+          - "http://127.0.0.1:9091/"
+          - "http://127.0.0.1:18888/"
+          - "http://127.0.0.1:28080/"
+          - "http://console.kacho.local/"
+        methods:
+          password: { enabled: true }
+          oidc: { enabled: false }
+          totp: { enabled: false }
+        flows:
+          registration:
+            enabled: true
+            ui_url: "/registration"
+            after:
+              password: { hooks: [{ hook: "session" }] }
+          login:
+            ui_url: "/login"
+          settings:
+            ui_url: "/settings"
+          recovery:
+            enabled: true
+            ui_url: "/recovery"
+          verification:
+            enabled: false
+          error:
+            ui_url: "/error"
+      log:
+        level: info
+        format: json
+      secrets:
+        cookie: ["please-change-this-32-bytes-A1Bx"]
+        cipher: ["please-change-this-32-bytes-A1Bx"]
+      session:
+        lifespan: "24h"
+      identity:
+        default_schema_id: default
+        schemas:
+          # Inline schema через base64 — не зависим от extra ConfigMap.
+          - id: default
+            url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
+      courier:
+        smtp:
+          connection_uri: "smtp://mailhog.kacho.svc.cluster.local:1025/?disable_starttls=true"
+          from_address: "noreply@kacho.local"
+          from_name: "Kacho"
+  identitySchemas:
+    "identity.default.schema.json": |
+      {
+        "$id": "https://schemas.kacho.local/identity/v1.0.0/default.json",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Person",
+        "type": "object",
+        "properties": {
+          "traits": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string", "format": "email",
+                "title": "E-Mail",
+                "ory.sh/kratos": {
+                  "credentials": { "password": { "identifier": true } },
+                  "recovery": { "via": "email" },
+                  "verification": { "via": "email" }
+                }
+              },
+              "name": {
+                "type": "object",
+                "properties": {
+                  "first": { "type": "string", "title": "First Name" },
+                  "last":  { "type": "string", "title": "Last Name" }
+                }
+              }
+            },
+            "required": ["email"],
+            "additionalProperties": false
+          }
+        }
+      }
+
+# KAC-127 Phase 2 — Hydra OAuth 2.1 + DPoP + mTLS-bound + JWT-strategy.
+# Acceptance §5.2: refresh rotation (force-rotate, 1s race window), PKCE mandatory,
+# Implicit + ROPC grants disabled, TTLs (access 15min / refresh 30d / id 15min / auth_code 1min),
+# JWT signing (RS256 / ES256 / EdDSA), token_hook + refresh_hook → kacho-iam :9091.
+#
+# Dev-стенд (kind, kacho.local) — `enabled: false` по умолчанию; включается через
+# overrides.yaml в clusters/<cluster>/. URLs используют intentional dev-IP
+# (localhost:28080 — kind ingress, host-port 28080). Prod-overlay переопределит
+# все `urls.*` через `{{ .Values.kacho.domain }}` — см. values.prod.yaml.
+hydra:
+  # KAC-127: Phase 2 IAM-стек требует Hydra (OAuth2/OIDC) включённым для smoke.
+  enabled: true
+  hydra:
+    automigration:
+      enabled: true
+      # KAC-127: type=initContainer вместо `job` — устраняет pre-install hook
+      # deadlock (migration-Job дефолтно hook'нут pre-install, стартует до
+      # pg-hydra → DNS-резолв фейлится → `helm --wait` блокируется). См.
+      # аналогичный комментарий у kratos.automigration выше.
+      type: initContainer
+    dev: true
+    config:
+      dsn: "postgres://hydra:changeme-dev-hydra@kacho-umbrella-pg-hydra:5432/hydra?sslmode=disable"
+      serve:
+        public:
+          cors:
+            enabled: true
+            # Dev: любой localhost port.
+            allowed_origins: ["*"]
+      urls:
+        # Dev: browser-redirect URLs (consent/login/logout/error/post_logout) — relative
+        # paths, резолвятся к текущему origin клиента (любой port-forward работает без
+        # пересоздания config). В prod values.prod.yaml override'ит на полные https URLs.
+        self:
+          # `self.public` + `self.issuer` ОБЯЗАНЫ быть full URI (Hydra schema validation).
+          # Они идут в JWT `iss` claim — identity-string, browser туда НЕ ходит.
+          # Любой stable URL подойдёт (api-gateway validation должна совпасть). Для
+          # dev оставляем :28080-prefix — это просто identity, не navigation
+          # endpoint. Все NAVIGATION URLs ниже — relative (port-portable).
+          public: "http://localhost:28080/.ory/hydra/public/"
+          issuer: "http://localhost:28080/.ory/hydra/public/"
+        consent: "/consent"
+        login: "/login"
+        logout: "/logout"
+        error: "/error"
+        post_logout_redirect: "/"
+        # KAC-127 (deploy#37): `urls.identity_provider.publicly_writable` удалён —
+        # ключ не существует в Hydra v26.2.0 config-schema (`urls.identity_provider`
+        # принимает только `url` / `publicUrl` / `headers`). Динамическая
+        # OAuth2-client-регистрация и так выключена by-default; Hydra-admin
+        # `/clients` endpoint остаётся cluster-internal через Service-разделение.
+      secrets:
+        system: ["please-change-this-32-bytes-A1Bx"]
+      # ─── OAuth 2.1 / DPoP / mTLS-bound / JWT strategy (acceptance §5.2) ──
+      strategies:
+        # Self-contained JWT access tokens (allows api-gateway локальную validation
+        # без trip-к-Hydra introspect — acceptance §2.3 token shape).
+        access_token: jwt
+        jwt:
+          scope_claim: list
+      ttl:
+        # Acceptance §5.2 — TTL discipline.
+        access_token: 15m
+        refresh_token: 720h        # 30 days
+        id_token: 15m
+        auth_code: 1m
+      oauth2:
+        expose_internal_errors: true
+        # OAuth 2.1 §6.1 — PKCE mandatory + refresh-token rotation с reuse-detection
+        # → family-revoke (acceptance §2.9).
+        pkce:
+          enforced: true
+          enforced_for_public_clients: true
+        # KAC-127 (deploy#37): `grant` в Hydra v26.2.0 принимает только `jwt`
+        # и `refresh_token`. Старый `grant.authorization_code.{require_pkce,ttl}`
+        # удалён — PKCE-enforcement задаётся через `oauth2.pkce.*` выше,
+        # auth_code-TTL — через `ttl.auth_code` (1m, см. блок ttl выше).
+        grant:
+          jwt:
+            # Phase 3b (Federation IN, RFC 7521/7523): assertion handling.
+            # Hydra v26.2.0 schema for `oauth2.grant.jwt`: only iat_optional,
+            # jti_optional, jwks_uri, max_ttl. The previously-added
+            # `scope_claim: scope` is REJECTED by the schema validator and
+            # crashes Hydra on boot ("additionalProperties scope_claim not
+            # allowed"). Per-issuer scope handling is governed by the
+            # admin-API trust-grant `scope` array, not by a global claim
+            # mapping — see docs/components/21-federation-in.md.
+            iat_optional: false      # assertion MUST carry `iat`
+            jti_optional: false      # assertion MUST carry `jti` (anti-replay)
+            max_ttl: 720h            # assertion `exp - iat` upper bound
+          # Refresh-token rotation (OAuth 2.1 §6.1) — в v26.2.0 rotation ВСЕГДА
+          # включён (старый toggle `oauth2.refresh_token_rotation` упразднён);
+          # настраивается только grace-window. `rotation_grace_period: 1s` —
+          # concurrent legit refresh (две вкладки); reuse вне grace → family-revoke.
+          # Старые `oauth2.refresh_token_rotation` /
+          # `refresh_token_rotation_grace_period` /
+          # `refresh_token_grant_skip_token_binding_validation` удалены —
+          # их нет в v26.2.0 schema.
+          refresh_token:
+            rotation_grace_period: 1s
+        exclude_not_before_claim: false
+        # Phase 2 — `ext_claims` — обёртка, под которой token_hook
+        # возвращает kacho_*-claim'ы (см. handler/iamhooks/token_hook_handler.go).
+        # Phase 3a — добавляем индивидуальные kacho_* claim'ы как
+        # top-level allowed, чтобы кашо-policy-движки могли читать их
+        # без unwrap'а `ext_claims` (private_key_jwt SA-токены / interactive
+        # user-токены — оба пути).
+        allowed_top_level_claims:
+          - ext_claims
+          # SA / user principal — Phase 3a token_hook enrichment
+          - kacho_principal_type
+          - kacho_principal_id
+          - kacho_account_id
+          - kacho_active_account
+          - kacho_project_id
+          - kacho_user_id
+          - kacho_sa_key_id
+          - kacho_hydra_client_id
+        client_credentials:
+          default_grant_allowed_scope: false
+        # KAC-127 (deploy#37): глобальные `oauth2.dpop` / `oauth2.mtls` блоки
+        # удалены — их нет в Hydra v26.2.0 config-schema. В v26.2.0 sender-
+        # constrained tokens конфигурируются per-client, а не глобально:
+        #   - DPoP (RFC 9449)   — через client-metadata `dpop_bound_access_tokens`
+        #     при регистрации OAuth2-клиента (Hydra-admin `/clients`);
+        #   - mTLS (RFC 8705)   — через client `tls_client_auth_*` /
+        #     `tls_client_certificate_bound_access_tokens`.
+        # Acceptance §6.4/§6.5 — enforcement переезжает на per-client регистрацию
+        # (см. kacho-iam client-bootstrap); глобального config-knob нет.
+        # token_hook + refresh_hook → kacho-iam HTTP hooks listener (acceptance §5.4).
+        # KAC-127 (deploy#39): URL исправлен — webhook'и обслуживает HTTP-listener
+        # на :9092 Service'а `kacho-iam-internal` (НЕ gRPC :9091 на `kacho-iam`).
+        # Shared secret через KACHO_IAM_HOOK_TOKEN env (см. Secret kacho-iam-hook-token).
+        token_hook:
+          url: "http://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/token"
+          auth:
+            type: api_key
+            config:
+              in: header
+              name: X-Kacho-Hook-Token
+              value: ${KACHO_IAM_HOOK_TOKEN}
+        refresh_token_hook:
+          url: "http://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/refresh"
+          auth:
+            type: api_key
+            config:
+              in: header
+              name: X-Kacho-Hook-Token
+              value: ${KACHO_IAM_HOOK_TOKEN}
+      # JWKS — публикуются Hydra'ой; private keys управляются kacho-iam jwks-rotator
+      # (см. jwks-rotator-cronjob.yaml). Phase 2 — RS256 + ES256 + EdDSA одновременно.
+      webfinger:
+        jwks:
+          broadcast_keys:
+            - hydra.openid.id-token         # signing-key set, populated by rotator
+      log:
+        level: info
+        format: json
+        leak_sensitive_values: true
+      tracing:
+        provider: otel
+        providers:
+          # KAC-127 (deploy#37): ключ `endpoint` переименован в `server_url` —
+          # Hydra v26.2.0 tracing-schema (ory/x otelx) принимает `otlp.server_url`.
+          otlp:
+            server_url: otel-collector.observability.svc.cluster.local:4317
+            insecure: true
+  # Phase 3c — Federation OUT: public Hydra ingress for external IdP federation
+  # (AWS STS AssumeRoleWithWebIdentity / GCP Workload Identity Federation /
+  # Azure AD federated credentials). Production uses cert-manager + Let's
+  # Encrypt — see values.prod.yaml. Dev defaults below are DISABLED — local
+  # smoke runs via host-port 28080 + relative URLs (current `urls.self.issuer`
+  # http://localhost:28080/.ory/hydra/public/). Enable when you need to
+  # exercise the federation-OUT path locally with a fake DNS entry pointing
+  # `auth.kacho.local` at the kind ingress.
+  ingress:
+    public:
+      enabled: false
+      className: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: kacho-selfsigned
+        nginx.ingress.kubernetes.io/proxy-body-size: "8k"
+      hosts:
+        - host: auth.kacho.local
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - hosts:
+            - auth.kacho.local
+          secretName: hydra-public-tls
+    admin:
+      # Admin endpoint MUST stay cluster-internal — no external ingress, ever
+      # (it has unauthenticated `/admin/clients` write surface). Explicitly
+      # disabled here as a guardrail; enabling this is a security incident.
+      enabled: false
+
+# Ory Kratos self-service UI (login/registration/recovery/verification/settings).
+# Образ oryd/kratos-selfservice-ui-node. UI nginx проксирует /login,/registration,
+# /recovery,/verification,/settings,/error → этот pod на :3000.
+# Sub-chart `kratos-selfservice-ui` — значения под вложенным ключом kratosSelfServiceUI.
+kratos-selfservice-ui:
+  kratosSelfServiceUI:
+    # KAC-127: включён вместе с kratos. kacho-ui nginx безусловно проксирует
+    # /login,/registration,... → upstream `kratos-selfservice-ui.kacho.svc` —
+    # при enabled=false Service не существует → nginx падает на старте
+    # (`host not found in upstream`). С включённым Kratos-стеком этот UI-pod
+    # обязателен для рабочего IAM-стенда.
+    enabled: true
+    image:
+      repository: oryd/kratos-selfservice-ui-node
+      tag: "v1.3.1"
+    kratosBrowserUrl: "http://localhost:28080/.ory/kratos/public"
+    kratosPublicUrl: "http://kacho-umbrella-kratos-public:80"
+    hydraAdminUrl: "http://kacho-umbrella-hydra-admin:4445"
+    # Dev-only throwaway signing secret (kind stand). Prod sources it from an
+    # operator-provisioned Secret via cookieSecret.existingSecret (values.prod.yaml).
+    cookieSecret:
+      value: "dev-only-throwaway-32-bytes-A1Bx"
+    # Dev stand talks plain-http to kratos/hydra upstreams → opt into skipping
+    # Node's outbound TLS verification. Production leaves this OFF (verify on).
+    insecureSkipTLSVerify: true
+
+# KAC-127: zitadelOidcBootstrap удалён — identity/OIDC tier перешёл на Ory
+# Kratos + Hydra (см. секции pg-kratos / pg-hydra выше).
+
+# OpenFGA — REBAC engine для kacho-iam (Phase 3). Condition-gated через
+# `openfga.enabled` / `openfgaBootstrap.enabled` (default false на E0/E1).
+#
+# KAC-135 W0.4 (HA-mini): replicaCount=2 на dev (kind). Upstream chart default —
+# 3 replicas (production HA), но для kind dev-стенда это перебор по RAM/CPU и
+# blocked by 2-node kind config. 2 replicas достаточно для verify-survives-pod-restart
+# смоук-теста (одна нода drain'ится — вторая остаётся, drainer/cache-invalidation
+# тесты W1 не падают). Postgres backend (engine=postgres ниже) → state shared
+# между replicas, безопасно для concurrent bootstrap-Job (он сам идемпотентен
+# через sha256 DSL-compare). Upstream формула: `replicas: ternary 1 replicaCount
+# (eq datastore.engine "memory")` — engine=memory принудительно заходит в 1 rep;
+# с postgres работает заявленный replicaCount.
+openfga:
+  enabled: true
+  replicaCount: 2
+  datastore:
+    engine: postgres
+    uri: postgres://openfga:changeme-dev-openfga@kacho-umbrella-pg-openfga:5432/openfga?sslmode=disable
+    # KAC-127: migrationType=initContainer вместо job. Дефолт sub-chart'а — `job` +
+    # waitForMigrations=true: OpenFGA Deployment получает init-container
+    # `wait-for-migration` (groundnuty/k8s-wait-for `job-wr`), который ждёт
+    # завершения отдельного migration-Job. Под `helm install --wait` это deadlock:
+    # `--wait` блокируется на не-Ready OpenFGA pod (init-container крутится),
+    # release уходит в failed по timeout. С `initContainer` миграция исполняется
+    # как собственный init-container OpenFGA Deployment — отдельного Job нет,
+    # нет гонки, `--wait` дожидается обычным порядком.
+    migrationType: initContainer
+  service:
+    type: ClusterIP
+    grpc:
+      port: 8081
+    http:
+      port: 8080
+  playground:
+    enabled: true
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: openfga.kacho.local
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              port: http
+
+# kacho-iam — control-plane сервис IAM (Account / Project / User / ServiceAccount /
+# Group / Role / AccessBinding). E0 — skeleton + CRUD; интеграция с Ory — E2/E3.
+kacho-iam:
+  name: kacho-iam
+  replicas: 1
+  # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam over mTLS).
+  mtls:
+    enable: true
+  image:
+    repository: kacho-iam
+    tag: dev
+    pullPolicy: IfNotPresent
+  ports:
+    grpc: 9090
+    internalGrpc: 9091
+  service:
+    public:
+      type: ClusterIP
+      port: 9090
+    internal:
+      type: ClusterIP
+      port: 9091
+  db:
+    host: kacho-umbrella-pg-iam
+    port: "5432"
+    user: iam
+    name: kacho_iam
+    passwordSecretName: kacho-umbrella-pg-iam
+    passwordSecretKey: password
+  config:
+    logger:
+      level: INFO
+    apiServer:
+      gracefulShutdown: 10s
+    metrics:
+      enable: true
+    healthcheck:
+      enable: true
+    repository:
+      postgres:
+        maxConns: 100
+        sslMode: disable
+    authn:
+      mode: dev
+    extapi:
+      # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
+      openfga:
+        # KAC-127 Phase 3: REBAC authorization Check is ON for dev. Without
+        # `enabled: true` the kacho-iam config-validate logs
+        # `extapi.openfga.enabled=false — authorization Check disabled` and
+        # the config is inconsistent with the runtime (the FGA client *is*
+        # wired whenever KACHO_IAM_OPENFGA_STORE_ID is populated by the
+        # openfga-bootstrap-job). Set it true so config matches reality.
+        enabled: true
+        endpoint: openfga:8081
+        # store-id заполняется bootstrap-job'ом в Secret kacho-iam-openfga-store
+        storeIdSecretName: kacho-iam-openfga-store
+        storeIdSecretKey: store_id
+  initContainer:
+    migrator:
+      enabled: true
+      command: ["/usr/local/bin/kacho-migrator", "up"]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  env:
+    # KAC-127 #25: enable AuthorizeService.ListObjects (FGA-filtered List).
+    # Scope-filtered List RPCs (vpc NetworkService/List, iam User/SA List) call
+    # ListObjects to resolve the caller's allowed-id set; without this the RPC
+    # returns Unimplemented and the handler-side scope-filter fails 503.
+    KACHO_AUTHZ_LISTOBJECTS: "on"
+    # KAC-132: reduce compliance worker interval for newman e2e (default 10s → 1s)
+    KACHO_IAM_GOVERNANCE__COMPLIANCE_REPORT_WORKER_INTERVAL_SECONDS: "1"
+    # KAC-132: MinIO dev instance for compliance report S3 upload in newman e2e
+    KACHO_IAM_COMPLIANCE__S3__ENDPOINT: "http://minio-dev:9000"
+    KACHO_IAM_COMPLIANCE__S3__BUCKET: "kacho-compliance-reports"
+    KACHO_IAM_COMPLIANCE__S3__PATH_STYLE: "true"
+    KACHO_IAM_COMPLIANCE__S3__ACCESS_KEY: "changeme-dev-minio-access"
+    KACHO_IAM_COMPLIANCE__S3__SECRET_KEY: "changeme-dev-minio-secret"
+    # Bug B fix: bootstrap cluster-admin. kacho-iam's startup reconciler grants
+    # `system_admin@cluster_kacho_root` to this user and enqueues the FGA tuple
+    # via the transactional fga_outbox (replacing the former setup.sh SQL-seed
+    # backdoor that bypassed the drainer). The user row is mirrored on first
+    # fixture upsert; the reconciler retries until the grant commits. The
+    # authz-fixtures bootstrap user is admin@prorobotech.ru.
+    KACHO_IAM_BOOTSTRAP_ROOT_EMAIL: "admin@prorobotech.ru"
+  # KAC-127 Phase 3: OPA sidecar config propagated from umbrella to sub-chart.
+  # KAC-127 (deploy#39 fix): включён — kacho-iam отдаёт OPA-bundle по HTTP на
+  # :9092; см. комментарий у top-level `opaSidecar` ниже.
+  # OPA sidecar config — read by the kacho-iam sub-chart (deployment.yaml injects
+  # the sidecar; the opa/jwks ConfigMaps now live in charts/kacho-iam/templates/).
+  # Disabled in dev (the OPA bundle-over-HTTP delivery on :9092 is wired but the
+  # sidecar is off until the bundle pipeline is finalized — see kacho-iam chart).
+  opaSidecar:
+    enabled: false
+    # `1.0.0-rootless` тег не существует. Нужен ИМЕННО opa-envoy вариант —
+    # kacho-iam Deployment передаёт OPA-сайдкару `--set=plugins.envoy_ext_authz_grpc.*`;
+    # плагин есть только в opa-envoy-сборке. `-static` = rootless static-build.
+    image: openpolicyagent/opa:1.0.0-envoy-static
+    logLevel: info
+    # OPA pulls the bundle from kacho-iam IN THE SAME pod via loopback
+    # (127.0.0.1:9092 HTTP) — not via Service (Service routes only to Ready pods,
+    # but the pod is Ready only after the bundle loads → rollout deadlock).
+    iamInternalHost: kacho-iam-internal
+    iamInternalPort: 9092
+    bundleResource: bundle.tar.gz
+    # kacho-iam OpaBundleService currently produces an UNSIGNED tarball, so OPA
+    # must not require in-bundle `.signatures.json`. Hardening follow-up: flip true.
+    bundleSigningEnabled: false
+    # Shorter poll interval on dev for faster iteration on Rego changes.
+    bundlePollMinSec: 60   # ~1min
+    bundlePollMaxSec: 90
+    signingKeyId: kacho-iam-signing-key-current
+    bundle:
+      ttlSeconds: 60          # dev: also short
+      signingAlgorithm: ES256
+      signingKeyKid: kacho-iam-signing-key-current
+      buildShaEnvVar: KACHO_BUILD_SHA
+      cacheStaleAfterSeconds: 600
+      keyRotationGraceSeconds: 600
+    jwks:
+      configMapName: kacho-iam-jwks
+      bootstrapKeyPem: ""
+    policiesFallback:
+      enabled: false
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+  openfgaBootstrap:
+    modelIdSecretName: openfga-model-id
+  # KAC-132: compliance report S3 config via config.yaml (env var binding for
+  # path-style bool is unreliable with viper key replacer hyphens; use YAML instead).
+  compliance:
+    s3:
+      endpoint: "http://minio-dev:9000"
+      region: "us-east-1"
+      bucket: "kacho-compliance-reports"
+      pathStyle: true
+      accessKey: "changeme-dev-minio-access"
+      secretKey: "changeme-dev-minio-secret"
+  # ─── Phase 3b — Federation IN (external IdP → kacho via Hydra jwt-bearer) ──
+  # Hydra v26.2.0 does NOT load trusted issuers from `hydra.config.*` — they
+  # are registered at runtime via the admin trust-grant API
+  # (`POST /admin/trust/grants/jwt-bearer/issuers`). The list below is consumed
+  # by the `hydra-trust-grant-bootstrap` Job (templates/hydra-trust-grants-job.yaml)
+  # which POSTs each entry on chart install/upgrade. Idempotent — on conflict
+  # falls back to PATCH/Delete-Recreate to converge.
+  #
+  # For dev: pre-register GitHub Actions, GitLab CI, and in-cluster k8s SA
+  # tokens. Customer-specific IdPs (Okta/Azure/etc) are registered per-tenant
+  # via admin tooling — NOT here in shared helm values.
+  federationIn:
+    # Default OFF in dev too. The Phase 3b bootstrap Job needs REAL JWKs for
+    # each trusted issuer (Hydra v26 rejects the placeholder JWK template),
+    # and CI runners cannot reach external IdP JWKS endpoints reliably (rate
+    # limits, network policies). Operators enable + replace the JWK template
+    # with real fetched keys per docs/components/21-federation-in.md
+    # §«Хранение IdP JWKS keys». The Go-side federation IN code-path is
+    # covered by integration tests in kacho-iam regardless of this flag.
+    enabled: false
+    trustedIssuers:
+      # Reference template — operators copy + replace `jwksUrl` results into
+      # the bootstrap Job's JWK array before enabling. Kept here as
+      # operator-discoverable documentation of the expected shape.
+      - issuer: "https://token.actions.githubusercontent.com"
+        jwksUrl: "https://token.actions.githubusercontent.com/.well-known/jwks"
+        allowedSubjects:
+          - "^repo:.+:ref:refs/heads/main$"
+      - issuer: "https://gitlab.com"
+        jwksUrl: "https://gitlab.com/oauth/discovery/keys"
+        allowedSubjects:
+          - "^project_path:.+:ref_type:branch:ref:main$"
+      - issuer: "https://kubernetes.default.svc.cluster.local"
+        jwksUrl: "https://kubernetes.default.svc.cluster.local/openid/v1/jwks"
+        allowedSubjects:
+          - "^system:serviceaccount:kacho-.+:.+$"
+
+# ─── KAC-127 Phase 3: OpenFGA bootstrap-job (KAC-105 extended) ──────────
+# post-install hook with full DSL v2 + idempotent + model-id Secret patch +
+# rolling-restart annotation on consumer Deployments.
+# See umbrella/templates/openfga-bootstrap-job.yaml for full behaviour.
+openfga-bootstrap:
+  openfgaBootstrap:
+    # KAC-127 (deploy#38 fix): включён. Раньше был отключён из-за template-бага —
+    # init-container `dsl-transform` запускал `/bin/sh`-скрипт на distroless
+    # образе openfga/cli (нет shell). Fix: init-container удалён, DSL→JSON transform
+    # перенесён на commit-time — ConfigMap openfga-model-stub несёт оба ключа.
+    enabled: true
+    # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root.
+    image: alpine/k8s:1.29.2
+    cliImage: ""
+    storeName: kacho-store
+    authorizationModelConfigMap: openfga-model-stub
+    modelIdSecretName: openfga-model-id
+    clusterSingletonId: cluster_kacho_root
+    # Dev: rely on bitnami pg-openfga auto-init (database `openfga`).
+    initDatabase: false
+
+# ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
+# The OPA sidecar config itself now lives in the kacho-iam sub-chart
+# (kacho-iam.opaSidecar above). Only the cross-cutting pod-to-pod allowlist stays
+# at umbrella level. Disabled on dev (would break port-forward debugging of :9091).
+opaSidecar:
+  networkPolicy:
+    enabled: false
+
+# Sub-chart propagation note: opaSidecar + openfgaBootstrap.modelIdSecretName
+# are propagated to kacho-iam sub-chart via the kacho-iam.opaSidecar / .openfgaBootstrap
+# blocks above (inside the kacho-iam: top-level mapping). Duplicate top-level
+# `kacho-iam:` block would last-wins-overwrite — see KAC-127 PR review.
+
+# ─── KAC-NLB: kacho-nlb L4 NLB control-plane (sub-phase 4.0) ─────────────
+#
+# Sub-chart lives in `project/kacho-nlb/deploy/` and is wired into the umbrella
+# via `file://../../../kacho-nlb/deploy` (Chart.yaml dep above). Schema /
+# resources / RPC contract — see `kacho-nlb/docs/specs/sub-phase-4.0-nlb-acceptance.md`.
+#
+# Wiring rules:
+#   - `pg-nlb` (above) is the backing Postgres; kacho-nlb dials it via
+#     `kacho-umbrella-pg-nlb:5432` (bitnami pg-* sub-charts expose a Service
+#     named `<release>-<alias>`).
+#   - `db.existingSecret` binds the bitnami-managed Secret directly so the
+#     chart's own `secret.yaml` short-circuits (`{{- if not .Values.db.existingSecret -}}`),
+#     i.e. we never commit a duplicate password Secret. The bitnami Secret name
+#     follows `<release>-<alias>`; key `password`.
+#   - Peers point at the cluster-internal Kubernetes Services of the dependent
+#     domains (vpc public 9090 + internal 9091, compute public 9090, iam
+#     internal 9091 — kacho-nlb resolves ProjectService through the iam
+#     internal listener because it ALSO carries InternalIAMService.Check used
+#     by the per-RPC authz interceptor; same dual-purpose port as in kacho-iam
+#     values block above).
+#   - `config.mode=dev` relaxes the production-only config validation rules
+#     (breakglass=false guard, listenInvalidator.iamDsn required, ...). Prod
+#     overrides to `production` in values.prod.yaml.
+#   - networkPolicy disabled in dev for parity with kacho-iam / kacho-vpc dev
+#     overrides (port-forward / kubectl exec convenience).
+kacho-nlb:
+  enabled: true
+  name: kacho-nlb
+  replicas: 1
+  # Dev kind stack: nlb already sets db.sslmode=disable below (dev pg-nlb serves
+  # no TLS), but the nlb chart defaults config.mode=production, whose
+  # config.Validate (audit SEC #1) REJECTS sslmode ∈ disable/allow/prefer — a
+  # production stand MUST use a TLS DB channel. production + sslmode=disable =
+  # refuse-to-start (migrate + serve) → Init:CrashLoopBackOff. So the dev profile
+  # must also flip config.mode=dev (same triplet the compute chart documents:
+  # mode=dev + mtls off + sslmode=disable). Ephemeral CI stand only; prod keeps
+  # production (values.prod.yaml).
+  config:
+    mode: dev
+  # mTLS: server (gateway dials here) + client (nlb→iam, nlb→vpc, nlb→compute, nlb→geo).
+  mtls:
+    enable: true
+    edges:
+      iamRegister: true
+      iamProject: true
+      vpc: true
+      compute: true
+      geo: true        # nlb→geo region_id validation (geo cutover, kacho-workspace#82)
+  image:
+    repository: kacho-nlb
+    tag: dev
+    pullPolicy: IfNotPresent
+  ports:
+    grpc: 9090
+    internalGrpc: 9091
+    metrics: 9101
+  serviceAccount:
+    create: true
+  db:
+    host: kacho-umbrella-pg-nlb
+    port: 5432
+    user: kacho_nlb
+    name: kacho_nlb
+    sslmode: disable
+    existingSecret: kacho-umbrella-pg-nlb
+    existingSecretKey: password
+  peers:
+    iam:
+      # KAC-178 §2: ProjectService на PUBLIC (9090); InternalIAMService на INTERNAL (9091).
+      addr: kacho-iam.kacho.svc.cluster.local:9090
+      internalAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+      tls: false
+      dialDuration: 10s
+    vpc:
+      addr: vpc.kacho.svc.cluster.local:9090
+      internalAddr: vpc.kacho.svc.cluster.local:9091
+      tls: false
+      dialDuration: 10s
+    compute:
+      addr: compute.kacho.svc.cluster.local:9090
+      internalAddr: ""
+      tls: false
+      dialDuration: 10s
+  authz:
+    iam:
+      addr: kacho-iam-internal.kacho.svc.cluster.local:9091
+      dialDeadline: 3s
+      requestTimeout: 500ms
+  config:
+    mode: dev
+    logger:
+      level: INFO
+    apiServer:
+      gracefulShutdown: 10s
+      grpcGwEnable: false
+    authn:
+      type: none
+    authz:
+      cache:
+        enable: true
+        ttl: 5s
+        size: 10000
+      listenInvalidator:
+        enable: false
+        channel: kacho_iam_subjects
+        iamDsn: ""
+      breakglass: false
+    fga:
+      endpoint: ""
+      storeId: ""
+      modelId: ""
+      tupleWrite:
+        timeout: 2s
+        maxRetries: 3
+    jobs:
+      targetDrain:
+        interval: 10s
+  migrator:
+    enable: true
+  networkPolicy:
+    enable: false
+  serviceMonitor:
+    enable: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+

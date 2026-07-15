@@ -1,0 +1,266 @@
+{{- if .Values.minioDev.enabled }}
+# KAC-183 — MinIO dev instance for compliance report S3 upload (newman e2e).
+#
+# Why this exists
+# ---------------
+# values.dev.yaml declares `KACHO_IAM_COMPLIANCE__S3__ENDPOINT=http://minio-dev:9000`
+# but until KAC-183 there was no `minio-dev` Service in the cluster — the
+# `iam-compliance-report` newman suite reproducibly failed (6 cases) because
+# `kacho-iam.s3_report_store::doPut` retried indefinitely against an
+# unresolvable DNS name → reports went to status=FAILED.
+#
+# Dev-only scope
+# --------------
+# - Single replica, emptyDir storage (no persistence) — dev/CI smoke only.
+# - Console (port 9001) exposed inside the cluster for debug; not Ingress'd.
+# - ClusterIP only — per workspace §6 Internal infra surface (no LoadBalancer
+#   / Ingress) — and per §«Инфра-чувствительные данные» MinIO is internal
+#   storage, never on the public API.
+# - Prod uses external S3 / managed MinIO with credentials sourced from
+#   Vault/SealedSecret; `minioDev.enabled=false` in values.prod.yaml.
+#
+# Bucket bootstrap
+# ----------------
+# Init Job uses `mc` to wait for the API, then idempotently creates the
+# bucket named in `compliance.s3.bucket` (`kacho-compliance-reports`) and
+# ensures it has no public access policy.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio-dev
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: minio-dev
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: minio-dev
+    kacho.cloud/kac-ticket: KAC-183
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio-dev
+  template:
+    metadata:
+      labels:
+        app: minio-dev
+    spec:
+      # INFRA sec-hardening r2 — restricted pod floor. MinIO runs fine as a
+      # non-root UID with a read-only rootfs (state lives under the /data
+      # emptyDir, config too); fsGroup makes the emptyDir group-writable.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.minioDev.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.minioDev.runAsUser | default 1000 }}
+        fsGroup: {{ .Values.minioDev.runAsUser | default 1000 }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minio
+          image: "{{ .Values.minioDev.image.repository }}:{{ .Values.minioDev.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.minioDev.runAsUser | default 1000 }}
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          args:
+            - server
+            - /data
+            - --console-address
+            - ":9001"
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minioDev.existingSecret | default "minio-dev-root" }}
+                  key: {{ .Values.minioDev.existingSecretUserKey | default "rootUser" }}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minioDev.existingSecret | default "minio-dev-root" }}
+                  key: {{ .Values.minioDev.existingSecretPasswordKey | default "rootPassword" }}
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 1Gi }
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-dev
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: minio-dev
+    kacho.cloud/kac-ticket: KAC-183
+spec:
+  type: ClusterIP
+  selector:
+    app: minio-dev
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+# Idempotent bucket-bootstrap Job. Runs post-install/upgrade because the
+# Deployment must already be Ready before `mc` can talk to it. `helm.sh/hook`
+# weight `5` is after pg/openfga bootstrap (negative weights) but before any
+# Job/test that asserts compliance reports work.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-dev-init-bucket
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: minio-dev-init-bucket
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: minio-dev-init-bucket
+    kacho.cloud/kac-ticket: KAC-183
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  # 600s (was 300s) — kind CI VMs are slow; first MinIO startup + 60×2s wait
+  # loop + retries can exceed 5 min. 10 min covers worst-case with margin.
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app: minio-dev-init-bucket
+    spec:
+      restartPolicy: OnFailure
+      # INFRA sec-hardening r2 — restricted pod floor. mc needs a writable HOME
+      # (~/.mc config); HOME is redirected to the emptyDir /tmp so the rootfs
+      # stays read-only.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.minioDev.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.minioDev.runAsUser | default 1000 }}
+        fsGroup: {{ .Values.minioDev.runAsUser | default 1000 }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mc
+          image: "{{ .Values.minioDev.mcImage.repository }}:{{ .Values.minioDev.mcImage.tag }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.minioDev.runAsUser | default 1000 }}
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            # KAC-187: order matters — MINIO_ROOT_{USER,PASSWORD} must be
+            # defined BEFORE MC_HOST_minio if we relied on K8s $(VAR) expansion
+            # in `value:`. We use shell-side expansion below instead for
+            # robustness (the K8s forward-ref expansion behaviour varies by
+            # version and is fragile). MC_HOST_minio is constructed in the
+            # command script with proper `${VAR}` shell expansion.
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minioDev.existingSecret | default "minio-dev-root" }}
+                  key: {{ .Values.minioDev.existingSecretUserKey | default "rootUser" }}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minioDev.existingSecret | default "minio-dev-root" }}
+                  key: {{ .Values.minioDev.existingSecretPasswordKey | default "rootPassword" }}
+            # readOnlyRootFilesystem — mc writes its config to $HOME/.mc; point
+            # HOME at the emptyDir /tmp.
+            - name: HOME
+              value: /tmp
+            - name: BUCKET
+              value: {{ .Values.minioDev.bucket | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              # Shell-side expansion of MC_HOST_minio — guaranteed to see env
+              # vars defined above. Replaces the K8s `$(VAR)` value-expansion
+              # which previously left literal `$(MINIO_ROOT_USER)` text in
+              # the URL when forward-ref expansion failed (KAC-187 root cause:
+              # mc auth failed → wait loop timed out → Job DeadlineExceeded).
+              export MC_HOST_minio="http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio-dev:9000"
+
+              echo "[minio-init] waiting for minio-dev:9000 to be ready"
+              i=0
+              while [ $i -lt 60 ]; do
+                if mc ls minio >/dev/null 2>&1; then
+                  echo "[minio-init] minio-dev reachable"
+                  break
+                fi
+                sleep 2
+                i=$((i+1))
+              done
+              if [ $i -ge 60 ]; then
+                echo "[minio-init] TIMEOUT waiting for minio-dev (URL=http://***:***@minio-dev:9000)"
+                # Diagnostic: try once more with verbose to surface the actual error
+                mc --debug ls minio || true
+                exit 1
+              fi
+
+              # Idempotent bucket create (mc mb is idempotent with --ignore-existing).
+              echo "[minio-init] ensuring bucket ${BUCKET} exists"
+              mc mb --ignore-existing "minio/${BUCKET}"
+
+              # Force private access — no anonymous reads/writes.
+              # `mc anonymous set none` replaced legacy `mc policy set none`.
+              echo "[minio-init] setting bucket ${BUCKET} to private (anonymous none)"
+              mc anonymous set none "minio/${BUCKET}"
+
+              echo "[minio-init] OK"
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

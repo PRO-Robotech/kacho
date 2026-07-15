@@ -1,0 +1,152 @@
+{{- if and .Values.openfgaBootstrap.enabled .Values.openfgaBootstrap.initDatabase }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.1) — Postgres bootstrap for `kacho_openfga` DB.
+=============================================================================
+
+OpenFGA's official Helm chart assumes the database+user already exist (or it
+points at admin-credentialed Postgres and lets the engine self-create). On the
+kacho stand we run a dedicated Postgres instance (`pg-openfga` from
+umbrella Chart.yaml) with bitnami-defaults: bitnami creates the database
+`openfga` and user `openfga` from `auth.username` / `auth.database` keys at
+container init. That gives us `kacho_openfga`-equivalent.
+
+If a cluster overrides `pg-openfga` to point at a shared Postgres (e.g. RDS
+or CloudNativePG, where the operator does NOT auto-create per-tenant DBs),
+this Job ensures the OpenFGA database+role exist before the engine starts.
+It is idempotent — `CREATE DATABASE` + `CREATE ROLE` wrapped in
+`DO $$ ... IF NOT EXISTS ...` to survive re-runs.
+
+Toggle via `openfgaBootstrap.initDatabase=true` (default `false` because
+bitnami auto-init covers the common case).
+
+The Job uses a Postgres admin-credentials Secret (`openfgaBootstrap.dbAdmin.*`)
+that the operator provides out-of-band (sealed-secret or external-secrets).
+On dev kind-stand, point at the bitnami-default `postgres` superuser; on prod,
+use a dedicated `kacho_dba` role with `CREATEDB + CREATEROLE` grants.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openfga-postgres-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: openfga-postgres-init
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: openfga-postgres-init
+    spec:
+      restartPolicy: OnFailure
+      # INFRA sec-hardening r3 — restricted pod floor (runAsNonRoot + seccomp).
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        # Writable scratch for the read-only rootfs (psql history under HOME=/tmp).
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: postgres-init
+          image: {{ .Values.openfgaBootstrap.dbAdmin.image | default "postgres:16-alpine" | quote }}
+          # INFRA sec-hardening r3 — restricted container floor (non-root,
+          # read-only rootfs, drop ALL caps, no priv-esc, seccomp RuntimeDefault).
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              echo "[postgres-init] connecting to ${PGHOST}:${PGPORT} as ${PGUSER}"
+
+              # Wait for postgres readiness (max 5min).
+              i=0
+              while [ $i -lt 60 ]; do
+                if pg_isready -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d postgres >/dev/null 2>&1; then
+                  echo "[postgres-init] postgres ready"
+                  break
+                fi
+                sleep 5
+                i=$((i+1))
+              done
+              if [ $i -ge 60 ]; then
+                echo "[postgres-init] TIMEOUT waiting for postgres"
+                exit 1
+              fi
+
+              # CREATE ROLE if not exists (idempotent).
+              psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d postgres -v ON_ERROR_STOP=1 -tAc "
+                DO \$\$
+                BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${FGA_USER}') THEN
+                    CREATE ROLE \"${FGA_USER}\" WITH LOGIN PASSWORD '${FGA_PASSWORD}';
+                  END IF;
+                END
+                \$\$;
+              "
+
+              # CREATE DATABASE if not exists (idempotent).
+              EXISTS=$(psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d postgres -v ON_ERROR_STOP=1 -tAc "
+                SELECT 1 FROM pg_database WHERE datname = '${FGA_DB}';
+              ")
+              if [ "${EXISTS}" != "1" ]; then
+                echo "[postgres-init] creating database ${FGA_DB}"
+                psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d postgres -v ON_ERROR_STOP=1 -c "
+                  CREATE DATABASE \"${FGA_DB}\" OWNER \"${FGA_USER}\";
+                "
+              else
+                echo "[postgres-init] database ${FGA_DB} already exists"
+              fi
+
+              # GRANT all privileges (idempotent).
+              psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d postgres -v ON_ERROR_STOP=1 -c "
+                GRANT ALL PRIVILEGES ON DATABASE \"${FGA_DB}\" TO \"${FGA_USER}\";
+              "
+
+              echo "[postgres-init] OK"
+          env:
+            # Read-only rootfs: psql writes ~/.psql_history on exit → HOME=/tmp.
+            - name: HOME
+              value: /tmp
+            - name: PGHOST
+              value: {{ .Values.openfgaBootstrap.dbAdmin.host | default "kacho-umbrella-pg-openfga" | quote }}
+            - name: PGPORT
+              value: {{ .Values.openfgaBootstrap.dbAdmin.port | default "5432" | quote }}
+            - name: PGUSER
+              value: {{ .Values.openfgaBootstrap.dbAdmin.user | default "postgres" | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.openfgaBootstrap.dbAdmin.passwordSecretName | default "kacho-umbrella-pg-openfga" }}
+                  key: {{ .Values.openfgaBootstrap.dbAdmin.passwordSecretKey | default "postgres-password" }}
+            - name: FGA_USER
+              value: {{ .Values.openfgaBootstrap.dbAdmin.fgaUser | default "openfga" | quote }}
+            - name: FGA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.openfgaBootstrap.dbAdmin.fgaPasswordSecretName | default "kacho-umbrella-pg-openfga" }}
+                  key: {{ .Values.openfgaBootstrap.dbAdmin.fgaPasswordSecretKey | default "password" }}
+            - name: FGA_DB
+              value: {{ .Values.openfgaBootstrap.dbAdmin.fgaDatabase | default "kacho_openfga" | quote }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+{{- end }}

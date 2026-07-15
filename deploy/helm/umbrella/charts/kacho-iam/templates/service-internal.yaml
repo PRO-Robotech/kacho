@@ -1,0 +1,31 @@
+{{/*
+Internal-port :9091 — отдельный Service для admin/cluster-internal traffic.
+На external TLS endpoint api-gateway эти RPC НЕ публикуются (запрет #6 workspace CLAUDE.md).
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}-internal
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.internal.type }}
+  selector:
+    {{- include "kacho-iam.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: grpc-internal
+      port: {{ .Values.service.internal.port }}
+      targetPort: grpc-internal
+    # KAC-127 deploy#39 — HTTP hooks listener (Hydra token/refresh webhooks +
+    # CAEP ingress + OPA policy bundle pull). Cluster-internal-only (запрет #6).
+    - name: http-hooks
+      port: {{ .Values.service.internal.hooksHttpPort | default 9092 }}
+      targetPort: http-hooks
+    # registry-iam-jwks-unify — cluster-INTERNAL Hydra-JWKS proxy listener
+    # (GET /.well-known/jwks.json, one-way server-TLS). The registry data-plane
+    # fetches its docker-Bearer verification keys here instead of dialing Hydra
+    # directly. Cluster-internal-only (never the public Service, ban #6).
+    - name: http-jwks
+      port: {{ .Values.service.internal.jwksProxyPort | default 9097 }}
+      targetPort: http-jwks

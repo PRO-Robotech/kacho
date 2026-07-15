@@ -1,0 +1,62 @@
+{{/*
+KAC-127 Phase 2 — Kratos Identity Schema v2.
+
+Файл маунтится в Kratos pod как `/etc/config/kratos/identity.schema.json`.
+Соответствует acceptance §5.1 (sub-phase 3.2):
+
+  - traits.email                : identifier для password + webauthn; verification + recovery via email.
+  - traits.display_name         : optional human-readable name (KAC-117 baseline).
+  - required: [email]; additionalProperties: false (strict — Phase 2 user identity stable shape).
+
+Schema $id = https://schemas.{{ .Values.kacho.domain }}/identity/v2 — версионируется per
+Kachō release; Phase 12 хардoning может ввести v3 (additional traits — locale,
+preferred_authenticator) с миграцией identity row через Kratos `schema_id` swap.
+*/}}
+{{- if .Values.kratos.identitySchema.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}-kratos-identity-schema
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+    kacho.cloud/component: kratos-identity-schema
+data:
+  identity.schema.json: |
+    {
+      "$id": "https://schemas.{{ .Values.kacho.domain }}/identity/v2",
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Kacho User Identity v2",
+      "type": "object",
+      "properties": {
+        "traits": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "title": "Email",
+              "minLength": 3,
+              "maxLength": 320,
+              "ory.sh/kratos": {
+                "credentials": {
+                  "password": { "identifier": true },
+                  "webauthn":  { "identifier": true }
+                },
+                "verification": { "via": "email" },
+                "recovery":     { "via": "email" }
+              }
+            },
+            "display_name": {
+              "type": "string",
+              "title": "Display Name",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": ["email"],
+          "additionalProperties": false
+        }
+      }
+    }
+{{- end }}

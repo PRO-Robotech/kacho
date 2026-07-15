@@ -1,0 +1,157 @@
+# kacho-geo sub-chart defaults — Geography (Region/Zone) leaf-service.
+#
+# Vendored sub-chart (lives under umbrella charts/, like kacho-iam), so it
+# renders WITHOUT the sibling-repo `file://` checkouts. Mirrors the lean
+# kacho-compute deploy chart shape; trimmed to the leaf-service surface:
+#   - public :9090 (RegionService/ZoneService Get/List) + internal :9091
+#     (InternalRegion/ZoneService admin CRUD — ban #6: never on external TLS);
+#   - goose migrator init-container (kacho-migrator up) → schema kacho_geo;
+#   - the ONLY cross-domain edge is geo→iam (per-RPC InternalIAMService.Check);
+#     no vpc/compute/register edges, no OPA sidecar, no list-filter, no
+#     write-side FGA tuple (geo is leaf; consumers call IN to geo).
+#
+# Image tag is a PLACEHOLDER (registry push pending — epic kacho-geo). The real
+# `docker.io/prorobotech/kacho-geo:main-<sha>` tag + pull secret are provisioned
+# at deploy time; override `image` per profile (values.dev/prod/fe3455).
+name: kacho-geo
+replicas: 1
+image: docker.io/prorobotech/kacho-geo:main-latest
+# Optional immutable digest pin (sha256:...). When set, the trailing `:tag` of
+# `image` is stripped and the digest appended (`repository@sha256:...`) for
+# reproducible, tamper-evident deploys. Empty by default → tag-based reference.
+# Override per env via values.digests.example.yaml.
+imageDigest: ""
+imagePullPolicy: IfNotPresent
+
+# INFRA sec-hardening — pod- and per-container securityContext floor for the geo
+# workload (main + goose migrate init). runAsNonRoot + readOnlyRootFilesystem +
+# drop ALL caps + no privilege escalation + seccomp RuntimeDefault (CIS
+# Kubernetes 5.2 / PSS restricted). A writable emptyDir is mounted at /tmp so the
+# read-only rootfs does not break scratch writes.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+ports:
+  grpc: 9090
+  internalGrpc: 9091
+
+# ─── Postgres (database-per-service, ban #8) — own pg-geo instance ──────────
+# host = bitnami release-name + alias = `kacho-umbrella-pg-geo`. Password via
+# secretKeyRef (the pg-geo Secret the bitnami subchart provisions).
+db:
+  host: kacho-umbrella-pg-geo
+  port: "5432"
+  user: geo
+  name: kacho_geo
+  passwordSecretName: kacho-umbrella-pg-geo
+  passwordSecretKey: password
+  # sslmode for the DSN. dev → disable; prod profile overrides to require.
+  sslmode: disable
+
+# AUTH_MODE — fail-closed gate: dev | production | production-strict.
+# dev (default) allows insecure + skip authz (local fixtures only). prod profile
+# overrides to production (anonymous fail-closed + mTLS + non-empty authz addr).
+authMode: dev
+
+# AUTHZ_IAM_GRPC_ADDR — kacho-iam INTERNAL listener for per-RPC Check
+# (geo→iam authz edge; InternalIAMService.Check lives on :9091, NOT :9090).
+# Empty → interceptor not attached (graceful dev start without kacho-iam).
+authzIamGrpcAddr: "kacho-iam-internal.kacho.svc.cluster.local:9091"
+# Emergency pass-all (dev / break-glass only). production forbids it.
+authzBreakglass: false
+
+# ─── SEC-F mTLS — per-edge opt-in (cert-manager internal-CA certs) ─────────
+# enable=false (default) → NO cert-secret, NO KACHO_GEO_*_MTLS_* env → insecure
+# dev (zero regression). umbrella propagates .mtls.enable + per-edge flags.
+#
+# When enable=true (corelib config.LoadPrefixed("KACHO_GEO")):
+#   server (both listeners): KACHO_GEO_PUBLIC_SERVER_MTLS_* /
+#                            KACHO_GEO_INTERNAL_SERVER_MTLS_*
+#   geo→iam (authz Check):   KACHO_GEO_IAM_AUTHZ_MTLS_*  (:9091, ServerName ∈ SAN)
+# serverName on the dial side = real dial-host (∈ peer server-SAN).
+mtls:
+  enable: false
+  # ─── internal-CA leaf-cert issuance (this chart owns its Certificate, rule #1) ─
+  # client-cert URI-SAN saName MUST match the IAM module-SA seed so the geo→iam
+  # Check edge resolves at the IAM-side trusted-principal map.
+  issuer:
+    name: kacho-internal-ca
+    kind: ClusterIssuer   # cluster-scoped, NOT namespaced Issuer
+  # server-cert DNS-SANs: BOTH dial-hosts — public Service `kacho-geo` (:9090)
+  # AND internal Service `kacho-geo-internal` (:9091). Consumers/api-gateway that
+  # dial the internal listener verify against `kacho-geo-internal`, so it must be
+  # in the leaf SAN (else mTLS handshake fails on the internal edge).
+  serverHosts: ["kacho-geo", "kacho-geo-internal"]
+  spiffe:
+    trustDomain: kacho.cloud
+    namespace: kacho
+    saName: kacho-geo
+  leafDuration: 2160h
+  leafRenewBefore: 720h
+  serverSecretName: kacho-geo-server-tls
+  clientSecretName: kacho-geo-client-tls
+  mountPath: /etc/kacho-geo/tls   # <mp>/server|client/{tls.crt,tls.key,ca.crt}
+  edges:
+    iamAuthz: false   # geo→iam InternalIAMService.Check (:9091)
+  serverName:
+    iamAuthz: kacho-iam-internal.kacho.svc.cluster.local
+
+# Extra free-form env (KACHO_GEO_*) — merged verbatim onto both containers.
+env: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# ─── S3 compute→geo data-migration job (epic kacho-geo S3) ─────────────────
+# Post-install/post-upgrade Helm-hook Job: copies regions/zones rows from the
+# kacho_compute DB → kacho_geo DB PRESERVING ids (so existing Instance.zone_id /
+# Subnet.zone_id / address_pools.zone_id / NLB region_id stay valid). Idempotent
+# (ON CONFLICT DO NOTHING) — the geo migration already seeds the same baseline
+# rows, so this carries only admin-added rows. Runs AFTER geo + pg-geo are up
+# (post-install/upgrade hook), BEFORE consumers are repointed (S4/S5 image switch
+# deploys later). On a greenfield/ephemeral stand (fe3455) the geo seed covers
+# the baseline → this is a no-op there, but required for stands with admin-added
+# geography.
+dataMigration:
+  enabled: false
+  # psql image with access to both Postgres instances (source kacho_compute,
+  # target kacho_geo). bitnami postgresql image carries psql.
+  image: docker.io/bitnamilegacy/postgresql:16
+  imagePullPolicy: IfNotPresent
+  # source = kacho_compute Postgres (where Region/Zone currently live, pre-S7).
+  source:
+    host: kacho-umbrella-pg-compute
+    port: "5432"
+    user: compute
+    name: kacho_compute
+    passwordSecretName: kacho-umbrella-pg-compute
+    passwordSecretKey: password
+    sslmode: disable
+  # target = kacho_geo Postgres (this service's DB). Reuses db.* by default; the
+  # template falls back to db.* when target.* is empty.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

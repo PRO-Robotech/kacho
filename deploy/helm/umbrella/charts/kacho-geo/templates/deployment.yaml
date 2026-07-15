@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}
+    spec:
+      # INFRA sec-hardening — pod-level securityContext (runAsNonRoot + seccomp
+      # RuntimeDefault). Per-container floor applied on each container below.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # goose migrator (separate binary, evgeniy §9 K.1 / AP-9) — applies the
+        # kacho_geo schema (regions/zones FK RESTRICT + geo_outbox + seed) BEFORE
+        # the API server starts. KACHO_GEO_DB_PASSWORD is required:true → the
+        # migrator needs the same DB env as the server.
+        - name: migrate
+          image: "{{ include "kacho-geo.image" . }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["/usr/local/bin/kacho-migrator", "up"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          env:
+            - name: KACHO_GEO_DB_HOST
+              value: "{{ .Values.db.host }}"
+            - name: KACHO_GEO_DB_PORT
+              value: "{{ .Values.db.port }}"
+            - name: KACHO_GEO_DB_USER
+              value: "{{ .Values.db.user }}"
+            - name: KACHO_GEO_DB_NAME
+              value: "{{ .Values.db.name }}"
+            - name: KACHO_GEO_DB_SSLMODE
+              value: "{{ .Values.db.sslmode }}"
+            - name: KACHO_GEO_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.passwordSecretName }}
+                  key: {{ .Values.db.passwordSecretKey }}
+      containers:
+        - name: {{ .Values.name }}
+          image: "{{ include "kacho-geo.image" . }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["/usr/local/bin/kacho-geo", "serve"]
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.ports.grpc }}
+            - name: grpc-internal
+              containerPort: {{ .Values.ports.internalGrpc }}
+          env:
+            - name: KACHO_GEO_DB_HOST
+              value: "{{ .Values.db.host }}"
+            - name: KACHO_GEO_DB_PORT
+              value: "{{ .Values.db.port }}"
+            - name: KACHO_GEO_DB_USER
+              value: "{{ .Values.db.user }}"
+            - name: KACHO_GEO_DB_NAME
+              value: "{{ .Values.db.name }}"
+            - name: KACHO_GEO_DB_SSLMODE
+              value: "{{ .Values.db.sslmode }}"
+            - name: KACHO_GEO_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.passwordSecretName }}
+                  key: {{ .Values.db.passwordSecretKey }}
+            - name: KACHO_GEO_GRPC_PORT
+              value: "{{ .Values.ports.grpc }}"
+            - name: KACHO_GEO_INTERNAL_PORT
+              value: "{{ .Values.ports.internalGrpc }}"
+            # AuthN fail-closed gate (dev | production | production-strict).
+            - name: KACHO_GEO_AUTH_MODE
+              value: "{{ .Values.authMode }}"
+            # geo→iam per-RPC authz Check (InternalIAMService.Check on iam :9091).
+            - name: KACHO_GEO_AUTHZ_IAM_GRPC_ADDR
+              value: "{{ .Values.authzIamGrpcAddr }}"
+            - name: KACHO_GEO_AUTHZ_BREAKGLASS
+              value: "{{ .Values.authzBreakglass }}"
+            {{- if .Values.mtls.enable }}
+            {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
+            {{- $cli := printf "%s/client" .Values.mtls.mountPath }}
+            # SEC-F mTLS server-creds (both listeners) — corelib grpcsrv.TLSServer
+            # via config.LoadPrefixed("KACHO_GEO"). ca.crt = client-CA bundle.
+            # Internal :9091 is NOT exempt from mTLS (security.md AuthN+AuthZ ВЕЗДЕ).
+            - name: KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_GEO_PUBLIC_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_GEO_PUBLIC_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_GEO_PUBLIC_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            - name: KACHO_GEO_INTERNAL_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_GEO_INTERNAL_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_GEO_INTERNAL_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_GEO_INTERNAL_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- if .Values.mtls.edges.iamAuthz }}
+            # geo→iam Check (internal :9091) client-creds — grpcclient.TLSClient.
+            # ServerName = kacho-iam-internal (∈ iam server-SAN).
+            - name: KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_GEO_IAM_AUTHZ_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_GEO_IAM_AUTHZ_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_GEO_IAM_AUTHZ_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_GEO_IAM_AUTHZ_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.iamAuthz | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          volumeMounts:
+            # Writable scratch for the read-only-rootfs container.
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.mtls.enable }}
+            # SEC-F mTLS — cert-manager internal-CA server + client secrets in
+            # separate dirs. cert-manager writes tls.crt/tls.key/ca.crt.
+            - name: mtls-server
+              mountPath: {{ printf "%s/server" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            - name: mtls-client
+              mountPath: {{ printf "%s/client" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            {{- end }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        # Writable scratch for the read-only-rootfs container.
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.mtls.enable }}
+        # SEC-F mTLS — cert-manager internal-CA secrets (server + client).
+        - name: mtls-server
+          secret:
+            secretName: {{ .Values.mtls.serverSecretName | quote }}
+        - name: mtls-client
+          secret:
+            secretName: {{ .Values.mtls.clientSecretName | quote }}
+        {{- end }}

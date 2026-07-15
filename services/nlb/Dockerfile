@@ -10,8 +10,8 @@ WORKDIR /src
 COPY . .
 
 RUN go mod download
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/kacho-loadbalancer ./cmd/kacho-loadbalancer
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/migrator           ./cmd/migrator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/kacho-loadbalancer ./services/nlb/cmd/kacho-loadbalancer
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/migrator           ./services/nlb/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.20
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates

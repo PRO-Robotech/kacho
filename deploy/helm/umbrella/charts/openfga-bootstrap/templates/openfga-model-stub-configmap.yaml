@@ -1,0 +1,632 @@
+{{- if .Values.openfgaBootstrap.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.1 / design §4) — full OpenFGA Authorization Model v2.
+=====================================================================================
+
+KAC-127 reconciliation: `model.fga` / `model.json` ниже — сгенерированы из
+**канонического** артефакта `kacho-proto/proto/kacho/cloud/iam/v1/fga_model.fga`
+(единый источник истины). DSL покрывает:
+  - cluster (singleton `cluster_kacho_root`) с system_admin / system_viewer /
+    billing_admin / console / any_admin (alias for system_admin since KAC-214 /
+    RBAC v2 dropped the break-glass surface).
+  - account / project tiers (B2B Organization tier fully removed — RBAC-2026
+    Contract-B). account.admin = direct subjects `or owner`; flat per-object
+    materialization, no access cascade (Contract-A).
+  - per-service resource-types: vpc_network / vpc_subnet / vpc_security_group /
+    vpc_route_table / vpc_address / vpc_gateway /
+    vpc_network_interface / vpc_address_pool / compute_instance / compute_disk /
+    compute_image / compute_snapshot / lb_network_load_balancer /
+    lb_target_group.
+  - IAM resource-types (per-resource scope в permission catalog scope_extractor):
+    iam_user / iam_service_account / iam_group / iam_role / iam_access_binding /
+    iam_condition.
+  - 6 предустановленных Conditions (mfa_fresh / non_expired / source_ip_in_range /
+    jit_window / business_hours / device_compliant). break_glass_window removed
+    in KAC-214 (RBAC v2).
+
+Bootstrap-job (см. openfga-bootstrap-job.yaml) реализует idempotent-deploy
+(sha256-compare DSL с current Secret annotation, skip-write если совпадает;
+иначе WriteAuthorizationModel из `data.model.json` + patch Secret
+`openfga-model-id.current` + annotate Deployments для rolling-restart).
+
+KAC-127 (deploy#38 fix): bootstrap-job больше НЕ делает runtime DSL→JSON
+transform. Причина: `openfga/cli` image — distroless single-binary (нет
+`/bin/sh`), `fga model transform` умеет писать только в stdout (нет `--output`),
+поэтому init-container `dsl-transform` падал `exec: "/bin/sh": not found`.
+Решение — pre-transform на build/commit-time: `data.model.json` ниже —
+готовый OpenFGA-JSON, сгенерированный `fga model transform` из `data.model.fga`.
+DSL frozen (design §4), drift невозможен; regenerate-команда — см.
+`make openfga-model-json` (kacho-deploy/Makefile). Bootstrap-job читает
+`model.json` напрямую и шлёт его `WriteAuthorizationModel`-эндпоинту;
+`model.fga` остаётся для human-readable diff + sha256-idempotency.
+
+Naming convention (запреты #2): все types — kacho.cloud.<domain>-style.
+Conditions — CEL-syntax (OpenFGA 1.5+ stable feature, см. P3-D3).
+
+ВНИМАНИЕ при edit'е:
+  - НЕ редактировать DSL здесь напрямую. Канонический источник —
+    `kacho-proto/proto/kacho/cloud/iam/v1/fga_model.fga`. После правки канона
+    регенерировать оба блока: `make openfga-model-json`.
+  - Любое изменение DSL → новый authorization_model_id (P3-D1: versioned +
+    immutable). Bootstrap-job detect'ит sha256-diff DSL'а и пишет новую модель.
+  - На rollback (helm rollback) FGA-engine retains old model_id (immutable, никогда
+    не удаляет) → rollback просто пиннит Secret обратно. См. P3.GWT-04.
+
+DataSource хранения id'а — Kubernetes Secret `openfga-model-id` (P3-D2):
+  metadata.name        = openfga-model-id
+  metadata.namespace   = {{ .Release.Namespace }}
+  data.current         = <base64 model_id ULID>
+  annotations:
+    kacho-deploy/last-applied-dsl-sha256: <hex>
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.openfgaBootstrap.authorizationModelConfigMap }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: openfga-bootstrap
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    # Hash content of DSL — позволяет bootstrap-job-у быстро sha256-compare без
+    # пересчёта на каждый запуск (idempotency fast-path).
+    kacho.cloud/dsl-version: "v2"
+data:
+  model.fga: |-
+    model
+      schema 1.1
+
+    # OpenFGA Authorization Model v2 — Kachō (rbac-2026 Contract-A: FLAT INDEX).
+    #
+    # This file is the **canonical source** of the authorization model. It is
+    # bundled into kacho-proto so every consumer (kacho-iam, openfga-bootstrap-job,
+    # admin-UI catalog) reads from the same artifact. Helm umbrella's
+    # `openfga-model-stub-configmap.yaml` is generated from this file at
+    # image-build time (acceptance §5.1) — `make openfga-model-json`.
+    #
+    # rbac-2026 Contract-A (Explicit RBAC model 2026, acceptance §0 D-5 / §9):
+    # the model is now a **FLAT INDEX** (Zanzibar-as-storage). The ReBAC ACCESS
+    # cascade is GONE — there are no more `<rel> from account|project|cluster|
+    # load_balancer` access-derivations and no `scope_grant` carrier (`type
+    # scope_grant` + `sg_*` pointers + `g_*_<type>` grant-resolvers, #177 — all
+    # removed). Access is materialized PER-OBJECT by the iam reconciler; Check is a
+    # direct tuple lookup plus the cluster-admin short-circuit (D-9, in Go, on
+    # `cluster:cluster_kacho_root#system_admin`).
+    #
+    # What is KEPT and why:
+    #   - direct relation-tuples on every type (`v_*`, tier viewer/editor/admin) —
+    #     the materialized flat index;
+    #   - cluster super-admin relations (system_admin/system_viewer/...) — D-9
+    #     short-circuit anchor (relation-tuple must exist even though the gate is
+    #     enforced in Go);
+    #   - STRUCTURAL parent-pointer relations (`account: [account]`,
+    #     `project: [project]`, `cluster: [cluster]`, `load_balancer: [...]`) —
+    #     needed for list-by-account, owner-binding lifecycle and the
+    #     cluster-singleton write-enforcement. These are typed pointers, NOT access
+    #     cascades (no `from` derivation reads them);
+    #   - CEL conditions (unchanged).
+    #
+    # Contract-B (acceptance D-12) REMOVED the B2B `type organization` and every
+    # `... from organization` derivation — Organization is fully gone.
+    #
+    # DSL conventions (acceptance §4):
+    #   - `cluster:cluster_kacho_root`     — singleton enforced on write-side
+    #     (P3-D17). One global cluster object.
+    #   - `account` / `project` — STRUCTURAL parents
+    #     (cluster ▶ account ▶ project ▶ <domain resource>);
+    #     parent-pointers only, no access cascade (Contract-A flat).
+    #   - per-domain object types — `vpc_network`, `vpc_subnet`, `vpc_address`,
+    #     `vpc_security_group`, `vpc_route_table`, `vpc_gateway`,
+    #     `vpc_network_interface`, `vpc_address_pool`,
+    #     `compute_instance`, `compute_disk`, `compute_image`, `compute_snapshot`,
+    #     `lb_network_load_balancer`, `lb_target_group`,
+    #     `lb_listener` (KAC-178 §4 — Listener as first-class FGA object),
+    #     `iam_role`, `iam_access_binding`, `iam_service_account`, `iam_group`,
+    #     `iam_user`, `iam_condition`.
+    #   - relations: `viewer` / `editor` / `admin` / `owner` / `member` per the
+    #     YC-style roles vocabulary (KAC-121).
+    #   - conditional relations: `with` clause names a Condition (built-in or
+    #     custom) — FGA pre-compiles CEL on `WriteAuthorizationModel`.
+
+    # ---------------------------------------------------------------------------
+    # Generic principal / subject types.
+    # ---------------------------------------------------------------------------
+
+    type user
+
+    type service_account
+
+    type federated_subject
+
+    # group — subject-grouping type. `group#member` usersets are accepted as
+    # direct subjects on hierarchy + resource relations.
+    type group
+      relations
+        define member: [user, service_account, federated_subject, group#member]
+
+    # ---------------------------------------------------------------------------
+    # Cluster — singleton "cluster_kacho_root". Write-side enforcement rejects
+    # tuples with any other object id (P3-D17).
+    #   - system_admin  — standing cluster administrator.
+    #   - system_viewer — read-only cluster catalog viewer.
+    #   - billing_admin — cluster-wide billing.
+    #   - console       — cluster console access, MFA-gated.
+    #   - any_admin     — alias for system_admin (kept as a relation name so
+    #                     hierarchy `any_admin from cluster` references stay
+    #                     valid across many downstream type definitions).
+    # ---------------------------------------------------------------------------
+
+    type cluster
+      relations
+        define system_admin: [user, service_account]
+        define system_viewer: [user, service_account]
+        define billing_admin: [user, service_account]
+        define console: [user with mfa_fresh, service_account with mfa_fresh]
+        define any_admin: system_admin
+        # KAC-178 §3: viewer — общий read-relation для глобальных reference-данных
+        # (compute.Region, compute.Zone, …), к которым каталог permissions
+        # привязан через scope_extractor {object_type: cluster, from_request_field: '*'}.
+        # `user:*` userset делает справочные данные читаемыми ЛЮБЫМ authenticated
+        # subject'ом (как и должно быть для tenant-facing reference-data). Также
+        # включает system_viewer / any_admin transitively. До этого relation'а на
+        # cluster не было `viewer` вообще → catalog `required_relation: "viewer"`
+        # на cluster-scope'ed RPC всегда возвращал deny → UI dashboard падал.
+        define viewer: [user, user:*, service_account] or system_viewer or any_admin
+        # KAC-198 follow-up: editor + admin — derived-relation aliases.
+        # iam/internal/service/authorize_service.go::resolveActionToRelation
+        # maps verbs to canonical relations:
+        #   get / list      → viewer    (covered above)
+        #   create / update → editor
+        #   delete          → admin
+        # Cluster-scoped Internal admin RPCs (compute.regions.delete, etc.)
+        # land on object cluster:cluster_kacho_root with derived relation
+        # admin/editor. Without these aliases, FGA Check returned no-path for
+        # every system_admin user even though their tuple was correct.
+        # `system_admin` covers BOTH editor + admin so a single tuple grants
+        # full mutation rights. `any_admin` is an alias for system_admin.
+        define editor: [user, service_account] or system_admin or any_admin
+        define admin: [user, service_account] or system_admin or any_admin
+
+    # ---------------------------------------------------------------------------
+    # Identity & hierarchy — account → project. (B2B Organization fully removed in
+    # RBAC-2026 Contract-B; cluster is the only structural parent above account.)
+    # ---------------------------------------------------------------------------
+
+    type account
+      relations
+        define cluster: [cluster]
+        define owner: [user]
+        define admin: [user, service_account, group#member] or owner
+        define editor: [user, service_account, group#member] or admin
+        # Contract-A (flat): the SEC-L `or system_viewer from cluster` read-cascade is
+        # REMOVED — account.viewer is no longer derived from a cluster relation. The
+        # kacho-vpc-operator's account-list visibility is now materialized per-object
+        # by the iam reconciler (direct viewer tuples on each account).
+        # Contract-B: the `... from organization` disjuncts and the `organization`
+        # parent-pointer are REMOVED — B2B Organization is fully gone (D-12).
+        define viewer: [user, service_account, group#member] or editor
+        define billing_admin: [user, service_account] or admin
+        # rbac-2026 P2 (D-6): account becomes a verb-bearing resource. These v_*
+        # relations are object-level read/write on the account OBJECT ITSELF — DIRECT
+        # subjects only, NO `or … from …` cascade, and NOT implied by viewer/editor/
+        # admin tiers (independent). A grant of e.g. `iam.account.get` materializes
+        # `account:<id> # v_get @ subj` → "see the account in a selector without any
+        # access to its contents" (D-2: no implicit hierarchy cascade into content).
+        # Full verb-set for symmetry with leaf resource types.
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type project
+      relations
+        define account: [account]
+        # Contract-A (flat): `cluster` is kept ONLY as a structural parent-pointer
+        # (project:<id>#cluster@cluster tuple written on Create) — the SEC-L
+        # `system_viewer from cluster` read-cascade is removed (per-object now).
+        define cluster: [cluster]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        # rbac-2026 P2 (D-6): project becomes a verb-bearing resource. Same contract
+        # as account.v_* — DIRECT subjects only, NO cascade, NOT implied by tiers.
+        # A grant materializes `project:<id> # v_get @ subj` (object-level access to
+        # the project itself, never to its contents — D-2). Full verb-set for
+        # symmetry with leaf resource types.
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    # ---------------------------------------------------------------------------
+    # IAM resources. Group / ServiceAccount / Role / User are account-scoped
+    # (their `parent` relation cascades from the owning Account); AccessBinding
+    # / Condition are project-scoped (their `parent` cascades from the Project
+    # the binding is attached to).
+    # ---------------------------------------------------------------------------
+
+    type iam_user
+      relations
+        define account: [account]
+        define subject: [user]
+        define admin: [user, service_account, group#member]
+        # editor / viewer — directly-assignable (subject-list), а не computed-only:
+        # reconciler пишет back-compat tier-tuple (`iam_user:<id> # viewer @ subj`),
+        # и computed-only relation (`viewer: subject or editor`) отверг бы такую запись
+        # (poison). v_* НЕ union-ятся в tier (Design B развязка, D-6a).
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or subject or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type iam_service_account
+      relations
+        define account: [account]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define user: [user, service_account] or editor
+        define token_creator: [user, service_account] or admin
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type iam_group
+      relations
+        define account: [account]
+        define member: [user, service_account]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type iam_role
+      relations
+        define account: [account]
+        define admin: [user, service_account, group#member]
+        # editor / viewer — directly-assignable (poison-fix): reconciler пишет
+        # back-compat tier-tuple, computed-only relation отверг бы запись. v_* НЕ
+        # union-ятся в tier (Design B развязка, D-6a).
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type iam_access_binding
+      relations
+        define project: [project]
+        define account: [account]
+        define cluster: [cluster]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type iam_condition
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        # editor / viewer — directly-assignable (poison-fix): reconciler пишет
+        # back-compat tier-tuple, computed-only relation отверг бы запись. v_* НЕ
+        # union-ятся в tier (Design B развязка, D-6a).
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    # SEC-A/SEC-C — FGA-proxy authority object. Modules (kacho-vpc / kacho-compute /
+    # kacho-nlb) NEVER write to FGA directly; they call InternalIAMService.
+    # RegisterResource/UnregisterResource, gated by a ReBAC Check
+    # `service_account:<sva>#fga_writer@iam_fgaproxy:system` (authzguard.FGAProxyGate,
+    # fgaProxyObject="iam_fgaproxy:system"). Without this type the Check is rejected
+    # by OpenFGA ("object type is undefined in the authorization model" → status 400),
+    # the gate denies every module, and NO owner-hierarchy tuple is ever written — so
+    # resource creators cannot view their own resources once real authz is enforced.
+    # The fga_writer tuples are seeded by kacho-iam migration 0009 (least-priv).
+    type iam_fgaproxy
+      relations
+        define fga_writer: [service_account]
+
+    # ---------------------------------------------------------------------------
+    # VPC domain.
+    # ---------------------------------------------------------------------------
+
+    type vpc_network
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type vpc_subnet
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define use: [user, service_account] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type vpc_security_group
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type vpc_route_table
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type vpc_address
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define use: [user, service_account] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type vpc_gateway
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type vpc_network_interface
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type vpc_address_pool
+      relations
+        define cluster: [cluster]
+        define admin: [user, service_account]
+        define viewer: [user, service_account] or admin
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    # ---------------------------------------------------------------------------
+    # Compute domain.
+    # ---------------------------------------------------------------------------
+
+    type compute_instance
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define ssh: [user with mfa_fresh, service_account] or admin
+        define console: [user with mfa_fresh] or admin
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type compute_disk
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define use: [user, service_account] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type compute_image
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define use: [user, service_account] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type compute_snapshot
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    # ---------------------------------------------------------------------------
+    # Load-balancer domain.
+    # ---------------------------------------------------------------------------
+
+    type lb_network_load_balancer
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type lb_target_group
+      relations
+        define project: [project]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    # KAC-178 §4: lb_listener — first-class FGA object для Listener (design §3.3).
+    # Contract-A (flat model): listener no longer INHERITS permissions from its
+    # parent load balancer via a `from load_balancer` access cascade — access is
+    # materialized per-object (reconciler). The `load_balancer` relation below is
+    # kept ONLY as a structural parent-pointer (list-by-LB / lifecycle), not as an
+    # access cascade. api-gateway permission_catalog.json keyed на этот type для
+    # Listener Get/Update/Delete/ListOperations (PR PRO-Robotech/kacho-api-gateway#37).
+    type lb_listener
+      relations
+        define load_balancer: [lb_network_load_balancer]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    # ---------------------------------------------------------------------------
+    # registry (kacho-registry) — namespace-реестр (registry_registry) и per-repo
+    # authz-объект (registry_repository). Flat verb-bearing (как vpc/lb): v_* —
+    # прямые, развязаны от tier. `project` линкует реестр к проекту, `owner` несёт
+    # creator-tuple (registry пишет owner через RegisterResource). Репозиторий —
+    # child реестра (`parent`), доступ материализуется per-object реконсайлером.
+    # ---------------------------------------------------------------------------
+
+    type registry_registry
+      relations
+        define project: [project]
+        define owner: [user, service_account]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        define v_get: [user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    type registry_repository
+      relations
+        define parent: [registry_registry]
+        define owner: [user, service_account]
+        define admin: [user, service_account, group#member]
+        define editor: [user, service_account, group#member] or admin
+        define viewer: [user, service_account, group#member] or editor
+        # RG-1 D-7: `user:*` public-read wildcard — anonymous pull of a PUBLIC repo.
+        # The wildcard grants v_get ONLY on repos that ALSO carry an explicit
+        # `user:* v_get` tuple emitted by the registry overlay (visibility=PUBLIC);
+        # absent that tuple `user:*` has no access → uniform 404. ONLY v_get gains
+        # the wildcard — no write relation does (anon is a read-only floor, B14).
+        define v_get: [user:*, user, service_account, group#member]
+        define v_list: [user, service_account, group#member]
+        define v_create: [user, service_account, group#member]
+        define v_update: [user, service_account, group#member]
+        define v_delete: [user, service_account, group#member]
+
+    # ---------------------------------------------------------------------------
+    # Conditions catalog — 7 frozen built-ins (acceptance §4.5).
+    # ---------------------------------------------------------------------------
+
+    condition mfa_fresh(amr_claims: list<string>, acr_value: string, current_time: timestamp, mfa_at: timestamp) {
+      acr_value == "3" &&
+      "webauthn" in amr_claims &&
+      current_time - mfa_at < duration("15m")
+    }
+
+    condition non_expired(current_time: timestamp, valid_until: timestamp) {
+      current_time < valid_until
+    }
+
+    condition source_ip_in_range(client_ip: ipaddress, allowed_cidrs: list<string>) {
+      allowed_cidrs.exists(c, client_ip.in_cidr(c))
+    }
+
+    condition jit_window(current_time: timestamp, activated_at: timestamp, ttl_seconds: int) {
+      current_time - activated_at < duration(string(ttl_seconds) + "s")
+    }
+
+    condition business_hours(current_time: timestamp, tz: string, start_h: int, end_h: int) {
+      current_time.getHours(tz) >= start_h && current_time.getHours(tz) < end_h
+    }
+
+    condition device_compliant(device_attestation: string, allowed_attestations: list<string>) {
+      device_attestation in allowed_attestations
+    }
+
+  # Pre-transformed OpenFGA-JSON. Generated from the canonical
+  # kacho-proto fga_model.fga via `make openfga-model-json`. Do NOT edit
+  # by hand — the bootstrap-job consumes this verbatim.
+  model.json: |-
+    {"schema_version":"1.1","type_definitions":[{"type":"user"},{"type":"service_account"},{"type":"federated_subject"},{"metadata":{"relations":{"member":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"type":"federated_subject"},{"relation":"member","type":"group"}]}}},"relations":{"member":{"this":{}}},"type":"group"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"any_admin":{},"billing_admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"console":{"directly_related_user_types":[{"condition":"mfa_fresh","type":"user"},{"condition":"mfa_fresh","type":"service_account"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"system_admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"system_viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"user","wildcard":{}},{"type":"service_account"}]}}},"relations":{"admin":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"system_admin"}},{"computedUserset":{"relation":"any_admin"}}]}},"any_admin":{"computedUserset":{"relation":"system_admin"}},"billing_admin":{"this":{}},"console":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"system_admin"}},{"computedUserset":{"relation":"any_admin"}}]}},"system_admin":{"this":{}},"system_viewer":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"system_viewer"}},{"computedUserset":{"relation":"any_admin"}}]}}},"type":"cluster"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"billing_admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"cluster":{"directly_related_user_types":[{"type":"cluster"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"owner":{"directly_related_user_types":[{"type":"user"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"owner"}}]}},"billing_admin":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"cluster":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"owner":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"account"},{"metadata":{"relations":{"account":{"directly_related_user_types":[{"type":"account"}]},"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"cluster":{"directly_related_user_types":[{"type":"cluster"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"account":{"this":{}},"admin":{"this":{}},"cluster":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"project"},{"metadata":{"relations":{"account":{"directly_related_user_types":[{"type":"account"}]},"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"subject":{"directly_related_user_types":[{"type":"user"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"account":{"this":{}},"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"subject":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"subject"}},{"computedUserset":{"relation":"editor"}}]}}},"type":"iam_user"},{"metadata":{"relations":{"account":{"directly_related_user_types":[{"type":"account"}]},"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"token_creator":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"user":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"account":{"this":{}},"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"token_creator":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"user":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"iam_service_account"},{"metadata":{"relations":{"account":{"directly_related_user_types":[{"type":"account"}]},"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"member":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"account":{"this":{}},"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"member":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"iam_group"},{"metadata":{"relations":{"account":{"directly_related_user_types":[{"type":"account"}]},"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"account":{"this":{}},"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"iam_role"},{"metadata":{"relations":{"account":{"directly_related_user_types":[{"type":"account"}]},"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"cluster":{"directly_related_user_types":[{"type":"cluster"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"account":{"this":{}},"admin":{"this":{}},"cluster":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"iam_access_binding"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"iam_condition"},{"metadata":{"relations":{"fga_writer":{"directly_related_user_types":[{"type":"service_account"}]}}},"relations":{"fga_writer":{"this":{}}},"type":"iam_fgaproxy"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"vpc_network"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"use":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"use":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"vpc_subnet"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"vpc_security_group"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"vpc_route_table"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"use":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"use":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"vpc_address"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"vpc_gateway"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"vpc_network_interface"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"cluster":{"directly_related_user_types":[{"type":"cluster"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]}}},"relations":{"admin":{"this":{}},"cluster":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}}},"type":"vpc_address_pool"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"console":{"directly_related_user_types":[{"condition":"mfa_fresh","type":"user"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"ssh":{"directly_related_user_types":[{"condition":"mfa_fresh","type":"user"},{"type":"service_account"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"console":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"ssh":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"compute_instance"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"use":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"use":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"compute_disk"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"use":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"use":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"compute_image"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"compute_snapshot"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"lb_network_load_balancer"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"lb_target_group"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"load_balancer":{"directly_related_user_types":[{"type":"lb_network_load_balancer"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"load_balancer":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}}},"type":"lb_listener"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"project":{"directly_related_user_types":[{"type":"project"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"owner":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"project":{"this":{}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}},"owner":{"this":{}}},"type":"registry_registry"},{"metadata":{"relations":{"admin":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"editor":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_create":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_delete":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_get":{"directly_related_user_types":[{"type":"user","wildcard":{}},{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_list":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"v_update":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"viewer":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"},{"relation":"member","type":"group"}]},"parent":{"directly_related_user_types":[{"type":"registry_registry"}]},"owner":{"directly_related_user_types":[{"type":"user"},{"type":"service_account"}]}}},"relations":{"admin":{"this":{}},"editor":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"admin"}}]}},"v_create":{"this":{}},"v_delete":{"this":{}},"v_get":{"this":{}},"v_list":{"this":{}},"v_update":{"this":{}},"viewer":{"union":{"child":[{"this":{}},{"computedUserset":{"relation":"editor"}}]}},"parent":{"this":{}},"owner":{"this":{}}},"type":"registry_repository"}],"conditions":{"business_hours":{"expression":"current_time.getHours(tz) >= start_h && current_time.getHours(tz) < end_h","name":"business_hours","parameters":{"current_time":{"type_name":"TYPE_NAME_TIMESTAMP"},"end_h":{"type_name":"TYPE_NAME_INT"},"start_h":{"type_name":"TYPE_NAME_INT"},"tz":{"type_name":"TYPE_NAME_STRING"}}},"device_compliant":{"expression":"device_attestation in allowed_attestations","name":"device_compliant","parameters":{"allowed_attestations":{"generic_types":[{"type_name":"TYPE_NAME_STRING"}],"type_name":"TYPE_NAME_LIST"},"device_attestation":{"type_name":"TYPE_NAME_STRING"}}},"jit_window":{"expression":"current_time - activated_at < duration(string(ttl_seconds) + \"s\")","name":"jit_window","parameters":{"activated_at":{"type_name":"TYPE_NAME_TIMESTAMP"},"current_time":{"type_name":"TYPE_NAME_TIMESTAMP"},"ttl_seconds":{"type_name":"TYPE_NAME_INT"}}},"mfa_fresh":{"expression":"acr_value == \"3\" &&\n  \"webauthn\" in amr_claims &&\n  current_time - mfa_at < duration(\"15m\")","name":"mfa_fresh","parameters":{"acr_value":{"type_name":"TYPE_NAME_STRING"},"amr_claims":{"generic_types":[{"type_name":"TYPE_NAME_STRING"}],"type_name":"TYPE_NAME_LIST"},"current_time":{"type_name":"TYPE_NAME_TIMESTAMP"},"mfa_at":{"type_name":"TYPE_NAME_TIMESTAMP"}}},"non_expired":{"expression":"current_time < valid_until","name":"non_expired","parameters":{"current_time":{"type_name":"TYPE_NAME_TIMESTAMP"},"valid_until":{"type_name":"TYPE_NAME_TIMESTAMP"}}},"source_ip_in_range":{"expression":"allowed_cidrs.exists(c, client_ip.in_cidr(c))","name":"source_ip_in_range","parameters":{"allowed_cidrs":{"generic_types":[{"type_name":"TYPE_NAME_STRING"}],"type_name":"TYPE_NAME_LIST"},"client_ip":{"type_name":"TYPE_NAME_IPADDRESS"}}}}}
+{{- end }}

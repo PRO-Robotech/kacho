@@ -1,0 +1,143 @@
+{{- if .Values.kratosSelfServiceUI.enabled }}
+# kratos-selfservice-ui-node — официальный Ory UI для login/registration/recovery/
+# verification/settings flows. Интегрируется с Kratos через ENV (KRATOS_BROWSER_URL,
+# KRATOS_PUBLIC_URL) + опционально с Hydra (HYDRA_ADMIN_URL для consent flow).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos-selfservice-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: kratos-selfservice-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kratos-selfservice-ui
+  template:
+    metadata:
+      labels:
+        app: kratos-selfservice-ui
+    spec:
+      {{- with .Values.kratosSelfServiceUI.podSecurityContext }}
+      # INFRA sec-hardening r2 — restricted pod floor (runAsNonRoot + seccomp
+      # RuntimeDefault). The Ory image runs as UID 10000; keep it non-root.
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ui
+          image: "{{ .Values.kratosSelfServiceUI.image.repository }}:{{ .Values.kratosSelfServiceUI.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          {{- with .Values.kratosSelfServiceUI.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            # readOnlyRootFilesystem — the image entrypoint is `npm run serve`;
+            # npm wants a writable cache + HOME. Redirect both into the emptyDir
+            # /tmp so the rootfs stays read-only.
+            - name: HOME
+              value: /tmp
+            - name: npm_config_cache
+              value: /tmp/.npm
+            - name: npm_config_update_notifier
+              value: "false"
+            - name: KRATOS_BROWSER_URL
+              value: {{ .Values.kratosSelfServiceUI.kratosBrowserUrl | quote }}
+            - name: KRATOS_PUBLIC_URL
+              value: {{ .Values.kratosSelfServiceUI.kratosPublicUrl | quote }}
+            {{- if .Values.kratosSelfServiceUI.hydraAdminUrl }}
+            - name: HYDRA_ADMIN_URL
+              value: {{ .Values.kratosSelfServiceUI.hydraAdminUrl | quote }}
+            {{- end }}
+            {{- $cs := .Values.kratosSelfServiceUI.cookieSecret }}
+            {{- if not (kindIs "map" $cs) }}
+            {{- fail "kratosSelfServiceUI.cookieSecret must be a map {existingSecret,existingSecretKey,value}; the committed scalar default was removed (INFRA sec-hardening r2)." }}
+            {{- end }}
+            {{- $csKey := $cs.existingSecretKey | default "cookieSecret" }}
+            # Session + CSRF cookie signing secret. Prod: operator-provisioned
+            # Secret via .existingSecret (mirrors the kacho-iam hook-token pattern).
+            # Dev: throwaway inline .value. Neither set → render fails fast (no
+            # git-committed default ships into any environment).
+            {{- if $cs.existingSecret }}
+            - name: COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $cs.existingSecret }}
+                  key: {{ $csKey }}
+            - name: CSRF_COOKIE_NAME
+              value: "csrf_ory"
+            - name: CSRF_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $cs.existingSecret }}
+                  key: {{ $csKey }}
+            {{- else if $cs.value }}
+            - name: COOKIE_SECRET
+              value: {{ $cs.value | quote }}
+            - name: CSRF_COOKIE_NAME
+              value: "csrf_ory"
+            - name: CSRF_COOKIE_SECRET
+              value: {{ $cs.value | quote }}
+            {{- else }}
+            {{- fail "kratosSelfServiceUI.cookieSecret: set .existingSecret (prod: operator-provisioned Secret) or .value (dev inline) — refusing to render without a cookie/CSRF signing secret." }}
+            {{- end }}
+            # Outbound TLS verification stays ON by default. The dev stand opts
+            # into skipping it via insecureSkipTLSVerify; prod keeps it enforced
+            # and may inject an internal-CA bundle via caCert.* (NODE_EXTRA_CA_CERTS).
+            {{- if .Values.kratosSelfServiceUI.insecureSkipTLSVerify }}
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
+            {{- else if .Values.kratosSelfServiceUI.caCert.secretName }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: {{ printf "%s/%s" (.Values.kratosSelfServiceUI.caCert.mountPath | default "/etc/kratos-ui-ca") (.Values.kratosSelfServiceUI.caCert.key | default "ca.crt") | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.kratosSelfServiceUI.caCert.secretName }}
+            - name: ca-bundle
+              mountPath: {{ .Values.kratosSelfServiceUI.caCert.mountPath | default "/etc/kratos-ui-ca" }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.kratosSelfServiceUI.caCert.secretName }}
+        - name: ca-bundle
+          secret:
+            secretName: {{ .Values.kratosSelfServiceUI.caCert.secretName }}
+            items:
+              - key: {{ .Values.kratosSelfServiceUI.caCert.key | default "ca.crt" }}
+                path: {{ .Values.kratosSelfServiceUI.caCert.key | default "ca.crt" }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-selfservice-ui
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: kratos-selfservice-ui
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+{{- end }}

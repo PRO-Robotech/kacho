@@ -1,0 +1,58 @@
+{{- /*
+NetworkPolicy: per-datastore Postgres ingress allowlist (INFRA sec-hardening r5b).
+
+Each backing Postgres StatefulSet (bitnami `postgresql` sub-chart, aliased pg-<svc>,
+pod label app.kubernetes.io/name=pg-<svc>) is otherwise reachable on :5432 from EVERY
+pod in the namespace — the bitnami sub-chart's own networkPolicy defaults to
+enabled=false, so nothing constrains the credential-bearing DB listeners. This template
+adds an explicit ingress allowlist per pg pod; once a pod is selected by ANY ingress
+NetworkPolicy it implicitly denies all other ingress, so each policy both allows the
+declared consumers and denies the rest (closes lateral movement to DB credentials —
+CIS Kubernetes 5.3.2 / OWASP A05:2021).
+
+Self-contained: each policy selects ONLY its own pg pod, so it can never break
+non-datastore traffic. Rendering an entry whose pg instance is not deployed is harmless
+(the podSelector matches no pod). The `from` selectors are cluster-tunable DEFAULTS —
+verify they cover every legitimate consumer (service pod + init-migrator + rotator/init
+Jobs) for your cluster before enabling. The kacho-iam consumer label `app: kacho-iam`
+covers its Deployment, the `migrate` init-container, and the jwks-rotator CronJob (all
+carry it); the compute→geo `geo-data-migration` Job selector is included on pg-compute
+(source) and pg-geo (target). Third-party auth-tier stores (pg-kratos / pg-hydra) are
+left to the Ory sub-charts' own NetworkPolicy support; add entries here per cluster if
+you prefer umbrella-owned policies (data-driven — no template change needed).
+
+Disabled by default: the dev target (kind + kindnet) does not enforce NetworkPolicy and
+:5432 port-forward debugging would break. Enable on a NetworkPolicy-enforcing CNI:
+  networkPolicy:
+    datastore:
+      enabled: true
+See docs/architecture/known-divergences.md §4.
+*/ -}}
+{{- if .Values.networkPolicy.datastore.enabled }}
+{{- $port := .Values.networkPolicy.datastore.port | default 5432 }}
+{{- range .Values.networkPolicy.datastore.instances }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .name }}-ingress-allowlist
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: datastore-netpol
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .name }}
+      app.kubernetes.io/component: primary
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- toYaml .from | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ $port }}
+{{- end }}
+{{- end }}

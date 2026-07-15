@@ -1,0 +1,435 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# values.prod.yaml — Kachō umbrella PRODUCTION profile (fail-closed).
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This is the documented production values profile. The chart DEFAULT
+# (values.yaml) and the dev/CI profile (values.dev.yaml) intentionally run
+# `mode: dev` (anonymous → full access) + `ssl-mode: disable` + mTLS toggles
+# that the dev stand flips on/off for black-box REST (api-gateway#71 /
+# deploy#80). A bare `helm install` of the umbrella therefore lands on the
+# insecure dev posture. PRODUCTION DEPLOYMENTS MUST pass this file explicitly:
+#
+#   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
+#     -f ./helm/umbrella/values.prod.yaml \
+#     [-f ./helm/umbrella/values.prorobotech.yaml]   # image-tag overlay (optional)
+#     --wait --timeout 15m
+#
+# Layer the image-tag overlay (values.prorobotech.yaml / a per-cluster overlay)
+# AFTER this file. This profile is image-tag-agnostic — it sets ONLY the
+# security posture (auth mode, DB ssl-mode, mTLS), reusing the EXISTING SEC-F
+# cert-manager internal-CA wiring (no new PKI is introduced here).
+#
+# ─── What this profile flips (vs the dev/insecure default) ──────────────────
+#   1. AuthN mode → production / production-strict on every service that has a
+#      mode knob (api-gateway, kacho-iam, kacho-vpc, kacho-nlb). kacho-compute
+#      has no `mode` knob: it is a pure cluster-internal backend whose posture
+#      is per-RPC IAM Check (authzIam) + fail-closed list-filter + mTLS, all set
+#      below.
+#   2. Postgres ssl-mode → `require` (encrypted transport; the production floor).
+#      `require` — not `verify-full` — because the in-cluster Postgres TLS server
+#      cert + CA trust bundle are an infra concern provisioned per-cluster, not a
+#      chart value. Operators that wire a server-cert CA can override to
+#      `verify-full` per service. kacho-iam production-strict ALSO enforces
+#      `ssl-mode ∈ {require, verify-ca, verify-full}` at config-validate time.
+#   3. mTLS → ON, reusing the SEC-F internal-CA ClusterIssuer + the per-service
+#      leaf Certificates already shipped (kacho-<svc>-server-tls /
+#      kacho-<svc>-client-tls / api-gateway-tls / api-gateway-client-tls). Same
+#      enable + per-edge map the dev profile uses — just kept ON for every edge.
+#   4. AuthZ → enabled + fail-closed (failOpen=false) everywhere; breakglass off.
+#
+# ─── Secrets discipline (workspace rule: no secrets in values) ──────────────
+# This file contains NO secret material. AuthN secrets the production binaries
+# require are consumed from Secrets the chart already wires via secretKeyRef:
+#   - kacho-iam: KACHO_IAM_HOOK_TOKEN  ← kacho.hooks.tokenHookSecretName
+#                KACHO_IAM_JWKS_ENC_KEY ← kacho.iam.jwks.encKeySecretName
+#   - per-service DB password           ← <svc>.db.passwordSecretName
+#   - kratos-selfservice-ui COOKIE_SECRET/CSRF_COOKIE_SECRET
+#                                       ← kratosSelfServiceUI.cookieSecret.existingSecret
+#     (render fails fast if unset — no git-committed cookie/CSRF signing key)
+# The operator MUST provision those Secrets out-of-band (or via external-secrets)
+# BEFORE rollout — kacho-iam Config.Validate fails fast in production if the hook
+# secret / JWKS encryption key are missing (defense-in-depth, fail-closed).
+# Image tags + the kacho.domain root come from a layered per-cluster overlay.
+
+# ─── Root domain — override per environment via a per-cluster overlay ───────
+# (e.g. `-f values.<cluster>.yaml --set kacho.domain=cloud.example.com`). Left at
+# the chart default here so this profile stays cluster-neutral.
+
+# ─── cluster-internal mTLS PKI — ON (reuse SEC-F internal-CA, no new PKI) ────
+# Master switches: the cert-manager controller + the internal-CA ClusterIssuer
+# chain (templates/clusterissuer.yaml) + each sub-chart's own leaf Certificate.
+# Identical recipe to values.dev.yaml; production simply never turns it off.
+# NB: on a cluster that already runs cert-manager, set `cert-manager.enabled=false`
+# and point `mtls.internalCA.caNamespace` at that controller's
+# --cluster-resource-namespace (see values.fe3455.yaml) via a per-cluster overlay.
+mtls:
+  enabled: true
+cert-manager:
+  enabled: true
+
+# ─── api-gateway (edge) ─────────────────────────────────────────────────────
+api-gateway:
+  # AuthN: production-strict → Bearer REQUIRED (reject missing token) + Hydra
+  # JWKS RS256 validation. No devSecret (HS256 dev path is never used in prod).
+  authn:
+    mode: production-strict
+  # Hydra JWKS — the verifier fetches Hydra's JWKS from the cluster-internal
+  # Hydra PUBLIC Service (NOT the public ingress hairpin); `issuer` is the public
+  # OIDC issuer string the token `iss` claim must match (SEC-J exact-match).
+  hydra:
+    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+    issuer: "https://hydra.api.kacho.cloud"
+  # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
+  authz:
+    enabled: true
+    failOpen: false
+  # mTLS: external listener server cert + backend-dial client cert, every edge on.
+  # `hybridExternal: false` → external listener is strict (browser clients reach
+  # the gateway through the ingress TLS terminator, not this listener directly).
+  mtls:
+    enable: true
+    hybridExternal: false
+    serverSecretName: api-gateway-tls
+    edges:
+      vpc: true
+      compute: true
+      iam: true
+      nlb: true
+
+# ─── kacho-vpc ──────────────────────────────────────────────────────────────
+vpc:
+  # production-mode AuthN: anonymous fail-closed.
+  authn:
+    mode: production
+  repository:
+    postgres:
+      sslMode: require
+  # Defense-in-depth: lock the vpc internal :9091 listener to api-gateway only
+  # (umbrella templates/networkpolicy-vpc-internal.yaml). Empty adminPodsSelector
+  # → no extra admin pods; widen per cluster via a per-cluster overlay if needed.
+  networkPolicy:
+    enabled: true
+    adminPodsSelector: {}
+  # AuthZ: per-RPC IAM Check (default iamEndpoint kacho-iam-internal:9091),
+  # FGA-filtered List ON + fail-closed, write-side FGA ON, breakglass OFF.
+  authz:
+    breakglass: false
+    listFilter:
+      enabled: true
+      failOpen: false
+    tupleWrite:
+      enabled: true
+      openfgaEndpoint: kacho-umbrella-openfga:8080
+      storeIdSecretName: kacho-iam-openfga-store
+      storeIdSecretKey: store_id
+      modelIdSecretName: openfga-model-id
+      modelIdSecretKey: current
+      timeoutMs: 2000
+  # mTLS: server (gateway/compute/nlb dial here) + client (vpc→iam, vpc→compute).
+  mtls:
+    enable: true
+    edges:
+      iamRegister: true
+      iamProject: true
+      iamAuthz: true
+      compute: true
+
+# ─── kacho-compute ──────────────────────────────────────────────────────────
+# compute has no `mode` knob — it is a pure cluster-internal backend behind the
+# gateway. Production posture = mTLS + per-RPC IAM Check (authzIam, non-empty
+# grpcAddr) + fail-closed FGA list-filter + DB ssl-mode=require (env escape-hatch:
+# the compute Go config reads KACHO_COMPUTE_DB_SSLMODE, default `disable`).
+compute:
+  env:
+    KACHO_COMPUTE_DB_SSLMODE: require
+  authzIam:
+    grpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    tls: false
+  listFilter:
+    enabled: true
+    failOpen: false
+  authz:
+    tupleWrite:
+      enabled: true
+      openfgaEndpoint: kacho-umbrella-openfga:8080
+      storeIdSecretName: kacho-iam-openfga-store
+      storeIdSecretKey: store_id
+      modelIdSecretName: openfga-model-id
+      modelIdSecretKey: current
+      timeoutMs: 2000
+  # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc).
+  mtls:
+    enable: true
+    edges:
+      iamRegister: true
+      iamProject: true
+      iamAuthz: true
+      vpc: true
+
+# ─── kacho-geo (Geography Region/Zone leaf-service) ─────────────────────────
+# Production posture: AUTH_MODE=production (anonymous fail-closed) + DB ssl-mode
+# require + mTLS server-creds on BOTH listeners + the geo→iam Check client edge.
+# Internal :9091 is NOT exempt (security.md AuthN+AuthZ ВЕЗДЕ). authzIamGrpcAddr
+# stays at iam-internal :9091 (non-empty → per-RPC Check interceptor attached).
+# Image tag comes from the per-cluster image-tag overlay (placeholder default).
+kacho-geo:
+  authMode: production
+  authzBreakglass: false
+  db:
+    sslmode: require
+  mtls:
+    enable: true
+    edges:
+      iamAuthz: true
+  # S7: one-time compute→geo geography copy is complete; compute no longer owns
+  # Region/Zone (tables dropped). geo seeds its own baseline → the migration Job
+  # is obsolete and would fail reading the dropped kacho_compute source. Disabled;
+  # the gated template stays as a one-time tool (set enabled=true only for a stand
+  # that still has legacy compute-side geography to carry across).
+  dataMigration:
+    enabled: false
+    source:
+      sslmode: require
+
+# ─── kacho-iam (authz authority + identity tier) ────────────────────────────
+kacho-iam:
+  # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam).
+  mtls:
+    enable: true
+    # Server-side TLS for the HTTP hooks (:9092) + /metrics (:9095) listeners is
+    # ON in prod (kacho-iam#137, supersedes the OFF-gate #122/#136), reusing the
+    # SEC-F server cert — no new PKI.
+    #
+    # WHY ON in server-tls-only mode: the hooks edge carries three HMAC-authed Ory
+    # webhook endpoints (Hydra token/refresh + Kratos provision); all three callers
+    # are HTTP clients that present NO transport client-cert (Ory webhooks cannot).
+    # A single server-tls-only mode on :9092 correctly covers all three — it
+    # encrypts the transport + authenticates the server, while HMAC
+    # (X-Kacho-Hook-Token) remains the caller-auth (defense-in-depth). The metrics
+    # edge has no scrape client cert wired → server-tls-only too. mutual
+    # (RequireAndVerifyClientCert) stays available per edge via {hooks,metrics}
+    # ClientAuthMode when a client cert is provisioned. The prod Hydra OAuth2
+    # token/refresh webhook URLs are flipped to https://…:9092 and the Hydra pod
+    # mounts the internal-CA bundle so it trusts the kacho-iam server cert (below).
+    httpListeners: true
+    # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
+    hooksClientAuthMode: server-tls-only
+    metricsClientAuthMode: server-tls-only
+  config:
+    repository:
+      postgres:
+        # production-strict (below) enforces ssl-mode ∈ {require,verify-ca,verify-full}.
+        sslMode: require
+    # production-strict → Bearer required; Config.Validate also requires the
+    # AuthN secrets (KACHO_IAM_HOOK_TOKEN + KACHO_IAM_JWKS_ENC_KEY) — wired via
+    # secretKeyRef (kacho.hooks.* / kacho.iam.jwks.*); operator provisions them.
+    authn:
+      mode: production-strict
+    extapi:
+      openfga:
+        # ReBAC Check ON — store id injected by the openfga-bootstrap-job Secret.
+        enabled: true
+        endpoint: openfga:8081
+        storeIdSecretName: kacho-iam-openfga-store
+        storeIdSecretKey: store_id
+
+# ─── kacho-nlb (L4 NLB control-plane) ───────────────────────────────────────
+# Enabled in production; condition-gated pieces (sub-chart + its Postgres) on.
+kacho-nlb:
+  enabled: true
+  # mTLS: server (gateway dials here) + client (nlb→iam, nlb→vpc, nlb→compute).
+  mtls:
+    enable: true
+    edges:
+      iamRegister: true
+      iamProject: true
+      vpc: true
+      compute: true
+  db:
+    sslmode: require
+    # No plaintext password in values — reference an existing Secret (key
+    # `password`). Operator provisions kacho-umbrella-pg-nlb (or override the
+    # name per cluster). Same Secret the pg-nlb instance is configured with below.
+    existingSecret: kacho-umbrella-pg-nlb
+    existingSecretKey: password
+  config:
+    # production mode: authz.iam.addr required (set below) + breakglass forbidden.
+    mode: production
+    authz:
+      breakglass: false
+
+# ─── Per-service Postgres (database-per-service) — credentials via existingSecret ─
+# NO plaintext passwords in this profile. Each bitnami pg instance reads its
+# password from an existing Secret the operator provisions out-of-band (keys
+# `password` + `postgres-password`). username/database stay here (non-secret).
+# Override the Secret names per cluster via a layered overlay if they differ.
+pg-vpc:
+  auth:
+    username: vpc
+    database: kacho_vpc
+    existingSecret: kacho-umbrella-pg-vpc
+pg-compute:
+  auth:
+    username: compute
+    database: kacho_compute
+    existingSecret: kacho-umbrella-pg-compute
+pg-iam:
+  auth:
+    username: iam
+    database: kacho_iam
+    existingSecret: kacho-umbrella-pg-iam
+pg-geo:
+  auth:
+    username: geo
+    database: kacho_geo
+    existingSecret: kacho-umbrella-pg-geo
+pg-openfga:
+  enabled: true
+  auth:
+    username: openfga
+    database: openfga
+    existingSecret: kacho-umbrella-pg-openfga
+pg-nlb:
+  enabled: true
+  auth:
+    username: kacho_nlb
+    database: kacho_nlb
+    existingSecret: kacho-umbrella-pg-nlb
+pg-kratos:
+  enabled: true
+  auth:
+    username: kratos
+    database: kratos
+    existingSecret: kacho-umbrella-pg-kratos
+pg-hydra:
+  enabled: true
+  auth:
+    username: hydra
+    database: hydra
+    existingSecret: kacho-umbrella-pg-hydra
+
+# ─── OpenFGA ReBAC engine + bootstrap (required for production authz) ───────
+openfga:
+  enabled: true
+openfga-bootstrap:
+  openfga:
+    enabled: true
+  openfgaPdb:
+    enabled: true
+  openfgaBootstrap:
+    enabled: true
+
+# ─── Ory identity tier (Kratos + Hydra) — production authN flow ─────────────
+# Enabled so the production OIDC/JWT path the api-gateway verifier depends on is
+# present. Per-cluster URLs/issuers come from a per-cluster overlay layered on
+# top (the chart derives them from kacho.domain).
+kratos:
+  enabled: true
+hydra:
+  enabled: true
+  # Sub-phase 5.5 (kacho-iam#137) — prod transport hardening for the :9092 hooks
+  # listener. The OAuth2 token/refresh webhooks now go over https://…:9092 (the
+  # listener runs server-tls-only) and the Hydra pod mounts the SEC-F internal-CA
+  # bundle (ca.crt of the kacho-iam-server-tls secret — no new PKI) so its webhook
+  # client trusts the kacho-iam server cert. HMAC (X-Kacho-Hook-Token) is
+  # UNCHANGED — only the transport scheme moves http→https. (Kratos provision-URL
+  # routing is OUT OF SCOPE here — tracked as kacho-deploy#91.)
+  # Hydra OAuth2 webhook config (under the subchart's nested `hydra.config` key).
+  hydra:
+    config:
+      oauth2:
+        # token/refresh webhooks → https on the kacho-iam-internal Service :9092
+        # HTTP hooks listener (NOT the gRPC :9091). api_key HMAC header unchanged.
+        token_hook:
+          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/token"
+          auth:
+            type: api_key
+            config:
+              in: header
+              name: X-Kacho-Hook-Token
+              value: ${KACHO_IAM_HOOK_TOKEN}
+        refresh_token_hook:
+          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/refresh"
+          auth:
+            type: api_key
+            config:
+              in: header
+              name: X-Kacho-Hook-Token
+              value: ${KACHO_IAM_HOOK_TOKEN}
+  # Pod-level wiring (top-level `deployment` key of the Ory hydra subchart).
+  deployment:
+    # Inject the shared HMAC secret (for the ${KACHO_IAM_HOOK_TOKEN} expansion in
+    # the webhook config above) + point the Go TLS client at the mounted
+    # internal-CA bundle so Hydra trusts the kacho-iam server cert.
+    extraEnv:
+      - name: KACHO_IAM_HOOK_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: kacho-iam-hook-token
+            key: token
+      # Ory Hydra НЕ интерполирует ${KACHO_IAM_HOOK_TOKEN} в config-YAML — плейсхолдер
+      # уехал бы в X-Kacho-Hook-Token как литерал и HMAC-верификация hook'а падала бы.
+      # Значение auth-токена задаём через Ory env-override имена (config-путь
+      # oauth2.{token,refresh_token}_hook.auth.config.value), которые перекрывают YAML.
+      - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
+        valueFrom:
+          secretKeyRef:
+            name: kacho-iam-hook-token
+            key: token
+      - name: OAUTH2_REFRESH_TOKEN_HOOK_AUTH_CONFIG_VALUE
+        valueFrom:
+          secretKeyRef:
+            name: kacho-iam-hook-token
+            key: token
+      - name: SSL_CERT_FILE
+        value: /etc/kacho-iam-ca/ca.crt
+    extraVolumes:
+      - name: kacho-iam-internal-ca
+        secret:
+          # Reuse the SEC-F server secret — its ca.crt is the internal-CA bundle
+          # that signed the kacho-iam :9092 server cert (no new PKI).
+          secretName: kacho-iam-server-tls
+          items:
+            - key: ca.crt
+              path: ca.crt
+    extraVolumeMounts:
+      - name: kacho-iam-internal-ca
+        mountPath: /etc/kacho-iam-ca
+        readOnly: true
+kratos-selfservice-ui:
+  kratosSelfServiceUI:
+    enabled: true
+    # Session + CSRF cookie signing secret — operator-provisioned Secret
+    # (mirrors the kacho-iam hook-token pattern). There is NO committed default:
+    # the sub-chart FAILS render if this is unset while enabled, so a bare prod
+    # install can never fall back to a git-known signing key (CWE-798). The
+    # operator MUST provision this Secret out-of-band (or via external-secrets)
+    # BEFORE rollout, e.g.:
+    #   kubectl -n kacho create secret generic kratos-selfservice-ui-cookie-secret \
+    #     --from-literal=cookieSecret="$(head -c24 /dev/urandom | base64)"
+    cookieSecret:
+      existingSecret: kratos-selfservice-ui-cookie-secret
+      existingSecretKey: cookieSecret
+    # Outbound TLS verification stays ON in production (dev-only skip flag not set
+    # here). The in-cluster kratos/hydra upstreams are addressed over plain http
+    # cluster-internal; if an https terminator is introduced, wire the internal-CA
+    # bundle via caCert.secretName instead of disabling verification.
+    insecureSkipTLSVerify: false
+
+# ─── Defense-in-depth pod-to-pod NetworkPolicy — ON in production ───────────
+# (the dev default keeps it OFF so :9091 port-forward debugging works).
+opaSidecar:
+  networkPolicy:
+    enabled: true
+
+# Per-datastore Postgres :5432 ingress allowlist (templates/networkpolicy-datastore.yaml,
+# r5b). Default-off in the chart (kind/kindnet does not enforce NetworkPolicy; :5432
+# port-forward debugging in dev would break). Production runs a NetworkPolicy-enforcing
+# CNI and MUST flip it ON: once selected by this ingress policy each pg-<svc> pod
+# implicitly denies all other ingress, closing lateral movement to the credential-bearing
+# DB listeners (CIS Kubernetes 5.3.2 / OWASP A05:2021). The consumer `from` selectors
+# live in values.yaml (networkPolicy.datastore.instances). pg-kratos/pg-hydra are left
+# to the Ory sub-charts' own NetworkPolicy (docs/architecture/known-divergences.md §4).
+networkPolicy:
+  datastore:
+    enabled: true

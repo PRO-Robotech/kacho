@@ -1,0 +1,177 @@
+{{- if .Values.dataMigration.enabled }}
+{{- $dm := .Values.dataMigration }}
+{{- $src := $dm.source }}
+{{/*
+S3 compute→geo data-migration (epic kacho-geo S3). Post-install/post-upgrade
+Helm-hook Job: copies regions/zones rows from the kacho_compute DB → kacho_geo
+DB PRESERVING ids/region_id/status/name/created_at, so existing references
+(Instance.zone_id, Subnet.zone_id, address_pools.zone_id, NLB region_id) stay
+valid through the cutover.
+
+Mechanism (chosen: psql \copy stream → staging tables → INSERT … ON CONFLICT):
+  1. dump regions/zones from kacho_compute as CSV via `psql \copy … TO STDOUT`;
+  2. load each CSV into an UNLOGGED staging table in kacho_geo via `\copy … FROM STDIN`;
+  3. INSERT … SELECT FROM staging … ON CONFLICT (id) DO NOTHING.
+Idempotent: re-runs never duplicate / never fail; the geo migration already
+seeds the baseline rows (ru-central1 + ru-central1-{a,b,d}), so this carries
+only admin-added rows (ON CONFLICT DO NOTHING skips the baseline collision).
+created_at is carried verbatim (the INSERT lists created_at explicitly — not
+DEFAULT now()), so timestamps are preserved.
+
+Ordering: hook-weight ensures regions load BEFORE zones (zones.region_id FK
+RESTRICT → regions(id)). The Job is a post-install/post-upgrade hook → it runs
+AFTER geo + pg-geo are up and migrated. Consumers are repointed later (S4/S5
+image switch deploys after this).
+
+Greenfield/ephemeral stand (fe3455): the geo seed already covers the baseline →
+this Job is a no-op there (every row hits ON CONFLICT DO NOTHING). Still wired so
+stands WITH admin-added geography carry those rows across.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.name }}-data-migration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.name }}
+    kacho.cloud/job: geo-data-migration
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  # Hooks linger for inspection on failure; succeeded ones are GC'd by the
+  # hook-delete-policy above. ttlSecondsAfterFinished trims leftovers.
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}
+        kacho.cloud/job: geo-data-migration
+    spec:
+      restartPolicy: Never
+      # INFRA sec-hardening r3 — restricted pod floor, mirroring the kacho-geo
+      # Deployment (runAsNonRoot + seccomp).
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        # Writable scratch for the read-only rootfs (psql history under HOME=/tmp).
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: copy
+          image: "{{ $dm.image }}"
+          imagePullPolicy: {{ $dm.imagePullPolicy }}
+          # INFRA sec-hardening r3 — restricted container floor (non-root,
+          # read-only rootfs, drop ALL caps, no priv-esc, seccomp RuntimeDefault).
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          env:
+            # Read-only rootfs: psql writes ~/.psql_history on exit → HOME=/tmp.
+            - name: HOME
+              value: /tmp
+            # ── source: kacho_compute (Region/Zone live here pre-S7 contract) ──
+            - name: SRC_HOST
+              value: "{{ $src.host }}"
+            - name: SRC_PORT
+              value: "{{ $src.port }}"
+            - name: SRC_USER
+              value: "{{ $src.user }}"
+            - name: SRC_DB
+              value: "{{ $src.name }}"
+            - name: SRC_SSLMODE
+              value: "{{ $src.sslmode }}"
+            - name: SRC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $src.passwordSecretName }}
+                  key: {{ $src.passwordSecretKey }}
+            # ── target: kacho_geo (this service's DB) — falls back to db.* ──────
+            - name: DST_HOST
+              value: "{{ .Values.db.host }}"
+            - name: DST_PORT
+              value: "{{ .Values.db.port }}"
+            - name: DST_USER
+              value: "{{ .Values.db.user }}"
+            - name: DST_DB
+              value: "{{ .Values.db.name }}"
+            - name: DST_SSLMODE
+              value: "{{ .Values.db.sslmode }}"
+            - name: DST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.passwordSecretName }}
+                  key: {{ .Values.db.passwordSecretKey }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              SRC="postgresql://${SRC_USER}:${SRC_PASSWORD}@${SRC_HOST}:${SRC_PORT}/${SRC_DB}?sslmode=${SRC_SSLMODE}"
+              DST="postgresql://${DST_USER}:${DST_PASSWORD}@${DST_HOST}:${DST_PORT}/${DST_DB}?sslmode=${DST_SSLMODE}&options=-c%20search_path%3Dkacho_geo%2Cpublic"
+
+              echo "[geo-data-migration] source=${SRC_HOST}/${SRC_DB} -> target=${DST_HOST}/${DST_DB} (id-preserving, idempotent)"
+
+              # Wait for both endpoints (Job may start before pods are Ready).
+              for ep in "$SRC" "$DST"; do
+                tries=0
+                until psql "$ep" -tAc 'SELECT 1' >/dev/null 2>&1; do
+                  tries=$((tries+1))
+                  if [ "$tries" -ge 60 ]; then echo "FATAL: db not reachable after 60 tries"; exit 1; fi
+                  echo "  waiting for db... ($tries)"; sleep 2
+                done
+              done
+
+              # 1) staging tables in kacho_geo (UNLOGGED, dropped at session end).
+              psql "$DST" -v ON_ERROR_STOP=1 <<'SQL'
+              CREATE UNLOGGED TABLE IF NOT EXISTS _geo_stg_regions (
+                id TEXT, name TEXT, created_at TIMESTAMPTZ);
+              CREATE UNLOGGED TABLE IF NOT EXISTS _geo_stg_zones (
+                id TEXT, region_id TEXT, status TEXT, name TEXT, created_at TIMESTAMPTZ);
+              TRUNCATE _geo_stg_regions;
+              TRUNCATE _geo_stg_zones;
+              SQL
+
+              # 2) stream rows compute -> staging (CSV over \copy; no dblink needed).
+              psql "$SRC" -v ON_ERROR_STOP=1 \
+                -c "\copy (SELECT id, name, created_at FROM kacho_compute.regions) TO STDOUT WITH CSV" \
+                | psql "$DST" -v ON_ERROR_STOP=1 \
+                    -c "\copy _geo_stg_regions (id, name, created_at) FROM STDIN WITH CSV"
+
+              psql "$SRC" -v ON_ERROR_STOP=1 \
+                -c "\copy (SELECT id, region_id, status, name, created_at FROM kacho_compute.zones) TO STDOUT WITH CSV" \
+                | psql "$DST" -v ON_ERROR_STOP=1 \
+                    -c "\copy _geo_stg_zones (id, region_id, status, name, created_at) FROM STDIN WITH CSV"
+
+              # 3) idempotent upsert into kacho_geo (ON CONFLICT DO NOTHING).
+              #    regions BEFORE zones (FK RESTRICT zones.region_id -> regions.id).
+              #    created_at carried verbatim (NOT DEFAULT now()) — timestamps preserved.
+              psql "$DST" -v ON_ERROR_STOP=1 <<'SQL'
+              INSERT INTO regions (id, name, created_at)
+              SELECT id, name, created_at FROM _geo_stg_regions
+              ON CONFLICT (id) DO NOTHING;
+
+              INSERT INTO zones (id, region_id, status, name, created_at)
+              SELECT id, region_id, status, name, created_at FROM _geo_stg_zones
+              ON CONFLICT (id) DO NOTHING;
+
+              DROP TABLE IF EXISTS _geo_stg_regions;
+              DROP TABLE IF EXISTS _geo_stg_zones;
+
+              SELECT 'regions' AS tbl, count(*) AS n FROM regions
+              UNION ALL
+              SELECT 'zones', count(*) FROM zones;
+              SQL
+
+              echo "[geo-data-migration] done (id-preserving + idempotent)"
+          resources:
+            requests:
+              cpu: {{ $dm.resources.requests.cpu }}
+              memory: {{ $dm.resources.requests.memory }}
+            limits:
+              cpu: {{ $dm.resources.limits.cpu }}
+              memory: {{ $dm.resources.limits.memory }}
+{{- end }}

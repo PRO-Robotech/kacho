@@ -1,0 +1,61 @@
+{{- if and .Values.opaSidecar.enabled .Values.opaSidecar.policiesFallback.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.5 — Rego policies inline fallback for dev).
+=========================================================================
+
+In **production**, OPA sidecars pull a **signed** bundle (`bundle.tar.gz` +
+`.sig`) from kacho-iam Internal RPC every ~1h (P3-D7). Signature verification
+runs before policy load — tampered or unsigned bundle = OPA refuses to load.
+
+This ConfigMap is a **dev-only fallback** when kacho-iam bundle server is
+not yet wired (early Phase 3 development, before `OpaBundleService.GetBundle`
+ships). Activate via `opaSidecar.policiesFallback.enabled=true` (default
+false). When activated, OPA loads Rego files directly from this ConfigMap
+via `--bundle /policies` flag (NOT through the bundle service config).
+
+WARNING:
+  - This bypasses signing — never enable on prod (`enabled` is forced false
+    in `values.prod.yaml`).
+  - Policy updates require helm-upgrade, not the bundle TTL cycle.
+  - Data sections (timezones.json / billing_projects.json etc.) are NOT
+    included here — helpers reading `data.*` will return undefined, defaulting
+    to "no member" which makes deny rules over-restrictive (fail-closed-ish).
+    For early dev this is acceptable; full integration testing requires the
+    bundle server.
+
+The .rego files are sourced from `files/opa-policies/kacho/iam/guardrails/`
+under the umbrella chart directory. `tpl` ensures any helm-template variables
+inside policies are still expanded (e.g., conditional flags), though by
+default the policies are static.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-policies-fallback
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: opa-policies-fallback
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    kacho.cloud/dev-only: "true"
+    kacho.cloud/warning: "do-not-enable-in-prod-bypasses-bundle-signing"
+data:
+  manifest.json: |
+    {
+      "roots": ["kacho/iam/guardrails"],
+      "revision": "dev-fallback-{{ now | date "20060102150405" }}"
+    }
+  deny_billing_destructive.rego: |
+{{ .Files.Get "files/opa-policies/kacho/iam/guardrails/deny_billing_destructive.rego" | indent 4 }}
+  deny_sa_grant_user.rego: |
+{{ .Files.Get "files/opa-policies/kacho/iam/guardrails/deny_sa_grant_user.rego" | indent 4 }}
+  deny_break_glass_too_long.rego: |
+{{ .Files.Get "files/opa-policies/kacho/iam/guardrails/deny_break_glass_too_long.rego" | indent 4 }}
+  deny_cross_tenant.rego: |
+{{ .Files.Get "files/opa-policies/kacho/iam/guardrails/deny_cross_tenant.rego" | indent 4 }}
+  deny_prod_out_of_hours.rego: |
+{{ .Files.Get "files/opa-policies/kacho/iam/guardrails/deny_prod_out_of_hours.rego" | indent 4 }}
+{{- end }}

@@ -1,0 +1,58 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# INFRA sec-hardening r3 — umbrella-owned PUBLIC ingress for api-gateway.
+#
+# The api-gateway sub-chart's own ingress backends the pod's plaintext `cmux`
+# port (:8080). That listener is the CLUSTER-INTERNAL one — it is NOT wrapped by
+# listenerorigin.ExternalListener, so the REST dispatcher never tags requests
+# arriving there as external-origin and DOES serve Internal* REST (AddressPool,
+# Region, Zone admin, InternalAuthzCache, …) to anyone who reaches the ingress.
+# That defeats ban #6 (Internal.* must never be published on the external edge).
+#
+# This ingress instead backends the pod's EXTERNAL-marked `tls` listener (:8443,
+# wrapped by listenerorigin.ExternalListener in cmd/api-gateway/main.go). Traffic
+# arriving there is tagged external-origin and the REST dispatcher returns 404 for
+# every Internal* path — the exact behaviour the api-gateway external-isolation
+# fix introduced. The sub-chart ingress is disabled via
+# `api-gateway.ingress.enabled=false` (values.yaml) so exactly one ingress renders.
+#
+# backend-protocol GRPCS: ingress-nginx terminates the external client TLS and
+# re-encrypts to the pod TLS listener (h2 over TLS). The in-cluster UI / admin /
+# port-forward keep reaching Internal* REST directly on the ClusterIP `cmux`
+# port — they never traverse this public ingress.
+{{- $agw := index .Values "api-gateway" }}
+{{- $ing := $agw.ingress | default dict }}
+{{- $tls := $agw.tls | default dict }}
+{{- if and .Values.apiGatewayIngress.enabled $tls.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $agw.name | default "api-gateway" }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ $ing.proxyReadTimeout | default "120" }}"
+    # GRPCS — re-encrypt to the pod EXTERNAL-marked TLS listener (Internal* → 404).
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPCS"
+spec:
+  ingressClassName: nginx
+  # TLS termination on the ingress using the same cert the api-gateway pod serves
+  # (secret api-gateway-tls). Without it ingress-nginx uses the default fake cert.
+  tls:
+    - hosts:
+        - {{ $ing.host | default "api.kacho.local" }}
+      secretName: {{ $tls.secretName | default "api-gateway-tls" }}
+  rules:
+    - host: {{ $ing.host | default "api.kacho.local" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $agw.name | default "api-gateway" }}
+                port:
+                  name: tls
+{{- else if and .Values.apiGatewayIngress.enabled (not $tls.enabled) }}
+{{- fail "apiGatewayIngress.enabled=true requires api-gateway.tls.enabled=true (the external-marked TLS listener). Enable the sub-chart TLS listener or disable apiGatewayIngress." }}
+{{- end }}

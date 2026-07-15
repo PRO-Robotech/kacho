@@ -1,0 +1,80 @@
+{{- if .Values.opaSidecar.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.4) — ConfigMap with env vars for kacho-iam
+to operate as OPA bundle server.
+=========================================================================
+
+kacho-iam serves the OPA bundle through Internal RPC `OpaBundleService.GetBundle`
+(port 9091). Bundle composition is built from:
+
+  1. **Static Rego policies** — `kacho-iam/policies/*.rego` files,
+     compiled into the binary via `//go:embed` (so deploy artifact is one-shot,
+     no separate file shipping). These live in the kacho-iam repo, not here.
+  2. **Dynamic data sections** — derived from kacho-iam DB read-only queries:
+     - `data/timezones.json` — per-account TZ / business hours.
+     - `data/billing_projects.json` — list of project_id LIKE 'prj_billing_%'.
+     (The legacy SCIM membership snapshot was removed with the B2B tenant type —
+     RBAC-2026 Contract-B / KAC-223.)
+  3. **Signature** — JWS ES256 using current `oidc_jwks_keys.private_key_pem_encrypted`
+     (decrypted with `KACHO_IAM_JWKS_ENC_KEY`, Phase 2 plumbed).
+  4. **Revision** — `KACHO_BUILD_SHA` env var = git sha of kacho-iam build
+     (P3-D9: bundle revision check). OPA recognises this in `.manifest.revision`.
+
+This ConfigMap exposes the **bundle-server-side** knobs that aren't already in
+kacho-iam's main configmap.yaml — TTL hint (for OPA polling guidance), revision
+labeling, key rotation grace period.
+
+Consumed by kacho-iam Deployment via `envFrom: { configMapRef: opa-bundle-server-config }`.
+
+Configurable values (umbrella values.yaml — `opaSidecar.bundle.*`):
+  ttlSeconds            — hint for OPA polling rate (default 3600).
+  signingAlgorithm      — JWS alg (default ES256; only ES256 supported).
+  signingKeyKid         — kid claim used in JWS header (default `kacho-iam-signing-key-current`).
+  buildShaEnvVar        — name of env var that contains git sha at runtime
+                          (default KACHO_BUILD_SHA — set by CI).
+  cacheStaleAfterSeconds — bundle cache staleness threshold for metric alerts.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-bundle-server-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    app.kubernetes.io/component: opa-bundle-server
+    kacho.cloud/component: opa-bundle-server
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+data:
+  # Bundle TTL hint surfaced to OPA via .manifest.revision + ETag header.
+  # kacho-iam OpaBundleService.GetBundle reads this on each request to set the
+  # `Cache-Control: max-age=<ttl>` header.
+  KACHO_OPA_BUNDLE_TTL_SECONDS: {{ .Values.opaSidecar.bundle.ttlSeconds | default 3600 | quote }}
+
+  # JWS algorithm for bundle signing. **Only ES256 supported** in Phase 3
+  # (P3-D8: matches Phase 1 oidc_jwks_keys default; HS256 / RS256 forbidden —
+  # asymmetric ES256 is what OPA upstream recommends for sidecar bundle pulls).
+  KACHO_OPA_BUNDLE_SIGNING_ALGORITHM: {{ .Values.opaSidecar.bundle.signingAlgorithm | default "ES256" | quote }}
+
+  # kid claim emitted in JWS header — must match `keys.<kid>` key in
+  # opa-sidecar-configmap.yaml. Phase 2 JWKS rotator must NEVER recycle this
+  # kid; on key rotation, OPA cohort needs a grace period to re-pull
+  # (see KACHO_OPA_BUNDLE_KEY_ROTATION_GRACE_SECONDS below).
+  KACHO_OPA_BUNDLE_SIGNING_KID: {{ .Values.opaSidecar.bundle.signingKeyKid | default "kacho-iam-signing-key-current" | quote }}
+
+  # If revision header (ETag) on incoming GET matches in-memory build sha →
+  # 304 Not Modified is returned (P3-D19, cache-efficient revision check).
+  KACHO_OPA_BUNDLE_REVISION_ENV: {{ .Values.opaSidecar.bundle.buildShaEnvVar | default "KACHO_BUILD_SHA" | quote }}
+
+  # Metric alert threshold: if bundle endpoint has not served a new revision
+  # within this many seconds AND has not refused signature verification, an
+  # alert is fired (operator may have stuck JWKS rotator).
+  KACHO_OPA_BUNDLE_CACHE_STALE_AFTER_SECONDS: {{ .Values.opaSidecar.bundle.cacheStaleAfterSeconds | default 7200 | quote }}
+
+  # Grace period after JWKS rotation during which kacho-iam will sign
+  # bundles with BOTH old and new keys (multi-JWK manifest). Default 2h —
+  # twice the bundle TTL ensures every sidecar has time to fetch the
+  # new key before the old is retired.
+  KACHO_OPA_BUNDLE_KEY_ROTATION_GRACE_SECONDS: {{ .Values.opaSidecar.bundle.keyRotationGraceSeconds | default 7200 | quote }}
+{{- end }}

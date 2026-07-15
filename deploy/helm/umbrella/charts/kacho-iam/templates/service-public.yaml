@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.public.type }}
+  selector:
+    {{- include "kacho-iam.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: grpc
+      port: {{ .Values.service.public.port }}
+      targetPort: grpc
+    # Docker Registry v2 `/iam/token` auth-server (:9096) — external-reachable HTTP
+    # listener the registry data-plane TLS-sidecar proxies to for SA-key/user-token →
+    # identity-JWT exchange. Not a gRPC method surface (запрет #6 N/A — HTTP token shim).
+    - name: registry-token
+      port: {{ .Values.ports.registryToken | default 9096 }}
+      targetPort: registry-token

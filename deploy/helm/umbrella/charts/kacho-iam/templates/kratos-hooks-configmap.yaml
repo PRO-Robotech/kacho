@@ -1,0 +1,50 @@
+{{/*
+C4 — Kratos web_hook body templates (Jsonnet).
+
+The registration/login provisioning web_hook in kratos-config-configmap.yaml
+references `file:///etc/config/kratos/hooks/identity-payload.jsonnet`. Kratos
+renders this Jsonnet against the flow context (the `ctx` top-level object that
+Kratos injects: `ctx.identity`, `ctx.flow`, `ctx.request_*`, …) and POSTs the
+result to the kacho-iam provisioning route `/iam/v1/hooks/provision` on the
+:9092 HTTP hooks listener.
+
+The emitted JSON MUST match the shape decoded by
+`internal/handler/iamhooks/provision_hook_handler.go`
+(`kratosProvisionRequest`): {external_id, email, display_name}. Keep the two in
+lockstep — the handler test (`provision_hook_handler_test.go`) pins the same
+keys.
+
+  - external_id  = ctx.identity.id        — Kratos identity UUID == OIDC `sub`.
+  - email        = ctx.identity.traits.email
+  - display_name = ctx.identity.traits.display_name (optional; "" when unset).
+
+This ConfigMap is mounted into the Kratos pod at /etc/config/kratos/hooks/
+(alongside kratos.yaml + identity.schema.json) by the Kratos sub-chart's
+extraVolumes/extraVolumeMounts wiring — see values.<cluster>.yaml. The
+recovery-payload.jsonnet referenced by the (still-unimplemented) recovery
+web_hook is intentionally NOT authored here — TODO(C4-followup) tracks the
+recovery route.
+*/}}
+{{- if .Values.kratos.config.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kacho-iam.fullname" . }}-kratos-hooks
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kacho-iam.labels" . | nindent 4 }}
+    kacho.cloud/component: kratos-hooks
+data:
+  identity-payload.jsonnet: |
+    function(ctx) {
+      // Kratos identity id (UUID) — used as the kacho external_id / OIDC sub.
+      external_id: ctx.identity.id,
+      // Primary email trait (required by identity.schema.json).
+      email: ctx.identity.traits.email,
+      // Optional human-readable name; default to empty string when absent so
+      // the handler always receives a well-formed object.
+      display_name: if std.objectHas(ctx.identity.traits, "display_name")
+        then ctx.identity.traits.display_name
+        else "",
+    }
+{{- end }}

@@ -1,0 +1,55 @@
+# Default values for the kratos-selfservice-ui sub-chart.
+#
+# The template reads `.Values.kratosSelfServiceUI.*`; the umbrella overrides via
+# its `kratos-selfservice-ui:` block (nested key mirrors the former top-level
+# `kratosSelfServiceUI` so the template needed no rewrite on the move).
+#
+# Off by default; dev enables it (umbrella values.dev.yaml). NOTE: the Service
+# name must stay `kratos-selfservice-ui` — kacho-ui nginx proxies to it by name.
+kratosSelfServiceUI:
+  enabled: false
+  image:
+    repository: oryd/kratos-selfservice-ui-node
+    tag: v1.3.1
+  # INFRA sec-hardening r2 — session + CSRF cookie signing secret.
+  # There is NO committed default: a chart that ships one runs every install
+  # (incl. production) on a git-known, world-readable signing key (CWE-798).
+  #   - prod: set .existingSecret → operator-provisioned Secret (mirrors the
+  #     kacho-iam hook-token pattern), consumed via secretKeyRef.
+  #   - dev : set .value → a throwaway inline secret for the kind stand.
+  # Neither set (while enabled) → the template FAILS render (fail-closed).
+  cookieSecret:
+    existingSecret: ""
+    existingSecretKey: cookieSecret
+    value: ""
+  # Outbound TLS verification. Default: ON (verify certs). The dev stand opts
+  # into skipping it (self-signed / plain-http upstreams); production keeps it
+  # enforced. When an internal-CA bundle must be trusted instead of disabling
+  # verification, set caCert.secretName → mounted + NODE_EXTRA_CA_CERTS.
+  insecureSkipTLSVerify: false
+  caCert:
+    secretName: ""
+    key: ca.crt
+    mountPath: /etc/kratos-ui-ca
+  # Restricted securityContext floor (parity with kacho-iam / kacho-geo). The
+  # Ory kratos-selfservice-ui-node image runs as UID 10000; readOnlyRootFilesystem
+  # is satisfied by redirecting HOME + npm cache into the emptyDir /tmp.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10000
+    runAsGroup: 10000
+    fsGroup: 10000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  hydraAdminUrl: http://kacho-umbrella-hydra-admin:4445
+  kratosBrowserUrl: http://localhost:28080/.ory/kratos/public
+  kratosPublicUrl: http://kacho-umbrella-kratos-public:80

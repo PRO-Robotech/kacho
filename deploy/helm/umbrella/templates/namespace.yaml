@@ -1,0 +1,28 @@
+{{- if .Values.namespace.create }}
+{{/*
+INFRA sec-hardening — kacho namespace with Pod Security Admission labels.
+
+Applies the `restricted` Pod Security Standard in WARN + AUDIT mode (advisory —
+surfaces violations in API-server responses and the audit log without blocking
+admission, so existing workloads are not evicted). Flip to `enforce=restricted`
+once every workload in the namespace renders a compliant securityContext.
+
+Gated by `.Values.namespace.create` (default FALSE) so it does NOT collide with
+`helm install --create-namespace` / a kubectl-precreated namespace in the current
+dev/CI flow (those paths label the namespace at creation time — see Makefile
+dev-up / .github/workflows/newman-e2e.yml). Enable this template for GitOps
+installs where Helm owns the namespace object.
+*/}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: kacho
+    # Pod Security Admission — restricted standard, advisory (warn + audit).
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+{{- end }}

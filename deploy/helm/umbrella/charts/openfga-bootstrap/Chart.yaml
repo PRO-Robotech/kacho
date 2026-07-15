@@ -1,0 +1,6 @@
+apiVersion: v2
+name: openfga-bootstrap
+version: 0.1.0
+appVersion: "1.0.0"
+type: application
+description: "Kachō OpenFGA bootstrap — install/upgrade Helm hooks that provision the OpenFGA store + Authorization Model v2, manage the openfga-model-id / kacho-iam-openfga-store Secrets, the model-stub ConfigMap, the optional Postgres-init Job and the openfga PodDisruptionBudget. Integration glue for the external openfga chart (which we cannot template into directly). Templates read .Values.openfgaBootstrap / .Values.openfga / .Values.openfgaPdb — the umbrella supplies them under the `openfga-bootstrap:` key, so the sub-chart value scope mirrors the former top-level keys verbatim."

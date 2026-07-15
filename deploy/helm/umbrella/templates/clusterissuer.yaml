@@ -1,0 +1,79 @@
+{{- if .Values.mtls.enabled }}
+{{- $ca := .Values.mtls.internalCA }}
+{{/* caNamespace = the cert-manager controller's --cluster-resource-namespace (a
+     CA-type ClusterIssuer reads its ca.secretName from there). Defaults to the
+     release namespace (in-umbrella cert-manager runs there); override when using
+     a pre-existing cert-manager in another namespace (e.g. beget-cert-manager). */}}
+{{- $caNs := $ca.caNamespace | default .Release.Namespace }}
+{{/*
+─── SEC-F — cluster-internal mTLS PKI (internal-CA ClusterIssuer chain) ──────────
+
+Lives in the umbrella (cluster-scoped, shared by every component sub-chart). The
+per-service server/client LEAF certificates live in each component's own chart
+(rule #1) and reference the `kacho-internal-ca` ClusterIssuer minted here.
+
+Chain:
+  (1) ClusterIssuer/kacho-selfsigned (selfSigned) — bootstrap root.
+  (2) Certificate/kacho-internal-ca-root (isCA:true), signed by (1), secret in the
+      release namespace (= cert-manager's --cluster-resource-namespace, since the
+      cert-manager sub-chart deploys into this same namespace — a CA-type
+      ClusterIssuer reads its `ca.secretName` from there).
+  (3) ClusterIssuer/kacho-internal-ca (type `ca`) consuming that secret — signs all
+      per-service leaf certs.
+
+NORMAL resources (not Helm hooks). `make dev-up` is two-phase: phase 1 brings the
+cert-manager controller up (mtls.enabled=false → this file renders nothing); phase 2
+flips mtls.enabled=true so these CRs are applied while the cert-manager webhook is
+already Ready (no admission race) and the leaf certs (also normal resources) are
+issued while `--wait` converges the consuming pods.
+*/}}
+# ─── (1) self-signed bootstrap root ──────────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ $ca.rootIssuerName | quote }}
+  labels:
+    kacho.cloud/component: cert-manager-internal-ca
+    app.kubernetes.io/managed-by: helm
+spec:
+  selfSigned: {}
+---
+# ─── (2) CA root certificate (isCA) ──────────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $ca.caSecretName | quote }}
+  namespace: {{ $caNs | quote }}
+  labels:
+    kacho.cloud/component: cert-manager-internal-ca
+    app.kubernetes.io/managed-by: helm
+spec:
+  isCA: true
+  commonName: "kacho-internal-ca"
+  secretName: {{ $ca.caSecretName | quote }}
+  duration: {{ $ca.caDuration | quote }}
+  renewBefore: {{ $ca.caRenewBefore | quote }}
+  privateKey:
+    algorithm: "ECDSA"
+    size: 256
+    rotationPolicy: "Always"
+  issuerRef:
+    name: {{ $ca.rootIssuerName | quote }}
+    kind: ClusterIssuer
+    group: cert-manager.io
+  usages:
+    - cert sign
+    - crl sign
+---
+# ─── (3) CA-type ClusterIssuer (signs per-service leaf certs) ─────────────────
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ $ca.clusterIssuerName | quote }}
+  labels:
+    kacho.cloud/component: cert-manager-internal-ca
+    app.kubernetes.io/managed-by: helm
+spec:
+  ca:
+    secretName: {{ $ca.caSecretName | quote }}
+{{- end }}

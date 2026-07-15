@@ -1,0 +1,88 @@
+# Default values for the openfga-bootstrap sub-chart.
+#
+# These keys are read by the bootstrap templates as `.Values.openfgaBootstrap.*`,
+# `.Values.openfga.enabled` and `.Values.openfgaPdb.*`. The umbrella overrides
+# them through its `openfga-bootstrap:` block (Helm propagates parent values into
+# a sub-chart only under the sub-chart's own key) — the nested shape below mirrors
+# the former top-level umbrella keys so the templates needed no rewrite on the move.
+#
+# All hooks are self-gated (openfgaBootstrap.enabled / .initDatabase /
+# openfgaPdb.enabled), so the chart is always wired into the umbrella but renders
+# only what each flag enables.
+
+# Drives the openfga PodDisruptionBudget gate (mirror of the umbrella openfga.enabled
+# that the external openfga chart is condition-gated on).
+openfga:
+  enabled: false
+
+# PodDisruptionBudget for the OpenFGA engine (HA topology, >= 3 replicas).
+openfgaPdb:
+  enabled: false
+  minAvailable: 2
+
+# INFRA sec-hardening r3 — restricted PSS floor for the bootstrap + postgres-init
+# Jobs (CIS Kubernetes 5.2 / PSS restricted). Both are short-lived hook Jobs that
+# only run kubectl/curl/jq (bootstrap) or psql (postgres-init); neither needs root,
+# a writable rootfs, or any Linux capability. A writable emptyDir is mounted at
+# /tmp (HOME=/tmp) so the read-only rootfs does not break the kubectl discovery
+# cache / psql history. Overridable per profile.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+openfgaBootstrap:
+  enabled: false
+  # alpine/k8s ships kubectl+jq+curl+coreutils. INFRA sec-hardening r3: the Job now
+  # runs non-root (uid 65532) with a read-only rootfs (see podSecurityContext /
+  # containerSecurityContext above); kubectl caches under HOME=/tmp (emptyDir).
+  image: alpine/k8s:1.29.2
+  # cliImage unused since the DSL→JSON transform moved to commit-time (the
+  # openfga-model-stub ConfigMap carries both model.fga + model.json).
+  cliImage: ""
+  storeName: kacho-store
+  authorizationModelConfigMap: openfga-model-stub
+  modelIdSecretName: openfga-model-id
+  # Store-id Secret the bootstrap Job creates/reads (STORE_SECRET_NAME in the Job).
+  # Together with modelIdSecretName these are the ONLY two secrets the Job touches;
+  # the Role's get/update/patch is scoped to them via resourceNames (least priv).
+  storeIdSecretName: kacho-iam-openfga-store
+  clusterSingletonId: cluster_kacho_root
+  # Consumer Deployments the Job bumps with the `kacho.cloud/openfga-model-id-rev`
+  # annotation on a model change (Step G rolling-restart). Single source of truth:
+  # the Job's patch loop AND the Role's deployments resourceNames both render from
+  # this list, so the RBAC grant stays least-privilege (no namespace-wide deployment
+  # patch) and can never drift from the set the Job actually touches.
+  consumerDeployments:
+    - kacho-iam
+    - api-gateway
+    - vpc
+    - compute
+    - loadbalancer
+  # Opt-in `CREATE DATABASE kacho_openfga` Job. Off by default — the bitnami
+  # pg-openfga chart auto-creates the DB from auth.username / auth.database.
+  # Set true only against a shared Postgres (RDS / CloudNativePG).
+  initDatabase: false
+  dbAdmin:
+    image: postgres:16-alpine
+    host: kacho-umbrella-pg-openfga
+    port: "5432"
+    user: postgres
+    passwordSecretName: kacho-umbrella-pg-openfga
+    passwordSecretKey: postgres-password
+    fgaUser: openfga
+    fgaPasswordSecretName: kacho-umbrella-pg-openfga
+    fgaPasswordSecretKey: password
+    fgaDatabase: kacho_openfga

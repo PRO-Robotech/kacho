@@ -1,0 +1,291 @@
+{{- if .Values.openfgaBootstrap.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.1 / P3.GWT-01..04) — idempotent bootstrap-job для
+полноценной OpenFGA Authorization Model v2.
+
+Замещает stub-bootstrap из E0 (KAC-105). Новое поведение:
+
+1) **Fast-path skip** (P3.GWT-02): sha256(ConfigMap data.model.fga) сравнивается с
+   annotation на Secret openfga-model-id `kacho-deploy/last-applied-dsl-sha256`.
+   Если совпадает → exit-0 без writing FGA-model и без rolling-restart.
+
+2) **DSL → JSON**: KAC-127 (deploy#38 fix) — JSON-модель НЕ трансформируется
+   в runtime. ConfigMap несёт ОБА ключа: `model.fga` (human-readable DSL,
+   используется только для sha256-idempotency) и `model.json` (готовый
+   OpenFGA-JSON, pre-transform на commit-time через `fga model transform`).
+   Bootstrap-job читает `model.json` напрямую и шлёт его
+   `WriteAuthorizationModel`-эндпоинту. Раньше был init-container
+   `dsl-transform` на image `openfga/cli`, но тот distroless (нет `/bin/sh`),
+   а `fga model transform` пишет только в stdout → init-container падал. См.
+   GitHub-issue kacho-deploy#38.
+
+3) **Model write + Secret patch** (P3.GWT-01 / P3.GWT-03): POST authorization-models
+   возвращает новый model_id (immutable, FGA-engine retain'ит все версии); kubectl
+   patch Secret stringData.current=<new model_id> + annotate
+   `kacho-deploy/last-applied-dsl-sha256` = новый sha256.
+
+4) **Rolling restart annotation** (P3.GWT-03): patch annotation
+   `kacho.cloud/openfga-model-id-rev` на Deployments kacho-iam / kacho-api-gateway /
+   kacho-vpc / kacho-compute / kacho-loadbalancer — это триггерит rolling-restart
+   pod'ов (env Secret-ref не auto-mount'ится; annotation-bump + Deployment-watch == restart).
+
+5) **Singleton cluster_kacho_root**: после успешного WriteAuthorizationModel, job
+   создаёт tuple `cluster:cluster_kacho_root#system_viewer@user:cluster_bootstrap_marker`
+   (idempotent через `Write` с allow-duplicate=false → 4xx == OK для существующего).
+   Это материализует singleton cluster-object и подтверждает, что FGA engine знает
+   про DSL v2 type `cluster` (P3-D17 enforcement: never any other cluster id).
+
+Hook policy:
+  - helm.sh/hook: post-install,post-upgrade  — re-runs at каждом upgrade (idempotent).
+  - hook-weight=10 — после bootstrap-rbac (weight=0) и после openfga Deployment.
+  - hook-delete-policy: before-hook-creation,hook-succeeded — drop stale Job,
+    save successful Job logs (last) для debugging.
+
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openfga-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: openfga-bootstrap
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app: openfga-bootstrap
+        kacho.cloud/component: openfga-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: openfga-bootstrap
+      # INFRA sec-hardening r3 — restricted pod floor (runAsNonRoot + seccomp).
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        # ConfigMap несёт ОБА ключа: model.fga (DSL, для sha256-idempotency)
+        # и model.json (pre-transformed OpenFGA-JSON). KAC-127 deploy#38:
+        # init-container `dsl-transform` удалён — transform на commit-time.
+        - name: model
+          configMap:
+            name: {{ .Values.openfgaBootstrap.authorizationModelConfigMap }}
+            defaultMode: 0444
+        # Writable scratch for the read-only rootfs: kubectl discovery/http cache
+        # lives under HOME=/tmp/.kube (see env below).
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: bootstrap
+          image: {{ .Values.openfgaBootstrap.image | quote }}
+          command: ["/bin/sh", "-c"]
+          # INFRA sec-hardening r3 — restricted container floor (non-root,
+          # read-only rootfs, drop ALL caps, no priv-esc, seccomp RuntimeDefault).
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: model
+              mountPath: /etc/openfga-model
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          args:
+            - |
+              set -eu
+
+              OPENFGA_URL="${OPENFGA_URL:-http://kacho-umbrella-openfga:8080}"
+              STORE_NAME="${STORE_NAME:-kacho-store}"
+              STORE_SECRET_NAME="${STORE_SECRET_NAME:-kacho-iam-openfga-store}"
+              MODEL_SECRET_NAME="${MODEL_SECRET_NAME:-openfga-model-id}"
+              NAMESPACE="${NAMESPACE:-kacho}"
+              CLUSTER_SINGLETON_ID="${CLUSTER_SINGLETON_ID:-cluster_kacho_root}"
+
+              # KAC-127 (deploy#38): image `alpine/k8s` уже несёт kubectl+jq+curl+
+              # coreutils — runtime `apk add` НЕ нужен (раньше `curlimages/curl`
+              # бежал non-root → `apk add` падал `Permission denied`).
+              echo "[bootstrap] using bundled kubectl + jq (alpine/k8s image)"
+
+              # KAC-127 deploy#38: model.fga (DSL) + model.json (pre-transformed)
+              # are both ConfigMap keys mounted at /etc/openfga-model. No runtime
+              # DSL→JSON transform — the openfga/cli image is distroless.
+              MODEL_DSL=/etc/openfga-model/model.fga
+              MODEL_JSON=/etc/openfga-model/model.json
+              if [ ! -s "${MODEL_DSL}" ]; then
+                echo "[bootstrap] FATAL: ${MODEL_DSL} missing or empty"
+                exit 1
+              fi
+              if [ ! -s "${MODEL_JSON}" ]; then
+                echo "[bootstrap] FATAL: ${MODEL_JSON} missing or empty"
+                exit 1
+              fi
+              # sha256 of the DSL — fast-path idempotency key (busybox sha256sum).
+              DSL_SHA=$(sha256sum "${MODEL_DSL}" | awk '{print $1}')
+              echo "[bootstrap] DSL sha256 = ${DSL_SHA}"
+              echo "[bootstrap] JSON model size = $(wc -c < "${MODEL_JSON}") bytes"
+
+              # ─── Step A: wait for OpenFGA healthz ───────────────────────────────
+              echo "[bootstrap] waiting for OpenFGA ${OPENFGA_URL}/healthz (max 5min)..."
+              i=0
+              while [ $i -lt 60 ]; do
+                if curl -sf "${OPENFGA_URL}/healthz" >/dev/null 2>&1; then
+                  echo "[bootstrap] OpenFGA ready"
+                  break
+                fi
+                sleep 5
+                i=$((i+1))
+              done
+              if [ $i -ge 60 ]; then
+                echo "[bootstrap] TIMEOUT: OpenFGA not responding"
+                exit 1
+              fi
+
+              # ─── Step B: ensure store exists (reuse if present) ─────────────────
+              echo "[bootstrap] looking up store '${STORE_NAME}'..."
+              STORE_ID=$(curl -sf "${OPENFGA_URL}/stores" | jq -r --arg n "${STORE_NAME}" '.stores[]? | select(.name==$n) | .id' || true)
+              if [ -z "${STORE_ID}" ]; then
+                echo "[bootstrap] store not found — creating"
+                STORE_ID=$(curl -sf -XPOST "${OPENFGA_URL}/stores" \
+                  -H 'content-type: application/json' \
+                  -d "{\"name\":\"${STORE_NAME}\"}" | jq -r '.id')
+                echo "[bootstrap] created store id=${STORE_ID}"
+              else
+                echo "[bootstrap] reusing existing store id=${STORE_ID}"
+              fi
+
+              # Persist store-id Secret (no-op if already present with same value).
+              kubectl -n "${NAMESPACE}" create secret generic "${STORE_SECRET_NAME}" \
+                --from-literal=store_id="${STORE_ID}" \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              # ─── Step C: idempotency check — compare DSL sha256 with Secret annotation
+              CURRENT_DSL_SHA=$(kubectl -n "${NAMESPACE}" get secret "${MODEL_SECRET_NAME}" \
+                -o jsonpath='{.metadata.annotations.kacho-deploy/last-applied-dsl-sha256}' 2>/dev/null || true)
+              CURRENT_MODEL_ID=$(kubectl -n "${NAMESPACE}" get secret "${MODEL_SECRET_NAME}" \
+                -o jsonpath='{.data.current}' 2>/dev/null | base64 -d 2>/dev/null || true)
+
+              if [ "${CURRENT_DSL_SHA}" = "${DSL_SHA}" ] && [ -n "${CURRENT_MODEL_ID}" ]; then
+                echo "[bootstrap] DSL sha256 matches Secret annotation -> skip-write (current model_id=${CURRENT_MODEL_ID})"
+                # Still ensure Secret has store_id reference for kacho-iam consumers (no-op if equal).
+                kubectl -n "${NAMESPACE}" annotate secret "${MODEL_SECRET_NAME}" \
+                  "kacho-deploy/last-bootstrap-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                  --overwrite >/dev/null
+                echo "[bootstrap] OK (no-op)"
+                exit 0
+              fi
+
+              # ─── Step D: write new authorization-model ──────────────────────────
+              echo "[bootstrap] writing new authorization model (DSL changed or first install)..."
+              MODEL_ID=$(curl -sf -XPOST "${OPENFGA_URL}/stores/${STORE_ID}/authorization-models" \
+                -H 'content-type: application/json' \
+                -d @"${MODEL_JSON}" | jq -r '.authorization_model_id')
+              if [ -z "${MODEL_ID}" ] || [ "${MODEL_ID}" = "null" ]; then
+                echo "[bootstrap] FATAL: WriteAuthorizationModel returned no model_id"
+                exit 1
+              fi
+              echo "[bootstrap] new authorization_model_id=${MODEL_ID}"
+
+              # ─── Step E: patch / create Secret openfga-model-id ─────────────────
+              kubectl -n "${NAMESPACE}" create secret generic "${MODEL_SECRET_NAME}" \
+                --from-literal=current="${MODEL_ID}" \
+                --from-literal=store_id="${STORE_ID}" \
+                --dry-run=client -o yaml | kubectl apply -f -
+              kubectl -n "${NAMESPACE}" annotate secret "${MODEL_SECRET_NAME}" \
+                "kacho-deploy/last-applied-dsl-sha256=${DSL_SHA}" \
+                "kacho-deploy/last-bootstrap-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                --overwrite >/dev/null
+
+              # ─── Step F: also write store_id+model_id into legacy compound secret
+              # (kacho-iam reads this at startup; preserves E3 baseline contract).
+              kubectl -n "${NAMESPACE}" create secret generic "${STORE_SECRET_NAME}" \
+                --from-literal=store_id="${STORE_ID}" \
+                --from-literal=authorization_model_id="${MODEL_ID}" \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              # ─── Step G: bump rolling-restart annotation on consumer Deployments ─
+              # Annotation triggers re-roll because Pods read env from Secret on start.
+              # KAC-127 (deploy#38): фактические имена Deployment'ов — `kacho-iam`,
+              # `api-gateway`, `vpc`, `compute`, `loadbalancer` (без `kacho-umbrella-`
+              # префикса; раньше список был неверным → restart-bump молча скипался).
+              REV=$(date +%s)
+              for DEP in {{ .Values.openfgaBootstrap.consumerDeployments | join " " }}; do
+                if kubectl -n "${NAMESPACE}" get deployment "${DEP}" >/dev/null 2>&1; then
+                  echo "[bootstrap] bumping kacho.cloud/openfga-model-id-rev on ${DEP}..."
+                  kubectl -n "${NAMESPACE}" patch deployment "${DEP}" \
+                    --type=json \
+                    -p="[{\"op\":\"add\",\"path\":\"/spec/template/metadata/annotations/kacho.cloud~1openfga-model-id-rev\",\"value\":\"${REV}\"}]" \
+                    2>/dev/null || \
+                  kubectl -n "${NAMESPACE}" patch deployment "${DEP}" \
+                    -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kacho.cloud/openfga-model-id-rev\":\"${REV}\"}}}}}" \
+                    || echo "[bootstrap] warn: patch deployment ${DEP} failed (may not exist yet — first install)"
+                else
+                  echo "[bootstrap] deployment ${DEP} not present yet (likely pre-install); skipping restart-bump"
+                fi
+              done
+
+              # ─── Step H: materialize singleton cluster object (P3-D17) ──────────
+              echo "[bootstrap] writing singleton tuple cluster:${CLUSTER_SINGLETON_ID}#system_viewer@user:bootstrap_marker"
+              curl -sf -XPOST "${OPENFGA_URL}/stores/${STORE_ID}/write" \
+                -H 'content-type: application/json' \
+                -d "{
+                  \"authorization_model_id\":\"${MODEL_ID}\",
+                  \"writes\":{\"tuple_keys\":[{
+                    \"user\":\"user:bootstrap_marker\",
+                    \"relation\":\"system_viewer\",
+                    \"object\":\"cluster:${CLUSTER_SINGLETON_ID}\"
+                  }]}
+                }" >/dev/null 2>&1 || echo "[bootstrap] singleton tuple already exists (OK)"
+
+              # ─── Step H2 (KAC-228): cluster viewer for ALL authenticated users ──
+              # FGA model: cluster.viewer = [user, user:*, service_account] ...
+              # Без этого tuple любой cluster-scoped reference-RPC
+              # (compute.Region/Zone/DiskType .list/.get, required_relation=viewer
+              # on cluster:cluster_kacho_root) возвращал 403 для любого юзера —
+              # UI dashboard / NLB region-picker падали. user:* делает справочные
+              # данные читаемыми любым authenticated subject'ом (tenant-facing).
+              echo "[bootstrap] writing tuple cluster:${CLUSTER_SINGLETON_ID}#viewer@user:*"
+              curl -sf -XPOST "${OPENFGA_URL}/stores/${STORE_ID}/write" \
+                -H 'content-type: application/json' \
+                -d "{
+                  \"authorization_model_id\":\"${MODEL_ID}\",
+                  \"writes\":{\"tuple_keys\":[{
+                    \"user\":\"user:*\",
+                    \"relation\":\"viewer\",
+                    \"object\":\"cluster:${CLUSTER_SINGLETON_ID}\"
+                  }]}
+                }" >/dev/null 2>&1 || echo "[bootstrap] cluster viewer:* tuple already exists (OK)"
+
+              echo "[bootstrap] OK"
+          env:
+            # Read-only rootfs: kubectl caches discovery/http under $HOME/.kube →
+            # point HOME at the writable /tmp emptyDir.
+            - name: HOME
+              value: /tmp
+            - name: OPENFGA_URL
+              value: "http://kacho-umbrella-openfga:8080"
+            - name: STORE_NAME
+              value: {{ .Values.openfgaBootstrap.storeName | quote }}
+            - name: STORE_SECRET_NAME
+              value: "kacho-iam-openfga-store"
+            - name: MODEL_SECRET_NAME
+              value: {{ .Values.openfgaBootstrap.modelIdSecretName | default "openfga-model-id" | quote }}
+            - name: NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: CLUSTER_SINGLETON_ID
+              value: {{ .Values.openfgaBootstrap.clusterSingletonId | default "cluster_kacho_root" | quote }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+{{- end }}

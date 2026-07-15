@@ -19,8 +19,8 @@ RUN go mod download
 # Два независимых бинаря в одном образе:
 #   kacho-registry — control-plane gRPC-сервер (`serve`).
 #   kacho-migrator — CLI миграций (up|down|status); запускается deploy-init-контейнером.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-registry ./cmd/kacho-registry \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./cmd/migrator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-registry ./services/registry/cmd/kacho-registry \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/registry/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.20
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates

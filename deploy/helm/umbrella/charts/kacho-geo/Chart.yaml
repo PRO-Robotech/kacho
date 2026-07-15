@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kacho-geo
+version: 1.0.0
+appVersion: 1.0.0
+type: application
+description: "Kachō Geo — Geography (Region / Zone) leaf-service. Global cluster-scoped read-only catalogs (public RegionService/ZoneService) + admin CRUD via Internal* (:9091). Extracted from kacho-compute (epic kacho-geo). Owns schema kacho_geo on its own Postgres (pg-geo, database-per-service). SEC-F mTLS server-creds on both listeners; per-RPC IAM Check authz."

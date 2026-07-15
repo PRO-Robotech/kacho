@@ -14,8 +14,8 @@ RUN go mod download
 # Two independent binaries:
 #   storage        — gRPC API server (`serve`).
 #   kacho-migrator — migration CLI (up|down|status); deploy init-container.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /storage ./cmd/storage \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./cmd/migrator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /storage ./services/storage/cmd/storage \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/storage/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.20
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates

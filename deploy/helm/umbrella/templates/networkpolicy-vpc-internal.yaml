@@ -1,0 +1,54 @@
+{{- /*
+NetworkPolicy: ограничивает доступ к kacho-vpc internal-port (:9091) только
+allowlist'ом pod'ов (api-gateway, admin-tooling). Public :9090 — открытый
+ingress для всего namespace.
+
+Закрывает security P0 #2 (lateral movement через :9091): без NetworkPolicy
+любой pod в namespace `kacho` может вызвать
+  - InternalWatchService.Watch(from=0)  → mass exfiltration outbox
+  - InternalAddressService.AllocateInternalIP/AllocateExternalIP → IPAM privileges
+  - InternalAddressPoolService.{Create,Delete} → admin IPAM privileges
+  - InternalAddressPoolService.BindAsNetworkDefault → переписать IPAM default для network
+
+Включается через umbrella values:
+  vpc:
+    networkPolicy:
+      enabled: true
+      adminPodsSelector:
+        matchLabels:
+          kacho.io/role: admin
+*/ -}}
+{{- if .Values.vpc.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vpc-internal-allowlist
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: vpc
+spec:
+  podSelector:
+    matchLabels:
+      app: vpc
+  policyTypes:
+    - Ingress
+  ingress:
+    # Public :9090 — открыт для всего namespace (api-gateway + UI traffic).
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9090
+    # Internal :9091 — только api-gateway + admin pods.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+        {{- with .Values.vpc.networkPolicy.adminPodsSelector }}
+        - podSelector:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 9091
+{{- end }}

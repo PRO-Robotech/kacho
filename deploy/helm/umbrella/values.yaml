@@ -1,0 +1,389 @@
+# Kachō umbrella default values — control-plane dev stand (kind + Helm).
+#
+# Base defaults for the whole umbrella chart; per-cluster overrides come from
+# `values.dev.yaml` (the kind stand brought up by `make dev-up`) or a
+# `values.prorobotech.yaml` image-tag overlay.
+#
+# Домен Kachō — configurable через `kacho.domain`; все Phase 2 template'ы
+# (Kratos/Hydra config, api-gateway ingress, kacho-ui BFF, security.txt) обязаны
+# использовать `{{ .Values.kacho.domain }}` вместо хардкода. Это позволяет
+# деплоить один chart на разные домены без правки template'ов.
+#
+# Поддоменная схема (производные от `kacho.domain`):
+#   - https://<domain>        — публичный API (api-gateway TLS endpoint)
+#   - https://app.<domain>    — UI / BFF (kacho-ui)
+#   - https://hydra.<domain>  — Hydra public OIDC issuer
+#   - https://kratos.<domain> — Kratos public selfservice
+#
+# Sub-chart propagation: Helm пропагирует автоматически только `global.*`. Для
+# sub-chart'ов, которым нужны umbrella-значения, дублируем структуру в namespace'е
+# sub-chart'а (`kacho-iam.*`, `openfga-bootstrap.*`, `kratos-selfservice-ui.*`).
+
+# INFRA sec-hardening — optional Helm-owned Namespace carrying Pod Security
+# Admission labels (restricted, warn+audit). Default FALSE: the dev/CI flow
+# precreates the namespace (`kubectl create namespace` + `helm --create-namespace`)
+# and labels it there (Makefile dev-up / newman-e2e.yml). Set true for GitOps
+# installs where Helm owns the namespace object. See templates/namespace.yaml.
+namespace:
+  create: false
+
+kacho:
+  # Корневой домен Kachō Cloud. Override per-cluster:
+  #   helm upgrade … --set kacho.domain=test.example.com \
+  #                  --set kacho-iam.kacho.domain=test.example.com
+  domain: api.kacho.cloud
+
+  # Sub-domain prefixes; используются в Helm templates как
+  # `{{ printf "%s.%s" .Values.kacho.subdomains.app .Values.kacho.domain }}`.
+  subdomains:
+    app: app             # https://app.<domain> — UI / BFF
+    hydra: hydra         # https://hydra.<domain> — Hydra OIDC issuer
+    kratos: kratos       # https://kratos.<domain> — Kratos selfservice public
+    api: ""              # https://<domain> — api-gateway (без prefix'а)
+
+  # IAM AuthN core knobs.
+  iam:
+    # JWKS rotation cron — daily при schedule. 90d rotation cycle.
+    # `enabled: false` отключает CronJob (например, integration-test кластеры
+    # с key-pinning).
+    jwks:
+      enabled: true
+      schedule: "0 2 * * *"
+      rotationDays: 90
+      # AES-GCM key для encrypt-at-rest private_key_pem (dev). В prod — KMS-CMK
+      # через external-secrets.
+      encKeySecretName: kacho-iam-jwks-enc-key
+      encKeySecretKey: enc_key
+
+    # Session-revocation cache (api-gateway in-memory O(1) lookup).
+    sessionRevocations:
+      cacheTTLSeconds: 5
+
+    # DPoP replay cache (RFC 9449 §11.1). Per-pod LRU.
+    dpopReplay:
+      cacheTTLSeconds: 120
+      cacheSize: 100000
+
+  # Hydra ↔ kacho-iam shared secret для token_hook / refresh_hook authentication.
+  hooks:
+    tokenHookSecretName: kacho-iam-hook-token
+    tokenHookSecretKey: token
+
+# ─── kacho-iam sub-chart ─────────────────────────────────────────────────
+# Helm не пропагирует top-level `kacho.*` в sub-chart автоматически — дублируем
+# в namespace'е sub-chart'а (sub-chart держит fallback в charts/kacho-iam/values.yaml).
+kacho-iam:
+  # kacho-iam использует структуру image.{repository,tag,pullPolicy}; dev-стенд
+  # override'ит в values.dev.yaml на local kacho-iam:dev.
+  image:
+    repository: docker.io/prorobotech/kacho-iam
+    tag: main-be5a45a2
+    pullPolicy: IfNotPresent
+  kacho:
+    domain: api.kacho.cloud
+    subdomains:
+      app: app
+      hydra: hydra
+      kratos: kratos
+      api: ""
+    iam:
+      jwks:
+        enabled: true
+        schedule: "0 2 * * *"
+        rotationDays: 90
+        encKeySecretName: kacho-iam-jwks-enc-key
+        encKeySecretKey: enc_key
+      sessionRevocations:
+        cacheTTLSeconds: 5
+      dpopReplay:
+        cacheTTLSeconds: 120
+        cacheSize: 100000
+    hooks:
+      tokenHookSecretName: kacho-iam-hook-token
+      tokenHookSecretKey: token
+  # OPA sidecar pipeline (deny-only Rego guardrails + signed bundle pulled from
+  # kacho-iam Internal RPC). Full defaults live in charts/kacho-iam/values.yaml;
+  # this override block flips the dev-relevant knobs. Disabled by default — the
+  # whole opa/jwks ConfigMap set (now owned by the kacho-iam sub-chart) renders
+  # only when opaSidecar.enabled=true.
+  opaSidecar:
+    enabled: false
+    image: openpolicyagent/opa:1.0.0-rootless
+    logLevel: info
+    jwks:
+      configMapName: kacho-iam-jwks
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  # `openfga-bootstrap` writes the model id into this Secret; kacho-iam reads it.
+  openfgaBootstrap:
+    modelIdSecretName: openfga-model-id
+
+# ─── OpenFGA ReBAC engine (external chart, condition-gated) ────────────────
+# Disabled in base values; values.dev.yaml enables it. Kept here so `helm lint`
+# (без -f) не падает на nil .Values.openfga.
+openfga:
+  enabled: false
+
+# ─── openfga-bootstrap sub-chart (local glue for the external openfga chart) ─
+# The bootstrap templates read `.Values.openfgaBootstrap.*` / `.Values.openfga.*`
+# / `.Values.openfgaPdb.*` in the sub-chart scope — supplied here under the
+# `openfga-bootstrap:` key (mirrors the former top-level keys verbatim). Each hook
+# self-gates, so flipping the flags is all that's needed.
+openfga-bootstrap:
+  openfga:
+    enabled: false           # drives the openfga PodDisruptionBudget gate
+  openfgaPdb:
+    enabled: false
+    minAvailable: 2
+  openfgaBootstrap:
+    enabled: false
+    # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root → bootstrap-скрипту
+    # не нужен runtime apk add.
+    image: alpine/k8s:1.29.2
+    cliImage: ""
+    storeName: kacho-store
+    authorizationModelConfigMap: openfga-model-stub
+    modelIdSecretName: openfga-model-id
+    clusterSingletonId: cluster_kacho_root
+    # Opt-in `CREATE DATABASE kacho_openfga`. Off by default — bitnami pg-openfga
+    # auto-creates the DB from auth.username / auth.database.
+    initDatabase: false
+    dbAdmin:
+      image: postgres:16-alpine
+      host: kacho-umbrella-pg-openfga
+      port: "5432"
+      user: postgres
+      passwordSecretName: kacho-umbrella-pg-openfga
+      passwordSecretKey: postgres-password
+      fgaUser: openfga
+      fgaPasswordSecretName: kacho-umbrella-pg-openfga
+      fgaPasswordSecretKey: password
+      fgaDatabase: kacho_openfga
+
+# ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
+# Defense-in-depth pod-to-pod allowlist spanning openfga + kacho-iam + api-gateway
+# + backends — no single owning chart, so the selectors live at umbrella level.
+# Disabled by default (would block :9091 port-forward debugging in dev). The rest
+# of the OPA sidecar config now lives in the kacho-iam sub-chart.
+opaSidecar:
+  networkPolicy:
+    enabled: false
+    iamPodSelector:
+      matchLabels:
+        app.kubernetes.io/name: kacho-iam
+    openfgaPodSelector:
+      matchLabels:
+        app.kubernetes.io/name: openfga
+    apiGatewayPodSelector:
+      matchLabels:
+        app: api-gateway
+    backendPodSelector:
+      matchExpressions:
+        - key: app
+          operator: In
+          values: [vpc, compute, kacho-nlb]
+
+# ─── Per-datastore Postgres ingress allowlist (templates/networkpolicy-datastore) ─
+# Each backing Postgres StatefulSet (bitnami sub-chart, pod label
+# app.kubernetes.io/name=pg-<svc>) is otherwise reachable on :5432 from every pod
+# in the namespace. This adds a per-pg ingress allowlist so the pg pod implicitly
+# denies all other ingress (CIS Kubernetes 5.3.2 / OWASP A05:2021). Self-contained:
+# each policy selects only its own pg pod. Disabled by default (kind/kindnet does
+# not enforce NetworkPolicy; :5432 port-forward debugging in dev would break).
+# `from` selectors are cluster-tunable defaults — verify consumer coverage before
+# enabling on a NetworkPolicy-enforcing CNI. See docs/architecture/known-divergences.md §4.
+networkPolicy:
+  datastore:
+    enabled: false
+    port: 5432
+    instances:
+      - name: pg-vpc
+        from:
+          - podSelector:
+              matchLabels: { app: vpc }
+      - name: pg-compute
+        from:
+          - podSelector:
+              matchLabels: { app: compute }
+          # compute→geo data-migration Job reads pg-compute as source.
+          - podSelector:
+              matchLabels: { kacho.cloud/job: geo-data-migration }
+      - name: pg-iam
+        from:
+          # covers kacho-iam Deployment, `migrate` init-container, jwks-rotator CronJob.
+          - podSelector:
+              matchLabels: { app: kacho-iam }
+      - name: pg-geo
+        from:
+          - podSelector:
+              matchLabels: { app: kacho-geo }
+          - podSelector:
+              matchLabels: { kacho.cloud/job: geo-data-migration }
+      - name: pg-openfga
+        from:
+          - podSelector:
+              matchLabels: { app.kubernetes.io/name: openfga }
+          - podSelector:
+              matchLabels: { app: openfga-postgres-init }
+      - name: pg-nlb
+        from:
+          - podSelector:
+              matchLabels: { app: kacho-nlb }
+
+# ─── cluster-internal mTLS PKI (cert-manager internal-CA) ──────────────────
+# Master switch for the whole service→service mTLS scheme. When enabled:
+#   - the cert-manager dependency installs (controller + CRDs; Chart.yaml
+#     `condition: mtls.enabled`);
+#   - templates/clusterissuer.yaml mints the self-signed → CA-root → kacho-internal-ca
+#     ClusterIssuer chain (post-install hooks, after the webhook is Ready);
+#   - each component sub-chart issues its OWN server/client leaf Certificate
+#     (templates/certificate.yaml, gated by that component's `mtls.enable`),
+#     signed by kacho-internal-ca. Client-cert URI-SANs are SPIRE-format
+#     spiffe://kacho.cloud/ns/kacho/sa/kacho-<svc> and MUST match the IAM
+#     module-SA seed (kacho-iam SEC-C migration 0009) so the fgaproxy ReBAC gate
+#     resolves them. Base default OFF; values.dev.yaml turns it ON.
+mtls:
+  enabled: false
+  internalCA:
+    rootIssuerName: kacho-selfsigned
+    clusterIssuerName: kacho-internal-ca
+    caSecretName: kacho-internal-ca-root
+    # Namespace of the CA-root Certificate/secret. Empty → release namespace
+    # (in-umbrella cert-manager). Set to the EXISTING cert-manager controller's
+    # --cluster-resource-namespace when reusing a pre-installed cert-manager
+    # (e.g. "beget-cert-manager" on the fe3455 cluster), else the CA ClusterIssuer
+    # cannot find its signing secret.
+    caNamespace: ""
+    caDuration: "87600h"      # 10y root
+    caRenewBefore: "720h"     # 30d
+
+# cert-manager (jetstack) sub-chart — controller + CRDs + webhook. Installed only
+# when mtls.enabled (Chart.yaml condition). Deploys into the umbrella release
+# namespace; its --cluster-resource-namespace defaults to that namespace, so the
+# CA-root secret + per-service leaf secrets are co-located with the workloads.
+cert-manager:
+  enabled: false            # base OFF; values.dev.yaml turns it on (Chart.yaml condition)
+  crds:
+    enabled: true
+    keep: true
+
+# ─── Глобальные labels + image registry/tag ────────────────────────────────
+global:
+  labels: {}
+  kacho:
+    domain: ""                             # umbrella-level kacho.domain overrides
+    region: ""
+    cluster: ""
+  # Container image registry + tag. Образы kacho-* публикуются в DockerHub под
+  # namespace = DOCKERHUB_USERNAME; тег = `<branch>-<sha8>` или semver. Per-service
+  # `image:` ниже выписаны явно и должны совпадать с `<imageRegistry>/<svc>:<imageTag>`.
+  # dev-стенд (kind) переопределяет на локально-загруженные `:dev` образы (values.dev.yaml).
+  imageRegistry: docker.io/prorobotech       # override: --set global.imageRegistry=docker.io/<user>
+  imageTag: latest                           # override: --set global.imageTag=<branch>-<sha8>
+
+# ─── Per-service image references (DockerHub) ──────────────────────────────
+# Packaged sub-charts (vpc/compute/ui/api-gateway) принимают плоскую строку
+# `image:` + `imagePullPolicy:`. dev-стенд переопределяет на local `:dev` образы.
+vpc:
+  image: docker.io/prorobotech/kacho-vpc:main-3b48f99b
+  imagePullPolicy: IfNotPresent
+
+compute:
+  image: docker.io/prorobotech/kacho-compute:main-1ecb2817
+  imagePullPolicy: IfNotPresent
+
+# kacho-geo — vendored sub-chart (Geography Region/Zone leaf-service). Image tag
+# is a PLACEHOLDER: the kacho-geo image is not yet pushed to the registry (epic
+# kacho-geo). `main-latest` is a values-overridable placeholder; the real
+# docker.io/prorobotech/kacho-geo:main-<sha> tag + pull secret are provisioned at
+# deploy time (per-profile override + per-cluster overlay). Full sub-chart
+# defaults live in charts/kacho-geo/values.yaml; this block overrides image only.
+kacho-geo:
+  image: docker.io/prorobotech/kacho-geo:main-latest
+  imagePullPolicy: IfNotPresent
+
+api-gateway:
+  image: docker.io/prorobotech/kacho-api-gateway:main-fa9a8422
+  imagePullPolicy: IfNotPresent
+  # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
+  # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
+  # serves Internal* REST to any external caller. Disable it and let the umbrella
+  # render the public ingress (templates/api-gateway-ingress.yaml) pointing at the
+  # EXTERNAL-marked `tls` listener so listenerorigin.ExternalListener tags the edge
+  # and the REST dispatcher 404s Internal* paths. See docs/architecture/known-divergences.md.
+  ingress:
+    enabled: false
+
+# INFRA sec-hardening r3 — umbrella-owned public ingress for api-gateway. Replaces
+# the sub-chart ingress (disabled above). Routes the external edge through the
+# api-gateway pod's EXTERNAL-marked TLS listener (Service port `tls`, GRPCS) so
+# Internal* REST is never served on the public endpoint. host / tls.secretName /
+# proxyReadTimeout are inherited from the api-gateway sub-chart values.
+apiGatewayIngress:
+  enabled: true
+
+ui:
+  image: docker.io/prorobotech/kacho-ui:main-dc395a2e
+  imagePullPolicy: IfNotPresent
+
+# Federated ui-future console (aliased `uif` sub-chart). Default OFF — a bare
+# `helm upgrade` must NOT deploy it (the condition path must exist or helm treats
+# an absent value as enabled). Per-cluster overlays that run the federated console
+# set `uif.enabled: true` and reproduce the host/remote images below.
+uif:
+  enabled: false
+
+# ─── Ory Kratos self-service UI sub-chart ──────────────────────────────────
+# Disabled in base; values.dev.yaml enables it. Service name `kratos-selfservice-ui`
+# must stay stable (kacho-ui nginx proxies to it by name).
+kratos-selfservice-ui:
+  kratosSelfServiceUI:
+    enabled: false
+
+# ─── Dev in-cluster S3 (MinIO) ─────────────────────────────────────────────
+# Shared dev fixture (kacho-iam compliance-report S3 sink). Off in base; dev enables.
+minioDev:
+  enabled: false
+
+# ─── kacho-nlb — disabled in base values ───────────────────────────────────
+# Both the kacho-nlb sub-chart and its backing Postgres are condition-gated.
+# Base keeps them OFF so existing clusters don't implicitly start a new
+# Deployment + StatefulSet on the next `helm upgrade`. dev overlay flips both true.
+kacho-nlb:
+  enabled: false
+pg-nlb:
+  enabled: false
+
+# ─── kacho-storage — disabled in base values ───────────────────────────────
+# Storage control-plane (Volume/VolumeAttachment/Snapshot/DiskType) + its backing
+# Postgres are condition-gated. Base keeps them OFF so an existing cluster does not
+# implicitly start a new Deployment + StatefulSet on the next `helm upgrade`; the
+# fe3455-prod overlay flips both true. Image is a placeholder overridden per env.
+storage:
+  enabled: false
+  image:
+    repository: docker.io/prorobotech/kacho-storage
+    tag: main-latest
+pg-storage:
+  enabled: false
+
+# ─── security.txt (RFC 9116) — served at /.well-known/security.txt via api-gateway
+# ingress; runtime-configurable per cluster.
+security:
+  txt:
+    enabled: true
+  # Primary security contact — REQUIRED override per environment.
+  contactEmail: security@kacho.cloud
+  altContacts:
+    - "https://kacho.cloud/security/disclosure"
+  pgpKeyUrl: "https://kacho.cloud/.well-known/pgp-key.txt"
+  acknowledgmentsUrl: "https://kacho.cloud/security/acknowledgments"
+  policyUrl: "https://kacho.cloud/security/disclosure"
+  hiringUrl: "https://kacho.cloud/careers"
+  alternateCanonical:
+    - "https://kacho.cloud/.well-known/security.txt"

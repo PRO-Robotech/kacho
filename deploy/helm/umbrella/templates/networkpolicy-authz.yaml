@@ -1,0 +1,198 @@
+{{- if .Values.opaSidecar.networkPolicy.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.7, defense-in-depth) — NetworkPolicy для
+authz-pipeline (OpenFGA engine + OPA bundle endpoint + OPA sidecars).
+=====================================================================
+
+Three policies are emitted:
+
+  (1) `openfga-ingress-allowlist` — OpenFGA gRPC :8081 / HTTP :8080 accessible
+      ONLY from kacho-iam pod (Check / Write / Read tuples + bundle generation
+      uses FGA queries) and api-gateway / backend service pods (Check during
+      per-RPC authz interceptor). No other ingress (defence against lateral
+      movement: tenant workload exfiltrating tuples).
+
+  (2) `opa-bundle-endpoint-ingress` — kacho-iam Internal port :9091 accepts
+      bundle.tar.gz pulls ONLY from same-namespace pods carrying label
+      `kacho.cloud/opa-sidecar=true` (set by sidecar injection). This is
+      belt-and-suspenders on top of запрет #6 (Internal port not on external
+      TLS) — even compromised tenant workloads in the same namespace cannot
+      directly pull guardrails bundle.
+
+  (3) `opa-sidecar-egress-allowlist` — OPA sidecar (port :8181 localhost-only,
+      no external listener) restricted egress: ONLY to kacho-iam internal
+      Service for bundle pull + kube-dns for DNS. Blocks decision-log
+      exfiltration to attacker-controlled endpoints.
+
+Toggle via umbrella values:
+  opaSidecar:
+    networkPolicy:
+      enabled: true                   (default true on prod, false on kind/dev)
+      iamPodSelector:                 (which pod-label identifies kacho-iam)
+        matchLabels:
+          app.kubernetes.io/name: kacho-iam
+      openfgaPodSelector:             (which pod-label identifies openfga engine)
+        matchLabels:
+          app.kubernetes.io/name: openfga
+      apiGatewayPodSelector:
+        matchLabels:
+          app: api-gateway
+      backendPodSelector:             (vpc / compute / lb labels)
+        matchExpressions:
+          - {key: app, operator: In, values: [vpc, compute, loadbalancer]}
+
+NOTE: these policies do NOT cover api-gateway external ingress (TLS edge) — that
+is owned by `ingress-nginx` chart and ingress.yaml in api-gateway sub-chart.
+This file is **internal pod-to-pod** authz wiring only.
+*/}}
+
+# ─── Policy 1: OpenFGA engine ingress allowlist ────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openfga-engine-ingress-allowlist
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: authz
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+spec:
+  podSelector:
+    {{- toYaml .Values.opaSidecar.networkPolicy.openfgaPodSelector | nindent 4 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # kacho-iam — writes tuples (outbox-worker -> FGA Write), bundle pull during build.
+    - from:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.iamPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8080   # HTTP API (admin / playground / metrics)
+        - protocol: TCP
+          port: 8081   # gRPC API (Check / Write / Read)
+    # api-gateway — Check during pre-routing authz (org-wide).
+    - from:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.apiGatewayPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8081
+    # backend services (vpc / compute / loadbalancer) — Check during per-RPC interceptor.
+    - from:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.backendPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8081
+    # Bootstrap-job — POST /stores + WriteAuthorizationModel.
+    - from:
+        - podSelector:
+            matchLabels:
+              kacho.cloud/component: openfga-bootstrap
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# ─── Policy 2: OPA bundle endpoint ingress (kacho-iam :9091) ────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opa-bundle-endpoint-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: authz
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+spec:
+  podSelector:
+    {{- toYaml .Values.opaSidecar.networkPolicy.iamPodSelector | nindent 4 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # api-gateway — primary consumer (api-gateway has OPA sidecar, pulls bundle).
+    - from:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.apiGatewayPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 9091
+    # backend services — also pull (each has own OPA sidecar).
+    - from:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.backendPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 9091
+    # self-ingress — kacho-iam's OWN OPA sidecar pulls bundle from kacho-iam
+    # internal Service (within the same pod is localhost, but Service-routing
+    # may resolve to a sibling kacho-iam replica → allow).
+    - from:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.iamPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 9091
+    # Public port :9090 is governed by separate sub-chart NetworkPolicy
+    # (kacho-iam-internal-allowlist etc.); this NetworkPolicy only adds
+    # rules — it does NOT override existing ingress rules.
+---
+# ─── Policy 3: OPA sidecar egress allowlist ─────────────────────────────────
+# OPA sidecars are identified by `kacho.cloud/opa-sidecar=true` pod label
+# (set on every pod that injects OPA — api-gateway / iam / vpc / compute / lb).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opa-sidecar-egress-allowlist
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: authz
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+spec:
+  podSelector:
+    matchLabels:
+      kacho.cloud/opa-sidecar: "true"
+  policyTypes:
+    - Egress
+  egress:
+    # DNS (kube-dns / CoreDNS) — required for service-name resolution.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # kacho-iam internal :9091 — bundle pull origin.
+    - to:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.iamPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 9091
+    # OpenFGA gRPC :8081 — REQUIRED (not reserved). NetworkPolicy is pod-scoped, so
+    # this egress governs the MAIN container of every opa-sidecar-labeled pod, not
+    # just its OPA sidecar. kacho-iam carries `kacho.cloud/opa-sidecar=true` and is
+    # the primary FGA client (Write tuples via outbox-worker, Check, bundle-build
+    # queries); any other opa-sidecar-labeled backend/gateway pod runs the per-RPC
+    # Check against OpenFGA too (mirror of Policy 1's ingress allowlist). Dropping
+    # this rule fail-closes iam's FGA writes/reads on a NetworkPolicy-enforcing CNI.
+    - to:
+        - podSelector:
+            {{- toYaml .Values.opaSidecar.networkPolicy.openfgaPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8081
+{{- end }}

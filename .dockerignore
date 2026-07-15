@@ -1,0 +1,12 @@
+.git
+.github
+**/docs-site
+**/node_modules
+**/tests/newman/collections
+*.md
+LICENSE
+# креды — в контекст сборки не попадают никогда
+pem
+*.pem
+*.key
+kubeconfig*

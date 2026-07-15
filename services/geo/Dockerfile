@@ -6,15 +6,15 @@ ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
 
-# Single-repo build: зависимости (kacho-proto, kacho-corelib) тянутся как
-# versioned-модули из GitHub (go.mod без replace), build-context — этот репо.
+# Monorepo build: единый Go-модуль github.com/PRO-Robotech/kacho — proto/corelib НЕ
+# внешние зависимости, а пакеты этого же модуля. Build-context — КОРЕНЬ монорепы.
 COPY . .
 RUN go mod download
 # Два независимых бинаря в одном образе:
 #   kacho-geo      — gRPC API-сервер (`serve`).
 #   kacho-migrator — CLI миграций (up|down|status); запускается deploy-init-контейнером.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-geo ./cmd/kacho-geo \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./cmd/migrator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-geo ./services/geo/cmd/kacho-geo \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/geo/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.20
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
