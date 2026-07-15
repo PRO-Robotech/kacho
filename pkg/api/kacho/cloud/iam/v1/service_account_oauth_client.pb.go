@@ -43,6 +43,9 @@ const (
 type ServiceAccountOAuthClient struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the mapping row.
+	// Конвенция Kachō: новый формат `soc<17-crockford>` (ids.NewID, без underscore);
+	// legacy `soc_<body>` принимается для существующих строк (credential-id/JWK kid,
+	// неизменяем — не регенерируется). Оба формата валидны.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ID of the ServiceAccount this client is bound to. UNIQUE — 1:1 mapping.
 	SvaId string `protobuf:"bytes,2,opt,name=sva_id,json=svaId,proto3" json:"sva_id,omitempty"`
@@ -60,7 +63,12 @@ type ServiceAccountOAuthClient struct {
 	// ID of the User who created / rotated this client (audit).
 	CreatedByUserId string `protobuf:"bytes,7,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
 	// Creation timestamp.
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Tenant-facing имя токена (задаётся при выпуске, immutable). Пусто → в UI
+	// показывается description/id. Человекочитаемая метка ключа, не идентификатор.
+	Name string `protobuf:"bytes,9,opt,name=name,proto3" json:"name,omitempty"`
+	// Пользовательские метки токена (задаются при выпуске, immutable).
+	Labels        map[string]string `protobuf:"bytes,10,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -151,13 +159,27 @@ func (x *ServiceAccountOAuthClient) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *ServiceAccountOAuthClient) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ServiceAccountOAuthClient) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
 var File_kacho_cloud_iam_v1_service_account_oauth_client_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDesc = "" +
 	"\n" +
-	"5kacho/cloud/iam/v1/service_account_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xc2\x03\n" +
-	"\x19ServiceAccountOAuthClient\x12-\n" +
-	"\x02id\x18\x01 \x01(\tB\x1d\xe8\xc71\x01\xf2\xc71\rsoc_[0-9a-z]+\x8a\xc81\x04<=20R\x02id\x12#\n" +
+	"5kacho/cloud/iam/v1/service_account_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\x87\x05\n" +
+	"\x19ServiceAccountOAuthClient\x12F\n" +
+	"\x02id\x18\x01 \x01(\tB6\xe8\xc71\x01\xf2\xc71&soc(_[0-9a-z]+|[0-9a-hjkmnp-tv-z]{17})\x8a\xc81\x04<=21R\x02id\x12#\n" +
 	"\x06sva_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x05svaId\x125\n" +
 	"\x0fhydra_client_id\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\rhydraClientId\x12+\n" +
 	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x129\n" +
@@ -167,7 +189,13 @@ const file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDesc = "" +
 	"lastUsedAt\x129\n" +
 	"\x12created_by_user_id\x18\a \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1c\n" +
+	"\x04name\x18\t \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12Q\n" +
+	"\x06labels\x18\n" +
+	" \x03(\v29.kacho.cloud.iam.v1.ServiceAccountOAuthClient.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDescOnce sync.Once
@@ -181,20 +209,22 @@ func file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDescGZIP() []
 	return file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_service_account_oauth_client_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_kacho_cloud_iam_v1_service_account_oauth_client_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_kacho_cloud_iam_v1_service_account_oauth_client_proto_goTypes = []any{
 	(*ServiceAccountOAuthClient)(nil), // 0: kacho.cloud.iam.v1.ServiceAccountOAuthClient
-	(*timestamppb.Timestamp)(nil),     // 1: google.protobuf.Timestamp
+	nil,                               // 1: kacho.cloud.iam.v1.ServiceAccountOAuthClient.LabelsEntry
+	(*timestamppb.Timestamp)(nil),     // 2: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_service_account_oauth_client_proto_depIdxs = []int32{
-	1, // 0: kacho.cloud.iam.v1.ServiceAccountOAuthClient.expires_at:type_name -> google.protobuf.Timestamp
-	1, // 1: kacho.cloud.iam.v1.ServiceAccountOAuthClient.last_used_at:type_name -> google.protobuf.Timestamp
-	1, // 2: kacho.cloud.iam.v1.ServiceAccountOAuthClient.created_at:type_name -> google.protobuf.Timestamp
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	2, // 0: kacho.cloud.iam.v1.ServiceAccountOAuthClient.expires_at:type_name -> google.protobuf.Timestamp
+	2, // 1: kacho.cloud.iam.v1.ServiceAccountOAuthClient.last_used_at:type_name -> google.protobuf.Timestamp
+	2, // 2: kacho.cloud.iam.v1.ServiceAccountOAuthClient.created_at:type_name -> google.protobuf.Timestamp
+	1, // 3: kacho.cloud.iam.v1.ServiceAccountOAuthClient.labels:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient.LabelsEntry
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_service_account_oauth_client_proto_init() }
@@ -208,7 +238,7 @@ func file_kacho_cloud_iam_v1_service_account_oauth_client_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDesc), len(file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

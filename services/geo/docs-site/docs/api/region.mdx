@@ -1,0 +1,173 @@
+---
+id: region
+sidebar_position: 2
+title: Region
+---
+
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Region
+
+**Region** — верхнеуровневый элемент топологии платформы Kachō: географический регион, внутри
+которого живут зоны доступности ([Zone](/api/zone)). Это глобальный cluster-scoped read-only
+справочник: регион **не принадлежит** проекту или аккаунту, он описывает саму инфраструктуру.
+Consumer-сервисы (Compute, VPC и др.) ссылаются на регион по id и валидируют его через
+`RegionService.Get`.
+
+Идентификатор региона **назначается администратором** явно (`region-1`) и **неизменяем** после
+создания (immutable PK). Наполняет справочник администратор через `InternalRegionService`
+(cluster-internal); публичный API только читает.
+
+## Поля
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Изменяемость</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>string</td><td>immutable (admin-assigned PK)</td><td>Идентификатор региона (например, <code>region-1</code>). Задаётся при создании, не меняется</td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>mutable</td><td>Человекочитаемое имя региона</td></tr>
+    <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
+  </tbody>
+</table>
+
+## Методы
+
+Чтение (`Get` / `List`) — публичные, на listener `:9090`. Администрирование
+(`Create` / `Update` / `Delete`) — `InternalRegionService` на cluster-internal listener
+`:9091`, синхронное (catalog-паттерн, возвращает ресурс, не `Operation`).
+
+### Get — получить регион
+
+<ApiOperation method="GET" endpoint="/geo/v1/regions/{id}">
+
+Возвращает регион по идентификатору. Публичный read (требует отношение `viewer`).
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/geo/v1/regions/region-1' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "region-1",
+      "name": "Region 1",
+      "createdAt": "2026-06-24T10:00:00Z"
+    }
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### List — список регионов
+
+<ApiOperation method="GET" endpoint="/geo/v1/regions">
+
+Возвращает список регионов с cursor-пагинацией (`pageSize`, `pageToken` → `nextPageToken`).
+Публичный read.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/geo/v1/regions?pageSize=50' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "regions": [
+        { "id": "region-1", "name": "Region 1", "createdAt": "2026-06-24T10:00:00Z" }
+      ],
+      "nextPageToken": ""
+    }
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### Create — создать регион (admin, internal)
+
+<ApiOperation method="POST" endpoint="/geo/v1/regions">
+
+Создаёт регион с **явно заданным** администратором id. Синхронная операция: ответ — сам
+ресурс. Доступна только на cluster-internal listener (`InternalRegionService`, требует
+отношение `system_admin`).
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST 'http://localhost:19091/geo/v1/regions' \\
+      -H 'Authorization: Bearer <admin-JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{ "id": "region-2", "name": "Region 2" }'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "region-2",
+      "name": "Region 2",
+      "createdAt": "2026-06-24T10:10:00Z"
+    }
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### Update — изменить регион (admin, internal)
+
+<ApiOperation method="PATCH" endpoint="/geo/v1/regions/{id}">
+
+Меняет изменяемые поля региона (на данный момент — `name`). Идентификатор изменить нельзя
+(immutable PK). Синхронная internal-операция.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X PATCH 'http://localhost:19091/geo/v1/regions/region-2' \\
+      -H 'Authorization: Bearer <admin-JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{ "name": "Region 2 (renamed)" }'
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### Delete — удалить регион (admin, internal)
+
+<ApiOperation method="DELETE" endpoint="/geo/v1/regions/{id}">
+
+Удаляет регион. Если к региону привязана хотя бы одна [Zone](/api/zone), удаление блокируется
+(`FAILED_PRECONDITION`) внешним ключом `ON DELETE RESTRICT` — сначала удаляются зоны.
+Синхронная internal-операция.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X DELETE 'http://localhost:19091/geo/v1/regions/region-2' \\
+      -H 'Authorization: Bearer <admin-JWT>'
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+## Ошибки и граничные случаи
+
+<table>
+  <thead><tr><th>Ситуация</th><th>Код</th><th>Поведение</th></tr></thead>
+  <tbody>
+    <tr><td>Get/Delete несуществующего региона</td><td><code>NOT_FOUND</code></td><td><code>"Region &lt;id&gt; not found"</code></td></tr>
+    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td>PK-конфликт по <code>id</code></td></tr>
+    <tr><td><strong>Delete региона, к которому привязаны зоны</strong></td><td><code>FAILED_PRECONDITION</code></td><td>FK <code>Zone.regionId → Region.id ON DELETE RESTRICT</code> блокирует удаление; сначала удалить зоны</td></tr>
+    <tr><td>Попытка изменить <code>id</code></td><td>—</td><td><code>id</code> — immutable PK; задаётся только при Create, не меняется</td></tr>
+    <tr><td>Read без отношения <code>viewer</code> / admin без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
+  </tbody>
+</table>
+
+:::warning Internal-поверхность
+`Create` / `Update` / `Delete` обслуживаются `InternalRegionService` на cluster-internal
+listener (`:9091`) и **не публикуются** на external endpoint. Их REST-проекция доступна только
+на internal mux `api-gateway`.
+:::

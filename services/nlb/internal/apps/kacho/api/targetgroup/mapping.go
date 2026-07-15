@@ -1,0 +1,53 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package targetgroup
+
+import (
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
+	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+)
+
+// mapDomainErr транслирует sentinel-ошибки `domain` и `kacho`(repo) в gRPC-status.
+// Делегирует единому мапперу `shared.MapDomainErr` (один источник истины для всех
+// use-case пакетов).
+func mapDomainErr(err error) error {
+	return shared.MapDomainErr(err)
+}
+
+// peerErrToStatus — тонкий делегатор к единому `shared.PeerErrToStatus`
+// (project/region precheck + per-target peer-validate).
+func peerErrToStatus(err error, kind, id string) error {
+	return shared.PeerErrToStatus(err, kind, id)
+}
+
+// errInvalidArg — тонкий делегатор к единому `shared.ErrInvalidArg`.
+func errInvalidArg(field, msg string) error {
+	return shared.ErrInvalidArg(field, msg)
+}
+
+// operationToProto — тонкий делегатор к единому `shared.OperationToProto`.
+func operationToProto(op *operations.Operation) *operationpb.Operation {
+	return shared.OperationToProto(op)
+}
+
+// tgRecordToProto — repo-record → proto.TargetGroup через зарегистрированный DTO
+// transfer (`internal/dto/type2pb/target_group.go`).
+func tgRecordToProto(rec *kachorepo.TargetGroupRecord) (*lbv1.TargetGroup, error) {
+	if rec == nil {
+		return nil, status.Error(codes.Internal, "nil target_group record")
+	}
+	var dst *lbv1.TargetGroup
+	if err := dto.Transfer(dto.FromTo(*rec, &dst)); err != nil {
+		return nil, mapDomainErr(err)
+	}
+	return dst, nil
+}

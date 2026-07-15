@@ -1,0 +1,3 @@
+# Sync-target for corelib LRO migrations.
+# `make sync-migrations` copies kacho-corelib/migrations/common/*.sql here.
+# rpc-implementer embeds + wires them when the first async RPC lands.

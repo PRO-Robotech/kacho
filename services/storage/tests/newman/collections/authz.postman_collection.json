@@ -1,0 +1,574 @@
+{
+  "info": {
+    "_postman_id": "f957fb49-1368-4ce2-9a01-0bbafb276d8f",
+    "name": "kacho-storage / newman / authz",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  // runId формат: только [a-z0-9], без точки, начинается с буквы — чтобы проходить compute name regex",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "AUTHZ-VOL-LIST-CROSS-DENY — [INV-10] alice List volumes projectId=projectB1 (нет viewer) → 403 PERMISSION_DENIED (scope {project,project_id})",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "list-cross",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-VOL-LIST-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-VOL-LIST-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-VOL-LIST-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK — [INV-10] alice List volumes projectId=projectA1 (есть viewer) → not 403; result содержит ТОЛЬКО projectA1 (нет кросс-проектной утечки)",
+      "description": "class:AUTHZ | class:SEC | class:POS | priority:P0",
+      "item": [
+        {
+          "name": "list-own",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes?projectId={{projectA1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes?projectId={{projectA1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] not Unauthenticated (16)', () => pm.expect(j && j.code, JSON.stringify(j)).to.not.equal(16));",
+                  "if (j && Array.isArray(j.volumes)) { pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] no cross-project leak (all projectA1)', () => j.volumes.forEach(v => pm.expect(v.projectId, 'leaked cross-project volume ' + v.id).to.equal(pm.environment.get('projectA1Id')))); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-VOL-GET-CROSS-DENY — [INV-10] alice Get чужого volume (scope {storage_volume,volume_id}) → 403 PERMISSION_DENIED (анти-BOLA, existence-non-revealing)",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "get-cross",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{garbageStorageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{garbageStorageId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-VOL-UPDATE-CROSS-DENY — [INV-10] alice Update чужого volume → 403 PERMISSION_DENIED (editor-tier анти-BOLA; мутация не доходит до Operation)",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "upd-cross",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{garbageStorageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{garbageStorageId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"bola-attempt\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-VOL-UPDATE-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-VOL-UPDATE-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-VOL-UPDATE-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-VOL-DELETE-CROSS-DENY — [INV-10] alice Delete чужого volume → 403 PERMISSION_DENIED (editor-tier анти-BOLA)",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "del-cross",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{garbageStorageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{garbageStorageId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-VOL-DELETE-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-VOL-DELETE-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-VOL-DELETE-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SNP-LIST-CROSS-DENY — [INV-10] alice List snapshots projectId=projectB1 (нет viewer) → 403 PERMISSION_DENIED (scope {project,project_id})",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "snp-list-cross",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SNP-LIST-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SNP-LIST-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SNP-LIST-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SNP-GET-CROSS-DENY — [INV-10] alice Get чужого snapshot (scope {storage_snapshot,snapshot_id}) → 403 PERMISSION_DENIED (анти-BOLA)",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "snp-get-cross",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots/{{garbageSnapshotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots",
+                "{{garbageSnapshotId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SNP-UPDATE-CROSS-DENY — [INV-10] alice Update чужого snapshot → 403 PERMISSION_DENIED (editor-tier анти-BOLA)",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "snp-upd-cross",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots/{{garbageSnapshotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots",
+                "{{garbageSnapshotId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"bola-attempt\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SNP-UPDATE-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SNP-UPDATE-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SNP-UPDATE-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SNP-DELETE-CROSS-DENY — [INV-10] alice Delete чужого snapshot → 403 PERMISSION_DENIED (editor-tier анти-BOLA)",
+      "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "snp-del-cross",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots/{{garbageSnapshotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots",
+                "{{garbageSnapshotId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectAdminA1'",
+                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SNP-DELETE-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SNP-DELETE-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-SNP-DELETE-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

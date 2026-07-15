@@ -1,0 +1,45 @@
+# Go build
+*.exe
+*.test
+*.out
+bin/
+dist/
+coverage.out
+coverage-full.out
+/kacho-iam
+/kacho-migrator
+
+# Newman snapshots and run logs (audit trail, локально, не commit)
+tests/newman/out/snap*-local-*.json
+tests/newman/out/snap*-local-run.log
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# tests output
+test-results/
+
+# Python bytecode (newman Python case generators)
+__pycache__/
+*.pyc
+
+# Vendored corelib-owned infra protos — single source in kacho-corelib/proto.
+# Not committed here; `make proto-vendor` copies them in before `buf generate`
+# (needed only for buf import-resolution of the domain proto; Go-stubs live in corelib).
+/proto/google/
+/proto/kacho/cloud/api/
+/proto/kacho/cloud/operation/
+/proto/kacho/cloud/validation.proto
+/proto/kacho/iam/
+go.work
+go.work.sum
+.claude/
+
+# AI-оснастка (источник истины — kacho-workspace, локально синкается) — не коммитим
+.claude/
+CLAUDE.md
+AGENTS.md
+.codex/
+.agents/

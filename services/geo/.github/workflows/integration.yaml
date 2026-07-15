@@ -1,0 +1,34 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+name: integration
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# Integration tests (testcontainers Postgres). HARD gate: упавший или зависший
+# `go test` валит job (без continue-on-error, чтобы не маскировать --- FAIL /
+# timeout). Весь модуль `./...` идет БЕЗ -short, поэтому testcontainers-тесты в
+# internal/repo прогоняются (под -short они self-guard'ятся `if testing.Short()`).
+
+defaults:
+  run:
+    working-directory: kacho-geo
+
+jobs:
+  integration:
+    name: integration (testcontainers Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with: { path: kacho-geo }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: kacho-geo/go.mod, cache-dependency-path: kacho-geo/go.sum }
+      - run: go mod download
+      # HARD gate: a failing or timed-out integration test fails the PR.
+      - run: go test ./... -race -count=1 -timeout 1800s

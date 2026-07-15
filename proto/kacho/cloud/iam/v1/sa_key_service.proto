@@ -114,6 +114,13 @@ message IssueSAKeyRequest {
   //   audience: ["//iam.example.com/projects/123/locations/global/workloadIdentityPools/kacho/providers/main"]
   //   audience: ["api://acme-prod"]          // external federated credential
   repeated string audience = 6 [(length) = "<=512"];
+
+  // Tenant-facing имя токена (человекочитаемая метка ключа). Задаётся один раз при
+  // выпуске, immutable (у токена нет Update RPC). Пусто допустимо.
+  string name = 7 [(length) = "<=63"];
+
+  // Пользовательские метки токена. Задаются при выпуске, immutable.
+  map<string, string> labels = 8;
 }
 
 // TrustedSubject — one (issuer, subject_pattern) tuple allowed to assert this
@@ -165,6 +172,9 @@ message IssueSAKeyResponse {
 message IssueSAKeyMetadata {
   string service_account_id = 1;
   string key_id = 2;
+  // Read by exact field name `account_id` by corelib operations (extractAccountID)
+  // → операция попадает в account-scoped фид `/iam/operations`.
+  string account_id = 3;
 }
 
 message ListSAKeysRequest {
@@ -180,7 +190,7 @@ message ListSAKeysResponse {
 
 message RevokeSAKeyRequest {
   string service_account_id = 1 [(required) = true, (length) = "<=20"];
-  string key_id              = 2 [(required) = true, (length) = "<=20"];
+  string key_id              = 2 [(required) = true, (length) = "<=21"];
 }
 
 message RevokeSAKeyResponse {
@@ -191,4 +201,7 @@ message RevokeSAKeyResponse {
 message RevokeSAKeyMetadata {
   string service_account_id = 1;
   string key_id = 2;
+  // Read by exact field name `account_id` by corelib operations → revoke-операция
+  // тоже попадает в account-scoped фид `/iam/operations`.
+  string account_id = 3;
 }

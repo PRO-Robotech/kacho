@@ -1,0 +1,75 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# kacho-storage пинит kacho-proto/kacho-corelib через `replace ../` (storage.v1
+# proto ещё не опубликован versioned-модулем). Поэтому siblings чекаутятся рядом:
+#   /kacho-storage  /kacho-proto (ветка storage-split-proto)  /kacho-corelib
+# После публикации storage.v1 — заменить на versioned-модули (drop replace) и
+# убрать siblings checkout (см. docs/architecture/overview.md).
+env:
+  PROTO_REF: storage-split-proto
+  CORELIB_REF: main
+
+defaults:
+  run:
+    working-directory: kacho-storage
+
+jobs:
+  build-vet-test:
+    name: build + vet + test (unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with: { path: kacho-storage }
+      - uses: actions/checkout@v6
+        with: { repository: PRO-Robotech/kacho-proto, ref: storage-split-proto, path: kacho-proto }
+      - uses: actions/checkout@v6
+        with: { repository: PRO-Robotech/kacho-corelib, ref: main, path: kacho-corelib }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: kacho-storage/go.mod }
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -race -short -count=1 -timeout 5m ./...
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with: { path: kacho-storage }
+      - uses: actions/checkout@v6
+        with: { repository: PRO-Robotech/kacho-proto, ref: storage-split-proto, path: kacho-proto }
+      - uses: actions/checkout@v6
+        with: { repository: PRO-Robotech/kacho-corelib, ref: main, path: kacho-corelib }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: kacho-storage/go.mod }
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          working-directory: kacho-storage
+          args: --timeout 5m
+
+  govuln:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with: { path: kacho-storage }
+      - uses: actions/checkout@v6
+        with: { repository: PRO-Robotech/kacho-proto, ref: storage-split-proto, path: kacho-proto }
+      - uses: actions/checkout@v6
+        with: { repository: PRO-Robotech/kacho-corelib, ref: main, path: kacho-corelib }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: kacho-storage/go.mod }
+      - run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+        continue-on-error: true

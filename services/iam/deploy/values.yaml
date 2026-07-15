@@ -1,0 +1,70 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+name: iam
+replicas: 1
+image: kacho-iam:dev
+imagePullPolicy: IfNotPresent
+ports:
+  grpc: 9090
+  internalGrpc: 9091
+  # Prometheus /metrics HTTP listener — separate cluster-internal port (never
+  # the public tenant gRPC surface).
+  metrics: 9095
+db:
+  host: kacho-umbrella-pg-iam
+  port: "5432"
+  user: iam
+  name: kacho_iam
+  passwordSecretName: kacho-umbrella-pg-iam
+  passwordSecretKey: password
+
+# ─── Config sections (viper YAML, parity с kacho-vpc) ───────────────────
+# Все ключи ниже рендерятся в /etc/kacho-iam/config.yaml через
+# deploy/templates/configmap.yaml. Любой ключ можно override через
+# ENV KACHO_IAM_<SECTION>__<KEY>=... (см. internal/apps/kacho/config).
+logger:
+  level: INFO
+apiServer:
+  gracefulShutdown: 10s
+  # ─── Docker Registry v2 token shim (`/iam/token`, :9096) ────────────────────
+  # Пусто → работают built-in дефолты (registry.kacho.local / api.kacho.local),
+  # пригодные только для локального стенда. На развёрнутом окружении ОБА поля
+  # обязаны нести РЕАЛЬНЫЙ публичный хост реестра, иначе `docker login` ломается:
+  #
+  #   `service` — это НЕ только fallback для `?service=`. Оно же уходит в
+  #   issueUC.RegistryAudience (#321) → whitelist'ится как audience в Hydra-клиенте
+  #   КАЖДОГО выпускаемого SA-ключа. Если оно расходится с тем, что docker шлёт в
+  #   `?service=`, Hydra отвергает обмен:
+  #     "Requested audience '<host>' has not been whitelisted by the OAuth 2.0 Client"
+  #   → shim отдаёт 401 → `docker login: unauthorized`. Ключи, выпущенные с неверным
+  #   значением, придётся ПЕРЕВЫПУСТИТЬ (audience фиксируется в клиенте при создании).
+  #
+  #   `issuer` — `iss` + realm в WWW-Authenticate; должен совпадать с realm'ом,
+  #   который анонсирует data-plane реестра (KACHO_REGISTRY_TOKEN_REALM).
+  registryToken:
+    issuer: ""
+    service: ""
+metrics:
+  enable: true
+healthcheck:
+  enable: true
+repository:
+  postgres:
+    maxConns: 50
+    sslMode: disable
+authn:
+  mode: dev
+
+# extapi — внешние peer-зависимости сервиса (OpenFGA для authz-Check).
+# Auth-tier построен на Ory Kratos + Hydra.
+extapi:
+  openfga:
+    enabled: false
+    endpoint: ""
+    storeId: ""
+    authModelId: ""
+    tls:
+      enable: false
+
+env: {}

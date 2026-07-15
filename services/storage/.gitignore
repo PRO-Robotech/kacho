@@ -1,0 +1,26 @@
+# Go build
+*.exe
+*.test
+*.out
+bin/
+dist/
+coverage.out
+coverage-full.out
+/storage
+/kacho-migrator
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Local polyrepo override (go.work — per-developer; go.mod already replace ../siblings)
+go.work
+go.work.sum
+
+# AI-оснастка (источник истины — kacho-workspace, локально синкается) — не коммитим
+.claude/
+CLAUDE.md
+AGENTS.md
+.codex/
+.agents/

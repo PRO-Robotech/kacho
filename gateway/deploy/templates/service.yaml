@@ -1,0 +1,28 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.name }}
+  namespace: kacho
+spec:
+  selector:
+    app: {{ .Values.name }}
+  ports:
+    - name: cmux
+      port: {{ .Values.port }}
+      targetPort: cmux
+    {{- if .Values.internalRestPort }}
+    # Cluster-internal admin REST (Internal* paths). SECURITY (ban #6): the
+    # ingress MUST NOT target this port — it exists for admin-UI / port-forward /
+    # in-cluster tooling only. The ingress routes solely to the `cmux` port.
+    - name: internal-rest
+      port: {{ .Values.internalRestPort }}
+      targetPort: internal-rest
+    {{- end }}
+    {{- if .Values.tls.enabled }}
+    - name: tls
+      port: {{ .Values.tlsPort }}
+      targetPort: tls
+    {{- end }}

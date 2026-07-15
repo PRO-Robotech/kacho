@@ -1,0 +1,305 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}
+    spec:
+      # INFRA sec-hardening — pod-level securityContext (runAsNonRoot + seccomp
+      # RuntimeDefault). Per-container floor applied on each container below.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # goose migrator (separate binary, evgeniy §9 K.1 / AP-9) — applies the
+        # kacho_registry schema BEFORE the API server starts. KACHO_REGISTRY_DB_PASSWORD
+        # is required:true → the migrator needs the same DB env as the server.
+        - name: migrate
+          image: "{{ include "registry.image" . }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["/usr/local/bin/kacho-migrator", "up"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          env:
+            - name: KACHO_REGISTRY_DB_HOST
+              value: "{{ .Values.db.host }}"
+            - name: KACHO_REGISTRY_DB_PORT
+              value: "{{ .Values.db.port }}"
+            - name: KACHO_REGISTRY_DB_USER
+              value: "{{ .Values.db.user }}"
+            - name: KACHO_REGISTRY_DB_NAME
+              value: "{{ .Values.db.name }}"
+            - name: KACHO_REGISTRY_DB_SSLMODE
+              value: "{{ .Values.db.sslmode }}"
+            - name: KACHO_REGISTRY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.existingSecret }}
+                  key: {{ .Values.db.passwordSecretKey }}
+      containers:
+        - name: {{ .Values.name }}
+          image: "{{ include "registry.image" . }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["/usr/local/bin/kacho-registry", "serve"]
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+            - name: grpc-internal
+              containerPort: {{ .Values.service.internalGrpcPort }}
+            - name: dataplane
+              containerPort: {{ .Values.service.dataplanePort }}
+          env:
+            # ─── Postgres (schema kacho_registry) ───
+            - name: KACHO_REGISTRY_DB_HOST
+              value: "{{ .Values.db.host }}"
+            - name: KACHO_REGISTRY_DB_PORT
+              value: "{{ .Values.db.port }}"
+            - name: KACHO_REGISTRY_DB_USER
+              value: "{{ .Values.db.user }}"
+            - name: KACHO_REGISTRY_DB_NAME
+              value: "{{ .Values.db.name }}"
+            - name: KACHO_REGISTRY_DB_SSLMODE
+              value: "{{ .Values.db.sslmode }}"
+            - name: KACHO_REGISTRY_DB_MAX_CONNS
+              value: "{{ .Values.db.maxConns }}"
+            - name: KACHO_REGISTRY_DB_STATEMENT_TIMEOUT
+              value: "{{ .Values.db.statementTimeout }}"
+            - name: KACHO_REGISTRY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.existingSecret }}
+                  key: {{ .Values.db.passwordSecretKey }}
+            # ─── Listeners ───
+            - name: KACHO_REGISTRY_GRPC_PORT
+              value: "{{ .Values.service.grpcPort }}"
+            - name: KACHO_REGISTRY_INTERNAL_PORT
+              value: "{{ .Values.service.internalGrpcPort }}"
+            - name: KACHO_REGISTRY_DATAPLANE_ADDR
+              value: ":{{ .Values.service.dataplanePort }}"
+            # AuthN fail-closed gate (dev | production | production-strict).
+            - name: KACHO_REGISTRY_AUTH_MODE
+              value: "{{ .Values.authMode }}"
+            # ─── registry→iam edges + authz ───
+            # INTERNAL (:9091): per-RPC Check + fga-proxy RegisterResource/Unregister.
+            - name: KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR
+              value: "{{ .Values.authz.iamGrpcAddr }}"
+            # PUBLIC (:9090): ProjectService.Get existence-validation on Create.
+            - name: KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR
+              value: "{{ .Values.authz.iamProjectGrpcAddr }}"
+            - name: KACHO_REGISTRY_AUTHZ_BREAKGLASS
+              value: "{{ .Values.authz.breakglass }}"
+            # ─── zot OCI backend (cluster-internal, never public) ───
+            - name: KACHO_REGISTRY_ZOT_ADDR
+              value: "{{ include "registry.zotAddr" . }}"
+            # ─── data-plane OCI auth-proxy (registry.kacho.local) ───
+            # registry-iam-jwks-unify — the docker-Bearer verifier fetches its JWKS from
+            # the cluster-INTERNAL kacho-iam JWKS proxy (:9097), a byte-for-byte mirror of
+            # Hydra's PUBLIC JWKS, instead of dialing Hydra directly. Hydra stays the
+            # signer/issuer (issuer-pin below is unchanged — separate knob). The registry
+            # pod trusts the internal-CA leaf terminating iam :9097 via SSL_CERT_DIR (the
+            # ca.crt mounted at /etc/registry-ca — see the internal-ca volume, present
+            # whenever mtls (prod) or the data-plane TLS-sidecar is on). The sidecar no
+            # longer proxies JWKS — iam serves it over TLS directly.
+            - name: KACHO_REGISTRY_IAM_JWKS_URL
+              value: "{{ .Values.iam.jwksUrl }}"
+            - name: KACHO_REGISTRY_HYDRA_ISSUER
+              value: "{{ .Values.hydra.issuer }}"
+            - name: KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY
+              value: "{{ .Values.dataplaneTLSTerminatedExternally }}"
+            - name: KACHO_REGISTRY_TOKEN_REALM
+              value: "{{ .Values.tokenRealm }}"
+            - name: KACHO_REGISTRY_SERVICE_AUD
+              value: "{{ .Values.serviceAud }}"
+            - name: KACHO_REGISTRY_ENDPOINT_BASE
+              value: "{{ .Values.endpointBase }}"
+            {{- if or .Values.mtls.enable (and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled) }}
+            # registry-iam-jwks-unify — internal-CA trust anchor for the https JWKS fetch
+            # from kacho-iam :9097. The mounted ca.crt is the cluster internal-CA
+            # (kacho-internal-ca) — the SAME CA that signs the kacho-iam-internal leaf
+            # terminating :9097 — added to the system pool via SSL_CERT_DIR. Present when
+            # mtls is on (prod — from the registry mTLS server secret) OR the data-plane
+            # TLS-sidecar cert is mounted. AuthMode stays production (requireSecureJWKSURL
+            # passes — iam.jwksUrl is https). Without this the https JWKS fetch fails the
+            # TLS handshake → fail-closed 401 on every pull (risk R3). The sidecar no
+            # longer proxies JWKS (that role dropped now that iam serves TLS directly).
+            - name: SSL_CERT_DIR
+              value: /etc/registry-ca
+            {{- end }}
+            {{- if .Values.mtls.enable }}
+            {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
+            {{- $cli := printf "%s/client" .Values.mtls.mountPath }}
+            # mTLS server-creds (both gRPC listeners) — corelib grpcsrv.TLSServer via
+            # config.LoadPrefixed("KACHO_REGISTRY"). ca.crt = client-CA bundle.
+            # Internal :9091 is NOT exempt from mTLS (security.md AuthN+AuthZ ВЕЗДЕ).
+            - name: KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_REGISTRY_PUBLIC_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_REGISTRY_PUBLIC_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_REGISTRY_PUBLIC_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            - name: KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_REGISTRY_INTERNAL_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_REGISTRY_INTERNAL_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_REGISTRY_INTERNAL_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- if .Values.mtls.edges.iamAuthz }}
+            # registry→iam Check + fga-proxy (internal :9091) client-creds —
+            # grpcclient.TLSClient. ServerName = kacho-iam-internal (∈ iam server-SAN).
+            - name: KACHO_REGISTRY_IAM_AUTHZ_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_REGISTRY_IAM_AUTHZ_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_IAM_AUTHZ_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_REGISTRY_IAM_AUTHZ_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_IAM_AUTHZ_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.iamAuthz | quote }}
+            {{- end }}
+            {{- if .Values.mtls.edges.iamProject }}
+            # registry→iam ProjectService.Get (public :9090) client-creds — same client
+            # leaf as iamAuthz, ServerName = kacho-iam (public dial-host, ∈ iam server-SAN).
+            - name: KACHO_REGISTRY_IAM_PROJECT_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_REGISTRY_IAM_PROJECT_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_IAM_PROJECT_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_REGISTRY_IAM_PROJECT_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_IAM_PROJECT_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.iamProject | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          volumeMounts:
+            # Writable scratch for the read-only-rootfs container.
+            - name: tmp
+              mountPath: /tmp
+            {{- if or .Values.mtls.enable (and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled) }}
+            # registry-iam-jwks-unify — internal-CA trust-anchor (ca.crt = kacho-internal-ca)
+            # для верификации https-JWKS cluster-internal kacho-iam proxy (:9097).
+            # SSL_CERT_DIR=/etc/registry-ca. Источник ca.crt — mTLS-секрет (prod) или
+            # sidecar-серт (см. volume ниже).
+            - name: internal-ca
+              mountPath: /etc/registry-ca
+              readOnly: true
+            {{- end }}
+            {{- if .Values.mtls.enable }}
+            # mTLS — cert-manager internal-CA server + client secrets in separate
+            # dirs. cert-manager writes tls.crt/tls.key/ca.crt.
+            - name: mtls-server
+              mountPath: {{ printf "%s/server" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            - name: mtls-client
+              mountPath: {{ printf "%s/client" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            {{- end }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 10
+            periodSeconds: 30
+        {{- if and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled }}
+        # data-plane TLS-sidecar — nginx терминирует TLS на :8443 (server-cert
+        # registry-dataplane-tls) и проксирует OCI-трафик в плейнтекстовый data-plane
+        # (127.0.0.1:8080), а также JWKS/token-эндпоинты (см. registry-dataplane-nginx).
+        # docker требует https для non-localhost registry — публичный 443-VIP таргетит
+        # этот порт (dp-tls). unprivileged-образ слушает :8443 без root.
+        - name: dataplane-tls
+          image: {{ .Values.service.dataplaneLB.tlsSidecar.image | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: dp-tls
+              containerPort: 8443
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: registry-dataplane-tls
+              mountPath: /etc/registry-tls
+              readOnly: true
+            - name: registry-dataplane-nginx
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+        {{- end }}
+      volumes:
+        # Writable scratch for the read-only-rootfs container.
+        - name: tmp
+          emptyDir: {}
+        {{- if and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled }}
+        # data-plane TLS-sidecar: server-cert + nginx-конфиг. Имя секрета — из values
+        # (tlsSidecar.cert.secretName): публичный VIP терминируется публично-доверенным
+        # цертом (LE), иначе docker отвергает internal-CA leaf как unknown authority.
+        - name: registry-dataplane-tls
+          secret:
+            secretName: {{ .Values.service.dataplaneLB.tlsSidecar.cert.secretName | quote }}
+        - name: registry-dataplane-nginx
+          configMap:
+            name: registry-dataplane-nginx
+        {{- end }}
+        {{- if .Values.mtls.enable }}
+        # mTLS — cert-manager internal-CA secrets (server + client).
+        - name: mtls-server
+          secret:
+            secretName: {{ .Values.mtls.serverSecretName | quote }}
+        - name: mtls-client
+          secret:
+            secretName: {{ .Values.mtls.clientSecretName | quote }}
+        {{- end }}
+        {{- if or .Values.mtls.enable (and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled) }}
+        # registry-iam-jwks-unify — internal-CA (kacho-internal-ca) ca.crt projected as a
+        # single-file trust store at /etc/registry-ca/internal-ca.crt (SSL_CERT_DIR) so the
+        # data-plane trusts the leaf terminating the kacho-iam JWKS proxy (:9097). Source:
+        # the registry mTLS server secret when mtls is on (prod), else the data-plane
+        # TLS-sidecar cert. ca.crt-only projection keeps private keys out of the trust dir.
+        # NB: the two sources coincide ONLY while the sidecar cert is internal-CA-issued.
+        # A public issuer (tlsSidecar.cert.issuerRef → letsencrypt-*) makes the sidecar
+        # secret's ca.crt a PUBLIC chain, which would not verify the iam :9097 leaf — hence
+        # a public sidecar issuer requires mtls.enable=true (prod), where ca.crt comes from
+        # the mTLS secret instead. See values.yaml (tlsSidecar.cert, trust-anchor note).
+        - name: internal-ca
+          secret:
+            secretName: {{ if .Values.mtls.enable }}{{ .Values.mtls.serverSecretName | quote }}{{ else }}{{ .Values.service.dataplaneLB.tlsSidecar.cert.secretName | quote }}{{ end }}
+            items:
+              - key: ca.crt
+                path: internal-ca.crt
+        {{- end }}

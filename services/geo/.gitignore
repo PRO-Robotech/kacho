@@ -1,0 +1,35 @@
+# Go build
+*.exe
+*.test
+*.out
+bin/
+dist/
+coverage.out
+coverage-full.out
+/kacho-geo
+/kacho-migrator
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Local polyrepo override (not committed — go.mod pins GitHub versions)
+go.work
+go.work.sum
+
+# Vendored corelib-owned инфра-протосы — единственный источник в kacho-corelib.
+# Локально подтягиваются `make proto-vendor` для buf-резолва импортов; в git их нет.
+/proto/google/
+/proto/kacho/cloud/api/
+/proto/kacho/cloud/operation/
+/proto/kacho/cloud/validation.proto
+/proto/kacho/iam/
+.claude/
+
+# AI-оснастка (источник истины — kacho-workspace, локально синкается) — не коммитим
+.claude/
+CLAUDE.md
+AGENTS.md
+.codex/
+.agents/

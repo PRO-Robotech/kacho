@@ -1,0 +1,47 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# Helm-values kacho-storage (skeleton). Реальные mTLS-секреты / peer-адреса /
+# ресурсные лимиты донастраивает kacho-deploy при интеграции в стенд.
+
+replicaCount: 1
+
+image:
+  repository: kacho-storage
+  tag: dev
+  pullPolicy: IfNotPresent
+
+# Порты сервиса.
+ports:
+  public: 9090     # Volume/Snapshot/DiskType Service
+  internal: 9091   # Internal* (cluster-internal only, ban #6)
+  metrics: 9095    # /healthz diagnostic listener
+
+# Env (KACHO_STORAGE_*). Секреты (DB_PASSWORD, mTLS) — через secret.yaml.
+config:
+  authMode: production
+  dbHost: kacho-storage-postgres
+  dbPort: "5432"
+  dbUser: storage
+  dbName: kacho_storage
+  dbSslMode: require
+  # Peer-адреса (runtime cross-domain edges). Пусто → клиент fail-closed.
+  geoGrpcAddr: ""
+  iamGrpcAddr: ""
+  authzIamGrpcAddr: ""
+
+# Init-контейнер миграций (cmd/migrator up) до старта основного pod.
+migrator:
+  enabled: true
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

@@ -1,0 +1,60 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package targetgroup
+
+import (
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	computeclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/compute"
+	geoclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
+	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
+	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
+	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+)
+
+// Port-интерфейсы use-case-слоя TargetGroupService (Clean Architecture).
+//
+// Use-case'ы внутри пакета зависят ТОЛЬКО от этих port-ов; конкретные реализации
+// (pgx-Repository, gRPC-typed-clients, FGA writer) инжектируются в composition
+// root (`cmd/kacho-loadbalancer/main.go`). Тесты подменяют port'ы на ручные
+// двойники (см. fakes_test.go в этом же пакете).
+
+// Repo — корневой CQRS-Repository kacho-nlb. Алиас на `kacho.Repository`, чтобы
+// handler-слой не импортировал leaf-пакет под полным путём.
+type Repo = kachorepo.Repository
+
+// OpsRepo — async LRO repo (kacho-corelib operations).
+type OpsRepo = operations.Repo
+
+// ProjectClient — iam.ProjectService.Get adapter.
+type ProjectClient = iamclient.ProjectClient
+
+// CheckClient — per-object FGA authorization gate (iam.InternalIAMService.Check).
+// Move использует его для авторизации caller'а на DESTINATION project (`editor on
+// project:<dst>`) — per-RPC interceptor проверяет только source-ресурс, поэтому
+// dst-authz — задача handler'а. nil → check пропускается
+// (dev/unwired; breakglass также обходит source-check).
+type CheckClient = iamclient.CheckClient
+
+// RegionClient — geo.RegionService.Get adapter (stateless pass-through;
+// kacho-geo). Используется sync-precheck в Create use-case'е для
+// валидации `region_id` через kacho-geo (ребро nlb→geo).
+type RegionClient = geoclient.RegionClient
+
+// InstanceClient — compute.InstanceService.Get adapter. Используется
+// AddTargets-worker'ом для per-target instance-resolve + region-validate.
+// Это НЕ geography-ребро (instance-resolve), поэтому остаётся на kacho-compute.
+type InstanceClient = computeclient.InstanceClient
+
+// NetworkInterfaceClient — vpc.NetworkInterfaceService.Get adapter. Используется
+// AddTargets-worker'ом для per-target nic-resolve.
+type NetworkInterfaceClient = vpcclient.NetworkInterfaceClient
+
+// SubnetClient — vpc.SubnetService.Get adapter. Используется AddTargets-worker'ом
+// для ip_ref-target peer-validate (Subnet existence + IP-in-CIDR + region-match).
+type SubnetClient = vpcclient.SubnetClient
+
+// FGA owner-hierarchy tuple-регистрация — через transactional-outbox
+// (FGARegisterOutbox emit в writer-tx + register-drainer → IAM); FGA object-types
+// / relations живут в `internal/domain` (FGAObjectType* / FGARelation*).

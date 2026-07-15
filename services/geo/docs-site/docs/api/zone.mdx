@@ -1,0 +1,199 @@
+---
+id: zone
+sidebar_position: 3
+title: Zone
+---
+
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Zone
+
+**Zone** — зона доступности внутри региона ([Region](/api/region)): часть топологии, в которой
+размещаются нагрузки. Несёт `status` (UP / DOWN), отражающий доступность зоны. Как и регион,
+Zone — глобальный cluster-scoped read-only справочник (не принадлежит проекту). Consumer-сервисы
+(Compute, VPC) ссылаются на зону по `zoneId` и валидируют её через `ZoneService.Get`.
+
+Идентификатор зоны **назначается администратором** (`region-1-a`) и **неизменяем** (immutable
+PK). Зона привязана к региону полем `regionId` — внешний ключ на `Region.id` с
+`ON DELETE RESTRICT`.
+
+## Поля
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Изменяемость</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>string</td><td>immutable (admin-assigned PK)</td><td>Идентификатор зоны (например, <code>region-1-a</code>)</td></tr>
+    <tr><td><code>regionId</code></td><td>string</td><td>immutable (FK → Region.id)</td><td>Регион, которому принадлежит зона. FK <code>ON DELETE RESTRICT</code></td></tr>
+    <tr><td><code>status</code></td><td>enum</td><td>mutable</td><td>Доступность зоны: <code>UP</code> / <code>DOWN</code> / <code>STATUS_UNSPECIFIED</code></td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>mutable</td><td>Человекочитаемое имя зоны</td></tr>
+    <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
+  </tbody>
+</table>
+
+### Значения status
+
+<table>
+  <thead><tr><th>Значение</th><th>Смысл</th></tr></thead>
+  <tbody>
+    <tr><td><code>UP</code></td><td>Зона доступна; ресурсы в ней можно использовать</td></tr>
+    <tr><td><code>DOWN</code></td><td>Зона недоступна</td></tr>
+    <tr><td><code>STATUS_UNSPECIFIED</code></td><td>Статус не задан (нулевое значение enum)</td></tr>
+  </tbody>
+</table>
+
+## Методы
+
+Чтение (`Get` / `List`) — публичное, на listener `:9090`. Администрирование
+(`Create` / `Update` / `Delete`) — `InternalZoneService` на cluster-internal listener `:9091`,
+синхронное (catalog-паттерн).
+
+### Get — получить зону
+
+<ApiOperation method="GET" endpoint="/geo/v1/zones/{id}">
+
+Возвращает зону по идентификатору. Публичный read (требует отношение `viewer`).
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/geo/v1/zones/region-1-a' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "region-1-a",
+      "regionId": "region-1",
+      "status": "UP",
+      "name": "Region 1, zone A",
+      "createdAt": "2026-06-24T10:00:00Z"
+    }
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### List — список зон
+
+<ApiOperation method="GET" endpoint="/geo/v1/zones">
+
+Возвращает список зон с cursor-пагинацией. Публичный read.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/geo/v1/zones?pageSize=50' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "zones": [
+        { "id": "region-1-a", "regionId": "region-1", "status": "UP", "name": "Region 1, zone A", "createdAt": "2026-06-24T10:00:00Z" },
+        { "id": "region-1-b", "regionId": "region-1", "status": "UP", "name": "Region 1, zone B", "createdAt": "2026-06-24T10:00:00Z" }
+      ],
+      "nextPageToken": ""
+    }
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### Create — создать зону (admin, internal)
+
+<ApiOperation method="POST" endpoint="/geo/v1/zones">
+
+Создаёт зону с **явно заданным** id, привязанную к существующему региону (`regionId`).
+Синхронная internal-операция (требует `system_admin`).
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST 'http://localhost:19091/geo/v1/zones' \\
+      -H 'Authorization: Bearer <admin-JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{
+            "id": "region-1-c",
+            "regionId": "region-1",
+            "status": "UP",
+            "name": "Region 1, zone C"
+          }'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "region-1-c",
+      "regionId": "region-1",
+      "status": "UP",
+      "name": "Region 1, zone C",
+      "createdAt": "2026-06-24T10:10:00Z"
+    }
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### Update — изменить зону (admin, internal)
+
+<ApiOperation method="PATCH" endpoint="/geo/v1/zones/{id}">
+
+Меняет изменяемые поля зоны (`status`, `name`). Привязку к региону (`regionId`) изменить нельзя —
+она immutable. Синхронная internal-операция.
+
+<CodeBlock language="bash">
+  {dedent`
+    # перевести зону в DOWN
+    curl -X PATCH 'http://localhost:19091/geo/v1/zones/region-1-c' \\
+      -H 'Authorization: Bearer <admin-JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{ "status": "DOWN" }'
+  `}
+</CodeBlock>
+
+:::note Частичное обновление status
+Если в запросе `Update` поле `status` не передано (или передано как `STATUS_UNSPECIFIED`),
+текущий статус зоны **не меняется** — обновляются только явно заданные поля. Это позволяет
+переименовать зону, не трогая её доступность.
+:::
+
+</ApiOperation>
+
+### Delete — удалить зону (admin, internal)
+
+<ApiOperation method="DELETE" endpoint="/geo/v1/zones/{id}">
+
+Удаляет зону. Синхронная internal-операция. Удаление зоны разблокирует удаление её региона
+(если она была последней привязанной зоной).
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X DELETE 'http://localhost:19091/geo/v1/zones/region-1-c' \\
+      -H 'Authorization: Bearer <admin-JWT>'
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+## Ошибки и граничные случаи
+
+<table>
+  <thead><tr><th>Ситуация</th><th>Код</th><th>Поведение</th></tr></thead>
+  <tbody>
+    <tr><td>Get/Delete несуществующей зоны</td><td><code>NOT_FOUND</code></td><td><code>"Zone &lt;id&gt; not found"</code></td></tr>
+    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td>PK-конфликт по <code>id</code></td></tr>
+    <tr><td>Create с <code>regionId</code> несуществующего региона</td><td><code>FAILED_PRECONDITION</code></td><td>Нарушение FK <code>regionId → Region.id</code></td></tr>
+    <tr><td>Попытка изменить <code>regionId</code></td><td>—</td><td><code>regionId</code> immutable (FK-привязка задаётся при Create)</td></tr>
+    <tr><td>Update без <code>status</code></td><td>—</td><td>Статус не меняется — частичное обновление (см. выше)</td></tr>
+    <tr><td>Read без <code>viewer</code> / admin без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
+  </tbody>
+</table>
+
+:::warning Internal-поверхность
+`Create` / `Update` / `Delete` обслуживаются `InternalZoneService` на cluster-internal listener
+(`:9091`) и **не публикуются** на external endpoint.
+:::

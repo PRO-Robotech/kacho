@@ -1,0 +1,228 @@
+{
+  "info": {
+    "_postman_id": "de83143b-341c-4b4d-b73d-87dbc88d6b62",
+    "name": "kacho-storage / newman / internal-volume",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  // runId формат: только [a-z0-9], без точки, начинается с буквы — чтобы проходить compute name regex",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "IVOL-ATTACH-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/Attach на external endpoint → route absent (Internal-only :9091, ban #6/INV-7) → 404",
+      "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "attach",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kacho.cloud.storage.v1.InternalVolumeService/Attach",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kacho.cloud.storage.v1.InternalVolumeService",
+                "Attach"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"volumeId\": \"{{garbageStorageId}}\", \"instanceId\": \"ins-newman-fake\", \"instanceZoneId\": \"{{existingZoneId}}\", \"projectId\": \"{{_suiteFolderId}}\", \"deviceName\": \"sdb\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IVOL-DETACH-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/Detach на external endpoint → route absent (Internal-only :9091, ban #6/INV-7) → 404",
+      "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "detach",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kacho.cloud.storage.v1.InternalVolumeService/Detach",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kacho.cloud.storage.v1.InternalVolumeService",
+                "Detach"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"volumeId\": \"{{garbageStorageId}}\", \"instanceId\": \"ins-newman-fake\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IVOL-LISTATTACHMENTS-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/ListAttachments на external endpoint → route absent (Internal-only :9091, ban #6/INV-7) → 404",
+      "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "listattachments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kacho.cloud.storage.v1.InternalVolumeService",
+                "ListAttachments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"instanceIds\": [\"ins-newman-fake\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IVOL-GETINTERNAL-EXTERNAL-ABSENT — POST /kacho.cloud.storage.v1.InternalVolumeService/GetInternal на external endpoint → route absent (Internal-only :9091, ban #6/INV-7) → 404",
+      "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
+      "item": [
+        {
+          "name": "getinternal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kacho.cloud.storage.v1.InternalVolumeService/GetInternal",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kacho.cloud.storage.v1.InternalVolumeService",
+                "GetInternal"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"volumeId\": \"{{garbageStorageId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

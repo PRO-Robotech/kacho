@@ -41,7 +41,7 @@ service UserTokenService {
       response: "IssueUserTokenResponse"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.issue_user_tokens.issue";
-    option (kacho.iam.authz.v1.required_relation) = "token_admin";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -54,7 +54,7 @@ service UserTokenService {
       get: "/iam/v1/users/{user_id}/tokens"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.user_tokens.list";
-    option (kacho.iam.authz.v1.required_relation) = "token_admin";
+    option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -71,7 +71,7 @@ service UserTokenService {
       response: "RevokeUserTokenResponse"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.revoke_user_tokens.revoke";
-    option (kacho.iam.authz.v1.required_relation) = "token_admin";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -86,6 +86,10 @@ message IssueUserTokenRequest {
   // Опциональный TTL в секундах; 0 → бессрочный.
   int64 ttl_seconds = 3 [(value) = "<=63072000"];
   string created_by_user_id = 4 [(required) = true, (length) = "<=20"];
+  // Tenant-facing имя токена (человекочитаемая метка). Задаётся при выпуске, immutable.
+  string name = 5 [(length) = "<=63"];
+  // Пользовательские метки токена. Задаются при выпуске, immutable.
+  map<string, string> labels = 6;
 }
 
 message IssueUserTokenResponse {
@@ -110,6 +114,9 @@ message IssueUserTokenResponse {
 message IssueUserTokenMetadata {
   string user_id = 1;
   string key_id = 2;
+  // Read by exact field name `account_id` by corelib operations (extractAccountID)
+  // → операция попадает в account-scoped фид `/iam/operations`.
+  string account_id = 3;
 }
 
 message ListUserTokensRequest {
@@ -125,7 +132,7 @@ message ListUserTokensResponse {
 
 message RevokeUserTokenRequest {
   string user_id  = 1 [(required) = true, (length) = "<=20"];
-  string token_id = 2 [(required) = true, (length) = "<=20"];
+  string token_id = 2 [(required) = true, (length) = "<=21"];
 }
 
 message RevokeUserTokenResponse {
@@ -136,4 +143,7 @@ message RevokeUserTokenResponse {
 message RevokeUserTokenMetadata {
   string user_id = 1;
   string token_id = 2;
+  // Read by exact field name `account_id` by corelib operations → revoke-операция
+  // тоже попадает в account-scoped фид `/iam/operations`.
+  string account_id = 3;
 }

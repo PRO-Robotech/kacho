@@ -1,0 +1,60 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-storage
+  labels:
+    app: {{ .Release.Name }}-storage
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-storage
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-storage
+    spec:
+      {{- if .Values.migrator.enabled }}
+      initContainers:
+        - name: migrator
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/kacho-migrator", "up"]
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-storage-config
+            - secretRef:
+                name: {{ .Release.Name }}-storage-secret
+      {{- end }}
+      containers:
+        - name: storage
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: grpc-public
+              containerPort: {{ .Values.ports.public }}
+            - name: grpc-internal
+              containerPort: {{ .Values.ports.internal }}
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-storage-config
+            - secretRef:
+                name: {{ .Release.Name }}-storage-secret
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.ports.metrics }}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.public }}
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

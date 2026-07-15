@@ -68,7 +68,12 @@ type IssueSAKeyRequest struct {
 	//	audience: ["sts.example.com"]
 	//	audience: ["//iam.example.com/projects/123/locations/global/workloadIdentityPools/kacho/providers/main"]
 	//	audience: ["api://acme-prod"]          // external federated credential
-	Audience      []string `protobuf:"bytes,6,rep,name=audience,proto3" json:"audience,omitempty"`
+	Audience []string `protobuf:"bytes,6,rep,name=audience,proto3" json:"audience,omitempty"`
+	// Tenant-facing имя токена (человекочитаемая метка ключа). Задаётся один раз при
+	// выпуске, immutable (у токена нет Update RPC). Пусто допустимо.
+	Name string `protobuf:"bytes,7,opt,name=name,proto3" json:"name,omitempty"`
+	// Пользовательские метки токена. Задаются при выпуске, immutable.
+	Labels        map[string]string `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -141,6 +146,20 @@ func (x *IssueSAKeyRequest) GetTrustedSubjects() []*TrustedSubject {
 func (x *IssueSAKeyRequest) GetAudience() []string {
 	if x != nil {
 		return x.Audience
+	}
+	return nil
+}
+
+func (x *IssueSAKeyRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *IssueSAKeyRequest) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
 	}
 	return nil
 }
@@ -335,8 +354,11 @@ type IssueSAKeyMetadata struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	ServiceAccountId string                 `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
 	KeyId            string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Read by exact field name `account_id` by corelib operations (extractAccountID)
+	// → операция попадает в account-scoped фид `/iam/operations`.
+	AccountId     string `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IssueSAKeyMetadata) Reset() {
@@ -379,6 +401,13 @@ func (x *IssueSAKeyMetadata) GetServiceAccountId() string {
 func (x *IssueSAKeyMetadata) GetKeyId() string {
 	if x != nil {
 		return x.KeyId
+	}
+	return ""
+}
+
+func (x *IssueSAKeyMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
 	}
 	return ""
 }
@@ -603,8 +632,11 @@ type RevokeSAKeyMetadata struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	ServiceAccountId string                 `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
 	KeyId            string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Read by exact field name `account_id` by corelib operations → revoke-операция
+	// тоже попадает в account-scoped фид `/iam/operations`.
+	AccountId     string `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RevokeSAKeyMetadata) Reset() {
@@ -651,11 +683,18 @@ func (x *RevokeSAKeyMetadata) GetKeyId() string {
 	return ""
 }
 
+func (x *RevokeSAKeyMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 var File_kacho_cloud_iam_v1_sa_key_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xde\x02\n" +
+	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x82\x04\n" +
 	"\x11IssueSAKeyRequest\x12:\n" +
 	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12+\n" +
 	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12/\n" +
@@ -664,7 +703,12 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"ttlSeconds\x129\n" +
 	"\x12created_by_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12M\n" +
 	"\x10trusted_subjects\x18\x05 \x03(\v2\".kacho.cloud.iam.v1.TrustedSubjectR\x0ftrustedSubjects\x12%\n" +
-	"\baudience\x18\x06 \x03(\tB\t\x8a\xc81\x05<=512R\baudience\"o\n" +
+	"\baudience\x18\x06 \x03(\tB\t\x8a\xc81\x05<=512R\baudience\x12\x1c\n" +
+	"\x04name\x18\a \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12I\n" +
+	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"o\n" +
 	"\x0eTrustedSubject\x12%\n" +
 	"\x06issuer\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x06issuer\x126\n" +
 	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\"\xbc\x02\n" +
@@ -676,10 +720,12 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x0epublic_key_pem\x18\x05 \x01(\tR\fpublicKeyPem\x12\x1c\n" +
 	"\talgorithm\x18\x06 \x01(\tR\talgorithm\x12\x15\n" +
 	"\x06key_id\x18\a \x01(\tR\x05keyId\x12\x1c\n" +
-	"\taudiences\x18\b \x03(\tR\taudiences\"Y\n" +
+	"\taudiences\x18\b \x03(\tR\taudiences\"x\n" +
 	"\x12IssueSAKeyMetadata\x12,\n" +
 	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\xa2\x01\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId\"\xa2\x01\n" +
 	"\x11ListSAKeysRequest\x12:\n" +
 	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12'\n" +
 	"\tpage_size\x18\x02 \x01(\x03B\n" +
@@ -691,14 +737,16 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"u\n" +
 	"\x12RevokeSAKeyRequest\x12:\n" +
 	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12#\n" +
-	"\x06key_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x05keyId\"g\n" +
+	"\x06key_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\x05keyId\"g\n" +
 	"\x13RevokeSAKeyResponse\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x129\n" +
 	"\n" +
-	"revoked_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\"Z\n" +
+	"revoked_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\"y\n" +
 	"\x13RevokeSAKeyMetadata\x12,\n" +
 	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId2\xb3\x06\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId2\xb3\x06\n" +
 	"\fSAKeyService\x12\x96\x02\n" +
 	"\x05Issue\x12%.kacho.cloud.iam.v1.IssueSAKeyRequest\x1a .kacho.cloud.operation.Operation\"\xc3\x01\x8a\xb5\x18\x19iam.issue_s_a_keies.issue\x92\xb5\x18\bv_update\x9a\xb5\x18)\n" +
 	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x012\xb2\xd2*(\n" +
@@ -721,7 +769,7 @@ func file_kacho_cloud_iam_v1_sa_key_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_sa_key_service_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_sa_key_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_kacho_cloud_iam_v1_sa_key_service_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_kacho_cloud_iam_v1_sa_key_service_proto_goTypes = []any{
 	(*IssueSAKeyRequest)(nil),         // 0: kacho.cloud.iam.v1.IssueSAKeyRequest
 	(*TrustedSubject)(nil),            // 1: kacho.cloud.iam.v1.TrustedSubject
@@ -732,26 +780,28 @@ var file_kacho_cloud_iam_v1_sa_key_service_proto_goTypes = []any{
 	(*RevokeSAKeyRequest)(nil),        // 6: kacho.cloud.iam.v1.RevokeSAKeyRequest
 	(*RevokeSAKeyResponse)(nil),       // 7: kacho.cloud.iam.v1.RevokeSAKeyResponse
 	(*RevokeSAKeyMetadata)(nil),       // 8: kacho.cloud.iam.v1.RevokeSAKeyMetadata
-	(*ServiceAccountOAuthClient)(nil), // 9: kacho.cloud.iam.v1.ServiceAccountOAuthClient
-	(*timestamppb.Timestamp)(nil),     // 10: google.protobuf.Timestamp
-	(*operation.Operation)(nil),       // 11: kacho.cloud.operation.Operation
+	nil,                               // 9: kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntry
+	(*ServiceAccountOAuthClient)(nil), // 10: kacho.cloud.iam.v1.ServiceAccountOAuthClient
+	(*timestamppb.Timestamp)(nil),     // 11: google.protobuf.Timestamp
+	(*operation.Operation)(nil),       // 12: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_sa_key_service_proto_depIdxs = []int32{
 	1,  // 0: kacho.cloud.iam.v1.IssueSAKeyRequest.trusted_subjects:type_name -> kacho.cloud.iam.v1.TrustedSubject
-	9,  // 1: kacho.cloud.iam.v1.IssueSAKeyResponse.key:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
-	9,  // 2: kacho.cloud.iam.v1.ListSAKeysResponse.keys:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
-	10, // 3: kacho.cloud.iam.v1.RevokeSAKeyResponse.revoked_at:type_name -> google.protobuf.Timestamp
-	0,  // 4: kacho.cloud.iam.v1.SAKeyService.Issue:input_type -> kacho.cloud.iam.v1.IssueSAKeyRequest
-	4,  // 5: kacho.cloud.iam.v1.SAKeyService.List:input_type -> kacho.cloud.iam.v1.ListSAKeysRequest
-	6,  // 6: kacho.cloud.iam.v1.SAKeyService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeSAKeyRequest
-	11, // 7: kacho.cloud.iam.v1.SAKeyService.Issue:output_type -> kacho.cloud.operation.Operation
-	5,  // 8: kacho.cloud.iam.v1.SAKeyService.List:output_type -> kacho.cloud.iam.v1.ListSAKeysResponse
-	11, // 9: kacho.cloud.iam.v1.SAKeyService.Revoke:output_type -> kacho.cloud.operation.Operation
-	7,  // [7:10] is the sub-list for method output_type
-	4,  // [4:7] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	9,  // 1: kacho.cloud.iam.v1.IssueSAKeyRequest.labels:type_name -> kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntry
+	10, // 2: kacho.cloud.iam.v1.IssueSAKeyResponse.key:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
+	10, // 3: kacho.cloud.iam.v1.ListSAKeysResponse.keys:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
+	11, // 4: kacho.cloud.iam.v1.RevokeSAKeyResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	0,  // 5: kacho.cloud.iam.v1.SAKeyService.Issue:input_type -> kacho.cloud.iam.v1.IssueSAKeyRequest
+	4,  // 6: kacho.cloud.iam.v1.SAKeyService.List:input_type -> kacho.cloud.iam.v1.ListSAKeysRequest
+	6,  // 7: kacho.cloud.iam.v1.SAKeyService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeSAKeyRequest
+	12, // 8: kacho.cloud.iam.v1.SAKeyService.Issue:output_type -> kacho.cloud.operation.Operation
+	5,  // 9: kacho.cloud.iam.v1.SAKeyService.List:output_type -> kacho.cloud.iam.v1.ListSAKeysResponse
+	12, // 10: kacho.cloud.iam.v1.SAKeyService.Revoke:output_type -> kacho.cloud.operation.Operation
+	8,  // [8:11] is the sub-list for method output_type
+	5,  // [5:8] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_sa_key_service_proto_init() }
@@ -766,7 +816,7 @@ func file_kacho_cloud_iam_v1_sa_key_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

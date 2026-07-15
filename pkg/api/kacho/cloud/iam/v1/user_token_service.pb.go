@@ -37,8 +37,12 @@ type IssueUserTokenRequest struct {
 	// Опциональный TTL в секундах; 0 → бессрочный.
 	TtlSeconds      int64  `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
 	CreatedByUserId string `protobuf:"bytes,4,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Tenant-facing имя токена (человекочитаемая метка). Задаётся при выпуске, immutable.
+	Name string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
+	// Пользовательские метки токена. Задаются при выпуске, immutable.
+	Labels        map[string]string `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IssueUserTokenRequest) Reset() {
@@ -97,6 +101,20 @@ func (x *IssueUserTokenRequest) GetCreatedByUserId() string {
 		return x.CreatedByUserId
 	}
 	return ""
+}
+
+func (x *IssueUserTokenRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *IssueUserTokenRequest) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
 }
 
 type IssueUserTokenResponse struct {
@@ -194,9 +212,12 @@ func (x *IssueUserTokenResponse) GetKeyId() string {
 }
 
 type IssueUserTokenMetadata struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	KeyId         string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	UserId string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	KeyId  string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	// Read by exact field name `account_id` by corelib operations (extractAccountID)
+	// → операция попадает в account-scoped фид `/iam/operations`.
+	AccountId     string `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -241,6 +262,13 @@ func (x *IssueUserTokenMetadata) GetUserId() string {
 func (x *IssueUserTokenMetadata) GetKeyId() string {
 	if x != nil {
 		return x.KeyId
+	}
+	return ""
+}
+
+func (x *IssueUserTokenMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
 	}
 	return ""
 }
@@ -462,9 +490,12 @@ func (x *RevokeUserTokenResponse) GetRevokedAt() *timestamppb.Timestamp {
 }
 
 type RevokeUserTokenMetadata struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	TokenId       string                 `protobuf:"bytes,2,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	UserId  string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	TokenId string                 `protobuf:"bytes,2,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	// Read by exact field name `account_id` by corelib operations → revoke-операция
+	// тоже попадает в account-scoped фид `/iam/operations`.
+	AccountId     string `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -513,28 +544,42 @@ func (x *RevokeUserTokenMetadata) GetTokenId() string {
 	return ""
 }
 
+func (x *RevokeUserTokenMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 var File_kacho_cloud_iam_v1_user_token_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc = "" +
 	"\n" +
-	"+kacho/cloud/iam/v1/user_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a*kacho/cloud/iam/v1/user_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xd7\x01\n" +
+	"+kacho/cloud/iam/v1/user_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a*kacho/cloud/iam/v1/user_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xff\x02\n" +
 	"\x15IssueUserTokenRequest\x12%\n" +
 	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12+\n" +
 	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12/\n" +
 	"\vttl_seconds\x18\x03 \x01(\x03B\x0e\xfa\xc71\n" +
 	"<=63072000R\n" +
 	"ttlSeconds\x129\n" +
-	"\x12created_by_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\"\xf3\x01\n" +
+	"\x12created_by_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12\x1c\n" +
+	"\x04name\x18\x05 \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12M\n" +
+	"\x06labels\x18\x06 \x03(\v25.kacho.cloud.iam.v1.IssueUserTokenRequest.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf3\x01\n" +
 	"\x16IssueUserTokenResponse\x129\n" +
 	"\x05token\x18\x01 \x01(\v2#.kacho.cloud.iam.v1.UserOAuthClientR\x05token\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12&\n" +
 	"\x0fprivate_key_pem\x18\x03 \x01(\tR\rprivateKeyPem\x12$\n" +
 	"\x0epublic_key_pem\x18\x04 \x01(\tR\fpublicKeyPem\x12\x1c\n" +
 	"\talgorithm\x18\x05 \x01(\tR\talgorithm\x12\x15\n" +
-	"\x06key_id\x18\x06 \x01(\tR\x05keyId\"H\n" +
+	"\x06key_id\x18\x06 \x01(\tR\x05keyId\"g\n" +
 	"\x16IssueUserTokenMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\x91\x01\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId\"\x91\x01\n" +
 	"\x15ListUserTokensRequest\x12%\n" +
 	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12'\n" +
 	"\tpage_size\x18\x02 \x01(\x03B\n" +
@@ -546,21 +591,23 @@ const file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"h\n" +
 	"\x16RevokeUserTokenRequest\x12%\n" +
 	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12'\n" +
-	"\btoken_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\atokenId\"o\n" +
+	"\btoken_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\atokenId\"o\n" +
 	"\x17RevokeUserTokenResponse\x12\x19\n" +
 	"\btoken_id\x18\x01 \x01(\tR\atokenId\x129\n" +
 	"\n" +
-	"revoked_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\"M\n" +
+	"revoked_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\"l\n" +
 	"\x17RevokeUserTokenMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
-	"\btoken_id\x18\x02 \x01(\tR\atokenId2\xed\x05\n" +
-	"\x10UserTokenService\x12\xfe\x01\n" +
-	"\x05Issue\x12).kacho.cloud.iam.v1.IssueUserTokenRequest\x1a .kacho.cloud.operation.Operation\"\xa7\x01\x8a\xb5\x18\x1biam.issue_user_tokens.issue\x92\xb5\x18\vtoken_admin\x9a\xb5\x18\x13\n" +
+	"\btoken_id\x18\x02 \x01(\tR\atokenId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId2\xe2\x05\n" +
+	"\x10UserTokenService\x12\xfb\x01\n" +
+	"\x05Issue\x12).kacho.cloud.iam.v1.IssueUserTokenRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18\x1biam.issue_user_tokens.issue\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*0\n" +
-	"\x16IssueUserTokenMetadata\x12\x16IssueUserTokenResponse\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/iam/v1/users/{user_id}/tokens\x12\xc8\x01\n" +
-	"\x04List\x12).kacho.cloud.iam.v1.ListUserTokensRequest\x1a*.kacho.cloud.iam.v1.ListUserTokensResponse\"i\x8a\xb5\x18\x14iam.user_tokens.list\x92\xb5\x18\vtoken_admin\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02 \x12\x1e/iam/v1/users/{user_id}/tokens\x12\x8c\x02\n" +
-	"\x06Revoke\x12*.kacho.cloud.iam.v1.RevokeUserTokenRequest\x1a .kacho.cloud.operation.Operation\"\xb3\x01\x8a\xb5\x18\x1diam.revoke_user_tokens.revoke\x92\xb5\x18\vtoken_admin\x9a\xb5\x18\x13\n" +
+	"\x16IssueUserTokenMetadata\x12\x16IssueUserTokenResponse\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/iam/v1/users/{user_id}/tokens\x12\xc3\x01\n" +
+	"\x04List\x12).kacho.cloud.iam.v1.ListUserTokensRequest\x1a*.kacho.cloud.iam.v1.ListUserTokensResponse\"d\x8a\xb5\x18\x14iam.user_tokens.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x13\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02 \x12\x1e/iam/v1/users/{user_id}/tokens\x12\x89\x02\n" +
+	"\x06Revoke\x12*.kacho.cloud.iam.v1.RevokeUserTokenRequest\x1a .kacho.cloud.operation.Operation\"\xb0\x01\x8a\xb5\x18\x1diam.revoke_user_tokens.revoke\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*2\n" +
 	"\x17RevokeUserTokenMetadata\x12\x17RevokeUserTokenResponse\x82\xd3\xe4\x93\x02+*)/iam/v1/users/{user_id}/tokens/{token_id}B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
@@ -576,7 +623,7 @@ func file_kacho_cloud_iam_v1_user_token_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_user_token_service_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_user_token_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_kacho_cloud_iam_v1_user_token_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_kacho_cloud_iam_v1_user_token_service_proto_goTypes = []any{
 	(*IssueUserTokenRequest)(nil),   // 0: kacho.cloud.iam.v1.IssueUserTokenRequest
 	(*IssueUserTokenResponse)(nil),  // 1: kacho.cloud.iam.v1.IssueUserTokenResponse
@@ -586,25 +633,27 @@ var file_kacho_cloud_iam_v1_user_token_service_proto_goTypes = []any{
 	(*RevokeUserTokenRequest)(nil),  // 5: kacho.cloud.iam.v1.RevokeUserTokenRequest
 	(*RevokeUserTokenResponse)(nil), // 6: kacho.cloud.iam.v1.RevokeUserTokenResponse
 	(*RevokeUserTokenMetadata)(nil), // 7: kacho.cloud.iam.v1.RevokeUserTokenMetadata
-	(*UserOAuthClient)(nil),         // 8: kacho.cloud.iam.v1.UserOAuthClient
-	(*timestamppb.Timestamp)(nil),   // 9: google.protobuf.Timestamp
-	(*operation.Operation)(nil),     // 10: kacho.cloud.operation.Operation
+	nil,                             // 8: kacho.cloud.iam.v1.IssueUserTokenRequest.LabelsEntry
+	(*UserOAuthClient)(nil),         // 9: kacho.cloud.iam.v1.UserOAuthClient
+	(*timestamppb.Timestamp)(nil),   // 10: google.protobuf.Timestamp
+	(*operation.Operation)(nil),     // 11: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_user_token_service_proto_depIdxs = []int32{
-	8,  // 0: kacho.cloud.iam.v1.IssueUserTokenResponse.token:type_name -> kacho.cloud.iam.v1.UserOAuthClient
-	8,  // 1: kacho.cloud.iam.v1.ListUserTokensResponse.tokens:type_name -> kacho.cloud.iam.v1.UserOAuthClient
-	9,  // 2: kacho.cloud.iam.v1.RevokeUserTokenResponse.revoked_at:type_name -> google.protobuf.Timestamp
-	0,  // 3: kacho.cloud.iam.v1.UserTokenService.Issue:input_type -> kacho.cloud.iam.v1.IssueUserTokenRequest
-	3,  // 4: kacho.cloud.iam.v1.UserTokenService.List:input_type -> kacho.cloud.iam.v1.ListUserTokensRequest
-	5,  // 5: kacho.cloud.iam.v1.UserTokenService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeUserTokenRequest
-	10, // 6: kacho.cloud.iam.v1.UserTokenService.Issue:output_type -> kacho.cloud.operation.Operation
-	4,  // 7: kacho.cloud.iam.v1.UserTokenService.List:output_type -> kacho.cloud.iam.v1.ListUserTokensResponse
-	10, // 8: kacho.cloud.iam.v1.UserTokenService.Revoke:output_type -> kacho.cloud.operation.Operation
-	6,  // [6:9] is the sub-list for method output_type
-	3,  // [3:6] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	8,  // 0: kacho.cloud.iam.v1.IssueUserTokenRequest.labels:type_name -> kacho.cloud.iam.v1.IssueUserTokenRequest.LabelsEntry
+	9,  // 1: kacho.cloud.iam.v1.IssueUserTokenResponse.token:type_name -> kacho.cloud.iam.v1.UserOAuthClient
+	9,  // 2: kacho.cloud.iam.v1.ListUserTokensResponse.tokens:type_name -> kacho.cloud.iam.v1.UserOAuthClient
+	10, // 3: kacho.cloud.iam.v1.RevokeUserTokenResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	0,  // 4: kacho.cloud.iam.v1.UserTokenService.Issue:input_type -> kacho.cloud.iam.v1.IssueUserTokenRequest
+	3,  // 5: kacho.cloud.iam.v1.UserTokenService.List:input_type -> kacho.cloud.iam.v1.ListUserTokensRequest
+	5,  // 6: kacho.cloud.iam.v1.UserTokenService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeUserTokenRequest
+	11, // 7: kacho.cloud.iam.v1.UserTokenService.Issue:output_type -> kacho.cloud.operation.Operation
+	4,  // 8: kacho.cloud.iam.v1.UserTokenService.List:output_type -> kacho.cloud.iam.v1.ListUserTokensResponse
+	11, // 9: kacho.cloud.iam.v1.UserTokenService.Revoke:output_type -> kacho.cloud.operation.Operation
+	7,  // [7:10] is the sub-list for method output_type
+	4,  // [4:7] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_user_token_service_proto_init() }
@@ -619,7 +668,7 @@ func file_kacho_cloud_iam_v1_user_token_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

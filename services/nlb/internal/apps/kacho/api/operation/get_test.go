@@ -1,0 +1,158 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package operation
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+)
+
+// TestOperation_OP001_GetInFlight — from
+//
+// Given: Operation existed in `nlb` ops, done=false.
+// When:  OperationService.Get(operation_id=<op-id>).
+// Then:  OK; Operation message with id, description, created_at, done=false, metadata.
+func TestOperation_OP001_GetInFlight(t *testing.T) {
+	repo := newFakeOpsRepo()
+	h := NewHandler(repo)
+
+	op, err := operations.New(ids.PrefixOperationNLB,
+		"Create network load balancer test-nlb-001", nil)
+	require.NoError(t, err)
+	require.NoError(t, repo.Create(context.Background(), op))
+
+	got, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+		OperationId: op.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, op.ID, got.GetId())
+	assert.Equal(t, op.Description, got.GetDescription())
+	assert.False(t, got.GetDone())
+	require.NotNil(t, got.GetCreatedAt())
+	assert.Nil(t, got.GetError())    // result oneof empty for in-flight
+	assert.Nil(t, got.GetResponse()) // result oneof empty for in-flight
+}
+
+// TestOperation_OP002_GetCompletedResponse — (success completion).
+//
+// Given: Operation done=true with response.
+// When:  Get.
+// Then:  done=true, response.value = <Resource proto>.
+func TestOperation_OP002_GetCompletedResponse(t *testing.T) {
+	repo := newFakeOpsRepo()
+	h := NewHandler(repo)
+
+	op, err := operations.New(ids.PrefixOperationNLB, "Delete NLB", nil)
+	require.NoError(t, err)
+	require.NoError(t, repo.Create(context.Background(), op))
+	require.NoError(t, repo.MarkDone(context.Background(), op.ID, nil))
+
+	got, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+		OperationId: op.ID,
+	})
+	require.NoError(t, err)
+	assert.True(t, got.GetDone())
+	require.NotNil(t, got.GetModifiedAt())
+}
+
+// TestOperation_OP003_GetNotFound —.
+//
+// When: Get unknown op-id. Then: NOT_FOUND.
+func TestOperation_OP003_GetNotFound(t *testing.T) {
+	repo := newFakeOpsRepo()
+	h := NewHandler(repo)
+
+	_, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+		OperationId: ids.NewID(ids.PrefixOperationNLB),
+	})
+	require.Error(t, err)
+	st, ok := grpcstatus.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+	assert.Contains(t, st.Message(), "not found")
+}
+
+func TestOperation_Get_EmptyOperationID(t *testing.T) {
+	repo := newFakeOpsRepo()
+	h := NewHandler(repo)
+
+	_, err := h.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: ""})
+	require.Error(t, err)
+	st, ok := grpcstatus.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "operation_id required")
+}
+
+// TestOperation_Get_CrossTenant_NotFound — (owner-scope on Get).
+//
+// Given: Operation created by principal A (usr_alice).
+// When:  principal B (usr_bob) calls OperationService.Get(op-id) — op-id opaque
+//
+//	but a direct object reference; without an owner predicate any authenticated
+//	caller who learns a foreign op-id reads the foreign Operation (its `response`
+//	carries the whole resource).
+//
+// Then: existence-hiding NotFound — «есть-но-не-твоя» неотличимо от «нет такой».
+func TestOperation_Get_CrossTenant_NotFound(t *testing.T) {
+	repo := newFakeOpsRepo()
+	h := NewHandler(repo)
+
+	op, err := operations.New(ids.PrefixOperationNLB, "Create NLB owned by A", nil)
+	require.NoError(t, err)
+	require.NoError(t, repo.CreateWithPrincipal(context.Background(), op,
+		operations.Principal{Type: "user", ID: "usr_alice"}))
+
+	ctxB := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "user", ID: "usr_bob"})
+	_, err = h.Get(ctxB, &operationpb.GetOperationRequest{OperationId: op.ID})
+	require.Error(t, err)
+	st, ok := grpcstatus.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+	assert.Contains(t, st.Message(), "not found")
+}
+
+// TestOperation_Get_Owner_OK — creator reads their own operation (no regress).
+func TestOperation_Get_Owner_OK(t *testing.T) {
+	repo := newFakeOpsRepo()
+	h := NewHandler(repo)
+
+	op, err := operations.New(ids.PrefixOperationNLB, "Owned op", nil)
+	require.NoError(t, err)
+	pa := operations.Principal{Type: "user", ID: "usr_alice"}
+	require.NoError(t, repo.CreateWithPrincipal(context.Background(), op, pa))
+
+	got, err := h.Get(operations.WithPrincipal(context.Background(), pa),
+		&operationpb.GetOperationRequest{OperationId: op.ID})
+	require.NoError(t, err)
+	assert.Equal(t, op.ID, got.GetId())
+}
+
+func TestOperation_Get_RepoError_MapsToInternal(t *testing.T) {
+	// Любая non-sentinel ошибка из repo → codes.Internal без leak'а текста (no pgx detail).
+	fail := &failingOpsRepo{getErr: errors.New("pgx: connection refused to localhost:5432")}
+	h := NewHandler(fail)
+
+	_, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+		OperationId: ids.NewID(ids.PrefixOperationNLB),
+	})
+	require.Error(t, err)
+	st, ok := grpcstatus.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Internal, st.Code())
+	assert.NotContains(t, st.Message(), "pgx")
+	assert.NotContains(t, st.Message(), "localhost")
+}

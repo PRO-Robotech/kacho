@@ -1,0 +1,220 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// introspection_cache.go — Hydra-backed token introspection with negative-TTL
+// LRU cache.
+//
+// Purpose: even when the access token's signature + claims pass local
+// verification, the token may have been revoked server-side (admin logout,
+// CAEP push, back-channel logout). Hydra's `/oauth2/introspect` is the
+// authoritative answer, but calling it on every request is too expensive
+// (≈ 50–100ms p95). We add a tiny LRU with TTL = min(5s, exp-now) so a fresh
+// access token only round-trips Hydra at most every 5s.
+//
+// Negative caching: when introspection returns `active=false`, we still cache
+// the result (under the same TTL) — repeated requests from a compromised
+// client shouldn't hammer Hydra.
+//
+// Invalidation: callers (session-revocations watcher) call Invalidate(jti)
+// when a Postgres LISTEN/NOTIFY arrives. This is the primary path; the TTL
+// is a backstop for the case where the NOTIFY connection drops.
+//
+// The eviction/TTL/LRU mechanics live in the shared internal/lrucache
+// primitive (same as dpop_replay_cache.go and authz_cache.go); this file
+// carries only the introspection-specific policy: the exp-bounded per-entry
+// TTL clamp, negative caching, and the write-after-invalidate generation guard
+// wired through lrucache.PutIfGenWithTTL.
+package middleware
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/lrucache"
+)
+
+// ErrTokenInactive — Hydra reported `active=false`; bubble up to caller and
+// terminate request with 401.
+var ErrTokenInactive = errors.New("token is not active (revoked or expired upstream)")
+
+// IntrospectionResult — minimal RFC 7662 section 2.2 response shape. Hydra returns
+// many more fields; we keep only what downstream needs.
+type IntrospectionResult struct {
+	Active   bool   `json:"active"`
+	Subject  string `json:"sub,omitempty"`
+	Scope    string `json:"scope,omitempty"`
+	ExpiryAt int64  `json:"exp,omitempty"`
+	ClientID string `json:"client_id,omitempty"`
+	TokenUse string `json:"token_use,omitempty"`
+}
+
+// IntrospectionCache — LRU + TTL over the shared lrucache primitive. The
+// authz-specific policy retained here is the exp-bounded per-entry TTL clamp and
+// negative caching; the eviction/TTL mechanics live in the primitive.
+type IntrospectionCache struct {
+	url        string
+	httpClient *http.Client
+	ttl        time.Duration
+	now        func() time.Time
+
+	// HTTP basic auth for the Hydra admin /introspect endpoint (Hydra requires
+	// it for any client-credentials introspection in production). Optional.
+	basicUser string
+	basicPass string
+
+	cache *lrucache.Cache[string, IntrospectionResult]
+}
+
+// IntrospectionCacheConfig — construction parameters.
+type IntrospectionCacheConfig struct {
+	HydraIntrospectionURL string
+	HTTPClient            *http.Client
+	MaxEntries            int
+	TTL                   time.Duration
+	Now                   func() time.Time
+	BasicAuthUser         string
+	BasicAuthPass         string
+}
+
+// NewIntrospectionCache constructs a cache. Returns error on empty URL.
+func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, error) {
+	if cfg.HydraIntrospectionURL == "" {
+		return nil, errors.New("introspection cache: HydraIntrospectionURL is required")
+	}
+	if cfg.MaxEntries <= 0 {
+		cfg.MaxEntries = 10000
+	}
+	if cfg.TTL <= 0 {
+		cfg.TTL = 5 * time.Second
+	}
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
+	hc := cfg.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: 5 * time.Second}
+	}
+	return &IntrospectionCache{
+		url:        cfg.HydraIntrospectionURL,
+		httpClient: hc,
+		ttl:        cfg.TTL,
+		now:        now,
+		basicUser:  cfg.BasicAuthUser,
+		basicPass:  cfg.BasicAuthPass,
+		cache:      lrucache.New[string, IntrospectionResult](cfg.MaxEntries, cfg.TTL, now),
+	}, nil
+}
+
+// Introspect returns the cached or freshly-fetched introspection result.
+// Returns ErrTokenInactive when Hydra (or the cached entry) reports active=false.
+//
+// Key is the access-token JTI — small, opaque, never logged. We never pass
+// the raw token through the cache map (defence-in-depth against memory dump
+// disclosure).
+func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken string) (IntrospectionResult, error) {
+	if jti == "" {
+		return IntrospectionResult{}, errors.New("introspect: jti required")
+	}
+	if rawToken == "" {
+		return IntrospectionResult{}, errors.New("introspect: raw token required")
+	}
+
+	// 1. Cache hit?
+	if r, ok := c.cache.Get(jti); ok {
+		if !r.Active {
+			return r, ErrTokenInactive
+		}
+		return r, nil
+	}
+
+	// Snapshot the invalidation generation BEFORE the (slow) Hydra fetch. A
+	// force-logout revocation that calls Invalidate(jti) while this introspection
+	// is in flight bumps the generation, and the generation-checked store below
+	// is dropped — so a positive result computed against pre-revocation state can
+	// never re-populate the just-flushed jti and survive for the full TTL
+	// (write-after-invalidate guard; CWE-362 + CWE-613). Mirrors the sibling
+	// decision cache (authz_cache.go putIfGen).
+	gen := c.cache.Generation()
+
+	// 2. Fetch from Hydra.
+	res, err := c.fetchHydra(ctx, rawToken)
+	if err != nil {
+		return IntrospectionResult{}, err
+	}
+
+	// 3. Store negative + positive — TTL bounded by exp.
+	// If exp is already in the past we treat the token as inactive and skip
+	// caching the (stale) positive result. Defense: an attacker may not race
+	// past the introspection result before exp slips by; we re-introspect on
+	// next call so Hydra's fresh `active=false` is reflected immediately.
+	ttl := c.ttl
+	if res.ExpiryAt > 0 {
+		// Route the exp clamp through the injectable clock (c.now), not the real
+		// wall clock, so the TTL derivation is deterministic under test and
+		// consistent with the get()/put() expiry checks that already use c.now().
+		untilExp := time.Unix(res.ExpiryAt, 0).Sub(c.now())
+		if untilExp <= 0 {
+			res.Active = false
+			return res, ErrTokenInactive
+		}
+		if untilExp < ttl {
+			ttl = untilExp
+		}
+	}
+	c.cache.PutIfGenWithTTL(jti, res, ttl, gen)
+
+	if !res.Active {
+		return res, ErrTokenInactive
+	}
+	return res, nil
+}
+
+// Invalidate removes the cached entry for jti AND bumps the invalidation
+// generation. Called by the session_revocations LISTEN/NOTIFY handler to honor
+// force-logout immediately (≤ 1s SLA). The generation bump is what closes the
+// write-after-invalidate race: even when no entry is currently cached for jti
+// (revocation arrives while an introspection is still in flight), an in-flight
+// positive result for jti is dropped by the PutIfGenWithTTL guard in Introspect.
+// InvalidateWhere bumps the generation even when zero entries match.
+func (c *IntrospectionCache) Invalidate(jti string) {
+	c.cache.InvalidateWhere(func(k string) bool { return k == jti })
+}
+
+// Len returns current cache size; used by tests / observability.
+func (c *IntrospectionCache) Len() int { return c.cache.Len() }
+
+func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (IntrospectionResult, error) {
+	form := url.Values{}
+	form.Set("token", rawToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, strings.NewReader(form.Encode()))
+	if err != nil {
+		return IntrospectionResult{}, fmt.Errorf("introspect build req: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return IntrospectionResult{}, fmt.Errorf("introspect do: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return IntrospectionResult{}, fmt.Errorf("introspect status=%d body=%q", resp.StatusCode, string(body))
+	}
+	var out IntrospectionResult
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return IntrospectionResult{}, fmt.Errorf("introspect decode: %w", err)
+	}
+	return out, nil
+}

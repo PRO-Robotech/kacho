@@ -1,0 +1,196 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kacho-nlb.configMapName" . }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kacho-nlb.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    mode: {{ .Values.config.mode | quote }}
+
+    logger:
+      level: {{ .Values.config.logger.level | quote }}
+
+    api-server:
+      endpoint: tcp://0.0.0.0:{{ .Values.ports.grpc }}
+      internal-endpoint: tcp://0.0.0.0:{{ .Values.ports.internalGrpc }}
+      graceful-shutdown: {{ .Values.config.apiServer.gracefulShutdown }}
+      grpc-gw-enable: {{ .Values.config.apiServer.grpcGwEnable }}
+
+    metrics:
+      enable: true
+      # cluster-internal diagnostic HTTP-listener (/metrics + /healthz + /readyz);
+      # совпадает с ports.metrics + ServiceMonitor scrape-таргетом.
+      address: ":{{ .Values.ports.metrics }}"
+    healthcheck:
+      enable: true
+
+    repository:
+      type: POSTGRES
+      postgres:
+        # `dbDSN` рендерит URL с placeholder `$(KACHO_NLB_DB_PASSWORD)`.
+        # Реальный пароль приходит из Secret через `password-from-env`;
+        # config.Load() (KAC-172) подставляет его при старте — viper сам
+        # не expand'ит `$(VAR)` syntax. Пароль в ConfigMap (git-committed)
+        # держать нельзя.
+        url: {{ include "kacho-nlb.dbDSN" . | quote }}
+        password-from-env: KACHO_NLB_DB_PASSWORD
+        max-conns: 0
+        conn-lifetime: 0s
+        slave-url: ""
+
+    authn:
+      type: {{ .Values.config.authn.type | quote }}
+      {{- with .Values.config.authn.tls }}
+      tls:
+        key-file: {{ .keyFile | quote }}
+        cert-file: {{ .certFile | quote }}
+        client:
+          verify: {{ .client.verify | quote }}
+          ca-files:
+            {{- range .client.caFiles }}
+            - {{ . | quote }}
+            {{- end }}
+      {{- end }}
+
+    extapi:
+      def-dial-duration: 10s
+      vpc:
+        addr: {{ .Values.peers.vpc.addr | quote }}
+        internal-addr: {{ .Values.peers.vpc.internalAddr | quote }}
+        dial-duration: {{ .Values.peers.vpc.dialDuration }}
+        tls: {{ .Values.peers.vpc.tls }}
+      compute:
+        addr: {{ .Values.peers.compute.addr | quote }}
+        internal-addr: {{ .Values.peers.compute.internalAddr | quote }}
+        dial-duration: {{ .Values.peers.compute.dialDuration }}
+        tls: {{ .Values.peers.compute.tls }}
+      # nlb→geo (epic kacho-geo): RegionService.Get на PUBLIC geo listener (:9090).
+      # Заменяет прежнюю region-валидацию через compute; compute остаётся для
+      # InstanceService (instance-resolve — НЕ geography). addr биндится в
+      # config.yaml (extapi.geo.addr); config.go также читает явную
+      # KACHO_NLB_GEO_GRPC_ADDR (BindEnv), но canonical-источник — этот ключ.
+      geo:
+        addr: {{ .Values.peers.geo.addr | quote }}
+        internal-addr: {{ .Values.peers.geo.internalAddr | quote }}
+        dial-duration: {{ .Values.peers.geo.dialDuration }}
+        tls: {{ .Values.peers.geo.tls }}
+      iam:
+        addr: {{ .Values.peers.iam.addr | quote }}
+        internal-addr: {{ .Values.peers.iam.internalAddr | quote }}
+        dial-duration: {{ .Values.peers.iam.dialDuration }}
+        tls: {{ .Values.peers.iam.tls }}
+
+    authz:
+      iam:
+        addr: {{ .Values.authz.iam.addr | quote }}
+        dial-deadline: {{ .Values.authz.iam.dialDeadline }}
+        request-timeout: {{ .Values.authz.iam.requestTimeout }}
+      cache:
+        enable: {{ .Values.config.authz.cache.enable }}
+        ttl: {{ .Values.config.authz.cache.ttl }}
+      listen-invalidator:
+        enable: {{ .Values.config.authz.listenInvalidator.enable }}
+        channel: {{ .Values.config.authz.listenInvalidator.channel | quote }}
+        iam-dsn: {{ .Values.config.authz.listenInvalidator.iamDsn | quote }}
+      # RBAC sub-phase D §11 (issue #111): per-object filtered List via
+      # kacho-iam AuthorizeService.ListObjects (public :9090 reuse). default on.
+      list-filter:
+        enabled: {{ .Values.config.authz.listFilter.enabled }}
+        timeout: {{ .Values.config.authz.listFilter.timeout }}
+        cache-ttl: {{ .Values.config.authz.listFilter.cacheTtl }}
+        cache-max-entries: {{ .Values.config.authz.listFilter.cacheMaxEntries }}
+        fail-open: {{ .Values.config.authz.listFilter.failOpen }}
+      breakglass: {{ .Values.config.authz.breakglass }}
+      # Anti-impersonation allow-list (trusted x-kacho-principal-* forwarders).
+      # Required non-empty in production+mTLS (config.Validate fail-closed gate).
+      trusted-forwarder-sans:
+        {{- with .Values.config.authz.trustedForwarderSANs }}
+        {{- toYaml . | nindent 8 }}
+        {{- else }} []
+        {{- end }}
+
+    fga:
+      endpoint: {{ .Values.config.fga.endpoint | quote }}
+      store-id: {{ .Values.config.fga.storeId | quote }}
+      model-id: {{ .Values.config.fga.modelId | quote }}
+      tuple-write:
+        timeout: {{ .Values.config.fga.tupleWrite.timeout }}
+        max-retries: {{ .Values.config.fga.tupleWrite.maxRetries }}
+
+    jobs:
+      target-drain:
+        interval: {{ .Values.config.jobs.targetDrain.interval }}
+    {{- if .Values.mtls.enable }}
+
+    # SEC-F mTLS (per-edge opt-in) — corelib SEC-B value-structs via viper
+    # mapstructure. server-cert on both listeners; per-edge client-creds.
+    # serverName = real dial-host (∈ peer server-SAN, КРИТ#1). Paths point at the
+    # cert-manager secrets mounted by the Deployment (<mountPath>/server|client).
+    {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
+    {{- $cli := printf "%s/client" .Values.mtls.mountPath }}
+    mtls:
+      server:
+        enable: true
+        certfile: {{ printf "%s/tls.crt" $srv | quote }}
+        keyfile: {{ printf "%s/tls.key" $srv | quote }}
+        clientcafiles:
+          - {{ printf "%s/ca.crt" $srv | quote }}
+      iam-register:
+        enable: {{ .Values.mtls.edges.iamRegister }}
+        {{- if .Values.mtls.edges.iamRegister }}
+        certfile: {{ printf "%s/tls.crt" $cli | quote }}
+        keyfile: {{ printf "%s/tls.key" $cli | quote }}
+        cafiles:
+          - {{ printf "%s/ca.crt" $cli | quote }}
+        servername: {{ .Values.mtls.serverName.iamRegister | quote }}
+        {{- end }}
+      # SEC-I — nlb→iam PUBLIC read edge (:9090, ProjectService.Get). Separate
+      # ServerName=kacho-iam.* (∈ iam SAN) so it verifies the :9090 dial-host
+      # correctly under SEC-H — the internal iam-register edge above is
+      # kacho-iam-internal.* (:9091). Reuses the SAME mounted kacho-nlb-client-tls
+      # ($cli) — no new secret/mount (I1).
+      iam-project:
+        enable: {{ .Values.mtls.edges.iamProject }}
+        {{- if .Values.mtls.edges.iamProject }}
+        certfile: {{ printf "%s/tls.crt" $cli | quote }}
+        keyfile: {{ printf "%s/tls.key" $cli | quote }}
+        cafiles:
+          - {{ printf "%s/ca.crt" $cli | quote }}
+        servername: {{ .Values.mtls.serverName.iamProject | quote }}
+        {{- end }}
+      vpc:
+        enable: {{ .Values.mtls.edges.vpc }}
+        {{- if .Values.mtls.edges.vpc }}
+        certfile: {{ printf "%s/tls.crt" $cli | quote }}
+        keyfile: {{ printf "%s/tls.key" $cli | quote }}
+        cafiles:
+          - {{ printf "%s/ca.crt" $cli | quote }}
+        servername: {{ .Values.mtls.serverName.vpc | quote }}
+        {{- end }}
+      compute:
+        enable: {{ .Values.mtls.edges.compute }}
+        {{- if .Values.mtls.edges.compute }}
+        certfile: {{ printf "%s/tls.crt" $cli | quote }}
+        keyfile: {{ printf "%s/tls.key" $cli | quote }}
+        cafiles:
+          - {{ printf "%s/ca.crt" $cli | quote }}
+        servername: {{ .Values.mtls.serverName.compute | quote }}
+        {{- end }}
+      # nlb→geo edge (RegionService.Get :9090). Mirror of the compute edge:
+      # reuses the SAME mounted kacho-nlb-client-tls ($cli) — no new Certificate.
+      # serverName = kacho-geo.* (real :9090 dial-host ∈ geo server-SAN).
+      geo:
+        enable: {{ .Values.mtls.edges.geo }}
+        {{- if .Values.mtls.edges.geo }}
+        certfile: {{ printf "%s/tls.crt" $cli | quote }}
+        keyfile: {{ printf "%s/tls.key" $cli | quote }}
+        cafiles:
+          - {{ printf "%s/ca.crt" $cli | quote }}
+        servername: {{ .Values.mtls.serverName.geo | quote }}
+        {{- end }}
+    {{- end }}

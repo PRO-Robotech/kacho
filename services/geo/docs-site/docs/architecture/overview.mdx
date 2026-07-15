@@ -1,0 +1,152 @@
+---
+id: overview
+sidebar_position: 1
+title: Архитектура
+---
+
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Архитектура
+
+Эта страница описывает внутреннее устройство Kachō Geo: слоистую (clean) архитектуру,
+схему БД (database-per-service), авторизацию на обоих listener'ах, audit-outbox и место
+сервиса в платформе как leaf-узла. Внешний контракт — на [страницах API](/api/overview).
+
+## Чистая архитектура
+
+Сервис следует строгому правилу зависимостей: транспорт зависит от бизнес-логики, бизнес-логика
+зависит от домена, а домен не зависит ни от чего, кроме stdlib и контракта `kacho-proto`.
+
+```mermaid
+flowchart TD
+  handler["handler<br/>(тонкий transport: parse → use-case → format)"] --> uc["use-case<br/>(apps/kacho/api/{region,zone})"]
+  repo["repo (pgx adapter)<br/>repo/kacho/pg"] --> uc
+  uc --> domain["domain<br/>(Region / Zone + Validate, чистый Go)"]
+  repo --> domain
+```
+
+<table>
+  <thead><tr><th>Слой</th><th>Где</th><th>Ответственность</th></tr></thead>
+  <tbody>
+    <tr><td><strong>domain</strong></td><td><code>internal/domain/</code></td><td>Сущности Region / Zone + <code>Validate()</code>. Только stdlib + proto; без pgx/grpc</td></tr>
+    <tr><td><strong>use-case</strong></td><td><code>internal/apps/kacho/api/&#123;region,zone&#125;/</code></td><td>Бизнес-логика; определяет port-интерфейс <code>Repo</code>. Не импортирует transport</td></tr>
+    <tr><td><strong>repo (adapter)</strong></td><td><code>internal/repo/kacho/pg/</code></td><td>Реализация порта на handwritten pgx; SQLSTATE → sentinel; outbox-emit в TX</td></tr>
+    <tr><td><strong>handler</strong></td><td><code>internal/handler/</code></td><td>Тонкий transport: parse → use-case → format (protoconv, map-err). Без бизнес-логики</td></tr>
+    <tr><td><strong>check (authz)</strong></td><td><code>internal/check/</code></td><td>Authz-интерсептор + IAM Check-клиент + permission-map (<code>geo.*</code>)</td></tr>
+    <tr><td><strong>config</strong></td><td><code>internal/apps/kacho/config/</code></td><td>YAML/ENV-конфиг (corelib <code>config.LoadPrefixed("KACHO_GEO")</code>)</td></tr>
+    <tr><td><strong>composition root</strong></td><td><code>cmd/kacho-geo/</code></td><td>Единственное место wiring (serve.go); <code>cmd/migrator/</code> — миграции</td></tr>
+  </tbody>
+</table>
+
+Переиспользуемое (pgx-пул, grpc-сервер/клиент, config, observability) приходит из
+`kacho-corelib` — не дублируется в сервисе.
+
+## База данных — database-per-service
+
+Kachō Geo владеет схемой `kacho_geo` в PostgreSQL и не делит её ни с кем. Within-service
+инварианты выражены на уровне БД (FK / PK), а не software-проверками. Схема создаётся
+baseline-миграцией `0001_initial` (goose).
+
+```mermaid
+erDiagram
+  regions ||--o{ zones : "regionId (FK RESTRICT)"
+  regions {
+    text id PK "admin-assigned, immutable"
+    text name
+    timestamptz created_at
+  }
+  zones {
+    text id PK "admin-assigned, immutable"
+    text region_id FK "→ regions(id) ON DELETE RESTRICT"
+    text status "UP | DOWN | STATUS_UNSPECIFIED"
+    text name
+    timestamptz created_at
+  }
+  geo_outbox {
+    bigserial sequence_no PK
+    text resource_kind "Region | Zone"
+    text resource_id
+    text event_type "CREATED | UPDATED | DELETED"
+    jsonb payload
+    timestamptz created_at
+  }
+```
+
+<table>
+  <thead><tr><th>Таблица</th><th>Назначение</th><th>Ключевые ограничения</th></tr></thead>
+  <tbody>
+    <tr><td><code>regions</code></td><td>Справочник регионов</td><td><code>id</code> — TEXT PK (admin-assigned)</td></tr>
+    <tr><td><code>zones</code></td><td>Справочник зон доступности</td><td><code>region_id → regions(id) ON DELETE RESTRICT</code>; индекс по <code>region_id</code></td></tr>
+    <tr><td><code>geo_outbox</code></td><td>Audit-журнал admin-мутаций</td><td><code>BIGSERIAL</code>; LISTEN/NOTIFY-триггер на INSERT</td></tr>
+  </tbody>
+</table>
+
+:::note FK RESTRICT — within-service инвариант на уровне БД
+Связь `zones.region_id → regions(id)` объявлена с `ON DELETE RESTRICT`. Удаление региона, к
+которому привязана хотя бы одна зона, отклоняется самой БД (не software-check). Service-слой
+лишь маппит SQLSTATE на gRPC-код: нарушение FK → `FAILED_PRECONDITION`. Текст pgx наружу не
+утекает.
+:::
+
+## Авторизация — на обоих listener'ах
+
+Сервис поднимает два gRPC-listener'а, и **оба** проходят per-RPC authz-Check через kacho-iam
+(OpenFGA / ReBAC). Internal-периметр **не считается доверенным** — defense-in-depth против
+lateral movement.
+
+```mermaid
+flowchart LR
+  subgraph public["public :9090"]
+    pub["RegionService / ZoneService<br/>(read-only)"]
+  end
+  subgraph internal["internal :9091 (mTLS)"]
+    int["InternalRegionService / InternalZoneService<br/>(admin CRUD)"]
+  end
+  pub -->|"Check viewer"| iam["kacho-iam"]
+  int -->|"Check system_admin"| iam
+```
+
+- **Public (`:9090`)** — цепочка интерсепторов: извлечение principal → authz-Check.
+  Read-RPC требуют отношение `viewer` (cluster-scope).
+- **Internal (`:9091`)** — mTLS + извлечение identity из client-cert → trusted-principal
+  (anti-spoof) → authz-Check. Admin-RPC требуют `system_admin`. Тот же authz, что на public.
+- **Production-режим** (`KACHO_GEO_AUTH_MODE=production`) обязывает mTLS на обоих listener'ах и
+  сконфигурированный адрес kacho-iam — иначе сервис не стартует. Breakglass (пропуск Check) в
+  production запрещён (fail-closed).
+
+Подробнее о ключах конфигурации — [Конфигурация](/install/configuration).
+
+## Audit-outbox в одной транзакции
+
+Admin-мутации (Create / Update / Delete Region/Zone) атомарно пишут строку в `geo_outbox` **в
+той же writer-транзакции**, что и сама мутация. Так аудит не теряется: либо изменение и его
+запись в журнал коммитятся вместе, либо откатываются вместе. Это конвенция Kachō
+(`<domain>_outbox`). Триггер на INSERT шлёт `pg_notify` — подписчики узнают о новых событиях
+без поллинга.
+
+## Место в платформе — leaf-сервис
+
+Kachō Geo — **leaf-узел** платформы: по сборке он зависит только от `kacho-corelib` и
+`kacho-proto`, ни от одного другого доменного сервиса (как IAM). В runtime у него ровно одно
+исходящее ребро — `geo → iam` (authz-Check). Все остальные сервисы — **консумеры** Geo.
+
+```mermaid
+flowchart LR
+  cmp["kacho-compute"] -->|"ZoneService.Get (zoneId)"| geo["kacho-geo"]
+  vpc["kacho-vpc"] -->|"ZoneService.Get (zoneId)"| geo
+  nlb["kacho-nlb"] -->|"RegionService.Get (regionId)"| geo
+  geo -->|"InternalIAMService.Check"| iam["kacho-iam"]
+```
+
+:::info Cross-domain ссылки — без cross-service FK
+Через границу сервиса внешний ключ невозможен (database-per-service). Consumer-сервисы держат
+`zoneId` / `regionId` как обычный текст (без FK) и валидируют их через API Kachō Geo на
+request-path (`Get`). Не найдено → `INVALID_ARGUMENT` / `FAILED_PRECONDITION` у консумера; Geo
+недоступен → `UNAVAILABLE` (fail-closed для мутаций). При удалении региона/зоны Geo **не**
+спрашивает консумеров (нет cross-service cascade) — консумер обязан грациозно переживать
+dangling-ссылку. Жёсткие гарантии целостности — только within-service (FK `RESTRICT`).
+:::
+
+Циклов в графе нет: рёбра `* → geo` и `geo → iam` однонаправлены, Geo не зовёт своих
+консумеров обратно.

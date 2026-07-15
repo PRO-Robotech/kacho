@@ -1,0 +1,12 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+**/.git
+**/bin/
+**/.github/
+**/*.md
+**/LICENSE
+**/.golangci.yml
+**/deploy/
+.claude/
+CLAUDE.md

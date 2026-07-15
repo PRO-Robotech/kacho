@@ -1,0 +1,21 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-storage
+  labels:
+    app: {{ .Release.Name }}-storage
+spec:
+  selector:
+    app: {{ .Release.Name }}-storage
+  ports:
+    - name: grpc-public
+      port: {{ .Values.ports.public }}
+      targetPort: {{ .Values.ports.public }}
+    - name: grpc-internal
+      port: {{ .Values.ports.internal }}
+      targetPort: {{ .Values.ports.internal }}
+    - name: metrics
+      port: {{ .Values.ports.metrics }}
+      targetPort: {{ .Values.ports.metrics }}

@@ -28,7 +28,10 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // Resource id prefix: `uoc`.
 message UserOAuthClient {
   // ID строки-маппинга (он же key_id / JWK `kid`).
-  string id = 1 [(required) = true, (length) = "<=20", (pattern) = "uoc_[0-9a-z]+"];
+  // Конвенция Kachō: новый формат `uoc<17-crockford>` (ids.NewID, без underscore);
+  // legacy `uoc_<body>` принимается для существующих строк (credential-id/JWK kid,
+  // неизменяем). Оба формата валидны.
+  string id = 1 [(required) = true, (length) = "<=21", (pattern) = "uoc(_[0-9a-z]+|[0-9a-hjkmnp-tv-z]{17})"];
 
   // ID пользователя, которому принадлежит токен.
   string user_id = 2 [(required) = true, (length) = "<=20"];
@@ -57,4 +60,11 @@ message UserOAuthClient {
 
   // JOSE alg зарегистрированного ключа. Всегда "ES256" для новых токенов.
   string key_algorithm = 10;
+
+  // Tenant-facing имя токена (задаётся при выпуске, immutable). Пусто → в UI
+  // показывается description/id. Человекочитаемая метка токена, не идентификатор.
+  string name = 11 [(length) = "<=63"];
+
+  // Пользовательские метки токена (задаются при выпуске, immutable).
+  map<string, string> labels = 12;
 }

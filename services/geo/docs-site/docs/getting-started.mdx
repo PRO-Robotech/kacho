@@ -1,0 +1,184 @@
+---
+id: getting-started
+sidebar_position: 2
+title: Быстрый старт
+---
+
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Быстрый старт
+
+Эта страница проводит от нуля до первых запросов: собрать бинарь и мигратор, накатить схему,
+запустить сервис и прочитать каталог регионов/зон через REST, а затем — пример
+admin-создания зоны. Все примеры используют нейтральные идентификаторы топологии
+(`region-1`, `region-1-a`).
+
+:::info Что нужно
+Go-тулчейн (для сборки из исходников), доступный PostgreSQL и `curl`. REST-примеры идут через
+`api-gateway` (порт указан как `18080` для локального стенда — подставьте свой).
+:::
+
+## 1. Собрать сервис и мигратор
+
+В репозитории есть две сборочные цели: API-сервер и отдельный бинарь миграций (`cmd/migrator`).
+
+<CodeBlock language="bash">
+  {dedent`
+    # API-сервер → bin/kacho-geo
+    make build
+
+    # мигратор → bin/kacho-migrator
+    make build-migrator
+  `}
+</CodeBlock>
+
+## 2. Накатить миграции
+
+Схема `kacho_geo` создаётся baseline-миграцией `0001_initial`: таблицы `regions`, `zones`
+(с FK `RESTRICT`), audit-таблица `geo_outbox` и стартовый seed справочника. Мигратор —
+отдельный бинарь (goose под капотом).
+
+<CodeBlock language="bash">
+  {dedent`
+    # применить все миграции (up)
+    KACHO_GEO_DB_PASSWORD=secret bin/kacho-migrator up
+
+    # посмотреть текущий статус
+    KACHO_GEO_DB_PASSWORD=secret bin/kacho-migrator status
+  `}
+</CodeBlock>
+
+Для удобства те же шаги обёрнуты в Make-цели:
+
+<CodeBlock language="bash">
+  {dedent`
+    make migrate-up       # bin/kacho-migrator up
+    make migrate-status   # bin/kacho-migrator status
+  `}
+</CodeBlock>
+
+:::note Подключение к БД
+Параметры подключения задаются переменными `KACHO_GEO_DB_*` (хост, порт, пользователь, имя БД,
+sslmode). Схема `kacho_geo` прописывается в DSN через libpq `search_path`. Полный список ключей —
+на странице [Конфигурация](/install/configuration).
+:::
+
+## 3. Запустить сервис
+
+API-сервер поднимает **два listener'а**: публичный read-only (`:9090`) и cluster-internal
+admin (`:9091`).
+
+<CodeBlock language="bash">
+  {dedent`
+    KACHO_GEO_DB_PASSWORD=secret bin/kacho-geo serve
+  `}
+</CodeBlock>
+
+В dev-режиме (по умолчанию `KACHO_GEO_AUTH_MODE=dev`) сервис стартует без mTLS и может работать
+без подключения к kacho-iam. Production-режим обязывает mTLS на обоих listener'ах и
+сконфигурированный адрес kacho-iam для per-RPC authz — иначе сервис откажется стартовать.
+Детали — на странице [Конфигурация](/install/configuration).
+
+## 4. Прочитать каталог регионов и зон
+
+Чтение — синхронное. Список регионов:
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/geo/v1/regions' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+Ответ — массив регионов с cursor-пагинацией:
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "regions": [
+        { "id": "region-1", "name": "Region 1", "createdAt": "2026-06-24T10:00:00Z" }
+      ],
+      "nextPageToken": ""
+    }
+  `}
+</CodeBlock>
+
+Получить одну зону по id:
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/geo/v1/zones/region-1-a' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "region-1-a",
+      "regionId": "region-1",
+      "status": "UP",
+      "name": "Region 1, zone A",
+      "createdAt": "2026-06-24T10:00:00Z"
+    }
+  `}
+</CodeBlock>
+
+Список зон (по тому же шаблону):
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/geo/v1/zones?pageSize=50' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+## 5. Создать зону (admin, internal)
+
+Наполнение справочника — административная операция. Она доступна **только** на
+cluster-internal listener (`InternalZoneService`, порт `:9091`), не на внешнем endpoint.
+Создание зоны — синхронная мутация: ответ возвращает сам ресурс (catalog-паттерн, не
+`Operation`).
+
+<CodeBlock language="bash">
+  {dedent`
+    # internal mux api-gateway — только cluster-internal (port-forward / admin-tooling)
+    curl -X POST 'http://localhost:19091/geo/v1/zones' \\
+      -H 'Authorization: Bearer <admin-JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{
+            "id": "region-1-c",
+            "regionId": "region-1",
+            "status": "UP",
+            "name": "Region 1, zone C"
+          }'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "region-1-c",
+      "regionId": "region-1",
+      "status": "UP",
+      "name": "Region 1, zone C",
+      "createdAt": "2026-06-24T10:05:00Z"
+    }
+  `}
+</CodeBlock>
+
+:::warning Internal-поверхность
+`InternalRegionService` / `InternalZoneService` живут на cluster-internal listener и не
+публикуются на external TLS endpoint. Их REST-проекция в `api-gateway` доступна только на
+internal mux. Подробнее — [Обзор API](/api/overview) и [Архитектура](/architecture/overview).
+:::
+
+## Дальше
+
+- Конвенции, порты, формат ошибок и пагинация — [Обзор API](/api/overview).
+- Поля и все методы ресурсов — [Region](/api/region) и [Zone](/api/zone).
+- Внутреннее устройство (clean architecture, схема БД, authz, audit-outbox) —
+  [Архитектура](/architecture/overview).
+- Конфигурация и развёртывание — [Конфигурация](/install/configuration) и
+  [Развёртывание](/install/deploy).

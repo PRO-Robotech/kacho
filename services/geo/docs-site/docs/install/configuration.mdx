@@ -1,0 +1,119 @@
+---
+id: configuration
+sidebar_position: 2
+title: Конфигурация
+---
+
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Конфигурация
+
+Kachō Geo конфигурируется через переменные окружения с префиксом **`KACHO_GEO_`** (загрузка
+через corelib `config.LoadPrefixed("KACHO_GEO")`). YAML-конфиг и ENV эквивалентны: значения
+из окружения переопределяют дефолты. Эта страница перечисляет ключевые ключи и даёт пример.
+
+## База данных
+
+<table>
+  <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>KACHO_GEO_DB_HOST</code></td><td><code>localhost</code></td><td>Хост PostgreSQL</td></tr>
+    <tr><td><code>KACHO_GEO_DB_PORT</code></td><td><code>5432</code></td><td>Порт PostgreSQL</td></tr>
+    <tr><td><code>KACHO_GEO_DB_USER</code></td><td><code>geo</code></td><td>Пользователь БД</td></tr>
+    <tr><td><code>KACHO_GEO_DB_PASSWORD</code></td><td><em>(обязателен)</em></td><td>Пароль БД — без него сервис не стартует</td></tr>
+    <tr><td><code>KACHO_GEO_DB_NAME</code></td><td><code>kacho_geo</code></td><td>Имя базы данных</td></tr>
+    <tr><td><code>KACHO_GEO_DB_SSLMODE</code></td><td><code>disable</code></td><td>sslmode для DSN. В production обязателен <code>require</code> / <code>verify-ca</code> / <code>verify-full</code></td></tr>
+    <tr><td><code>KACHO_GEO_DB_MAX_CONNS</code></td><td><code>0</code></td><td>Лимит pgx-пула (0 → дефолт pgx)</td></tr>
+  </tbody>
+</table>
+
+:::note search_path
+Схема `kacho_geo` прописывается в DSN через libpq `options=-c search_path=kacho_geo,public` — и
+для pgx-пула, и для миграций. Отдельный `SET search_path` на каждый запрос не нужен.
+:::
+
+## Listener'ы
+
+<table>
+  <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>KACHO_GEO_GRPC_PORT</code></td><td><code>9090</code></td><td>Публичный read-only listener (RegionService / ZoneService)</td></tr>
+    <tr><td><code>KACHO_GEO_INTERNAL_PORT</code></td><td><code>9091</code></td><td>Cluster-internal listener (InternalRegion/ZoneService). Не выставляется на внешний endpoint</td></tr>
+  </tbody>
+</table>
+
+## Аутентификация и авторизация
+
+<table>
+  <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>KACHO_GEO_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal-адрес kacho-iam для per-RPC Check (обычно iam-internal <code>:9091</code>)</td></tr>
+    <tr><td><code>KACHO_GEO_AUTHZ_BREAKGLASS</code></td><td><code>false</code></td><td>Аварийный обход: запускает сервис без authz Check и без mTLS — единственный способ работать без них</td></tr>
+    <tr><td><code>KACHO_GEO_AUTH_MODE</code></td><td><code>dev</code></td><td>Только строгость SSL к БД: <code>dev</code> · <code>production</code> · <code>production-strict</code></td></tr>
+  </tbody>
+</table>
+
+### Secure by default
+
+По умолчанию (`breakglass=false`) операции **без авторизации и mTLS запрещены**: per-RPC
+authz Check (через kacho-iam) и mTLS на **обоих** listener'ах обязательны. Если адрес
+kacho-iam не задан или mTLS не включён — сервис **откажется стартовать**. Это инвариант
+«AuthN + AuthZ везде» (internal `:9091` не освобождён).
+
+:::warning Единственный обход — breakglass
+`KACHO_GEO_AUTHZ_BREAKGLASS=true` запускает сервис, **пропуская per-RPC Check и не требуя
+mTLS**. Это аварийный режим: применять только локально / при инциденте, никогда на
+рабочем стенде.
+:::
+
+`KACHO_GEO_AUTH_MODE` влияет только на строгость TLS к базе: `production-strict` требует
+`KACHO_GEO_DB_SSLMODE` ∈ {`require`, `verify-ca`, `verify-full`}.
+
+## mTLS (per-edge)
+
+Транспортные client/server-creds задаются **на каждое ребро отдельно** (без общего на весь
+процесс TLS-синглтона). Каждая структура читает независимый набор ENV:
+
+<table>
+  <thead><tr><th>Ребро</th><th>ENV-сегмент</th><th>Назначение</th></tr></thead>
+  <tbody>
+    <tr><td>geo → iam (authz Check, client)</td><td><code>KACHO_GEO_IAM_AUTHZ_MTLS_&lt;NAME&gt;</code></td><td>Client-creds для дозвона в kacho-iam (:9091)</td></tr>
+    <tr><td>public listener (server)</td><td><code>KACHO_GEO_PUBLIC_SERVER_MTLS_&lt;NAME&gt;</code></td><td>Server-creds для публичного listener (:9090)</td></tr>
+    <tr><td>internal listener (server)</td><td><code>KACHO_GEO_INTERNAL_SERVER_MTLS_&lt;NAME&gt;</code></td><td>Server-creds для cluster-internal listener (:9091)</td></tr>
+  </tbody>
+</table>
+
+У каждой TLS-структуры есть флаг `..._ENABLE` (по умолчанию `false` — insecure back-compat для
+dev). В production оба server-флага должны быть `true`.
+
+## Пример YAML
+
+<CodeBlock language="yaml" title="kacho-geo.yaml">
+  {dedent`
+    KACHO_GEO_DB_HOST: postgres.kacho.svc
+    KACHO_GEO_DB_PORT: "5432"
+    KACHO_GEO_DB_USER: geo
+    KACHO_GEO_DB_PASSWORD: <из секрета>
+    KACHO_GEO_DB_NAME: kacho_geo
+    KACHO_GEO_DB_SSLMODE: verify-full
+
+    KACHO_GEO_GRPC_PORT: "9090"
+    KACHO_GEO_INTERNAL_PORT: "9091"
+
+    KACHO_GEO_AUTH_MODE: production-strict
+    KACHO_GEO_AUTHZ_IAM_GRPC_ADDR: kacho-iam.kacho.svc:9091
+    KACHO_GEO_AUTHZ_BREAKGLASS: "false"
+
+    # per-edge mTLS (включить в production)
+    KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE: "true"
+    KACHO_GEO_INTERNAL_SERVER_MTLS_ENABLE: "true"
+    KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE: "true"
+  `}
+</CodeBlock>
+
+:::tip Локальный dev
+Для локального запуска достаточно `KACHO_GEO_DB_PASSWORD` (остальное берёт дефолты):
+`KACHO_GEO_DB_PASSWORD=secret bin/kacho-geo serve`. Режим `dev` поднимет сервис без mTLS и без
+kacho-iam. Сборка и миграции — в [Быстром старте](/getting-started).
+:::
