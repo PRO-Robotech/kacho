@@ -77,9 +77,19 @@ jobs:
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+          # Рукописные файлы, живущие рядом со стабами (напр.
+          # registry_rest_routing_test.go — ловит REST-shadow catch-all-роутов), buf НЕ
+          # генерит. `rm -rf pkg/api` их сносит, и diff показывал бы их как удаление —
+          # гейт краснел не из-за расхождения стабов, а из-за собственной уборки.
+          # Поэтому: запоминаем их список ДО сноса и возвращаем из git ПОСЛЕ генерации.
+          git ls-files pkg/api | grep -vE '\.pb\.go$|_grpc\.pb\.go$|\.pb\.gw\.go$' > /tmp/handwritten.list || true
+          echo "рукописных файлов в pkg/api: $(wc -l < /tmp/handwritten.list)"
+
           rm -rf pkg/api
           (cd proto && buf generate)
-          # рукописные тесты рядом со стабами buf не генерит — их не сверяем
+          while read -r f; do [ -n "$f" ] && git checkout -- "$f"; done < /tmp/handwritten.list
+
           if ! git diff --quiet -- pkg/api; then
             echo "::error::pkg/api разошёлся с proto/ — прогони 'cd proto && buf generate' и закоммить"
             git diff --stat -- pkg/api
