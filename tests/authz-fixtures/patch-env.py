@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 """Merges authz-fixtures.json into newman *.postman_environment.json files.
 
 Usage:

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 """KAC-127 authz default-deny matrix fixture bootstrap.
 
 Idempotent. Reconciles the matrix fixtures against the running kind dev-stand:

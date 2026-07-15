@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # KAC-122 — authz-deny suite fixtures bootstrap.
 #
 # Идемпотентен. Создаёт минимальный набор Account / Project / User / AccessBinding
