@@ -30,8 +30,15 @@ GW_PORT="${GW_PORT:-18080}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-NEWMAN_DIR="$WORKSPACE_DIR/project/kacho-$SVC/tests/newman"
+# Монорепа: deploy/scripts → корень репо на два уровня выше. Раскладка — services/<svc>,
+# кроме api-gateway (gateway/). Раньше было
+# "$WORKSPACE_DIR/project/kacho-$SVC/tests/newman" — polyrepo-путь к sibling-репо.
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [ "$SVC" = "api-gateway" ]; then
+  NEWMAN_DIR="$REPO_ROOT/gateway/tests/newman"
+else
+  NEWMAN_DIR="$REPO_ROOT/services/$SVC/tests/newman"
+fi
 
 for tool in kubectl python3 newman grpcurl; do
   command -v "$tool" >/dev/null 2>&1 || { echo "FATAL: '$tool' not found in PATH" >&2; exit 1; }
