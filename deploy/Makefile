@@ -272,7 +272,26 @@ logs-iam:
 fga-bootstrap:
 	@echo "Запускаем openfga-bootstrap Job (idempotent):"
 	@kubectl -n kacho delete job openfga-bootstrap --ignore-not-found
-	@helm template kacho-umbrella ./helm/umbrella -n kacho -f ./helm/umbrella/values.dev.yaml --show-only templates/openfga-bootstrap-job.yaml | kubectl -n kacho apply -f -
+	# Две правки против прежней версии (обе ломали bootstrap с нуля):
+	#
+	# 1. --show-only принимает путь ОТНОСИТЕЛЬНО корня umbrella → для шаблона САБЧАРТА
+	#    нужен префикс charts/<subchart>/. Было `templates/openfga-bootstrap-job.yaml`
+	#    (корневой путь) → helm падал «could not find template … in chart», kubectl
+	#    получал пустой stdin → «no objects passed to apply» → Job НЕ запускался.
+	#    Bootstrap уехал в сабчарт, а путь не поправили (соседний spire-таргет ниже уже
+	#    использует правильную форму `charts/…`).
+	#
+	# 2. Рендерим И RBAC, И Job. В релизе они — helm-ХУКИ (post-install/post-upgrade,
+	#    SA weight=0 → Job weight=10), т.е. при штатном `helm upgrade` создаются сами.
+	#    Но этот таргет применяет их ВРУЧНУЮ (нужен, когда апгрейд упал и хуки не
+	#    отработали), и рендерил ТОЛЬКО Job — без SA. Итог:
+	#      pods "openfga-bootstrap-" is forbidden: serviceaccount "openfga-bootstrap" not found
+	#    Job висел FailedCreate, kacho-iam-openfga-store не создавался, iam оставался с
+	#    «openfga: HTTP client not configured» → каждый Check «code 14 authz service
+	#    unavailable» → newman дох на Project.Create.
+	@helm template kacho-umbrella ./helm/umbrella -n kacho -f ./helm/umbrella/values.dev.yaml \
+	  --show-only charts/openfga-bootstrap/templates/openfga-bootstrap-rbac.yaml \
+	  --show-only charts/openfga-bootstrap/templates/openfga-bootstrap-job.yaml | kubectl -n kacho apply -f -
 	@echo "Ждём завершения…"
 	@kubectl -n kacho wait --for=condition=complete job/openfga-bootstrap --timeout=300s || \
 	 kubectl -n kacho wait --for=condition=failed job/openfga-bootstrap --timeout=10s
