@@ -1,0 +1,189 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kacho/cloud/storage/v1/volume.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// InternalVolumeService — cluster-internal RPC (port 9091; ban #6), reachable ONLY
+// on the internal listener over mTLS, NOT on the external TLS endpoint.
+//
+// It carries attach coordination and the internal (infra) projection of a Volume.
+// Attach is compute-initiated and self-describing: the request carries
+// instance_id / instance_name / instance_zone_id / project_id, and storage validates
+// against its own `volumes` row and performs an atomic CAS. storage NEVER calls
+// compute (that would create a compute↔storage cycle — retrospective KAC-266).
+//
+// All RPCs are synchronous (the CAS is instantaneous); the tenant-facing mutation
+// stays async through the compute-side `AttachDisk` Operation, so ban #9 is not
+// violated. AuthN (mTLS) + AuthZ (per-RPC Check) apply on this listener as well;
+// these RPCs carry real writer/viewer permissions with object-scoped extractors on
+// `volume_id` (NOT `<exempt>`).
+service InternalVolumeService {
+  // Attach — atomic insert-if-possible (CAS) of a volume_attachments row. Idempotent
+  // on replay (already-ours → OK). Self-describing payload; storage validates its own
+  // `volumes` row (state READY, same zone/project) and never calls compute.
+  rpc Attach(AttachVolumeRequest) returns (AttachVolumeResponse) {
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.attach";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Detach — idempotent delete of the volume_attachments row; 0 rows deleted → the
+  // volume is already detached → OK.
+  rpc Detach(DetachVolumeRequest) returns (DetachVolumeResponse) {
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.detach";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // ListAttachments — batched read of attachments for the given instances, used by
+  // compute to build the read-only mirror on Instance.Get / Instance.List (not N+1).
+  rpc ListAttachments(ListAttachmentsRequest) returns (ListAttachmentsResponse) {
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.listAttachments";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // GetInternal — full (infra) projection of a Volume, internal-only.
+  //
+  // NOTE: the infra fields (backend-LUN / NVMe-namespace / storage-node / pool-id /
+  // numeric infra id / capacity) are a FUTURE data-plane increment and are
+  // out-of-scope here (acceptance §0.3): the response message is a skeleton that
+  // embeds the public Volume; infra fields are declared as a reserved range and are
+  // not populated in this increment.
+  rpc GetInternal(GetInternalVolumeRequest) returns (VolumeInternal) {
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.getInternal";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+// AttachVolumeRequest — self-describing attach payload (storage validates its own
+// `volumes` row against these values; it does not call compute).
+message AttachVolumeRequest {
+  // ID of the volume to attach.
+  string volume_id = 1;
+
+  // ID of the instance the volume is attached to (cross-service, no FK).
+  string instance_id = 2;
+
+  // Name of the instance at attach time (write-time snapshot).
+  string instance_name = 3;
+
+  // Zone of the instance (used for zone-coherence; storage never calls compute).
+  string instance_zone_id = 4;
+
+  // ID of the project (used for project-coherence).
+  string project_id = 5;
+
+  // Name of the guest device. Unique within the instance.
+  string device_name = 6;
+
+  // Whether the volume acts as the persistent root overlay.
+  bool is_boot = 7;
+
+  // Access mode of the attachment.
+  VolumeAttachment.Mode mode = 8;
+
+  // Whether the volume is deleted together with the instance.
+  bool auto_delete = 9;
+}
+
+message AttachVolumeResponse {
+  // The updated volume (status IN_USE) after a successful attach.
+  Volume volume = 1;
+}
+
+message DetachVolumeRequest {
+  // ID of the volume to detach.
+  string volume_id = 1;
+
+  // ID of the instance the volume is detached from.
+  string instance_id = 2;
+}
+
+message DetachVolumeResponse {
+  // The updated volume (status AVAILABLE) after detach.
+  Volume volume = 1;
+}
+
+message ListAttachmentsRequest {
+  // IDs of the instances to list attachments for (batched).
+  repeated string instance_ids = 1;
+}
+
+message ListAttachmentsResponse {
+  // Flat list of attachments across the requested instances. Each entry carries its
+  // owning volume_id and instance_id so the caller can group them.
+  repeated VolumeAttachmentInfo attachments = 1;
+}
+
+// VolumeAttachmentInfo — a single attachment enriched with its owning `volume_id`
+// (the public VolumeAttachment sub-record does not carry it, as it is nested under a
+// Volume). Used by the batched ListAttachments to build the compute-side mirror.
+message VolumeAttachmentInfo {
+  // ID of the volume this attachment belongs to.
+  string volume_id = 1;
+
+  // ID of the instance the volume is attached to.
+  string instance_id = 2;
+
+  // Name of the instance at attach time.
+  string instance_name = 3;
+
+  // Name of the guest device.
+  string device_name = 4;
+
+  // Whether the volume acts as the persistent root overlay.
+  bool is_boot = 5;
+
+  // Access mode of the attachment.
+  VolumeAttachment.Mode mode = 6;
+
+  // Whether the volume is deleted together with the instance.
+  bool auto_delete = 7;
+
+  // Attach timestamp. Truncated to seconds on the wire.
+  google.protobuf.Timestamp attached_at = 8;
+}
+
+message GetInternalVolumeRequest {
+  // ID of the volume to return the internal projection for.
+  string volume_id = 1;
+}
+
+// VolumeInternal — internal (infra) projection of a Volume. Skeleton for this
+// increment: it embeds the public Volume; infra fields (backend-LUN /
+// NVMe-namespace / storage-node / pool-id / numeric infra id / capacity) are a
+// future data-plane increment (acceptance §0.3) and are reserved here — never
+// populated on the public Volume (ban #6 + infra-sensitive).
+message VolumeInternal {
+  // Public projection of the volume.
+  Volume volume = 1;
+
+  // Reserved for the future data-plane infra fields (out-of-scope this increment).
+  reserved 2 to 15;
+}

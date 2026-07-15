@@ -1,0 +1,16 @@
+# Go build/test artefacts
+*.test
+*.out
+/bin/
+/dist/
+coverage*.txt
+
+# Локальные креды/секреты — НИКОГДА в git
+pem
+*.pem
+*.key
+kubeconfig*
+.env
+
+# Агентские worktree/scratch
+.claude/worktrees/

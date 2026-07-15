@@ -1,0 +1,65 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.geo.v1;
+
+import "google/api/annotations.proto";
+import "kacho/cloud/geo/v1/region.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
+
+// A set of methods to retrieve information about regions (public, read-only).
+// Admin CRUD over regions — see InternalRegionService in
+// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
+// platform-topology service).
+service RegionService {
+  // Returns the information about the specified region.
+  rpc Get (GetRegionRequest) returns (Region) {
+    option (google.api.http) = { get: "/geo/v1/regions/{region_id}" };
+    option (kacho.iam.authz.v1.permission)        = "geo.regions.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Retrieves the list of regions.
+  rpc List (ListRegionsRequest) returns (ListRegionsResponse) {
+    option (google.api.http) = { get: "/geo/v1/regions" };
+    option (kacho.iam.authz.v1.permission)        = "geo.regions.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message GetRegionRequest {
+  // ID of the region to return information about.
+  string region_id = 1 [(required) = true, (length) = "<=50"];
+}
+
+message ListRegionsRequest {
+  // The maximum number of results per page to return.
+  int64 page_size = 1 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListRegionsResponse.next_page_token] returned by a previous list request.
+  string page_token = 2 [(length) = "<=100"];
+}
+
+message ListRegionsResponse {
+  // List of regions.
+  repeated Region regions = 1;
+
+  // Token for getting the next page of results.
+  string next_page_token = 2;
+}

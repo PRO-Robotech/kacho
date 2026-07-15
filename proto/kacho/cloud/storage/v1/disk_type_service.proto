@@ -1,0 +1,139 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/api/annotations.proto";
+import "kacho/cloud/storage/v1/disk_type.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// A set of methods to retrieve information about disk types (public :9090; REST
+// /storage/v1/diskTypes).
+service DiskTypeService {
+  // Returns the information about the specified disk type.
+  //
+  // To get the list of available disk types, make a [List] request.
+  rpc Get(GetDiskTypeRequest) returns (DiskType) {
+    option (google.api.http) = {get: "/storage/v1/diskTypes/{disk_type_id}"};
+    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Retrieves the list of disk types.
+  rpc List(ListDiskTypesRequest) returns (ListDiskTypesResponse) {
+    option (google.api.http) = {get: "/storage/v1/diskTypes"};
+    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+// InternalDiskTypeService — kacho-only admin API for managing the read-only
+// DiskType catalog. Exposed ONLY on the cluster-internal port of kacho-storage
+// (:9091); proxied through api-gateway internal mux to /storage/v1/diskTypes —
+// NOT on the external TLS endpoint (workspace CLAUDE.md ban #6).
+service InternalDiskTypeService {
+  rpc Create(CreateDiskTypeRequest) returns (DiskType) {
+    option (google.api.http) = {
+      post: "/storage/v1/diskTypes"
+      body: "*"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.create";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Update(UpdateDiskTypeRequest) returns (DiskType) {
+    option (google.api.http) = {
+      patch: "/storage/v1/diskTypes/{disk_type_id}"
+      body: "*"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.update";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Delete(DeleteDiskTypeRequest) returns (DeleteDiskTypeResponse) {
+    option (google.api.http) = {delete: "/storage/v1/diskTypes/{disk_type_id}"};
+    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.delete";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message GetDiskTypeRequest {
+  // ID of the disk type to return information about.
+  string disk_type_id = 1 [(required) = true];
+}
+
+message ListDiskTypesRequest {
+  // The maximum number of results per page to return.
+  int64 page_size = 1 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListDiskTypesResponse.next_page_token] returned by a previous list request.
+  string page_token = 2 [(length) = "<=100"];
+}
+
+message ListDiskTypesResponse {
+  // List of disk types.
+  repeated DiskType disk_types = 1;
+
+  // This token allows you to get the next page of results for list requests.
+  string next_page_token = 2;
+}
+
+message CreateDiskTypeRequest {
+  // DiskType ID — admin sets it explicitly (e.g. "network-ssd"). Primary key, immutable.
+  string id = 1 [(required) = true];
+
+  // Human-readable name of the disk type.
+  string name = 2;
+
+  // Description of the disk type.
+  string description = 3;
+
+  // Availability zones where this disk type is offered.
+  repeated string zone_ids = 4;
+
+  // Performance tier of the disk type.
+  string performance_tier = 5;
+}
+
+message UpdateDiskTypeRequest {
+  string disk_type_id = 1 [(required) = true];
+  string name = 2;
+  string description = 3;
+  repeated string zone_ids = 4;
+  string performance_tier = 5;
+}
+
+message DeleteDiskTypeRequest {
+  string disk_type_id = 1 [(required) = true];
+}
+
+message DeleteDiskTypeResponse {}

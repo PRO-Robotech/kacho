@@ -1,0 +1,44 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.geo.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
+
+// Zone — global platform-topology resource (a subdivision of a Region).
+//
+// Geography (Region/Zone) is owned by kacho-geo, the leaf platform-topology
+// service. Other services reference a zone by id (string) and validate it via
+// ZoneService.Get (cross-domain ref by id, no cross-service FK). See
+// data-integrity.md §«Cross-domain ссылки».
+message Zone {
+
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+
+    // Zone is available; resources allocated in this zone can be accessed.
+    UP = 1;
+
+    // Zone is not available.
+    DOWN = 2;
+  }
+
+  // ID of the zone (e.g. "ru-central1-a"). Admin-assigned, immutable PK.
+  string id = 1;
+
+  // ID of the region this zone belongs to (FK → Region.id).
+  string region_id = 2;
+
+  // Status of the zone.
+  Status status = 3;
+
+  // Human-readable name of the zone.
+  string name = 4;
+
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 5;
+}

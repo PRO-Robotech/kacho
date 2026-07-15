@@ -1,0 +1,230 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/cloud/storage/v1/snapshot.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// A set of methods for managing Snapshot resources (public :9090; REST /storage/v1/snapshots).
+service SnapshotService {
+  // Returns the specified Snapshot resource.
+  //
+  // To get the list of available Snapshot resources, make a [List] request.
+  rpc Get(GetSnapshotRequest) returns (Snapshot) {
+    option (google.api.http) = {get: "/storage/v1/snapshots/{snapshot_id}"};
+    option (kacho.iam.authz.v1.permission)        = "storage.snapshots.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_snapshot"
+      from_request_field: "snapshot_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Retrieves the list of Snapshot resources in the specified project.
+  rpc List(ListSnapshotsRequest) returns (ListSnapshotsResponse) {
+    option (google.api.http) = {get: "/storage/v1/snapshots"};
+    option (kacho.iam.authz.v1.permission)        = "storage.snapshots.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Creates a snapshot of the specified volume.
+  rpc Create(CreateSnapshotRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/storage/v1/snapshots"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateSnapshotMetadata"
+      response: "Snapshot"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.snapshots.create";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Updates the specified snapshot.
+  //
+  // Values of omitted parameters are not changed.
+  rpc Update(UpdateSnapshotRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/storage/v1/snapshots/{snapshot_id}"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateSnapshotMetadata"
+      response: "Snapshot"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.snapshots.update";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_snapshot"
+      from_request_field: "snapshot_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Deletes the specified snapshot.
+  rpc Delete(DeleteSnapshotRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/storage/v1/snapshots/{snapshot_id}"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteSnapshotMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.snapshots.delete";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_snapshot"
+      from_request_field: "snapshot_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message GetSnapshotRequest {
+  // ID of the Snapshot resource to return.
+  // To get the snapshot ID, use a [SnapshotService.List] request.
+  string snapshot_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+}
+
+message ListSnapshotsRequest {
+  // ID of the project to list snapshots in.
+  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  string project_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // The maximum number of results per page to return.
+  int64 page_size = 2 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListSnapshotsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3 [(length) = "<=100"];
+
+  // A filter expression that filters resources listed in the response. Currently
+  // filtering is supported on the `name` field only.
+  string filter = 4 [(length) = "<=1000"];
+
+  // By which column the listing should be ordered and in which direction,
+  // format is "createdAt desc". "id asc" if omitted.
+  string order_by = 5 [(length) = "<=100"];
+}
+
+message ListSnapshotsResponse {
+  // List of snapshots.
+  repeated Snapshot snapshots = 1;
+
+  // This token allows you to get the next page of results for list requests.
+  string next_page_token = 2;
+}
+
+message CreateSnapshotRequest {
+  // ID of the project to create a snapshot in.
+  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  string project_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // ID of the source volume to create the snapshot from.
+  // To get the volume ID, use a [VolumeService.List] request.
+  string source_volume_id = 2 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Name of the snapshot.
+  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Description of the snapshot.
+  string description = 4 [(length) = "<=256"];
+
+  // Resource labels as `key:value` pairs.
+  map<string, string> labels = 5 [
+    (kacho.cloud.size) = "<=64",
+    (length) = "<=63",
+    (pattern) = "[-_./\\@0-9a-z]*",
+    (map_key).length = "1-63",
+    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
+  ];
+}
+
+message CreateSnapshotMetadata {
+  // ID of the snapshot that is being created.
+  string snapshot_id = 1;
+
+  // ID of the source volume used to create this snapshot.
+  string source_volume_id = 2;
+}
+
+message UpdateSnapshotRequest {
+  // ID of the Snapshot resource to update.
+  // To get the snapshot ID, use a [SnapshotService.List] request.
+  string snapshot_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Field mask that specifies which fields of the Snapshot resource are going to be
+  // updated.
+  google.protobuf.FieldMask update_mask = 2;
+
+  // Name of the snapshot.
+  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Description of the snapshot.
+  string description = 4 [(length) = "<=256"];
+
+  // Resource labels as `key:value` pairs.
+  //
+  // Existing set of `labels` is completely replaced by the provided set.
+  map<string, string> labels = 5 [
+    (kacho.cloud.size) = "<=64",
+    (length) = "<=63",
+    (pattern) = "[-_./\\@0-9a-z]*",
+    (map_key).length = "1-63",
+    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
+  ];
+}
+
+message UpdateSnapshotMetadata {
+  // ID of the Snapshot resource that is being updated.
+  string snapshot_id = 1;
+}
+
+message DeleteSnapshotRequest {
+  // ID of the snapshot to delete.
+  // To get the snapshot ID, use a [SnapshotService.List] request.
+  string snapshot_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+}
+
+message DeleteSnapshotMetadata {
+  // ID of the snapshot that is being deleted.
+  string snapshot_id = 1;
+}

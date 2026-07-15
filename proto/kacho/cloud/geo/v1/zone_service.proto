@@ -1,0 +1,72 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.geo.v1;
+
+import "google/api/annotations.proto";
+import "kacho/cloud/geo/v1/zone.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
+
+// A set of methods to retrieve information about zones (public, read-only).
+// Admin CRUD over zones — see InternalZoneService in
+// internal_catalog_service.proto. Region/Zone is owned by kacho-geo (leaf
+// platform-topology service).
+service ZoneService {
+  // Returns the information about the specified zone.
+  //
+  // To get the list of zones, make a [List] request.
+  rpc Get (GetZoneRequest) returns (Zone) {
+    option (google.api.http) = { get: "/geo/v1/zones/{zone_id}" };
+    option (kacho.iam.authz.v1.permission)        = "geo.zones.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Retrieves the list of zones.
+  rpc List (ListZonesRequest) returns (ListZonesResponse) {
+    option (google.api.http) = { get: "/geo/v1/zones" };
+    option (kacho.iam.authz.v1.permission)        = "geo.zones.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message ListZonesRequest {
+  // The maximum number of results per page to return. If the number of available
+  // results is larger than [page_size], the service returns a
+  // [ListZonesResponse.next_page_token] that can be used to get the next page of
+  // results in subsequent list requests.
+  int64 page_size = 1 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListZonesResponse.next_page_token] returned by a previous list request.
+  string page_token = 2 [(length) = "<=100"];
+}
+
+message ListZonesResponse {
+  // List of zones.
+  repeated Zone zones = 1;
+
+  // Token for getting the next page of results. If the number of results is
+  // larger than [ListZonesRequest.page_size], use this token as the
+  // [ListZonesRequest.page_token] value in the next list request.
+  string next_page_token = 2;
+}
+
+message GetZoneRequest {
+  // ID of the zone to return information about.
+  string zone_id = 1 [(required) = true, (length) = "<=50"];
+}

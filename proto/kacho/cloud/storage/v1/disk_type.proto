@@ -1,0 +1,28 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// A DiskType resource — a read-only catalog entry describing a class of storage a
+// Volume can be provisioned on. Owned by kacho-storage.
+message DiskType {
+  // ID of the disk type. A slug set explicitly by an admin (e.g. "network-ssd").
+  // Primary key, immutable.
+  string id = 1;
+
+  // Human-readable name of the disk type. 0-63 characters long.
+  string name = 2;
+
+  // Description of the disk type. 0-256 characters long.
+  string description = 3;
+
+  // Availability zones where this disk type is offered.
+  repeated string zone_ids = 4;
+
+  // Performance tier of the disk type (e.g. "standard", "high"). Optional.
+  string performance_tier = 5;
+}

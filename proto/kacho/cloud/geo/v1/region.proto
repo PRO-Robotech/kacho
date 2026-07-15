@@ -1,0 +1,28 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.geo.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
+
+// Region — global platform-topology resource.
+//
+// Geography (Region/Zone) is owned by kacho-geo, the leaf platform-topology
+// service (depends on nothing else in Kachō). Not bound to Project/Account —
+// it is global cluster-scoped topology. Other services reference a region by
+// id (string) and validate it via RegionService.Get (cross-domain ref by id,
+// no cross-service FK). See data-integrity.md §«Cross-domain ссылки».
+message Region {
+  // ID of the region (e.g. "ru-central1"). Admin-assigned, immutable PK.
+  string id = 1;
+
+  // Human-readable name of the region.
+  string name = 2;
+
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 3;
+}

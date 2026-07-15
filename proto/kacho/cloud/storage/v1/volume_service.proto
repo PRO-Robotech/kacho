@@ -1,0 +1,289 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/cloud/storage/v1/volume.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// A set of methods for managing Volume resources (public :9090; REST /storage/v1/volumes).
+service VolumeService {
+  // Returns the specified Volume resource.
+  //
+  // To get the list of available Volume resources, make a [List] request.
+  rpc Get(GetVolumeRequest) returns (Volume) {
+    option (google.api.http) = {get: "/storage/v1/volumes/{volume_id}"};
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Retrieves the list of Volume resources in the specified project.
+  rpc List(ListVolumesRequest) returns (ListVolumesResponse) {
+    option (google.api.http) = {get: "/storage/v1/volumes"};
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Creates a volume in the specified project.
+  rpc Create(CreateVolumeRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/storage/v1/volumes"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateVolumeMetadata"
+      response: "Volume"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.create";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Updates the specified volume.
+  //
+  // Mutable: name / description / labels / size_bytes (increase only).
+  // Immutable: zone_id / disk_type_id / block_size / source_snapshot_id.
+  rpc Update(UpdateVolumeRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/storage/v1/volumes/{volume_id}"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateVolumeMetadata"
+      response: "Volume"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.update";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Deletes the specified volume.
+  //
+  // Deleting a volume that is attached to an instance is rejected with
+  // FailedPrecondition "Volume <id> is in use" (FK RESTRICT).
+  rpc Delete(DeleteVolumeRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/storage/v1/volumes/{volume_id}"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteVolumeMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.delete";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Lists operations for the specified volume.
+  rpc ListOperations(ListVolumeOperationsRequest) returns (ListVolumeOperationsResponse) {
+    option (google.api.http) = {get: "/storage/v1/volumes/{volume_id}/operations"};
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.listOperations";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message GetVolumeRequest {
+  // ID of the Volume resource to return.
+  // To get the volume ID, use a [VolumeService.List] request.
+  string volume_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+}
+
+message ListVolumesRequest {
+  // ID of the project to list volumes in.
+  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  string project_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // The maximum number of results per page to return. If the number of available
+  // results is larger than [page_size], the service returns a
+  // [ListVolumesResponse.next_page_token] that can be used to get the next page of
+  // results in subsequent list requests.
+  int64 page_size = 2 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListVolumesResponse.next_page_token] returned by a previous list request.
+  string page_token = 3 [(length) = "<=100"];
+
+  // A filter expression that filters resources listed in the response. Currently
+  // filtering is supported on the `name` field only.
+  string filter = 4 [(length) = "<=1000"];
+
+  // By which column the listing should be ordered and in which direction,
+  // format is "createdAt desc". "id asc" if omitted.
+  string order_by = 5 [(length) = "<=100"];
+}
+
+message ListVolumesResponse {
+  // List of volumes.
+  repeated Volume volumes = 1;
+
+  // This token allows you to get the next page of results for list requests.
+  string next_page_token = 2;
+}
+
+message CreateVolumeRequest {
+  // ID of the project to create a volume in.
+  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  string project_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Name of the volume.
+  string name = 2 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Description of the volume.
+  string description = 3 [(length) = "<=256"];
+
+  // Resource labels as `key:value` pairs.
+  map<string, string> labels = 4 [
+    (kacho.cloud.size) = "<=64",
+    (length) = "<=63",
+    (pattern) = "[-_./\\@0-9a-z]*",
+    (map_key).length = "1-63",
+    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
+  ];
+
+  // ID of the availability zone where the volume resides. Peer-validated against
+  // kacho-geo.
+  string zone_id = 5 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // ID of the disk type.
+  string disk_type_id = 6 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Size of the volume, specified in bytes. Must be > 0.
+  int64 size_bytes = 7 [(value) = ">0"];
+
+  // Block size of the volume, specified in bytes. Default 4096 when omitted.
+  int64 block_size = 8;
+
+  // ID of the source snapshot to restore the volume from. Optional; empty = a fresh
+  // volume.
+  string source_snapshot_id = 9 [(length) = "<=50"];
+}
+
+message CreateVolumeMetadata {
+  // ID of the volume that is being created.
+  string volume_id = 1;
+}
+
+message UpdateVolumeRequest {
+  // ID of the Volume resource to update.
+  // To get the volume ID, use a [VolumeService.List] request.
+  string volume_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Field mask that specifies which fields of the Volume resource are going to be
+  // updated.
+  google.protobuf.FieldMask update_mask = 2;
+
+  // Name of the volume.
+  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Description of the volume.
+  string description = 4 [(length) = "<=256"];
+
+  // Resource labels as `key:value` pairs.
+  //
+  // Existing set of `labels` is completely replaced by the provided set.
+  map<string, string> labels = 5 [
+    (kacho.cloud.size) = "<=64",
+    (length) = "<=63",
+    (pattern) = "[-_./\\@0-9a-z]*",
+    (map_key).length = "1-63",
+    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
+  ];
+
+  // New size of the volume, specified in bytes. Increase only; a smaller value is
+  // rejected with InvalidArgument "Volume size can only be increased".
+  int64 size_bytes = 6 [(value) = ">0"];
+}
+
+message UpdateVolumeMetadata {
+  // ID of the Volume resource that is being updated.
+  string volume_id = 1;
+}
+
+message DeleteVolumeRequest {
+  // ID of the volume to delete.
+  // To get the volume ID, use a [VolumeService.List] request.
+  string volume_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+}
+
+message DeleteVolumeMetadata {
+  // ID of the volume that is being deleted.
+  string volume_id = 1;
+}
+
+message ListVolumeOperationsRequest {
+  // ID of the Volume resource to list operations for.
+  string volume_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // The maximum number of results per page to return.
+  int64 page_size = 2 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListVolumeOperationsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3 [(length) = "<=100"];
+}
+
+message ListVolumeOperationsResponse {
+  // List of operations for the specified volume.
+  repeated operation.Operation operations = 1;
+
+  // This token allows you to get the next page of results for list requests.
+  string next_page_token = 2;
+}

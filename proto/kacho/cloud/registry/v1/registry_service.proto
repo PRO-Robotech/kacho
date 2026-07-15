@@ -1,0 +1,428 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.registry.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/cloud/registry/v1/registry.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1";
+
+// RegistryService — control-plane реестра (public :9090 → api-gateway REST).
+// Read — sync; мутации (Create/Update/Delete/DeleteTag) — async через Operation
+// (api-conventions.md §9). Data-plane pull/push — отдельная OCI v2-поверхность,
+// НЕ здесь. Каждый RPC проходит per-RPC InternalIAMService.Check (security.md).
+service RegistryService {
+  // Get — sync-чтение одного реестра. v_get на registry_registry.
+  rpc Get(GetRegistryRequest) returns (Registry) {
+    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}"};
+    option (kacho.iam.authz.v1.permission) = "registry.registries.get";
+    option (kacho.iam.authz.v1.required_relation) = "v_get";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "registry_registry"
+      from_request_field: "registry_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
+  }
+
+  // List — sync-список реестров project'а. Scope-filtered (handler фильтрует
+  // через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
+  rpc List(ListRegistriesRequest) returns (ListRegistriesResponse) {
+    option (google.api.http) = {get: "/registry/v1/registries"};
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // Create — async. create-child = editor-tier на parent-project (Check на
+  // iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
+  rpc Create(CreateRegistryRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/registry/v1/registries"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateRegistryMetadata"
+      response: "Registry"
+    };
+    option (kacho.iam.authz.v1.permission) = "registry.registries.create";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
+  }
+
+  // Update — async, mutable labels/description (name/project immutable). v_update.
+  rpc Update(UpdateRegistryRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/registry/v1/registries/{registry_id}"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateRegistryMetadata"
+      response: "Registry"
+    };
+    option (kacho.iam.authz.v1.permission) = "registry.registries.update";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "registry_registry"
+      from_request_field: "registry_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
+  }
+
+  // Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
+  // zot-namespace + UnregisterResource owner/repo-tuple.
+  rpc Delete(DeleteRegistryRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteRegistryMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission) = "registry.registries.delete";
+    option (kacho.iam.authz.v1.required_relation) = "v_delete";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "registry_registry"
+      from_request_field: "registry_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
+  }
+
+  // ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
+  // = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
+  // → gateway <exempt>, authz полностью в handler'е.
+  rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse) {
+    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories"};
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // ListOperations — sync-история async-операций реестра (per-resource, фильтр по
+  // resource_id=registry_id). Interceptor-gated per-RPC Check v_list на
+  // registry_registry (как Get) → в allowlist как публичный gRPC-путь.
+  rpc ListOperations(ListRegistryOperationsRequest) returns (ListRegistryOperationsResponse) {
+    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/operations"};
+    option (kacho.iam.authz.v1.permission) = "registry.registries.listOperations";
+    option (kacho.iam.authz.v1.required_relation) = "v_list";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "registry_registry"
+      from_request_field: "registry_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
+  }
+
+  // === Repository-scoped RPC — ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ (REST-precedence) =====
+  // grpc-gateway `ServeMux.Handle` PREPEND-ит хендлеры (newest-registered
+  // пробуется ПЕРВЫМ; runtime/mux.go), а сгенерированный `Register…Handler`
+  // регистрирует маршруты в порядке ОБЪЯВЛЕНИЯ RPC в этом service → объявленный
+  // ПОЗЖЕ пробуется РАНЬШЕ. Поэтому голые `{repository=**}` catch-all'ы
+  // (Get/Update/DeleteRepository) объявляются РАНЬШЕ более специфичных
+  // sub-resource-маршрутов (…/tags, …/tags/{tag}, …/referrers, :rename) —
+  // так sub-resource пробуется ПЕРВЫМ и не затеняется catch-all'ом. Иначе
+  // `GET …/{repo}/tags` перехватывался бы GetRepository (repository="web/tags"),
+  // а `DELETE …/{repo}/tags/{tag}` — DeleteRepository (REST-shadow-баг).
+  // НЕ пересортировывать по алфавиту/CRUD/группам — сломает REST-роутинг.
+  //
+  // Repository config-overlay (RG-1): durable per-repo config (description/
+  // labels/visibility) поверх read-only zot-проекции; overlay ⟂ projection над
+  // натуральным ключом (registry_id,name). Read — sync; мутации — async→Operation
+  // (ban #9). Per-repo authz на COMPOSITE-объекте `registry_repository:<reg>/<repo>`
+  // НЕ выразим gateway scope_extractor'ом (тот берёт одно top-level поле) → все
+  // repository-scoped RPC gateway `<exempt>`, а per-repo Check + existence-hiding
+  // выполняет handler (parity с ListRepositories). Deny на repo ИЛИ невидимый
+  // namespace → uniform NOT_FOUND "repository not found" (existence-hiding,
+  // security.md — НЕ PERMISSION_DENIED, иначе existence-oracle); admin-gate на
+  // visibility → handler отдаёт PERMISSION_DENIED (B02/B08, caller уже доказал
+  // доступ — код честен).
+
+  // GetRepository — sync-чтение repo (overlay LEFT JOIN projection; durable
+  // survives-empty). Handler: per-repo v_get Check; unauthorized|absent → NOT_FOUND.
+  // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
+  rpc GetRepository(GetRepositoryRequest) returns (Repository) {
+    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
+  // uniqueness (registry_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
+  // Handler: namespace call-gate (невидимый реестр → NOT_FOUND, X04) + v_create;
+  // явный visibility=PUBLIC требует registry admin (B08 → PERMISSION_DENIED).
+  rpc CreateRepository(CreateRepositoryRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/registry/v1/registries/{registry_id}/repositories"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateRepositoryMetadata"
+      response: "Repository"
+    };
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // UpdateRepository — async, FieldMask-PATCH overlay (description/labels/visibility;
+  // name immutable → RenameRepository). Handler: per-repo v_update Check; visibility
+  // в mask → registry admin (B02 → PERMISSION_DENIED). Promote ephemeral→durable
+  // (overlay upsert). Deny|absent → NOT_FOUND.
+  // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
+  rpc UpdateRepository(UpdateRepositoryRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateRepositoryMetadata"
+      response: "Repository"
+    };
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // DeleteRepository — async, reject-if-tags (D-4). Пустой durable → снимает overlay
+  // + unregister FGA repo-tuples (same-registry only, ban #4); не-пустой → Operation
+  // error FAILED_PRECONDITION "repository is not empty" (проверка emptiness в worker'е).
+  // Handler: per-repo v_delete Check синхронно ДО LRO; unauthorized|absent → sync
+  // NOT_FOUND, Operation НЕ создаётся (A15 — как DeleteTag).
+  // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
+  rpc DeleteRepository(DeleteRepositoryRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteRepositoryMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // ListTags — sync-проекция тегов repo из zot. Per-repo Check v_list на
+  // registry_repository в handler'е → gateway <exempt>. Sub-resource `…/tags` —
+  // объявлен ПОСЛЕ GetRepository catch-all'а → пробуется РАНЬШЕ, не затеняется
+  // (см. блок-заголовок «ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ»).
+  rpc ListTags(ListTagsRequest) returns (ListTagsResponse) {
+    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags"};
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // DeleteTag — async, единственный destructive-путь для образов (data-plane
+  // DELETE отвергается 405). Per-repo v_delete Check синхронно в handler'е ДО
+  // создания Operation → gateway <exempt>. Sub-resource `…/tags/{tag}` — объявлен
+  // ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
+  rpc DeleteTag(DeleteTagRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteTagMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;
+  // cross-registry rename структурно невыразим, D-5). Durable → re-key overlay-имя
+  // (UPDATE); ephemeral → auto-promote в durable (INSERT). Engine re-home тегов/
+  // манифестов/referrers, старое имя → 404. Целевое имя занято → ALREADY_EXISTS;
+  // malformed|no-op new_name → INVALID_ARGUMENT; движок недоступен в середине remap →
+  // Operation error UNAVAILABLE fail-closed (без частичного rename, A21). Handler:
+  // v_update@repo + v_create@registry; deny|absent → NOT_FOUND. Verb-action
+  // `:rename` — объявлен ПОСЛЕ catch-all'ов → пробуется РАНЬШЕ (precedence).
+  rpc RenameRepository(RenameRepositoryRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/registry/v1/registries/{registry_id}/repositories/{repository=**}:rename"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "RenameRepositoryMetadata"
+      response: "Repository"
+    };
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // ListReferrers — sync-проекция referrer-графа одного subject_digest (D-8: bounded
+  // full-set, server-side cap как catalog-page; БЕЗ page_token/page_size — зеркалит
+  // OCI single-index /referrers/<digest>). Handler: per-repo v_get Check;
+  // unauthorized|absent repo → NOT_FOUND; subject без referrer'ов → пустой список (не 404).
+  // Sub-resource `…/referrers` — объявлен ПОСЛЕ catch-all'ов → пробуется РАНЬШЕ.
+  rpc ListReferrers(ListReferrersRequest) returns (ListReferrersResponse) {
+    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}/referrers"};
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+}
+
+message GetRegistryRequest {
+  string registry_id = 1;
+}
+
+message ListRegistriesRequest {
+  string project_id = 1;
+  int32 page_size = 2 [(value) = "0-1000"];
+  string page_token = 3;
+  string filter = 4;
+}
+
+message ListRegistriesResponse {
+  repeated Registry registries = 1;
+  string next_page_token = 2;
+}
+
+message CreateRegistryRequest {
+  string project_id = 1;
+  string name = 2;
+  string description = 3;
+  map<string, string> labels = 4;
+}
+
+message CreateRegistryMetadata {
+  string registry_id = 1;
+}
+
+message UpdateRegistryRequest {
+  string registry_id = 1;
+  string description = 2;
+  map<string, string> labels = 3;
+  google.protobuf.FieldMask update_mask = 4;
+  // Имя реестра — mutable (DNS-safe, UNIQUE в рамках project среди живых). Смена
+  // не затрагивает endpoint/zot-namespace (те по id). Конфликт → ALREADY_EXISTS.
+  string name = 5;
+  // Дефолтная публичность для НОВЫХ repo (сид Repository.visibility на create).
+  // Присутствие в update_mask с переходом →PUBLIC требует registry admin (D-6,
+  // B10/B11). Существующие repo не перекрашиваются.
+  Visibility default_visibility = 6;
+}
+
+message UpdateRegistryMetadata {
+  string registry_id = 1;
+}
+
+message DeleteRegistryRequest {
+  string registry_id = 1;
+}
+
+message DeleteRegistryMetadata {
+  string registry_id = 1;
+}
+
+message ListRepositoriesRequest {
+  string registry_id = 1;
+  int32 page_size = 2 [(value) = "0-1000"];
+  string page_token = 3;
+}
+
+message ListRepositoriesResponse {
+  repeated Repository repositories = 1;
+  string next_page_token = 2;
+}
+
+message ListTagsRequest {
+  string registry_id = 1;
+  string repository = 2;
+  int32 page_size = 3 [(value) = "0-1000"];
+  string page_token = 4;
+}
+
+message ListTagsResponse {
+  repeated Tag tags = 1;
+  string next_page_token = 2;
+}
+
+message DeleteTagRequest {
+  string registry_id = 1;
+  string repository = 2;
+  string tag = 3;
+}
+
+message DeleteTagMetadata {
+  string registry_id = 1;
+  string repository = 2;
+  string tag = 3;
+}
+
+message ListRegistryOperationsRequest {
+  string registry_id = 1;
+  int32 page_size = 2 [(value) = "0-1000"];
+  string page_token = 3;
+}
+
+message ListRegistryOperationsResponse {
+  repeated operation.Operation operations = 1;
+  string next_page_token = 2;
+}
+
+// === Repository config-overlay (RG-1) request/response/metadata =============
+
+message GetRepositoryRequest {
+  string registry_id = 1;
+  string repository = 2;
+}
+
+message CreateRepositoryRequest {
+  string registry_id = 1;
+  string repository = 2;
+  string description = 3;
+  map<string, string> labels = 4;
+  // Явная публичность. Не задано (UNSPECIFIED) → наследует
+  // Registry.default_visibility. Явный PUBLIC требует registry admin (D-6, B08).
+  Visibility visibility = 5;
+}
+
+message CreateRepositoryMetadata {
+  string registry_id = 1;
+  string repository = 2;
+}
+
+message UpdateRepositoryRequest {
+  string registry_id = 1;
+  string repository = 2;
+  string description = 3;
+  map<string, string> labels = 4;
+  // Публичность (mutable). Присутствие в update_mask требует registry admin (D-6, B02).
+  Visibility visibility = 5;
+  google.protobuf.FieldMask update_mask = 6;
+}
+
+message UpdateRepositoryMetadata {
+  string registry_id = 1;
+  string repository = 2;
+}
+
+message DeleteRepositoryRequest {
+  string registry_id = 1;
+  string repository = 2;
+}
+
+message DeleteRepositoryMetadata {
+  string registry_id = 1;
+  string repository = 2;
+}
+
+message RenameRepositoryRequest {
+  string registry_id = 1;
+  string repository = 2;
+  // Голое repo-имя внутри ТОГО ЖЕ registry_id (поля целевого реестра НЕТ —
+  // cross-registry rename структурно невыразим, D-5). malformed ИЛИ == repository
+  // (no-op) → INVALID_ARGUMENT.
+  string new_name = 3;
+}
+
+message RenameRepositoryMetadata {
+  string registry_id = 1;
+  string repository = 2;
+  string new_name = 3;
+}
+
+message ListReferrersRequest {
+  string registry_id = 1;
+  string repository = 2;
+  // Digest subject-манифеста, referrer'ы которого перечисляются (OCI digest,
+  // напр. "sha256:<64-hex>"). malformed → INVALID_ARGUMENT.
+  string subject_digest = 3;
+  // Необязательный server-side facet по OCI artifactType (пусто → все типы).
+  string artifact_type = 4;
+}
+
+// ListReferrersResponse — bounded full-set одного subject_digest (D-8: server-side
+// cap как catalog-page; БЕЗ page_token/page_size). Cursor-пагинация — follow-up.
+message ListReferrersResponse {
+  repeated Referrer referrers = 1;
+}

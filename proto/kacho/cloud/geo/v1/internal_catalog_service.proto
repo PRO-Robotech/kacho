@@ -1,0 +1,187 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.geo.v1;
+
+import "google/api/annotations.proto";
+import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/geo/v1/zone.proto";
+import "kacho/cloud/geo/v1/region.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
+
+// InternalRegionService / InternalZoneService — kacho-only admin API to manage
+// the read-only Region/Zone catalog. Exposed ONLY on the cluster-internal port
+// of kacho-geo (:9091); routed through the api-gateway internal mux onto
+// /geo/v1/regions, /geo/v1/zones — NEVER on the external TLS endpoint (ban #6,
+// security.md §Internal-vs-external). Region/Zone is owned by kacho-geo (leaf
+// platform-topology service).
+//
+// Admin mutations follow the standard Kachō async form: Create/Update/Delete
+// return operation.Operation (done=false); the client polls
+// OperationService.Get(id) until done=true, then reads the final resource via
+// RegionService.Get / ZoneService.Get. Read RPCs (Region/ZoneService.Get/List)
+// stay synchronous.
+
+service InternalRegionService {
+  rpc Create (CreateRegionRequest) returns (operation.Operation) {
+    option (google.api.http) = { post: "/geo/v1/regions" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateRegionMetadata"
+      response: "Region"
+    };
+    option (kacho.iam.authz.v1.permission)        = "geo.regions.create";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Update (UpdateRegionRequest) returns (operation.Operation) {
+    option (google.api.http) = { patch: "/geo/v1/regions/{region_id}" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateRegionMetadata"
+      response: "Region"
+    };
+    option (kacho.iam.authz.v1.permission)        = "geo.regions.update";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Delete (DeleteRegionRequest) returns (operation.Operation) {
+    option (google.api.http) = { delete: "/geo/v1/regions/{region_id}" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteRegionMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission)        = "geo.regions.delete";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message CreateRegionRequest {
+  // Region ID — admin-assigned explicitly (e.g. "region-1"). PrimaryKey, immutable.
+  string id = 1;
+  string name = 2;
+}
+
+// CreateRegionMetadata — operation.metadata for InternalRegionService.Create.
+message CreateRegionMetadata {
+  // ID of the Region that is being created.
+  string region_id = 1;
+}
+
+message UpdateRegionRequest {
+  string region_id = 1;
+  // If non-empty — update name. ID cannot be updated (immutable PK).
+  string name = 2;
+}
+
+// UpdateRegionMetadata — operation.metadata for InternalRegionService.Update.
+message UpdateRegionMetadata {
+  // ID of the Region that is being updated.
+  string region_id = 1;
+}
+
+message DeleteRegionRequest { string region_id = 1; }
+
+// DeleteRegionMetadata — operation.metadata for InternalRegionService.Delete.
+message DeleteRegionMetadata {
+  // ID of the Region that is being deleted.
+  string region_id = 1;
+}
+
+service InternalZoneService {
+  rpc Create (CreateZoneRequest) returns (operation.Operation) {
+    option (google.api.http) = { post: "/geo/v1/zones" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateZoneMetadata"
+      response: "Zone"
+    };
+    option (kacho.iam.authz.v1.permission)        = "geo.zones.create";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Update (UpdateZoneRequest) returns (operation.Operation) {
+    option (google.api.http) = { patch: "/geo/v1/zones/{zone_id}" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateZoneMetadata"
+      response: "Zone"
+    };
+    option (kacho.iam.authz.v1.permission)        = "geo.zones.update";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Delete (DeleteZoneRequest) returns (operation.Operation) {
+    option (google.api.http) = { delete: "/geo/v1/zones/{zone_id}" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteZoneMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission)        = "geo.zones.delete";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message CreateZoneRequest {
+  // Zone ID — admin-assigned explicitly (e.g. "region-1-a"). PrimaryKey, immutable.
+  string id = 1;
+  string region_id = 2;
+  Zone.Status status = 3;
+  // Human-readable name of the zone.
+  string name = 4;
+}
+
+// CreateZoneMetadata — operation.metadata for InternalZoneService.Create.
+message CreateZoneMetadata {
+  // ID of the Zone that is being created.
+  string zone_id = 1;
+}
+
+message UpdateZoneRequest {
+  string zone_id = 1;
+  string region_id = 2;
+  Zone.Status status = 3;
+  // If non-empty — update name.
+  string name = 4;
+}
+
+// UpdateZoneMetadata — operation.metadata for InternalZoneService.Update.
+message UpdateZoneMetadata {
+  // ID of the Zone that is being updated.
+  string zone_id = 1;
+}
+
+message DeleteZoneRequest { string zone_id = 1; }
+
+// DeleteZoneMetadata — operation.metadata for InternalZoneService.Delete.
+message DeleteZoneMetadata {
+  // ID of the Zone that is being deleted.
+  string zone_id = 1;
+}

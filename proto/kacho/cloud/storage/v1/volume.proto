@@ -1,0 +1,128 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kacho/cloud/reference/reference.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// A Volume resource — a zone-level persistent block disk owned by kacho-storage.
+//
+// Standalone lifecycle: a Volume may live in AVAILABLE indefinitely with zero
+// attachments. The guest OS is NOT stored on it (OS is delivered as an OCI image
+// on instance boot); a Volume is pure persistent block state.
+message Volume {
+
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+
+    // Volume is being created.
+    CREATING = 1;
+
+    // Volume is ready and not attached to any instance.
+    AVAILABLE = 2;
+
+    // Volume is ready and attached to an instance (derived from attachments).
+    IN_USE = 3;
+
+    // Volume is being deleted.
+    DELETING = 4;
+
+    // Volume encountered a problem and cannot operate.
+    ERROR = 5;
+  }
+
+  // ID of the volume. Prefix "vol". Immutable.
+  string id = 1;
+
+  // ID of the project that owns the volume. Immutable. Peer-validated against kacho-iam.
+  string project_id = 2;
+
+  // Creation timestamp. Truncated to seconds on the wire.
+  google.protobuf.Timestamp created_at = 3;
+
+  // Last modification timestamp. Truncated to seconds on the wire.
+  google.protobuf.Timestamp updated_at = 4;
+
+  // Name of the volume. 1-63 characters long, lowercase. Unique within
+  // (project_id, name) when non-empty.
+  string name = 5;
+
+  // Description of the volume. 0-256 characters long.
+  string description = 6;
+
+  // Resource labels as `key:value` pairs. Maximum of 64 per resource.
+  map<string, string> labels = 7;
+
+  // ID of the availability zone where the volume resides. TEXT reference to
+  // kacho-geo (peer-validated, no FK). Immutable.
+  string zone_id = 8;
+
+  // ID of the disk type. Same-DB FK to DiskType (ON DELETE RESTRICT). Immutable.
+  string disk_type_id = 9;
+
+  // Size of the volume, specified in bytes. Must be > 0. Update — increase only.
+  int64 size_bytes = 10;
+
+  // Block size of the volume, specified in bytes. Default 4096. Immutable.
+  int64 block_size = 11;
+
+  // ID of the source snapshot the volume was restored from. Optional (empty = a
+  // fresh volume). Same-DB FK to Snapshot (ON DELETE SET NULL). Immutable.
+  // There is no source-image field (the OS comes from an OCI image, not the volume).
+  string source_snapshot_id = 12;
+
+  // Current status of the volume. AVAILABLE / IN_USE are DERIVED from the presence
+  // of an attachment (they cannot drift from the attachment state).
+  Status status = 13;
+
+  // Authoritative attach-state of the volume (public, lean projection).
+  repeated VolumeAttachment attachments = 14;
+
+  // Output-only generic projection of `attachments` for uniform dependents/impact
+  // tooling. Same source of truth as `attachments`; not accepted on Create/Update.
+  repeated kacho.cloud.reference.Reference used_by = 15;
+}
+
+// VolumeAttachment — the source of truth for a single Volume↔Instance binding.
+message VolumeAttachment {
+
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+
+    // Read-write attachment.
+    READ_WRITE = 1;
+
+    // Read-only attachment.
+    READ_ONLY = 2;
+  }
+
+  // ID of the instance the volume is attached to. TEXT, without a cross-service FK
+  // (kacho-compute owns Instance).
+  string instance_id = 1;
+
+  // Name of the instance at attach time (write-time snapshot; storage never reads
+  // it back from compute).
+  string instance_name = 2;
+
+  // Name of the guest device. Unique within the instance.
+  string device_name = 3;
+
+  // Whether the volume acts as the persistent root overlay (usually false for a
+  // data volume).
+  bool is_boot = 4;
+
+  // Access mode of the attachment.
+  Mode mode = 5;
+
+  // Whether the volume is deleted together with the instance.
+  bool auto_delete = 6;
+
+  // Attach timestamp. Truncated to seconds on the wire (truncation applies to the
+  // sub-record as well).
+  google.protobuf.Timestamp attached_at = 7;
+}
