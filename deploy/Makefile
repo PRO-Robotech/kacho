@@ -48,10 +48,37 @@ preflight:
 	@grep -q "api.kacho.local" /etc/hosts || echo "WARN: '127.0.0.1 api.kacho.local' missing in /etc/hosts — ingress will not resolve from host"
 	@echo "preflight OK"
 
+# guard-kind-context — АВАРИЙНЫЙ СТОП, если активный контекст не kind-<CLUSTER_NAME>.
+#
+# Зачем (реальный near-miss 2026-07-15): kind-кластер `kacho` существовал, а его контекст
+# в kubeconfig отсутствовал (KUBECONFIG был подменён на прод-кластер). `dev-up` шёл
+# `; \`-цепочкой, поэтому упавший `kubectl config use-context kind-kacho` НЕ прерывал
+# цель — и весь стенд (namespace, labels, helm upgrade --install kacho-umbrella) поехал
+# на ТЕКУЩИЙ контекст, то есть на ПРОД. Прод спасла лишь случайность: helm отверг
+# апгрейд из-за pre-created секретов (ownership check) и не создал ревизию.
+#
+# Дешёвая проверка, которая делает такую ошибку невозможной по построению.
+guard-kind-context:
+	@ctx="$$(kubectl config current-context 2>/dev/null)"; \
+	case "$$ctx" in \
+	  kind-$(CLUSTER_NAME)) ;; \
+	  *) echo "ABORT: активный kube-контекст '$$ctx' — НЕ kind-$(CLUSTER_NAME)."; \
+	     echo "       dev-стенд создаёт/меняет ресурсы и МОГ БЫ поехать на чужой (в т.ч. прод) кластер."; \
+	     echo "       Переключись явно:  kubectl config use-context kind-$(CLUSTER_NAME)"; \
+	     exit 1 ;; \
+	esac
+
 dev-up: preflight
 	@start=$$(date +%s); \
 	kind get clusters | grep -q "^$(CLUSTER_NAME)$$" || ./kind/create-cluster.sh; \
-	kubectl config use-context kind-$(CLUSTER_NAME); \
+	kubectl config use-context kind-$(CLUSTER_NAME) || { \
+	  echo "ERROR: нет kubectl-контекста kind-$(CLUSTER_NAME)."; \
+	  echo "       Кластер kind может существовать, а контекст в kubeconfig — отсутствовать"; \
+	  echo "       (напр. KUBECONFIG подменён на другой кластер). Восстанови:"; \
+	  echo "         kind export kubeconfig --name $(CLUSTER_NAME)"; \
+	  exit 1; \
+	}; \
+	$(MAKE) --no-print-directory guard-kind-context; \
 	kubectl create namespace kacho --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
 	kubectl label namespace kacho \
 	  pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/warn-version=latest \
