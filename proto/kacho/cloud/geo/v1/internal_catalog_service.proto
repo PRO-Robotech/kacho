@@ -8,7 +8,6 @@ package kacho.cloud.geo.v1;
 import "google/api/annotations.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/geo/v1/zone.proto";
-import "kacho/cloud/geo/v1/region.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 

@@ -19,9 +19,6 @@ on:
 permissions:
   contents: read
 
-env:
-  GOTOOLCHAIN: local
-
 jobs:
   build-test:
     name: build · vet · gofmt · test -race
@@ -98,10 +95,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=10m
+      # go install, а НЕ golangci-lint-action: action ставит предсобранный бинарь, и
+      # если он собран Go старше нашего go.mod — падает с
+      #   "the Go language version (go1.24) used to build golangci-lint is lower than
+      #    the targeted Go version (1.25.7)"
+      # Сборка из исходников нашим же toolchain'ом делает этот рассинхрон невозможным.
+      - name: install golangci-lint (нашим toolchain'ом)
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+      - name: golangci-lint
+        run: golangci-lint run --timeout=10m
 
   govulncheck:
     name: govulncheck
