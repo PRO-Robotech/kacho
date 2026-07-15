@@ -592,7 +592,7 @@ def _make_v6_pool(suffix="v6", zone="{{zoneD}}", cidr="2001:db8:cafe::/64",
             "v4CidrBlocks": [], "v6CidrBlocks": [cidr],
             "isDefault": is_default}
     return [
-        Step(name=f"pre-pool-{suffix}", method="POST", path=POOLS, body=body,
+        Step(name=f"pre-pool-{suffix}", method="POST", path=POOLS, internal=True, body=body,
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "poolId")]),
     ]
@@ -600,7 +600,7 @@ def _make_v6_pool(suffix="v6", zone="{{zoneD}}", cidr="2001:db8:cafe::/64",
 
 def _cleanup_pool():
     return [
-        Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{poolId}}",
+        Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{poolId}}", internal=True,
              test_script=["pm.test('cleanup pool (200 or 400/404)', () => "
                           "pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
     ]
@@ -751,7 +751,7 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P0",
     steps=[
         # Setup v6-only default pool в throwaway {{zoneD}}.
-        Step(name="cr-v6-default", method="POST", path=POOLS,
+        Step(name="cr-v6-default", method="POST", path=POOLS, internal=True,
              body={"name": "adr-falv4-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
                    "v4CidrBlocks": [], "v6CidrBlocks": ["2001:db8:b0b::/64"],
@@ -773,7 +773,7 @@ CASES.append(Case(
                           # family-filter post-split: код 9 (FailedPrecondition), не 13 (Internal).
                           "pm.test('error code 9 (FailedPrecondition), не 13 (Internal)', () => pm.expect(pm.response.json().error.code).to.equal(9));"]),
         # Cleanup pool.
-        Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{falV4PoolId}}",
+        Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{falV4PoolId}}", internal=True,
              test_script=["pm.test('cleanup pool (200 or 400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
     ],
 ))
@@ -786,7 +786,7 @@ CASES.append(Case(
     title="Create v6 Address в zone с v4-only default pool → cascade family-skip → FailedPrecondition (REQ-RESOLVE-01)",
     classes=["CONF", "NEG"], priority="P0",
     steps=[
-        Step(name="cr-v4-default", method="POST", path=POOLS,
+        Step(name="cr-v4-default", method="POST", path=POOLS, internal=True,
              body={"name": "adr-falv6-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
                    "v4CidrBlocks": ["198.51.100.0/24"], "v6CidrBlocks": [],
@@ -805,7 +805,7 @@ CASES.append(Case(
                           "pm.test('operation done', () => pm.expect(pm.response.json().done).to.equal(true));",
                           "pm.test('operation has error', () => pm.expect(pm.response.json().error).to.be.an('object'));",
                           "pm.test('error code 9 (FailedPrecondition), не 13 (Internal)', () => pm.expect(pm.response.json().error.code).to.equal(9));"]),
-        Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{falV6PoolId}}",
+        Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{falV6PoolId}}", internal=True,
              test_script=["pm.test('cleanup pool (200 or 400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
     ],
 ))

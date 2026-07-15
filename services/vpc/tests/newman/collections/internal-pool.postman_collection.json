@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5f48c622-7313-41a3-8d79-5fa3a34687ad",
+    "_postman_id": "cd609dea-bda2-4f46-8f0e-c11cfc351896",
     "name": "kacho-vpc / newman / internal-pool",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -136,9 +136,9 @@
           "raw": "{\"name\": \"seed-default-external-zonea\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneA}}\", \"v4CidrBlocks\": [\"100.64.0.0/24\"], \"v6CidrBlocks\": [], \"isDefault\": true}"
         },
         "url": {
-          "raw": "{{baseUrl}}/vpc/v1/addressPools",
+          "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
           "host": [
-            "{{baseUrl}}"
+            "{{internalBaseUrl}}"
           ],
           "path": [
             "vpc",
@@ -163,9 +163,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -218,9 +218,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -254,9 +254,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -290,9 +290,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -326,9 +326,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -371,9 +371,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -419,9 +419,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -468,9 +468,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -504,9 +504,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -545,9 +545,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -593,9 +593,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplImmutId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplImmutId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -641,9 +641,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplImmutId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplImmutId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -682,9 +682,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -717,9 +717,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools?zoneId={{zoneA}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools?zoneId={{zoneA}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -752,9 +752,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools?kind=EXTERNAL_PUBLIC",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools?kind=EXTERNAL_PUBLIC",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -793,9 +793,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -846,9 +846,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -899,9 +899,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -952,9 +952,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1006,9 +1006,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1051,9 +1051,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{_noNamePoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{_noNamePoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1092,9 +1092,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1145,9 +1145,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1193,9 +1193,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{poolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{poolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1234,9 +1234,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent999999",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/aplnonexistent999999",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1279,9 +1279,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent999999",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/aplnonexistent999999",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1324,9 +1324,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1372,9 +1372,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{utilPoolId}}/utilization",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{utilPoolId}}/utilization",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1413,9 +1413,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{utilPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{utilPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1454,9 +1454,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/aplnonexistent999999/utilization",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/aplnonexistent999999/utilization",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1500,9 +1500,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools?zoneId={{zoneA}}&kind=EXTERNAL_PUBLIC",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools?zoneId={{zoneA}}&kind=EXTERNAL_PUBLIC",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1537,9 +1537,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{_seedPoolId}}/addresses",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{_seedPoolId}}/addresses",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1574,9 +1574,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{_seedPoolId}}/addresses?pageSize=2",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{_seedPoolId}}/addresses?pageSize=2",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1617,9 +1617,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1665,9 +1665,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{laPoolId}}/addresses",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{laPoolId}}/addresses",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1702,9 +1702,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{laPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{laPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1846,9 +1846,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1894,9 +1894,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1939,9 +1939,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1984,9 +1984,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2020,9 +2020,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{nbNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2056,9 +2056,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{nbPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{nbPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2186,9 +2186,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent999999/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/enpnonexistent999999/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2241,9 +2241,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/enpnonexistent999999/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/enpnonexistent999999/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2283,9 +2283,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2335,9 +2335,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplV6Id}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplV6Id}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2376,9 +2376,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2427,9 +2427,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{iplDsId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{iplDsId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2468,9 +2468,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2516,9 +2516,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2570,9 +2570,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2618,9 +2618,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{addPoolId}}:addCidrBlocks",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{addPoolId}}:addCidrBlocks",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2664,9 +2664,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{addPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{addPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2700,9 +2700,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{addPoolId}}:addCidrBlocks",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{addPoolId}}:addCidrBlocks",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2745,9 +2745,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{addPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{addPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2786,9 +2786,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2834,9 +2834,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{rmPoolId}}:removeCidrBlocks",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{rmPoolId}}:removeCidrBlocks",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2880,9 +2880,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{rmPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{rmPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2916,9 +2916,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{rmPoolId}}:removeCidrBlocks",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{rmPoolId}}:removeCidrBlocks",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -2965,9 +2965,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{rmPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{rmPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3006,9 +3006,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3195,9 +3195,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{rmInUsePoolId}}:removeCidrBlocks",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{rmInUsePoolId}}:removeCidrBlocks",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3244,9 +3244,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{rmInUsePoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{rmInUsePoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3369,9 +3369,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{rmInUsePoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{rmInUsePoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3410,9 +3410,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3458,9 +3458,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3506,9 +3506,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3554,9 +3554,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{ovlBaseId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{ovlBaseId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3589,9 +3589,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{ovlDisjointId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{ovlDisjointId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3630,9 +3630,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3678,9 +3678,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3726,9 +3726,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{ovlBId}}:addCidrBlocks",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{ovlBId}}:addCidrBlocks",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3775,9 +3775,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{ovlBId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{ovlBId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3811,9 +3811,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{ovlAId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{ovlAId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3846,9 +3846,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{ovlBId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{ovlBId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -3990,9 +3990,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -4038,9 +4038,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netdefId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{netdefId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -4222,9 +4222,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netdefId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{netdefId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -4258,9 +4258,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{netdefPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{netdefPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -4388,9 +4388,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -4892,9 +4892,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{dsPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{dsPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -5036,9 +5036,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -5084,9 +5084,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{bndFaNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{bndFaNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -5130,9 +5130,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{bndFaNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{bndFaNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -5166,9 +5166,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{bndFaPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{bndFaPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -5399,9 +5399,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -5447,9 +5447,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{exhNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{exhNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -6048,9 +6048,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{exhNetId}}/addressPoolBinding",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{exhNetId}}/addressPoolBinding",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -6084,9 +6084,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addressPools/{{exhPoolId}}",
+              "raw": "{{internalBaseUrl}}/vpc/v1/addressPools/{{exhPoolId}}",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",

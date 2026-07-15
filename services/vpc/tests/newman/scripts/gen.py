@@ -46,6 +46,16 @@ class Step:
     #   "anonymous"       — Authorization header снимается перед запросом
     #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (значение из env при выполнении)
     auth: Optional[str] = None
+    # internal=True — запрос идёт на api-gateway cluster-internal REST listener
+    # ({{internalBaseUrl}}, :8081), а НЕ на публичный cmux ({{baseUrl}}, :8080).
+    #
+    # Internal*-RPC (напр. AddressPool — admin-only ресурс, security.md) на публичном
+    # листенере ОТСУТСТВУЮТ by design (ban #6: Internal.* не публикуется на external
+    # endpoint) и отвечают 404. Без этого флага internal-коллекции слали запросы на
+    # {{baseUrl}} и получали закономерный 404 («expected 404 to deeply equal 200») —
+    # тест ловил не баг продукта, а собственную неверную посылку. iam-набор решает это
+    # тем же способом (см. _internal_url_override в iam-internal-only-check.py).
+    internal: bool = False
 
 
 @dataclass
@@ -1479,8 +1489,10 @@ def step_to_postman(step: Step) -> Dict:
             "method": step.method,
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "url": {
-                "raw": "{{baseUrl}}" + step.path,
-                "host": ["{{baseUrl}}"],
+                # Internal*-шаги идут на cluster-internal REST listener — на публичном
+                # их нет by design (ban #6). См. Step.internal.
+                "raw": ("{{internalBaseUrl}}" if step.internal else "{{baseUrl}}") + step.path,
+                "host": ["{{internalBaseUrl}}" if step.internal else "{{baseUrl}}"],
                 "path": [p for p in step.path.strip("/").split("/") if p],
             },
         },
@@ -1604,9 +1616,12 @@ def _pool_seed_item() -> Dict:
                 {"key": "Content-Type", "value": "application/json"},
             ],
             "body": {"mode": "raw", "raw": json.dumps(_POOL_SEED_BODY)},
+            # AddressPool — InternalAddressPoolService (admin-only, security.md), живёт
+            # ТОЛЬКО на cluster-internal REST listener. На публичном {{baseUrl}} его нет
+            # by design (ban #6) → сид молча получал 404 и все зависящие кейсы падали.
             "url": {
-                "raw": "{{baseUrl}}/vpc/v1/addressPools",
-                "host": ["{{baseUrl}}"],
+                "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
+                "host": ["{{internalBaseUrl}}"],
                 "path": ["vpc", "v1", "addressPools"],
             },
         },
