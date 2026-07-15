@@ -5,12 +5,14 @@
 #
 # Replaces the manual "seed tokens by hand" path with a deterministic,
 # committed flow:
-#   1. port-forward api-gateway (:18080) + kacho-iam-internal (:19091)
+#   1. port-forward api-gateway public (:18080) + internal-rest (:18081) +
+#      kacho-iam-internal (:19091)
 #   2. seed auth fixtures via tests/authz-fixtures/setup.sh (idempotent):
 #      mints non-expiring dev JWTs, upserts users, accounts/projects, grants
 #      cluster-admin (SQL backdoor), seeds VPC networks, and PATCHES every
 #      service's newman environment (existingProjectId, jwt*, …).
-#   3. run the requested service's newman collection(s) against :18080.
+#   3. run the requested service's newman collection(s): {{baseUrl}} → :18080,
+#      {{internalBaseUrl}} → :18081 (Internal*-RPC живут ТОЛЬКО там — ban #6).
 #   4. tear down the port-forwards on exit.
 #
 # Usage (after `make dev-up`):
@@ -27,6 +29,7 @@ COLLECTION="${2:-${COLLECTION:-}}"
 NS="${SETUP_NS:-kacho}"
 DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 GW_PORT="${GW_PORT:-18080}"
+GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :8081 (Internal*-RPC)
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,8 +59,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[e2e] port-forward api-gateway :$GW_PORT and kacho-iam-internal :$IAM_INTERNAL_PORT"
+echo "[e2e] port-forward api-gateway :$GW_PORT (public) / :$GW_INTERNAL_PORT (internal-rest) + kacho-iam-internal :$IAM_INTERNAL_PORT"
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pf-gw.log 2>&1 &
+PF_PIDS+=($!)
+# internal-rest (:8081) — ОТДЕЛЬНЫЙ листенер для Internal*-RPC. На публичном :8080 их
+# нет и быть не должно (ban #6: Internal.* не публикуется на external endpoint), поэтому
+# коллекции internal-* обязаны ходить сюда через {{internalBaseUrl}}, иначе получают
+# закономерный 404. iam-набор так и делает; vpc-набор — ещё нет (см. README/issue).
+kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pf-gw-internal.log 2>&1 &
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
 PF_PIDS+=($!)
@@ -103,7 +112,9 @@ if [ -n "$COLLECTION" ]; then
   newman run "collections/${COLLECTION}.postman_collection.json" \
     -e environments/local.postman_environment.json \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
+    --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --delay-request 15 --reporters cli
 else
-  ./scripts/run.sh --service "" --delay 15
+  BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
+    ./scripts/run.sh --service "" --delay 15
 fi
