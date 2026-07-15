@@ -33,6 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Монорепа: deploy/scripts → корень репо на два уровня выше. Раскладка — services/<svc>,
 # кроме api-gateway (gateway/). Раньше было
 # "$WORKSPACE_DIR/project/kacho-$SVC/tests/newman" — polyrepo-путь к sibling-репо.
+# authz-фикстуры тоже переехали: были в kacho-workspace/tests/, теперь tests/ монорепы.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 if [ "$SVC" = "api-gateway" ]; then
   NEWMAN_DIR="$REPO_ROOT/gateway/tests/newman"
@@ -46,7 +47,13 @@ done
 [ -d "$NEWMAN_DIR" ] || { echo "FATAL: no newman dir for SVC=$SVC ($NEWMAN_DIR)" >&2; exit 1; }
 
 PF_PIDS=()
-cleanup() { for p in "${PF_PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
+TMP_DIRS=()
+# Чистим и порт-форварды, и временные каталоги: в них лежит ПРИВАТНЫЙ КЛЮЧ
+# client-cert'а — оставлять его в /tmp после прогона нельзя.
+cleanup() {
+  for p in "${PF_PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  for d in "${TMP_DIRS[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done
+}
 trap cleanup EXIT
 
 echo "[e2e] port-forward api-gateway :$GW_PORT and kacho-iam-internal :$IAM_INTERNAL_PORT"
@@ -56,11 +63,36 @@ kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >
 PF_PIDS+=($!)
 sleep 4
 
+# mTLS для grpcurl → kacho-iam-internal:9091.
+#
+# dev-стенд идёт с mtls.enabled=true (фаза 2 dev-up), поэтому internal-листенер iam
+# требует client-cert: plaintext-grpcurl просто ВИСНЕТ на хендшейке (не падает внятно —
+# «context deadline exceeded»), и setup.sh замирает на шаге «upserting test users».
+# setup.sh это поддерживает через IAM_INTERNAL_GRPC_MTLS_CERT/_KEY (дефолт — plaintext,
+# рассчитан на mTLS-off CI), но кто-то должен ему серт ДАТЬ. Достаём из секрета,
+# который выпустил cert-manager: iam принимает любой client-cert, подписанный
+# internal-CA (KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES = ca.crt того же CA).
+MTLS_ENV=()
+if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
+  CERT_DIR="$(mktemp -d)"; TMP_DIRS+=("$CERT_DIR")
+  kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > "$CERT_DIR/client.crt"
+  kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' | base64 -d > "$CERT_DIR/client.key"
+  chmod 600 "$CERT_DIR"/*
+  # setup.sh ходит grpcurl'ом с -insecure (server-cert не пинится), поэтому нужны
+  # только client cert/key — CA не передаём.
+  MTLS_ENV=(IAM_INTERNAL_GRPC_MTLS_CERT="$CERT_DIR/client.crt"
+            IAM_INTERNAL_GRPC_MTLS_KEY="$CERT_DIR/client.key")
+  echo "[e2e] iam-internal: mTLS client-cert взят из secret/api-gateway-client-tls"
+else
+  echo "[e2e] iam-internal: mTLS-секрета нет — grpcurl пойдёт plaintext (mTLS-off стенд)"
+fi
+
 echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
-BASE_URL="http://localhost:$GW_PORT" \
+env BASE_URL="http://localhost:$GW_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
 DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" \
-  bash "$WORKSPACE_DIR/tests/authz-fixtures/setup.sh"
+"${MTLS_ENV[@]}" \
+  bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
 
 echo "[e2e] regenerating newman collections"
 ( cd "$NEWMAN_DIR" && python3 scripts/gen.py >/dev/null )

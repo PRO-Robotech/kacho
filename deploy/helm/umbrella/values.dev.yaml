@@ -1308,3 +1308,23 @@ kacho-nlb:
     limits:
       cpu: 1000m
       memory: 512Mi
+# ─── registry: ВЫКЛЮЧЕН в dev (не проварен) ───────────────────────────────────
+# Причины (обе — pre-existing, вскрыты при bootstrap'е с нуля 2026-07-16):
+#   1. образ: базовый values.yaml пинит kacho-registry на `main-latest` — это
+#      ЗАДОКУМЕНТИРОВАННЫЙ placeholder («values-overridable»), которого НЕТ на Docker Hub
+#      → Init:ImagePullBackOff. dev его не переопределяет (в отличие от kacho-iam/nlb,
+#      где стоит tag: dev от локальной сборки);
+#   2. pg-registry: ключа нет ни здесь, ни в базовом values → `condition:
+#      pg-registry.enabled` не срабатывает, сабчарт едет с ДЕФОЛТАМИ bitnami
+#      (`docker.io/bitnami/postgresql:16.1.0-debian-11-r25`), а bitnami перенесла старые
+#      образы в `bitnamilegacy/` → тега больше нет → ImagePullBackOff. Все остальные 8
+#      pg-инстансов override имеют, pg-registry забыли (добавлен позже).
+#
+# Registry-стенд живёт на fe3455 (там реальные zot+S3-креды `zot-s3-creds`, которых в
+# dev нет вовсе). Чтобы включить registry в dev: собрать образ локально (добавить
+# `registry` в SERVICES Makefile → kacho-registry:dev), переопределить image здесь,
+# добавить pg-registry с bitnamilegacy-override и завести S3 через minioDev.
+registry:
+  enabled: false
+pg-registry:
+  enabled: false
