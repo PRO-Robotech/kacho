@@ -115,6 +115,12 @@ if [ -n "$COLLECTION" ]; then
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --delay-request 15 --reporters cli
 else
-  BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
-    ./scripts/run.sh --service "" --delay 15
+  # run.sh НЕ читает BASE_URL/INTERNAL_BASE_URL из окружения — значения он берёт только
+  # из env-файла, а всё неизвестное в argv пробрасывает в newman как есть (массив EXTRA).
+  # Поэтому передаём --env-var через argv, а не через env: иначе {{internalBaseUrl}}
+  # остаётся пустым и Internal*-шаги молча уходят на публичный порт → 404
+  # (internal-pool: 78/0 в одиночном прогоне, но 62/56 в полном — ровно этот разрыв).
+  ./scripts/run.sh --service "" --delay 15 \
+    --env-var "baseUrl=http://localhost:$GW_PORT" \
+    --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT"
 fi

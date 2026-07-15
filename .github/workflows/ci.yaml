@@ -45,8 +45,37 @@ jobs:
           unformatted=$(gofmt -l $(git ls-files '*.go' | grep -vE '\.pb\.go$|_grpc\.pb\.go$|\.pb\.gw\.go$') || true)
           if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
 
-      - name: test -race
-        run: go test ./... -race -count=1 -timeout 900s
+      # -short ОБЯЗАТЕЛЕН: без него сюда затягиваются integration-тесты, поднимающие
+      # postgres:16 через testcontainers на КАЖДОМ из 202 пакетов → джоба упиралась в
+      # `panic: test timed out after 15m0s` (23 минуты wall-clock и красный CI).
+      # Локально с -short — 5 секунд. Integration гоняет отдельная джоба ниже.
+      - name: test -race -short (unit)
+        run: go test ./... -race -short -count=1 -timeout 5m
+
+  integration:
+    name: integration (testcontainers Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+
+      # internal/repo/*integration_test.go поднимают postgres:16 через testcontainers
+      # (Docker есть на ubuntu-latest). Отдельная джоба, а НЕ часть unit-прогона:
+      # иначе -short-путь исчезает и быстрый сигнал (5с локально) тонет в контейнерах.
+      #
+      # -p 1: пакеты сериализуются. Под -race + Docker-contention параллельные
+      # testcontainers-пакеты голодают друг у друга ресурсы, и concurrent-race-кейсы
+      # (CAS/EXCLUDE/SKIP-LOCKED) флакают. Дизайн взят из polyrepo-CI kacho-vpc/nlb —
+      # он там был продуман, и при переезде в монорепу я его потерял.
+      - name: integration (-p 1, сериализовано)
+        run: |
+          go test -race -count=1 -timeout 900s -p 1 \
+            ./services/*/internal/repo/... \
+            ./services/*/internal/clients/...
 
   proto:
     name: buf lint · breaking · generate-diff
