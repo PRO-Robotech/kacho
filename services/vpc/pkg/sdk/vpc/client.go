@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	operationv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 )
 
 // Client — тонкая обертка над gRPC-соединением к Kachō VPC API.

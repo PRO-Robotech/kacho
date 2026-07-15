@@ -8,8 +8,8 @@ package pbconv
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

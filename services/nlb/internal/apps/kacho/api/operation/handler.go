@@ -29,8 +29,8 @@ package operation
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
 // Handler реализует operationpb.OperationServiceServer.

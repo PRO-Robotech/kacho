@@ -1,0 +1,102 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# docker-build — multiarch-сборка и пуш образов всех сервисов монорепы.
+#
+# Одна матрица вместо 8 отдельных per-repo workflow. Build-context — КОРЕНЬ репо
+# (единый Go-модуль), Dockerfile берётся по раскладке: services/<svc>/ либо gateway/.
+#
+# Теги: <branch>-<sha8>.
+
+name: docker-build
+
+on:
+  push:
+    branches:
+      - main
+      - "KAC-*"
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+env:
+  # Namespace для тега при НЕзаданных секретах. Тег обязан остаться WELL-FORMED и в
+  # build-only режиме: пустой namespace даёт "/kacho-x:tag", а Docker reference grammar
+  # запрещает пустой name-компонент → buildx падает `invalid reference format` ДО пуша,
+  # т.е. build-only путь ломается вместе с push'ем (реальный инцидент kacho-storage,
+  # 2026-07-15: все docker-build падали, образ CS-1 не собирался).
+  FALLBACK_NS: local
+
+jobs:
+  build:
+    name: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: kacho-iam,      dir: services/iam }
+          - { image: kacho-vpc,      dir: services/vpc }
+          - { image: kacho-compute,  dir: services/compute }
+          - { image: kacho-geo,      dir: services/geo }
+          - { image: kacho-nlb,      dir: services/nlb }
+          - { image: kacho-storage,  dir: services/storage }
+          - { image: kacho-registry, dir: services/registry }
+          - { image: kacho-api-gateway, dir: gateway }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: benjlevesque/short-sha@v3.0
+        id: short-sha
+        with: { length: 8 }
+
+      - name: sanitize branch
+        id: sanitize
+        run: echo "branch=$(echo "${GITHUB_REF_NAME}" | sed 's/\//-/g')" >> "$GITHUB_OUTPUT"
+
+      - name: gate on DockerHub secrets
+        id: gate
+        env:
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          # Эмитим И push, И namespace: тег НИКОГДА не подставляет секрет напрямую
+          # (см. FALLBACK_NS выше — пустой секрет ронял бы даже build-only).
+          if [ -n "$DH_USER" ] && [ -n "$DH_TOKEN" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+            echo "ns=$DH_USER" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "ns=$FALLBACK_NS" >> "$GITHUB_OUTPUT"
+            echo "::warning::DOCKERHUB secrets unset — build only, no push (ns '$FALLBACK_NS')"
+          fi
+
+      - name: login to Docker Hub
+        if: steps.gate.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: QEMU
+        uses: docker/setup-qemu-action@v3
+        with: { image: mirror.gcr.io/tonistiigi/binfmt:latest }
+
+      - name: Buildx
+        uses: docker/setup-buildx-action@v3
+        with: { driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1 }
+
+      - name: build and push (multiarch)
+        uses: docker/build-push-action@v6
+        with:
+          # Контекст — КОРЕНЬ монорепы: единый go.mod + pkg/ + proto/ нужны каждому образу.
+          context: .
+          file: ./${{ matrix.dir }}/Dockerfile
+          push: ${{ steps.gate.outputs.push == 'true' }}
+          provenance: false
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.gate.outputs.ns }}/${{ matrix.image }}:${{ steps.sanitize.outputs.branch }}-${{ steps.short-sha.outputs.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max

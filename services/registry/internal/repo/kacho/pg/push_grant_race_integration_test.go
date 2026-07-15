@@ -77,8 +77,16 @@ func TestPushGrant_REG33IP_ConcurrentRecordAndDelete_NoError(t *testing.T) {
 	start := make(chan struct{})
 	for i := 0; i < n; i++ {
 		wg.Add(2)
-		go func(i int) { defer wg.Done(); <-start; recErrs[i] = repo.RecordPushGrant(ctx, pgReg, pgRepo, pgSubject) }(i)
-		go func(i int) { defer wg.Done(); <-start; delErrs[i] = repo.DeletePushGrant(ctx, pgReg, pgRepo, pgSubject) }(i)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			recErrs[i] = repo.RecordPushGrant(ctx, pgReg, pgRepo, pgSubject)
+		}(i)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			delErrs[i] = repo.DeletePushGrant(ctx, pgReg, pgRepo, pgSubject)
+		}(i)
 	}
 	close(start)
 	wg.Wait()

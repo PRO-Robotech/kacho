@@ -19,9 +19,9 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
-	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/lro"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/domain"

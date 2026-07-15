@@ -24,8 +24,8 @@
 package check
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/authz"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // FGA object types kacho-nlb (3 типа).

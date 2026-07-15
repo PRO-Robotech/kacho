@@ -9,9 +9,9 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
+	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
-	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )

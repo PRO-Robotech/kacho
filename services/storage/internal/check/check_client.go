@@ -13,9 +13,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 )
 
 // IAMCheckClient адаптирует kacho-iam.InternalIAMService.Check под authz.CheckClient.

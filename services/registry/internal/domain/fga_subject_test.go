@@ -40,10 +40,10 @@ func TestFGASubjectFromID(t *testing.T) {
 func TestFGASubjectForPrincipalID_Anon(t *testing.T) {
 	const anonID = "cid-registry-anon"
 	cases := []struct {
-		name    string
-		id      string
-		anonID  string
-		want    string
+		name   string
+		id     string
+		anonID string
+		want   string
 	}{
 		// Configured anon id → wildcard user:* (B03 anon pull, B14 anon no-write).
 		{"anon-id-configured-maps-to-wildcard", anonID, anonID, FGASubjectPublicWildcard},

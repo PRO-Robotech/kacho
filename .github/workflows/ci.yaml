@@ -1,0 +1,136 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# ci — единый гейт монорепы.
+#
+# Заменяет 10 отдельных per-repo CI (proto/corelib/7 сервисов/gateway). Один модуль →
+# один `go build ./...` проверяет ВЕСЬ граф разом: рассинхрон вроде «сервис отстал от
+# corelib» или «код обогнал proto» падает здесь, а не всплывает при деплое через месяц.
+# GitHub читает workflow ТОЛЬКО из корня — per-service .github/ были бы мертвы, поэтому
+# их не существует.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  build-test:
+    name: build · vet · gofmt · test -race
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go mod download
+        run: go mod download
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      - name: gofmt
+        run: |
+          # Сгенерённое исключаем: его форматирует генератор, а не человек.
+          unformatted=$(gofmt -l $(git ls-files '*.go' | grep -vE '\.pb\.go$|_grpc\.pb\.go$|\.pb\.gw\.go$') || true)
+          if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
+
+      - name: test -race
+        run: go test ./... -race -count=1 -timeout 900s
+
+  proto:
+    name: buf lint · breaking · generate-diff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: bufbuild/buf-setup-action@v1
+
+      - name: buf lint
+        working-directory: proto
+        run: buf lint
+
+      - name: buf breaking (vs main)
+        if: github.event_name == 'pull_request'
+        working-directory: proto
+        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=proto"
+
+      # Стабы закоммичены → они ОБЯЗАНЫ совпадать с .proto. Иначе кто-то правил
+      # сгенерённое руками (что вдобавок бьёт rawDesc — см. README) либо забыл
+      # перегенерировать после правки .proto.
+      - name: generate-diff (стабы в синхроне с .proto)
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+          rm -rf pkg/api
+          (cd proto && buf generate)
+          # рукописные тесты рядом со стабами buf не генерит — их не сверяем
+          if ! git diff --quiet -- pkg/api; then
+            echo "::error::pkg/api разошёлся с proto/ — прогони 'cd proto && buf generate' и закоммить"
+            git diff --stat -- pkg/api
+            exit 1
+          fi
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=10m
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  helm:
+    name: helm lint · template (dev + prod)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+
+      # ui/ui-future пока ВНЕ монорепы — umbrella ссылается на них file://, поэтому
+      # dep build без этих чекаутов не пройдёт. Пока их не перенесли, гейт проверяет
+      # только сервисные под-чарты (они уже внутри репо).
+      - name: lint сервисных чартов
+        run: |
+          for c in services/*/deploy gateway/deploy; do
+            [ -f "$c/Chart.yaml" ] || continue
+            echo "=== $c"; helm lint "$c"
+            helm template t "$c" >/dev/null
+          done

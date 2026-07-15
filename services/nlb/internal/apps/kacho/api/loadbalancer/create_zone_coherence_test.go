@@ -59,7 +59,7 @@ func zonalSubnet(id, zone, region, network string) *vpcclient.Subnet {
 	}
 }
 
-// regionalSubnet — helper: проекция REGIONAL-подсети (anycast, zone_id='').
+// regionalSubnet — helper: проекция REGIONAL-подсети (anycast, zone_id=”).
 func regionalSubnet(id, region, network string) *vpcclient.Subnet {
 	return &vpcclient.Subnet{
 		ID: id, ProjectID: "prj-a", NetworkID: network,
@@ -166,7 +166,7 @@ func TestCreate_ZCNLBZONE03_SingleFamily_OK(t *testing.T) {
 }
 
 // TestCreate_ZCNLBZONE04_RegionalDualstackExempt_OK — ZC-NLB-ZONE-04
-// (regression-lock, anycast-исключение): REGIONAL dualstack, обе подсети zone_id=''
+// (regression-lock, anycast-исключение): REGIONAL dualstack, обе подсети zone_id=”
 // → same-zone-проверка ИСКЛЮЧЕНА by construction → создаётся.
 func TestCreate_ZCNLBZONE04_RegionalDualstackExempt_OK(t *testing.T) {
 	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()

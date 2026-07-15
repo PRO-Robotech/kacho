@@ -6,8 +6,8 @@ package check
 import (
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // FGA object types.

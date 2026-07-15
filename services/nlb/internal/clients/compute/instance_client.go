@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
-	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )

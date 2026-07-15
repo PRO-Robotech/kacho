@@ -6,8 +6,8 @@ package targetgroup
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
 // ListOperationsUseCase — per-resource Operation history filtered by

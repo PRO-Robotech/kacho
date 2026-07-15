@@ -123,7 +123,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 	t.Run("serveMount dst RepoExists error", func(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &fakeAuthz{allow: map[string]bool{"v_get registry_repository:reg-A/src": true}} // src allow
-		be := &fakeBackend{existsErr: depErr}                                                  // dst RepoExists падает
+		be := &fakeBackend{existsErr: depErr}                                                 // dst RepoExists падает
 		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=reg-A/src", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount dst RepoExists error → fail-closed 503")
@@ -133,7 +133,7 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 	t.Run("serveMount dst check error", func(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &srcAllowDstErrAuthz{err: depErr} // src v_get allow, dst v_create → error
-		be := &fakeBackend{}                        // dst new → v_create-Check падает
+		be := &fakeBackend{}                    // dst new → v_create-Check падает
 		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=reg-A/src", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount dst check error → fail-closed 503")
@@ -163,8 +163,8 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 
 	t.Run("serveCatalog per-repo Check error", func(t *testing.T) {
 		fw := &fakeForwarder{}
-		az := &fakeAuthz{err: depErr}                          // per-repo listauthz Check падает
-		be := &fakeBackend{catalog: []string{"reg-A/app"}}     // ≥1 имя → errgroup запускает Check
+		az := &fakeAuthz{err: depErr}                      // per-repo listauthz Check падает
+		be := &fakeBackend{catalog: []string{"reg-A/app"}} // ≥1 имя → errgroup запускает Check
 		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodGet, "/v2/_catalog", true)
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "catalog filter Check error → fail-closed 503")
@@ -300,7 +300,7 @@ func TestDataplane_Breakglass_NilVerifier_NilAuthz_Bypasses(t *testing.T) {
 //   - established pull с v_get deny: pushOwnerRevealsRepo no-op (pushGrants nil) → 404.
 func TestDataplane_NilRecorders_PushAndPull_Disabled(t *testing.T) {
 	az := &fakeAuthz{allow: map[string]bool{
-		"v_create registry_registry:reg-A":   true,
+		"v_create registry_registry:reg-A":    true,
 		"v_get registry_repository:reg-A/app": true,
 	}}
 	fw := &fakeForwarder{status: 201}

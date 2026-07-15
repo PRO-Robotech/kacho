@@ -4,8 +4,8 @@
 package check
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/authz"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // FGA object types для kacho-compute (соответствуют FGA-модели kacho-iam).
