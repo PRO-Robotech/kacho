@@ -57,16 +57,18 @@ jobs:
       - run: npm run typecheck
 
   test:
-    name: unit (vitest)
-    # host jest дедлочит на ЛЮБОМ CI-ранере (kacho#7). Опровергнуто измерениями:
-    # async-leak (виснет с --forceExit), host-vs-docker (container node:22 тоже виснет),
-    # GitHub-VM-vs-real-machine (self-hosted beget ТОЖЕ виснет 18 мин), node-patch (22.23.1
-    # локально проходит за 2с), install-layout (EXACT CI-последовательность локально = 2с).
-    # DIAG#1 локализовал: --listTests/--showConfig проходят, --runInBand виснет → фаза
-    # module-execution. Дефолтный GitHub-ранер (ubuntu-latest); DIAG2 собирает ulimit/threadpool/
-    # per-file данные ЗДЕСЬ (GitHub-hosted тоже виснет). Корень — PRO-Robotech/kacho#7.
+    name: unit (${{ matrix.pkg }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    # Каждый пакет — свой параллельный job. Прежде 9 пакетов шли ПОСЛЕДОВАТЕЛЬНО в одном
+    # job (npm test --prefix X && …) → не влезали в 20-мин timeout (vpc 170 тестов/102 suites
+    # под ts-jest-ESM). Матрица — быстрый фидбэк (~5 мин/пакет параллельно). Корень бывшего
+    # host-hang (@ant-design/icons unstable_mockModule Proxy → ESM-link-hang) устранён стабом
+    # jest.config moduleNameMapper → src/test/antd-icons-stub.tsx (kacho#7).
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -74,10 +76,10 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ui-future/package-lock.json
-      - name: зависимости workspace
-        run: npm ci
-      - name: зависимости standalone-пакетов
-        run: for p in $STANDALONE; do npm ci --prefix "$p"; done
+      - name: зависимости (workspace + standalone-пакет если нужно)
+        run: |
+          npm ci
+          case " $STANDALONE " in *" ${{ matrix.pkg }} "*) npm ci --prefix "${{ matrix.pkg }}" ;; esac
       # host-hang guard (kacho#7): 3 shell-integration файла (App/HostShell/HostRail) виснут,
       # если @ant-design/icons НЕ замаплен на статический стаб. КОРЕНЬ (DIAG6): HostRail
       # импортит 20 named-иконок; прежний setup.ts jest.unstable_mockModule Proxy-мок не давал
@@ -87,7 +89,11 @@ jobs:
       # named-экспорты). Guard гоняет эти 3 файла с таймаутом ПЕРЕД полным npm test → быстрый
       # сигнал регресса (иначе полный сьют висел бы до 20-мин job-timeout). set +e чтобы собрать
       # все 3, потом exit по агрегату.
+      # host виснул на @ant-design/icons без статического стаба (kacho#7, DIAG6). Guard ловит
+      # регресс этого класса на 3 shell-тестах (все рендерят HostRail — единственный импортёр
+      # @ant-design/icons). Только для pkg=host.
       - name: host-hang guard (kacho#7)
+        if: matrix.pkg == 'host'
         working-directory: ui-future/host
         run: |
           set +e
@@ -102,7 +108,7 @@ jobs:
             else echo "  ✓ $(basename "$f") прошёл"; fi
           done
           exit $rc_all
-      - run: npm test
+      - run: npm test --prefix ${{ matrix.pkg }}
 
   build:
     name: build ${{ matrix.project }}
