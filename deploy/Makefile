@@ -2,20 +2,10 @@
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down reload-svc logs-svc psql preflight e2e-test helm-lint seed-ipam \
         loadtest-address-allocate loadtest-address-allocate-clean \
-        reload-svc-iam psql-iam logs-iam fga-bootstrap build-ui build-services openfga-model-json \
+        reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman
 
 CLUSTER_NAME := kacho
-
-# KAC-127: build + kind-load kacho-ui:dev.
-# kacho-ui — standalone Vite+nginx multi-stage build (контекст — сам kacho-ui/,
-# без COPY sibling-репо). В отличие от Go-сервисов, чьи `:dev`-образы собираются
-# отдельным CI-флоу, kacho-ui раньше не билдился вовсе → ImagePullBackOff на
-# `kacho-ui:dev`. Этот target закрывает blocker; вызывается из `dev-up`.
-build-ui:
-	@echo "=== build kacho-ui:dev ==="
-	docker build -t kacho-ui:dev ../../kacho-ui
-	kind load docker-image kacho-ui:dev --name $(CLUSTER_NAME)
 
 # KAC-228: build + kind-load all backend service images. The dev deployments
 # reference local `kacho-<svc>:dev` images (values.dev.yaml), which kind cannot
@@ -110,7 +100,6 @@ dev-up: preflight
 	  pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/warn-version=latest \
 	  pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/audit-version=latest \
 	  --overwrite >/dev/null; \
-	$(MAKE) build-ui; \
 	$(MAKE) build-services; \
 	./scripts/gen-tls-cert.sh; \
 	cd helm/umbrella && helm dep update >/dev/null && cd ../..; \
@@ -173,7 +162,6 @@ endif
 		exit 0; \
 	fi; \
 	if [ "$(SVC)" = "ui" ]; then \
-		docker build -t kacho-ui:dev ../../kacho-ui; \
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
 		cd .. && docker build -f $$d/Dockerfile -t kacho-$(SVC):dev .; \

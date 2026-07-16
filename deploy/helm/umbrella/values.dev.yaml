@@ -237,14 +237,6 @@ kacho-geo:
   dataMigration:
     enabled: false
 
-ui:
-  image: kacho-ui:dev
-  imagePullPolicy: IfNotPresent
-  # Лок-стенд: ingress на host `localhost` (kind host-port 28080) — UI открывается
-  # http://localhost:28080 без записи в /etc/hosts. Kratos/Hydra urls — туда же.
-  ingress:
-    host: localhost
-
 ingress-nginx:
   controller:
     # Standard kind+ingress-nginx pattern: hostPort на kind-ноде,

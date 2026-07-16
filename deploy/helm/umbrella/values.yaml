@@ -329,10 +329,6 @@ api-gateway:
 apiGatewayIngress:
   enabled: true
 
-ui:
-  image: docker.io/prorobotech/kacho-ui:main-dc395a2e
-  imagePullPolicy: IfNotPresent
-
 # Federated ui-future console (aliased `uif` sub-chart). Default OFF — a bare
 # `helm upgrade` must NOT deploy it (the condition path must exist or helm treats
 # an absent value as enabled). Per-cluster overlays that run the federated console

@@ -59,17 +59,6 @@ api-gateway:
   # this file) so this pin is not a stale landmine. See that file for the full rationale.
   image: docker.io/prorobotech/kacho-api-gateway:main-b622b388
   imagePullPolicy: IfNotPresent
-ui:
-  # Legacy monolithic console — RETIRED on fe3455. This cluster serves the federated
-  # ui-future console (host + dashboard/vpc/iam/registry/system remotes) as the `uif`
-  # release, reached via kacho.in-cloud.io → uif-lb (45.153.188.119). Disabling the
-  # legacy chart here keeps a bare `helm upgrade kacho-umbrella` from reinstating the
-  # old monolith (Chart.yaml gates it on `ui.enabled`). The image pin is left for
-  # reference / other overlays; it is inert while disabled.
-  enabled: false
-  image: docker.io/prorobotech/kacho-ui:main-09feff2e
-  imagePullPolicy: IfNotPresent
-
 # Federated ui-future console (`uif` sub-chart). ENABLED — the umbrella owns the
 # console on fe3455 (adopted in place via `helm upgrade … --take-ownership` on
 # 2026-07-12, umbrella rev 16). Keep this `true` so a routine `helm upgrade

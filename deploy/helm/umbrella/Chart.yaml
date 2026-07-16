@@ -65,17 +65,6 @@ dependencies:
   - name: api-gateway
     version: ">= 0.0.0"
     repository: file://../../../gateway/deploy
-  # Legacy monolithic console (kacho-ui). Superseded by the federated ui-future
-  # console (host + dashboard/vpc/iam/nlb/registry/system Module-Federation remotes),
-  # deployed as its own `uif` release (see kacho-ui-future/deploy). Condition-gated so
-  # clusters on the new console disable the legacy one — without a condition a bare
-  # `helm upgrade` would reinstate the retired monolith. Disabled on fe3455 (prod runs
-  # the ui-future console). Folding ui-future INTO this umbrella (own render + adopting
-  # the hand-applied LoadBalancer) is tracked separately — see the epic tracking issue.
-  - name: ui
-    version: ">= 0.0.0"
-    repository: file://../../../../kacho-ui/deploy
-    condition: ui.enabled
   # Federated ui-future console (host + dashboard/vpc/iam/nlb/registry/system
   # Module-Federation remotes). Chart is named `uif` (renamed from `ui` in
   # kacho-ui-future so it never collides with the legacy `ui` chart above — two
