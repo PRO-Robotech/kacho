@@ -78,24 +78,28 @@ jobs:
         run: npm ci
       - name: зависимости standalone-пакетов
         run: for p in $STANDALONE; do npm ci --prefix "$p"; done
-      # DIAG5 (kacho#7): со стабами — какие из 3 файлов ВСЁ ЕЩЁ виснут (bash -e прошлого
-      # guard'а умер на первом). HostRail.test проходит → HostRail-render ок, hang в App's
-      # routes/data & HostShell's loadHostContext. HostRail.test виснет → HostRail-render сам.
-      # + probe: рендер HostRail изолированно (минимальные props из его test'а). Шаг НЕ гейтит.
-      - name: DIAG5 per-file with stubs (kacho#7)
+      # DIAG6 (kacho#7): все 3 виснут со стабами → HostRail-render (общий знаменатель). HostRail —
+      # ЕДИНСТВЕННЫЙ импортёр @ant-design/icons (мок setup.ts unstable_mockModule Proxy). Гипотеза:
+      # ESM-линкер named-импортов иконок из Proxy-мока виснет. Probe-и изолируют: (A) импорт+рендер
+      # antd-иконок; (B) контроль — lucide-иконки (real); (C) импорт @ant-design/icons без рендера.
+      # Шаг НЕ гейтит.
+      - name: DIAG6 host-hang (@ant-design/icons mock, kacho#7)
         working-directory: ui-future/host
         run: |
           set +e
           J="node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js"
-          declare -A P=( [App]="src/App.test.tsx" [HostShell]="src/components/organisms/HostShell/HostShell.test.tsx" [HostRail]="src/components/organisms/HostRail/HostRail.test.tsx" [HeaderActions]="src/components/molecules/HeaderActions/HeaderActions.test.tsx" )
-          for name in HostRail HostShell App HeaderActions; do
-            timeout 90 $J --runInBand --silent "${P[$name]}" >/dev/null 2>&1; rc=$?
+          mkdir -p src/__diag__
+          printf "import { ApartmentOutlined } from '@ant-design/icons';\ntest('import antd icon', () => { expect(ApartmentOutlined).toBeDefined(); });\n" > src/__diag__/icons-import.diag.test.ts
+          printf "import React from 'react';\nimport { render } from '@testing-library/react';\nimport { Activity, Cable } from 'lucide-react';\ntest('render lucide (control)', () => { render(<div><Activity/><Cable/></div>); expect(true).toBe(true); });\n" > src/__diag__/lucide-render.diag.test.tsx
+          printf "import React from 'react';\nimport { render } from '@testing-library/react';\nimport { ApartmentOutlined, ClusterOutlined, GlobalOutlined } from '@ant-design/icons';\ntest('render antd icons (mocked)', () => { render(<div><ApartmentOutlined/><ClusterOutlined/><GlobalOutlined/></div>); expect(true).toBe(true); });\n" > src/__diag__/icons-render.diag.test.tsx
+          for p in icons-import lucide-render icons-render; do
+            ext=tsx; [ "$p" = "icons-import" ] && ext=ts
+            timeout 45 $J --runInBand --silent "src/__diag__/$p.diag.test.$ext" >/dev/null 2>&1; rc=$?
             if [ "$rc" = "124" ]; then s="HANG"; elif [ "$rc" = "0" ]; then s="ok"; else s="rc$rc"; fi
-            echo "FILE $name → $s"
+            echo "PROBE $p → $s"
           done
-          echo "=== probe: рендерит ли HeaderActions (fetch accounts) — hang источник data-fetch? ==="
-          # HeaderActions.test уже в наборе выше; если ok — data-fetch не виснет.
-          echo "=== DIAG5 DONE ==="; exit 0
+          rm -rf src/__diag__
+          echo "=== DIAG6 DONE ==="; exit 0
 
   build:
     name: build ${{ matrix.project }}
