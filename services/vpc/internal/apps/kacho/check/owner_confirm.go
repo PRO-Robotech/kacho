@@ -58,11 +58,13 @@ func NewSubnetOwnerConfirmer(cc authz.CheckClient) *OwnerConfirmer {
 // (адаптируется use-case'ом в замыкание). creator — принципал op'а (op.Principal,
 // = создатель ресурса); resourceID — id только что созданного ресурса.
 //
-// Relation зафиксирован `v_update` — канонический mutate-relation. owner-tuple —
-// это project-parent-pointer (`project:<projectId> #project @<type>:<id>`), через
-// который FGA резолвит ВСЕ per-object v_* (v_get/v_list/v_update/v_delete) сразу;
-// поэтому подтверждение `v_update` гарантирует эффективность owner-tuple целиком
-// (в т.ч. `v_delete` → немедленный Delete создателя тоже не 403, OTG-02/OTG-14).
+// Relation зафиксирован `v_update` — канонический mutate-relation. Под flat-моделью
+// (Contract-A: `<rel> from project`-каскад удалён) доступ создателя на ресурс — это
+// per-object v_* tuple'ы (v_get/v_list/v_update/v_delete + tier), которые
+// iam-реконсайлер МАТЕРИАЛИЗУЕТ для owner-биндинга из события RegisterResource (а НЕ
+// деривирует по project-parent-pointer'у). Реконсайлер эмитит весь v_*-набор per-object
+// одним заходом, поэтому подтверждение `v_update` гарантирует, что материализация легла
+// целиком (в т.ч. `v_delete` → немедленный Delete создателя тоже не 403, OTG-02/OTG-14).
 //
 // Семантика возврата (под operations.ConfirmFunc — confirmed=true ⇒ MarkDone,
 // иначе worker ретраит в пределах confirmation-deadline):

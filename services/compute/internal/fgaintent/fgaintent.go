@@ -79,10 +79,12 @@ type Payload struct {
 }
 
 // fgaTypeByKind maps a compute outbox resource_kind ("Instance"/"Disk"/"Image"/
-// "Snapshot") to its FGA authorization-model object type. The cascade
-// `<rel> from project` on every compute_* type is what lets a per-resource Check
-// resolve through the project where the principal's role binding lives — the same
-// mapping the deleted openfga_write_client.go used.
+// "Snapshot") to its FGA authorization-model object type. Under the flat model
+// (Contract-A: the `<rel> from project` cascade was removed) a per-resource Check
+// resolves through the per-object v_* tuples the iam reconciler MATERIALIZES for the
+// principal's role binding (keyed by the resource's parent project carried in the
+// register intent) — not a live `from project` derivation. Same type mapping the
+// deleted openfga_write_client.go used.
 var fgaTypeByKind = map[string]string{
 	"Instance": "compute_instance",
 	"Disk":     "compute_disk",

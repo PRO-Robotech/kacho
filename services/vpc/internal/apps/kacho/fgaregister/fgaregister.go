@@ -3,9 +3,12 @@
 
 // Package fgaregister описывает owner-hierarchy tuple через transactional-outbox.
 //
-// Созданному/удаленному VPC-ресурсу нужен owner-hierarchy tuple в FGA, чтобы
-// per-resource Check (Get/Update/Delete) разрешался по каскаду `<rel> from
-// project`. Прямая best-effort запись в FGA после коммита строки ресурса была
+// Созданному/удаленному VPC-ресурсу нужен owner-hierarchy intent, чтобы per-resource
+// Check (Get/Update/Delete) разрешался. Под flat-моделью (Contract-A: `<rel> from
+// project`-каскад удалён) intent несёт parent_project ресурса в resource_mirror iam,
+// откуда реконсайлер МАТЕРИАЛИЗУЕТ per-object v_* owner-биндинга (доступ материализуется
+// per-object, а не деривируется по каскаду). Прямая best-effort запись в FGA после
+// коммита строки ресурса была
 // небезопасна: transient-сбой FGA проглатывался, tuple терялся навсегда →
 // per-resource Check = DENY → пользователь создал ресурс и не видит его.
 //
@@ -146,9 +149,11 @@ func Decode(b []byte) (Payload, error) {
 }
 
 // ProjectHierarchy строит канонический tuple `project:<projectID> #project
-// @<objectType>:<objectID>`, который нужен каждому VPC-ресурсу, чтобы
-// per-resource Check разрешался по каскаду `<rel> from project`. objectType —
-// FGA-тип vpc_* ("vpc_network", "vpc_subnet", ...).
+// @<objectType>:<objectID>` — parent-pointer, фиксирующий containment объект→проект,
+// который iam-реконсайлер читает (через RegisterResource → resource_mirror.parent_project),
+// чтобы решить, какие биндинги материализуют per-object v_* на объекте. Под flat-моделью
+// (Contract-A) он НЕ потребляется деривационным каскадом `<rel> from project` (удалён).
+// objectType — FGA-тип vpc_* ("vpc_network", "vpc_subnet", ...).
 func ProjectHierarchy(projectID, objectType, objectID string) Tuple {
 	return Tuple{
 		SubjectID: "project:" + projectID,

@@ -468,6 +468,18 @@ func (s *reconcileStore) SelectorBindingsMatchingObject(ctx context.Context, obj
 	// match_labels. This lets a freshly-registered object materialize membership for
 	// anchor/names bindings on its mirror-change event (forward-mat, D-4), not only on
 	// the periodic sweep.
+	// SCOPE-NARROWING (bound fan-out): the ANCHOR arm matches every object of the type,
+	// so a wildcard `*.*` anchor role (owner/admin/edit/view) bound at N account/project
+	// scopes would fan out to ALL N bindings on every object-change event — then each
+	// reconcileBinding re-verifies IsContainedIn and materializes only the contained
+	// objects (correctness safe, but O(all bindings of the type) candidates). Push the
+	// SAME IsContainedIn predicate into the JOIN for the anchor arm so only bindings whose
+	// scope CONTAINS this object are candidates (O(containing bindings) — typically the
+	// object's owner + its project-admin). cluster-scoped anchor bindings contain
+	// everything (IsContainedIn cluster=true) and are kept. The names/labels arms are
+	// already narrow (specific ids / labels) and their foreign-scope match is a wanted
+	// REJECTED-containment signal, so they are LEFT UNFILTERED — the reconciler still
+	// audits them.
 	rows, err := s.tx.Query(ctx,
 		`SELECT b.id
 		   FROM kacho_iam.role_rule_selectors rrs
@@ -476,7 +488,10 @@ func (s *reconcileStore) SelectorBindingsMatchingObject(ctx context.Context, obj
 		     ON m.object_type = $1 AND m.object_id = $2
 		  WHERE b.status = 'ACTIVE'
 		    AND $1 = ANY(rrs.object_types)
-		    AND ( (rrs.arm = 'anchor')
+		    AND ( (rrs.arm = 'anchor' AND (
+		                b.resource_type = 'cluster'
+		             OR (b.resource_type = 'account' AND m.parent_account_id = b.resource_id)
+		             OR (b.resource_type = 'project' AND m.parent_project_id = b.resource_id)))
 		       OR (rrs.arm = 'names'  AND $2 = ANY(rrs.resource_names))
 		       OR (rrs.arm = 'labels' AND m.labels @> rrs.match_labels) )
 		  ORDER BY b.id ASC`,
