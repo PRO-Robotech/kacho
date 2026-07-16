@@ -240,7 +240,15 @@ CASES.append(Case(
         Step(
             name="pre-clean-dup",
             method="GET",
-            path="/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userNOBId}}",
+            # Discovery MUST use an AUTHORIZED read: :listByScope on account/accountAId
+            # (the account owner sees EVERY binding in the account scope). The prior
+            # :listBySubject?subjectId=userNOBId is a CROSS-user query (owner is not the
+            # subject) -> correctly denied 403, so it could never discover the stale dup
+            # and `create` then collided ALREADY_EXISTS (crudAcbId became a phantom).
+            # pageSize=1000: the account scope accumulates >50 bindings across re-runs, so
+            # the default page (50) can page-out the stale (userNOBId,view,account) dup.
+            # :listByScope returns ALL subjects -> the find filters by subjectId=userNOBId.
+            path="/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
             auth="jwtAccountAdminA",
             test_script=[
                 "pm.test('pre-clean list status acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
@@ -249,6 +257,7 @@ CASES.append(Case(
                 "  const j = pm.response.json();",
                 "  const arr = (j && j.accessBindings) || [];",
                 f"  const dup = arr.find(b => b.roleId === '{ROLE_VIEW}'",
+                "       && b.subjectId === pm.environment.get('userNOBId')",
                 "       && b.resourceType === 'account'",
                 "       && b.resourceId === pm.environment.get('accountAId'));",
                 "  if (dup && dup.id) { pm.environment.set('dupAcbId', dup.id); }",
@@ -723,7 +732,7 @@ CASES.append(Case(
         poll_request_until_status(
             name="list-by-resource",
             method="GET",
-            path="/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}",
+            path="/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
             auth="jwtAccountAdminA",
             retry_on=(403,),  # 403-only; the 200-but-absent window is handled by retry_predicate.
             retry_predicate=("(() => { const j = pm.response.json(); const aid = "
@@ -840,7 +849,7 @@ CASES.append(Case(
         poll_request_until_status(
             name="list-by-subject-self",
             method="GET",
-            path="/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userNOBId}}",
+            path="/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userNOBId}}&pageSize=1000",
             auth="jwtNoBindings",
             retry_on=(403,),  # 403-only; the 200-but-absent window is handled by retry_predicate.
             retry_predicate=("(() => { const j = pm.response.json(); const aid = "
@@ -941,7 +950,7 @@ CASES.append(Case(
         poll_request_until_status(
             name="list-by-account-owner",
             method="GET",
-            path="/iam/v1/accounts/{{accountAId}}/accessBindings",
+            path="/iam/v1/accounts/{{accountAId}}/accessBindings?pageSize=1000",
             auth="jwtAccountAdminA",
             retry_on=(403,),  # 403-only; the 200-but-absent window is handled by retry_predicate.
             retry_predicate=("(() => { const j = pm.response.json(); const aid = "
@@ -2310,7 +2319,7 @@ CASES.append(Case(
         Step(
             name="listbysubject-finds-owner-binding",
             method="GET",
-            path="/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userAAAId}}",
+            path="/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userAAAId}}&pageSize=1000",
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(200),
@@ -2389,7 +2398,7 @@ CASES.append(Case(
         Step(
             name="t33-pre-clean-list",
             method="GET",
-            path="/iam/v1/accounts/{{accountAId}}/accessBindings",
+            path="/iam/v1/accounts/{{accountAId}}/accessBindings?pageSize=1000",
             auth="jwtAccountAdminA",
             test_script=[
                 "pm.test('pre-clean list status acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
@@ -2397,7 +2406,7 @@ CASES.append(Case(
                 "if (pm.response.code === 200) {",
                 "  const j = pm.response.json();",
                 "  const rows = (j.accessBindings || j.bindings || []);",
-                "  const m = rows.find(b => b.roleId === '" + ROLE_ADMIN + "' && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId') && (b.status === undefined || b.status === 'ACTIVE'));",
+                "  const m = rows.find(b => b.roleId === '" + ROLE_ADMIN + "' && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId') && (!b.status || b.status === 'ACTIVE' || b.status === 'STATUS_UNSPECIFIED'));",
                 "  if (m && m.id) { pm.environment.set('t33StaleAcbId', m.id); }",
                 "}",
                 # No stale binding (clean DB) → skip the revoke and go straight to create.
@@ -2555,7 +2564,7 @@ CASES.append(Case(
         Step(
             name="t33imm-pre-clean-list",
             method="GET",
-            path="/iam/v1/accounts/{{accountAId}}/accessBindings",
+            path="/iam/v1/accounts/{{accountAId}}/accessBindings?pageSize=1000",
             auth="jwtAccountAdminA",
             test_script=[
                 "pm.test('pre-clean list status acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
@@ -2563,7 +2572,7 @@ CASES.append(Case(
                 "if (pm.response.code === 200) {",
                 "  const j = pm.response.json();",
                 "  const rows = (j.accessBindings || j.bindings || []);",
-                "  const m = rows.find(b => b.roleId === '" + ROLE_VIEW + "' && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId') && b.subjectId === pm.environment.get('userINVId') && (b.status === undefined || b.status === 'ACTIVE'));",
+                "  const m = rows.find(b => b.roleId === '" + ROLE_VIEW + "' && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId') && b.subjectId === pm.environment.get('userINVId') && (!b.status || b.status === 'ACTIVE' || b.status === 'STATUS_UNSPECIFIED'));",
                 "  if (m && m.id) { pm.environment.set('t33immStaleAcbId', m.id); }",
                 "}",
                 "if (!pm.environment.get('t33immStaleAcbId')) { postman.setNextRequest('t33imm-create'); }",
