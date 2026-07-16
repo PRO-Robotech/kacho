@@ -21,6 +21,12 @@ permissions:
   security-events: write   # SARIF в Security-tab
   pull-requests: write
 
+env:
+  # Отслеживаемые исключения IaC-гейта (каждое — с путём, причиной и тикетом; см. файл).
+  # Привязаны к ПУТЯМ, не к правилам целиком: Go-сервисы остаются под гейтом — проверено
+  # негативом (убрать securityContext у compute → KSV014 ловится).
+  TRIVY_IGNOREFILE: .trivyignore.yaml
+
 concurrency:
   group: security-scan-${{ github.ref }}
   cancel-in-progress: true
