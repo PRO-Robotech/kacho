@@ -45,3 +45,31 @@ resources:
   limits:
     cpu: 500m
     memory: 256Mi
+
+# INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
+#
+# Заведён 2026-07-16: trivy config-скан впервые покрыл ВЕСЬ репозиторий и нашёл, что
+# securityContext есть лишь у половины сервисов. В polyrepo IaC-скан был ТОЛЬКО у
+# kacho-iam, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
+# гейт зеленел, не проверяя ничего.
+#
+# runAsUser 65532 совпадает с `USER 65532` в Dockerfile — образ уже собран под nonroot.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# readOnlyRootFilesystem требует writable-scratch: контейнер монтирует emptyDir на /tmp
+# (см. deployment.yaml). Без него сервис падает на первой же записи во временный файл.
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault

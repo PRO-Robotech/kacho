@@ -734,7 +734,7 @@ func orDefault(v, def string) string {
 }
 
 func instanceStatusName(s domain.InstanceStatus) string {
-	if v, ok := computev1.Instance_Status_name[int32(s)]; ok {
+	if v, ok := computev1.Instance_Status_name[int32(s)]; ok { // #nosec G115 -- s — domain.InstanceStatus (малый enum, зеркалит proto); индекс в Instance_Status_name
 		return v
 	}
 	return "STATUS_UNSPECIFIED"
