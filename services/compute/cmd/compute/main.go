@@ -142,7 +142,7 @@ func runServe(cfg config.Config) error {
 	// подключает Prometheus-Recorder (live terminal-write/inflight метрики — раньше
 	// NopRecorder), Start делает Ready()=true без единой мутации (нет
 	// readiness-deadlock «NotReady → нет Run → worker не стартует»).
-	if err := startLROWorker(lroRec, logger); err != nil {
+	if err := startLROWorker(lroRec, logger, cfg.OwnerConfirmDeadline); err != nil {
 		return fmt.Errorf("start LRO worker: %w", err)
 	}
 
@@ -303,6 +303,32 @@ func runServe(cfg config.Config) error {
 		// Dev — продолжаем без authz-interceptor'а (production-ветка уже отсеяна
 		// authzWiringDecision выше как fatal).
 		logger.Warn("authz interceptor NOT enabled — KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR not configured (dev mode)")
+	}
+
+	// owner-tuple op-gating (P4): Create Instance/Disk достигает success-done только
+	// после read-after-register confirm owner-tuple в FGA (нет окна 403 «no direct
+	// relations» на немедленной мутации создателем). Confirmer — существующий
+	// InternalIAMService.Check (reuse authzConn, НЕ новое ребро — OTG-08); sync-
+	// registrar делает owner-tuple эффективным немедленно (register-drainer —
+	// at-least-once backstop). Активен только когда authzConn сконфигурирован
+	// (production/authz-on); в dev без authzConn — nil confirm → Create как сегодня.
+	if authzConn != nil {
+		ownerConfirmer := check.NewIAMCheckClient(authzConn)
+		var ownerRegistrar service.OwnerRegistrar
+		if cfg.FGARegisterDrainerEnabled {
+			reg, closeReg, rerr := buildSyncRegistrar(cfg, logger)
+			if rerr != nil {
+				return fmt.Errorf("build owner-tuple sync registrar: %w", rerr)
+			}
+			defer closeReg()
+			ownerRegistrar = reg
+		}
+		svcs.instance.WithOwnerOpgate(ownerConfirmer, ownerRegistrar)
+		svcs.disk.WithOwnerOpgate(ownerConfirmer, ownerRegistrar)
+		logger.Info("owner-tuple op-gating enabled (Instance/Disk Create)",
+			"confirm_deadline", cfg.OwnerConfirmDeadline,
+			"sync_registrar", ownerRegistrar != nil,
+		)
 	}
 
 	// FGA-filtered List handlers. Build the filter from
@@ -907,6 +933,30 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 		"iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
 
 	return d.Run, func() { _ = conn.Close() }, nil
+}
+
+// buildSyncRegistrar дилит kacho-iam internal :9091 (InternalIAMService.
+// RegisterResource) тем же compute→iam fga-proxy ребром (mTLS opt-in через
+// cfg.IAMRegisterClientCreds — enable=false → insecure dev) и собирает синхронный
+// owner-tuple registrar (owner-tuple op-gating P4). Отдельный dial-conn
+// (idle-keepalive: registrar срабатывает лишь на Create-всплесках); возвращает
+// closer. Addr выводится из AuthZIAMGRPCAddr (тот же iam-internal, что для Check),
+// fallback — IAMGRPCAddr. Зеркалит kacho-vpc buildSyncRegistrar.
+func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRegistrar, func(), error) {
+	addr := cfg.AuthZIAMGRPCAddr
+	if addr == "" {
+		addr = cfg.IAMGRPCAddr
+	}
+	creds, cerr := cfg.IAMRegisterClientCreds()
+	if cerr != nil {
+		return nil, nil, fmt.Errorf("compute→iam sync-register mTLS creds: %w", cerr)
+	}
+	conn, cerr := grpc.NewClient(addr, creds, grpcclient.KeepaliveDialOption(true))
+	if cerr != nil {
+		return nil, nil, fmt.Errorf("dial kacho-iam (sync registrar): %w", cerr)
+	}
+	logger.Info("owner-tuple sync-registrar dialed", "iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
+	return clients.NewSyncRegistrar(conn), func() { _ = conn.Close() }, nil
 }
 
 // registerInternalServices — kacho-only/admin RPC на internal listener (:9091,

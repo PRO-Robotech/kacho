@@ -109,6 +109,11 @@ type InstanceService struct {
 	// мутации fail-closed Unavailable, read-mirror грациозно опускается.
 	storageClient StorageClient
 	opsRepo       operations.Repo
+	// ownerConfirmer / ownerRegistrar — owner-tuple op-gating (P4). nil = opgate
+	// выключен (dev/breakglass без authzConn) → Create как сегодня. Подключаются
+	// в composition-root через WithOwnerOpgate после установления authzConn.
+	ownerConfirmer OwnerConfirmer
+	ownerRegistrar OwnerRegistrar
 }
 
 // NewInstanceService создаёт InstanceService.
@@ -117,6 +122,16 @@ func NewInstanceService(repo InstanceRepo, zones ZoneRegistry, projectClient Pro
 		repo: repo, zones: zones, projectClient: projectClient,
 		nicClient: nicClient, storageClient: storageClient, opsRepo: opsRepo,
 	}
+}
+
+// WithOwnerOpgate подключает owner-tuple op-gating (P4): confirmer (read-after-
+// register через существующий InternalIAMService.Check, reuse authzConn) + sync-
+// registrar (немедленная post-commit регистрация owner-tuple). Оба nil-safe.
+// Вызывается ОДИН раз из composition-root до приёма трафика (single-threaded boot).
+func (s *InstanceService) WithOwnerOpgate(confirmer OwnerConfirmer, registrar OwnerRegistrar) *InstanceService {
+	s.ownerConfirmer = confirmer
+	s.ownerRegistrar = registrar
+	return s
 }
 
 // Get возвращает Instance по ID. NIC- и volume-зеркала подтягиваются из kacho-vpc /
@@ -181,11 +196,15 @@ func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*o
 	}
 
 	instanceID := ids.NewID(ids.PrefixInstance)
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Create instance %s", req.Name),
+	// owner-tuple op-gating (P4): Create-op достигнет success-done только после
+	// read-after-register confirm owner-tuple `compute_instance:<id>` (nil confirm =
+	// opgate выключен → back-compat). Subject фиксируется из caller-ctx СЕЙЧАС.
+	confirm := buildOwnerConfirm(ctx, s.ownerConfirmer, "Instance", instanceID)
+	return runOpWithConfirm(ctx, s.opsRepo, fmt.Sprintf("Create instance %s", req.Name),
 		&computev1.CreateInstanceMetadata{InstanceId: instanceID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			return s.doCreate(ctx, instanceID, req)
-		})
+		}, confirm)
 }
 
 func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req CreateInstanceReq) (*anypb.Any, error) {
@@ -234,6 +253,11 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
+	// Sync-register owner-tuple post-commit (best-effort) — делает
+	// `project:<proj> #project @compute_instance:<id>` эффективным немедленно, чтобы
+	// confirm-gate резолвился без ожидания poll'а register-drainer'а (P4). Durable
+	// outbox-intent (writer-tx repo.Insert) + drainer — at-least-once backstop.
+	syncRegisterOwner(ctx, s.ownerRegistrar, "Instance", created.ID, created.ProjectID, created.Labels)
 	return anypb.New(protoconv.Instance(created))
 }
 

@@ -25,6 +25,25 @@ import (
 // pre-валидацию (guard'ы id/req) call-site выполняет ДО вызова runOp.
 func runOp(ctx context.Context, opsRepo operations.Repo, desc string, meta proto.Message,
 	fn func(context.Context) (*anypb.Any, error)) (*operations.Operation, error) {
+	// non-owner-tuple мутации (Update/Delete/Restart/Attach/…) — без confirm-gate:
+	// нового owner-tuple они не создают, поэтому read-after-register окна нет
+	// (OTG-16). Делегируем в runOpWithConfirm с confirm=nil (эквивалент прежнего
+	// operations.Run).
+	return runOpWithConfirm(ctx, opsRepo, desc, meta, fn, nil)
+}
+
+// runOpWithConfirm — owner-tuple opgate вариант runOp: тот же async-LRO dispatch,
+// но с read-after-register confirm-gate поверх worker-механизма (P1
+// operations.RunWithConfirm). При non-nil confirm Create-Operation достигает
+// success-`done` ТОЛЬКО после confirmed=true; иначе fail-closed по
+// confirmation-deadline → op.error(codes.Unavailable, "owner-tuple registration not
+// confirmed"), success-done без confirm НЕ выставляется никогда (acceptance
+// owner-tuple-opgate, OTG-03/-05). confirm==nil → сегодняшнее поведение
+// (fn success → сразу MarkDone). Resource-ref в op.metadata (CreateInstanceMetadata/
+// CreateDiskMetadata) durable на ВСЕХ терминалах, включая error (MarkError сохраняет
+// metadata — FIX-3, OTG-05b): metadata пишется opsRepo.Create ДО исполнения fn.
+func runOpWithConfirm(ctx context.Context, opsRepo operations.Repo, desc string, meta proto.Message,
+	fn func(context.Context) (*anypb.Any, error), confirm operations.ConfirmFunc) (*operations.Operation, error) {
 	op, err := operations.New(ids.PrefixOperationCompute, desc, meta)
 	if err != nil {
 		return nil, err
@@ -32,6 +51,6 @@ func runOp(ctx context.Context, opsRepo operations.Repo, desc string, meta proto
 	if err := opsRepo.Create(ctx, op); err != nil {
 		return nil, err
 	}
-	operations.Run(ctx, opsRepo, op.ID, fn)
+	operations.RunWithConfirm(ctx, opsRepo, op.ID, fn, confirm)
 	return &op, nil
 }
