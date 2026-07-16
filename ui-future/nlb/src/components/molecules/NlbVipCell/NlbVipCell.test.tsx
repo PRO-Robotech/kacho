@@ -23,8 +23,9 @@ describe("NlbVipCell", () => {
     withProviders(
       <NlbVipCell v4AddressId="adr-v4-000000000000000" v6AddressId="adr-v6-000000000000000" />,
     );
-    expect(screen.getByText("adr-v4-000000000000000")).toBeInTheDocument();
-    expect(screen.getByText("adr-v6-000000000000000")).toBeInTheDocument();
+    // VipAddressLink показывает id.slice(0,12), пока адрес не резолвился (нет бэкенда).
+    expect(screen.getByText("adr-v4-00000")).toBeInTheDocument();
+    expect(screen.getByText("adr-v6-00000")).toBeInTheDocument();
   });
 
   it("renders a dash when no VIP is allocated yet", () => {

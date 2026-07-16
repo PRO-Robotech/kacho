@@ -110,8 +110,10 @@ describe("NLB resource-registry", () => {
 
   it("load-balancers validate — требует хотя бы одно семейство VIP", () => {
     const lb = getResource("load-balancers")!;
-    expect(lb.validate!({ vip_source: { _v4_enabled: false, _v6_enabled: false } })).toMatch(/источник VIP/);
-    expect(lb.validate!({ vip_source: { _v4_enabled: true, _v6_enabled: false } })).toBeNull();
+    // validate строит source через _v4_mode/v4 (не _v4_enabled): без источника → ошибка.
+    expect(lb.validate!({ vip_source: {} })).toMatch(/источник VIP/);
+    // с валидным источником одного семейства (subnet) → null.
+    expect(lb.validate!({ vip_source: { _v4_mode: "subnet", v4: { subnet_id: "sub-x" } } })).toBeNull();
   });
 
   it("service prefix + project path routing", () => {
