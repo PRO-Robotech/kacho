@@ -332,7 +332,12 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
         {{- end }}
-      {{- if or .Values.opa.enabled .Values.mtls.enable }}
+      # volumes БЕЗУСЛОВНЫ: /tmp нужен всегда, потому что rootfs read-only независимо от
+      # opa/mtls. Раньше блок был гейтован `if or opa.enabled mtls.enable` — и при обоих
+      # false (ровно профиль umbrella-фазы 1, MTLS_OFF) том исчезал, а volumeMounts на
+      # него оставался → `Deployment.apps "compute" is invalid: volumeMounts[0].name:
+      # Not found: "tmp"`. Standalone `helm template` этого не показывал: там дефолтные
+      # values, где opa/mtls включены.
       volumes:
         - name: tmp
           emptyDir: {}
@@ -350,4 +355,3 @@ spec:
           secret:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
         {{- end }}
-      {{- end }}

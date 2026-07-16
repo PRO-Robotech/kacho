@@ -241,6 +241,13 @@ jobs:
         working-directory: deploy/helm/umbrella
         run: helm template ci . -f values.prod.yaml -f values.fe3455.yaml -f values.fe3455-prod.yaml > /dev/null
 
+      # helm template/lint НЕ ловят монт на несуществующий том — манифест рендерится, а
+      # валится только на apiserver, уже при деплое. Проверяем МАТРИЦУ тумблеров, потому
+      # что дефолт чарта её не покрывает (поймано на себе: у compute volumes были под
+      # `if or opa mtls`, и при обоих false — профиль umbrella-фазы 1 — том исчезал).
+      - name: каждый volumeMount имеет свой volume (матрица тумблеров)
+        run: bash .github/scripts/check-volume-mounts.sh
+
       - name: mtls-off список покрывает values.dev.yaml
         working-directory: deploy
         run: make check-mtls-off-complete
