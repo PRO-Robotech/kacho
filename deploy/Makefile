@@ -84,8 +84,16 @@ check-mtls-off-complete:
 	miss=want-have; \
 	sys.exit('ERROR: mtls включён в values.dev.yaml, но НЕ заглушен в MTLS_SUBCHARTS: '+', '.join(sorted(miss))+chr(10)+'       Фаза 1 (до CRD cert-manager) упадёт на Certificate.' ) if miss else print('mtls-off complete:', ' '.join(sorted(have)))"
 
+# `set -e` — ОБЯЗАТЕЛЕН, а не косметика. Рецепт — одна `; \`-цепочка, т.е. упавшая
+# команда НЕ прерывает цель: следующая просто выполняется. Реально наблюдалось
+# 2026-07-16 в CI — `helm phase 2` упал с UPGRADE FAILED, а цель дошла до конца и
+# напечатала «dev-up complete», отдав exit 0. Стенд был собран наполовину (mTLS-фаза не
+# применена, fga-bootstrap без SA), а CI считал его поднятым и шёл гонять newman —
+# краснота вылезла позже и совсем в другом месте.
+# Тот же класс, что near-miss 2026-07-15 (см. guard-kind-context ниже): упавший
+# `use-context` не прервал цепочку, и стенд поехал на ПРОД.
 dev-up: preflight
-	@start=$$(date +%s); \
+	@set -e; start=$$(date +%s); \
 	kind get clusters | grep -q "^$(CLUSTER_NAME)$$" || ./kind/create-cluster.sh; \
 	kubectl config use-context kind-$(CLUSTER_NAME) || { \
 	  echo "ERROR: нет kubectl-контекста kind-$(CLUSTER_NAME)."; \

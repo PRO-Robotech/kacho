@@ -193,7 +193,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # ПИН ОБЯЗАТЕЛЕН. setup-helm без version ставит ПОСЛЕДНЮЮ — и притащил Helm 4.2.3,
+      # тогда как локально и на проде helm v3.17. Helm 4 по умолчанию делает
+      # SERVER-SIDE APPLY (Helm 3 — client-side 3-way merge), а это разная семантика
+      # владения полями: apply упирается в чужой field-manager и валится
+      #   UPGRADE FAILED: conflict with "kubectl-patch" using apps/v1:
+      #   .spec.template.metadata.annotations.kacho.cloud/openfga-model-id-rev
+      # (аннотацию объявляет чарт kacho-iam и патчит openfga-bootstrap-job — двойное
+      # владение, для Helm 3 безобидное). Гейт при этом «зеленел», проверяя чарты НЕ той
+      # версией, которой разворачивается прод, — ложная уверенность.
       - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
 
       # Только `helm lint`, БЕЗ голого `helm template <chart>`: последний НЕ является
       # валидным гейтом — часть чартов ОСОЗНАННО падает без секретов (kacho-nlb:

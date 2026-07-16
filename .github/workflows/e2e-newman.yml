@@ -46,7 +46,18 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # ПИН ОБЯЗАТЕЛЕН. setup-helm без version ставит ПОСЛЕДНЮЮ — и притащил Helm 4.2.3,
+      # тогда как локально и на проде helm v3.17. Helm 4 по умолчанию делает
+      # SERVER-SIDE APPLY (Helm 3 — client-side 3-way merge), а это разная семантика
+      # владения полями: apply упирается в чужой field-manager и валится
+      #   UPGRADE FAILED: conflict with "kubectl-patch" using apps/v1:
+      #   .spec.template.metadata.annotations.kacho.cloud/openfga-model-id-rev
+      # (аннотацию объявляет чарт kacho-iam и патчит openfga-bootstrap-job — двойное
+      # владение, для Helm 3 безобидное). Гейт при этом «зеленел», проверяя чарты НЕ той
+      # версией, которой разворачивается прод, — ложная уверенность.
       - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - uses: azure/setup-kubectl@v4
@@ -70,6 +81,15 @@ jobs:
 
       - name: newman
         run: npm i -g newman@6
+
+      # grpcurl нужен фикстурам (tests/authz-fixtures/setup.sh сеет пользователей через
+      # kacho-iam-internal:9091). Без него шаг падает `FATAL: 'grpcurl' not found in PATH`
+      # ДО первой коллекции — стенд поднят, а проверено ноль.
+      - name: grpcurl
+        run: |
+          curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz \
+            | tar -xz -C "$HOME/bin" grpcurl
+          grpcurl --version
 
       # КРИТИЧНО на self-hosted и не нужно на ubuntu-latest: там VM умирает вместе с
       # job'ом, здесь машина живёт и kind-кластер переживает прогоны.
