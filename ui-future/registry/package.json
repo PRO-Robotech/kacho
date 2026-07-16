@@ -8,7 +8,7 @@
     "dev:remote:watch": "vite build --watch",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 4179 --strictPort",
-    "test": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit",
+    "test": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit --ci",
     "typecheck": "tsc -b --noEmit",
     "check": "npm run lint && npm run format:check",
     "lint": "npm run lint:js && npm run lint:css && npm run typecheck",
