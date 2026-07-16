@@ -74,14 +74,23 @@ jobs:
           sarif_file: gosec.sarif
           category: gosec
 
-      - name: fail on HIGH / CRITICAL
+      # Гейтим по SARIF `level == "error"`. ЭТО НЕ ТО ЖЕ, что `severity == HIGH` в
+      # JSON-выводе gosec: G304 в tlsutil приходил как MEDIUM в JSON, но level=error в
+      # SARIF — то есть локальная проверка «severity HIGH» показывала 0, пока CI честно
+      # краснел. Унаследованный из polyrepo комментарий утверждал «severity error
+      # (HIGH)» и уводил в сторону. Сверяться с CI надо ИМЕННО по SARIF:
+      #   gosec -fmt sarif -out g.sarif ./... && jq '[.runs[].results[]|select(.level=="error")]|length' g.sarif
+      - name: fail on level=error
         run: |
           if [[ ! -f gosec.sarif ]]; then exit 0; fi
           err=$(jq '[.runs[].results[] | select(.level == "error")] | length' gosec.sarif)
-          echo "gosec HIGH: $err"
+          echo "gosec level=error: $err"
           if (( err > 0 )); then
-            jq -r '.runs[].results[] | select(.level=="error") | "- \(.ruleId): \(.message.text)"' gosec.sarif
-            echo "::error::gosec нашёл $err проблем HIGH-уровня. См. вкладку Security."
+            # С ПУТЁМ И СТРОКОЙ: без них лог даёт лишь «- G304: Potential file inclusion
+            # via variable» на 1019 файлов — находку приходится искать вручную.
+            jq -r '.runs[].results[] | select(.level=="error")
+                   | "- \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine) — \(.message.text)"' gosec.sarif
+            echo "::error::gosec нашёл $err проблем level=error. См. вкладку Security."
             exit 1
           fi
 
