@@ -115,21 +115,86 @@ jobs:
       # Наборы гоняем по сервисам, которые dev-профиль реально поднимает. storage и
       # registry в dev выключены (registry.enabled=false) — их коллекции здесь не
       # запускаются, иначе job краснел бы за отсутствующий сервис, а не за регрессию.
+      #
+      # `|| true` — НЕ проглатывание ошибок. Прогон обязан дойти до конца и оставить
+      # отчёты в out/; вердикт выносит assert-suites-green.sh (шаг ниже), который
+      # (а) знает known-RED whitelist и (б) считает отсутствие отчёта провалом
+      # («(no-report)»), поэтому ранний обрыв прогона здесь спрятать нельзя.
+      # Так же было в polyrepo: newman → отдельный гейт с `if: always()`.
       - name: newman — iam
         working-directory: deploy
-        run: ./scripts/newman-e2e.sh iam
+        run: ./scripts/newman-e2e.sh iam || true
 
       - name: newman — vpc
         working-directory: deploy
-        run: ./scripts/newman-e2e.sh vpc
+        run: ./scripts/newman-e2e.sh vpc || true
 
       - name: newman — compute
         working-directory: deploy
-        run: ./scripts/newman-e2e.sh compute
+        run: ./scripts/newman-e2e.sh compute || true
 
       - name: newman — nlb
         working-directory: deploy
-        run: ./scripts/newman-e2e.sh nlb
+        run: ./scripts/newman-e2e.sh nlb || true
+
+      # НАСТОЯЩИЙ гейт. ОДИН скрипт (живёт в iam) применяется к КАЖДОМУ сервису — он
+      # глобит `collections/` + `out/` относительно cwd, поэтому запускается из каталога
+      # проверяемого сервиса. Ровно так было в polyrepo: там vpc/compute/nlb звали
+      # `${GITHUB_WORKSPACE}/kacho-iam/tests/newman/scripts/assert-suites-green.sh` со
+      # своим working-directory.
+      #
+      # Зачем один скрипт: whitelist раньше дублировался инлайном в newman-e2e.yml
+      # каждого репо и РАЗЪЕХАЛСЯ — правки доезжали только до копии kacho-iam, а
+      # vpc/compute/nlb оставались красными на тех же самых общих наборах, которые iam
+      # рапортовал зелёными.
+      #
+      # При переезде в монорепу вызов гейта потерялся вовсе, и краснота шла с кейсов,
+      # RED-by-design: SEC-C-A-* (fga-proxy Register/UnregisterResource) — это
+      # cluster-internal :9091-RPC БЕЗ `google.api.http` mapping (ban #6), grpc-gateway
+      # REST-хендлер для них не генерирует вообще → как black-box REST они неисполнимы
+      # (покрыты fgaproxy_test.go). Все 9 проверок падали «expected 403 to deeply equal
+      # 200» — притом что 403 и есть ПРАВИЛЬНОЕ поведение продукта, прячущего Internal*
+      # с публичного порта.
+      #
+      # Whitelist вычитает только известные (каждый — с тикетом); НОВОЕ падение и
+      # отсутствие отчёта («(no-report)») гейт по-прежнему валит.
+      - name: гейт — newman зелёный (iam)
+        if: always()
+        working-directory: services/iam/tests/newman
+        run: bash scripts/assert-suites-green.sh
+
+      - name: гейт — newman зелёный (vpc)
+        if: always()
+        working-directory: services/vpc/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      - name: гейт — newman зелёный (compute)
+        if: always()
+        working-directory: services/compute/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      - name: гейт — newman зелёный (nlb)
+        if: always()
+        working-directory: services/nlb/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      # coverage-гейт: proto RPC → newman case-id. Тоже был в polyrepo и тоже потерялся.
+      # Порог — не «сколько получилось», а ПОЛ, ниже которого падаем: он ловит регресс
+      # (RPC добавили, кейс — нет). Замерено на монорепе: iam 54/96 RPC (56%).
+      #
+      # proto-glob указывает ВНУТРЬ монорепы. В polyrepo он смотрел на sibling-чекаут
+      # kacho-proto ($GITHUB_WORKSPACE/kacho-proto/...), а до этого — на in-repo дерево,
+      # которого уже не существовало, и гейт падал «no RPCs discovered» (exit 2).
+      - name: coverage-гейт (proto RPC → newman)
+        if: always()
+        working-directory: services/iam/tests/newman
+        env:
+          COVERAGE_MIN: "30"
+        run: |
+          python3 scripts/coverage.py \
+            --proto-glob "${GITHUB_WORKSPACE}/proto/kacho/cloud/iam/v1/*.proto" \
+            --collections-glob 'collections/*.postman_collection.json' \
+            --min "$COVERAGE_MIN"
 
       # Логи падений: без них newman-краснота в CI неотлаживаема — видно «ожидал 200,
       # получил 500», но не видно, ПОЧЕМУ сервис отдал 500.
