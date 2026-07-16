@@ -79,32 +79,40 @@ jobs:
       - name: зависимости standalone-пакетов
         run: for p in $STANDALONE; do npm ci --prefix "$p"; done
       # ВРЕМЕННО (kacho#7): DIAG#1 локализовал host-hang в фазе module-EXECUTION
-      # (--listTests/--showConfig проходят, --runInBand виснет; watchman отсутствует; SIGUSR2
-      # не обработан → блокировка без возврата в event-loop = ресурс-старвейшн?). DIAG#2:
-      # (A) сверить ulimit ранера с локальным (где проходит: -n 524288 -u 256093); (B) пробовать
-      # jest с ПОДНЯТЫМИ лимитами + большой UV_THREADPOOL — если пройдёт, корень = старвейшн;
-      # (C) пофайловый пойнт-пойнт: один файл виsnет или все. Шаг НЕ гейтит.
-      - name: DIAG2 host-hang (ulimit/threadpool/per-file, kacho#7)
+      # DIAG#2 доказал: НЕ ресурс-старвейшн (raised ulimit+UV_THREADPOOL=64 → всё равно виснет),
+      # виновники — ровно 3 shell-integration файла (App/HostShell/HostRail), тянущие antd+
+      # react-router+remotes-реестр. DIAG#3: РАСПУТАТЬ module-LOAD vs RENDER — import-only проба
+      # (если import графа App виснет → ESM-линкер; если проходит, а render виснет → antd/MF-runtime)
+      # + надёжный node diagnostic-report (JS-стек висящего процесса, абсолютный путь). Шаг НЕ гейтит.
+      - name: DIAG3 host-hang (import-vs-render + stack, kacho#7)
         working-directory: ui-future/host
         run: |
           set +e
-          echo "=== RUNNER limits (сравни с локальным -n 524288 -u 256093 vmem unlimited) ==="
-          ulimit -a
-          echo "nproc=$(nproc) node=$(node --version)"
           J="node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js"
-          echo "=== TRY-A: raised ulimits (-n/-u до hard max) + UV_THREADPOOL_SIZE=64 (timeout 100) ==="
-          ( ulimit -n "$(ulimit -Hn)" 2>/dev/null; ulimit -u "$(ulimit -Hu)" 2>/dev/null;
-            export UV_THREADPOOL_SIZE=64;
-            echo "  applied: -n=$(ulimit -n) -u=$(ulimit -u) UV_THREADPOOL_SIZE=$UV_THREADPOOL_SIZE";
-            timeout 100 $J --runInBand --silent --forceExit --ci ) 2>&1 | tail -6
-          echo "TRY_A_rc=${PIPESTATUS[0]} (0=прошёл→корень=старвейшн; 124=не помогло)"
-          echo "=== TRY-B: пофайловый пойнт-пойнт (какой файл виснет) ==="
-          for f in $($J --listTests 2>/dev/null); do
-            timeout 25 $J --runInBand --silent "$f" >/dev/null 2>&1; rc=$?
-            if [ $rc -eq 0 ]; then s="ok  "; elif [ $rc -eq 124 ]; then s="HANG"; else s="rc$rc"; fi
-            echo "  $s  $(basename "$f")"
+          mkdir -p src/__diag__ /tmp/rpt
+          printf "test('import App graph only (no render)', async () => { await import('../App'); expect(true).toBe(true); });\n" > src/__diag__/imp-app.diag.test.ts
+          printf "test('import HostShell only', async () => { await import('../components/organisms/HostShell/HostShell'); expect(true).toBe(true); });\n" > src/__diag__/imp-shell.diag.test.ts
+          printf "test('import HostRail only', async () => { await import('../components/organisms/HostRail/HostRail'); expect(true).toBe(true); });\n" > src/__diag__/imp-rail.diag.test.ts
+          for p in imp-app imp-shell imp-rail; do
+            timeout 55 $J --runInBand --silent "src/__diag__/$p.diag.test.ts" >/dev/null 2>&1; rc=$?
+            if [ $rc -eq 0 ]; then s="ok(import прошёл)"; elif [ $rc -eq 124 ]; then s="HANG(import виснет!)"; else s="rc$rc"; fi
+            echo "IMPORT $p → $s"
           done
-          echo "=== DIAG2 DONE (шаг не гейтит) ==="; exit 0
+          echo "=== STACK: App.test под node report (SIGUSR2, абс.путь) ==="
+          NODE_OPTIONS="--report-on-signal --report-directory=/tmp/rpt --report-filename=hang.json" \
+            $J --runInBand --silent src/App.test.tsx > /tmp/appt.out 2>&1 &
+          JPID=$!
+          for s in $(seq 1 33); do kill -0 $JPID 2>/dev/null || break; sleep 3; done
+          if kill -0 $JPID 2>/dev/null; then
+            echo "App.test HUNG >99s — SIGUSR2 report"; kill -USR2 $JPID; sleep 6
+            echo "--- /tmp/rpt:"; ls -la /tmp/rpt 2>&1
+            echo "--- javascriptStack:"; python3 -c "import json; d=json.load(open('/tmp/rpt/hang.json')); print(json.dumps(d.get('javascriptStack',{}),indent=0))" 2>&1 | head -40
+            kill -9 $JPID 2>/dev/null
+          else
+            echo "App.test rc=$? (НЕ завис под report?!)"; tail -8 /tmp/appt.out
+          fi
+          rm -rf src/__diag__
+          echo "=== DIAG3 DONE ==="; exit 0
 
   build:
     name: build ${{ matrix.project }}
