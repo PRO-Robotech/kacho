@@ -23,6 +23,7 @@ package securitygroup
 import (
 	"context"
 
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
@@ -71,6 +72,16 @@ type SecurityGroupReader interface {
 // project'а на request-path и в worker'е.
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)
+}
+
+// OwnerTupleConfirmer — read-after-register проба owner-tuple для confirm-gate
+// Create-op (owner-tuple opgate). Возвращает confirmed=true, когда owner-tuple
+// созданной SecurityGroup эффективен в FGA для creator'а (gateway scope_extractor
+// Check немедленной мутации `creator #v_update vpc_security_group:<id>` вернёт ALLOW).
+// Реализация — check.NewSecurityGroupOwnerConfirmer (reuse authz.CheckClient, без
+// нового ребра). nil → confirm-gate выключен (op done сразу после worker-fn).
+type OwnerTupleConfirmer interface {
+	Confirm(ctx context.Context, creator operations.Principal, resourceID string) (bool, error)
 }
 
 // ListFilter — port per-object List-фильтра. Реализация —

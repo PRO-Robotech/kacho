@@ -135,6 +135,8 @@ func applyLegacyEnv(v *viper.Viper) {
 		// тихий false — важно для fail-closed security-свитча Require).
 		{"KACHO_VPC_REQUIRE_IAM", "iam.require"},
 		{"KACHO_VPC_FGA_REGISTER_DRAINER_ENABLED", "iam.register-drainer-enabled"},
+		// owner-tuple opgate: confirmation-deadline read-after-register confirm.
+		{"KACHO_VPC_OWNER_CONFIRM_DEADLINE", "iam.owner-confirm-deadline"},
 	}
 	for _, m := range simple {
 		if val, ok := os.LookupEnv(m.env); ok {

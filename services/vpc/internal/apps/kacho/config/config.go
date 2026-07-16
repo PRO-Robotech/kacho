@@ -61,6 +61,16 @@ type IAMConfig struct {
 	// false. Legacy env: KACHO_VPC_FGA_REGISTER_DRAINER_ENABLED. Новый ключ:
 	// iam.register-drainer-enabled / KACHO_VPC_IAM__REGISTER_DRAINER_ENABLED.
 	RegisterDrainerEnabled bool `mapstructure:"register-drainer-enabled"`
+
+	// OwnerConfirmDeadline — верхняя граница ожидания read-after-register confirm
+	// owner-tuple (owner-tuple opgate): Create-op ресурса (Network/SG/Subnet)
+	// достигает `done=true, response` только после подтверждения owner-tuple в FGA;
+	// если это не произошло за deadline — op завершается fail-closed
+	// `Unavailable "owner-tuple registration not confirmed"` (ресурс durable, drainer
+	// добьёт tuple at-least-once). Значение строго меньше op-timeout worker'а (4m) и
+	// Reconciler.OrphanGrace (5m). Default 30s. Legacy-style env:
+	// KACHO_VPC_OWNER_CONFIRM_DEADLINE. Ключ: iam.owner-confirm-deadline.
+	OwnerConfirmDeadline time.Duration `mapstructure:"owner-confirm-deadline"`
 }
 
 // AuthZConfig — секция authz. Если IAMEndpoint пуст и Breakglass=false —

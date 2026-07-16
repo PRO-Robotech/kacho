@@ -13,6 +13,7 @@ package network
 import (
 	"context"
 
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -66,6 +67,18 @@ type SecurityGroupRepo interface {
 // в worker'е.
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)
+}
+
+// OwnerTupleConfirmer — read-after-register проба owner-tuple для confirm-gate
+// Create-op (owner-tuple opgate). Возвращает confirmed=true, когда owner-tuple
+// созданного Network эффективен в FGA для creator'а — т.е. gateway scope_extractor
+// Check немедленной мутации (`creator #v_update vpc_network:<id>`) вернёт ALLOW.
+// Реализация — check.NewNetworkOwnerConfirmer поверх существующего authz.CheckClient
+// (reuse `InternalIAMService.Check`, без нового cross-service ребра). nil →
+// confirm-gate выключен (dev/no-iam: Create-op становится done сразу после worker-fn,
+// прежнее поведение).
+type OwnerTupleConfirmer interface {
+	Confirm(ctx context.Context, creator operations.Principal, resourceID string) (bool, error)
 }
 
 // ListFilter — port per-object List-фильтра. Реализация —

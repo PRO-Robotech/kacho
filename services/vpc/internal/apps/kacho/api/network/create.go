@@ -49,11 +49,30 @@ type CreateNetworkUseCase struct {
 	// sync-путь пропускается (dev/no-iam), регистрация только через drainer.
 	registrar fgaregister.Registrar
 
+	// confirmer — read-after-register проба owner-tuple (owner-tuple opgate). При
+	// non-nil Create-op достигает `done=true, result=response` ТОЛЬКО после того,
+	// как confirmer подтвердит эффективность owner-tuple в FGA (закрытие окна 403
+	// «no direct relations granted» на немедленной мутации создателя). nil →
+	// confirm-gate выключен (op done сразу после worker-fn, прежнее поведение).
+	confirmer OwnerTupleConfirmer
+
+	// dispatch — точка запуска async Create-worker'а с confirm-gate. Дефолт —
+	// operations.RunWithConfirm (package-level default-registry; confirmation-deadline
+	// из ConfigureDefault composition root'а). Тест инжектит Worker с коротким
+	// deadline (OTG-05) через RunWithWorkerConfirm.
+	dispatch confirmDispatcher
+
 	// logger — диагностический trail async-worker'а (panic-recover до того, как
 	// op-worker замаскирует причину). FGA owner-tuple эмитится как intent в
 	// writer-TX, а не пишется напрямую отсюда.
 	logger *slog.Logger
 }
+
+// confirmDispatcher — сигнатура диспетча Create-op с confirm-gate (owner-tuple
+// opgate). Совпадает с operations.RunWithConfirm / RunWithWorkerConfirm; confirm==nil
+// эквивалентно прежнему operations.Run (nil-safe back-compat).
+type confirmDispatcher func(ctx context.Context, opsRepo operations.Repo, opID string,
+	fn func(context.Context) (*anypb.Any, error), confirm operations.ConfirmFunc)
 
 // NewCreateNetworkUseCase создает CreateNetworkUseCase. defaultSGInline берется
 // из конфига (`cfg.Network.DefaultSGInline`) — при true в одной writer-TX
@@ -66,7 +85,18 @@ func NewCreateNetworkUseCase(r Repo, projectClient ProjectClient, opsRepo operat
 		opsRepo:         opsRepo,
 		defaultSGInline: defaultSGInline,
 		createDefaultSG: NewCreateDefaultSGUseCase(),
+		dispatch:        operations.RunWithConfirm,
 	}
+}
+
+// WithConfirmer подключает read-after-register confirmer owner-tuple (owner-tuple
+// opgate). После sync-регистрации owner-tuple worker прогоняет confirmer до его
+// подтверждения — Create-op достигает success-`done` только тогда, гарантируя
+// отсутствие окна 403 «no direct relations granted» на немедленной мутации
+// создателя. Nil confirmer → confirm-gate выключен (прежнее поведение).
+func (u *CreateNetworkUseCase) WithConfirmer(c OwnerTupleConfirmer) *CreateNetworkUseCase {
+	u.confirmer = c
+	return u
 }
 
 // WithLogger подключает диагностический логгер для async Create-worker'а. FGA
@@ -131,7 +161,21 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 		return nil, err
 	}
 
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (res *anypb.Any, derr error) {
+	// Confirm-gate owner-tuple (owner-tuple opgate): при подключённом confirmer
+	// worker после успешного worker-fn (Insert + sync-register) прогоняет
+	// read-after-register пробу до подтверждения owner-tuple; только тогда op
+	// становится `done=true, response`. Deadline confirm-ожидания — на Worker
+	// (WithConfirmationDeadline, composition root). creator = op.Principal (создатель
+	// из auth-ctx). nil confirmer → confirm=nil → RunWithConfirm ≡ Run (back-compat).
+	var confirm operations.ConfirmFunc
+	if u.confirmer != nil {
+		creator := op.Principal
+		confirm = func(cctx context.Context) (bool, error) {
+			return u.confirmer.Confirm(cctx, creator, netID)
+		}
+	}
+
+	u.dispatch(ctx, u.opsRepo, op.ID, func(ctx context.Context) (res *anypb.Any, derr error) {
 		// Поднимаем наружу диагностику падений async-worker'а. operations.Run
 		// маскирует любую не-gRPC-status ошибку (и panic) как Operation `INTERNAL
 		// "internal worker error"` и НЕ логирует ее — упавший Network.Create
@@ -156,7 +200,7 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 				"err", derr.Error())
 		}
 		return res, derr
-	})
+	}, confirm)
 
 	return &op, nil
 }

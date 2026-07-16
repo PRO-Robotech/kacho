@@ -316,7 +316,21 @@ func runServe(cfg config.Config) error {
 		syncRegistrar = reg
 	}
 
-	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, authzfilter.AsPort(listFilter), opsRepo, syncRegistrar, cfg, logger)
+	// owner-tuple opgate confirm-check: read-after-register проба owner-tuple для
+	// Network/SG/Subnet Create (confirm-gate). REUSE того же authzConn (:9091,
+	// InternalIAMService.Check), что и per-RPC authz-gate — нового cross-service
+	// ребра НЕ добавляется (OTG-08). Confirm-gate включаем только когда owner-tuple
+	// регистрируется СИНХРОННО (sync-registrar) И есть Check-edge: без sync-registrar
+	// tuple регистрируется лишь async-drainer'ом → confirm-loop таймаутил бы (лишний
+	// fail-closed). syncRegistrar!=nil ⇒ IAMEndpoint!="" ⇒ authzConn!=nil.
+	var ownerCheck *check.IAMCheckClient
+	if syncRegistrar != nil && authzConn != nil {
+		ownerCheck = check.NewIAMCheckClientWithProbe(authzConn, nil)
+		logger.Info("owner-tuple opgate confirm-gate enabled (Network/SG/Subnet Create)",
+			"confirm_deadline", cfg.IAM.OwnerConfirmDeadline)
+	}
+
+	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, authzfilter.AsPort(listFilter), opsRepo, syncRegistrar, ownerCheck, cfg, logger)
 
 	// Fail-closed boot-gate: при KACHO_VPC_REQUIRE_IAM мутирующий Create отвергается,
 	// а readiness = NotReady, пока register-drainer не подключен к IAM. Стартует
@@ -534,7 +548,7 @@ func runServe(cfg config.Config) error {
 	// readiness lro-worker зеленый без единой мутации (нет boot-deadlock), а
 	// live-worker метрики (terminal-write retries/failures, inflight gauge) текут в
 	// тот же Prometheus-adapter — раньше эти серии были мертвы (NopRecorder).
-	if err := startLROWorker(metricsAdapter, logger); err != nil {
+	if err := startLROWorker(metricsAdapter, logger, cfg.IAM.OwnerConfirmDeadline); err != nil {
 		return fmt.Errorf("start LRO worker: %w", err)
 	}
 
@@ -812,7 +826,16 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 //
 // slavePool — опц. read-replica pool; nil → kachopg.New делает fallback и Reader-TX
 // идут на master.
-func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter authzfilter.UseCasePort, opsRepo operations.Repo, registrar fgaregister.Registrar, cfg config.Config, logger *slog.Logger) *services {
+func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter authzfilter.UseCasePort, opsRepo operations.Repo, registrar fgaregister.Registrar, ownerCheck *check.IAMCheckClient, cfg config.Config, logger *slog.Logger) *services {
+	// owner-tuple opgate confirmer'ы (Network/SG/Subnet Create). Активны только когда
+	// ownerCheck != nil (composition root включил confirm-gate). Каждый несёт свой
+	// FGA object-type; relation фиксирован v_update (canonical mutate-relation).
+	var netConfirmer, sgConfirmer, subnetConfirmer *check.OwnerConfirmer
+	if ownerCheck != nil {
+		netConfirmer = check.NewNetworkOwnerConfirmer(ownerCheck)
+		sgConfirmer = check.NewSecurityGroupOwnerConfirmer(ownerCheck)
+		subnetConfirmer = check.NewSubnetOwnerConfirmer(ownerCheck)
+	}
 	if !cfg.Network.DefaultSGInline {
 		logger.Warn("network.default-sg-inline=false — Network.Create НЕ создает default SG")
 	}
@@ -872,6 +895,11 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// inline default SG и Network.default_security_group_id заполняется атомарно.
 	netCreateUC := networkapp.NewCreateNetworkUseCase(kachoRepo, projectClient, opsRepo, cfg.Network.DefaultSGInline).
 		WithLogger(logger).WithRegistrar(registrar)
+	// owner-tuple opgate: Create-op ждёт read-after-register confirm owner-tuple.
+	// Только non-nil confirmer (иначе typed-nil interface обошёл бы nil-guard).
+	if netConfirmer != nil {
+		netCreateUC = netCreateUC.WithConfirmer(netConfirmer)
+	}
 	netUpdateUC := networkapp.NewUpdateNetworkUseCase(kachoRepo, opsRepo)
 	netDeleteUC := networkapp.NewDeleteNetworkUseCase(kachoRepo, subnetAdapter, routeTableAdapter, sgAdapter, opsRepo)
 	// Per-object FGA-фильтр (listFilter) питает И no-leak Get, И фильтрованный List.
@@ -911,8 +939,12 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// Subnet use-case'ы работают через CQRS-Repository (kachoRepo). niAdapter
 	// передается в Delete для precondition-check «нет привязанных NIC».
+	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).WithRegistrar(registrar)
+	if subnetConfirmer != nil {
+		subnetCreateUC = subnetCreateUC.WithConfirmer(subnetConfirmer) // owner-tuple opgate
+	}
 	subnetHandler := subnetapp.NewHandler(
-		subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).WithRegistrar(registrar),
+		subnetCreateUC,
 		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo),
 		subnetapp.NewDeleteSubnetUseCase(kachoRepo, niAdapter, opsRepo),
 		subnetapp.NewGetSubnetUseCase(kachoRepo, listFilter),
@@ -956,9 +988,13 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// sgAdapter (cqrsadapter поверх kachoRepo) передается в Network use-case'ы для
 	// checkNetworkEmpty / default-SG cleanup при Network.Delete (отдельная TX от
 	// Network writer'а).
+	sgCreateUC := sgapp.NewCreateSecurityGroupUseCase(kachoRepo, networkAdapter, projectClient, opsRepo).
+		WithSGReader(sgAdapter).WithRegistrar(registrar)
+	if sgConfirmer != nil {
+		sgCreateUC = sgCreateUC.WithConfirmer(sgConfirmer) // owner-tuple opgate
+	}
 	sgHandler := sgapp.NewHandler(
-		sgapp.NewCreateSecurityGroupUseCase(kachoRepo, networkAdapter, projectClient, opsRepo).
-			WithSGReader(sgAdapter).WithRegistrar(registrar),
+		sgCreateUC,
 		sgapp.NewUpdateSecurityGroupUseCase(kachoRepo, opsRepo).WithSGReader(sgAdapter),
 		// sgAdapter (SecurityGroupReader) — same-network-валидация SG-target-правил
 		// на UpdateRules/UpdateRule.
