@@ -32,7 +32,13 @@ env:
 jobs:
   build:
     name: ${{ matrix.image }}
-    runs-on: ubuntu-latest
+    # self-hosted (beget-runner): docker-демон живой, 12 ядер, и главное — КЭШ СЛОЁВ
+    # ПЕРЕЖИВАЕТ ПРОГОНЫ. На ubuntu-latest каждая джоба — чистая VM, кэш тянется по сети
+    # из type=gha; здесь builder-контейнер остаётся между запусками и кэш локальный.
+    #
+    # Метка, а НЕ имя: `beget-runner` — имя ранера, метки у него self-hosted/Linux/X64.
+    # `runs-on: beget-runner` не сматчится ни с чем и висит в очереди молча.
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
@@ -84,9 +90,15 @@ jobs:
         uses: docker/setup-qemu-action@v3
         with: { image: mirror.gcr.io/tonistiigi/binfmt:latest }
 
-      - name: Buildx
+      # ПЕРСИСТЕНТНЫЙ builder: cleanup=false не даёт снести его после джобы. Внутренний
+      # кэш buildkit живёт в томе этого контейнера → переживает прогоны, и cache-from/to
+      # по сети не нужны вовсе. На ubuntu-latest так нельзя (VM одноразовая).
+      - name: Buildx (персистентный builder)
         uses: docker/setup-buildx-action@v3
-        with: { driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1 }
+        with:
+          name: kacho-persistent
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
+          cleanup: false
 
       - name: build and push (multiarch)
         uses: docker/build-push-action@v6
@@ -98,5 +110,19 @@ jobs:
           provenance: false
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.gate.outputs.ns }}/${{ matrix.image }}:${{ steps.sanitize.outputs.branch }}-${{ steps.short-sha.outputs.sha }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          # type=gha убран: кэш и так лежит внутри персистентного builder'а локально.
+          # gha тянул бы его по сети поверх уже локального — чистый проигрыш.
+
+      # ОБЯЗАТЕЛЬНО для self-hosted: на ubuntu-latest VM одноразовая и мусор исчезает сам,
+      # здесь кэш buildkit копится вечно. На ранере свободно ~16 ГБ — без уборки он
+      # забьётся, и сборки начнут падать на `no space left on device` (в момент, никак не
+      # связанный с коммитом, который это переполнил).
+      #
+      # keep-storage 6GB: держим горячий кэш (он и даёт весь выигрыш), срезаем хвост.
+      # if: always() — мусор надо убрать и когда сборка упала, иначе красный прогон
+      # оставляет за собой полный диск.
+      - name: prune кэша buildkit (диск ранера не резиновый)
+        if: always()
+        run: |
+          docker buildx prune --builder kacho-persistent --keep-storage=6GB --force 2>/dev/null || true
+          echo "=== диск после уборки:"; df -h / | tail -1
