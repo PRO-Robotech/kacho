@@ -57,3 +57,16 @@ jobs:
           else
             echo "  kubectl отсутствует"
           fi
+
+  # Для сравнения: сколько даёт бесплатный GitHub-hosted. Репо ПУБЛИЧНЫЙ, а публичным
+  # репозиториям GitHub выдаёт увеличенные ранеры — если памяти там кратно больше, то
+  # стенд newman (4.2 ГБ requests) place'ится туда, а не на beget-runner (3.8 ГБ всего).
+  hosted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: сколько даёт ubuntu-latest
+        run: |
+          echo "  CPU: $(nproc) ядер"
+          free -h | sed 's/^/  /'
+          df -h / | tail -1 | sed 's/^/  диск: /'
