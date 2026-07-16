@@ -78,41 +78,30 @@ jobs:
         run: npm ci
       - name: зависимости standalone-пакетов
         run: for p in $STANDALONE; do npm ci --prefix "$p"; done
-      # ВРЕМЕННО (kacho#7): DIAG#1 локализовал host-hang в фазе module-EXECUTION
-      # DIAG#2 доказал: НЕ ресурс-старвейшн (raised ulimit+UV_THREADPOOL=64 → всё равно виснет),
-      # виновники — ровно 3 shell-integration файла (App/HostShell/HostRail), тянущие antd+
-      # react-router+remotes-реестр. DIAG#3: РАСПУТАТЬ module-LOAD vs RENDER — import-only проба
-      # (если import графа App виснет → ESM-линкер; если проходит, а render виснет → antd/MF-runtime)
-      # + надёжный node diagnostic-report (JS-стек висящего процесса, абсолютный путь). Шаг НЕ гейтит.
-      - name: DIAG3 host-hang (import-vs-render + stack, kacho#7)
+      # host-hang guard (kacho#7): 3 shell-integration файла (App/HostShell/HostRail)
+      # виснут на CI-ранере, если compute/storage/registry navigation НЕ застаблены в
+      # jest.config moduleNameMapper. Механизм (доказан DIAG на ранере): HostRail useEffect
+      # делает Promise.allSettled([import("<r>/navigation") ...]); незастабленный
+      # bare-specifier динамический import под --experimental-vm-modules НИКОГДА не settl'ится
+      # → allSettled висит → setSections не вызывается → рендер shell'а виснет вечно (локально
+      # тот же импорт reject'ится быстро — не воспроизводится). Fix: 3 стаба + mapper-записи.
+      # Guard гоняет ровно эти 3 файла с таймаутом ПЕРЕД полным npm test → быстрый сигнал
+      # регресса этого класса (иначе полный сьют висел бы до 20-мин job-timeout).
+      - name: host-hang guard (kacho#7)
         working-directory: ui-future/host
         run: |
-          set +e
           J="node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js"
-          mkdir -p src/__diag__ /tmp/rpt
-          printf "test('import App graph only (no render)', async () => { await import('../App'); expect(true).toBe(true); });\n" > src/__diag__/imp-app.diag.test.ts
-          printf "test('import HostShell only', async () => { await import('../components/organisms/HostShell/HostShell'); expect(true).toBe(true); });\n" > src/__diag__/imp-shell.diag.test.ts
-          printf "test('import HostRail only', async () => { await import('../components/organisms/HostRail/HostRail'); expect(true).toBe(true); });\n" > src/__diag__/imp-rail.diag.test.ts
-          for p in imp-app imp-shell imp-rail; do
-            timeout 55 $J --runInBand --silent "src/__diag__/$p.diag.test.ts" >/dev/null 2>&1; rc=$?
-            if [ $rc -eq 0 ]; then s="ok(import прошёл)"; elif [ $rc -eq 124 ]; then s="HANG(import виснет!)"; else s="rc$rc"; fi
-            echo "IMPORT $p → $s"
+          rc_all=0
+          for f in src/App.test.tsx \
+                   src/components/organisms/HostShell/HostShell.test.tsx \
+                   src/components/organisms/HostRail/HostRail.test.tsx; do
+            timeout 120 $J --runInBand --silent "$f" >/dev/null 2>&1; rc=$?
+            if [ "$rc" = "124" ]; then echo "::error::$f ВИСНЕТ (kacho#7 регресс — проверь compute/storage/registry navigation стабы)"; rc_all=1
+            elif [ "$rc" != "0" ]; then echo "::error::$f упал rc=$rc"; rc_all=1
+            else echo "  ✓ $(basename "$f") прошёл"; fi
           done
-          echo "=== STACK: App.test под node report (SIGUSR2, абс.путь) ==="
-          NODE_OPTIONS="--report-on-signal --report-directory=/tmp/rpt --report-filename=hang.json" \
-            $J --runInBand --silent src/App.test.tsx > /tmp/appt.out 2>&1 &
-          JPID=$!
-          for s in $(seq 1 33); do kill -0 $JPID 2>/dev/null || break; sleep 3; done
-          if kill -0 $JPID 2>/dev/null; then
-            echo "App.test HUNG >99s — SIGUSR2 report"; kill -USR2 $JPID; sleep 6
-            echo "--- /tmp/rpt:"; ls -la /tmp/rpt 2>&1
-            echo "--- javascriptStack:"; python3 -c "import json; d=json.load(open('/tmp/rpt/hang.json')); print(json.dumps(d.get('javascriptStack',{}),indent=0))" 2>&1 | head -40
-            kill -9 $JPID 2>/dev/null
-          else
-            echo "App.test rc=$? (НЕ завис под report?!)"; tail -8 /tmp/appt.out
-          fi
-          rm -rf src/__diag__
-          echo "=== DIAG3 DONE ==="; exit 0
+          exit $rc_all
+      - run: npm test
 
   build:
     name: build ${{ matrix.project }}
