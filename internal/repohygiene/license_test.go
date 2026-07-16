@@ -39,12 +39,15 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// skipDir — каталоги вне области покрытия хедерами: VCS, синканная AI-оснастка,
-// сгенерированные proto-stubs, docs-site и build-артефакты.
-func skipDir(name string) bool {
-	switch name {
-	case ".git", ".claude", "docs-site", "node_modules", "vendor", "bin":
-		return true
+// skipPath — пути вне области покрытия хедерами: VCS, синканная AI-оснастка,
+// docs-site, вендоренное и build-артефакты. Принимает REL-путь (обход идёт по индексу
+// git, где имена каталогов отдельно не приходят).
+func skipPath(rel string) bool {
+	for _, seg := range strings.Split(rel, "/") {
+		switch seg {
+		case ".git", ".claude", "docs-site", "node_modules", "vendor", "bin":
+			return true
+		}
 	}
 	return false
 }
@@ -118,30 +121,26 @@ func TestLicenseFileExists(t *testing.T) {
 func TestSPDXHeadersPresent(t *testing.T) {
 	root := repoRoot(t)
 	var missing []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	// Ходим по ИНДЕКСУ git, а не по диску (filepath.WalkDir). Причина: на диске лежат
+	// gitignored-файлы, которых в репозитории нет и быть не должно — напр.
+	// values.fe3455-ory.yaml (креды кластера, локальный артефакт). Обход диска требовал
+	// бы от НИХ SPDX-хедер, что бессмысленно: гейт про содержимое РЕПОЗИТОРИЯ.
+	// Индекс — ровно то, что уедет в чистый клон и в CI.
+	for _, line := range gitLsFiles(t, root) {
+		_, rel, ok := parseLsFiles(line)
+		if !ok {
+			continue
 		}
-		if d.IsDir() {
-			if skipDir(d.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
+		if skipPath(rel) || !inScope(rel) {
+			continue
 		}
-		rel, rerr := filepath.Rel(root, path)
-		if rerr != nil {
-			return rerr
+		abs := filepath.Join(root, rel)
+		if isGenerated(t, abs) {
+			continue
 		}
-		if !inScope(rel) || isGenerated(t, path) {
-			return nil
-		}
-		if !hasHeader(t, path) {
+		if !hasHeader(t, abs) {
 			missing = append(missing, rel)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk: %v", err)
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {

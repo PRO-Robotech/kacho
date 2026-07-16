@@ -1,0 +1,59 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ui.vpcName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.vpcSelectorLabels" . | nindent 4 }}
+spec:
+  {{- if not .Values.vpc.autoscaling.enabled }}
+  replicas: {{ .Values.vpc.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ui.vpcSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ui.labels" . | nindent 8 }}
+        {{- include "ui.vpcSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      volumes:
+        - name: nginx-template
+          configMap:
+            name: {{ include "ui.vpcName" . }}-nginx
+            items:
+              - key: default.conf.template
+                path: default.conf.template
+      containers:
+        - name: vpc
+          image: {{ include "ui.vpcImage" . | quote }}
+          imagePullPolicy: {{ include "ui.vpcImagePullPolicy" . }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.vpc.port }}
+          volumeMounts:
+            - name: nginx-template
+              mountPath: /etc/nginx/templates/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.vpc.resources | nindent 12 }}

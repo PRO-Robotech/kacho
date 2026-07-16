@@ -1,0 +1,125 @@
+// Simple toast system — без внешних deps.
+// API: toast.success(msg), toast.error(msg), toast.info(msg), toast.dismiss(id).
+// Pending → success/error: useOperationToast(opId, {labels})
+
+import { useEffect, useSyncExternalStore } from "react";
+import { useOperation } from "./use-operation";
+
+export type ToastVariant = "success" | "error" | "info" | "loading";
+
+export interface ToastItem {
+  id: string;
+  message: string;
+  variant: ToastVariant;
+  // ms; 0 = sticky (не закрывается автоматически)
+  duration: number;
+  createdAt: number;
+}
+
+let counter = 0;
+let toasts: ToastItem[] = [];
+const listeners = new Set<() => void>();
+
+function emit() {
+  listeners.forEach((l) => l());
+}
+
+function add(t: Omit<ToastItem, "id" | "createdAt">): string {
+  const id = `t${++counter}`;
+  toasts = [...toasts, { ...t, id, createdAt: Date.now() }];
+  emit();
+  if (t.duration > 0) {
+    setTimeout(() => dismiss(id), t.duration);
+  }
+  return id;
+}
+
+function update(id: string, patch: Partial<Omit<ToastItem, "id" | "createdAt">>) {
+  toasts = toasts.map((t) => (t.id === id ? { ...t, ...patch } : t));
+  emit();
+}
+
+function dismiss(id: string) {
+  toasts = toasts.filter((t) => t.id !== id);
+  emit();
+}
+
+export const toast = {
+  success(message: string, durationMs = 4000) {
+    return add({ message, variant: "success", duration: durationMs });
+  },
+  error(message: string, durationMs = 7000) {
+    return add({ message, variant: "error", duration: durationMs });
+  },
+  info(message: string, durationMs = 3000) {
+    return add({ message, variant: "info", duration: durationMs });
+  },
+  loading(message: string) {
+    return add({ message, variant: "loading", duration: 0 });
+  },
+  update,
+  dismiss,
+};
+
+// Hook для подписки на список toast-ов (для Toaster компонента).
+export function useToasts(): ToastItem[] {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    () => toasts,
+    () => toasts,
+  );
+}
+
+// Хелпер: запускает loading-toast и обновляет его при завершении Operation.
+//   labels: тексты для loading/success/error.
+//   onDone: callback при done=true (для invalidate cache, navigate etc.)
+interface OperationToastLabels {
+  loading: string;
+  success: string;
+  // errorPrefix: префикс для error toast; финальная строка = `${prefix}: ${error.message}`
+  errorPrefix: string;
+}
+
+export function useOperationToast(
+  opId: string | null,
+  labels: OperationToastLabels,
+  callbacks?: { onDone?: (success: boolean) => void },
+) {
+  const { data: op, isError } = useOperation(opId);
+
+  useEffect(() => {
+    if (!opId) return;
+    const toastId = toast.loading(labels.loading);
+
+    return () => {
+      // На unmount — если ещё loading, dismiss
+      toast.dismiss(toastId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opId]);
+
+  useEffect(() => {
+    if (!opId) return;
+    if (op?.done) {
+      // Найти existing loading toast по message — простейший mapping; вместо этого
+      // upgradeим: один toast на opId через ref... Упрощу: при done — dismiss all и
+      // создаём новый.
+      // Поскольку у нас один toast на op (только что создали в useEffect выше),
+      // он уже dismissed на cleanup при изменении opId. Создаём финальный.
+      if (op.error) {
+        toast.error(`${labels.errorPrefix}: ${op.error.message}`);
+        callbacks?.onDone?.(false);
+      } else {
+        toast.success(labels.success);
+        callbacks?.onDone?.(true);
+      }
+    } else if (isError) {
+      toast.error(`${labels.errorPrefix}: ошибка опроса операции`);
+      callbacks?.onDone?.(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [op?.done, op?.error?.code, isError, opId]);
+}

@@ -1,0 +1,95 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ui.hostName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.hostSelectorLabels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ include "ui.hostReplicas" . }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ui.hostSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ui.labels" . | nindent 8 }}
+        {{- include "ui.hostSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      volumes:
+        - name: nginx-template
+          configMap:
+            name: {{ include "ui.hostName" . }}-nginx
+            items:
+              - key: default.conf.template
+                path: default.conf.template
+        - name: nginx-entrypoint
+          configMap:
+            name: {{ include "ui.hostName" . }}-nginx
+            defaultMode: 0755
+            items:
+              - key: resolver-from-resolvconf.envsh
+                path: 05-resolver-from-resolvconf.envsh
+      containers:
+        - name: host
+          image: {{ include "ui.hostImage" . | quote }}
+          imagePullPolicy: {{ include "ui.hostImagePullPolicy" . }}
+          ports:
+            - name: http
+              containerPort: {{ include "ui.hostPort" . }}
+          env:
+            - name: KACHO_UI_API_GATEWAY_UPSTREAM
+              value: {{ .Values.host.upstreams.apiGateway | quote }}
+            - name: KACHO_UI_KRATOS_PUBLIC_UPSTREAM
+              value: {{ .Values.host.upstreams.kratosPublic | quote }}
+            - name: KACHO_UI_HYDRA_PUBLIC_UPSTREAM
+              value: {{ .Values.host.upstreams.hydraPublic | quote }}
+            - name: KACHO_UI_KRATOS_UI_UPSTREAM
+              value: {{ .Values.host.upstreams.kratosUi | quote }}
+            - name: KACHO_UI_DASHBOARD_UPSTREAM
+              value: {{ include "ui.dashboardUpstream" . | quote }}
+            - name: KACHO_UI_VPC_UPSTREAM
+              value: {{ include "ui.vpcUpstream" . | quote }}
+            - name: KACHO_UI_IAM_UPSTREAM
+              value: {{ include "ui.iamUpstream" . | quote }}
+            - name: KACHO_UI_NLB_UPSTREAM
+              value: {{ include "ui.nlbUpstream" . | quote }}
+            - name: KACHO_UI_REGISTRY_UPSTREAM
+              value: {{ include "ui.registryUpstream" . | quote }}
+            - name: KACHO_UI_SYSTEM_UPSTREAM
+              value: {{ include "ui.systemUpstream" . | quote }}
+            - name: KACHO_UI_COMPUTE_UPSTREAM
+              value: {{ include "ui.computeUpstream" . | quote }}
+            - name: KACHO_UI_STORAGE_UPSTREAM
+              value: {{ include "ui.storageUpstream" . | quote }}
+          volumeMounts:
+            - name: nginx-template
+              mountPath: /etc/nginx/templates/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
+            - name: nginx-entrypoint
+              mountPath: /docker-entrypoint.d/05-resolver-from-resolvconf.envsh
+              subPath: 05-resolver-from-resolvconf.envsh
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            {{- include "ui.hostResources" . | nindent 12 }}

@@ -1,0 +1,145 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.hostName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.hostSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.hostSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ include "ui.hostPort" . }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.dashboardName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.dashboardSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.dashboardSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.dashboard.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.vpcName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.vpcSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.vpcSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.vpc.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.iamName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.iamSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.iamSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.iam.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.nlbName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.nlbSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.nlbSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.nlb.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.registryName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.registrySelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.registrySelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.registry.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.systemName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.systemSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.systemSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.system.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.computeName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.computeSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.computeSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.compute.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.storageName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.storageSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "ui.storageSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.storage.port }}
+      targetPort: http

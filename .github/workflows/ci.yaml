@@ -195,23 +195,40 @@ jobs:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
 
-      # Только `helm lint`, БЕЗ голого `helm template`.
-      #
-      # `helm template <chart>` без values НЕ является валидным гейтом: часть чартов
-      # ОСОЗНАННО падает без секретов (kacho-nlb: «db.password is required when
-      # db.existingSecret is empty» — fail-closed, дефолтного пароля нет и быть не
-      # должно). Т.е. такой рендер наказывал бы за правильный дизайн.
-      #
-      # Реальную интеграцию проверяет рендер umbrella с профилем, но он требует
-      # file://-чекаутов ui/ui-future, которые ПОКА не перенесены в монорепу. Вернуть
-      # сюда `helm template ./deploy/helm/umbrella -f values.dev.yaml`, как только они
-      # переедут (тогда же покрыть prod-профиль).
+      # Только `helm lint`, БЕЗ голого `helm template <chart>`: последний НЕ является
+      # валидным гейтом — часть чартов ОСОЗНАННО падает без секретов (kacho-nlb:
+      # «db.password is required when db.existingSecret is empty» — fail-closed,
+      # дефолтного пароля нет и быть не должно). Такой рендер наказывал бы за
+      # правильный дизайн. Реальную интеграцию даёт рендер umbrella с ПРОФИЛЕМ (ниже).
       - name: lint сервисных чартов
         run: |
-          for c in services/*/deploy gateway/deploy; do
+          for c in services/*/deploy gateway/deploy ui-future/deploy; do
             [ -f "$c/Chart.yaml" ] || continue
             echo "=== $c"; helm lint "$c"
           done
+
+      # Рендер umbrella с профилем — гейт, который ловит класс «шаблон падает только на
+      # реальном профиле»: `and` в Go-шаблонах не короткозамкнутый (pg-certificates ронял
+      # ВЕСЬ рендер), забытый сабчарт в MTLS_OFF, pg на несуществующем образе.
+      #
+      # Был ВЫКЛЮЧЕН, пока ui-future жил снаружи: umbrella ссылается на него file://, и
+      # `helm dependency build` без sibling-чекаута не проходил. После переезда ui-future
+      # в монорепу гейт вернулся.
+      #
+      # prod-профиль требует values.fe3455-ory.yaml (gitignored — несёт креды кластера),
+      # поэтому в CI рендерим dev + prod-БЕЗ-ory: этого хватает, чтобы поймать
+      # шаблонные дефекты, а секрет остаётся вне репозитория.
+      - name: umbrella dependency build (без sibling-чекаутов)
+        working-directory: deploy/helm/umbrella
+        run: helm dependency build
+
+      - name: umbrella template — dev-профиль
+        working-directory: deploy/helm/umbrella
+        run: helm template ci . -f values.dev.yaml > /dev/null
+
+      - name: umbrella template — prod-профиль
+        working-directory: deploy/helm/umbrella
+        run: helm template ci . -f values.prod.yaml -f values.fe3455.yaml -f values.fe3455-prod.yaml > /dev/null
 
       - name: mtls-off список покрывает values.dev.yaml
         working-directory: deploy

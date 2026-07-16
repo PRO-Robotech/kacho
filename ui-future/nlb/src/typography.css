@@ -1,0 +1,40 @@
+/*
+ * KAC-246: типографическая шкала (Linear-стиль). Utility-классы, применяются
+ * поверх AntD Typography для усиления визуального веса page-title и секций.
+ * Импортируется из index.css.
+ */
+
+.t-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.t-section {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.t-h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.t-body {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.t-small {
+  font-size: 12px;
+}
+
+.t-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.t-mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}

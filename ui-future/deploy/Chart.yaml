@@ -1,0 +1,13 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: v2
+# Chart name is `uif` (not `ui`) so it never collides with the legacy monolithic
+# kacho-ui chart (also named `ui`) when both are dependencies of the kacho-deploy
+# umbrella. Two same-named subcharts make helm's dependency render non-deterministic
+# (it dropped 5 of the 7 console components on some runs). The internal template
+# helpers stay `ui.*` (define-names, unrelated to the chart name); only the
+# helm.sh/chart label changes (ui-2.0.0 → uif-2.0.0). Release name is independent.
+name: uif
+version: 2.0.0
+appVersion: 0.1.0
+description: Kacho federated console - host plus dashboard, VPC, IAM, and System remotes

@@ -1,0 +1,251 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+# Compatibility surface for kacho-deploy's existing umbrella values.
+name: ui
+replicas: 1
+image: kacho-ui-future-host:dev
+imagePullPolicy: IfNotPresent
+port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: console.kacho.local
+  annotations: {}
+  tls: []
+
+# Response security headers emitted by every nginx UI server (host + remotes).
+# Internal serving config only - no API/proto/wire contract surface.
+# Everything the console talks to (api-gateway, kratos, hydra) is reached
+# same-origin through the host nginx proxy, so a 'self'-based CSP is sufficient.
+#
+# style-src carries 'unsafe-inline' (script-src does NOT). antd v6 renders its
+# component styles through a runtime CSS-in-JS engine that injects <style> tags
+# without a per-tag nonce, so a nonce/hash style-src cannot be satisfied while
+# antd v6 is the UI kit. Because script-src stays 'self', no attacker-controlled
+# JS can execute, so the residual exposure is bounded to CSS-only vectors and is
+# only reachable if a DOM-injection sink is separately introduced. Accepted as a
+# documented residual (see docs/architecture/known-divergences.md); revisit if
+# antd exposes nonce-based StyleProvider integration.
+security:
+  enabled: true
+  # HSTS: force https on subsequent navigations (SSL-strip / downgrade defense).
+  # Emitted only over TLS-terminated responses; safe to also set here because the
+  # UI is always served behind the https ingress. Set to "" to defer to an
+  # upstream ingress controller that already injects HSTS.
+  strictTransportSecurity: "max-age=63072000; includeSubDomains"
+  contentSecurityPolicy: >-
+    default-src 'self';
+    script-src 'self';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data:;
+    font-src 'self' data:;
+    connect-src 'self';
+    worker-src 'self' blob:;
+    frame-ancestors 'none';
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self'
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+host:
+  name: ""
+  replicas: null
+  image: ""
+  imagePullPolicy: ""
+  port: null
+  resources: {}
+  upstreams:
+    apiGateway: api-gateway.kacho.svc.cluster.local:8080
+    kratosPublic: kacho-umbrella-kratos-public.kacho.svc.cluster.local:80
+    hydraPublic: kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444
+    kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000
+    dashboard: ""
+    vpc: ""
+    iam: ""
+    nlb: ""
+    registry: ""
+    system: ""
+    compute: ""
+    storage: ""
+
+dashboard:
+  name: ui-dashboard
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "dashboard", e.g. kacho-ui-future-host:dev -> kacho-ui-future-dashboard:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 48Mi
+    limits:
+      cpu: 150m
+      memory: 192Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+vpc:
+  name: ui-vpc
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "vpc", e.g. kacho-ui-future-host:dev -> kacho-ui-future-vpc:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 180m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+iam:
+  name: ui-iam
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "iam", e.g. kacho-ui-future-host:dev -> kacho-ui-future-iam:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 180m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+nlb:
+  name: ui-nlb
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "nlb", e.g. kacho-ui-future-host:dev -> kacho-ui-future-nlb:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 180m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+registry:
+  name: ui-registry
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "registry", e.g. kacho-ui-future-host:dev -> kacho-ui-future-registry:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 180m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+system:
+  name: ui-system
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "system", e.g. kacho-ui-future-host:dev -> kacho-ui-future-system:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 180m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+compute:
+  name: ui-compute
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "compute", e.g. kacho-ui-future-host:dev -> kacho-ui-future-compute:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 180m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+storage:
+  name: ui-storage
+  replicas: 1
+  # When empty, the chart derives this from the host image by replacing "host"
+  # with "storage", e.g. kacho-ui-future-host:dev -> kacho-ui-future-storage:dev.
+  image: ""
+  imagePullPolicy: ""
+  port: 8080
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 180m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70

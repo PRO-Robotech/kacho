@@ -1,0 +1,59 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ui.dashboardName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.dashboardSelectorLabels" . | nindent 4 }}
+spec:
+  {{- if not .Values.dashboard.autoscaling.enabled }}
+  replicas: {{ .Values.dashboard.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ui.dashboardSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ui.labels" . | nindent 8 }}
+        {{- include "ui.dashboardSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      volumes:
+        - name: nginx-template
+          configMap:
+            name: {{ include "ui.dashboardName" . }}-nginx
+            items:
+              - key: default.conf.template
+                path: default.conf.template
+      containers:
+        - name: dashboard
+          image: {{ include "ui.dashboardImage" . | quote }}
+          imagePullPolicy: {{ include "ui.dashboardImagePullPolicy" . }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.dashboard.port }}
+          volumeMounts:
+            - name: nginx-template
+              mountPath: /etc/nginx/templates/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.dashboard.resources | nindent 12 }}

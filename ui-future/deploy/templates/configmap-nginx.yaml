@@ -1,0 +1,588 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.hostName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ include "ui.hostPort" . }};
+        server_name _;
+
+        resolver ${KUBE_DNS_SERVER} valid=10s ipv6=off;
+
+        root /usr/share/nginx/html;
+        index index.html;
+        {{- include "ui.securityHeaders" . | nindent 8 }}
+
+        location ^~ /dashboard/ {
+            set $dashboard_upstream "${KACHO_UI_DASHBOARD_UPSTREAM}";
+            rewrite ^/dashboard/(.*)$ /$1 break;
+            proxy_pass http://$dashboard_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ^~ /vpc-remote/ {
+            set $vpc_upstream "${KACHO_UI_VPC_UPSTREAM}";
+            rewrite ^/vpc-remote/(.*)$ /$1 break;
+            proxy_pass http://$vpc_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ^~ /iam-remote/ {
+            set $iam_upstream "${KACHO_UI_IAM_UPSTREAM}";
+            rewrite ^/iam-remote/(.*)$ /$1 break;
+            proxy_pass http://$iam_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ^~ /nlb-remote/ {
+            set $nlb_upstream "${KACHO_UI_NLB_UPSTREAM}";
+            rewrite ^/nlb-remote/(.*)$ /$1 break;
+            proxy_pass http://$nlb_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ^~ /registry-remote/ {
+            set $registry_upstream "${KACHO_UI_REGISTRY_UPSTREAM}";
+            rewrite ^/registry-remote/(.*)$ /$1 break;
+            proxy_pass http://$registry_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ^~ /system-remote/ {
+            set $system_upstream "${KACHO_UI_SYSTEM_UPSTREAM}";
+            rewrite ^/system-remote/(.*)$ /$1 break;
+            proxy_pass http://$system_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ^~ /compute-remote/ {
+            set $compute_upstream "${KACHO_UI_COMPUTE_UPSTREAM}";
+            rewrite ^/compute-remote/(.*)$ /$1 break;
+            proxy_pass http://$compute_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ^~ /storage-remote/ {
+            set $storage_upstream "${KACHO_UI_STORAGE_UPSTREAM}";
+            rewrite ^/storage-remote/(.*)$ /$1 break;
+            proxy_pass http://$storage_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ~ ^/(vpc|compute|storage|geo|nlb|registry|operations)/ {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass http://$api_gw_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Request-ID $http_x_request_id;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ~ ^/iam/v1/ {
+            set $api_gw_upstream "${KACHO_UI_API_GATEWAY_UPSTREAM}";
+            proxy_pass http://$api_gw_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Request-ID $http_x_request_id;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location /.ory/kratos/public/ {
+            set $kratos_public "${KACHO_UI_KRATOS_PUBLIC_UPSTREAM}";
+            rewrite ^/\.ory/kratos/public/(.*)$ /$1 break;
+            proxy_pass http://$kratos_public;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location /.ory/hydra/public/ {
+            set $hydra_public "${KACHO_UI_HYDRA_PUBLIC_UPSTREAM}";
+            rewrite ^/\.ory/hydra/public/(.*)$ /$1 break;
+            proxy_pass http://$hydra_public;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location ~ ^/(login|registration|recovery|verification|settings|error|consent|logout)(/|$) {
+            set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}";
+            proxy_pass http://$kratos_ui;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+        }
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location ^~ /assets/ {
+            try_files $uri @kratos_ui_assets_fallback;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location ~* \.(js|css|svg|png|jpg|jpeg|gif|ico|woff2?|ttf|eot|otf)$ {
+            try_files $uri @kratos_ui_assets_fallback;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location @kratos_ui_assets_fallback {
+            set $kratos_ui_fallback "${KACHO_UI_KRATOS_UI_UPSTREAM}";
+            proxy_pass http://$kratos_ui_fallback;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 10s;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+  resolver-from-resolvconf.envsh: |
+    # Sourced (.envsh) до nginx 20-envsubst: экспортирует адрес кластерного DNS из
+    # /etc/resolv.conf в KUBE_DNS_SERVER, чтобы envsubst подставил его в
+    # `resolver ${KUBE_DNS_SERVER}` шаблона. Экспорт (не sed по read-only
+    # ConfigMap-mount) — mount доступен только на чтение, in-place правка невозможна.
+    ns="$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)"
+    if [ -z "$ns" ]; then
+      echo "[05-resolver] FATAL: no nameserver in /etc/resolv.conf" >&2
+      return 1 2>/dev/null || exit 1
+    fi
+    export KUBE_DNS_SERVER="$ns"
+    echo "[05-resolver] KUBE_DNS_SERVER=$ns exported for envsubst"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.iamName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.iam.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+        {{- include "ui.securityHeaders" . | nindent 8 }}
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.systemName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.system.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+        {{- include "ui.securityHeaders" . | nindent 8 }}
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.dashboardName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.dashboard.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+        {{- include "ui.securityHeaders" . | nindent 8 }}
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.vpcName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.vpc.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+        {{- include "ui.securityHeaders" . | nindent 8 }}
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.nlbName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.nlb.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.registryName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.registry.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.computeName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.compute.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.storageName" . }}-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf.template: |
+    server {
+        listen {{ .Values.storage.port }};
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            return 200 "ok\n";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        gzip on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+    }

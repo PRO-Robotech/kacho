@@ -1,0 +1,347 @@
+:root {
+  color-scheme: light;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  --kc-hover-fill: rgb(127 127 127 / 0.08);
+  --sidebar-active-bg: rgb(61 141 245 / 0.12);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --kc-hover-fill: rgb(127 127 127 / 0.08);
+  --sidebar-active-bg: rgb(61 141 245 / 0.12);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --kc-hover-fill: rgb(255 255 255 / 0.08);
+  --sidebar-active-bg: rgb(61 141 245 / 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-rail {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: visible;
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 6px 8px;
+}
+
+.rail-brand,
+.rail-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: currentcolor;
+  cursor: pointer;
+}
+
+.rail-brand {
+  width: 40px;
+  height: 48px;
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.rail-items,
+.rail-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rail-items {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+}
+
+.rail-section-divider {
+  width: 32px;
+  height: 1px;
+  margin: 4px auto;
+  background: rgb(127 127 127 / 0.16);
+  border-radius: 1px;
+}
+
+.rail-bottom {
+  padding-top: 6px;
+  margin-top: 6px;
+  border-top: 1px solid rgb(127 127 127 / 0.16);
+}
+
+.rail-button {
+  position: relative;
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  color: rgb(127 127 127);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.rail-button:hover {
+  background: var(--kc-hover-fill);
+  color: currentcolor;
+}
+
+.rail-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.rail-button:disabled:hover {
+  color: rgb(127 127 127);
+  background: transparent;
+}
+
+.rail-button[data-active] {
+  background: var(--sidebar-active-bg);
+  color: #3d8df5;
+}
+
+.rail-button[data-active]::before {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: -8px;
+  width: 2px;
+  content: "";
+  background: #3d8df5;
+  border-radius: 2px;
+}
+
+.app-main {
+  min-width: 0;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px;
+}
+
+.context-breadcrumb,
+.header-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.context-breadcrumb {
+  flex: 1;
+  gap: 4px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.header-actions {
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.breadcrumb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 200px;
+  height: 28px;
+  padding: 0 10px;
+  overflow: hidden;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.breadcrumb-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.breadcrumb-pill:not(:disabled):hover {
+  background: var(--kc-hover-fill);
+}
+
+.breadcrumb-pill > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb-pill-chevron {
+  flex-shrink: 0;
+  color: rgb(127 127 127);
+  transform: rotate(90deg);
+}
+
+.breadcrumb-separator {
+  flex-shrink: 0;
+  color: rgb(127 127 127);
+}
+
+.breadcrumb-current {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  /* Вертикальный отступ подтянут (8px) — симметричный зазор header↔surface и
+     surface↔footer, без «воздуха». Горизонталь 16px (визуальные поля страницы). */
+  padding: 8px 16px;
+  /* Content-область ограничена по высоте (header + content + footer в 100vh);
+     сама НЕ скроллится — белая поверхность (.kc-surface) фиксированного размера
+     заполняет её и скроллит контент внутри себя. flex-column — чтобы дочерний
+     remote-frame заполнял высоту через flex:1 (percentage-height через
+     block-границу в Chrome не резолвится → поверхность «висела» короткой). */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Обёртка antd <App> (`.ant-app`) каждого remote рендерится прямым ребёнком
+   .app-content, но по умолчанию display:block/height:auto — рвёт flex-цепочку
+   заполнения высоты (remote-frame flex:1 не срабатывал, поверхность «висела»
+   короткой над футером). Делаем её flex-fill звеном. */
+.app-content > .ant-app {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.app-footer {
+  flex-shrink: 0;
+  padding: 9px 16px 11px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--kc-text-tertiary, rgb(127 127 127 / 0.7));
+  border-top: 1px solid var(--kc-border-secondary, rgb(127 127 127 / 0.18));
+  background: transparent;
+  height: auto;
+}
+
+.workbench {
+  width: min(980px, 100%);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-heading h3 {
+  margin: 0 0 4px;
+}
+
+.probe-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.probe-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid rgb(127 127 127 / 0.18);
+  border-radius: 6px;
+  background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+}
+
+.probe-row > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+@media (width <= 720px) {
+  .app-header {
+    padding: 0 12px;
+  }
+
+  .header-actions {
+    gap: 2px;
+  }
+
+  .header-actions .ant-btn {
+    width: 28px;
+    padding-inline: 0;
+  }
+
+  .breadcrumb-pill {
+    max-width: 132px;
+    padding-inline: 8px;
+  }
+
+  .panel-heading,
+  .probe-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

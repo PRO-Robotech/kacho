@@ -1,0 +1,383 @@
+@import url("./typography.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Резервируем место под scrollbar даже когда он скрыт. Без этого Antd Modal
+ * при открытии скрывает scrollbar (body{overflow:hidden}) → виден layout
+ * shift (страница «прыгает» вправо). scrollbar-gutter:stable резервирует
+ * место — открытие модалки не двигает контент.
+ */
+html {
+  scrollbar-gutter: stable;
+}
+
+body.ant-modal-open {
+  padding-right: 0 !important;
+  overflow: hidden !important;
+}
+
+/*
+ * KAC-246: дуал-тема (dark/light). CSS-vars определены ДЛЯ ОБЕИХ тем через
+ * :root[data-theme="dark"] / :root[data-theme="light"] (data-theme ставит
+ * ThemeProvider, src/lib/theme-context.tsx). Это нужно, чтобы Tailwind/CSS-
+ * компоненты (StatusBadge / Toaster / ServiceSidebar / ResourceTable) были
+ * theme-aware через var(--…), а не хардкодили dark/light-цвет.
+ *
+ * Значения палитры синхронизированы с AntD-токенами в src/lib/theme.ts —
+ * меняешь там, меняй здесь.
+ *
+ * Tailwind hsl-vars (--background / --foreground / …) сохранены для shadcn-
+ * слоя (tailwind.config.js → hsl(var(--…))).
+ */
+
+/* === DARK === */
+:root[data-theme="dark"] {
+  /* shadcn / Tailwind hsl-токены */
+  --background: 228 14% 6%; /* #0d0e12 */
+  --foreground: 226 18% 92%; /* #e7e9ef */
+  --card: 230 16% 10%; /* #15161d */
+  --card-foreground: 226 18% 92%;
+  --primary: 213 90% 60%; /* #3D8DF5 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 222 12% 18%; /* #272a33 */
+  --secondary-foreground: 226 18% 92%;
+  --muted: 230 14% 12%;
+  --muted-foreground: 222 9% 64%; /* #9aa0ac */
+  --accent: 222 12% 18%;
+  --accent-foreground: 226 18% 92%;
+  --destructive: 358 75% 59%; /* #e5484d */
+  --destructive-foreground: 0 0% 100%;
+  --border: 222 12% 18%;
+  --radius: 0.5rem;
+
+  /* === KAC-246 семантические theme-vars === */
+  --kc-page: #0d0e12;
+  --kc-container: #15161d;
+  --kc-elevated: #1b1d25;
+  --kc-border: #272a33;
+  --kc-border-secondary: #1d1f27;
+  --kc-text: #e7e9ef;
+  --kc-text-secondary: #9aa0ac;
+  --kc-text-tertiary: #6a7080;
+  --kc-hover-fill: rgb(255 255 255 / 0.045);
+  --kc-primary: #3d8df5;
+  --kc-brand-gradient: linear-gradient(135deg, #3d8df5 0%, #6e56cf 100%);
+  --kc-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --kc-shadow-md: 0 6px 20px rgb(0 0 0 / 0.5);
+  --kc-shadow-lg: 0 16px 48px rgb(0 0 0 / 0.55);
+  --kc-focus-ring: 0 0 0 3px rgb(61 141 245 / 0.25);
+
+  /* Status badge tones (приглушённый фон + яркий текст в dark) */
+  --status-ok-bg: rgb(43 184 119 / 0.16);
+  --status-ok-fg: #4fd6a0;
+  --status-ok-border: rgb(43 184 119 / 0.32);
+  --status-info-bg: rgb(61 141 245 / 0.16);
+  --status-info-fg: #6fb0fb;
+  --status-info-border: rgb(61 141 245 / 0.32);
+  --status-warn-bg: rgb(224 163 56 / 0.16);
+  --status-warn-fg: #e9bd6b;
+  --status-warn-border: rgb(224 163 56 / 0.32);
+  --status-muted-bg: rgb(255 255 255 / 0.06);
+  --status-muted-fg: #aab0bc;
+  --status-muted-border: rgb(255 255 255 / 0.12);
+  --status-error-bg: rgb(229 72 77 / 0.16);
+  --status-error-fg: #f0787c;
+  --status-error-border: rgb(229 72 77 / 0.34);
+  --status-violet-bg: rgb(110 86 207 / 0.18);
+  --status-violet-fg: #a594ef;
+  --status-violet-border: rgb(110 86 207 / 0.36);
+
+  /* Toaster tones (тёмный фон + accent-текст) */
+  --toast-bg: #1b1d25;
+  --toast-border: #272a33;
+  --toast-fg: #e7e9ef;
+  --toast-success-accent: #4fd6a0;
+  --toast-error-accent: #f0787c;
+  --toast-info-accent: #6fb0fb;
+  --toast-loading-accent: #9aa0ac;
+
+  /* Sidebar / table accents */
+  --sidebar-active-bg: rgb(61 141 245 / 0.14);
+  --table-stripe: rgb(255 255 255 / 0.02);
+}
+
+/* === LIGHT === */
+:root,
+:root[data-theme="light"] {
+  --background: 220 18% 97%; /* #f6f7f9 */
+  --foreground: 218 16% 9%; /* #14171c */
+  --card: 0 0% 100%; /* #ffffff */
+  --card-foreground: 218 16% 9%;
+  --primary: 213 90% 60%; /* #3D8DF5 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 14% 90%; /* #e3e6ea */
+  --secondary-foreground: 218 16% 9%;
+  --muted: 216 17% 95%;
+  --muted-foreground: 220 9% 39%; /* #5a616e */
+  --accent: 214 14% 90%;
+  --accent-foreground: 218 16% 9%;
+  --destructive: 358 75% 59%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 14% 90%;
+  --radius: 0.5rem;
+  --kc-page: #f6f7f9;
+  --kc-container: #fff;
+  --kc-elevated: #fff;
+  --kc-border: #e3e6ea;
+  --kc-border-secondary: #eef0f3;
+  --kc-text: #14171c;
+  --kc-text-secondary: #5a616e;
+  --kc-text-tertiary: #8b929e;
+  --kc-hover-fill: rgb(0 0 0 / 0.03);
+  --kc-primary: #3d8df5;
+  --kc-brand-gradient: linear-gradient(135deg, #3d8df5 0%, #6e56cf 100%);
+  --kc-shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
+  --kc-shadow-md: 0 6px 20px rgb(16 24 40 / 0.1);
+  --kc-shadow-lg: 0 16px 48px rgb(16 24 40 / 0.16);
+  --kc-focus-ring: 0 0 0 3px rgb(61 141 245 / 0.25);
+
+  /* Status badge tones (светлый фон + насыщенный текст + чёткий border) */
+  --status-ok-bg: #e6f7ef;
+  --status-ok-fg: #157a4f;
+  --status-ok-border: #bce8d3;
+  --status-info-bg: #e8f1fe;
+  --status-info-fg: #1f6fd6;
+  --status-info-border: #c4dcf9;
+  --status-warn-bg: #fbf2dd;
+  --status-warn-fg: #976414;
+  --status-warn-border: #f0dcae;
+  --status-muted-bg: #eef0f3;
+  --status-muted-fg: #5a616e;
+  --status-muted-border: #dde1e7;
+  --status-error-bg: #fdeaea;
+  --status-error-fg: #c5343a;
+  --status-error-border: #f6cccd;
+  --status-violet-bg: #efebfb;
+  --status-violet-fg: #5a45b8;
+  --status-violet-border: #d8cef4;
+
+  /* Toaster tones (светлый фон + accent-текст) */
+  --toast-bg: #fff;
+  --toast-border: #e3e6ea;
+  --toast-fg: #14171c;
+  --toast-success-accent: #157a4f;
+  --toast-error-accent: #c5343a;
+  --toast-info-accent: #1f6fd6;
+  --toast-loading-accent: #5a616e;
+  --sidebar-active-bg: rgb(61 141 245 / 0.1);
+  --table-stripe: rgb(0 0 0 / 0.018);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+  }
+}
+
+/*
+ * KAC-246: тонкий zebra-striping + комфортный row-height + sticky header для
+ * ResourceTable (AntD Table). rowClassName="kc-table-row" не нужен — нечётные
+ * строки берём через :nth-child. Применяется ко всем AntD small-таблицам в app.
+ */
+.kc-table .ant-table-tbody > tr.ant-table-row:nth-child(odd) > td {
+  background: var(--table-stripe);
+}
+
+.kc-table .ant-table-tbody > tr.ant-table-row:hover > td {
+  background: var(--kc-hover-fill);
+}
+
+.kc-table .ant-table-tbody > tr.ant-table-row > td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.kc-table .ant-table-thead > tr > th {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--kc-text-secondary);
+}
+
+/*
+ * KAC-246: breadcrumb resource-сегмент (page-level slot после `Account › Project`).
+ * Сепаратор `›` + slot скрываются целиком, когда страница не задала breadcrumb
+ * (HeaderBreadcrumbSlot рендерит null → в группе остаётся только .kc-breadcrumb-sep).
+ * Показываем группу только если есть хоть один элемент ПОСЛЕ сепаратора.
+ */
+.kc-breadcrumb-resource:not(:has(> :nth-child(2))) {
+  display: none !important;
+}
+
+/*
+ * KAC-246: единая content page-surface (Linear-стиль). ResourceListPage и
+ * DetailShell оборачивают контент в .kc-surface — поверхность поверх фона
+ * страницы (container-фон + secondary-border + r12 + мягкая тень).
+ */
+.kc-surface {
+  background: var(--kc-container);
+  border: 1px solid var(--kc-border-secondary);
+  border-radius: 12px;
+  box-shadow: var(--kc-shadow-sm);
+}
+
+/* Federated host integration.
+ * VPC owns PageHeaderSlot state, but the visual slot must sit in the host
+ * header row. The host currently has no cross-remote header-slot API, so this
+ * projects the VPC-owned slot into that row without moving modals/actions into
+ * host code.
+ */
+.vpc-remote-frame {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vpc-host-header-slots {
+  height: 0;
+  overflow: visible;
+}
+
+.vpc-host-header-actions {
+  position: fixed;
+  top: 8px;
+  right: 56px;
+  z-index: 32;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vpc-host-header-actions:empty {
+  display: none;
+}
+
+.vpc-remote-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (width <= 900px) {
+  .vpc-host-header-actions {
+    right: 44px;
+  }
+}
+
+/*
+ * KAC-246: detail-рейл вертикальное меню табов — active-пункт = sidebar-active-bg
+ * tint + accent-текст + левый accent-бар, скруглённый item. Согласовано с
+ * расширенным сайдбаром.
+ */
+.kc-detail-rail-menu.ant-menu-inline .ant-menu-item {
+  border-radius: 8px;
+  margin-inline: 0;
+  width: 100%;
+  height: 34px;
+  line-height: 34px;
+}
+
+.kc-detail-rail-menu.ant-menu-inline .ant-menu-item-selected {
+  background: var(--sidebar-active-bg) !important;
+  color: var(--kc-primary) !important;
+  font-weight: 600;
+}
+
+.kc-detail-rail-menu.ant-menu-inline .ant-menu-item-selected::after {
+  inset-inline: 0 auto;
+  border-inline-end: none;
+  border-inline-start: 2px solid var(--kc-primary);
+  transform: scaleY(1);
+  opacity: 1;
+}
+
+/* KAC-246: DopplerButton — пульсация submit/danger-кнопок. Вынесено из inline
+   \3c style> в компоненте (он рвал .ant-btn+.ant-btn зазор в Modal-футере). */
+@keyframes doppler-ring {
+  0% {
+    box-shadow: 0 0 0 0 var(--doppler-c, rgb(22 119 255 / 0.55));
+  }
+  100% {
+    box-shadow: 0 0 0 14px var(--doppler-c0, rgb(22 119 255 / 0));
+  }
+}
+
+@keyframes doppler-shimmer {
+  0% {
+    background-position: -120% 0;
+  }
+  100% {
+    background-position: 220% 0;
+  }
+}
+.doppler-btn {
+  position: relative;
+  overflow: hidden;
+}
+.doppler-btn.is-pulsing {
+  animation: doppler-ring 1.4s ease-out infinite;
+}
+
+.doppler-btn.is-pulsing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.18) 45%,
+    rgb(255 255 255 / 0.34) 50%,
+    rgb(255 255 255 / 0.18) 55%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: doppler-shimmer 1.4s linear infinite;
+  pointer-events: none;
+}
+
+/* kc-form-modal — Create/Edit-модалка: интерьер тёмный (--kc-page), чтобы
+   подложка-карточка FormShell (elevated) «всплывала», как на welcome-странице
+   «первый ресурс». KAC-246. */
+.kc-form-modal .ant-modal-content,
+.kc-form-modal .ant-modal-body {
+  background: var(--kc-page);
+}
+
+/* kc-kv-row — строка EditableKVTable (метки / статические маршруты): мягкий
+   hover в тон остального UI. KAC-246. */
+.kc-kv-row {
+  transition: background 0.12s ease;
+}
+
+.kc-kv-row:hover {
+  background: var(--kc-hover-fill);
+}
+
+/* kc-grid-table — вертикальные разделители колонок (кроме последней — действий)
+   у table-таблиц (RoutesPanel detail). EditableKVTable рисует их inline. KAC-246. */
+.kc-grid-table th:not(:last-child),
+.kc-grid-table td:not(:last-child) {
+  border-right: 1px solid var(--kc-border-secondary);
+}

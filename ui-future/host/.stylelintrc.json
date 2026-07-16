@@ -1,0 +1,9 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "rules": {
+    "alpha-value-notation": "number",
+    "color-function-notation": "modern",
+    "declaration-empty-line-before": null,
+    "selector-class-pattern": null
+  }
+}

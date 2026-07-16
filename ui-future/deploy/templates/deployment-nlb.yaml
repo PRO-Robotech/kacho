@@ -1,0 +1,59 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ui.nlbName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+    {{- include "ui.nlbSelectorLabels" . | nindent 4 }}
+spec:
+  {{- if not .Values.nlb.autoscaling.enabled }}
+  replicas: {{ .Values.nlb.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ui.nlbSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ui.labels" . | nindent 8 }}
+        {{- include "ui.nlbSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      volumes:
+        - name: nginx-template
+          configMap:
+            name: {{ include "ui.nlbName" . }}-nginx
+            items:
+              - key: default.conf.template
+                path: default.conf.template
+      containers:
+        - name: nlb
+          image: {{ include "ui.nlbImage" . | quote }}
+          imagePullPolicy: {{ include "ui.nlbImagePullPolicy" . }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.nlb.port }}
+          volumeMounts:
+            - name: nginx-template
+              mountPath: /etc/nginx/templates/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.nlb.resources | nindent 12 }}
