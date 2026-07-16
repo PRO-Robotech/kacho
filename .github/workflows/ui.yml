@@ -40,6 +40,9 @@ jobs:
   typecheck:
     name: typecheck (9 пакетов)
     runs-on: ubuntu-latest
+    # timeout-guard: jest без --forceExit висит на async-leak'ах (open handle) —
+    # локально проходит, на ранере зависал бесконечно (job шёл 56 мин). Ограничиваем.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,6 +59,9 @@ jobs:
   test:
     name: unit (vitest)
     runs-on: ubuntu-latest
+    # timeout-guard: jest без --forceExit висит на async-leak'ах (open handle) —
+    # локально проходит, на ранере зависал бесконечно (job шёл 56 мин). Ограничиваем.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
