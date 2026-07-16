@@ -40,8 +40,8 @@ jobs:
   typecheck:
     name: typecheck (9 пакетов)
     runs-on: ubuntu-latest
-    # timeout-guard: jest без --forceExit висит на async-leak'ах (open handle) —
-    # локально проходит, на ранере зависал бесконечно (job шёл 56 мин). Ограничиваем.
+    # hard-гейт качества UI (tsc --noEmit по всем 9 пакетам). timeout-backstop, чтобы
+    # зависший tsc не держал прогон; типичный прогон — пара минут.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -59,8 +59,18 @@ jobs:
   test:
     name: unit (vitest)
     runs-on: ubuntu-latest
-    # timeout-guard: jest без --forceExit висит на async-leak'ах (open handle) —
-    # локально проходит, на ранере зависал бесконечно (job шёл 56 мин). Ограничиваем.
+    # ROOT CAUSE (доказано CI-логом 2026-07-16, run 29493511288): host-сьют host'а
+    # НЕ «висит на async-leak при выходе» (прежний диагноз опровергнут — виснет ВМЕСТЕ
+    # с --forceExit). Он дедлочит на ИНИЦИАЛИЗАЦИИ jest-ESM: 19 минут НУЛЯ вывода, один
+    # node-процесс, до запуска хоть одного сьюта. Локально (node 22.22) — 2с. Комментарий
+    # самого polyrepo зафиксировал репро: «pass … node 22/2-cpu docker … deadlocks on the
+    # GitHub runner only». То есть тот же node 22 ВНУТРИ docker проходит — дедлочит именно
+    # host-node окружения GitHub-hosted VM (libuv-threadpool/cgroup/tmpfs vs docker-node).
+    # ФИКС: гоняем job в container: node:22 (известно-рабочее docker-окружение) — jest-ESM
+    # инициализируется как в docker/локально. timeout-minutes — backstop, не первичный гейт.
+    # Корень трекается PRO-Robotech/kacho#7.
+    container:
+      image: node:22-bookworm
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
