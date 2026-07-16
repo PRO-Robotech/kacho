@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "598ac180-9a32-4f89-8d0a-1602abb31f49",
+    "_postman_id": "edac86cc-2f19-40ae-a25d-aa7b5c90bbfe",
     "name": "kacho-compute / newman / disk",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -17,7 +17,13 @@
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
           "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));"
+          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "// Дефолтный Bearer (bootstrap cluster-admin) для шагов с auth=None: без него все",
+          "// запросы анонимны → IAM authn-gate 401 fail-closed. Per-step auth ('anonymous'",
+          "// снимает, '<envVar>' переопределяет) идёт в item-pre-request ПОСЛЕ collection-",
+          "// pre-request, поэтому этот дефолт им не мешает (e2e-newman fullscope root A1).",
+          "const __defAuth = pm.environment.get('jwtBootstrap');",
+          "if (__defAuth) { pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + __defAuth }); }"
         ]
       }
     }
@@ -86,7 +92,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-1",
           "request": {
             "method": "GET",
             "header": [
@@ -115,7 +121,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -220,7 +226,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-2",
           "request": {
             "method": "GET",
             "header": [
@@ -249,7 +255,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -324,7 +330,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-3",
           "request": {
             "method": "GET",
             "header": [
@@ -353,7 +359,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -444,7 +450,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-4",
           "request": {
             "method": "GET",
             "header": [
@@ -473,7 +479,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -702,7 +708,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-5",
           "request": {
             "method": "GET",
             "header": [
@@ -731,7 +737,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -837,7 +843,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-6",
           "request": {
             "method": "GET",
             "header": [
@@ -866,7 +872,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -973,7 +979,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-7",
           "request": {
             "method": "GET",
             "header": [
@@ -1002,7 +1008,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1113,7 +1119,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-8",
           "request": {
             "method": "GET",
             "header": [
@@ -1142,7 +1148,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1206,7 +1212,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-9",
           "request": {
             "method": "GET",
             "header": [
@@ -1235,7 +1241,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1325,7 +1331,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-10",
           "request": {
             "method": "GET",
             "header": [
@@ -1354,7 +1360,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1429,7 +1435,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-11",
           "request": {
             "method": "GET",
             "header": [
@@ -1458,7 +1464,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1548,7 +1554,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-12",
           "request": {
             "method": "GET",
             "header": [
@@ -1577,7 +1583,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1705,7 +1711,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-13",
           "request": {
             "method": "GET",
             "header": [
@@ -1734,7 +1740,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1824,7 +1830,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-14",
           "request": {
             "method": "GET",
             "header": [
@@ -1853,7 +1859,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1976,7 +1982,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-15",
           "request": {
             "method": "GET",
             "header": [
@@ -2005,7 +2011,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -2110,7 +2116,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-16",
           "request": {
             "method": "GET",
             "header": [
@@ -2139,7 +2145,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -2249,7 +2255,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-17",
           "request": {
             "method": "GET",
             "header": [
@@ -2278,7 +2284,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -2347,7 +2353,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-18",
           "request": {
             "method": "GET",
             "header": [
@@ -2376,7 +2382,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -2445,7 +2451,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-19",
           "request": {
             "method": "GET",
             "header": [
@@ -2474,7 +2480,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -2602,7 +2608,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-20",
           "request": {
             "method": "GET",
             "header": [
@@ -2631,7 +2637,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -2686,7 +2692,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-21",
           "request": {
             "method": "GET",
             "header": [
@@ -2715,7 +2721,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -2770,7 +2776,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-22",
           "request": {
             "method": "GET",
             "header": [
@@ -2799,7 +2805,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3050,7 +3056,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-23",
           "request": {
             "method": "GET",
             "header": [
@@ -3079,7 +3085,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3170,7 +3176,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-24",
           "request": {
             "method": "GET",
             "header": [
@@ -3199,7 +3205,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3274,7 +3280,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-25",
           "request": {
             "method": "GET",
             "header": [
@@ -3303,7 +3309,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3368,7 +3374,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-26",
           "request": {
             "method": "GET",
             "header": [
@@ -3397,7 +3403,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3527,7 +3533,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-27",
           "request": {
             "method": "GET",
             "header": [
@@ -3556,7 +3562,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3631,7 +3637,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-28",
           "request": {
             "method": "GET",
             "header": [
@@ -3660,7 +3666,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3725,7 +3731,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-29",
           "request": {
             "method": "GET",
             "header": [
@@ -3754,7 +3760,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3880,7 +3886,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-30",
           "request": {
             "method": "GET",
             "header": [
@@ -3909,7 +3915,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -3984,7 +3990,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-31",
           "request": {
             "method": "GET",
             "header": [
@@ -4013,7 +4019,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -4079,7 +4085,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-32",
           "request": {
             "method": "GET",
             "header": [
@@ -4108,7 +4114,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -4199,7 +4205,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-33",
           "request": {
             "method": "GET",
             "header": [
@@ -4228,7 +4234,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -4303,7 +4309,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-34",
           "request": {
             "method": "GET",
             "header": [
@@ -4332,7 +4338,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -4397,7 +4403,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-35",
           "request": {
             "method": "GET",
             "header": [
@@ -4426,7 +4432,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -4555,7 +4561,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-36",
           "request": {
             "method": "GET",
             "header": [
@@ -4584,7 +4590,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -4864,7 +4870,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-37",
           "request": {
             "method": "GET",
             "header": [
@@ -4893,7 +4899,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -4949,7 +4955,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-38",
           "request": {
             "method": "GET",
             "header": [
@@ -4978,7 +4984,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5127,7 +5133,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-39",
           "request": {
             "method": "GET",
             "header": [
@@ -5156,7 +5162,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5213,7 +5219,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-40",
           "request": {
             "method": "GET",
             "header": [
@@ -5242,7 +5248,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5398,7 +5404,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-41",
           "request": {
             "method": "GET",
             "header": [
@@ -5427,7 +5433,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5492,7 +5498,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-42",
           "request": {
             "method": "GET",
             "header": [
@@ -5521,7 +5527,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5647,7 +5653,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-43",
           "request": {
             "method": "GET",
             "header": [
@@ -5676,7 +5682,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5751,7 +5757,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-44",
           "request": {
             "method": "GET",
             "header": [
@@ -5780,7 +5786,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5845,7 +5851,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-45",
           "request": {
             "method": "GET",
             "header": [
@@ -5874,7 +5880,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -5965,7 +5971,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-46",
           "request": {
             "method": "GET",
             "header": [
@@ -5994,7 +6000,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -6069,7 +6075,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-47",
           "request": {
             "method": "GET",
             "header": [
@@ -6098,7 +6104,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -6190,7 +6196,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-48",
           "request": {
             "method": "GET",
             "header": [
@@ -6219,7 +6225,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -6336,7 +6342,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-49",
           "request": {
             "method": "GET",
             "header": [
@@ -6365,7 +6371,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -6502,7 +6508,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-50",
           "request": {
             "method": "GET",
             "header": [
@@ -6531,7 +6537,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -6623,7 +6629,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-51",
           "request": {
             "method": "GET",
             "header": [
@@ -6652,7 +6658,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -7126,7 +7132,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-52",
           "request": {
             "method": "GET",
             "header": [
@@ -7155,7 +7161,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -7225,7 +7231,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-53",
           "request": {
             "method": "GET",
             "header": [
@@ -7254,7 +7260,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -7589,7 +7595,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-54",
           "request": {
             "method": "GET",
             "header": [
@@ -7618,7 +7624,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -7847,7 +7853,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-55",
           "request": {
             "method": "GET",
             "header": [
@@ -7876,7 +7882,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -8551,7 +8557,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-56",
           "request": {
             "method": "GET",
             "header": [
@@ -8580,7 +8586,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -8635,7 +8641,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-57",
           "request": {
             "method": "GET",
             "header": [
@@ -8664,7 +8670,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",

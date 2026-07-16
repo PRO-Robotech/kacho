@@ -76,6 +76,12 @@ PRE_GLOBAL = [
     "}",
     "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
     "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+    "// Дефолтный Bearer (bootstrap cluster-admin) для шагов с auth=None: без него все",
+    "// запросы анонимны → IAM authn-gate 401 fail-closed. Per-step auth ('anonymous'",
+    "// снимает, '<envVar>' переопределяет) идёт в item-pre-request ПОСЛЕ collection-",
+    "// pre-request, поэтому этот дефолт им не мешает (e2e-newman fullscope root A1).",
+    "const __defAuth = pm.environment.get('jwtBootstrap');",
+    "if (__defAuth) { pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + __defAuth }); }",
 ]
 
 
@@ -144,17 +150,23 @@ def assert_created_at_seconds(jsonpath="pm.response.json().createdAt") -> List[s
     ]
 
 
+_POLL_SEQ = [0]
+
+
 def poll_operation_until_done() -> Step:
-    """Reusable poll step: до 8 попыток (через setNextRequest), потом fail если done остался false."""
+    """Reusable poll step: до 20 попыток (через setNextRequest), потом fail если done остался false.
+    Уникальное имя per-call (poll-op-<N>): setNextRequest(pm.info.requestName) ретраит СЕБЯ, а не
+    другой poll-op коллекции (иначе прыжок через кейсы → ложный fail). e2e-newman fullscope root A3."""
+    _POLL_SEQ[0] += 1
     return Step(
-        name="poll-op",
+        name=f"poll-op-{_POLL_SEQ[0]}",
         method="GET",
         path="/operations/{{opId}}",
         test_script=[
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 8) {",
+            "if (!j.done && pc < 20) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",

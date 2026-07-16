@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "639778a2-4092-4bb9-8b01-3ff41b6dc076",
+    "_postman_id": "29b7defe-8d46-4572-9670-b334af869c7c",
     "name": "kacho-vpc / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -160,7 +160,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-916",
           "request": {
             "method": "GET",
             "header": [
@@ -193,7 +193,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -433,7 +433,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-917",
           "request": {
             "method": "GET",
             "header": [
@@ -466,7 +466,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -536,7 +536,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-918",
           "request": {
             "method": "GET",
             "header": [
@@ -569,7 +569,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -664,7 +664,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-919",
           "request": {
             "method": "GET",
             "header": [
@@ -697,7 +697,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -791,7 +791,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-920",
           "request": {
             "method": "GET",
             "header": [
@@ -824,7 +824,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

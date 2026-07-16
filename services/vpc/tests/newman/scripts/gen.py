@@ -1417,15 +1417,24 @@ def conf_alreadyexists_block(prefix, create_path, name_template, body_extra=None
     )
 
 
+_POLL_SEQ = [0]
+
+
 def poll_operation_until_done() -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
-    До 6 попыток, потом fail если done остался false.
+    До 20 попыток, потом fail если done остался false.
+
+    КАЖДЫЙ poll-шаг получает УНИКАЛЬНОЕ имя (poll-op-<N>): setNextRequest(
+    pm.info.requestName) обязан ретраить СЕБЯ. При общем имени 'poll-op' newman
+    резолвит имя в ДРУГОЙ (последний) poll-op коллекции → прыжок через все кейсы и
+    пропуск их setup-шагов → массовый ложный fail (e2e-newman fullscope root A3).
 
     Если opId пустой (предыдущий шаг был отклонен синхронно, напр. 403 bad-project),
     шаг пропускается: тесты не запускаются, не добавляются к failure count.
     """
+    _POLL_SEQ[0] += 1
     return Step(
-        name="poll-op",
+        name=f"poll-op-{_POLL_SEQ[0]}",
         method="GET",
         path="/operations/{{opId}}",
         pre_script=[
@@ -1442,7 +1451,7 @@ def poll_operation_until_done() -> Step:
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 6) {",
+            "if (!j.done && pc < 20) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
             "  // Postman async-friendly retry: re-invoke same request name",
             "  pm.execution.setNextRequest(pm.info.requestName);",

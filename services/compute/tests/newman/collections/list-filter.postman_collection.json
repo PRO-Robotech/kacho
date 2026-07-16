@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "83b65646-a8c8-4397-8328-2c4eda16c845",
+    "_postman_id": "0cb5e07a-5b3e-4831-b1c5-21b4f32dbc4f",
     "name": "kacho-compute / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -17,7 +17,13 @@
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
           "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));"
+          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "// Дефолтный Bearer (bootstrap cluster-admin) для шагов с auth=None: без него все",
+          "// запросы анонимны → IAM authn-gate 401 fail-closed. Per-step auth ('anonymous'",
+          "// снимает, '<envVar>' переопределяет) идёт в item-pre-request ПОСЛЕ collection-",
+          "// pre-request, поэтому этот дефолт им не мешает (e2e-newman fullscope root A1).",
+          "const __defAuth = pm.environment.get('jwtBootstrap');",
+          "if (__defAuth) { pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + __defAuth }); }"
         ]
       }
     }
@@ -96,7 +102,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-227",
           "request": {
             "method": "GET",
             "header": [
@@ -125,7 +131,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -284,7 +290,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-228",
           "request": {
             "method": "GET",
             "header": [
@@ -313,7 +319,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -464,7 +470,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-229",
           "request": {
             "method": "GET",
             "header": [
@@ -493,7 +499,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -650,7 +656,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-230",
           "request": {
             "method": "GET",
             "header": [
@@ -679,7 +685,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -769,7 +775,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-231",
           "request": {
             "method": "GET",
             "header": [
@@ -798,7 +804,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -955,7 +961,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-232",
           "request": {
             "method": "GET",
             "header": [
@@ -984,7 +990,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",

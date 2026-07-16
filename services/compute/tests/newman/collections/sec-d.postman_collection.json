@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "605c09d4-ff10-4fb3-9891-4378686b1aa9",
+    "_postman_id": "b7f706f4-8eb9-4af4-8026-94f7ffa46cda",
     "name": "kacho-compute / newman / sec-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -17,7 +17,13 @@
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
           "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));"
+          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "// Дефолтный Bearer (bootstrap cluster-admin) для шагов с auth=None: без него все",
+          "// запросы анонимны → IAM authn-gate 401 fail-closed. Per-step auth ('anonymous'",
+          "// снимает, '<envVar>' переопределяет) идёт в item-pre-request ПОСЛЕ collection-",
+          "// pre-request, поэтому этот дефолт им не мешает (e2e-newman fullscope root A1).",
+          "const __defAuth = pm.environment.get('jwtBootstrap');",
+          "if (__defAuth) { pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + __defAuth }); }"
         ]
       }
     }
@@ -86,7 +92,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-238",
           "request": {
             "method": "GET",
             "header": [
@@ -115,7 +121,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -257,7 +263,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-239",
           "request": {
             "method": "GET",
             "header": [
@@ -286,7 +292,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -426,7 +432,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-240",
           "request": {
             "method": "GET",
             "header": [
@@ -455,7 +461,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 8) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",

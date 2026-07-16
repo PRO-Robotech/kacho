@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "172ffb40-384a-40f4-b0b6-f4ccf1f0153e",
+    "_postman_id": "255e2bd5-3083-4deb-8b53-78cf308c8adf",
     "name": "kacho-vpc / newman / address-zone-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -268,7 +268,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-680",
           "request": {
             "method": "GET",
             "header": [
@@ -301,7 +301,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -395,7 +395,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-681",
           "request": {
             "method": "GET",
             "header": [
@@ -428,7 +428,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -504,7 +504,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-682",
           "request": {
             "method": "GET",
             "header": [
@@ -537,7 +537,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -594,7 +594,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-683",
           "request": {
             "method": "GET",
             "header": [
@@ -627,7 +627,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 20) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
