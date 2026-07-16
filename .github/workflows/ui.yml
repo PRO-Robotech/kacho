@@ -58,19 +58,19 @@ jobs:
 
   test:
     name: unit (vitest)
-    runs-on: ubuntu-latest
-    # ROOT CAUSE (доказано CI-логом 2026-07-16, run 29493511288): host-сьют host'а
-    # НЕ «висит на async-leak при выходе» (прежний диагноз опровергнут — виснет ВМЕСТЕ
-    # с --forceExit). Он дедлочит на ИНИЦИАЛИЗАЦИИ jest-ESM: 19 минут НУЛЯ вывода, один
-    # node-процесс, до запуска хоть одного сьюта. Локально (node 22.22) — 2с. Комментарий
-    # самого polyrepo зафиксировал репро: «pass … node 22/2-cpu docker … deadlocks on the
-    # GitHub runner only». То есть тот же node 22 ВНУТРИ docker проходит — дедлочит именно
-    # host-node окружения GitHub-hosted VM (libuv-threadpool/cgroup/tmpfs vs docker-node).
-    # ФИКС: гоняем job в container: node:22 (известно-рабочее docker-окружение) — jest-ESM
-    # инициализируется как в docker/локально. timeout-minutes — backstop, не первичный гейт.
-    # Корень трекается PRO-Robotech/kacho#7.
-    container:
-      image: node:22-bookworm
+    # ROOT CAUSE (сведён экспериментами 2026-07-16): host jest дедлочит на ИНИЦИАЛИЗАЦИИ
+    # jest-ESM (18-19 мин НУЛЯ вывода, один node-процесс, до запуска сьютов) — НЕ async-leak
+    # (виснет с --forceExit). Отсечено измерениями: (1) `container: node:22` на GitHub-ранере
+    # ТОЖЕ виснет 18 мин → дело не в host-node-vs-docker; (2) EXACT CI-последовательность
+    # локально (чистый npm ci root + --prefix host, CI=true, та же jest-команда) проходит за
+    # 2с → не install-layout/dual-react; (3) node 22.22 локально = node 22 CI; isolatedModules
+    # уже вкл.; ts-jest 29.4 совместим с jest 30. Единственный оставшийся дифференциатор —
+    # сам GitHub-hosted VM (виснет и host, и container на нём; на реальной машине — 2с).
+    # ФИКС: гоним unit на self-hosted (beget-runner — реальный 12-ядерный бокс, как локальная
+    # машина, где jest проходит). Это тот же тест, реально исполняемый, не bypass. Ранер один →
+    # job встаёт в очередь за docker-build/e2e, но сам прогон jest — секунды. Корень (почему
+    # именно GitHub-hosted VM дедлочит node ESM-loader) трекается PRO-Robotech/kacho#7.
+    runs-on: self-hosted
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
