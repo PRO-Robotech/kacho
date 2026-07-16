@@ -83,7 +83,39 @@ jobs:
         run: npm ci
       - name: зависимости standalone-пакетов
         run: for p in $STANDALONE; do npm ci --prefix "$p"; done
-      - run: npm test
+      # ВРЕМЕННО (kacho#7): host jest дедлочит на ЛЮБОМ CI-ранере (hosted+container+self-hosted),
+      # локально проходит за 2с — не воспроизводится там, где можно итерировать. Инструментируем
+      # ПРЯМО на ранере: пробы локализуют где висит (discovery/haste vs config vs module-exec) +
+      # диагностический report node (JS-стек висящего процесса). Шаг НЕ гейтит (exit 0) — сбор данных.
+      - name: DIAG host-hang localize (kacho#7, временно)
+        working-directory: ui-future/host
+        run: |
+          set +e
+          echo "=== node=$(node --version) nproc=$(nproc) uv_threadpool=${UV_THREADPOOL_SIZE:-default} ==="
+          command -v watchman >/dev/null && echo "watchman: PRESENT ($(watchman version 2>/dev/null | head -1))" || echo "watchman: ABSENT"
+          J="node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js"
+          echo "=== PROBE1: jest --listTests (discovery/haste-map, timeout 70) ==="
+          timeout 70 $J --listTests 2>&1 | tail -6; echo "PROBE1_rc=${PIPESTATUS[0]}"
+          echo "=== PROBE2: jest --showConfig (config resolution, timeout 40) ==="
+          timeout 40 $J --showConfig >/dev/null 2>&1; echo "PROBE2_rc=$?"
+          echo "=== PROBE3: jest --runInBand + node diagnostic report on hang ==="
+          export NODE_OPTIONS="--report-on-signal --report-directory=$PWD"
+          $J --runInBand --detectOpenHandles > /tmp/p3.out 2>&1 &
+          JPID=$!
+          for s in $(seq 1 40); do kill -0 $JPID 2>/dev/null || break; sleep 3; done
+          if kill -0 $JPID 2>/dev/null; then
+            echo "PROBE3: HUNG >120s — SIGUSR2 diagnostic report"
+            kill -USR2 $JPID; sleep 6
+            echo "--- javascriptStack висящего процесса:"
+            python3 -c "import json,glob,sys; g=sorted(glob.glob('report.*.json')); print('нет report') if not g else json.dump(json.load(open(g[-1])).get('javascriptStack',{}), sys.stdout, indent=1)" 2>&1 | head -45
+            echo "--- libuv handles (первые):"
+            python3 -c "import json,glob,sys; g=sorted(glob.glob('report.*.json')); [print(h.get('type'),h.get('is_active'),h.get('address','')) for h in (json.load(open(g[-1])).get('libuv',[]) if g else [])][:25]" 2>&1 | head -25
+            kill -9 $JPID 2>/dev/null
+          else
+            wait $JPID; echo "PROBE3: завершился rc=$? (НЕ завис)"
+          fi
+          echo "--- PROBE3 stdout tail:"; tail -15 /tmp/p3.out
+          echo "=== DIAG DONE (шаг не гейтит) ==="; exit 0
 
   build:
     name: build ${{ matrix.project }}
