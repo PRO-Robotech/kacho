@@ -43,6 +43,10 @@ const TONE_BY_STATUS: Record<string, Tone> = {
   READY: "ok",
   RUNNING: "ok",
   RESERVED: "ok",
+  // AVAILABLE — здоровый статус тома (свободен, готов к attach). Пропускался:
+  // IN_USE в таблице был, а AVAILABLE — нет, и он падал в fallback "muted",
+  // то есть доступный том выглядел неактивным, как STOPPED/RELEASED.
+  AVAILABLE: "ok",
   CREATING: "info",
   PROVISIONING: "info",
   STARTING: "info",
