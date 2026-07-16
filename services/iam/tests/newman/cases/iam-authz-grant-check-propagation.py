@@ -106,8 +106,11 @@ def assert_grpc_code_in(*codes_named):
 # flakes with an intermittent 403 in the pre-convergence window.
 #
 # The probe targets `InternalIAMService.Check` (POST /iam/v1/internal/iam:check),
-# a raw single-tuple FGA check exposed on the api-gateway internal sub-mux (served
-# on the same baseUrl host the suite already uses). It is `<exempt>` from the
+# a raw single-tuple FGA check exposed ONLY on the api-gateway cluster-internal REST
+# listener ({{internalBaseUrl}}, :18081) — the public :18080 404s /iam/v1/internal/*
+# by design (ban #6). Each probe step's pre_script redirects there via
+# _internal_url_override (without it the probe hits the public port → 404 → JSONError).
+# It is `<exempt>` from the
 # per-RPC authz gate, so any caller can evaluate an arbitrary `(subject, relation,
 # object)` tuple — including `iam_access_binding:<id>`, which the public
 # AuthorizeService.Check cannot scope for a normal account-admin caller. The
@@ -130,6 +133,26 @@ def assert_grpc_code_in(*codes_named):
 # back-compat wrapper below preserves the historical
 # poll_check_allowed(user_key, resource_key, relation) signature for any future
 # account-scoped probe.
+
+def _internal_url_override(path):
+    """Redirect this request to the api-gateway cluster-internal REST listener
+    ({{internalBaseUrl}} = :18081 in CI). Internal* paths (/iam/v1/internal/*) are
+    served ONLY there — the public cmux ({{baseUrl}} = :18080) 404s them by design
+    (ban #6). gen.py emits {{baseUrl}}<path>; without this override the FGA-Check
+    probe hits the public port → 404 page-not-found → JSONError. Mirrors
+    iam-internal-only-check.py::_internal_url_override. internalBaseUrl is injected
+    at runtime by deploy/scripts/newman-e2e.sh."""
+    return [
+        "// internal-only Check probe → api-gateway cluster-internal REST listener.",
+        "const intBase = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+        "if (!intBase) {",
+        "  console.warn('internalBaseUrl not set — skipping internal Check probe for this step.');",
+        "  postman.setNextRequest(null);",
+        "} else {",
+        f"  pm.request.url = intBase + '{path}';",
+        "}",
+    ]
+
 
 def poll_check_allowed_step(name, subject_expr, object_expr, relation,
                             max_attempts=None, auth="jwtBootstrap"):
@@ -158,6 +181,7 @@ def poll_check_allowed_step(name, subject_expr, object_expr, relation,
         path="/iam/v1/internal/iam:check",
         auth=auth,
         pre_script=[
+            *_internal_url_override("/iam/v1/internal/iam:check"),
             # First-entry reset (request-name-scoped flag).
             f"if (pm.environment.get('{started_var}') !== pm.info.requestName) {{ pm.environment.set('{counter_var}', '0'); pm.environment.set('{started_var}', pm.info.requestName); }}",
             f"pm.environment.set('{body_subject_var}', {subject_expr});",
@@ -226,6 +250,7 @@ def poll_check_denied_step(name, subject_expr, object_expr, relation,
         path="/iam/v1/internal/iam:check",
         auth=auth,
         pre_script=[
+            *_internal_url_override("/iam/v1/internal/iam:check"),
             f"if (pm.environment.get('{started_var}') !== pm.info.requestName) {{ pm.environment.set('{counter_var}', '0'); pm.environment.set('{started_var}', pm.info.requestName); }}",
             f"pm.environment.set('{body_subject_var}', {subject_expr});",
             f"pm.environment.set('{body_object_var}', {object_expr});",

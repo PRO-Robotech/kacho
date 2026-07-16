@@ -89,6 +89,26 @@ ROLE_VIEW = "rol1bda80f2be4d3658e"  # md5('view')[:17]
 # Helpers (local — mirror the idioms in iam-read-authz-vget.py / iam-rbac-subjects.py).
 # ---------------------------------------------------------------------------
 
+def _internal_url_override(path):
+    """Redirect this request to the api-gateway cluster-internal REST listener
+    ({{internalBaseUrl}} = :18081 in CI). Internal* paths (/iam/v1/internal/*) are
+    served ONLY there — the public cmux ({{baseUrl}} = :18080) 404s them by design
+    (ban #6). gen.py emits {{baseUrl}}<path>; without this override the FGA-Check
+    probe hits the public port → 404 page-not-found → JSONError. Mirrors
+    iam-internal-only-check.py::_internal_url_override. internalBaseUrl is injected
+    at runtime by deploy/scripts/newman-e2e.sh."""
+    return [
+        "// internal-only Check probe → api-gateway cluster-internal REST listener.",
+        "const intBase = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+        "if (!intBase) {",
+        "  console.warn('internalBaseUrl not set — skipping internal Check probe for this step.');",
+        "  postman.setNextRequest(null);",
+        "} else {",
+        f"  pm.request.url = intBase + '{path}';",
+        "}",
+    ]
+
+
 def poll_op(op_var, out_id_var=None, auth="jwtAccountAdminA", allow_already_exists=False):
     """GET /operations/{op_var} until done; assert done; capture response.id.
 
@@ -302,6 +322,7 @@ def check_until_deny(name, fga_subject, relation, obj, claim):
         path="/iam/v1/internal/iam:check",
         auth="jwtBootstrap",
         body={"subjectId": fga_subject, "relation": relation, "object": obj},
+        pre_script=_internal_url_override("/iam/v1/internal/iam:check"),
         test_script=[
             "const j = pm.response.json();",
             "if (pm.environment.get('_ckStarted') !== pm.info.requestName) { pm.environment.set('_ckCount', '0'); pm.environment.set('_ckStarted', pm.info.requestName); }",

@@ -77,6 +77,26 @@ def poll_op_done(op_var, auth="jwtAccountAdminA", out_id_var=None):
     ]
 
 
+def _internal_url_override(path):
+    """Redirect this request to the api-gateway cluster-internal REST listener
+    ({{internalBaseUrl}} = :18081 in CI). Internal* paths (/iam/v1/internal/*) are
+    served ONLY there — the public cmux ({{baseUrl}} = :18080) 404s them by design
+    (ban #6). gen.py emits {{baseUrl}}<path>; without this override the FGA-Check
+    probe hits the public port → 404 page-not-found → JSONError on the first
+    pm.response.json(). Mirrors iam-internal-only-check.py::_internal_url_override.
+    internalBaseUrl is injected at runtime by deploy/scripts/newman-e2e.sh."""
+    return [
+        "// internal-only Check probe → api-gateway cluster-internal REST listener.",
+        "const intBase = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+        "if (!intBase) {",
+        "  console.warn('internalBaseUrl not set — skipping internal Check probe for this step.');",
+        "  postman.setNextRequest(null);",
+        "} else {",
+        f"  pm.request.url = intBase + '{path}';",
+        "}",
+    ]
+
+
 def check_step(name, subject, relation, obj, expect_allowed, auth="jwtBootstrap", poll=False):
     retry = []
     if poll:
@@ -107,6 +127,7 @@ def check_step(name, subject, relation, obj, expect_allowed, auth="jwtBootstrap"
         ]
     return Step(name=name, method="POST", path="/iam/v1/internal/iam:check",
                 auth=auth, body={"subjectId": subject, "relation": relation, "object": obj},
+                pre_script=_internal_url_override("/iam/v1/internal/iam:check"),
                 test_script=["const j = pm.response.json();", *retry, *verdict])
 
 

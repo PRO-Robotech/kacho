@@ -105,11 +105,36 @@ def poll_op_done(op_var, auth="jwtAccountAdminA", out_id_var=None):
     ]
 
 
+def _internal_url_override(path):
+    """Redirect this request to the api-gateway cluster-internal REST listener
+    ({{internalBaseUrl}} = :18081 in CI). Internal* paths (/iam/v1/internal/*) are
+    served ONLY there — the public cmux ({{baseUrl}} = :18080) 404s them by design
+    (ban #6). gen.py emits {{baseUrl}}<path>; without this override the FGA-Check
+    probe hits the public port → 404 page-not-found → JSONError on the first
+    pm.response.json(). Mirrors iam-internal-only-check.py::_internal_url_override.
+    internalBaseUrl is injected at runtime by deploy/scripts/newman-e2e.sh
+    (--env-var); if unset (local dev without the internal-rest port-forward) the
+    step is skipped rather than hitting a spurious public 404."""
+    return [
+        "// internal-only Check probe → api-gateway cluster-internal REST listener.",
+        "const intBase = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
+        "if (!intBase) {",
+        "  console.warn('internalBaseUrl not set — skipping internal Check probe for this step.');",
+        "  postman.setNextRequest(null);",
+        "} else {",
+        f"  pm.request.url = intBase + '{path}';",
+        "}",
+    ]
+
+
 def check_step(name, subject, relation, obj, expect_allowed, auth="jwtBootstrap", poll=False):
     """InternalIAMService.Check probe (POST /iam/v1/internal/iam:check) — exempt
-    from the per-RPC authz gate, FGA-native passthrough. expect_allowed=True
-    asserts allowed===true (optionally polling the reconcile/fga-drain window for
-    eventual consistency); False asserts allowed !== true. One thought / pm.test."""
+    from the per-RPC authz gate, FGA-native passthrough. Served ONLY on the
+    cluster-internal REST listener ({{internalBaseUrl}}, :18081) — the pre_script
+    redirects there (the public :18080 404s /iam/v1/internal/* by design, ban #6).
+    expect_allowed=True asserts allowed===true (optionally polling the reconcile/
+    fga-drain window for eventual consistency); False asserts allowed !== true.
+    One thought / pm.test."""
     retry = []
     if poll:
         retry = [
@@ -140,6 +165,7 @@ def check_step(name, subject, relation, obj, expect_allowed, auth="jwtBootstrap"
     return Step(
         name=name, method="POST", path="/iam/v1/internal/iam:check",
         auth=auth, body={"subjectId": subject, "relation": relation, "object": obj},
+        pre_script=_internal_url_override("/iam/v1/internal/iam:check"),
         test_script=["const j = pm.response.json();", *retry, *verdict],
     )
 
