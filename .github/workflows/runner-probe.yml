@@ -1,0 +1,59 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# runner-probe — разовая разведка self-hosted-ранера (beget-runner).
+#
+# Отвечает на вопрос «что на нём вообще есть», прежде чем переносить туда job'ы:
+# ядра/память/диск, docker, go, kubectl, доступ к кластеру. Запускается только руками
+# (workflow_dispatch) и ничего не меняет.
+name: runner-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    # ЦЕЛИМСЯ В МЕТКУ, а не в имя. `beget-runner` — ИМЯ ранера; метки у него дефолтные
+    # (self-hosted/Linux/X64). `runs-on: beget-runner` не сматчится ни с чем и job
+    # висит в очереди до таймаута — молча, без единой ошибки.
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: кто я и сколько меня
+        run: |
+          echo "=== runner: ${RUNNER_NAME:-?} / ${RUNNER_OS:-?} / ${RUNNER_ARCH:-?}"
+          echo "=== labels видны только серверу; хост:"
+          uname -a; echo
+          echo "=== CPU: $(nproc) ядер"
+          free -h 2>/dev/null | sed 's/^/  /' || echo "  free нет"
+          echo "=== диск:"; df -h / "$HOME" 2>/dev/null | sed 's/^/  /'
+          echo "=== в контейнере? "; [ -f /.dockerenv ] && echo "  да (/.dockerenv)" || echo "  нет"
+
+      - name: инструменты
+        run: |
+          for t in go docker kubectl helm node npm git jq make; do
+            if command -v "$t" >/dev/null 2>&1; then
+              printf "  %-8s ✓ %s\n" "$t" "$("$t" version 2>/dev/null | head -1 || "$t" --version 2>/dev/null | head -1)"
+            else
+              printf "  %-8s ✗ НЕТ\n" "$t"
+            fi
+          done
+
+      - name: docker работоспособен?
+        continue-on-error: true
+        run: |
+          docker info >/dev/null 2>&1 && echo "  ✓ docker daemon доступен" || echo "  ✗ docker daemon НЕдоступен (нет DinD/сокета)"
+          docker run --rm hello-world >/dev/null 2>&1 && echo "  ✓ docker run работает" || echo "  ✗ docker run не работает"
+
+      - name: доступ в кластер (нужен для newman-стенда)?
+        continue-on-error: true
+        run: |
+          if command -v kubectl >/dev/null 2>&1; then
+            kubectl config current-context 2>&1 | sed 's/^/  контекст: /'
+            kubectl get ns >/dev/null 2>&1 && echo "  ✓ кластер отвечает" || echo "  ✗ кластера нет (нужен kubeconfig-секрет)"
+          else
+            echo "  kubectl отсутствует"
+          fi
