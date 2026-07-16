@@ -152,7 +152,7 @@ networkPolicy:
 # edge (reuses the per-service kacho-<svc>-client-tls cert; serverName defaults to
 # kacho-geo.kacho.svc.cluster.local ∈ geo server-cert SAN).
 vpc:
-  image: docker.io/prorobotech/kacho-vpc:main-6fe9c386
+  image: docker.io/prorobotech/kacho-vpc:main-b622b388
   networkPolicy:
     enabled: false           # vpc-internal-allowlist off (all NPs disabled)
   # vpc runs authn.mode=production behind server-mTLS: it must TRUST the api-gateway
@@ -166,7 +166,7 @@ vpc:
     edges:
       geo: true
 compute:
-  image: docker.io/prorobotech/kacho-compute:main-1678f62c
+  image: docker.io/prorobotech/kacho-compute:main-b622b388
   # Same forwarder-trust as vpc — pin the allow-list to the api-gateway SA SPIFFE
   # (chart default, restated so a values.prod override can't drop it).
   auth:
@@ -188,7 +188,7 @@ compute:
     KACHO_COMPUTE_STORAGE_MTLS_CAFILES: /etc/kacho-compute/tls/client/ca.crt
     KACHO_COMPUTE_STORAGE_MTLS_SERVERNAME: kacho-storage.kacho.svc.cluster.local
 kacho-geo:
-  image: docker.io/prorobotech/kacho-geo:main-fc2d945c
+  image: docker.io/prorobotech/kacho-geo:main-b622b388
   # hardened geo defaults AUTH_MODE=production → validateSecurityConfig requires a
   # non-empty trusted-forwarder allow-list (only the api-gateway SA SPIFFE id is a
   # legitimate end-user-principal forwarder). Bundled chart predates this env.
@@ -219,7 +219,7 @@ kacho-iam:
     #    test) → main c744f95 → CI published main-c744f956. Blocker resolved: this image is
     #    a strict forward over the live build on BOTH halves. Do not repin below this tag —
     #    cutover-fe3455.sh preflight denylists the broken main-b3d23769.
-    tag: main-c744f956
+    tag: main-b622b388
   # ─── Docker Registry v2 token shim (`/iam/token`, :9096) ─────────────────────
   # ОБЯЗАТЕЛЬНО на развёрнутом окружении: без этого работает built-in дефолт
   # `service: registry.kacho.local`, и `docker login` падает с `unauthorized`.
@@ -261,7 +261,7 @@ kacho-iam:
       hydraJwksUrl: http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json
 kacho-nlb:
   image:
-    tag: main-2c87cac9
+    tag: main-b622b388
   networkPolicy:
     enable: false            # kacho-nlb NP off (nlb chart uses `enable`, not `enabled`)
   # nlb chart default db.host=kacho-pg-nlb assumes release name `kacho`; this release
@@ -287,7 +287,7 @@ api-gateway:
   # main-b3d23769 (#325, also 418-catalog) — a gateway at 418 with an iam below 418 would
   # AUTHZ_DENY the new registry RPCs ("catalog: no entry for method"); rolling both
   # together keeps iam(418)/gateway(418)/registry(af0eacae) catalog-coherent.
-  image: docker.io/prorobotech/kacho-api-gateway:main-c7dce40d
+  image: docker.io/prorobotech/kacho-api-gateway:main-b622b388
   # Internal :9091 listener hosts InternalAuthzCacheService.InvalidateSubject and
   # (production invariant, security.md) MUST run mTLS + a caller allow-list — the
   # hardened binary fail-fasts otherwise. Reuse the already-mounted cert-manager
@@ -325,7 +325,7 @@ registry:
     # materialized + 60s TTL) + push-deny 403. af0eacae adds ONLY RG-1 #43 (Repository
     # config-overlay persistence: migration + domain + repo, DB-level invariants) on top.
     # Consistent with the iam(#325)/gateway(#145) 418-catalog + anon-recognition roll.
-    tag: main-af0eacae
+    tag: main-b622b388
   authMode: production
   db:
     sslmode: disable
@@ -504,7 +504,7 @@ storage:
     #   for storage resources are not written to FGA, so the gateway scope_extractors
     #   {storage_volume,volume_id}/{storage_snapshot,snapshot_id} cannot resolve
     #   target→project. Track as SEC-A parity with vpc/compute.
-    tag: main-a185fa07
+    tag: main-b622b388
   config:
     authMode: production
     geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090

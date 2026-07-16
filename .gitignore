@@ -14,3 +14,10 @@ kubeconfig*
 
 # Агентские worktree/scratch
 .claude/worktrees/
+
+# Оверлеи с секретами кластера — НИКОГДА в git.
+# values.fe3455-ory.yaml несёт hydra.config.dsn (креды БД) и прочий per-cluster секрет;
+# в kacho-deploy он был gitignored, при переезде в монорепу правило не поехало —
+# и любой `git add -A` закоммитил бы его в ПУБЛИЧНЫЙ репозиторий.
+**/values.*-ory.yaml
+**/values.*-secrets.yaml

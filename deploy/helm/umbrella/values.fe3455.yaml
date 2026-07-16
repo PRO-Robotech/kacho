@@ -39,25 +39,25 @@ mtls:
 vpc:
   # main-6fe9c386 — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
   # values.fe3455-prod.yaml (same tag).
-  image: docker.io/prorobotech/kacho-vpc:main-6fe9c386
+  image: docker.io/prorobotech/kacho-vpc:main-b622b388
   imagePullPolicy: IfNotPresent
 compute:
   # main-1678f62c — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
   # values.fe3455-prod.yaml (same tag).
-  image: docker.io/prorobotech/kacho-compute:main-1678f62c
+  image: docker.io/prorobotech/kacho-compute:main-b622b388
   imagePullPolicy: IfNotPresent
 # kacho-geo image: CI-built+pushed. mTLS inherited ON from values.dev. dataMigration
 # OFF (S7): geo serves its own seed (compute no longer owns geography).
 kacho-geo:
   # main-fc2d945c — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
   # values.fe3455-prod.yaml (same tag).
-  image: docker.io/prorobotech/kacho-geo:main-fc2d945c
+  image: docker.io/prorobotech/kacho-geo:main-b622b388
   imagePullPolicy: IfNotPresent
 api-gateway:
   # FORWARD ROLL: main-c7dce40d (RG-1 #145 — 6 Repository RPCs + 418-catalog). Kept in
   # sync with the authoritative override in values.fe3455-prod.yaml (which layers AFTER
   # this file) so this pin is not a stale landmine. See that file for the full rationale.
-  image: docker.io/prorobotech/kacho-api-gateway:main-c7dce40d
+  image: docker.io/prorobotech/kacho-api-gateway:main-b622b388
   imagePullPolicy: IfNotPresent
 ui:
   # Legacy monolithic console — RETIRED on fe3455. This cluster serves the federated
@@ -133,7 +133,7 @@ kacho-iam:
     # («Time.UnmarshalJSON: input is not a JSON string»). kacho-iam#326 re-applied it
     # onto main (wire-shape regression test locks the RFC3339 STRING) → main c744f95 →
     # CI published main-c744f956. Blocker resolved; this tag is the forward target.
-    tag: main-c744f956
+    tag: main-b622b388
     pullPolicy: IfNotPresent
 kacho-nlb:
   enabled: true
@@ -141,7 +141,7 @@ kacho-nlb:
     # main-2c87cac9 — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
     # values.fe3455-prod.yaml (same tag).
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-2c87cac9
+    tag: main-b622b388
     pullPolicy: IfNotPresent
 
 # ── no dynamic storage → every Postgres emptyDir (ephemeral) ──
