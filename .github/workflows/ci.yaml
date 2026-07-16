@@ -87,7 +87,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # Пин: buf влияет и на lint-правила, и на генерацию. Разъезд local-vs-CI уже
+      # стоил ложного «unused import» (свежий buf ловит то, что 1.69.0 пропускал) —
+      # находка была ВЕРНАЯ, но версия должна быть одна и та же у всех.
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 1.69.0
 
       - name: buf lint
         working-directory: proto
@@ -103,9 +108,13 @@ jobs:
       # перегенерировать после правки .proto.
       - name: generate-diff (стабы в синхроне с .proto)
         run: |
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+          # БЕЗ @latest: версии плагинов пинит go.mod через tools/tools.go. Плагины
+          # ОПРЕДЕЛЯЮТ содержимое pkg/api — с @latest версия у разработчика и в CI
+          # разъезжается по времени, и этот самый generate-diff начинает мигать
+          # «фантомным диффом» при нетронутых .proto.
+          go install google.golang.org/protobuf/cmd/protoc-gen-go
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
 
           # Рукописные файлы, живущие рядом со стабами (напр.
           # registry_rest_routing_test.go — ловит REST-shadow catch-all-роутов), buf НЕ
@@ -140,7 +149,10 @@ jobs:
       #    the targeted Go version (1.25.7)"
       # Сборка из исходников нашим же toolchain'ом делает этот рассинхрон невозможным.
       - name: install golangci-lint (нашим toolchain'ом)
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+        # Пин версии: с @latest новые линтеры/правила прилетают сами и роняют CI без
+        # единой правки кода. Версия обязана быть собрана Go >= go.mod (см. ниже) —
+        # go install собирает НАШИМ toolchain'ом, поэтому рассинхрон невозможен.
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
       - name: golangci-lint
         run: golangci-lint run --timeout=10m
 
