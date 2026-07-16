@@ -78,37 +78,24 @@ jobs:
         run: npm ci
       - name: зависимости standalone-пакетов
         run: for p in $STANDALONE; do npm ci --prefix "$p"; done
-      # DIAG4 (kacho#7): nav-стабы НЕ сняли hang (App.test всё ещё 124). Распутать:
-      # (1) применяется ли moduleNameMapper к ДИНАМИЧЕСКОМУ import() под vm-modules
-      #     (dyn-compute vs dyn-dash baseline) — если dyn HANG, mapper обходится dynamic'ом;
-      # (2) libuv-хэндлы висящего процесса — ЧТО именно ждёт event-loop (socket/timer/fs/child).
-      # Шаг НЕ гейтит (exit 0) — сбор данных.
-      - name: DIAG4 host-hang (dyn-import mapper + libuv, kacho#7)
+      # DIAG5 (kacho#7): со стабами — какие из 3 файлов ВСЁ ЕЩЁ виснут (bash -e прошлого
+      # guard'а умер на первом). HostRail.test проходит → HostRail-render ок, hang в App's
+      # routes/data & HostShell's loadHostContext. HostRail.test виснет → HostRail-render сам.
+      # + probe: рендер HostRail изолированно (минимальные props из его test'а). Шаг НЕ гейтит.
+      - name: DIAG5 per-file with stubs (kacho#7)
         working-directory: ui-future/host
         run: |
           set +e
           J="node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js"
-          mkdir -p src/__diag__ /tmp/rpt
-          printf "test('dyn compute/navigation', async () => { const m = await import('compute/navigation'); expect(m).toBeDefined(); });\n" > src/__diag__/dyn-compute.diag.test.ts
-          printf "test('dyn dashboard/navigation', async () => { const m = await import('dashboard/navigation'); expect(m).toBeDefined(); });\n" > src/__diag__/dyn-dash.diag.test.ts
-          printf "test('dyn compute/InstancesPage', async () => { try { await import('compute/InstancesPage'); } catch(e) { /* reject ok */ } expect(true).toBe(true); });\n" > src/__diag__/dyn-page.diag.test.ts
-          for p in dyn-dash dyn-compute dyn-page; do
-            timeout 40 $J --runInBand --silent "src/__diag__/$p.diag.test.ts" >/dev/null 2>&1; rc=$?
-            if [ "$rc" = "124" ]; then s="HANG (не settl'ится!)"; elif [ "$rc" = "0" ]; then s="ok(resolve/reject быстро)"; else s="rc$rc"; fi
-            echo "DYN $p → $s"
+          declare -A P=( [App]="src/App.test.tsx" [HostShell]="src/components/organisms/HostShell/HostShell.test.tsx" [HostRail]="src/components/organisms/HostRail/HostRail.test.tsx" [HeaderActions]="src/components/molecules/HeaderActions/HeaderActions.test.tsx" )
+          for name in HostRail HostShell App HeaderActions; do
+            timeout 90 $J --runInBand --silent "${P[$name]}" >/dev/null 2>&1; rc=$?
+            if [ "$rc" = "124" ]; then s="HANG"; elif [ "$rc" = "0" ]; then s="ok"; else s="rc$rc"; fi
+            echo "FILE $name → $s"
           done
-          echo "=== App.test hang → libuv handles (что ждёт event-loop) ==="
-          NODE_OPTIONS="--report-on-signal --report-directory=/tmp/rpt --report-filename=h.json" \
-            $J --runInBand --silent src/App.test.tsx > /tmp/a.out 2>&1 &
-          JPID=$!
-          for s in $(seq 1 30); do kill -0 $JPID 2>/dev/null || break; sleep 3; done
-          if kill -0 $JPID 2>/dev/null; then
-            echo "App.test HUNG — report"; kill -USR2 $JPID; sleep 6
-            python3 -c "import json; d=json.load(open('/tmp/rpt/h.json')); hs=d.get('libuv',[]); print('ACTIVE libuv handles:'); [print(' ',h.get('type'),'active=%s'%h.get('is_active'),'ref=%s'%h.get('is_referenced'), {k:v for k,v in (h.get('details') or {}).items()} if isinstance(h.get('details'),dict) else h.get('details')) for h in hs if h.get('is_active')]; print('total handles:',len(hs))" 2>&1 | head -40
-            kill -9 $JPID 2>/dev/null
-          else echo "App.test rc=$? (не завис)"; tail -6 /tmp/a.out; fi
-          rm -rf src/__diag__
-          echo "=== DIAG4 DONE ==="; exit 0
+          echo "=== probe: рендерит ли HeaderActions (fetch accounts) — hang источник data-fetch? ==="
+          # HeaderActions.test уже в наборе выше; если ok — data-fetch не виснет.
+          echo "=== DIAG5 DONE ==="; exit 0
 
   build:
     name: build ${{ matrix.project }}
