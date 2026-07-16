@@ -78,28 +78,31 @@ jobs:
         run: npm ci
       - name: зависимости standalone-пакетов
         run: for p in $STANDALONE; do npm ci --prefix "$p"; done
-      # DIAG6 (kacho#7): все 3 виснут со стабами → HostRail-render (общий знаменатель). HostRail —
-      # ЕДИНСТВЕННЫЙ импортёр @ant-design/icons (мок setup.ts unstable_mockModule Proxy). Гипотеза:
-      # ESM-линкер named-импортов иконок из Proxy-мока виснет. Probe-и изолируют: (A) импорт+рендер
-      # antd-иконок; (B) контроль — lucide-иконки (real); (C) импорт @ant-design/icons без рендера.
-      # Шаг НЕ гейтит.
-      - name: DIAG6 host-hang (@ant-design/icons mock, kacho#7)
+      # host-hang guard (kacho#7): 3 shell-integration файла (App/HostShell/HostRail) виснут,
+      # если @ant-design/icons НЕ замаплен на статический стаб. КОРЕНЬ (DIAG6): HostRail
+      # импортит 20 named-иконок; прежний setup.ts jest.unstable_mockModule Proxy-мок не давал
+      # статических named-экспортов → ESM-линкер `import { XOutlined }` висел вечно под
+      # --experimental-vm-modules (доказано: `import { ApartmentOutlined }` виснет на link ДАЖЕ
+      # без рендера; lucide — ok). Fix: moduleNameMapper → src/test/antd-icons-stub.tsx (реальные
+      # named-экспорты). Guard гоняет эти 3 файла с таймаутом ПЕРЕД полным npm test → быстрый
+      # сигнал регресса (иначе полный сьют висел бы до 20-мин job-timeout). set +e чтобы собрать
+      # все 3, потом exit по агрегату.
+      - name: host-hang guard (kacho#7)
         working-directory: ui-future/host
         run: |
           set +e
           J="node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js"
-          mkdir -p src/__diag__
-          printf "import { ApartmentOutlined } from '@ant-design/icons';\ntest('import antd icon', () => { expect(ApartmentOutlined).toBeDefined(); });\n" > src/__diag__/icons-import.diag.test.ts
-          printf "import React from 'react';\nimport { render } from '@testing-library/react';\nimport { Activity, Cable } from 'lucide-react';\ntest('render lucide (control)', () => { render(<div><Activity/><Cable/></div>); expect(true).toBe(true); });\n" > src/__diag__/lucide-render.diag.test.tsx
-          printf "import React from 'react';\nimport { render } from '@testing-library/react';\nimport { ApartmentOutlined, ClusterOutlined, GlobalOutlined } from '@ant-design/icons';\ntest('render antd icons (mocked)', () => { render(<div><ApartmentOutlined/><ClusterOutlined/><GlobalOutlined/></div>); expect(true).toBe(true); });\n" > src/__diag__/icons-render.diag.test.tsx
-          for p in icons-import lucide-render icons-render; do
-            ext=tsx; [ "$p" = "icons-import" ] && ext=ts
-            timeout 45 $J --runInBand --silent "src/__diag__/$p.diag.test.$ext" >/dev/null 2>&1; rc=$?
-            if [ "$rc" = "124" ]; then s="HANG"; elif [ "$rc" = "0" ]; then s="ok"; else s="rc$rc"; fi
-            echo "PROBE $p → $s"
+          rc_all=0
+          for f in src/App.test.tsx \
+                   src/components/organisms/HostShell/HostShell.test.tsx \
+                   src/components/organisms/HostRail/HostRail.test.tsx; do
+            timeout 120 $J --runInBand --silent "$f" >/dev/null 2>&1; rc=$?
+            if [ "$rc" = "124" ]; then echo "::error::$(basename "$f") ВИСНЕТ (kacho#7 регресс — @ant-design/icons стаб / mapper)"; rc_all=1
+            elif [ "$rc" != "0" ]; then echo "::error::$(basename "$f") упал rc=$rc"; rc_all=1
+            else echo "  ✓ $(basename "$f") прошёл"; fi
           done
-          rm -rf src/__diag__
-          echo "=== DIAG6 DONE ==="; exit 0
+          exit $rc_all
+      - run: npm test
 
   build:
     name: build ${{ matrix.project }}

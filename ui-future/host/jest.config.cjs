@@ -6,6 +6,13 @@ module.exports = {
   testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
+    // @ant-design/icons → стаб с реальными статическими named-экспортами. КОРЕНЬ
+    // host-hang (kacho#7, DIAG6): прежний jest.unstable_mockModule Proxy-мок в setup.ts
+    // не давал статических named-экспортов → под --experimental-vm-modules ESM-линкер
+    // `import { XOutlined }` (HostRail, 20 иконок) висел вечно, ожидая binding. Мап на
+    // реальный стаб → линкер резолвит. Заодно снимает исходную ESM/CJS-гонку antd↔icons
+    // (antd тоже получает стаб, реальный @ant-design/icons не грузится).
+    "^@ant-design/icons$": "<rootDir>/src/test/antd-icons-stub.tsx",
     "^dashboard/DashboardPage$": "<rootDir>/src/test/dashboard-remote.tsx",
     "^dashboard/navigation$": "<rootDir>/src/test/dashboard-navigation.ts",
     "^vpc/VpcPage$": "<rootDir>/src/test/vpc-remote.tsx",
