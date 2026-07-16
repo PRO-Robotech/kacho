@@ -76,6 +76,14 @@ curl_json() {
 # Returns the operation JSON on stdout. Times out after 60s.
 wait_op() {
   local op_id="$1"
+  # Fast-fail on empty id: a Create that returned an error envelope (e.g.
+  # ALREADY_EXISTS, or a validation reject) has no operation id — polling it
+  # would just burn the full 60s deadline before FATAL. Surface it immediately
+  # so the caller's `|| true` / blank-id guard can proceed.
+  if [ -z "$op_id" ]; then
+    log "wait_op: empty operation id (create returned an error, not an Operation) — skipping"
+    return 1
+  fi
   local deadline=$(( $(date +%s) + 60 ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
     local op
@@ -145,7 +153,7 @@ REGION_ID=$(curl_json GET "/compute/v1/zones/$ZONE_ID" | extract "regionId")
 log "    region_id=$REGION_ID"
 
 # ─── 2) Ensure VPC Network ---------------------------------------------------
-NET_LIST=$(curl_json GET "/vpc/v1/networks?folderId=$PROJECT_ID&pageSize=200")
+NET_LIST=$(curl_json GET "/vpc/v1/networks?projectId=$PROJECT_ID&pageSize=200")
 NET_ID=$(printf '%s' "$NET_LIST" | python3 -c '
 import sys, json
 try: d=json.load(sys.stdin)
@@ -178,7 +186,7 @@ print("")
 ')
 if [ -z "$SUBNET_ID" ]; then
   log "3/5 creating Subnet kac-nlb-seed-subnet"
-  body='{"folderId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["10.130.0.0/24"]}'
+  body='{"projectId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","placementType":"ZONAL","v4CidrBlocks":["10.130.0.0/24"]}'
   op=$(curl_json POST "/vpc/v1/subnets" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   SUBNET_ID=$(wait_op "$op_id" | extract "metadata.subnetId")
@@ -187,7 +195,7 @@ else
 fi
 
 # ─── 4) Ensure External Address (BYO VIP) ----------------------------------
-ADDR_LIST=$(curl_json GET "/vpc/v1/addresses?folderId=$PROJECT_ID&pageSize=200")
+ADDR_LIST=$(curl_json GET "/vpc/v1/addresses?projectId=$PROJECT_ID&pageSize=200")
 EXT_ADDR_ID=$(printf '%s' "$ADDR_LIST" | python3 -c '
 import sys, json
 try: d=json.load(sys.stdin)
@@ -199,7 +207,7 @@ print("")
 ')
 if [ -z "$EXT_ADDR_ID" ]; then
   log "4/5 creating external Address kac-nlb-seed-ext-addr"
-  body='{"folderId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-ext-addr","externalIpv4Address":{"regionId":"'"$REGION_ID"'"}}'
+  body='{"projectId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-ext-addr","externalIpv4Address":{"regionId":"'"$REGION_ID"'"}}'
   op=$(curl_json POST "/vpc/v1/addresses" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   EXT_ADDR_ID=$(wait_op "$op_id" | extract "metadata.addressId" || true)
@@ -211,7 +219,7 @@ else
 fi
 
 # ─── 5) Ensure Compute Instance + discover its NIC -------------------------
-INST_LIST=$(curl_json GET "/compute/v1/instances?folderId=$PROJECT_ID&pageSize=200")
+INST_LIST=$(curl_json GET "/compute/v1/instances?projectId=$PROJECT_ID&pageSize=200")
 INSTANCE_ID=$(printf '%s' "$INST_LIST" | python3 -c '
 import sys, json
 try: d=json.load(sys.stdin)
@@ -225,7 +233,7 @@ if [ -z "$INSTANCE_ID" ]; then
   log "5/5 creating Instance kac-nlb-seed-inst"
   body=$(cat <<EOF
 {
-  "folderId":"$PROJECT_ID",
+  "projectId":"$PROJECT_ID",
   "zoneId":"$ZONE_ID",
   "name":"kac-nlb-seed-inst",
   "resourcesSpec":{"memory":"1073741824","cores":"1"},

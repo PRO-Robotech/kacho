@@ -66,7 +66,7 @@ mkdir -p out
 if [[ -n "$SERVICE" ]]; then
   run_one "$SERVICE"
 else
-  for svc in load-balancer listener target-group targets operation authz-deny; do
+  for svc in load-balancer listener target-group targets operation authz-deny cross-resource list-filter placement-coherence; do
     while [[ "$(jobs -rp | wc -l)" -ge "$JOBS" ]]; do wait -n; done
     run_one "$svc" &
   done
