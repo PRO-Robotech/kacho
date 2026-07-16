@@ -7,7 +7,7 @@
     "dev": "vite --port 5174 --host 0.0.0.0 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 4174 --strictPort",
-    "test": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --silent --testTimeout=30000",
+    "test": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --silent --testTimeout=30000 --forceExit",
     "typecheck": "tsc -b --noEmit",
     "check": "npm run lint && npm run format:check",
     "lint": "npm run lint:js && npm run lint:css && npm run typecheck",
