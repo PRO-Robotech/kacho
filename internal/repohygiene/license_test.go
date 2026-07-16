@@ -1,9 +1,13 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package licensehdr — release-hygiene gate: каждый source-файл репозитория
+// Package repohygiene — репо-широкие гигиенические гейты. Живёт в КОРНЕ, а не внутри
+// services/compute: гейт проверяет ВЕСЬ репозиторий, и его прописка в одном из сервисов
+// была рудиментом polyrepo (в kacho-compute он был локальным).
+//
+// license_test.go — каждый source-файл репозитория
 // обязан нести SPDX-копирайт-хедер, а в корне должен лежать файл LICENSE.
-package licensehdr
+package repohygiene
 
 import (
 	"bufio"
