@@ -53,8 +53,12 @@ jobs:
         run: go test ./... -race -short -count=1 -timeout 5m
 
   integration:
-    name: integration (testcontainers Postgres)
+    name: integration (${{ matrix.svc }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        svc: [iam, vpc, compute, geo, nlb, storage, registry]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -65,23 +69,31 @@ jobs:
 
       # internal/repo/*integration_test.go поднимают postgres:16 через testcontainers
       # (Docker есть на ubuntu-latest). Отдельная джоба, а НЕ часть unit-прогона:
-      # иначе -short-путь исчезает и быстрый сигнал (5с локально) тонет в контейнерах.
+      # иначе -short-путь исчезает и быстрый сигнал (59с) тонет в контейнерах.
       #
-      # -p 1: пакеты сериализуются. Под -race + Docker-contention параллельные
-      # testcontainers-пакеты голодают друг у друга ресурсы, и concurrent-race-кейсы
-      # (CAS/EXCLUDE/SKIP-LOCKED) флакают. Дизайн взят из polyrepo-CI kacho-vpc/nlb —
-      # он там был продуман, и при переезде в монорепу я его потерял.
-      - name: integration (-p 1, сериализовано)
+      # МАТРИЦА ПО СЕРВИСАМ, а не один прогон на все 45 пакетов. Причина: одним job'ом
+      # это не влезает — iam/internal/repo/kacho/pg держит 398 тестов против
+      # testcontainers-Postgres и под -race выбирает 15m в одиночку:
+      #   panic: test timed out after 15m0s   (весь job шёл 35 минут и падал)
+      # В polyrepo этой нагрузки не было: у kacho-iam integration-джобы НЕ СУЩЕСТВОВАЛО
+      # вовсе — его 398 pg-тестов не гонялись в CI НИКОГДА. Монорепа их подхватила
+      # (это плюс: покрытие, которого не было), но им нужен свой бюджет.
+      # Матрица заодно параллелит: wall-clock = самый долгий сервис, а не сумма.
+      #
+      # -p 1 ВНУТРИ сервиса: пакеты сериализуются. Под -race + Docker-contention
+      # параллельные testcontainers-пакеты голодают друг у друга ресурсы, и
+      # concurrent-кейсы (CAS/EXCLUDE/SKIP-LOCKED) флакают. Дизайн — из polyrepo kacho-vpc/nlb.
+      - name: integration ${{ matrix.svc }} (-p 1, сериализовано)
         run: |
-          # Пакеты выбираем через `go list`, а НЕ шелл-глобом. `./services/*/internal/repo/...`
-          # не работает: bash глобит СЛОВО ЦЕЛИКОМ, а `...` — не каталог, совпадений нет →
-          # паттерн уходит в go test литералом:
-          #   pattern ./services/*/internal/repo/...: lstat …: no such file or directory
-          # (и джоба падала за 18с, не запустив НИ ОДНОГО теста — красный CI без сигнала).
-          # `go list` заодно сам разбирается с тем, что у geo нет internal/clients.
-          pkgs=$(go list ./services/... | grep -E '/internal/(repo|clients)(/|$)')
-          echo "integration-пакетов: $(echo "$pkgs" | wc -l)"
-          echo "$pkgs" | xargs go test -race -count=1 -timeout 900s -p 1
+          # `go list`, а НЕ шелл-глоб: `./services/*/internal/repo/...` не работает —
+          # bash глобит СЛОВО ЦЕЛИКОМ, а `...` не каталог, совпадений нет → паттерн уходит
+          # в go test литералом («lstat …: no such file or directory»), и job краснеет за
+          # 18с не запустив НИ ОДНОГО теста. go list заодно сам разбирается с тем, что у
+          # geo нет internal/clients.
+          pkgs=$(go list ./services/${{ matrix.svc }}/... | grep -E '/internal/(repo|clients)(/|$)' || true)
+          if [ -z "$pkgs" ]; then echo "нет integration-пакетов у ${{ matrix.svc }} — пропуск"; exit 0; fi
+          echo "пакетов: $(echo "$pkgs" | wc -l)"
+          echo "$pkgs" | xargs go test -race -count=1 -timeout 25m -p 1
 
   proto:
     name: buf lint · breaking · generate-diff
