@@ -39,7 +39,7 @@ env:
 
 jobs:
   build:
-    name: ${{ matrix.image }}
+    name: образы (8 шт, один job)
     # self-hosted (beget-runner): docker-демон живой, 12 ядер, и главное — КЭШ СЛОЁВ
     # ПЕРЕЖИВАЕТ ПРОГОНЫ. На ubuntu-latest каждая джоба — чистая VM, кэш тянется по сети
     # из type=gha; здесь builder-контейнер остаётся между запусками и кэш локальный.
@@ -47,18 +47,6 @@ jobs:
     # Метка, а НЕ имя: `beget-runner` — имя ранера, метки у него self-hosted/Linux/X64.
     # `runs-on: beget-runner` не сматчится ни с чем и висит в очереди молча.
     runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { image: kacho-iam,      dir: services/iam }
-          - { image: kacho-vpc,      dir: services/vpc }
-          - { image: kacho-compute,  dir: services/compute }
-          - { image: kacho-geo,      dir: services/geo }
-          - { image: kacho-nlb,      dir: services/nlb }
-          - { image: kacho-storage,  dir: services/storage }
-          - { image: kacho-registry, dir: services/registry }
-          - { image: kacho-api-gateway, dir: gateway }
     steps:
       - uses: actions/checkout@v4
 
@@ -108,18 +96,55 @@ jobs:
           driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
           cleanup: false
 
-      - name: build and push (multiarch)
-        uses: docker/build-push-action@v6
-        with:
-          # Контекст — КОРЕНЬ монорепы: единый go.mod + pkg/ + proto/ нужны каждому образу.
-          context: .
-          file: ./${{ matrix.dir }}/Dockerfile
-          push: ${{ steps.gate.outputs.push == 'true' }}
-          provenance: false
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.gate.outputs.ns }}/${{ matrix.image }}:${{ steps.sanitize.outputs.branch }}-${{ steps.short-sha.outputs.sha }}
-          # type=gha убран: кэш и так лежит внутри персистентного builder'а локально.
-          # gha тянул бы его по сети поверх уже локального — чистый проигрыш.
+      # ОДИН job на все 8 образов вместо matrix. Матрица имеет смысл там, где job'ы идут
+      # ПАРАЛЛЕЛЬНО — на ubuntu-latest каждый получал свою VM. Ранер ОДИН, поэтому она
+      # давала лишь 8 ПОСЛЕДОВАТЕЛЬНЫХ job'ов, а GitHub передаёт ранеру каждый следующий
+      # с задержкой ~минуту. Замерено: сумма самих сборок 5.4 мин, а прогон — 14 мин;
+      # ~8 мин съели 7 лишних передач. Цикл убирает их и переиспользует один
+      # checkout/QEMU/buildx (шаги job'а суммарно ~25с, из них checkout 1с —
+      # на self-hosted workspace переживает прогоны и чекаутится инкрементально).
+      #
+      # type=gha не нужен: кэш лежит внутри персистентного builder'а локально, gha тянул
+      # бы его по сети поверх уже локального — чистый проигрыш.
+      - name: сборка образов (8 шт)
+        run: |
+          set -uo pipefail
+          # image:dir — контекст сборки КОРЕНЬ монорепы (единый go.mod + pkg/ + proto/
+          # нужны каждому образу), меняется только -f Dockerfile.
+          images="kacho-iam:services/iam
+          kacho-vpc:services/vpc
+          kacho-compute:services/compute
+          kacho-geo:services/geo
+          kacho-nlb:services/nlb
+          kacho-storage:services/storage
+          kacho-registry:services/registry
+          kacho-api-gateway:gateway"
+
+          push_flag=""
+          [ "${{ steps.gate.outputs.push }}" = "true" ] && push_flag="--push"
+
+          # Собираем ВСЕ, потом падаем — а не set -e на первой. Иначе первый же сбой
+          # прячет состояние остальных семи, и вместо «упал registry» видно «упало что-то».
+          failed=""
+          for entry in $images; do
+            image="${entry%%:*}"; dir="${entry##*:}"
+            echo "::group::$image"
+            if docker buildx build \
+                 --builder kacho-persistent \
+                 --platform linux/amd64,linux/arm64 \
+                 --provenance=false \
+                 -f "./$dir/Dockerfile" \
+                 -t "${{ steps.gate.outputs.ns }}/$image:${{ steps.sanitize.outputs.branch }}-${{ steps.short-sha.outputs.sha }}" \
+                 $push_flag . ; then
+              echo "✓ $image"
+            else
+              echo "::error::сборка $image упала"; failed="$failed $image"
+            fi
+            echo "::endgroup::"
+          done
+
+          if [ -n "$failed" ]; then echo "УПАЛИ:$failed"; exit 1; fi
+          echo "✓ все 8 образов собраны"
 
       # ОБЯЗАТЕЛЬНО для self-hosted: на ubuntu-latest VM одноразовая и мусор исчезает сам,
       # здесь кэш buildkit копится вечно. На ранере свободно ~16 ГБ — без уборки он
