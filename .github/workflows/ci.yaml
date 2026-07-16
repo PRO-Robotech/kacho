@@ -73,9 +73,15 @@ jobs:
       # он там был продуман, и при переезде в монорепу я его потерял.
       - name: integration (-p 1, сериализовано)
         run: |
-          go test -race -count=1 -timeout 900s -p 1 \
-            ./services/*/internal/repo/... \
-            ./services/*/internal/clients/...
+          # Пакеты выбираем через `go list`, а НЕ шелл-глобом. `./services/*/internal/repo/...`
+          # не работает: bash глобит СЛОВО ЦЕЛИКОМ, а `...` — не каталог, совпадений нет →
+          # паттерн уходит в go test литералом:
+          #   pattern ./services/*/internal/repo/...: lstat …: no such file or directory
+          # (и джоба падала за 18с, не запустив НИ ОДНОГО теста — красный CI без сигнала).
+          # `go list` заодно сам разбирается с тем, что у geo нет internal/clients.
+          pkgs=$(go list ./services/... | grep -E '/internal/(repo|clients)(/|$)')
+          echo "integration-пакетов: $(echo "$pkgs" | wc -l)"
+          echo "$pkgs" | xargs go test -race -count=1 -timeout 900s -p 1
 
   proto:
     name: buf lint · breaking · generate-diff
