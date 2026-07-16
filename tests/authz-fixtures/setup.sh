@@ -322,12 +322,18 @@ log "4b/10 cleaning up stale NOB viewer bindings on account-A / account-B (KAC-1
 
 delete_binding_if_exists() {
   local subject_id="$1" resource_type="$2" resource_id="$3" grantor_token="$4"
-  # Use ListByResource to find bindings for this resource, then filter by subject.
-  # (AccessBindingService has no flat GET /accessBindings — only ListByResource
-  #  and ListBySubject actions. ListByResource returns all bindings for the
-  #  account; we filter client-side by subjectId.)
+  # ListByScope находит binding'и скоупа, дальше фильтруем по субъекту клиентски
+  # (плоского GET /accessBindings у AccessBindingService нет — только :listByScope
+  #  и :listBySubject).
+  #
+  # НЕ :listByResource — этот роут УДАЛЁН (RPC переименован в ListByScope, wire-имя
+  # снято; kacho#1 локает это кейсом IAM-ACB-F50-ROUTES-REMOVED: legacy-путь обязан
+  # отдавать 403 catalog-miss). Обращение к нему возвращало 403 с ВАЛИДНЫМ JSON'ом
+  # ошибки, python его успешно парсил, `.get('accessBindings', [])` давал пустой
+  # список — и очистка молча не удаляла НИЧЕГО. Мусорные binding'и от прошлых
+  # прогонов копились, ломая кейсы, которые ждут чистое состояние.
   local resp ab_ids
-  resp=$(api GET "/iam/v1/accessBindings:listByResource?resourceType=${resource_type}&resourceId=${resource_id}" "$grantor_token" 2>/dev/null || true)
+  resp=$(api GET "/iam/v1/accessBindings:listByScope?resourceType=${resource_type}&resourceId=${resource_id}" "$grantor_token" 2>/dev/null || true)
   ab_ids=$(echo "$resp" | python3 -c "
 import sys, json
 try:
@@ -448,9 +454,15 @@ if [ -n "$JWT_BOOTSTRAP" ] && [ -n "$ACCOUNT_A" ]; then
   boot_ok=""
   boot_iters=$(( CLUSTER_ADMIN_WAIT_SECS / 2 )); [ "$boot_iters" -lt 1 ] && boot_iters=1
   for i in $(seq 1 "$boot_iters"); do
-    # listByResource(cluster) by the bootstrap admin returns 200 once the
-    # reconciler's system_admin@cluster tuple has propagated to OpenFGA.
-    code=$(api_status GET "/iam/v1/accessBindings:listByResource?resourceType=cluster&resourceId=cluster_kacho_root" "$JWT_BOOTSTRAP" 2>/dev/null || echo 000)
+    # :listByScope(cluster) от bootstrap-админа отдаёт 200, как только tuple
+    # system_admin@cluster от reconciler'а долетел до OpenFGA.
+    #
+    # НЕ :listByResource — роут УДАЛЁН (см. delete_binding_if_exists выше). Проба по
+    # нему получала 403 catalog-miss ВСЕГДА, независимо от готовности → выжигала весь
+    # бюджет CLUSTER_ADMIN_WAIT_SECS (180с) на КАЖДОМ прогоне и заканчивалась
+    # «WARN: cluster cases may fail». Проба, которая не может стать зелёной, не
+    # проверяет готовность — она измеряет только собственный таймаут.
+    code=$(api_status GET "/iam/v1/accessBindings:listByScope?resourceType=cluster&resourceId=cluster_kacho_root" "$JWT_BOOTSTRAP" 2>/dev/null || echo 000)
     if [ "$code" = "200" ]; then boot_ok=1; log "    bootstrap cluster-admin ready (${i}x2s, code=200)"; break; fi
     sleep 2
   done
