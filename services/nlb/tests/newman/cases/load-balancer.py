@@ -1631,7 +1631,7 @@ CASES.append(Case(
                           "const lc = parseInt(pm.environment.get('_lifeLstCount') || '0', 10);",
                           "if (!ids.includes(pm.environment.get('lifeId')) && lc < 6) {",
                           "  pm.environment.set('_lifeLstCount', String(lc + 1));",
-                          "  postman.setNextRequest(pm.info.requestName);",
+                          "  pm.execution.setNextRequest(pm.info.requestName);",
                           "  return;",
                           "}",
                           "pm.environment.unset('_lifeLstCount');",

@@ -1445,7 +1445,7 @@ def poll_operation_until_done() -> Step:
             "if (!j.done && pc < 6) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
             "  // Postman async-friendly retry: re-invoke same request name",
-            "  postman.setNextRequest(pm.info.requestName);",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
             "pm.environment.unset('_pollCount');",

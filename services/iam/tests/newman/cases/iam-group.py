@@ -105,7 +105,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -207,7 +207,7 @@ CASES.append(Case(
             auth="jwtAccountAdminA",
             pre_script=[
                 "if (!pm.environment.get('badAccGrpOpId')) {",
-                "  postman.setNextRequest(null);",
+                "  pm.execution.setNextRequest(null);",
                 "}",
             ],
             test_script=[
@@ -701,7 +701,7 @@ CASES.append(Case(
             auth="jwtAccountAdminA",
             pre_script=[
                 "if (!pm.environment.get('dupAddMemberOpId')) {",
-                "  postman.setNextRequest(null);",
+                "  pm.execution.setNextRequest(null);",
                 "}",
             ],
             test_script=[
@@ -838,7 +838,7 @@ CASES.append(Case(
             auth="jwtAccountAdminA",
             pre_script=[
                 "if (!pm.environment.get('rmNotMemberOpId')) {",
-                "  postman.setNextRequest(null);",
+                "  pm.execution.setNextRequest(null);",
                 "}",
             ],
             test_script=[
@@ -1071,7 +1071,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",

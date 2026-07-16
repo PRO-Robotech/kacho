@@ -105,11 +105,11 @@ def nob_preclean_account_a(next_step):
                 f"if (arr.length > 0 && c < {CAP}) {{",
                 "  pm.environment.set('nobDup', arr[0].id);",
                 "  pm.environment.set('_nobCount', String(c + 1));",
-                "  postman.setNextRequest('nob-preclean-del');",
+                "  pm.execution.setNextRequest('nob-preclean-del');",
                 "  return;",
                 "}",
                 "pm.environment.unset('_nobCount'); pm.environment.unset('_nobStarted'); pm.environment.unset('nobDup');",
-                f"postman.setNextRequest('{next_step}');",
+                f"pm.execution.setNextRequest('{next_step}');",
             ],
         ),
         Step(
@@ -121,7 +121,7 @@ def nob_preclean_account_a(next_step):
                 "pm.test('nob pre-clean delete acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 404, 403]));",
                 "pm.environment.unset('nobDelOp');",
                 "if (pm.response.code === 200) { const dj = pm.response.json() || {}; if (dj.id) pm.environment.set('nobDelOp', dj.id); }",
-                "if (!pm.environment.get('nobDelOp')) { postman.setNextRequest('nob-preclean-list'); }",
+                "if (!pm.environment.get('nobDelOp')) { pm.execution.setNextRequest('nob-preclean-list'); }",
             ],
         ),
         Step(
@@ -135,9 +135,9 @@ def nob_preclean_account_a(next_step):
             test_script=[
                 "const j = pm.response.json();",
                 "const c = parseInt(pm.environment.get('_nobAwaitCount') || '0', 10);",
-                f"if (!j.done && c < {POLL_CAP}) {{ pm.environment.set('_nobAwaitCount', String(c + 1)); postman.setNextRequest(pm.info.requestName); return; }}",
+                f"if (!j.done && c < {POLL_CAP}) {{ pm.environment.set('_nobAwaitCount', String(c + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }}",
                 "pm.environment.unset('_nobAwaitCount'); pm.environment.unset('_nobAwaitStarted');",
-                "postman.setNextRequest('nob-preclean-list');",
+                "pm.execution.setNextRequest('nob-preclean-list');",
             ],
         ),
     ]
@@ -570,7 +570,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -590,7 +590,7 @@ CASES.append(Case(
             auth="jwtAccountAdminA",
             pre_script=[
                 "if (!pm.environment.get('invitedUserId')) {",
-                "  postman.setNextRequest(null);",
+                "  pm.execution.setNextRequest(null);",
                 "}",
             ],
             test_script=[
@@ -673,7 +673,7 @@ CASES.append(Case(
             auth="jwtAccountAdminA",
             pre_script=[
                 "if (!pm.environment.get('badRoleInvOpId')) {",
-                "  postman.setNextRequest(null);",
+                "  pm.execution.setNextRequest(null);",
                 "}",
             ],
             test_script=[

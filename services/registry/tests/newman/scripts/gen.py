@@ -33,7 +33,7 @@ CASES_DIR = ROOT / "cases"
 OUT_DIR = ROOT / "collections"
 
 # Monotonic sequence for poll-step names within a single collection build.
-# poll_operation_until_done() self-retries via postman.setNextRequest(
+# poll_operation_until_done() self-retries via pm.execution.setNextRequest(
 # pm.info.requestName); newman resolves setNextRequest by request NAME and jumps
 # to the FIRST match in the flattened collection. Identically-named "poll-op"
 # steps (one per mutation, hundreds per collection) therefore made a mid-suite
@@ -171,7 +171,7 @@ def poll_operation_until_done() -> Step:
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
             "if (!j.done && pc < 6) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
-            "  postman.setNextRequest(pm.info.requestName);",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
             "pm.environment.unset('_pollCount');",

@@ -199,7 +199,7 @@ def mint_user(env_var, ext, auth="jwtAccountAdminA"):
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 f"if (!j.done && pc < {POLL_CAP}) {{",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -263,7 +263,7 @@ CASES.append(Case(
                 "  if (dup && dup.id) { pm.environment.set('dupAcbId', dup.id); }",
                 "}",
                 # No pre-existing dup (clean DB, or NOB not visible) → skip revoke+poll.
-                "if (!pm.environment.get('dupAcbId')) { postman.setNextRequest('create'); }",
+                "if (!pm.environment.get('dupAcbId')) { pm.execution.setNextRequest('create'); }",
             ],
         ),
         Step(
@@ -278,7 +278,7 @@ CASES.append(Case(
                 # A 200 returns the delete Operation → poll it done; a 404/403 means it is
                 # already gone → skip the poll and create directly.
                 "if (pm.response.code === 200 && j && j.id) { pm.environment.set('preCleanOpId', j.id); }",
-                "else { pm.environment.unset('preCleanOpId'); postman.setNextRequest('create'); }",
+                "else { pm.environment.unset('preCleanOpId'); pm.execution.setNextRequest('create'); }",
             ],
         ),
         Step(
@@ -297,7 +297,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -336,7 +336,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -442,7 +442,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -1141,7 +1141,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -1243,7 +1243,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -1350,7 +1350,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -1805,7 +1805,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -1858,7 +1858,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -2067,7 +2067,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -2410,7 +2410,7 @@ CASES.append(Case(
                 "  if (m && m.id) { pm.environment.set('t33StaleAcbId', m.id); }",
                 "}",
                 # No stale binding (clean DB) → skip the revoke and go straight to create.
-                "if (!pm.environment.get('t33StaleAcbId')) { postman.setNextRequest('t33-create-with-labels'); }",
+                "if (!pm.environment.get('t33StaleAcbId')) { pm.execution.setNextRequest('t33-create-with-labels'); }",
             ],
         ),
         Step(
@@ -2426,7 +2426,7 @@ CASES.append(Case(
                 # active-grant UNIQUE keys on revoked_at IS NULL, set in the worker); a
                 # 404 means it is already gone → skip the poll and create directly.
                 "if (pm.response.code === 200 && j && j.id) { pm.environment.set('t33PreCleanOpId', j.id); }",
-                "else { pm.environment.unset('t33PreCleanOpId'); postman.setNextRequest('t33-create-with-labels'); }",
+                "else { pm.environment.unset('t33PreCleanOpId'); pm.execution.setNextRequest('t33-create-with-labels'); }",
             ],
         ),
         Step(
@@ -2441,7 +2441,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -2528,7 +2528,7 @@ CASES.append(Case(
             path="/iam/v1/accessBindings/{{t33AcbId}}",
             auth="jwtAccountAdminA",
             pre_script=[
-                "if (!pm.environment.get('t33AcbId')) { postman.setNextRequest(null); }",
+                "if (!pm.environment.get('t33AcbId')) { pm.execution.setNextRequest(null); }",
             ],
             test_script=[
                 "pm.test('teardown delete accepted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
@@ -2575,7 +2575,7 @@ CASES.append(Case(
                 "  const m = rows.find(b => b.roleId === '" + ROLE_VIEW + "' && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId') && b.subjectId === pm.environment.get('userINVId') && (!b.status || b.status === 'ACTIVE' || b.status === 'STATUS_UNSPECIFIED'));",
                 "  if (m && m.id) { pm.environment.set('t33immStaleAcbId', m.id); }",
                 "}",
-                "if (!pm.environment.get('t33immStaleAcbId')) { postman.setNextRequest('t33imm-create'); }",
+                "if (!pm.environment.get('t33immStaleAcbId')) { pm.execution.setNextRequest('t33imm-create'); }",
             ],
         ),
         Step(
@@ -2587,7 +2587,7 @@ CASES.append(Case(
                 "pm.test('pre-clean delete accepted or already gone', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                 "const j = pm.response.json();",
                 "if (pm.response.code === 200 && j && j.id) { pm.environment.set('t33immPreCleanOpId', j.id); }",
-                "else { pm.environment.unset('t33immPreCleanOpId'); postman.setNextRequest('t33imm-create'); }",
+                "else { pm.environment.unset('t33immPreCleanOpId'); pm.execution.setNextRequest('t33imm-create'); }",
             ],
         ),
         Step(
@@ -2602,7 +2602,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_pollCount');",
@@ -2669,7 +2669,7 @@ CASES.append(Case(
             path="/iam/v1/accessBindings/{{t33immAcbId}}",
             auth="jwtAccountAdminA",
             pre_script=[
-                "if (!pm.environment.get('t33immAcbId')) { postman.setNextRequest(null); }",
+                "if (!pm.environment.get('t33immAcbId')) { pm.execution.setNextRequest(null); }",
             ],
             test_script=[
                 "pm.test('teardown delete accepted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",

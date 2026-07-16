@@ -111,7 +111,7 @@ def poll_op(op_var, out_id_var=None, auth="jwtAccountAdminA"):
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
             f"if (!j.done && pc < {POLL_CAP}) {{",
             "  pm.environment.set('_pollCount', String(pc + 1));",
-            "  postman.setNextRequest(pm.info.requestName);",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
             "pm.environment.unset('_pollCount');",
@@ -165,13 +165,13 @@ def preclean_account_loop(tag, next_step):
                 f"if (arr.length > 0 && c < {PRECLEAN_LIST_CAP}) {{",
                 f"  pm.environment.set('{dup}', arr[0].id);",
                 f"  pm.environment.set('_{tag}Count', String(c + 1));",
-                f"  postman.setNextRequest('{del_step}');",
+                f"  pm.execution.setNextRequest('{del_step}');",
                 "  return;",
                 "}",
                 # Terminal (clean slate OR cap hit): jump FORWARD past del/await to next_step.
                 f"pm.environment.unset('_{tag}Count'); pm.environment.unset('_{tag}Started'); pm.environment.unset('{dup}');",
                 "pm.test('jwtInvitee has zero residual account-A bindings (clean slate for by-label visibility)', () => pm.expect(arr.length, JSON.stringify(arr.map(b => b.id))).to.eql(0));",
-                f"postman.setNextRequest('{next_step}');",
+                f"pm.execution.setNextRequest('{next_step}');",
             ],
         ),
         Step(
@@ -185,7 +185,7 @@ def preclean_account_loop(tag, next_step):
                 "if (pm.response.code === 200) { const dj = pm.response.json() || {}; if (dj.id) pm.environment.set('" + delop + "', dj.id); }",
                 # 200 → fall through to await_step; non-200 (already gone / undeletable) → re-list
                 # (bounded by the list-step counter, which does NOT reset on this loop-back).
-                f"if (!pm.environment.get('{delop}')) {{ postman.setNextRequest('{list_step}'); }}",
+                f"if (!pm.environment.get('{delop}')) {{ pm.execution.setNextRequest('{list_step}'); }}",
             ],
         ),
         Step(
@@ -199,9 +199,9 @@ def preclean_account_loop(tag, next_step):
             test_script=[
                 "const j = pm.response.json();",
                 f"const c = parseInt(pm.environment.get('_{tag}AwaitCount') || '0', 10);",
-                f"if (!j.done && c < {POLL_CAP}) {{ pm.environment.set('_{tag}AwaitCount', String(c + 1)); postman.setNextRequest(pm.info.requestName); return; }}",
+                f"if (!j.done && c < {POLL_CAP}) {{ pm.environment.set('_{tag}AwaitCount', String(c + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }}",
                 f"pm.environment.unset('_{tag}AwaitCount'); pm.environment.unset('_{tag}AwaitStarted');",
-                f"postman.setNextRequest('{list_step}');",
+                f"pm.execution.setNextRequest('{list_step}');",
             ],
         ),
     ]
@@ -313,7 +313,7 @@ def robust_revoke_binding(name, acb_var):
         ],
         test_script=[
             f"const _rc = parseInt(pm.environment.get('_rv{acb_var}Count') || '0', 10);",
-            f"if (pm.response.code === 403 && _rc < {POLL_CAP}) {{ pm.environment.set('_rv{acb_var}Count', String(_rc + 1)); postman.setNextRequest(pm.info.requestName); return; }}",
+            f"if (pm.response.code === 403 && _rc < {POLL_CAP}) {{ pm.environment.set('_rv{acb_var}Count', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }}",
             f"pm.environment.unset('_rv{acb_var}Count'); pm.environment.unset('_rv{acb_var}Started');",
             "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));",
         ],

@@ -250,7 +250,7 @@ CASES.append(Case(
                     "const rc = parseInt(pm.environment.get('_listRetry') || '0', 10);",
                     "if (!found && rc < 6) {",
                     "  pm.environment.set('_listRetry', String(rc + 1));",
-                    "  postman.setNextRequest(pm.info.requestName);",
+                    "  pm.execution.setNextRequest(pm.info.requestName);",
                     "  return;",
                     "}",
                     "pm.environment.unset('_listRetry');",

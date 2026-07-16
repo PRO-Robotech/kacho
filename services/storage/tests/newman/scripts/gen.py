@@ -157,7 +157,7 @@ def poll_operation_until_done() -> Step:
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
             "if (!j.done && pc < 8) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
-            "  postman.setNextRequest(pm.info.requestName);",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
             "pm.environment.unset('_pollCount');",

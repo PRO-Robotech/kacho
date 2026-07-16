@@ -94,7 +94,7 @@ CASES.append(Case(
                 "       && b.resourceId === pm.environment.get('accountAId'));",
                 "  if (dup && dup.id) pm.environment.set('rdAuthzDupAcbId', dup.id);",
                 "}",
-                "if (!pm.environment.get('rdAuthzDupAcbId')) { postman.setNextRequest('grant-view'); }",
+                "if (!pm.environment.get('rdAuthzDupAcbId')) { pm.execution.setNextRequest('grant-view'); }",
             ],
         ),
         Step(
@@ -111,7 +111,7 @@ CASES.append(Case(
                 "  const dj = pm.response.json() || {};",
                 "  if (dj.id) pm.environment.set('rdAuthzDelOpId', dj.id);",
                 "}",
-                "if (!pm.environment.get('rdAuthzDelOpId')) { postman.setNextRequest('grant-view'); }",
+                "if (!pm.environment.get('rdAuthzDelOpId')) { pm.execution.setNextRequest('grant-view'); }",
             ],
         ),
         Step(
@@ -131,7 +131,7 @@ CASES.append(Case(
                 "const pc = parseInt(pm.environment.get('_rdAuthzDelCount') || '0', 10);",
                 "if (!j.done && pc < 30) {",
                 "  pm.environment.set('_rdAuthzDelCount', String(pc + 1));",
-                "  postman.setNextRequest(pm.info.requestName);",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
                 "  return;",
                 "}",
                 "pm.environment.unset('_rdAuthzDelCount');",
