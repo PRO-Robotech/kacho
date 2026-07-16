@@ -103,6 +103,30 @@ func envDurationMS(key string, def time.Duration) time.Duration {
 	return time.Duration(n) * time.Millisecond
 }
 
+// envDuration reads a Go-duration-string env var (e.g. "30s", "1m500ms"),
+// returning def when unset or invalid (unparseable / non-positive).
+func envDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return def
+	}
+	return d
+}
+
+// ownerConfirmDeadline resolves the owner-tuple op-gating confirmation deadline
+// (opgate P2): the upper bound the Create-Operation waits for the owner-tuple to
+// become effective in FGA (read-after-register) before failing closed with
+// codes.Unavailable. KACHO_IAM_OWNER_CONFIRM_DEADLINE (Go duration string);
+// default 30s — generously above normal FGA propagation, strictly below the
+// operation timeout / reconciler OrphanGrace so the worker terminalizes first.
+func ownerConfirmDeadline() time.Duration {
+	return envDuration("KACHO_IAM_OWNER_CONFIRM_DEADLINE", 30*time.Second)
+}
+
 // buildOpenFGAClient constructs the shared OpenFGA HTTP client used by the
 // AccessBinding/FGA-tuple writers, AuthorizeService and the fga_outbox drainer.
 //

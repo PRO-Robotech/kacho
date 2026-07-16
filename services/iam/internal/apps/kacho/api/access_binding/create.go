@@ -74,10 +74,29 @@ type CreateAccessBindingUseCase struct {
 	relations  clients.RelationStore
 	reconciler SelectorReconciler // γ — optional, nil-safe
 	logger     *slog.Logger
+	// worker — optional explicit async dispatch target for owner-tuple op-gating.
+	// nil (default) → the package-level default-registry (operations.RunWithConfirm)
+	// — the SAME target the rest of kacho-iam dispatches on, configured with the
+	// confirmation-deadline in the composition root. A non-nil Worker is injected by
+	// integration tests to override that deadline deterministically without mutating
+	// the shared default-registry (see WithWorker).
+	worker *operations.Worker
 }
 
 func NewCreateAccessBindingUseCase(r Repo, opsRepo operations.Repo) *CreateAccessBindingUseCase {
 	return &CreateAccessBindingUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithWorker injects an explicit operations.Worker as the async dispatch target
+// for the Create-Operation (owner-tuple confirm-gate). nil-safe: when unset,
+// Create dispatches on the package-level default-registry — the same target the
+// rest of kacho-iam uses, and the one the composition root configures with the
+// owner-tuple confirmation-deadline. Integration tests inject a Worker with a
+// short WithConfirmationDeadline so the fail-closed timeout branch is exercised
+// deterministically, without a global mutation of the shared default-registry.
+func (u *CreateAccessBindingUseCase) WithWorker(w *operations.Worker) *CreateAccessBindingUseCase {
+	u.worker = w
+	return u
 }
 
 // WithReconciler wires the γ selector reconciler (post-commit membership
@@ -178,7 +197,19 @@ func (u *CreateAccessBindingUseCase) Execute(ctx context.Context, b domain.Acces
 		return nil, err
 	}
 	b.ID = domain.AccessBindingID(abID)
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (res *anypb.Any, derr error) {
+
+	// owner-tuple op-gating (opgate P2): the Create-Operation must NOT report
+	// success-done before the freshly-created binding's per-object access
+	// (iam_access_binding:<id> # v_update/v_delete) is EFFECTIVE in FGA. That
+	// per-object access is what the gateway scope_extractor{iam_access_binding}
+	// resolves for an IMMEDIATE Update/Delete; materialized post-commit
+	// (ReconcileObject γ-01) and drained asynchronously, it is briefly invisible
+	// after doCreate commits — so an ungated op-done would let the creator hit a
+	// 403 "no direct relations granted" on the immediate mutate. confirm is an
+	// in-process read-after-register probe (iam is a leaf owner — no new edge).
+	confirm := u.ownerTupleConfirm(ctx, abID)
+
+	u.dispatchCreate(ctx, op.ID, confirm, func(ctx context.Context) (res *anypb.Any, derr error) {
 		// The operations worker masks any non-gRPC-status error (including a
 		// panic) from the worker fn as `Internal "internal worker error"` and
 		// does not log it — so a failing async AccessBinding.Create silently
@@ -391,4 +422,52 @@ func (u *CreateAccessBindingUseCase) doCreate(ctx context.Context, b domain.Acce
 	}
 
 	return marshalAB(created)
+}
+
+// ownerTupleConfirm builds the owner-tuple read-after-register probe (opgate P2).
+//
+// It reproduces the authorization resolve the gateway scope_extractor{iam_access_binding}
+// performs on an IMMEDIATE Update/Delete of the just-created binding:
+// Check(creator, v_update, iam_access_binding:<id>). That per-object access (the
+// binding-OBJECT tuple, §4.1 (b)) is materialized post-commit by ReconcileObject
+// (γ-01) and drained into FGA; the worker gates success-done on it becoming
+// EFFECTIVE, closing the "no direct relations granted" 403 window. v_update is
+// co-materialized with v_delete in one ReconcileObject pass, so confirming it
+// faithfully gates BOTH immediate mutate paths (the gateway requires v_update on
+// PATCH, v_delete on DELETE — same per-object access).
+//
+// In-process: iam is a leaf owner, so confirm reads its OWN FGA read-client
+// (u.relations) — no new cross-service edge (polyrepo.md acyclic). Read-only and
+// idempotent (OTG-07). The confirm-loop runs in the worker AFTER doCreate returns
+// (i.e. after the synchronous ReconcileObject, when wired).
+//
+// nil-safe: no RelationStore wired, or an unauthenticated/unknown-type principal
+// (⇒ no gateway-resolvable subject) → nil ⇒ no gate (back-compat MarkDone). The
+// subject is resolved from the REQUEST ctx here (not inside the worker closure,
+// whose ctx carries no principal).
+func (u *CreateAccessBindingUseCase) ownerTupleConfirm(ctx context.Context, bindingID string) operations.ConfirmFunc {
+	if u.relations == nil {
+		return nil
+	}
+	subject, ok := authzguard.PrincipalSubject(ctx) // FGA-formatted; fail-closed: anon/empty/unknown → ""
+	if !ok {
+		return nil
+	}
+	object := "iam_access_binding:" + bindingID
+	relations := u.relations
+	return func(cctx context.Context) (bool, error) {
+		return relations.Check(cctx, subject, "v_update", object)
+	}
+}
+
+// dispatchCreate submits the async Create-fn under the owner-tuple confirm-gate.
+// Targets the injected Worker when present (tests: deterministic confirmation-
+// deadline), else the package-level default-registry (production; configured with
+// the deadline in the composition root). confirm==nil ⇒ no gate (nil-safe/back-compat).
+func (u *CreateAccessBindingUseCase) dispatchCreate(ctx context.Context, opID string, confirm operations.ConfirmFunc, fn func(context.Context) (*anypb.Any, error)) {
+	if u.worker != nil {
+		operations.RunWithWorkerConfirm(u.worker, ctx, u.opsRepo, opID, fn, confirm)
+		return
+	}
+	operations.RunWithConfirm(ctx, u.opsRepo, opID, fn, confirm)
 }
