@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -70,6 +71,15 @@ type Config struct {
 	// scope_extractor не резолвит target→project. false → intents копятся
 	// неприменёнными (dev/degraded). Требует непустой AuthZIAMGRPCAddr.
 	FGARegisterDrainerEnabled bool `envconfig:"KACHO_STORAGE_FGA_REGISTER_DRAINER_ENABLED" default:"true"`
+
+	// OwnerConfirmDeadline — верхняя граница ожидания read-after-register confirm
+	// owner-tuple в Volume.Create (opgate P5): Create-Operation достигает
+	// success-`done` только после подтверждения owner-tuple в FGA (creator ↦ editor@
+	// storage_volume:<id>). Не достигнуто за deadline → op.error UNAVAILABLE
+	// "owner-tuple registration not confirmed" (fail-closed; ресурс/intent durable,
+	// drainer добивает at-least-once). Должно быть ≫ нормальной FGA-пропагации и ≪
+	// operation max-lifetime / OrphanGrace (см. operations.defaultConfirmDeadline).
+	OwnerConfirmDeadline time.Duration `envconfig:"KACHO_STORAGE_OWNER_CONFIRM_DEADLINE" default:"30s"`
 
 	// ===== per-edge mTLS =====
 

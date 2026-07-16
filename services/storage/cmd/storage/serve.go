@@ -66,7 +66,15 @@ func runServe(cfg config.Config) error {
 	// async-мутации пишут LRO-строку; фоновый worker финализирует; клиент поллит
 	// OperationService.Get(id).
 	opsRepo := operations.NewRepo(pool, config.DBSchema)
-	if err = operations.ConfigureDefault(operations.WithLogger(logger)); err != nil {
+	// WithConfirmationDeadline — owner-tuple opgate P5: Volume.Create-op достигает
+	// success-`done` только после read-after-register confirm; за deadline не
+	// достигнуто → fail-closed op.error UNAVAILABLE (worker). Прочие async-мутации
+	// (Update/Delete/Snapshot) диспетчатся без confirm (nil) — deadline их не
+	// затрагивает.
+	if err = operations.ConfigureDefault(
+		operations.WithLogger(logger),
+		operations.WithConfirmationDeadline(cfg.OwnerConfirmDeadline),
+	); err != nil {
 		return fmt.Errorf("configure LRO worker: %w", err)
 	}
 	operations.Start()
@@ -144,6 +152,15 @@ func runServe(cfg config.Config) error {
 		syncRegistrar := clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(authzConn))
 		volumeUC.WithRegistrar(syncRegistrar)
 		snapshotUC.WithRegistrar(syncRegistrar)
+		// owner-tuple opgate P5: Volume.Create-op ждёт read-after-register confirm
+		// (creator ↦ editor@storage_volume:<id>) через тот же authzConn
+		// InternalIAMService.Check — закрывает 403-окно «no direct relations granted»
+		// на немедленной мутации свежесозданного тома. Подключается ТОЛЬКО когда
+		// owner-tuple реально регистрируется (sync-registrar + drainer активны), иначе
+		// confirm никогда не подтвердится и всякий Create fail-closed'ил бы по deadline.
+		volumeUC.WithOwnerConfirm(check.NewVolumeOwnerConfirmer(authzConn))
+		logger.Info("owner-tuple op-gating enabled for Volume.Create",
+			"confirm_deadline", cfg.OwnerConfirmDeadline)
 	} else {
 		logger.Warn("FGA register-drainer NOT started (disabled or authz.iam-addr empty) — " +
 			"owner-tuple register-intents stay durable in fga_register_outbox until configured")
