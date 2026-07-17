@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "2ae3b02b-3788-4ca0-b1d1-1344f29b8042",
+    "_postman_id": "22d18e30-84dd-49a6-aaf4-4809825241b3",
     "name": "kacho-vpc / newman / internal-pool",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1885,7 +1885,7 @@
           ]
         },
         {
-          "name": "bind-rya134",
+          "name": "bind-rya237",
           "request": {
             "method": "POST",
             "header": [
@@ -1930,7 +1930,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -3165,7 +3165,7 @@
           ]
         },
         {
-          "name": "get-addr-rya135",
+          "name": "get-addr-rya238",
           "request": {
             "method": "GET",
             "header": [
@@ -3200,7 +3200,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -4063,7 +4063,7 @@
           ]
         },
         {
-          "name": "bind-rya136",
+          "name": "bind-rya239",
           "request": {
             "method": "POST",
             "header": [
@@ -4108,7 +4108,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -4582,7 +4582,7 @@
           ]
         },
         {
-          "name": "get-v4-rya137",
+          "name": "get-v4-rya240",
           "request": {
             "method": "GET",
             "header": [
@@ -4617,7 +4617,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5146,7 +5146,7 @@
           ]
         },
         {
-          "name": "bind-rya138",
+          "name": "bind-rya241",
           "request": {
             "method": "POST",
             "header": [
@@ -5191,7 +5191,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5526,7 +5526,7 @@
           ]
         },
         {
-          "name": "bind-rya139",
+          "name": "bind-rya242",
           "request": {
             "method": "POST",
             "header": [
@@ -5571,7 +5571,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

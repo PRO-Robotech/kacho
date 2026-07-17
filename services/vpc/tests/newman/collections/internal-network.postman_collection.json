@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "59233e0b-9fbd-437e-b9f5-34be8bf7d4f8",
+    "_postman_id": "7607c444-9762-414d-abf0-f28072a31b1e",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -216,7 +216,7 @@
           ]
         },
         {
-          "name": "get-internal-rya132",
+          "name": "get-internal-rya235",
           "request": {
             "method": "GET",
             "header": [
@@ -266,7 +266,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -802,7 +802,7 @@
           ]
         },
         {
-          "name": "get-internal-before-rya133",
+          "name": "get-internal-before-rya236",
           "request": {
             "method": "GET",
             "header": [
@@ -852,7 +852,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

@@ -374,8 +374,10 @@ def ecp_name_block(prefix, create_path, body_extra=None):
         id=f"{prefix}-CR-BVA-NAME-MAX-63",
         title="Create с name len=63 (max) → ok",
         classes=["BVA"], priority="P2",
+        # name len exactly 63 (max) AND unique per run: "n63-"(4)+runId(10)+"-"(1)+48
+        # = 63 at runtime. Fixed literal collided across re-runs (UNIQUE name) → 409.
         steps=[Step(name="cr-max63", method="POST", path=create_path,
-                    body=base("n63" + "abcdefghij"*6),
+                    body=base("n63-{{runId}}-" + "a"*48),
                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
     ))
     cases.append(Case(
@@ -615,10 +617,13 @@ def update_happy_per_field(prefix, create_path, update_base_path, body_create):
                      body=patch_body,
                      test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
                 poll_operation_until_done(),
-                Step(name="verify", method="GET", path=f"{update_base_path}/{{{{createdId}}}}",
-                     test_script=[*assert_status(200), *asserts]),
-                Step(name="cleanup", method="DELETE", path=f"{update_base_path}/{{{{createdId}}}}",
-                     test_script=[*save_from_response("j.id", "opId")]),
+                # read-your-writes: verify GET of the caller's OWN fresh resource can
+                # briefly 404 while the owner/hierarchy tuple materializes under load
+                # (opgate removed → eventual-consistency). Bounded-retry on 404/403.
+                retry_until_authorized(Step(name="verify", method="GET", path=f"{update_base_path}/{{{{createdId}}}}",
+                     test_script=[*assert_status(200), *asserts])),
+                retry_until_authorized(Step(name="cleanup", method="DELETE", path=f"{update_base_path}/{{{{createdId}}}}",
+                     test_script=[*save_from_response("j.id", "opId")])),
                 poll_operation_until_done(),
             ],
         )
@@ -751,17 +756,17 @@ def update_happy_multi_field(prefix, create_path, update_base_path, body_create)
                        "labels": {"a": "1", "b": "2"}},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
             poll_operation_until_done(),
-            Step(name="verify-all", method="GET",
+            retry_until_authorized(Step(name="verify-all", method="GET",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  test_script=[*assert_status(200),
                               "const j = pm.response.json();",
                               "pm.test('name updated', () => pm.expect(j.name).to.eql('" + prefix.lower() + "-multi-new'));",
                               "pm.test('description updated', () => pm.expect(j.description).to.eql('multi-desc'));",
                               "pm.test('labels a', () => pm.expect((j.labels || {}).a).to.eql('1'));",
-                              "pm.test('labels b', () => pm.expect((j.labels || {}).b).to.eql('2'));"]),
-            Step(name="cleanup", method="DELETE",
+                              "pm.test('labels b', () => pm.expect((j.labels || {}).b).to.eql('2'));"])),
+            retry_until_authorized(Step(name="cleanup", method="DELETE",
                  path=f"{update_base_path}/{{{{createdId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
+                 test_script=[*save_from_response("j.id", "opId")])),
             poll_operation_until_done(),
         ],
     )
@@ -804,13 +809,13 @@ def list_filter_match_block(prefix, create_path, body_create):
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "fltId")]),
             poll_operation_until_done(),
-            Step(name="list-filtered", method="GET",
+            retry_until_present(Step(name="list-filtered", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=100&filter=name%3D%22{prefix.lower()}-flt-{{{{runId}}}}%22",
                  test_script=[*assert_status(200),
                               "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
-                              "pm.test('filtered list contains', () => pm.expect(ids).to.include(pm.environment.get('fltId')));"]),
-            Step(name="cleanup", method="DELETE", path=f"{create_path}/{{{{fltId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
+                              "pm.test('filtered list contains', () => pm.expect(ids).to.include(pm.environment.get('fltId')));"]), "fltId"),
+            retry_until_authorized(Step(name="cleanup", method="DELETE", path=f"{create_path}/{{{{fltId}}}}",
+                 test_script=[*save_from_response("j.id", "opId")])),
             poll_operation_until_done(),
         ],
     )
@@ -944,16 +949,18 @@ def update_mask_partial_block(prefix, create_path, update_base_path, body_create
                            "description": "should-be-ignored", "labels": {"ignored": "y"}},
                      test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
                 poll_operation_until_done(),
-                Step(name="verify", method="GET",
+                # read-your-writes: bounded-retry the fresh-resource verify GET over
+                # the owner-tuple materialization window (opgate removed).
+                retry_until_authorized(Step(name="verify", method="GET",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      test_script=[*assert_status(200),
                                   "const j = pm.response.json();",
                                   "pm.test('name updated', () => pm.expect(j.name).to.eql('" + prefix.lower() + "-mnnew'));",
                                   "pm.test('description preserved', () => pm.expect(j.description).to.eql('init'));",
-                                  "pm.test('labels preserved', () => pm.expect((j.labels || {}).orig).to.eql('1'));"]),
-                Step(name="cleanup", method="DELETE",
+                                  "pm.test('labels preserved', () => pm.expect((j.labels || {}).orig).to.eql('1'));"])),
+                retry_until_authorized(Step(name="cleanup", method="DELETE",
                      path=f"{update_base_path}/{{{{createdId}}}}",
-                     test_script=[*save_from_response("j.id", "opId")]),
+                     test_script=[*save_from_response("j.id", "opId")])),
                 poll_operation_until_done(),
             ],
         ),
@@ -1025,18 +1032,26 @@ def required_fields_matrix(prefix, create_path, body_full, required_field_names)
     cases = []
     for fld in required_field_names:
         body_missing = {k: v for k, v in body_full.items() if k != fld}
+        # projectId is the authz SCOPE field: a create missing it is UNSCOPED, so the
+        # api-gateway scope_extractor yields `project:*` → fail-closed 403 BEFORE the
+        # backend's required-field validation ever runs (authz-first, security.md;
+        # parity with assert_absent_id_rejected / compute 32be094). Tolerate 403 for
+        # the scope field only — for non-scope fields projectId is present, the request
+        # IS scoped, and 403 would be a genuine unexpected deny.
+        codes = "[400, 200, 403, 404]" if fld == "projectId" else "[400, 200, 404]"
         cases.append(Case(
             id=f"{prefix}-CR-VAL-REQ-{fld.upper().replace('_','-')}",
-            title=f"Create без required поля '{fld}' → 400 InvalidArgument",
+            title=f"Create без required поля '{fld}' → 400 InvalidArgument (unscoped → 403 authz-first)",
             classes=["VAL"], priority="P0",
             steps=[Step(name=f"cr-no-{fld}", method="POST", path=create_path,
                         body=body_missing,
                         test_script=[
                             # 400 — sync InvalidArgument (missing required field).
                             # 200 — поле проверяется async (op.error code=3/5).
+                            # 403 — missing projectId → unscoped → authz-first fail-closed.
                             # 404 — body использует garbage parent id (PE: networkId={{garbageVpcId}});
                             #       sync existence-check parent'а отрабатывает раньше → NotFound.
-                            "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200, 404]));",
+                            f"pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf({codes}));",
                         ])],
         ))
     return cases
@@ -1382,11 +1397,11 @@ def conformance_lifecycle_pack(prefix, create_path, body_create):
             retry_until_authorized(Step(name="get-1", method="GET", path=f"{create_path}/{{{{lifeId}}}}",
                  test_script=[*assert_status(200),
                               "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"])),
-            Step(name="lst-includes", method="GET",
+            retry_until_present(Step(name="lst-includes", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
                  test_script=[*assert_status(200),
                               "const items = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];",
-                              "pm.test('list contains', () => pm.expect(items.map(x => x.id)).to.include(pm.environment.get('lifeId')));"]),
+                              "pm.test('list contains', () => pm.expect(items.map(x => x.id)).to.include(pm.environment.get('lifeId')));"]), "lifeId"),
             Step(name="upd", method="PATCH", path=f"{create_path}/{{{{lifeId}}}}",
                  body={"updateMask": "description", "description": "life-conf"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -1454,7 +1469,41 @@ _POLL_SEQ = [0]
 _RYA_SEQ = [0]
 
 
-def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
+def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
+                        interval_ms: int = 400) -> Step:
+    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
+    the returned array (read-your-writes over the list-authz visibility window; opgate
+    removed -> owner-tuple eventual-consistency). The list returns 200 with the id
+    ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
+    apply -- we retry while the id is missing. Fail-open after budget: the real
+    assertion then runs once and FAILS if still absent (never masked, never infinite).
+    Use ONLY on a list of the caller's OWN just-created resource."""
+    guard = [
+        "// bounded read-your-writes retry until own fresh id is present in the list",
+        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_lstRetryCount', '0');",
+        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+        "}",
+        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+        "let _present = false;",
+        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
+        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
+        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
+        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_lstRetryCount');",
+        "pm.environment.unset('_lstRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
                            retry_on=(403, 404)) -> Step:
     """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
     read-your-writes retry over the owner-tuple materialization window.

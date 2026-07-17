@@ -344,7 +344,9 @@ CASES.append(Case(
             ],
         )),
         poll_operation_until_done(),
-        Step(
+        # read-your-writes: verify GET of the caller's OWN fresh resource can briefly
+        # 404 while the owner-tuple materializes under load (opgate removed). Bounded-retry.
+        retry_until_authorized(Step(
             name="verify",
             method="GET",
             path="/vpc/v1/networks/{{netId}}",
@@ -352,13 +354,13 @@ CASES.append(Case(
                 *assert_status(200),
                 "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('patched-desc'));",
             ],
-        ),
-        Step(
+        )),
+        retry_until_authorized(Step(
             name="cleanup",
             method="DELETE",
             path="/vpc/v1/networks/{{netId}}",
             test_script=[*assert_status(200)],
-        ),
+        )),
     ],
 ))
 

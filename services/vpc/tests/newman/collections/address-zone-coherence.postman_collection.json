@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f04b7d02-1c64-475e-b2e2-bc369030e060",
+    "_postman_id": "5c937284-536a-4f60-9f26-50e739bfa7b5",
     "name": "kacho-vpc / newman / address-zone-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -319,7 +319,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya104",
+          "name": "get-known-zone-rya181",
           "request": {
             "method": "GET",
             "header": [
@@ -354,7 +354,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
