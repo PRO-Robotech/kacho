@@ -21,6 +21,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -97,10 +98,48 @@ func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 	return status.New(codes.NotFound, notFoundMessage(desc))
 }
 
-// notFoundMessage — the stable hide-existence message. Uses the resource type
-// when known ("account not found") and a neutral fallback otherwise. It never
-// includes the id, the subject, or any deny reason.
+// hideExistenceNotFoundFormats maps an FGA object type to the Kachō contract-tone
+// NotFound message for that resource. The gateway's authz Check runs BEFORE the
+// owning service, so a verb-bearing read-deny is answered here (hide existence).
+// To keep that 404 indistinguishable from a genuine miss, the message MUST
+// byte-match what the owning service returns for a real NotFound — otherwise a
+// denied caller can tell "exists but forbidden" (gateway text) from "does not
+// exist" (backend text), an existence oracle. Each format has a single %s for
+// the caller-supplied resource id (echoed back — the caller already knows it, so
+// no leak) and the text is copied verbatim from the service's repo-layer NotFound
+// (services/vpc/internal/repo/kacho/pg/*.go, services/nlb/.../load_balancer_repo.go).
+//
+// Only vpc / nlb object types are listed: object types owned by other services
+// (iam "account", registry "repository", ...) fall through to the neutral
+// "<type> not found" form to avoid changing their contracts. New object-scoped
+// resources add their entry here to keep hide-existence coherent with the backend.
+var hideExistenceNotFoundFormats = map[string]string{
+	// vpc — services/vpc/internal/repo/kacho/pg/*.go
+	"vpc_network":           "Network %s not found",
+	"vpc_subnet":            "Subnet %s not found",
+	"vpc_address":           "Address %s not found",
+	"vpc_route_table":       "Route table %s not found",
+	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
+	"vpc_gateway":           "Gateway %s not found",
+	"vpc_network_interface": "Network interface %s not found",
+	// nlb — services/nlb/internal/repo/kacho/pg/load_balancer_repo.go
+	"lb_network_load_balancer": "NetworkLoadBalancer %s not found",
+}
+
+// notFoundMessage — the stable hide-existence message.
+//
+// For an object-scoped vpc / nlb resource with a concrete caller-supplied id it
+// returns the Kachō contract tone "<Resource> <id> not found" — byte-identical
+// to the owning service's real NotFound so hide-existence cannot be told apart
+// from a genuine miss (see hideExistenceNotFoundFormats). For any other object
+// type, or when the scope id is absent/wildcard, it falls back to the neutral
+// "<type> not found" (or bare "not found"). It never includes the subject or any
+// deny reason.
 func notFoundMessage(desc permissionDeniedDescriptor) string {
+	if f, ok := hideExistenceNotFoundFormats[desc.ResourceType]; ok &&
+		desc.ResourceID != "" && desc.ResourceID != "*" {
+		return fmt.Sprintf(f, desc.ResourceID)
+	}
 	if desc.ResourceType != "" {
 		return desc.ResourceType + " not found"
 	}
