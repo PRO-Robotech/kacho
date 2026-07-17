@@ -634,6 +634,18 @@ func (s *InstanceService) ListOperations(ctx context.Context, id string, p Pagin
 	return s.opsRepo.List(ctx, operations.ListFilter{ResourceID: id, PageSize: p.PageSize, PageToken: p.PageToken})
 }
 
+// mirrorReadTimeout — верхняя граница best-effort mirror-READ (Get/List NIC/volume
+// зеркала) на КАЖДЫЙ peer-вызов. Зеркало output-only (data-integrity §3: source of
+// truth = kacho-vpc/kacho-storage), graceful-degrade на ЛЮБОЙ ошибке — поэтому НЕ
+// должно крутить полный retry.OnUnavailable (MaxElapsed=30s): против Unavailable
+// peer'а это вешало Get/List на ~30s/зеркало (×2 nic+volume = ~55s/RPC — доминирующий
+// bottleneck instance-суита, GATE-RUN #3 root #1; disk/image/snapshot без зеркал —
+// быстрые). Короткий bound → быстрый degrade: peer up — read в ms (bound не
+// срабатывает); peer down/blip — зеркало опускается, следующий read перечитает.
+// Мутации (attach/detach/release-сага, worker fn) сохраняют полный 30s retry —
+// fail-closed для них корректен (down-peer ⇒ Unavailable/leak-safety), их НЕ трогаем.
+const mirrorReadTimeout = 3 * time.Second
+
 // ---- mirrors (read-only проекции attach-состояния из storage/vpc) ----
 
 // reloadWithMirror перечитывает инстанс и накладывает NIC/volume-зеркала — общий
@@ -655,6 +667,9 @@ func (s *InstanceService) applyVolumeMirror(ctx context.Context, in *domain.Inst
 	if s.storageClient == nil || in == nil {
 		return
 	}
+	// best-effort read → короткий bound, не 30s retry.OnUnavailable (mirrorReadTimeout).
+	ctx, cancel := context.WithTimeout(ctx, mirrorReadTimeout)
+	defer cancel()
 	atts, err := s.storageClient.ListAttachments(ctx, []string{in.ID})
 	if err != nil {
 		return
@@ -672,6 +687,9 @@ func (s *InstanceService) applyVolumeMirrorBatch(ctx context.Context, list []*do
 	for _, in := range list {
 		instIDs = append(instIDs, in.ID)
 	}
+	// best-effort read → короткий bound, не 30s retry.OnUnavailable (mirrorReadTimeout).
+	ctx, cancel := context.WithTimeout(ctx, mirrorReadTimeout)
+	defer cancel()
 	atts, err := s.storageClient.ListAttachments(ctx, instIDs)
 	if err != nil {
 		return
