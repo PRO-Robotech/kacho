@@ -31,6 +31,10 @@ while [[ $# -gt 0 ]]; do
     --service) SERVICE="$2"; shift 2 ;;
     --bail)    BAIL="--bail"; shift ;;
     --delay)   DELAY="$2"; shift 2 ;;
+    # --jobs: принят для паритета с newman-parallel.sh (директива #1) — consume-and-
+    # ignore, НЕ пробрасывать в `newman run` (иначе `unknown option '--jobs'` → часть
+    # коллекций без отчёта → ложный no-report/false-green). compute-суита серийна.
+    --jobs)    shift 2 ;;
     *)         EXTRA+=("$1"); shift ;;
   esac
 done
