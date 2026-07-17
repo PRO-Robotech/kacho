@@ -69,6 +69,10 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
+	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see disk_handler).
+	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
+		return nil, err
+	}
 	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeInstance, authzfilter.ActionInstanceRead)
 	if err != nil {
 		return nil, err

@@ -47,6 +47,10 @@ func (u *ListTargetGroupsUseCase) Execute(
 		Name:      name,
 	}
 
+	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see loadbalancer/list.go).
+	if err := shared.ValidatePagination(req.GetPageToken(), req.GetPageSize()); err != nil {
+		return nil, err
+	}
 	dec, err := authzfilter.Resolve(ctx, u.authz,
 		authzfilter.ResourceTypeTargetGroup, authzfilter.ActionTargetGroupList)
 	if err != nil {

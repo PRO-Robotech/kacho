@@ -52,6 +52,13 @@ func (u *ListLoadBalancersUseCase) Execute(
 		Name:      name,
 	}
 
+	// Validate pagination BEFORE the listauthz empty-grant short-circuit below (and the
+	// repo's own len(AllowedIDs)==0 short-circuit), so a malformed page_token / out-of-
+	// range page_size is 400 InvalidArgument regardless of grant state (api-convention
+	// parity with compute + vpc; repo decodePageToken/pageSizeOrDefault remain backstop).
+	if err := shared.ValidatePagination(req.GetPageToken(), req.GetPageSize()); err != nil {
+		return nil, err
+	}
 	dec, err := authzfilter.Resolve(ctx, u.authz,
 		authzfilter.ResourceTypeLoadBalancer, authzfilter.ActionLoadBalancerList)
 	if err != nil {
