@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "c0da99d4-dd07-4c96-983b-3e6c4b3103bf",
+    "_postman_id": "bf3c35ee-9d88-48c4-affd-6e51207e8003",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -165,7 +165,7 @@
           ]
         },
         {
-          "name": "poll-op-752",
+          "name": "poll-op-680",
           "request": {
             "method": "GET",
             "header": [
@@ -198,7 +198,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 20) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -225,9 +225,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -417,7 +417,7 @@
           ]
         },
         {
-          "name": "poll-op-753",
+          "name": "poll-op-681",
           "request": {
             "method": "GET",
             "header": [
@@ -450,7 +450,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 20) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -570,9 +570,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/netaaaaaaaaaaaaaaaaa:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/netaaaaaaaaaaaaaaaaa:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -630,9 +630,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/garbage:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/garbage:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -734,7 +734,7 @@
           ]
         },
         {
-          "name": "poll-op-754",
+          "name": "poll-op-682",
           "request": {
             "method": "GET",
             "header": [
@@ -767,7 +767,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 20) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -794,9 +794,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -888,7 +888,7 @@
           ]
         },
         {
-          "name": "poll-op-755",
+          "name": "poll-op-683",
           "request": {
             "method": "GET",
             "header": [
@@ -921,7 +921,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 20) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -948,9 +948,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1098,7 +1098,7 @@
           ]
         },
         {
-          "name": "poll-op-756",
+          "name": "poll-op-684",
           "request": {
             "method": "GET",
             "header": [
@@ -1131,7 +1131,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 20) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
