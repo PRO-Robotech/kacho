@@ -884,38 +884,48 @@ CASES.append(Case(
 ))
 
 
+# CONTRACT LOCK (не aspirational — не positive-CRUD): proto HealthCheck.options oneof
+# (health_check.proto) выставляет ТОЛЬКО tcp_options/http_options. Domain моделирует 4
+# probe-варианта (health_check.go validateProbeOneOf), но https/grpc НЕ имеют proto-
+# эквивалента. api-gateway UnmarshalOptions{DiscardUnknown:true} (restmux/mux.go) молча
+# отбрасывает unknown `https`-объект → HealthCheck приходит без options-oneof → sync
+# TargetGroup.Create validation (create.go → tg.Validate() → validateProbeOneOf count=0)
+# → 400 INVALID_ARGUMENT + BadRequest.fieldViolations[health_check]. HTTPS-probe
+# недоступен через API до закрытия proto-gap.
+# Техники: ECP (класс «unsupported probe variant» на входе), error-guessing (proto-
+# surface ⊄ domain-surface). Negative на positive-probe-CRUD (tcp/http).
+# verifies https://github.com/PRO-Robotech/kacho/issues/8
 CASES.append(Case(
-    id="TGR-CR-CRUD-HTTPS-PROBE",
-    title="Create TG with health_check.https probe → OK",
-    classes=["CRUD"], priority="P1",
+    id="TGR-CR-VAL-HTTPS-PROBE-UNSUPPORTED",
+    title="Create TG with health_check.https probe → 400 (https_options not in proto oneof; #8)",
+    classes=["VAL"], priority="P1",
     steps=[
-        Step(name="cr-https", method="POST", path=_TG_BASE,
+        Step(name="cr-https-unsupported", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-https-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "https": {"port": 8443, "path": "/healthz",
                                              "expectedStatuses": [200]}}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("health_check")]),
     ],
 ))
 
+# CONTRACT LOCK: см. TGR-CR-VAL-HTTPS-PROBE-UNSUPPORTED — тот же proto-gap для grpc_options.
+# `grpc`-объект отбрасывается DiscardUnknown → no-probe → sync 400 INVALID_ARGUMENT.
+# verifies https://github.com/PRO-Robotech/kacho/issues/8
 CASES.append(Case(
-    id="TGR-CR-CRUD-GRPC-PROBE",
-    title="Create TG with health_check.grpc probe → OK",
-    classes=["CRUD"], priority="P1",
+    id="TGR-CR-VAL-GRPC-PROBE-UNSUPPORTED",
+    title="Create TG with health_check.grpc probe → 400 (grpc_options not in proto oneof; #8)",
+    classes=["VAL"], priority="P1",
     steps=[
-        Step(name="cr-grpc", method="POST", path=_TG_BASE,
+        Step(name="cr-grpc-unsupported", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-grpc-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "grpc": {"port": 9090, "service": "health.v1"}}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("health_check")]),
     ],
 ))
 
