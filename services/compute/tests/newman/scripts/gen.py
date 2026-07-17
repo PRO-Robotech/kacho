@@ -179,7 +179,41 @@ _POLL_SEQ = [0]
 _RYA_SEQ = [0]
 
 
-def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
+def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
+                        interval_ms: int = 400) -> Step:
+    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
+    the returned array (read-your-writes over the list-authz visibility window; opgate
+    removed -> owner-tuple eventual-consistency). The list returns 200 with the id
+    ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
+    apply -- we retry while the id is missing. Fail-open after budget: the real
+    assertion then runs once and FAILS if still absent (never masked, never infinite).
+    Use ONLY on a list of the caller's OWN just-created resource."""
+    guard = [
+        "// bounded read-your-writes retry until own fresh id is present in the list",
+        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_lstRetryCount', '0');",
+        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+        "}",
+        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+        "let _present = false;",
+        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
+        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
+        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
+        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_lstRetryCount');",
+        "pm.environment.unset('_lstRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
                            retry_on=(403, 404)) -> Step:
     """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
     read-your-writes retry over the owner-tuple materialization window.
@@ -670,6 +704,7 @@ def load_cases_module(path: Path):
     mod.assert_created_at_seconds = assert_created_at_seconds
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_present = retry_until_present
     mod.assert_op_error = assert_op_error
     mod.assert_op_error_oneof = assert_op_error_oneof
     mod.assert_op_success = assert_op_success

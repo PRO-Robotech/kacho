@@ -510,6 +510,12 @@ else
 fi
 # Re-upsert INV by external-id to activate PENDING-row (KAC-125 D-7).
 upsert_user_grpc "auth-test-invitee@example.com" "auth-test-invitee@example.com" "AuthZ Invitee" >/dev/null
+# Deterministic fixture state for the AUTHZ-PRJ-UP-A1-INV matrix ALLOW case: INV must
+# hold editor on project-A1. The invite above is the intended mechanism, but its REST
+# mapping is best-effort (KAC-125) — so guarantee the required binding explicitly
+# (idempotent: if the invite already granted it, this returns "already granted"). The
+# invite MECHANISM itself is covered separately by the iam-invite-grant-fga collection.
+[ -n "$USER_INV" ] && ensure_binding "$USER_INV" "$ROLE_EDIT" "project" "$PROJECT_A1" "$JWT_AAA"
 
 # 7) Seed VPC networks in A1 + B1.
 #
