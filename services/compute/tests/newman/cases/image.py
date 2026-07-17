@@ -149,10 +149,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-CR-VAL-FOLDER-REQUIRED",
-    title="Create без projectId → 400 InvalidArgument",
+    title="Create без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL"], priority="P0",
     steps=[Step(name="cr-nf", method="POST", path=IMAGES, body={"name": "img-nf-{{runId}}", "uri": _SAMPLE_URI},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
@@ -285,10 +285,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-GLF-VAL-FOLDER-REQUIRED",
-    title="GetLatestByFamily без projectId → 400 InvalidArgument",
+    title="GetLatestByFamily без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL"], priority="P1",
     steps=[Step(name="glf-nf", method="GET", path=f"{IMAGES}:latestByFamily?family=anything",
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 # ---------------------------------------------------------------------------
@@ -322,10 +322,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-LST-VAL-FOLDER-REQUIRED",
-    title="List без projectId → 400 InvalidArgument",
+    title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"], priority="P0",
     steps=[Step(name="list-nf", method="GET", path=IMAGES,
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 # ---------------------------------------------------------------------------

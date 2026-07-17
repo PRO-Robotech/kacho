@@ -202,11 +202,11 @@ for fld, var, label in [
 
 CASES.append(Case(
     id="INST-CR-VAL-MISSING-FOLDER",
-    title="Create instance без projectId → 400 InvalidArgument",
+    title="Create instance без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL"], priority="P0",
     steps=[Step(name="cr-no-folder", method="POST", path=INSTANCES,
                 body={k: v for k, v in _instance_body("nf").items() if k != "projectId"},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
@@ -316,10 +316,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-LST-VAL-FOLDER-REQUIRED",
-    title="List instances без projectId → 400 InvalidArgument",
+    title="List instances без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"], priority="P0",
     steps=[Step(name="list-nf", method="GET", path=INSTANCES,
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
@@ -1020,10 +1020,10 @@ CASES.extend(filter_block("INST", INSTANCES))
 CASES.extend(http_method_block("INST", INSTANCES))
 CASES.append(Case(
     id="INST-CR-VAL-EMPTY-BODY",
-    title="Create instance с пустым body → 400 (project_id required)",
+    title="Create instance с пустым body → rejected (400 project_id required OR 403 authz-first, unscoped)",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-empty", method="POST", path=INSTANCES, body={},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 CASES.append(Case(
     id="INST-CR-VAL-MALFORMED-JSON",

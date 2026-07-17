@@ -84,11 +84,11 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DISK-CR-VAL-FOLDER-REQUIRED",
-    title="Create без projectId → 400 InvalidArgument",
+    title="Create без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL"], priority="P0",
     steps=[Step(name="cr-no-folder", method="POST", path=DISKS,
                 body={"name": "disk-nf-{{runId}}", "zoneId": "{{existingZoneId}}", "size": _DEF_SIZE},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
@@ -321,10 +321,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DISK-LST-VAL-FOLDER-REQUIRED",
-    title="List без projectId → 400 InvalidArgument",
+    title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"], priority="P0",
     steps=[Step(name="list-nf", method="GET", path=DISKS,
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(

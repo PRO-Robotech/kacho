@@ -70,10 +70,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNAP-CR-VAL-FOLDER-REQUIRED",
-    title="Create snapshot без projectId → 400 InvalidArgument",
+    title="Create snapshot без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL"], priority="P0",
     steps=[Step(name="cr-nf", method="POST", path=SNAPS, body={"name": "snap-nf-{{runId}}", "diskId": "{{garbageComputeId}}"},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
@@ -166,10 +166,10 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNAP-LST-VAL-FOLDER-REQUIRED",
-    title="List snapshots без projectId → 400 InvalidArgument",
+    title="List snapshots без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"], priority="P0",
     steps=[Step(name="list-nf", method="GET", path=SNAPS,
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 # ---------------------------------------------------------------------------

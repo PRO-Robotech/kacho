@@ -104,6 +104,29 @@ def assert_grpc_code(code: int, code_name: str) -> List[str]:
     ]
 
 
+def assert_unscoped_rejected() -> List[str]:
+    """Unscoped create/list/get (без projectId, либо empty-body, либо method-mismatch
+    на collection-endpoint) — ОТВЕРГНУТ. Два защитимых исхода, оба = «отклонено»
+    (defense-in-depth, security.md «authz-first», parity с vpc 446e25b):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor fail-closed
+        «no path: unscoped resource» ДО backend-валидации: нельзя авторизовать
+        запрос, у которого нет scope для anti-BOLA-проверки;
+      400 INVALID_ARGUMENT  (code 3) — backend «project_id required» при passthrough.
+    Толерантен к обоим — семантика негатива (rejected) сохранена, без ложного провала
+    на корректном authz-first 403 (реальный GATE-RUN #3: disk/image/snapshot unscoped
+    cr-nf/list-nf/glf-nf/cr-empty-body возвращали code 7, тест ждал 3). Techniques:
+    ECP (класс «unscoped запрос») + error-guessing (authz-vs-validation ordering)."""
+    return [
+        "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+        "});",
+        "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
+        "});",
+    ]
+
+
 def assert_field_violation(field_name: str) -> List[str]:
     return [
         f"pm.test('field violation on \"{field_name}\"', () => {{",
@@ -450,18 +473,23 @@ def security_injection_block(prefix, create_path, list_path, body_extra=None):
 
 
 def http_method_block(prefix, base_path):
-    """HTTP method semantics: PUT / DELETE-on-list → 404|405|501."""
+    """HTTP method semantics: PUT / DELETE-on-list → 403|404|405|501.
+
+    403 добавлен (parity vpc 446e25b, GATE-RUN #3): gateway scope_extractor
+    fail-closes PERMISSION_DENIED на method без catalog-path (PUT/DELETE-on-list)
+    ДО HTTP-method-routing — authz-first (security.md). 403|404|405|501 все =
+    «operation not permitted», семантика негатива сохранена."""
     return [
         Case(id=f"{prefix}-METHOD-PUT-NOT-ALLOWED",
-             title="PUT на List endpoint → 404/405/501",
+             title="PUT на List endpoint → 403/404/405/501 (rejected)",
              classes=["VAL", "NEG"], priority="P3",
              steps=[Step(name="put-list", method="PUT", path=base_path, body={"projectId": "{{_suiteFolderId}}"},
-                         test_script=["pm.test('not allowed', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"])]),
+                         test_script=["pm.test('not allowed', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));"])]),
         Case(id=f"{prefix}-METHOD-DELETE-LIST",
-             title="DELETE на List endpoint (без id) → 404/405/501",
+             title="DELETE на List endpoint (без id) → 403/404/405/501 (rejected)",
              classes=["VAL", "NEG"], priority="P3",
              steps=[Step(name="del-list", method="DELETE", path=base_path,
-                         test_script=["pm.test('not allowed', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"])]),
+                         test_script=["pm.test('not allowed', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));"])]),
     ]
 
 
@@ -475,10 +503,10 @@ def malformed_body_block(prefix, create_path):
                          pre_script=["pm.request.body = { mode: 'raw', raw: '{invalid json---}' };"],
                          test_script=["pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));"])]),
         Case(id=f"{prefix}-CR-VAL-EMPTY-BODY",
-             title="Create с пустым body → 400 (project_id required)",
+             title="Create с пустым body → rejected (400 project_id required OR 403 authz-first, unscoped)",
              classes=["VAL", "NEG"], priority="P2",
              steps=[Step(name="cr-empty-body", method="POST", path=create_path, body={},
-                         test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]),
+                         test_script=[*assert_unscoped_rejected()])]),
     ]
 
 
@@ -576,6 +604,7 @@ def load_cases_module(path: Path):
     mod.Case = Case
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
     mod.assert_field_violation = assert_field_violation
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
