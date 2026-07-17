@@ -76,26 +76,6 @@ const (
 	// строку orphan'ом — иначе долгая живая операция помечалась бы ERROR при уже
 	// созданном ресурсе (phantom). Кастомный grace < 4m требует и WithOperationTimeout.
 	defaultOpTimeout = 4 * time.Minute
-
-	// defaultConfirmDeadline — верхняя граница ожидания confirm-пробы (owner-tuple
-	// opgate): Create-op достигает success-`done` только после подтверждения confirm,
-	// иначе fail-closed Unavailable по истечении этого окна. СТРОГО меньше
-	// defaultOpTimeout (4m) и Reconciler.OrphanGrace (5m): worker терминализует
-	// (success либо fail-closed) раньше, чем reconciler сочтёт строку orphan'ом.
-	// Переопределяется WithConfirmationDeadline (env KACHO_<SVC>_OWNER_CONFIRM_DEADLINE).
-	defaultConfirmDeadline = 30 * time.Second
-
-	// confirmRetryInitial / confirmRetryMax — спейсинг ретраев confirm-пробы внутри
-	// confirmation-deadline (аналог terminalWrite backoff). Общий budget ретраев
-	// ограничен confirmDeadline (WithMaxElapsedThreshold) — backoff.Stop ⇔ deadline.
-	//
-	// confirmRetryInitial держим МАЛЫМ (25ms): с HIGHER_CONSISTENCY-read confirm-проба
-	// обычно резолвится на 1-й попытке (owner-tuple записан синхронно), но в редком
-	// genuinely-pending случае (owner-tuple ещё материализуется) grant часто виден
-	// уже через ~десятки ms — быстрый первый retry не даёт искусственной секундной
-	// задержки, а экспонента (до confirmRetryMax) щадит FGA при затяжном pending.
-	confirmRetryInitial = 25 * time.Millisecond
-	confirmRetryMax     = 1 * time.Second
 )
 
 // defaultRegistry — pkg-level worker tracker для backward-compatible Run()/Wait().
@@ -126,13 +106,12 @@ func (c TerminalWriteConfig) withDefaults() TerminalWriteConfig {
 type WorkerOption func(*workerConfig)
 
 type workerConfig struct {
-	maxInflight     int
-	maxBacklog      int
-	rec             Recorder
-	log             *slog.Logger
-	tw              TerminalWriteConfig
-	opTimeout       time.Duration
-	confirmDeadline time.Duration
+	maxInflight int
+	maxBacklog  int
+	rec         Recorder
+	log         *slog.Logger
+	tw          TerminalWriteConfig
+	opTimeout   time.Duration
 }
 
 // WithMaxInflight ограничивает число одновременно исполняемых worker'ов (burst
@@ -183,43 +162,12 @@ func WithOperationTimeout(d time.Duration) WorkerOption {
 	}
 }
 
-// WithConfirmationDeadline задаёт верхнюю границу ожидания confirm-пробы owner-tuple
-// opgate: Create-op достигает success-`done` только после того, как переданная
-// ConfirmFunc вернёт confirmed=true; если это не произошло за d — операция
-// fail-closed завершается MarkError(codes.Unavailable, "owner-tuple registration
-// not confirmed"), success-done НЕ выставляется никогда. Применимо только к
-// dispatch'ам с non-nil confirm (RunWithConfirm / RunWithWorkerConfirm); при nil
-// confirm окно игнорируется. n<=0 игнорируется (остаётся дефолт defaultConfirmDeadline
-// 30s). Значение ДОЛЖНО быть строго меньше WithOperationTimeout / Reconciler.OrphanGrace
-// (см. defaultConfirmDeadline).
-func WithConfirmationDeadline(d time.Duration) WorkerOption {
-	return func(c *workerConfig) {
-		if d > 0 {
-			c.confirmDeadline = d
-		}
-	}
-}
-
-// ConfirmFunc — read-after-register проба owner-tuple opgate. Возвращает
-// confirmed=true, когда owner-tuple эффективен (gateway scope_extractor Check
-// вернёт ALLOW) → worker переводит операцию в success-`done`. confirmed=false
-// (owner-tuple ещё не виден) либо transient err → worker ретраит пробу до
-// confirmation-deadline. Plain-func по контракту: pkg/operations остаётся свободным
-// от grpc/proto-зависимостей — impl-проба (Check-клиент / in-process FGA-read)
-// живёт в сервисном clients-слое и адаптируется к этой сигнатуре.
-type ConfirmFunc func(ctx context.Context) (confirmed bool, err error)
-
 // job — единица admission backlog'а.
 type job struct {
 	callerCtx context.Context
 	repo      Repo
 	opID      string
 	fn        func(context.Context) (*anypb.Any, error)
-	// confirm — опциональная owner-tuple confirm-проба (nil = сегодняшнее
-	// поведение: fn success → сразу MarkDone). При non-nil — confirm-gate в
-	// execute(): MarkDone только после confirmed=true, иначе fail-closed по
-	// confirmDeadline.
-	confirm ConfirmFunc
 }
 
 // Worker — bounded координатор async worker-горутин.
@@ -229,13 +177,12 @@ type job struct {
 // in-memory backlog, ограничивая исполняемые worker'ы семафором max-inflight;
 // терминальная запись durable (retry+CAS); readiness отражает живость loop'а.
 type Worker struct {
-	maxInflight     int
-	maxBacklog      int
-	rec             Recorder
-	log             *slog.Logger
-	tw              TerminalWriteConfig
-	opTimeout       time.Duration
-	confirmDeadline time.Duration
+	maxInflight int
+	maxBacklog  int
+	rec         Recorder
+	log         *slog.Logger
+	tw          TerminalWriteConfig
+	opTimeout   time.Duration
 
 	wg     sync.WaitGroup // outstanding работа (backlog + исполняемые) для Wait/drain
 	active atomic.Int64   // число ИСПОЛНЯЕМЫХ worker'ов (Active / inflight gauge)
@@ -259,7 +206,7 @@ type Worker struct {
 // логгер, retry-budget. Без опций — разумные дефолты (max-inflight 64).
 // Dispatcher-loop стартует лениво на первом Run или явно через Start().
 func NewWorker(opts ...WorkerOption) *Worker {
-	cfg := workerConfig{maxInflight: defaultMaxInflight, maxBacklog: defaultMaxBacklog, opTimeout: defaultOpTimeout, confirmDeadline: defaultConfirmDeadline}
+	cfg := workerConfig{maxInflight: defaultMaxInflight, maxBacklog: defaultMaxBacklog, opTimeout: defaultOpTimeout}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -271,17 +218,16 @@ func NewWorker(opts ...WorkerOption) *Worker {
 	}
 	cfg.tw = cfg.tw.withDefaults()
 	return &Worker{
-		maxInflight:     cfg.maxInflight,
-		maxBacklog:      cfg.maxBacklog,
-		rec:             cfg.rec,
-		log:             cfg.log,
-		tw:              cfg.tw,
-		opTimeout:       cfg.opTimeout,
-		confirmDeadline: cfg.confirmDeadline,
-		notify:          make(chan struct{}, 1),
-		sem:             make(chan struct{}, cfg.maxInflight),
-		stopCh:          make(chan struct{}),
-		dispDone:        make(chan struct{}),
+		maxInflight: cfg.maxInflight,
+		maxBacklog:  cfg.maxBacklog,
+		rec:         cfg.rec,
+		log:         cfg.log,
+		tw:          cfg.tw,
+		opTimeout:   cfg.opTimeout,
+		notify:      make(chan struct{}, 1),
+		sem:         make(chan struct{}, cfg.maxInflight),
+		stopCh:      make(chan struct{}),
+		dispDone:    make(chan struct{}),
 	}
 }
 
@@ -307,7 +253,7 @@ func (w *Worker) Configure(opts ...WorkerOption) error {
 	if w.startGuard.Load() {
 		return ErrWorkerStarted
 	}
-	cfg := workerConfig{maxInflight: w.maxInflight, maxBacklog: w.maxBacklog, rec: w.rec, log: w.log, tw: w.tw, opTimeout: w.opTimeout, confirmDeadline: w.confirmDeadline}
+	cfg := workerConfig{maxInflight: w.maxInflight, maxBacklog: w.maxBacklog, rec: w.rec, log: w.log, tw: w.tw, opTimeout: w.opTimeout}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -324,7 +270,6 @@ func (w *Worker) Configure(opts ...WorkerOption) error {
 	w.log = cfg.log
 	w.tw = cfg.tw
 	w.opTimeout = cfg.opTimeout
-	w.confirmDeadline = cfg.confirmDeadline
 	// Семафор зависит от maxInflight; dispatcher еще не стартовал — пересоздать безопасно.
 	w.sem = make(chan struct{}, cfg.maxInflight)
 	return nil
@@ -383,7 +328,7 @@ func (w *Worker) Stop() {
 
 // runOn — постановка задачи в backlog + пробуждение dispatcher'а. Возвращает
 // управление немедленно (async-контракт): handler не блокируется.
-func (w *Worker) runOn(callerCtx context.Context, repo Repo, opID string, fn func(context.Context) (*anypb.Any, error), confirm ConfirmFunc) {
+func (w *Worker) runOn(callerCtx context.Context, repo Repo, opID string, fn func(context.Context) (*anypb.Any, error)) {
 	w.ensureStarted()
 	w.mu.Lock()
 	select {
@@ -410,7 +355,7 @@ func (w *Worker) runOn(callerCtx context.Context, repo Repo, opID string, fn fun
 	// учитывается в drain'е с момента enqueue, а не с момента launch'а — иначе
 	// Add из dispatcher-goroutine гонится с Wait (нарушение контракта WaitGroup).
 	w.wg.Add(1)
-	w.backlog = append(w.backlog, job{callerCtx: callerCtx, repo: repo, opID: opID, fn: fn, confirm: confirm})
+	w.backlog = append(w.backlog, job{callerCtx: callerCtx, repo: repo, opID: opID, fn: fn})
 	w.mu.Unlock()
 	w.signal()
 }
@@ -577,95 +522,9 @@ func (w *Worker) execute(j job) {
 		return
 	}
 
-	// Confirm-gate (owner-tuple opgate): при non-nil confirm success-`done`
-	// достигается ТОЛЬКО после подтверждения owner-tuple (read-after-register).
-	// Fail-closed: confirm не достигнут за confirmDeadline → MarkError(Unavailable),
-	// ложный success-MarkDone не выставляется НИКОГДА. MarkError уже сохраняет
-	// metadata (repo.go) → resource-ref на error-терминале держится by construction.
-	if j.confirm != nil {
-		switch w.awaitConfirm(workerCtx, j) {
-		case confirmTimedOut:
-			st := status.New(codes.Unavailable, "owner-tuple registration not confirmed")
-			w.terminalWrite(j.repo, j.opID, "MarkError", func(ctx context.Context) error {
-				return j.repo.MarkError(ctx, j.opID, st.Proto())
-			})
-			return
-		case confirmAbandoned:
-			// graceful shutdown mid-confirm: строка durable done=false →
-			// reconciler / next-start восстановит. Терминал НЕ пишем.
-			w.log.Warn("owner-tuple confirm abandoned by shutdown; deferring to reconciler", "op", j.opID)
-			return
-		case confirmOK:
-			// owner-tuple подтверждён — переходим к MarkDone ниже.
-		}
-	}
-
 	w.terminalWrite(j.repo, j.opID, "MarkDone", func(ctx context.Context) error {
 		return j.repo.MarkDone(ctx, j.opID, resp)
 	})
-}
-
-// confirmOutcome — итог confirm-loop owner-tuple opgate (awaitConfirm).
-type confirmOutcome int
-
-const (
-	confirmOK        confirmOutcome = iota // owner-tuple подтверждён → MarkDone
-	confirmTimedOut                        // deadline истёк без confirm → fail-closed MarkError(Unavailable)
-	confirmAbandoned                       // shutdown mid-confirm → done=false (reconciler добьёт)
-)
-
-// awaitConfirm прогоняет confirm-пробу job'а до подтверждения owner-tuple либо до
-// confirmDeadline. Сам НЕ пишет терминал — только сигнализирует исход execute():
-//   - confirmOK        — confirmed=true в пределах deadline;
-//   - confirmTimedOut  — confirmDeadline (или per-op opTimeout) истёк без confirmed=true;
-//   - confirmAbandoned — graceful shutdown (stopCh) → операция остаётся done=false.
-//
-// Ретраи confirm-пробы спейсятся exponential-backoff'ом (аналог terminalWrite),
-// общий budget которого равен confirmDeadline: backoff.Stop ⇔ deadline истёк. На
-// timeout-ветке execute() маппит исход в codes.Unavailable (FIX-1: стабильный
-// retryable-код, НЕ DeadlineExceeded).
-func (w *Worker) awaitConfirm(workerCtx context.Context, j job) confirmOutcome {
-	deadline := time.Now().Add(w.confirmDeadline)
-	bo := backoff.ExponentialBackoffBuilder().
-		WithInitialInterval(confirmRetryInitial).
-		WithMaxInterval(confirmRetryMax).
-		WithMaxElapsedThreshold(w.confirmDeadline).
-		WithRandomizationFactor(0.2).
-		Build()
-	bo.Reset()
-
-	for {
-		// per-attempt ctx ограничен И confirm-deadline, И per-op opTimeout
-		// (workerCtx): зависшая проба не переживёт отведённое окно.
-		attemptCtx, cancel := context.WithDeadline(workerCtx, deadline)
-		confirmed, cerr := j.confirm(attemptCtx)
-		cancel()
-		if confirmed {
-			return confirmOK
-		}
-		if cerr != nil {
-			w.log.Warn("owner-tuple confirm probe transient error; retrying within deadline",
-				"op", j.opID, "err", cerr)
-		}
-
-		// Остался ли budget? backoff.Stop ⇔ elapsed >= confirmDeadline.
-		d := bo.NextBackOff()
-		if d == backoff.Stop {
-			w.log.Warn("owner-tuple confirm not achieved within deadline; failing closed",
-				"op", j.opID, "deadline", w.confirmDeadline)
-			return confirmTimedOut
-		}
-		select {
-		case <-time.After(d):
-			// повторная проба
-		case <-workerCtx.Done():
-			// per-op opTimeout истёк раньше confirm-deadline — fail-closed.
-			return confirmTimedOut
-		case <-w.stopCh:
-			// graceful shutdown — abandon, done=false (reconciler / next-start).
-			return confirmAbandoned
-		}
-	}
 }
 
 var errWorkerPanic = errors.New("operations: worker panic")
@@ -741,28 +600,13 @@ func (w *Worker) terminalWrite(repo Repo, opID, opName string, write func(contex
 // OperationService.Get, видит «застрявшую» операцию через рестарт. Предпочитайте
 // явный NewWorker + RunWithWorker (DI из composition root).
 func Run(callerCtx context.Context, repo Repo, opID string, fn func(context.Context) (*anypb.Any, error)) {
-	defaultRegistry.runOn(callerCtx, repo, opID, fn, nil)
+	defaultRegistry.runOn(callerCtx, repo, opID, fn)
 }
 
 // RunWithWorker — вариант с явным Worker registry (тесты / явное wiring). Семантика
 // callerCtx — как у Run.
 func RunWithWorker(w *Worker, callerCtx context.Context, repo Repo, opID string, fn func(context.Context) (*anypb.Any, error)) {
-	w.runOn(callerCtx, repo, opID, fn, nil)
-}
-
-// RunWithConfirm — owner-tuple opgate вариант Run на package-level default-registry.
-// Идентичен Run, но добавляет confirm-gate: fn success → worker прогоняет confirm-пробу
-// до confirmed=true (→ MarkDone) либо до confirmation-deadline (→ fail-closed
-// MarkError(codes.Unavailable, "owner-tuple registration not confirmed")). Семантика
-// callerCtx — как у Run. confirm==nil эквивалентен Run (nil-safe, back-compat).
-func RunWithConfirm(callerCtx context.Context, repo Repo, opID string, fn func(context.Context) (*anypb.Any, error), confirm ConfirmFunc) {
-	defaultRegistry.runOn(callerCtx, repo, opID, fn, confirm)
-}
-
-// RunWithWorkerConfirm — owner-tuple opgate вариант RunWithWorker с явным Worker
-// registry. confirm==nil эквивалентен RunWithWorker (nil-safe, back-compat).
-func RunWithWorkerConfirm(w *Worker, callerCtx context.Context, repo Repo, opID string, fn func(context.Context) (*anypb.Any, error), confirm ConfirmFunc) {
-	w.runOn(callerCtx, repo, opID, fn, confirm)
+	w.runOn(callerCtx, repo, opID, fn)
 }
 
 // ConfigureDefault применяет опции к package-level default-registry ДО старта его
