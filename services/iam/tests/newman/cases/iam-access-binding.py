@@ -1354,7 +1354,16 @@ CASES.append(Case(
                 "const j = pm.response.json();",
                 "if (pm.environment.get('_pollStarted') !== pm.info.requestName) { pm.environment.set('_pollCount', '0'); pm.environment.set('_pollStarted', pm.info.requestName); }",
                 "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                "if (!j.done && pc < 30) {",
+                # poll-cluster-create budget 30→80 (GATE-RUN #3 root #3). Busy-wait уже
+                # был (c8ec4c2), НЕ пропущен — но budget 30*500ms=15s < confirm-deadline
+                # KACHO_IAM_OWNER_CONFIRM_DEADLINE=30s. Cluster-scope AccessBinding.Create
+                # делает broad cluster-materialization (owner-tuple confirm read-after-write
+                # под HIGHER_CONSISTENCY по singleton cluster_kacho_root); op-done лагал >15s
+                # → done:false на конце polla (binding при этом уже материализован:
+                # get-cluster-binding зелёный). Project-scope AB confirm'ится <15s (др. 35
+                # inline-polls ок при pc<30). 80*500ms=40s покрывает 30s confirm-deadline с
+                # запасом. Только этот P0 cluster-poll; fast-путь выходит рано (не крутит 80).
+                "if (!j.done && pc < 80) {",
                 "  pm.environment.set('_pollCount', String(pc + 1));",
                 "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                 "  pm.execution.setNextRequest(pm.info.requestName);",
