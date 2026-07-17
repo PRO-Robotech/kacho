@@ -55,12 +55,18 @@ run_one() {
     "${EXTRA[@]}" 2>&1 | tee "out/${res}.cli" || true
 }
 
+# Start from a clean out/ — a stale reporter JSON from an earlier run would let
+# the suite-green gate (assert-suites-green.sh) pass a suite that did not run
+# this time. out/ is .gitignore'd; this rm is the belt to that.
+rm -rf out
 mkdir -p out
 
 if [[ -n "$SERVICE" ]]; then
   run_one "$SERVICE"
 else
-  for res in disk image snapshot instance disk-type operation list-filter; do
+  # ВСЕ 9 коллекций — иначе assert-suites-green.sh (грейдит collections/*.json
+  # глобом) видит authz-deny/sec-d без отчёта → "(no-report)" → phantom FAIL.
+  for res in disk image snapshot instance disk-type operation list-filter authz-deny sec-d; do
     run_one "$res"
   done
 fi
