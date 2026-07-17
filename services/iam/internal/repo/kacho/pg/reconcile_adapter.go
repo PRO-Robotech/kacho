@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -924,26 +925,51 @@ func (a *ReconcileAdapter) ListSelectorBindingIDs(ctx context.Context) ([]domain
 // writer-tx commits, the per-object tuples it also enqueued to fga_outbox — closing the
 // create-path read-after-write race under the Contract-A flat model. The reconcile use-
 // case stays clients-free (Clean Architecture): the mapping lives here, in the pg
-// adapter that already depends on both clients and reconcile. WriteTuples is idempotent
-// (OpenFGAHTTPClient treats already_exists as success), so the later async drain of the
-// SAME fga_outbox rows is a safe no-op.
+// adapter that already depends on both clients and reconcile.
+//
+// WriteTuples is IDEMPOTENT via read-then-write-delta (owner-403 root cause): OpenFGA's
+// Write is transactional and NON-idempotent — it rejects the WHOLE batch when ANY tuple
+// pre-exists ("cannot write a tuple which already exists"). Under at-least-once register
+// / re-register the owner tuples frequently pre-exist, so a plain atomic write fails
+// wholesale and would defer the FULL owner-set, breaking op-done ⟹ full grant. On such a
+// conflict the writer reads the object's existing tuples and writes ONLY the missing
+// delta (which does not exist → no conflict), so the full grant is present (existing ∪
+// written). The later async drain of the SAME fga_outbox rows stays a safe no-op.
 type syncFGAWriter struct {
 	relations clients.RelationStore
-	// logger — surfaces per-tuple failures in the resilient fallback pass. nil →
+	// reader — OPTIONAL read capability used by the idempotent read-delta path
+	// (type-asserted from relations in NewSyncFGAWriter). nil for a store without a
+	// ReadTuples method (bare test stub) → pre-existing conflicts fall back to the
+	// durable async drainer.
+	reader fgaTupleReader
+	// logger — surfaces per-object failures in the resilient fallback pass. nil →
 	// warnings are skipped (the async drainer remains the durable retry path).
 	logger *slog.Logger
+}
+
+// fgaTupleReader — the OPTIONAL read capability the idempotent read-delta path needs.
+// Implemented by *clients.OpenFGAHTTPClient (the production RelationStore). A store that
+// does not provide it (a bare test stub) skips read-delta and defers a pre-existing
+// conflict to the durable async drainer.
+type fgaTupleReader interface {
+	ReadTuples(ctx context.Context, subjectFilter, relationFilter, objectFilter string, pageSize int, pageToken string) ([]clients.ConditionalTuple, string, error)
 }
 
 // NewSyncFGAWriter builds the reconcile.SyncFGAWriter over a RelationStore. nil-safe:
 // a nil RelationStore yields a nil writer, so reconcile.WithSyncFGA(nil) leaves the
 // reconciler async-only (existing behaviour) — the composition root can pass an
-// unconfigured store without a special case. logger may be nil (per-tuple warnings
-// skipped).
+// unconfigured store without a special case. logger may be nil (per-object warnings
+// skipped). The read-delta idempotency is enabled when the store also implements
+// fgaTupleReader (the production OpenFGAHTTPClient always does).
 func NewSyncFGAWriter(relations clients.RelationStore, logger *slog.Logger) reconcile.SyncFGAWriter {
 	if relations == nil {
 		return nil
 	}
-	return &syncFGAWriter{relations: relations, logger: logger}
+	w := &syncFGAWriter{relations: relations, logger: logger}
+	if r, ok := relations.(fgaTupleReader); ok {
+		w.reader = r
+	}
+	return w
 }
 
 // maxObjectPackTuples bounds one packed sync Write to OpenFGA's per-request
@@ -1000,13 +1026,18 @@ func groupTuplesByObject(tuples []reconcile.SyncFGATuple) []objectTupleGroup {
 //     is NEVER split, so it stays atomic even packed) and write each. A clean pass
 //     lands everything in a few large requests (low HIGHER_CONSISTENCY contention).
 //   - Resilient path — on any packed-request error, re-apply each object as its OWN
-//     atomic Write. This (a) isolates a sibling object OpenFGA rejects (a
-//     computed-only tier such as `iam_role#viewer`, #232) so it never strips the
-//     owner's valid object, AND (b) guarantees an object is never left partial: a
-//     per-OBJECT failure defers the object's FULL tuple-set to the async fga_outbox
-//     drainer (never per-tuple). OpenFGA's Write is transactional, so a failed
-//     request applies NONE of its tuples — the object is fully deferred, not
-//     half-written.
+//     atomic Write. This isolates a sibling object OpenFGA rejects (a computed-only
+//     tier such as `iam_role#viewer`, #232) so it never strips the owner's valid
+//     object, AND guarantees an object is never left partial. On a per-object error:
+//     · already-exists (a pre-existing tuple — OpenFGA rejects the WHOLE batch,
+//     the owner-403 root cause under at-least-once re-register): reconcile the
+//     object IDEMPOTENTLY (reconcileObjectDelta) — read its existing tuples and
+//     write ONLY the missing delta, so the full grant is present (existing ∪
+//     written) instead of the whole set being deferred;
+//     · any other error (transient write-contention / computed-only reject #232):
+//     defer the object's FULL tuple-set to the async fga_outbox drainer.
+//     OpenFGA's Write is transactional, so a failed request applies NONE of its
+//     tuples — the object is fully deferred, not half-written.
 //
 // Best-effort: per-object failures are non-fatal (the durable fga_outbox enqueue +
 // async drainer are the at-least-once backstop) but no longer silent (CWE-778) —
@@ -1023,18 +1054,151 @@ func (w *syncFGAWriter) WriteTuples(ctx context.Context, tuples []reconcile.Sync
 		return nil
 	}
 	// Resilient path: a packed request failed. Apply each object atomically so one
-	// rejected object never strips a valid sibling AND no object is left partial. A
-	// per-object failure defers the object's full set to the async drainer.
+	// rejected object never strips a valid sibling AND no object is left partial.
 	for _, g := range groups {
-		if err := w.relations.WriteTuples(ctx, g.tuples); err != nil && w.logger != nil {
-			w.logger.WarnContext(ctx, "sync FGA per-object write failed — full tuple-set deferred to the async drainer",
-				slog.String("object", g.object),
-				slog.Int("tuple_count", len(g.tuples)),
-				slog.String("err", err.Error()),
-			)
+		err := w.relations.WriteTuples(ctx, g.tuples)
+		if err == nil {
+			continue // clean per-object write landed (e.g. a sibling caused the packed failure).
 		}
+		// IDEMPOTENCY (owner-403 root cause): OpenFGA's transactional Write rejects
+		// the WHOLE batch when ANY tuple pre-exists. Under at-least-once register /
+		// re-register the owner tuples frequently pre-exist, so the atomic write above
+		// fails wholesale and — without this — the FULL owner-set is deferred, breaking
+		// op-done ⟹ full grant. Reconcile the object idempotently: read its existing
+		// tuples and write ONLY the missing delta (which does not exist → no conflict),
+		// so the full grant is present (existing ∪ written). A store without a read
+		// capability falls back to the durable async drainer.
+		if isAlreadyExistsErr(err) && w.reader != nil {
+			if derr := w.reconcileObjectDelta(ctx, g); derr != nil {
+				w.logDefer(ctx, g, derr)
+			}
+			continue
+		}
+		// Genuine failure (transient write-contention / computed-only reject #232):
+		// defer the object's FULL set to the async drainer (atomic — never partial),
+		// non-silent (CWE-778).
+		w.logDefer(ctx, g, err)
 	}
 	return nil
+}
+
+// maxDeltaRounds bounds the read-then-write-delta retry when a concurrent writer
+// (e.g. the async drainer applying the SAME fga_outbox rows row-by-row) lands part
+// of the missing set between our Read and our Write. Each round the missing set
+// strictly shrinks (the racer made progress) or the write applies cleanly, so a
+// small bound converges; on exhaustion the object is deferred to the durable drainer.
+const maxDeltaRounds = 4
+
+// fgaDeltaReadPageSize / maxDeltaReadPages bound one delta read. The owner grant is
+// ~6 tuples for one subject on one object, so a single small page suffices; the page
+// cap is a defensive bound for a heavily-shared object.
+const (
+	fgaDeltaReadPageSize = 50
+	maxDeltaReadPages    = 20
+)
+
+// reconcileObjectDelta idempotently completes one object's grant after a pre-existing-
+// tuple conflict. It reads the object's existing tuples for each subject in the group,
+// computes missing = desired − existing, and writes ONLY the missing tuples (which do
+// not exist → no conflict, atomic apply). missing == ∅ ⇒ the full grant is already
+// present (idempotent no-op success). A benign race (a concurrent writer landing part
+// of the missing set between our Read and Write) surfaces as an already-exists on the
+// missing-write → re-read and retry the residual (bounded). Returns nil once the full
+// desired set is present; a non-conflict read/write error (or non-convergence) is
+// returned so the caller defers the object to the async drainer.
+func (w *syncFGAWriter) reconcileObjectDelta(ctx context.Context, g objectTupleGroup) error {
+	subjects := distinctSubjects(g.tuples)
+	for round := 0; round < maxDeltaRounds; round++ {
+		have, err := w.readExisting(ctx, subjects, g.object)
+		if err != nil {
+			return err
+		}
+		missing := make([]clients.RelationTuple, 0, len(g.tuples))
+		for _, t := range g.tuples {
+			if _, ok := have[t]; !ok {
+				missing = append(missing, t)
+			}
+		}
+		if len(missing) == 0 {
+			return nil // full grant already present — idempotent no-op success.
+		}
+		werr := w.relations.WriteTuples(ctx, missing)
+		if werr == nil {
+			return nil // delta applied — full grant present (existing ∪ written).
+		}
+		if !isAlreadyExistsErr(werr) {
+			return werr // genuine failure — defer to the async drainer.
+		}
+		// Benign race: a concurrent writer landed part of `missing` between our Read
+		// and Write, so OpenFGA rejected the batch. Re-read and retry the residual.
+	}
+	return fmt.Errorf("sync FGA delta did not converge for %s after %d rounds", g.object, maxDeltaRounds)
+}
+
+// readExisting reads the tuples already present on `object` for the given subjects,
+// filtered server-side by (subject, object) so the response stays small (the owner
+// grant is ~6 tuples) even for a heavily-shared object. Pagination is followed to a
+// bound. The returned set is keyed by the exact (User, Relation, Object) triple.
+func (w *syncFGAWriter) readExisting(ctx context.Context, subjects []string, object string) (map[clients.RelationTuple]struct{}, error) {
+	have := make(map[clients.RelationTuple]struct{})
+	for _, subj := range subjects {
+		token := ""
+		for page := 0; page < maxDeltaReadPages; page++ {
+			tuples, next, err := w.reader.ReadTuples(ctx, subj, "", object, fgaDeltaReadPageSize, token)
+			if err != nil {
+				return nil, fmt.Errorf("sync FGA read existing tuples for %s: %w", object, err)
+			}
+			for _, t := range tuples {
+				have[clients.RelationTuple{User: t.User, Relation: t.Relation, Object: t.Object}] = struct{}{}
+			}
+			if next == "" {
+				break
+			}
+			token = next
+		}
+	}
+	return have, nil
+}
+
+// logDefer surfaces a per-object deferral to the async drainer (CWE-778: observable,
+// not silent). nil logger → skipped.
+func (w *syncFGAWriter) logDefer(ctx context.Context, g objectTupleGroup, err error) {
+	if w.logger == nil {
+		return
+	}
+	w.logger.WarnContext(ctx, "sync FGA per-object write failed — full tuple-set deferred to the async drainer",
+		slog.String("object", g.object),
+		slog.Int("tuple_count", len(g.tuples)),
+		slog.String("err", err.Error()),
+	)
+}
+
+// distinctSubjects returns the unique subjects (FGA users) in a group, preserving
+// first-seen order. Almost always a single subject (the creator's per-object grant).
+func distinctSubjects(tuples []clients.RelationTuple) []string {
+	seen := make(map[string]struct{}, len(tuples))
+	out := make([]string, 0, 1)
+	for _, t := range tuples {
+		if _, ok := seen[t.User]; ok {
+			continue
+		}
+		seen[t.User] = struct{}{}
+		out = append(out, t.User)
+	}
+	return out
+}
+
+// isAlreadyExistsErr detects OpenFGA's transactional write-conflict reply (writing a
+// tuple that already exists). It matches BOTH surfaced forms — the spaced message
+// "cannot write a tuple which already exists" (GATE-RUN #2 production) and the
+// "errorCode: already_exists" marker — so the read-delta path triggers regardless of
+// OpenFGA's error-string format. Mirrors clients.classifyFGAWriteErr's vocabulary.
+func isAlreadyExistsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already_exists") || strings.Contains(msg, "already exists")
 }
 
 // writePacked greedily packs whole object-groups into ≤maxObjectPackTuples-tuple
