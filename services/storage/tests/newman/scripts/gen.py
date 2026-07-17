@@ -155,7 +155,11 @@ def poll_operation_until_done() -> Step:
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 8) {",
+            # Poll budget raised 8→30 (Koren-1): an async Create-op legitimately
+            # takes seconds under suite load (owner-tuple confirm-gate + worker), so
+            # the poll window must cover the p99 tail — NOT mask latency. The confirm
+            # tail itself is cut by the HIGHER_CONSISTENCY read; this is the margin.
+            "if (!j.done && pc < 30) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",

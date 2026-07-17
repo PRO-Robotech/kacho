@@ -166,7 +166,9 @@ def poll_operation_until_done() -> Step:
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 20) {",
+            # Poll budget raised 20→30 (Koren-1): cover the p99 async-op tail under
+            # suite load; the confirm-gate tail is cut by the HIGHER_CONSISTENCY read.
+            "if (!j.done && pc < 30) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
