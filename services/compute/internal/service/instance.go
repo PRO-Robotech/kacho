@@ -633,11 +633,11 @@ func (s *InstanceService) ListOperations(ctx context.Context, id string, p Pagin
 }
 
 // mirrorReadTimeout — верхняя граница best-effort mirror-READ (Get/List NIC/volume
-// зеркала) на КАЖДЫЙ peer-вызов. Зеркало output-only (data-integrity §3: source of
+// зеркала) на КАЖДЫЙ peer-вызов. Зеркало output-only (data-integrity: source of
 // truth = kacho-vpc/kacho-storage), graceful-degrade на ЛЮБОЙ ошибке — поэтому НЕ
 // должно крутить полный retry.OnUnavailable (MaxElapsed=30s): против Unavailable
 // peer'а это вешало Get/List на ~30s/зеркало (×2 nic+volume = ~55s/RPC — доминирующий
-// bottleneck instance-суита, GATE-RUN #3 root #1; disk/image/snapshot без зеркал —
+// bottleneck instance-суита; disk/image/snapshot без зеркал —
 // быстрые). Короткий bound → быстрый degrade: peer up — read в ms (bound не
 // срабатывает); peer down/blip — зеркало опускается, следующий read перечитает.
 // Мутации (attach/detach/release-сага, worker fn) сохраняют полный 30s retry —

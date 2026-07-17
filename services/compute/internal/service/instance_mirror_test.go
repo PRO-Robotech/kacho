@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
 )
 
-// TestInstanceGet_MirrorReadCtxBounded — GATE-RUN #3 root #1 regression.
+// TestInstanceGet_MirrorReadCtxBounded — mirror-read latency regression.
 //
 // best-effort NIC/volume mirror reads на Get обязаны нести короткий per-call
 // deadline (mirrorReadTimeout), а НЕ сырой request-ctx: иначе против Unavailable
@@ -57,7 +57,7 @@ func TestInstanceGet_MirrorReadCtxBounded(t *testing.T) {
 
 // TestInstanceGet_MirrorGracefulDegradeOnUnavailable — bound НЕ ломает
 // graceful-degrade: Unavailable peer (down) ⇒ Get всё равно возвращает инстанс,
-// просто без зеркал (data-integrity §3 output-only).
+// просто без зеркал (data-integrity output-only).
 func TestInstanceGet_MirrorGracefulDegradeOnUnavailable(t *testing.T) {
 	instanceRepo := portmock.NewInstanceRepo()
 	nic := portmock.NewNicClient()
