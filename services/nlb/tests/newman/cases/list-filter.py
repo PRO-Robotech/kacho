@@ -76,7 +76,7 @@ CASES.append(Case(
         Step(name="create-tg", method="POST", path=_TGR, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "lf-tg-own-{{runId}}",
-                   "healthCheck": {"name": "hc", "tcp": {"port": 80}}},
+                   "healthCheck": {"name": "hc", "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "lfTgId")]),
         poll_operation_until_done(),

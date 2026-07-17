@@ -16,7 +16,7 @@ CASES = []
 _TG_BASE = "/nlb/v1/targetGroups"
 
 _HC = {"name": "hc", "interval": "2s", "timeout": "1s",
-       "unhealthyThreshold": 3, "healthyThreshold": 2, "tcp": {"port": 80}}
+       "unhealthyThreshold": 3, "healthyThreshold": 2, "tcpOptions": {"port": 80}}
 
 _TG_BODY = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
             "healthCheck": _HC, "deregistrationDelaySeconds": 300,

@@ -608,7 +608,7 @@ CASES.append(Case(
                    "name": "dtgr-alt-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgAltId")]),
         poll_operation_until_done(),

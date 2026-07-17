@@ -55,7 +55,7 @@ _VPC_SUBNETS = "/vpc/v1/subnets"
 # are tracked for a separate listener acceptance.
 
 _HC_TCP = {"name": "hc", "interval": "2s", "timeout": "1s",
-           "unhealthyThreshold": 3, "healthyThreshold": 2, "tcp": {"port": 8080}}
+           "unhealthyThreshold": 3, "healthyThreshold": 2, "tcpOptions": {"port": 8080}}
 
 # Set of TargetState.Status enum strings the computed (control-plane) ramp may
 # legitimately return. UNHEALTHY/STATUS_UNSPECIFIED are valid enum members even

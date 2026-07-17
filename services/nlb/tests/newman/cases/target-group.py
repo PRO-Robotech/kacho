@@ -15,7 +15,7 @@ _TG_BASE = "/nlb/v1/targetGroups"
 _HEALTH_CHECK_DEFAULT = {
     "name": "hc-default", "interval": "2s", "timeout": "1s",
     "unhealthyThreshold": 3, "healthyThreshold": 2,
-    "tcp": {"port": 80},
+    "tcpOptions": {"port": 80},
 }
 
 _TG_BODY = {
@@ -60,7 +60,7 @@ CASES.append(Case(
                    "labels": {"tier": "web"},
                    "healthCheck": {"name": "http-200", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "http": {"port": 8080, "path": "/healthz",
+                                   "httpOptions": {"port": 8080, "path": "/healthz",
                                             "expectedStatuses": [200]}},
                    "targets": [
                        {"externalIp": {"address": "203.0.113.50"}, "weight": 50},
@@ -209,8 +209,8 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "hc-multi-{{runId}}",
                    "healthCheck": {"name": "x", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 8080},
-                                   "http": {"port": 8080, "path": "/"}}},
+                                   "tcpOptions": {"port": 8080},
+                                   "httpOptions": {"port": 8080, "path": "/"}}},
              test_script=[
                  "pm.test('rejected (sync 400 or async error)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",

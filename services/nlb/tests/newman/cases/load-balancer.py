@@ -511,7 +511,7 @@ CASES.append(Case(
                    "name": "mv-tg-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
@@ -600,7 +600,7 @@ CASES.append(Case(
 def _setup_tg(name_suffix: str, body_extra: dict = None):
     base_hc = {"healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                "unhealthyThreshold": 3, "healthyThreshold": 2,
-                               "tcp": {"port": 80}}}
+                               "tcpOptions": {"port": 80}}}
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
             "name": f"setup-tg-{name_suffix}-{{{{runId}}}}", **base_hc, **(body_extra or {})}
     return [
@@ -707,7 +707,7 @@ CASES.append(Case(
                    "name": "tg-region-alt-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),

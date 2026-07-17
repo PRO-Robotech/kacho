@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "ec6208b6-0128-40ef-9d92-2d820366500f",
+    "_postman_id": "dce1c41a-d992-4d3b-a176-e621a857cb96",
     "name": "kacho-nlb / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -341,7 +341,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-tg-own-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"tcp\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-tg-own-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"

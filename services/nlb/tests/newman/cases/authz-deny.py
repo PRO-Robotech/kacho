@@ -297,7 +297,7 @@ CASES.append(Case(
                    "name": "azd-tgr-vd-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
     ],
 ))
@@ -324,14 +324,14 @@ CASES.append(Case(
                    "name": "azd-tgrmvpc-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
         Step(name="setup-tg", method="POST", path=_TGR, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-tgrmv-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
@@ -851,7 +851,7 @@ CASES.append(Case(
                    "name": "azd-tgr-strn-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
     ],
 ))
@@ -881,7 +881,7 @@ CASES.append(Case(
                    "name": "anon-tgr-{{runId}}",
                    "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[
                  "pm.test('401 or 403', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([401, 403]));",
