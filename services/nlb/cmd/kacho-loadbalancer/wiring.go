@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/jobs"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/check"
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/fgaboot"
@@ -104,6 +105,14 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	// OperationService (public, exempt: op-id опакен, owner-scoped Get/Cancel).
 	operationpb.RegisterOperationServiceServer(publicSrv, operation.NewHandler(w.opsRepo))
 
+	// owner-tuple opgate — активен только при Check-client + включённом
+	// register-drainer: owner-tuple ресурса материализуется через NOTIFY-driven
+	// register-drainer (fga_register_outbox → iam RegisterResource → reconcile →
+	// FGA-write); без drainer'а confirm-loop таймаутил бы (лишний fail-closed).
+	// reuse w.peers.Check (InternalIAMService.Check, HIGHER_CONSISTENCY через
+	// CheckConsistent) — нового cross-service ребра нет.
+	opgate := w.peers.Check != nil && w.cfg.FGA.RegisterDrainer.Enable
+
 	// NetworkLoadBalancerService (public only).
 	lbHandler := lbhandler.NewHandler(
 		w.repo, w.opsRepo,
@@ -112,17 +121,24 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 		w.peers.ListFilter,
 		w.logger,
 	)
+	if opgate {
+		lbHandler.WithOwnerConfirmer(check.NewLoadBalancerOwnerConfirmer(w.peers.Check))
+	}
 	lbv1.RegisterNetworkLoadBalancerServiceServer(publicSrv, lbHandler)
 
 	// ListenerService (public only). InternalAddress нужен только для release
 	// legacy-VIP в Delete (nil → Unavailable).
-	lbv1.RegisterListenerServiceServer(publicSrv, listener.NewHandler(
+	listenerHandler := listener.NewHandler(
 		w.repo,
 		w.opsRepo,
 		w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
-	))
+	)
+	if opgate {
+		listenerHandler.WithOwnerConfirmer(check.NewListenerOwnerConfirmer(w.peers.Check))
+	}
+	lbv1.RegisterListenerServiceServer(publicSrv, listenerHandler)
 
 	// TargetGroupService (public only). Фаза B drain — отдельный background-runner.
 	tgHandler := targetgroup.NewHandler(
@@ -132,6 +148,9 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 		w.peers.ListFilter,
 		w.logger,
 	)
+	if opgate {
+		tgHandler.WithOwnerConfirmer(check.NewTargetGroupOwnerConfirmer(w.peers.Check))
+	}
 	lbv1.RegisterTargetGroupServiceServer(publicSrv, tgHandler)
 
 	// InternalResourceLifecycleService (internal only) — FGA tuple-sync для kacho-iam.

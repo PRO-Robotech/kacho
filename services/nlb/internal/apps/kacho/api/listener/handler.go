@@ -55,6 +55,16 @@ func NewHandler(
 	}
 }
 
+// WithOwnerConfirmer подключает read-after-register confirmer owner-tuple к
+// Create-UC (owner-tuple opgate). Composition root вызывает его при активном
+// register-drainer + Check-client — тогда Create-op достигает success-`done`
+// только после материализации owner-tuple Listener в FGA (окно 403 закрыто).
+// Nil → confirm-gate выключен.
+func (h *Handler) WithOwnerConfirmer(c OwnerTupleConfirmer) *Handler {
+	h.create.WithConfirmer(c)
+	return h
+}
+
 // Get — sync read.
 func (h *Handler) Get(ctx context.Context, req *lbv1.GetListenerRequest) (*lbv1.Listener, error) {
 	return h.get.Run(ctx, req)
