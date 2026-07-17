@@ -85,26 +85,13 @@ func NewIAMCheckClientWithProbe(conn grpc.ClientConnInterface, probe ResourceExi
 // зовущие operations.PrincipalFromContext (audit, scope-filter, OPA-overlay), видели бы
 // bootstrap независимо от реального caller'а.
 func (c *IAMCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
-	return c.check(ctx, subjectID, relation, object, iamv1.CheckRequest_CONSISTENCY_UNSPECIFIED)
-}
-
-// CheckConsistent — Check forcing OpenFGA HIGHER_CONSISTENCY (strong
-// read-after-write). Used by the owner-tuple confirm-gate probe (read-after-OWN-
-// write): the tuple was written synchronously to the same OpenFGA store on this
-// create path, so under the multi-replica deployment the probe must not be served a
-// stale-replica negative. Same deny-mapping / existence-hiding semantics as Check.
-func (c *IAMCheckClient) CheckConsistent(ctx context.Context, subjectID, relation, object string) (bool, error) {
-	return c.check(ctx, subjectID, relation, object, iamv1.CheckRequest_HIGHER_CONSISTENCY)
-}
-
-// check is the shared Check transport; consistency is forwarded verbatim on the
-// wire (CONSISTENCY_UNSPECIFIED ⇒ OpenFGA default MINIMIZE_LATENCY).
-func (c *IAMCheckClient) check(ctx context.Context, subjectID, relation, object string, consistency iamv1.CheckRequest_Consistency) (bool, error) {
+	// Consistency остаётся невыставленным: zero value CheckRequest_CONSISTENCY_UNSPECIFIED
+	// ⇒ OpenFGA default MINIMIZE_LATENCY — идентичное wire-поведение прежнему явному
+	// CONSISTENCY_UNSPECIFIED.
 	resp, err := c.cli.Check(auth.PropagateOutgoing(ctx), &iamv1.CheckRequest{
-		SubjectId:   subjectID,
-		Relation:    relation,
-		Object:      object,
-		Consistency: consistency,
+		SubjectId: subjectID,
+		Relation:  relation,
+		Object:    object,
 	})
 	if err != nil {
 		// Транспорт/Unavailable — interceptor отрабатывает fail-closed
@@ -162,8 +149,3 @@ func splitFGAObject(object string) (objectType, objectID string, ok bool) {
 
 // Compile-time check.
 var _ authz.CheckClient = (*IAMCheckClient)(nil)
-
-// Compile-time guarantee that the production confirm-read client exposes the
-// HIGHER_CONSISTENCY path, so the owner-tuple confirm-gate never silently degrades
-// to a stale-eligible default read in prod (checkConsistent fallback is test-only).
-var _ consistentChecker = (*IAMCheckClient)(nil)

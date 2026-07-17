@@ -16,7 +16,6 @@ package subnet
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -63,16 +62,6 @@ type NetworkInterfaceRepo interface {
 // worker'е.
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)
-}
-
-// OwnerTupleConfirmer — read-after-register проба owner-tuple для confirm-gate
-// Create-op (owner-tuple opgate). Возвращает confirmed=true, когда owner-tuple
-// созданной Subnet эффективен в FGA для creator'а (gateway scope_extractor Check
-// немедленной мутации `creator #v_update vpc_subnet:<id>` вернёт ALLOW). Реализация —
-// check.NewSubnetOwnerConfirmer (reuse authz.CheckClient, без нового ребра). nil →
-// confirm-gate выключен (op done сразу после worker-fn).
-type OwnerTupleConfirmer interface {
-	Confirm(ctx context.Context, creator operations.Principal, resourceID string) (bool, error)
 }
 
 // ZoneRegistry — port для проверки существования зоны (используется Create,

@@ -128,8 +128,6 @@ func RegisterDefaults(v *viper.Viper) {
 	// типизированные ключи со строгой bool-валидацией на decode.
 	v.SetDefault("iam.require", false)
 	v.SetDefault("iam.register-drainer-enabled", true)
-	// owner-tuple opgate: confirm-deadline (≪ op-timeout 4m ≪ OrphanGrace 5m).
-	v.SetDefault("iam.owner-confirm-deadline", 30*time.Second)
 
 	// network (VPC-domain)
 	v.SetDefault("network.default-sg-inline", true)

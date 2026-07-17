@@ -39,29 +39,6 @@ type CreateSecurityGroupUseCase struct {
 	projectClient ProjectClient
 	opsRepo       operations.Repo
 	registrar     fgaregister.Registrar
-
-	// confirmer — read-after-register проба owner-tuple (owner-tuple opgate). При
-	// non-nil Create-op становится `done=true, response` только после подтверждения
-	// owner-tuple в FGA (окно 403 «no direct relations granted» на немедленной
-	// мутации создателя закрыто). nil → confirm-gate выключен (прежнее поведение).
-	confirmer OwnerTupleConfirmer
-
-	// dispatch — точка запуска async Create-worker'а с confirm-gate. Дефолт —
-	// operations.RunWithConfirm; тест инжектит Worker с коротким deadline (OTG-05).
-	dispatch confirmDispatcher
-}
-
-// confirmDispatcher — сигнатура диспетча Create-op с confirm-gate (owner-tuple
-// opgate). Совпадает с operations.RunWithConfirm; confirm==nil ≡ operations.Run.
-type confirmDispatcher func(ctx context.Context, opsRepo operations.Repo, opID string,
-	fn func(context.Context) (*anypb.Any, error), confirm operations.ConfirmFunc)
-
-// WithConfirmer подключает read-after-register confirmer owner-tuple (owner-tuple
-// opgate): Create-op достигает success-`done` только после подтверждения
-// owner-tuple. Nil → confirm-gate выключен.
-func (u *CreateSecurityGroupUseCase) WithConfirmer(c OwnerTupleConfirmer) *CreateSecurityGroupUseCase {
-	u.confirmer = c
-	return u
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
@@ -87,7 +64,6 @@ func NewCreateSecurityGroupUseCase(r Repo, networkReader NetworkReader, projectC
 		networkReader: networkReader,
 		projectClient: projectClient,
 		opsRepo:       opsRepo,
-		dispatch:      operations.RunWithConfirm,
 	}
 }
 
@@ -181,21 +157,12 @@ func (u *CreateSecurityGroupUseCase) Execute(ctx context.Context, sg domain.Secu
 		return nil, err
 	}
 
-	// Confirm-gate owner-tuple (owner-tuple opgate): при подключённом confirmer op
-	// достигает success-`done` только после read-after-register подтверждения
-	// owner-tuple SecurityGroup. creator = op.Principal. nil confirmer → confirm=nil
-	// → RunWithConfirm ≡ Run (back-compat).
-	var confirm operations.ConfirmFunc
-	if u.confirmer != nil {
-		creator := op.Principal
-		confirm = func(cctx context.Context) (bool, error) {
-			return u.confirmer.Confirm(cctx, creator, sgID)
-		}
-	}
-
-	u.dispatch(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
+	// материализуется eventually-consistent (sync-registrar + drainer/reconciler
+	// backstop), а не гейтит done.
+	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, sgID, sg)
-	}, confirm)
+	})
 
 	return &op, nil
 }

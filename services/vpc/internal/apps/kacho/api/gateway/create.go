@@ -35,32 +35,7 @@ type CreateGatewayUseCase struct {
 	projectClient ProjectClient
 	opsRepo       operations.Repo
 	registrar     fgaregister.Registrar
-
-	// confirmer — read-after-register проба owner-tuple (owner-tuple opgate). При
-	// non-nil Create-op становится `done=true, response` только после подтверждения
-	// owner-tuple Gateway в FGA (окно 403 на немедленной мутации создателя закрыто).
-	// nil → confirm-gate выключен (прежнее поведение — op done сразу после worker-fn).
-	confirmer OwnerTupleConfirmer
-
-	// dispatch — точка запуска async Create-worker'а с confirm-gate. Дефолт —
-	// operations.RunWithConfirm; тест инжектит Worker с коротким deadline (OTG-05).
-	dispatch confirmDispatcher
 }
-
-// OwnerTupleConfirmer — read-after-register проба owner-tuple для confirm-gate
-// Create-op (owner-tuple opgate). confirmed=true, когда owner-tuple созданного
-// Gateway эффективен в FGA для creator'а (gateway scope_extractor Check немедленной
-// мутации `creator #v_update vpc_gateway:<id>` вернёт ALLOW). Реализация —
-// check.NewGatewayOwnerConfirmer (reuse authz.CheckClient, без нового ребра). nil →
-// confirm-gate выключен.
-type OwnerTupleConfirmer interface {
-	Confirm(ctx context.Context, creator operations.Principal, resourceID string) (bool, error)
-}
-
-// confirmDispatcher — сигнатура диспетча Create-op с confirm-gate (owner-tuple
-// opgate). Совпадает с operations.RunWithConfirm; confirm==nil ≡ operations.Run.
-type confirmDispatcher func(ctx context.Context, opsRepo operations.Repo, opID string,
-	fn func(context.Context) (*anypb.Any, error), confirm operations.ConfirmFunc)
 
 // NewCreateGatewayUseCase создает CreateGatewayUseCase.
 func NewCreateGatewayUseCase(r Repo, projectClient ProjectClient, opsRepo operations.Repo) *CreateGatewayUseCase {
@@ -68,7 +43,6 @@ func NewCreateGatewayUseCase(r Repo, projectClient ProjectClient, opsRepo operat
 		repo:          r,
 		projectClient: projectClient,
 		opsRepo:       opsRepo,
-		dispatch:      operations.RunWithConfirm,
 	}
 }
 
@@ -77,15 +51,6 @@ func NewCreateGatewayUseCase(r Repo, projectClient ProjectClient, opsRepo operat
 // sync-путь пропускается (только async drainer).
 func (u *CreateGatewayUseCase) WithRegistrar(r fgaregister.Registrar) *CreateGatewayUseCase {
 	u.registrar = r
-	return u
-}
-
-// WithConfirmer подключает read-after-register confirmer owner-tuple (owner-tuple
-// opgate): Create-op достигает success-`done` только после подтверждения owner-tuple
-// в FGA — окно 403 «no direct relations granted» на немедленной мутации создателя
-// закрыто. Nil → confirm-gate выключен.
-func (u *CreateGatewayUseCase) WithConfirmer(c OwnerTupleConfirmer) *CreateGatewayUseCase {
-	u.confirmer = c
 	return u
 }
 
@@ -133,21 +98,12 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 		return nil, err
 	}
 
-	// Confirm-gate owner-tuple (owner-tuple opgate): при подключённом confirmer op
-	// достигает success-`done` только после read-after-register подтверждения
-	// owner-tuple Gateway. creator = op.Principal. nil confirmer → confirm=nil →
-	// RunWithConfirm ≡ Run (back-compat).
-	var confirm operations.ConfirmFunc
-	if u.confirmer != nil {
-		creator := op.Principal
-		confirm = func(cctx context.Context) (bool, error) {
-			return u.confirmer.Confirm(cctx, creator, gwID)
-		}
-	}
-
-	u.dispatch(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
+	// материализуется eventually-consistent (sync-registrar + drainer/reconciler
+	// backstop), а не гейтит done.
+	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, gwID, g)
-	}, confirm)
+	})
 
 	return &op, nil
 }

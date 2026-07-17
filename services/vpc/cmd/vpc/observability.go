@@ -55,17 +55,10 @@ var (
 //
 // ConfigureDefault обязан предшествовать Start; вызывается один раз из composition
 // root (повторный вызов после старта вернул бы ErrWorkerStarted).
-//
-// confirmDeadline — верхняя граница read-after-register confirm owner-tuple
-// (owner-tuple opgate): Create-op ресурса достигает success-`done` только после
-// подтверждения owner-tuple, иначе fail-closed Unavailable по этому дедлайну.
-// Применяется только к dispatch'ам с confirmer (Network/SG/Subnet Create);
-// 0 → дефолт worker'а (30s).
-func startLROWorker(rec operations.Recorder, logger *slog.Logger, confirmDeadline time.Duration) error {
+func startLROWorker(rec operations.Recorder, logger *slog.Logger) error {
 	if err := operations.ConfigureDefault(
 		operations.WithRecorder(rec),
 		operations.WithLogger(logger),
-		operations.WithConfirmationDeadline(confirmDeadline),
 	); err != nil {
 		return fmt.Errorf("configure LRO default-registry: %w", err)
 	}

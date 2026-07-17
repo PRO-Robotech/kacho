@@ -14,7 +14,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -31,7 +30,7 @@ import (
 // NotReady навсегда — boot-deadlock).
 func TestLROWorker_ReadyAfterBootWiring(t *testing.T) {
 	require.False(t, operations.Ready(), "до boot-wiring default-registry dispatcher не запущен")
-	require.NoError(t, startLROWorker(operations.NewMemRecorder(), discardLogger(), 30*time.Second))
+	require.NoError(t, startLROWorker(operations.NewMemRecorder(), discardLogger()))
 	require.True(t, operations.Ready(),
 		"после boot-wiring operations.Ready()=true — readiness lro-worker зеленый до трафика")
 }
