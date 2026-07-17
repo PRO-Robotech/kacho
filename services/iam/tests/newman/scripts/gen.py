@@ -182,8 +182,10 @@ def poll_operation_until_done(auth: str = "jwtAccountAdminA") -> Step:
     unauthenticated callers with 401 UNAUTHENTICATED (code 16).
 
     The retry cap is POLL_CAP (single source of truth — see the constant above).
-    At ~100-200 ms per round-trip Newman polls ~3-6 seconds before giving up,
-    generous enough for the async worker to finish in dev/CI.
+    Between retries a ~500ms busy-wait spaces out the polls (see the test script),
+    so POLL_CAP polls cover ~POLL_CAP*0.5s of the async-op tail before giving up —
+    a real wait, not a back-to-back hammer, so a legitimately-slow worker finishes
+    in dev/CI instead of failing on premature exhaustion (Koren #1 latency).
 
     Per-case counter reset: `_pollCount` is reset to 0 on FIRST entry via
     the pre-request, guarded by a request-name-scoped `_pollStarted` flag so the
@@ -211,6 +213,12 @@ def poll_operation_until_done(auth: str = "jwtAccountAdminA") -> Step:
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
             f"if (!j.done && pc < {POLL_CAP}) {{",
             "  pm.environment.set('_pollCount', String(pc + 1));",
+            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
+            # synchronously and fires setNextRequest before any setTimeout callback, so a
+            # busy-wait is the only way to actually space out polls; POLL_CAP*0.5s then
+            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
+            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
+            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5952857b-cf07-456b-b8d0-6416f66d3957",
+    "_postman_id": "ca868432-023a-4887-9c0c-520ad87c97ae",
     "name": "kacho-nlb / newman / registry-authz",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -121,8 +121,9 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -839,8 +840,9 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "bf3c35ee-9d88-48c4-affd-6e51207e8003",
+    "_postman_id": "3573f3ef-ec7d-4eae-836c-34bffada372f",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -165,7 +165,7 @@
           ]
         },
         {
-          "name": "poll-op-680",
+          "name": "poll-op-752",
           "request": {
             "method": "GET",
             "header": [
@@ -200,6 +200,7 @@
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -417,7 +418,7 @@
           ]
         },
         {
-          "name": "poll-op-681",
+          "name": "poll-op-753",
           "request": {
             "method": "GET",
             "header": [
@@ -452,6 +453,7 @@
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -734,7 +736,7 @@
           ]
         },
         {
-          "name": "poll-op-682",
+          "name": "poll-op-754",
           "request": {
             "method": "GET",
             "header": [
@@ -769,6 +771,7 @@
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -888,7 +891,7 @@
           ]
         },
         {
-          "name": "poll-op-683",
+          "name": "poll-op-755",
           "request": {
             "method": "GET",
             "header": [
@@ -923,6 +926,7 @@
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
@@ -1098,7 +1102,7 @@
           ]
         },
         {
-          "name": "poll-op-684",
+          "name": "poll-op-756",
           "request": {
             "method": "GET",
             "header": [
@@ -1133,6 +1137,7 @@
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",

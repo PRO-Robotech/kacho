@@ -1422,7 +1422,8 @@ _POLL_SEQ = [0]
 
 def poll_operation_until_done() -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
-    До 20 попыток, потом fail если done остался false.
+    До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
+    потом fail если done остался false.
 
     КАЖДЫЙ poll-шаг получает УНИКАЛЬНОЕ имя (poll-op-<N>): setNextRequest(
     pm.info.requestName) обязан ретраить СЕБЯ. При общем имени 'poll-op' newman
@@ -1455,6 +1456,12 @@ def poll_operation_until_done() -> Step:
             # suite load; the confirm-gate tail is cut by the HIGHER_CONSISTENCY read.
             "if (!j.done && pc < 30) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
+            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
+            # synchronously and fires setNextRequest before any setTimeout callback, so a
+            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
+            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
+            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
+            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
             "  // Postman async-friendly retry: re-invoke same request name",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",

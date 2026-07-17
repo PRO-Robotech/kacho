@@ -146,7 +146,8 @@ def assert_created_at_seconds(jsonpath="pm.response.json().createdAt") -> List[s
 
 
 def poll_operation_until_done() -> Step:
-    """Reusable poll step: до 8 попыток (через setNextRequest), потом fail если done остался false."""
+    """Reusable poll step: до 30 попыток с ~500ms задержкой между ними (через setNextRequest),
+    потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1)."""
     return Step(
         name="poll-op",
         method="GET",
@@ -161,6 +162,12 @@ def poll_operation_until_done() -> Step:
             # tail itself is cut by the HIGHER_CONSISTENCY read; this is the margin.
             "if (!j.done && pc < 30) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
+            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
+            # synchronously and fires setNextRequest before any setTimeout callback, so a
+            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
+            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
+            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
+            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
