@@ -68,13 +68,46 @@ type CreateNetworkInterfaceUseCase struct {
 	projectClient ProjectClient
 	opsRepo       operations.Repo
 	registrar     fgaregister.Registrar
+
+	// confirmer — read-after-register проба owner-tuple (owner-tuple opgate). При
+	// non-nil Create-op становится `done=true, response` только после подтверждения
+	// owner-tuple NIC в FGA (окно 403 на немедленной мутации создателя закрыто).
+	// nil → confirm-gate выключен (прежнее поведение — op done сразу после worker-fn).
+	confirmer OwnerTupleConfirmer
+
+	// dispatch — точка запуска async Create-worker'а с confirm-gate. Дефолт —
+	// operations.RunWithConfirm; тест инжектит Worker с коротким deadline (OTG-05).
+	dispatch confirmDispatcher
 }
+
+// OwnerTupleConfirmer — read-after-register проба owner-tuple для confirm-gate
+// Create-op (owner-tuple opgate). confirmed=true, когда owner-tuple созданного
+// NIC эффективен в FGA для creator'а (gateway scope_extractor Check немедленной
+// мутации `creator #v_update vpc_network_interface:<id>` вернёт ALLOW). Реализация —
+// check.NewNetworkInterfaceOwnerConfirmer (reuse authz.CheckClient, без нового ребра).
+// nil → confirm-gate выключен.
+type OwnerTupleConfirmer interface {
+	Confirm(ctx context.Context, creator operations.Principal, resourceID string) (bool, error)
+}
+
+// confirmDispatcher — сигнатура диспетча Create-op с confirm-gate (owner-tuple
+// opgate). Совпадает с operations.RunWithConfirm; confirm==nil ≡ operations.Run.
+type confirmDispatcher func(ctx context.Context, opsRepo operations.Repo, opID string,
+	fn func(context.Context) (*anypb.Any, error), confirm operations.ConfirmFunc)
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
 // commit NIC owner-tuple синхронно регистрируется в kacho-iam. Nil → sync-путь
 // пропускается (только async drainer).
 func (u *CreateNetworkInterfaceUseCase) WithRegistrar(r fgaregister.Registrar) *CreateNetworkInterfaceUseCase {
 	u.registrar = r
+	return u
+}
+
+// WithConfirmer подключает read-after-register confirmer owner-tuple (owner-tuple
+// opgate): Create-op достигает success-`done` только после подтверждения owner-tuple
+// в FGA — окно 403 на немедленной мутации создателя закрыто. Nil → confirm-gate выключен.
+func (u *CreateNetworkInterfaceUseCase) WithConfirmer(c OwnerTupleConfirmer) *CreateNetworkInterfaceUseCase {
+	u.confirmer = c
 	return u
 }
 
@@ -86,6 +119,7 @@ func NewCreateNetworkInterfaceUseCase(r Repo, projectClient ProjectClient, opsRe
 		repo:          r,
 		projectClient: projectClient,
 		opsRepo:       opsRepo,
+		dispatch:      operations.RunWithConfirm,
 	}
 }
 
@@ -128,9 +162,21 @@ func (u *CreateNetworkInterfaceUseCase) Execute(ctx context.Context, in CreateIn
 		return nil, err
 	}
 
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	// Confirm-gate owner-tuple (owner-tuple opgate): при подключённом confirmer op
+	// достигает success-`done` только после read-after-register подтверждения
+	// owner-tuple NIC. creator = op.Principal. nil confirmer → confirm=nil →
+	// RunWithConfirm ≡ Run (back-compat).
+	var confirm operations.ConfirmFunc
+	if u.confirmer != nil {
+		creator := op.Principal
+		confirm = func(cctx context.Context) (bool, error) {
+			return u.confirmer.Confirm(cctx, creator, niID)
+		}
+	}
+
+	u.dispatch(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, niID, in)
-	})
+	}, confirm)
 	return &op, nil
 }
 

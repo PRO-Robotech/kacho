@@ -831,10 +831,19 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// ownerCheck != nil (composition root включил confirm-gate). Каждый несёт свой
 	// FGA object-type; relation фиксирован v_update (canonical mutate-relation).
 	var netConfirmer, sgConfirmer, subnetConfirmer *check.OwnerConfirmer
+	var addressConfirmer, gatewayConfirmer, routeTableConfirmer, niConfirmer *check.OwnerConfirmer
 	if ownerCheck != nil {
 		netConfirmer = check.NewNetworkOwnerConfirmer(ownerCheck)
 		sgConfirmer = check.NewSecurityGroupOwnerConfirmer(ownerCheck)
 		subnetConfirmer = check.NewSubnetOwnerConfirmer(ownerCheck)
+		// Ранее НЕ-opgated owner-ресурсы: их Create достигал done ДО материализации
+		// owner-tuple в FGA → creator ловил 403/404 на немедленной мутации своего же
+		// ресурса под full-suite нагрузкой. Единообразный confirm-gate (тот же паттерн,
+		// что Network/SG/Subnet) закрывает окно.
+		addressConfirmer = check.NewAddressOwnerConfirmer(ownerCheck)
+		gatewayConfirmer = check.NewGatewayOwnerConfirmer(ownerCheck)
+		routeTableConfirmer = check.NewRouteTableOwnerConfirmer(ownerCheck)
+		niConfirmer = check.NewNetworkInterfaceOwnerConfirmer(ownerCheck)
 	}
 	if !cfg.Network.DefaultSGInline {
 		logger.Warn("network.default-sg-inline=false — Network.Create НЕ создает default SG")
@@ -917,8 +926,12 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// Gateway use-case'ы работают через CQRS-Repository (kachoRepo) — конструктор
 	// принимает Repository, каждый use-case открывает Reader/Writer внутри.
+	gwCreateUC := gatewayapp.NewCreateGatewayUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
+	if gatewayConfirmer != nil {
+		gwCreateUC = gwCreateUC.WithConfirmer(gatewayConfirmer) // owner-tuple opgate
+	}
 	gwHandler := gatewayapp.NewHandler(
-		gatewayapp.NewCreateGatewayUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar),
+		gwCreateUC,
 		gatewayapp.NewUpdateGatewayUseCase(kachoRepo, opsRepo),
 		gatewayapp.NewDeleteGatewayUseCase(kachoRepo, opsRepo),
 		gatewayapp.NewGetGatewayUseCase(kachoRepo, listFilter),
@@ -928,8 +941,12 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// RouteTable use-case'ы работают через CQRS-Repository. routeTableAdapter
 	// передается Network.Delete для child-check.
+	rtCreateUC := routetableapp.NewCreateRouteTableUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
+	if routeTableConfirmer != nil {
+		rtCreateUC = rtCreateUC.WithConfirmer(routeTableConfirmer) // owner-tuple opgate
+	}
 	rtHandler := routetableapp.NewHandler(
-		routetableapp.NewCreateRouteTableUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar),
+		rtCreateUC,
 		routetableapp.NewUpdateRouteTableUseCase(kachoRepo, opsRepo),
 		routetableapp.NewDeleteRouteTableUseCase(kachoRepo, opsRepo),
 		routetableapp.NewGetRouteTableUseCase(kachoRepo, listFilter),
@@ -967,6 +984,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	addressCreateUC := addressapp.NewCreateAddressUseCase(kachoRepo, subnetAdapter, projectClient, opsRepo, addressPoolResolver).
 		WithRegistrar(registrar).
 		WithZoneRegistry(geoClient)
+	if addressConfirmer != nil {
+		addressCreateUC = addressCreateUC.WithConfirmer(addressConfirmer) // owner-tuple opgate
+	}
 	addressUpdateUC := addressapp.NewUpdateAddressUseCase(kachoRepo, opsRepo)
 	addressDeleteUC := addressapp.NewDeleteAddressUseCase(kachoRepo, opsRepo)
 	addressGetUC := addressapp.NewGetAddressUseCase(kachoRepo, listFilter)
@@ -1010,8 +1030,12 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// CQRS-Repository (`kachoRepo`). У NIC нет Move RPC (NIC привязан к Subnet).
 	// Address-attach/detach идёт через writer-TX (`w.Addresses()`) внутри Create/
 	// Update — отдельный addressAdapter в эти UC больше не передаётся.
+	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
+	if niConfirmer != nil {
+		niCreateUC = niCreateUC.WithConfirmer(niConfirmer) // owner-tuple opgate
+	}
 	niHandler := niapp.NewHandler(
-		niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar),
+		niCreateUC,
 		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewDeleteNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewGetNetworkInterfaceUseCase(kachoRepo, listFilter),

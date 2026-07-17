@@ -54,6 +54,26 @@ func NewSubnetOwnerConfirmer(cc authz.CheckClient) *OwnerConfirmer {
 	return &OwnerConfirmer{cc: cc, objectType: objectTypeSubnet}
 }
 
+// NewAddressOwnerConfirmer — см. NewNetworkOwnerConfirmer (object vpc_address).
+func NewAddressOwnerConfirmer(cc authz.CheckClient) *OwnerConfirmer {
+	return &OwnerConfirmer{cc: cc, objectType: objectTypeAddress}
+}
+
+// NewRouteTableOwnerConfirmer — см. NewNetworkOwnerConfirmer (object vpc_route_table).
+func NewRouteTableOwnerConfirmer(cc authz.CheckClient) *OwnerConfirmer {
+	return &OwnerConfirmer{cc: cc, objectType: objectTypeRouteTable}
+}
+
+// NewGatewayOwnerConfirmer — см. NewNetworkOwnerConfirmer (object vpc_gateway).
+func NewGatewayOwnerConfirmer(cc authz.CheckClient) *OwnerConfirmer {
+	return &OwnerConfirmer{cc: cc, objectType: objectTypeGateway}
+}
+
+// NewNetworkInterfaceOwnerConfirmer — см. NewNetworkOwnerConfirmer (object vpc_network_interface).
+func NewNetworkInterfaceOwnerConfirmer(cc authz.CheckClient) *OwnerConfirmer {
+	return &OwnerConfirmer{cc: cc, objectType: objectTypeNetworkInterface}
+}
+
 // Confirm — read-after-register проба под контракт operations.ConfirmFunc
 // (адаптируется use-case'ом в замыкание). creator — принципал op'а (op.Principal,
 // = создатель ресурса); resourceID — id только что созданного ресурса.

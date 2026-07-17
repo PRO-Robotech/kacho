@@ -92,13 +92,46 @@ type CreateAddressUseCase struct {
 	pools         PoolService // nil → external IPAM недоступна (test-only)
 	registrar     fgaregister.Registrar
 	zoneReg       ZoneRegistry // nil → external zone_id existence не проверяется
+
+	// confirmer — read-after-register проба owner-tuple (owner-tuple opgate). При
+	// non-nil Create-op становится `done=true, response` только после подтверждения
+	// owner-tuple Address в FGA (окно 403 на немедленной мутации создателя закрыто).
+	// nil → confirm-gate выключен (прежнее поведение — op done сразу после worker-fn).
+	confirmer OwnerTupleConfirmer
+
+	// dispatch — точка запуска async Create-worker'а с confirm-gate. Дефолт —
+	// operations.RunWithConfirm; тест инжектит Worker с коротким deadline (OTG-05).
+	dispatch confirmDispatcher
 }
+
+// OwnerTupleConfirmer — read-after-register проба owner-tuple для confirm-gate
+// Create-op (owner-tuple opgate). confirmed=true, когда owner-tuple созданного
+// Address эффективен в FGA для creator'а (gateway scope_extractor Check немедленной
+// мутации `creator #v_update vpc_address:<id>` вернёт ALLOW). Реализация —
+// check.NewAddressOwnerConfirmer (reuse authz.CheckClient, без нового ребра). nil →
+// confirm-gate выключен.
+type OwnerTupleConfirmer interface {
+	Confirm(ctx context.Context, creator operations.Principal, resourceID string) (bool, error)
+}
+
+// confirmDispatcher — сигнатура диспетча Create-op с confirm-gate (owner-tuple
+// opgate). Совпадает с operations.RunWithConfirm; confirm==nil ≡ operations.Run.
+type confirmDispatcher func(ctx context.Context, opsRepo operations.Repo, opID string,
+	fn func(context.Context) (*anypb.Any, error), confirm operations.ConfirmFunc)
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
 // commit Address owner-tuple синхронно регистрируется в kacho-iam. Nil →
 // sync-путь пропускается (только async drainer).
 func (u *CreateAddressUseCase) WithRegistrar(r fgaregister.Registrar) *CreateAddressUseCase {
 	u.registrar = r
+	return u
+}
+
+// WithConfirmer подключает read-after-register confirmer owner-tuple (owner-tuple
+// opgate): Create-op достигает success-`done` только после подтверждения owner-tuple
+// в FGA — окно 403 на немедленной мутации создателя закрыто. Nil → confirm-gate выключен.
+func (u *CreateAddressUseCase) WithConfirmer(c OwnerTupleConfirmer) *CreateAddressUseCase {
+	u.confirmer = c
 	return u
 }
 
@@ -118,6 +151,7 @@ func NewCreateAddressUseCase(r Repo, subnetReader SubnetReader, projectClient Pr
 		projectClient: projectClient,
 		opsRepo:       opsRepo,
 		pools:         pools,
+		dispatch:      operations.RunWithConfirm,
 	}
 }
 
@@ -247,9 +281,21 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 		return nil, err
 	}
 
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	// Confirm-gate owner-tuple (owner-tuple opgate): при подключённом confirmer op
+	// достигает success-`done` только после read-after-register подтверждения
+	// owner-tuple Address. creator = op.Principal. nil confirmer → confirm=nil →
+	// RunWithConfirm ≡ Run (back-compat).
+	var confirm operations.ConfirmFunc
+	if u.confirmer != nil {
+		creator := op.Principal
+		confirm = func(cctx context.Context) (bool, error) {
+			return u.confirmer.Confirm(cctx, creator, addrID)
+		}
+	}
+
+	u.dispatch(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, addrID, in)
-	})
+	}, confirm)
 
 	return &op, nil
 }
