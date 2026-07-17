@@ -726,6 +726,28 @@ mint_user_jwt() {
 }
 
 # ---------------------------------------------------------------------------
+# Директива #2 — per-service ISOLATION. Root cause of cross-suite collision #276:
+# vpc-CRUD + nlb + compute all shared account-A / projectA1 / projectA2 for their
+# resource suites, so a binding grant/revoke or a listed resource from one suite
+# leaked into another's expectations (whitelisted NOB/AAB, random interference) —
+# and made a PARALLEL run (директива #1) unsafe. Fix: each resource suite gets its
+# OWN account + home/cross projects, seeded here and patched into ONLY that
+# service's env. The 6-subject authz-deny MATRIX keeps the shared account-A/proj
+# (it IS the shared-tenant contract) — only the resource-CRUD scope is isolated.
+# All idempotent (find-by-name), owner = AAA (can own many accounts).
+log "10b/13 seeding per-service isolated accounts + projects (директива #2)"
+ACCOUNT_VPC=$(ensure_account "authz-vpc" "директива #2 — vpc-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+ACCOUNT_NLB=$(ensure_account "authz-nlb" "директива #2 — nlb-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+ACCOUNT_CMP=$(ensure_account "authz-compute" "директива #2 — compute-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+# vpc: home + cross, default suite JWT = jwtProjectAdminA1 (PA1) → grant PA1 editor
+# on BOTH so create-in-home + list-in-cross (isolation case) both authorize.
+VPC_HOME=$(ensure_project "authz-vpc-home"  "$ACCOUNT_VPC" "vpc suite home"  "$JWT_AAA")
+VPC_CROSS=$(ensure_project "authz-vpc-cross" "$ACCOUNT_VPC" "vpc suite cross" "$JWT_AAA")
+[ -n "$USER_PA1" ] && [ -n "$VPC_HOME" ]  && ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$VPC_HOME"  "$JWT_AAA"
+[ -n "$USER_PA1" ] && [ -n "$VPC_CROSS" ] && ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$VPC_CROSS" "$JWT_AAA"
+log "    vpc isolation: acct=$ACCOUNT_VPC home=$VPC_HOME cross=$VPC_CROSS (PA1 editor on both)"
+
+# ---------------------------------------------------------------------------
 # 11) COMPUTE — real project + cross-project + network + subnet + sg.
 #     compute newman env references existingProjectId (→ _suiteFolderId),
 #     existingProjectCrossId (→ _suiteFolderCrossId), existingNetworkId,
@@ -735,8 +757,11 @@ mint_user_jwt() {
 #     in any project, so ownership only needs to be a real, resolvable project.
 # ---------------------------------------------------------------------------
 log "11/13 seeding compute fixtures (project + cross + network + subnet + sg)"
-COMPUTE_PROJ=$(ensure_project "authz-test-compute" "$ACCOUNT_A" "Phase B compute newman home" "$JWT_AAA")
-COMPUTE_CROSS="$PROJECT_A2"   # real 2nd project in account A → cross-project negatives
+# Директива #2: compute home+cross live in the compute-only account (was ACCOUNT_A /
+# shared PROJECT_A2). compute suite default = jwtBootstrap, which sees its OWN creates
+# via per-object creator-tuples regardless of account → isolation is safe here.
+COMPUTE_PROJ=$(ensure_project "authz-test-compute" "$ACCOUNT_CMP" "compute suite home (директива #2)" "$JWT_AAA")
+COMPUTE_CROSS=$(ensure_project "authz-compute-cross" "$ACCOUNT_CMP" "compute suite cross (директива #2)" "$JWT_AAA")
 COMPUTE_NET=$(ensure_network "$COMPUTE_PROJ" "authz-compute-net" "$JWT_AAA")
 COMPUTE_SUBNET=""; COMPUTE_SG=""
 if [ -n "$COMPUTE_NET" ]; then
@@ -798,7 +823,13 @@ log "    list-filter-d: proj=$LF_PROJ visible=$LF_SUB_VISIBLE hidden=$LF_SUB_HID
 #     = A1, existingProjectCrossId = A2 (both account A → grantor AAA).
 # ---------------------------------------------------------------------------
 log "13/13 seeding nlb fixtures (5 strict subjects + SA + group + 2 custom-roles + existing* resources)"
-NLB_PROJ="$PROJECT_A1"; NLB_CROSS="$PROJECT_A2"
+# Директива #2: nlb home+cross live in the nlb-only account (was the SHARED PROJECT_A1
+# / PROJECT_A2 — the primary #276 collision: nlb grants 5+ subjects + SA + group +
+# 2 custom-roles at PROJECT scope, which polluted the iam-matrix's account-A/proj
+# expectations under interleaved/parallel runs). Strict subjects below are bound on
+# these dedicated projects (grantor = AAA, owner of ACCOUNT_NLB → owner-cascade).
+NLB_PROJ=$(ensure_project "authz-nlb-home"  "$ACCOUNT_NLB" "nlb suite home (директива #2)"  "$JWT_AAA")
+NLB_CROSS=$(ensure_project "authz-nlb-cross" "$ACCOUNT_NLB" "nlb suite cross (директива #2)" "$JWT_AAA")
 
 # 13a) strict user subjects + project-scoped tier bindings (grantor AAA).
 USER_NLB_EA=$(upsert_user_grpc "authz-nlb-editor-a@example.com" "authz-nlb-editor-a@example.com" "AuthZ NLB EditorA")
@@ -977,14 +1008,19 @@ json.dump({k:v for k,v in d.items() if v}, open('$filtered','w'), indent=2)
 EOF
   patch_one "$OUT_DIR/compute-fixtures.json" "$COMPUTE_ENV"
 
-  # vpc list-filter-d subjects + subnets (additive to the shared vpc patch).
+  # vpc list-filter-d subjects + subnets (additive to the shared vpc patch) +
+  # директива #2 dedicated home/cross projects. existingProjectId/CrossId drive the
+  # CRUD-suite _suiteProjectId/_suiteProjectCrossId (gen.py prelude prefers them);
+  # the authz-deny matrix keeps the shared projectA1Id/B1Id (patched by the shared JSON).
   cat > "$OUT_DIR/vpc-listfilter-fixtures.json" <<EOF
 {
   "jwtSubnetSubsetViewer": "$JWT_LF_SV",
   "jwtNoSubnetGrant": "$JWT_LF_NG",
   "listFilterProjectId": "$LF_PROJ",
   "subnetVisibleId": "$LF_SUB_VISIBLE",
-  "subnetHiddenId": "$LF_SUB_HIDDEN"
+  "subnetHiddenId": "$LF_SUB_HIDDEN",
+  "existingProjectId": "$VPC_HOME",
+  "existingProjectCrossId": "$VPC_CROSS"
 }
 EOF
   patch_one "$OUT_DIR/vpc-listfilter-fixtures.json" "$VPC_ENV"
