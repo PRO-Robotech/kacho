@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1cef1700-46ab-4552-b60c-0683fbd0f516",
+    "_postman_id": "2961059a-51a5-47ad-9904-540249ab5694",
     "name": "kacho-compute / newman / sec-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -173,7 +173,7 @@
           ]
         },
         {
-          "name": "get-rya44",
+          "name": "get-rya48",
           "request": {
             "method": "GET",
             "header": [
