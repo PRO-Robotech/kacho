@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "0e16afd8-ee35-45e0-bbfd-749e09de5184",
+    "_postman_id": "dc8a4801-403a-4455-a678-be3d9c206fe4",
     "name": "kacho-compute / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -272,7 +272,7 @@
           ]
         },
         {
-          "name": "get-rya12",
+          "name": "get-rya16",
           "request": {
             "method": "GET",
             "header": [
@@ -645,7 +645,7 @@
           ]
         },
         {
-          "name": "get-rya13",
+          "name": "get-rya17",
           "request": {
             "method": "GET",
             "header": [
@@ -1020,7 +1020,7 @@
           ]
         },
         {
-          "name": "get-rya14",
+          "name": "get-rya18",
           "request": {
             "method": "GET",
             "header": [
@@ -1579,7 +1579,7 @@
           ]
         },
         {
-          "name": "get-rya15",
+          "name": "get-rya19",
           "request": {
             "method": "GET",
             "header": [
@@ -3608,7 +3608,7 @@
           ]
         },
         {
-          "name": "patch-rya16",
+          "name": "patch-rya20",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4137,7 +4137,7 @@
           ]
         },
         {
-          "name": "del-rya17",
+          "name": "del-rya21",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4462,7 +4462,7 @@
           ]
         },
         {
-          "name": "list-ops-rya18",
+          "name": "list-ops-rya22",
           "request": {
             "method": "GET",
             "header": [
@@ -4704,7 +4704,7 @@
           ]
         },
         {
-          "name": "get-1-rya19",
+          "name": "get-1-rya23",
           "request": {
             "method": "GET",
             "header": [

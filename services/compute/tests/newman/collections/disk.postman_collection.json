@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "cb4b744f-25cd-4699-b421-75544bde665f",
+    "_postman_id": "a224ec7b-0dd3-466c-bb34-4338fa792c7a",
     "name": "kacho-compute / newman / disk",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3173,7 +3173,7 @@
           ]
         },
         {
-          "name": "list-filtered",
+          "name": "list-filtered-lst4",
           "request": {
             "method": "GET",
             "header": [
@@ -3200,6 +3200,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('diskId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
                   "pm.test('filtered list contains', () => pm.expect(ids).to.include(pm.environment.get('diskId')));"
@@ -3209,7 +3226,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya5",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3237,6 +3254,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3399,7 +3431,7 @@
           ]
         },
         {
-          "name": "patch-rya4",
+          "name": "patch-rya6",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3544,7 +3576,7 @@
           ]
         },
         {
-          "name": "verify",
+          "name": "verify-rya7",
           "request": {
             "method": "GET",
             "header": [
@@ -3572,6 +3604,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('name updated', () => pm.expect(j.name).to.match(/^disk-upd2-/));",
@@ -3774,7 +3821,7 @@
           ]
         },
         {
-          "name": "patch-grow-rya5",
+          "name": "patch-grow-rya8",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4467,7 +4514,7 @@
           ]
         },
         {
-          "name": "patch-no-mask-rya6",
+          "name": "patch-no-mask-rya9",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5046,7 +5093,7 @@
           ]
         },
         {
-          "name": "del-rya7",
+          "name": "del-rya10",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5326,7 +5373,7 @@
           ]
         },
         {
-          "name": "del-rya8",
+          "name": "del-rya11",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5456,7 +5503,7 @@
                 "exec": [
                   "const j = pm.response.json();",
                   "pm.test('done & no error', () => { pm.expect(j.done).to.eql(true); pm.expect(j.error).to.be.oneOf([undefined, null]); });",
-                  "pm.test('response is Empty-like object', () => { pm.expect(j.response).to.be.an('object'); const keys = Object.keys(j.response).filter(k => k !== '@type'); pm.expect(keys.length).to.eql(0); });",
+                  "pm.test('response is Empty-like object', () => { pm.expect(j.response).to.be.an('object'); const keys = Object.keys(j.response).filter(k => k !== '@type' && k !== 'value'); pm.expect(keys.length).to.eql(0); });",
                   "pm.test('metadata.diskId matches', () => pm.expect(j.metadata && j.metadata.diskId).to.eql(pm.environment.get('diskId')));"
                 ]
               }
@@ -5614,7 +5661,7 @@
           ]
         },
         {
-          "name": "relocate-rya9",
+          "name": "relocate-rya12",
           "request": {
             "method": "POST",
             "header": [
@@ -6306,7 +6353,7 @@
           ]
         },
         {
-          "name": "list-ops-rya10",
+          "name": "list-ops-rya13",
           "request": {
             "method": "GET",
             "header": [
@@ -6590,7 +6637,7 @@
           ]
         },
         {
-          "name": "get-1-rya11",
+          "name": "get-1-rya14",
           "request": {
             "method": "GET",
             "header": [
@@ -6641,7 +6688,7 @@
           ]
         },
         {
-          "name": "lst-includes",
+          "name": "lst-includes-lst15",
           "request": {
             "method": "GET",
             "header": [
@@ -6668,6 +6715,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('diskId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const ids = (pm.response.json().disks || []).map(x => x.id);",
                   "pm.test('list contains', () => pm.expect(ids).to.include(pm.environment.get('diskId')));"

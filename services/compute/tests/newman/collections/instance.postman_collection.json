@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "61508a8e-8386-4daf-8ef5-d90f1e743431",
+    "_postman_id": "de098a39-94a7-4c7f-9300-e9fda007975b",
     "name": "kacho-compute / newman / instance",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -173,7 +173,7 @@
           ]
         },
         {
-          "name": "get-rya20",
+          "name": "get-rya24",
           "request": {
             "method": "GET",
             "header": [
@@ -564,7 +564,7 @@
           ]
         },
         {
-          "name": "get-rya21",
+          "name": "get-rya25",
           "request": {
             "method": "GET",
             "header": [
@@ -1024,7 +1024,7 @@
           ]
         },
         {
-          "name": "get-rya22",
+          "name": "get-rya26",
           "request": {
             "method": "GET",
             "header": [
@@ -2847,7 +2847,7 @@
           ]
         },
         {
-          "name": "patch-rya23",
+          "name": "patch-rya27",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5858,7 +5858,7 @@
           ]
         },
         {
-          "name": "restart-rya24",
+          "name": "restart-rya28",
           "request": {
             "method": "POST",
             "header": [
@@ -6958,7 +6958,7 @@
           ]
         },
         {
-          "name": "attach-rya25",
+          "name": "attach-rya29",
           "request": {
             "method": "POST",
             "header": [
@@ -8186,7 +8186,7 @@
           ]
         },
         {
-          "name": "attach-1-rya26",
+          "name": "attach-1-rya30",
           "request": {
             "method": "POST",
             "header": [
@@ -8966,7 +8966,7 @@
           ]
         },
         {
-          "name": "attach-rya27",
+          "name": "attach-rya31",
           "request": {
             "method": "POST",
             "header": [
@@ -9588,7 +9588,7 @@
           ]
         },
         {
-          "name": "get-boot-id-rya28",
+          "name": "get-boot-id-rya32",
           "request": {
             "method": "GET",
             "header": [
@@ -10676,7 +10676,7 @@
           ]
         },
         {
-          "name": "attach-rya29",
+          "name": "attach-rya33",
           "request": {
             "method": "POST",
             "header": [
@@ -11495,7 +11495,7 @@
           ]
         },
         {
-          "name": "umeta-upsert-rya30",
+          "name": "umeta-upsert-rya34",
           "request": {
             "method": "POST",
             "header": [
@@ -12072,7 +12072,7 @@
           ]
         },
         {
-          "name": "spo-rya31",
+          "name": "spo-rya35",
           "request": {
             "method": "GET",
             "header": [
@@ -12745,7 +12745,7 @@
           ]
         },
         {
-          "name": "list-ops-rya32",
+          "name": "list-ops-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -13064,7 +13064,7 @@
           ]
         },
         {
-          "name": "del-rya33",
+          "name": "del-rya37",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13379,7 +13379,7 @@
           ]
         },
         {
-          "name": "get-boot-id-rya34",
+          "name": "get-boot-id-rya38",
           "request": {
             "method": "GET",
             "header": [
@@ -13833,7 +13833,7 @@
           ]
         },
         {
-          "name": "del-rya35",
+          "name": "del-rya39",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14275,7 +14275,7 @@
           ]
         },
         {
-          "name": "del-rya36",
+          "name": "del-rya40",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14553,7 +14553,7 @@
           ]
         },
         {
-          "name": "get-1-rya37",
+          "name": "get-1-rya41",
           "request": {
             "method": "GET",
             "header": [
@@ -16534,7 +16534,7 @@
           ]
         },
         {
-          "name": "attach-nic-rya38",
+          "name": "attach-nic-rya42",
           "request": {
             "method": "POST",
             "header": [
@@ -17334,7 +17334,7 @@
           ]
         },
         {
-          "name": "attach-nic-rya39",
+          "name": "attach-nic-rya43",
           "request": {
             "method": "POST",
             "header": [

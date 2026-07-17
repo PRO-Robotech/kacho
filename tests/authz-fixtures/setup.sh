@@ -768,6 +768,13 @@ log "11/13 seeding compute fixtures (project + cross + network + subnet + sg)"
 # via per-object creator-tuples regardless of account → isolation is safe here.
 COMPUTE_PROJ=$(ensure_project "authz-test-compute" "$ACCOUNT_CMP" "compute suite home (директива #2)" "$JWT_AAA")
 COMPUTE_CROSS=$(ensure_project "authz-compute-cross" "$ACCOUNT_CMP" "compute suite cross (директива #2)" "$JWT_AAA")
+# compute suite default JWT = jwtBootstrap. compute visibility is PROJECT-HIERARCHY (not
+# creator-tuple): system_admin@cluster gets v_get cluster-wide (Get works) but NOT project
+# v_list — so WITHOUT this grant bootstrap's LIST returns EMPTY (per-object list-filter has
+# no ids) and every list-includes/list-filtered case is RED. Grant editor on BOTH compute
+# projects so bootstrap can LIST its own creates (same pattern as vpc PA1 / nlb subjects).
+[ -n "$USER_BOOT" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$COMPUTE_PROJ"  "$JWT_AAA"
+[ -n "$USER_BOOT" ] && [ -n "$COMPUTE_CROSS" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$COMPUTE_CROSS" "$JWT_AAA"
 COMPUTE_NET=$(ensure_network "$COMPUTE_PROJ" "authz-compute-net" "$JWT_AAA")
 COMPUTE_SUBNET=""; COMPUTE_SG=""
 if [ -n "$COMPUTE_NET" ]; then
