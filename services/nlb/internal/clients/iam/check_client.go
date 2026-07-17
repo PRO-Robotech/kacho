@@ -99,24 +99,13 @@ func resolveCheckTimeout(d time.Duration) time.Duration {
 	return d
 }
 
-// Check — см. контракт CheckClient.Check. Default read-consistency
-// (CONSISTENCY_UNSPECIFIED → OpenFGA MINIMIZE_LATENCY).
+// Check — см. контракт CheckClient.Check. Consistency-поле запроса не
+// выставляется (zero value == CONSISTENCY_UNSPECIFIED → OpenFGA MINIMIZE_LATENCY).
 func (c *checkClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
-	return c.check(ctx, subjectID, relation, object, iampb.CheckRequest_CONSISTENCY_UNSPECIFIED)
+	return c.check(ctx, subjectID, relation, object)
 }
 
-// CheckConsistent — Check с принудительным OpenFGA HIGHER_CONSISTENCY
-// (read-after-own-write). owner-tuple opgate confirm-проба читает tuple,
-// записанный синхронно в тот же store, поэтому обязана быть strongly-consistent:
-// иначе confirm видит устаревший snapshot и Create-op либо ложно фиксируется до
-// материализации, либо зря висит в confirm-loop до deadline. Реализует
-// опциональную capability, которую owner-confirmer type-assert'ит (иначе fallback
-// на default Check).
-func (c *checkClient) CheckConsistent(ctx context.Context, subjectID, relation, object string) (bool, error) {
-	return c.check(ctx, subjectID, relation, object, iampb.CheckRequest_HIGHER_CONSISTENCY)
-}
-
-func (c *checkClient) check(ctx context.Context, subjectID, relation, object string, consistency iampb.CheckRequest_Consistency) (bool, error) {
+func (c *checkClient) check(ctx context.Context, subjectID, relation, object string) (bool, error) {
 	switch {
 	case subjectID == "":
 		return false, fmt.Errorf("%w: subject_id is empty", domain.ErrInvalidArg)
@@ -145,10 +134,9 @@ func (c *checkClient) check(ctx context.Context, subjectID, relation, object str
 	err := retry.OnUnavailable(ctx, func(ctx context.Context) error {
 		var rerr error
 		resp, rerr = c.cli.Check(ctx, &iampb.CheckRequest{
-			SubjectId:   subjectID,
-			Relation:    relation,
-			Object:      object,
-			Consistency: consistency,
+			SubjectId: subjectID,
+			Relation:  relation,
+			Object:    object,
 		})
 		return rerr
 	})

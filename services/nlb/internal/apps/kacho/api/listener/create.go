@@ -45,32 +45,7 @@ type CreateUseCase struct {
 	repo    RepoFactory
 	opsRepo OperationsRepo
 	logger  *slog.Logger
-
-	// confirmer — read-after-register проба owner-tuple (owner-tuple opgate). При
-	// non-nil Create-op становится `done=true, response` только после подтверждения
-	// owner-tuple Listener в FGA (окно 403 на немедленной мутации создателя закрыто).
-	// nil → confirm-gate выключен (прежнее поведение — op done сразу после worker-fn).
-	confirmer OwnerTupleConfirmer
-
-	// dispatch — точка запуска async Create-worker'а с confirm-gate. Дефолт —
-	// operations.RunWithConfirm; тест инжектит Worker с коротким deadline (OTG-05).
-	dispatch confirmDispatcher
 }
-
-// OwnerTupleConfirmer — read-after-register проба owner-tuple для confirm-gate
-// Create-op (owner-tuple opgate). confirmed=true, когда owner-tuple созданного
-// Listener эффективен в FGA для creator'а (gateway scope_extractor Check немедленной
-// мутации `creator #v_update lb_listener:<id>` вернёт ALLOW). Реализация —
-// check.NewListenerOwnerConfirmer (reuse iamclient.CheckClient, без нового ребра).
-// nil → confirm-gate выключен.
-type OwnerTupleConfirmer interface {
-	Confirm(ctx context.Context, creator operations.Principal, resourceID string) (bool, error)
-}
-
-// confirmDispatcher — сигнатура диспетча Create-op с confirm-gate (owner-tuple
-// opgate). Совпадает с operations.RunWithConfirm; confirm==nil ≡ operations.Run.
-type confirmDispatcher func(ctx context.Context, opsRepo operations.Repo, opID string,
-	fn func(context.Context) (*anypb.Any, error), confirm operations.ConfirmFunc)
 
 // NewCreateUseCase — конструктор. Зависимости — port-интерфейсы (composition
 // root wires в `cmd/kacho-loadbalancer/main.go`). logger допускается nil.
@@ -80,19 +55,10 @@ func NewCreateUseCase(
 	logger *slog.Logger,
 ) *CreateUseCase {
 	return &CreateUseCase{
-		repo:     repo,
-		opsRepo:  opsRepo,
-		logger:   logger,
-		dispatch: operations.RunWithConfirm,
+		repo:    repo,
+		opsRepo: opsRepo,
+		logger:  logger,
 	}
-}
-
-// WithConfirmer подключает read-after-register confirmer owner-tuple (owner-tuple
-// opgate): Create-op достигает success-`done` только после подтверждения owner-tuple
-// в FGA — окно 403 на немедленной мутации создателя закрыто. Nil → confirm-gate выключен.
-func (u *CreateUseCase) WithConfirmer(c OwnerTupleConfirmer) *CreateUseCase {
-	u.confirmer = c
-	return u
 }
 
 // Run — sync validation + Operation creation + async worker spawn. Возвращает
@@ -175,20 +141,13 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 		// `<type>:<id>` либо "" для anonymous/system (creator-tuple пропускается).
 		fgaOwner: domain.FGASubjectFromPrincipal(principal.Type, principal.ID),
 	}
-	// Confirm-gate owner-tuple (owner-tuple opgate): при подключённом confirmer op
-	// достигает success-`done` только после read-after-register подтверждения
-	// owner-tuple Listener. creator = principal. nil confirmer → confirm=nil →
-	// RunWithConfirm ≡ Run (back-compat).
-	var confirm operations.ConfirmFunc
-	if u.confirmer != nil {
-		listenerID := string(listener.ID)
-		confirm = func(cctx context.Context) (bool, error) {
-			return u.confirmer.Confirm(cctx, principal, listenerID)
-		}
-	}
-	u.dispatch(ctx, u.opsRepo, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
+	// Durable commit → op done сразу. Owner-tuple Listener материализуется
+	// eventually-consistent (writer-TX fga_register_outbox intent → register-
+	// drainer → kacho-iam RegisterResource → reconciler backstop); Operation.done
+	// означает durability ресурса, не видимость owner-tuple в FGA.
+	operations.Run(ctx, u.opsRepo, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		return u.doCreate(workerCtx, in)
-	}, confirm)
+	})
 	return &op, nil
 }
 
