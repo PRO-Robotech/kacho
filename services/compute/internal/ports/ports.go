@@ -58,13 +58,17 @@ type InstanceFilter struct {
 // OwnerConfirmer — read-after-register проба owner-tuple opgate (P4). Порт
 // use-case'а: сообщает, эффективен ли owner-tuple свеже-созданного ресурса в FGA —
 // т.е. `Check`, который gateway scope_extractor выполнит на НЕМЕДЛЕННОЙ мутации
-// (`Update`/`Delete`), уже вернёт ALLOW. Сигнатура совпадает с `authz.CheckClient`
-// / `check.IAMCheckClient`, поэтому существующий compute authz Check-client (reuse
-// authzConn) реализует порт напрямую — нового cross-service ребра не добавляется
-// (OTG-08). Read-only, идемпотентна. `allowed=false` (tuple ещё не виден) либо
-// transient `err` → worker ретраит пробу до confirmation-deadline.
+// (`Update`/`Delete`), уже вернёт ALLOW.
+//
+// Проба ОБЯЗАНА читать с HIGHER_CONSISTENCY (`CheckConsistent`): owner-tuple записан
+// синхронно в тот же OpenFGA-store на create-пути, поэтому это read-after-OWN-write —
+// под multi-replica деплоем default-read мог бы вернуть stale-negative с другой
+// реплики и раздуть хвост confirm-op (Koren-1). `*check.IAMCheckClient` (reuse
+// authzConn) реализует порт напрямую — нового cross-service ребра нет (OTG-08).
+// Read-only, идемпотентна. `allowed=false` (tuple ещё не виден) либо transient `err`
+// → worker ретраит пробу до confirmation-deadline.
 type OwnerConfirmer interface {
-	Check(ctx context.Context, subject, relation, object string) (allowed bool, err error)
+	CheckConsistent(ctx context.Context, subject, relation, object string) (allowed bool, err error)
 }
 
 // OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kacho-iam

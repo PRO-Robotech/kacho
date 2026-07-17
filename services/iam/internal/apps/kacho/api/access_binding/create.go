@@ -456,8 +456,24 @@ func (u *CreateAccessBindingUseCase) ownerTupleConfirm(ctx context.Context, bind
 	object := "iam_access_binding:" + bindingID
 	relations := u.relations
 	return func(cctx context.Context) (bool, error) {
+		// HIGHER_CONSISTENCY (read-after-OWN-write): the per-object owner tuple was
+		// written synchronously to the same OpenFGA store by the create-path
+		// ReconcileObject, so a default (cache-eligible) read could be served a
+		// stale-replica negative under the multi-replica deployment and inflate the
+		// confirm-op tail (Koren-1). Use the strong read when the store supports it;
+		// fall back to the default Check for a store that does not (test stub).
+		if cc, ok := relations.(consistentRelationChecker); ok {
+			return cc.CheckConsistent(cctx, subject, "v_update", object)
+		}
 		return relations.Check(cctx, subject, "v_update", object)
 	}
+}
+
+// consistentRelationChecker — OPTIONAL capability of clients.RelationStore: a Check
+// forcing OpenFGA HIGHER_CONSISTENCY (strong read-after-write). Implemented by
+// *clients.OpenFGAHTTPClient. Used only by the owner-tuple confirm-gate probe.
+type consistentRelationChecker interface {
+	CheckConsistent(ctx context.Context, subject, relation, object string) (bool, error)
 }
 
 // dispatchCreate submits the async Create-fn under the owner-tuple confirm-gate.

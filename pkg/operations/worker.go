@@ -88,7 +88,13 @@ const (
 	// confirmRetryInitial / confirmRetryMax — спейсинг ретраев confirm-пробы внутри
 	// confirmation-deadline (аналог terminalWrite backoff). Общий budget ретраев
 	// ограничен confirmDeadline (WithMaxElapsedThreshold) — backoff.Stop ⇔ deadline.
-	confirmRetryInitial = 50 * time.Millisecond
+	//
+	// confirmRetryInitial держим МАЛЫМ (25ms): с HIGHER_CONSISTENCY-read confirm-проба
+	// обычно резолвится на 1-й попытке (owner-tuple записан синхронно), но в редком
+	// genuinely-pending случае (owner-tuple ещё материализуется) grant часто виден
+	// уже через ~десятки ms — быстрый первый retry не даёт искусственной секундной
+	// задержки, а экспонента (до confirmRetryMax) щадит FGA при затяжном pending.
+	confirmRetryInitial = 25 * time.Millisecond
 	confirmRetryMax     = 1 * time.Second
 )
 

@@ -21,12 +21,17 @@ import (
 // authz.CheckClient; здесь фиксируем, что он зовёт ИМЕННО `subject #v_update object`
 // (тот резолв, что gateway scope_extractor выполнит на немедленной мутации).
 
-// fakeCheckClient — управляемый authz.CheckClient для confirmer-теста.
+// fakeCheckClient — управляемый authz.CheckClient для confirmer-теста. Также
+// реализует CheckConsistent (HIGHER_CONSISTENCY), которым обязана пользоваться
+// confirm-проба (read-after-own-write): plainCalls/consistentCalls разделяют,
+// какой путь дёрнул confirmer.
 type fakeCheckClient struct {
-	mu      sync.Mutex
-	calls   []checkCall
-	allowed bool
-	err     error
+	mu              sync.Mutex
+	calls           []checkCall
+	consistentCalls int
+	plainCalls      int
+	allowed         bool
+	err             error
 }
 
 type checkCall struct {
@@ -38,11 +43,37 @@ type checkCall struct {
 func (f *fakeCheckClient) Check(_ context.Context, subject, relation, object string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.plainCalls++
+	f.calls = append(f.calls, checkCall{subject, relation, object})
+	return f.allowed, f.err
+}
+
+// CheckConsistent — HIGHER_CONSISTENCY вариант (read-after-own-write). Записывает в
+// тот же calls-лог, но инкрементит consistentCalls — тест проверяет, что confirmer
+// зовёт ИМЕННО его.
+func (f *fakeCheckClient) CheckConsistent(_ context.Context, subject, relation, object string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.consistentCalls++
 	f.calls = append(f.calls, checkCall{subject, relation, object})
 	return f.allowed, f.err
 }
 
 var _ authz.CheckClient = (*fakeCheckClient)(nil)
+
+// OTG/Koren-1 — confirm-проба ОБЯЗАНА идти с HIGHER_CONSISTENCY (read-after-own-
+// write): owner-tuple записан синхронно в тот же OpenFGA-store, и под multi-replica
+// деплоем default-read мог бы вернуть stale-negative с другой реплики (хвост op).
+func TestOwnerConfirmer_UsesHigherConsistency(t *testing.T) {
+	cc := &fakeCheckClient{allowed: true}
+	c := NewNetworkOwnerConfirmer(cc)
+
+	confirmed, err := c.Confirm(context.Background(), creator(), "enp_net123")
+	require.NoError(t, err)
+	assert.True(t, confirmed)
+	assert.Equal(t, 1, cc.consistentCalls, "confirm-проба должна использовать CheckConsistent (HIGHER_CONSISTENCY)")
+	assert.Equal(t, 0, cc.plainCalls, "confirm-проба НЕ должна использовать default-read Check")
+}
 
 func creator() operations.Principal {
 	return operations.Principal{Type: "user", ID: "usr_owner"}

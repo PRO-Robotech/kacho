@@ -45,5 +45,9 @@ func NewVolumeOwnerConfirmer(conn grpc.ClientConnInterface) *VolumeOwnerConfirme
 func (c *VolumeOwnerConfirmer) Confirm(ctx context.Context, principal operations.Principal, volumeID string) (bool, error) {
 	subject := authz.FormatSubject(principal.Type, principal.ID)
 	object := fgaregister.ObjectStorageVolume + ":" + volumeID
-	return c.check.Check(ctx, subject, ownerConfirmRelation, object)
+	// HIGHER_CONSISTENCY (read-after-OWN-write): the owner-tuple was written
+	// synchronously to the same OpenFGA store on the create path — a default read
+	// could otherwise be served a stale-replica negative under the multi-replica
+	// deployment, inflating the confirm-op tail (Koren-1).
+	return c.check.CheckConsistent(ctx, subject, ownerConfirmRelation, object)
 }

@@ -83,7 +83,7 @@ func (c *OwnerConfirmer) Confirm(ctx context.Context, creator operations.Princip
 		// ложный success.
 		return false, err
 	}
-	allowed, cerr := c.cc.Check(ctx, subject, relationVUpdate, object)
+	allowed, cerr := c.checkConsistent(ctx, subject, relationVUpdate, object)
 	if cerr != nil {
 		// ErrNoPath / ErrHideExistence — owner-tuple ещё не виден в FGA (нет пути к
 		// объекту) → pending, НЕ transient-сбой: возвращаем confirmed=false без err,
@@ -94,4 +94,21 @@ func (c *OwnerConfirmer) Confirm(ctx context.Context, creator operations.Princip
 		return false, cerr
 	}
 	return allowed, nil
+}
+
+// consistentChecker — опциональная capability CheckClient'а: Check с
+// HIGHER_CONSISTENCY (read-after-own-write). Реализуется `*IAMCheckClient`.
+type consistentChecker interface {
+	CheckConsistent(ctx context.Context, subjectID, relation, object string) (allowed bool, err error)
+}
+
+// checkConsistent прогоняет confirm-пробу с HIGHER_CONSISTENCY, когда клиент это
+// умеет (owner-tuple записан синхронно в тот же store — read-after-own-write ОБЯЗАН
+// быть consistent). Fallback на default Check — только когда client не реализует
+// consistentChecker (напр. тестовый stub); в проде `*IAMCheckClient` реализует.
+func (c *OwnerConfirmer) checkConsistent(ctx context.Context, subject, relation, object string) (bool, error) {
+	if cc, ok := c.cc.(consistentChecker); ok {
+		return cc.CheckConsistent(ctx, subject, relation, object)
+	}
+	return c.cc.Check(ctx, subject, relation, object)
 }

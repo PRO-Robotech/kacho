@@ -31,6 +31,62 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Consistency — read-consistency preference (mirrors OpenFGA
+// ConsistencyPreference). Nested to the request so it never collides with
+// model relations.
+type CheckRequest_Consistency int32
+
+const (
+	// Unset — treated as MINIMIZE_LATENCY (default, back-compat: legacy callers
+	// that never set the field keep the cache-eligible read).
+	CheckRequest_CONSISTENCY_UNSPECIFIED CheckRequest_Consistency = 0
+	// Cache/replica-eligible read (OpenFGA default) — hot enforcement gate.
+	CheckRequest_MINIMIZE_LATENCY CheckRequest_Consistency = 1
+	// Bypass cache/replica-lag — strong read-after-write for confirm probes.
+	CheckRequest_HIGHER_CONSISTENCY CheckRequest_Consistency = 2
+)
+
+// Enum value maps for CheckRequest_Consistency.
+var (
+	CheckRequest_Consistency_name = map[int32]string{
+		0: "CONSISTENCY_UNSPECIFIED",
+		1: "MINIMIZE_LATENCY",
+		2: "HIGHER_CONSISTENCY",
+	}
+	CheckRequest_Consistency_value = map[string]int32{
+		"CONSISTENCY_UNSPECIFIED": 0,
+		"MINIMIZE_LATENCY":        1,
+		"HIGHER_CONSISTENCY":      2,
+	}
+)
+
+func (x CheckRequest_Consistency) Enum() *CheckRequest_Consistency {
+	p := new(CheckRequest_Consistency)
+	*p = x
+	return p
+}
+
+func (x CheckRequest_Consistency) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CheckRequest_Consistency) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_enumTypes[0].Descriptor()
+}
+
+func (CheckRequest_Consistency) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_internal_iam_service_proto_enumTypes[0]
+}
+
+func (x CheckRequest_Consistency) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CheckRequest_Consistency.Descriptor instead.
+func (CheckRequest_Consistency) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{2, 0}
+}
+
 type LookupSubjectRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Один из ключей идентификации subject'а. Exactly one должен быть выставлен.
@@ -237,7 +293,21 @@ type CheckRequest struct {
 	//	"account:<acc_xxx>"
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
 	// Trace-id для correlation в логах (optional).
-	TraceId       string `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	TraceId string `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	// consistency — read-consistency preference forwarded verbatim to the OpenFGA
+	// `Check` (`consistency` field). ADDITIVE (field 5, internal-only message →
+	// buf-breaking=0).
+	//
+	//   - UNSPECIFIED (default) → OpenFGA MINIMIZE_LATENCY: the hot per-RPC
+	//     enforcement gate stays cache/replica-eligible (low latency).
+	//   - HIGHER_CONSISTENCY → OpenFGA bypasses its read caches / replica lag and
+	//     computes strongly from the datastore. Used ONLY by the owner-tuple
+	//     confirm-gate (read-after-OWN-write): the probe MUST observe a tuple this
+	//     caller just wrote through the SAME store, so under the multi-replica
+	//     OpenFGA deployment a default (MINIMIZE_LATENCY) read can otherwise serve
+	//     a stale-negative from the other replica's cache for seconds — the
+	//     confirm-op tail-latency this field closes.
+	Consistency   CheckRequest_Consistency `protobuf:"varint,5,opt,name=consistency,proto3,enum=kacho.cloud.iam.v1.CheckRequest_Consistency" json:"consistency,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -298,6 +368,13 @@ func (x *CheckRequest) GetTraceId() string {
 		return x.TraceId
 	}
 	return ""
+}
+
+func (x *CheckRequest) GetConsistency() CheckRequest_Consistency {
+	if x != nil {
+		return x.Consistency
+	}
+	return CheckRequest_CONSISTENCY_UNSPECIFIED
 }
 
 // CheckResponse — результат authorization check.
@@ -1262,13 +1339,18 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x15LookupSubjectResponse\x12.\n" +
 	"\x04user\x18\x01 \x01(\v2\x18.kacho.cloud.iam.v1.UserH\x00R\x04user\x12M\n" +
 	"\x0fservice_account\x18\x02 \x01(\v2\".kacho.cloud.iam.v1.ServiceAccountH\x00R\x0eserviceAccountB\t\n" +
-	"\asubject\"\xb2\x01\n" +
+	"\asubject\"\xdc\x02\n" +
 	"\fCheckRequest\x12,\n" +
 	"\n" +
 	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
 	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\brelation\x12%\n" +
 	"\x06object\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\x06object\x12#\n" +
-	"\btrace_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\"A\n" +
+	"\btrace_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\x12N\n" +
+	"\vconsistency\x18\x05 \x01(\x0e2,.kacho.cloud.iam.v1.CheckRequest.ConsistencyR\vconsistency\"X\n" +
+	"\vConsistency\x12\x1b\n" +
+	"\x17CONSISTENCY_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10MINIMIZE_LATENCY\x10\x01\x12\x16\n" +
+	"\x12HIGHER_CONSISTENCY\x10\x02\"A\n" +
 	"\rCheckResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x99\x01\n" +
@@ -1360,65 +1442,68 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescData
 }
 
+var file_kacho_cloud_iam_v1_internal_iam_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_goTypes = []any{
-	(*LookupSubjectRequest)(nil),       // 0: kacho.cloud.iam.v1.LookupSubjectRequest
-	(*LookupSubjectResponse)(nil),      // 1: kacho.cloud.iam.v1.LookupSubjectResponse
-	(*CheckRequest)(nil),               // 2: kacho.cloud.iam.v1.CheckRequest
-	(*CheckResponse)(nil),              // 3: kacho.cloud.iam.v1.CheckResponse
-	(*WriteCreatorTupleRequest)(nil),   // 4: kacho.cloud.iam.v1.WriteCreatorTupleRequest
-	(*WriteCreatorTupleResponse)(nil),  // 5: kacho.cloud.iam.v1.WriteCreatorTupleResponse
-	(*RegisterResourceRequest)(nil),    // 6: kacho.cloud.iam.v1.RegisterResourceRequest
-	(*RegisterResourceResponse)(nil),   // 7: kacho.cloud.iam.v1.RegisterResourceResponse
-	(*UnregisterResourceRequest)(nil),  // 8: kacho.cloud.iam.v1.UnregisterResourceRequest
-	(*UnregisterResourceResponse)(nil), // 9: kacho.cloud.iam.v1.UnregisterResourceResponse
-	(*JWKSStatusResponse)(nil),         // 10: kacho.cloud.iam.v1.JWKSStatusResponse
-	(*JWKSAlgStatus)(nil),              // 11: kacho.cloud.iam.v1.JWKSAlgStatus
-	(*ForceLogoutRequest)(nil),         // 12: kacho.cloud.iam.v1.ForceLogoutRequest
-	(*ForceLogoutMetadata)(nil),        // 13: kacho.cloud.iam.v1.ForceLogoutMetadata
-	(*ForceLogoutResult)(nil),          // 14: kacho.cloud.iam.v1.ForceLogoutResult
-	(*PollSubjectChangesRequest)(nil),  // 15: kacho.cloud.iam.v1.PollSubjectChangesRequest
-	(*SubjectChange)(nil),              // 16: kacho.cloud.iam.v1.SubjectChange
-	(*PollSubjectChangesResponse)(nil), // 17: kacho.cloud.iam.v1.PollSubjectChangesResponse
-	nil,                                // 18: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	nil,                                // 19: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	(*User)(nil),                       // 20: kacho.cloud.iam.v1.User
-	(*ServiceAccount)(nil),             // 21: kacho.cloud.iam.v1.ServiceAccount
-	(*timestamppb.Timestamp)(nil),      // 22: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),              // 23: google.protobuf.Empty
-	(*operation.Operation)(nil),        // 24: kacho.cloud.operation.Operation
+	(CheckRequest_Consistency)(0),      // 0: kacho.cloud.iam.v1.CheckRequest.Consistency
+	(*LookupSubjectRequest)(nil),       // 1: kacho.cloud.iam.v1.LookupSubjectRequest
+	(*LookupSubjectResponse)(nil),      // 2: kacho.cloud.iam.v1.LookupSubjectResponse
+	(*CheckRequest)(nil),               // 3: kacho.cloud.iam.v1.CheckRequest
+	(*CheckResponse)(nil),              // 4: kacho.cloud.iam.v1.CheckResponse
+	(*WriteCreatorTupleRequest)(nil),   // 5: kacho.cloud.iam.v1.WriteCreatorTupleRequest
+	(*WriteCreatorTupleResponse)(nil),  // 6: kacho.cloud.iam.v1.WriteCreatorTupleResponse
+	(*RegisterResourceRequest)(nil),    // 7: kacho.cloud.iam.v1.RegisterResourceRequest
+	(*RegisterResourceResponse)(nil),   // 8: kacho.cloud.iam.v1.RegisterResourceResponse
+	(*UnregisterResourceRequest)(nil),  // 9: kacho.cloud.iam.v1.UnregisterResourceRequest
+	(*UnregisterResourceResponse)(nil), // 10: kacho.cloud.iam.v1.UnregisterResourceResponse
+	(*JWKSStatusResponse)(nil),         // 11: kacho.cloud.iam.v1.JWKSStatusResponse
+	(*JWKSAlgStatus)(nil),              // 12: kacho.cloud.iam.v1.JWKSAlgStatus
+	(*ForceLogoutRequest)(nil),         // 13: kacho.cloud.iam.v1.ForceLogoutRequest
+	(*ForceLogoutMetadata)(nil),        // 14: kacho.cloud.iam.v1.ForceLogoutMetadata
+	(*ForceLogoutResult)(nil),          // 15: kacho.cloud.iam.v1.ForceLogoutResult
+	(*PollSubjectChangesRequest)(nil),  // 16: kacho.cloud.iam.v1.PollSubjectChangesRequest
+	(*SubjectChange)(nil),              // 17: kacho.cloud.iam.v1.SubjectChange
+	(*PollSubjectChangesResponse)(nil), // 18: kacho.cloud.iam.v1.PollSubjectChangesResponse
+	nil,                                // 19: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	nil,                                // 20: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	(*User)(nil),                       // 21: kacho.cloud.iam.v1.User
+	(*ServiceAccount)(nil),             // 22: kacho.cloud.iam.v1.ServiceAccount
+	(*timestamppb.Timestamp)(nil),      // 23: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 24: google.protobuf.Empty
+	(*operation.Operation)(nil),        // 25: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_depIdxs = []int32{
-	20, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
-	21, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
-	18, // 2: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	22, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
-	19, // 4: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	22, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
-	11, // 6: kacho.cloud.iam.v1.JWKSStatusResponse.algorithms:type_name -> kacho.cloud.iam.v1.JWKSAlgStatus
-	22, // 7: kacho.cloud.iam.v1.JWKSAlgStatus.current_created_at:type_name -> google.protobuf.Timestamp
-	16, // 8: kacho.cloud.iam.v1.PollSubjectChangesResponse.changes:type_name -> kacho.cloud.iam.v1.SubjectChange
-	0,  // 9: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:input_type -> kacho.cloud.iam.v1.LookupSubjectRequest
-	2,  // 10: kacho.cloud.iam.v1.InternalIAMService.Check:input_type -> kacho.cloud.iam.v1.CheckRequest
-	4,  // 11: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:input_type -> kacho.cloud.iam.v1.WriteCreatorTupleRequest
-	23, // 12: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:input_type -> google.protobuf.Empty
-	12, // 13: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:input_type -> kacho.cloud.iam.v1.ForceLogoutRequest
-	15, // 14: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:input_type -> kacho.cloud.iam.v1.PollSubjectChangesRequest
-	6,  // 15: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:input_type -> kacho.cloud.iam.v1.RegisterResourceRequest
-	8,  // 16: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:input_type -> kacho.cloud.iam.v1.UnregisterResourceRequest
-	1,  // 17: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
-	3,  // 18: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
-	5,  // 19: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:output_type -> kacho.cloud.iam.v1.WriteCreatorTupleResponse
-	10, // 20: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:output_type -> kacho.cloud.iam.v1.JWKSStatusResponse
-	24, // 21: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
-	17, // 22: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
-	7,  // 23: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
-	9,  // 24: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
-	17, // [17:25] is the sub-list for method output_type
-	9,  // [9:17] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	21, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
+	22, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
+	0,  // 2: kacho.cloud.iam.v1.CheckRequest.consistency:type_name -> kacho.cloud.iam.v1.CheckRequest.Consistency
+	19, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	23, // 4: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	20, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	23, // 6: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	12, // 7: kacho.cloud.iam.v1.JWKSStatusResponse.algorithms:type_name -> kacho.cloud.iam.v1.JWKSAlgStatus
+	23, // 8: kacho.cloud.iam.v1.JWKSAlgStatus.current_created_at:type_name -> google.protobuf.Timestamp
+	17, // 9: kacho.cloud.iam.v1.PollSubjectChangesResponse.changes:type_name -> kacho.cloud.iam.v1.SubjectChange
+	1,  // 10: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:input_type -> kacho.cloud.iam.v1.LookupSubjectRequest
+	3,  // 11: kacho.cloud.iam.v1.InternalIAMService.Check:input_type -> kacho.cloud.iam.v1.CheckRequest
+	5,  // 12: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:input_type -> kacho.cloud.iam.v1.WriteCreatorTupleRequest
+	24, // 13: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:input_type -> google.protobuf.Empty
+	13, // 14: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:input_type -> kacho.cloud.iam.v1.ForceLogoutRequest
+	16, // 15: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:input_type -> kacho.cloud.iam.v1.PollSubjectChangesRequest
+	7,  // 16: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:input_type -> kacho.cloud.iam.v1.RegisterResourceRequest
+	9,  // 17: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:input_type -> kacho.cloud.iam.v1.UnregisterResourceRequest
+	2,  // 18: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
+	4,  // 19: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
+	6,  // 20: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:output_type -> kacho.cloud.iam.v1.WriteCreatorTupleResponse
+	11, // 21: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:output_type -> kacho.cloud.iam.v1.JWKSStatusResponse
+	25, // 22: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
+	18, // 23: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
+	8,  // 24: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
+	10, // 25: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
+	18, // [18:26] is the sub-list for method output_type
+	10, // [10:18] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_internal_iam_service_proto_init() }
@@ -1442,13 +1527,14 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_kacho_cloud_iam_v1_internal_iam_service_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_iam_v1_internal_iam_service_proto_depIdxs,
+		EnumInfos:         file_kacho_cloud_iam_v1_internal_iam_service_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_iam_v1_internal_iam_service_proto = out.File

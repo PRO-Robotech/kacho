@@ -188,6 +188,34 @@ message CheckRequest {
 
   // Trace-id для correlation в логах (optional).
   string trace_id = 4 [(length) = "<=64"];
+
+  // consistency — read-consistency preference forwarded verbatim to the OpenFGA
+  // `Check` (`consistency` field). ADDITIVE (field 5, internal-only message →
+  // buf-breaking=0).
+  //
+  //   - UNSPECIFIED (default) → OpenFGA MINIMIZE_LATENCY: the hot per-RPC
+  //     enforcement gate stays cache/replica-eligible (low latency).
+  //   - HIGHER_CONSISTENCY → OpenFGA bypasses its read caches / replica lag and
+  //     computes strongly from the datastore. Used ONLY by the owner-tuple
+  //     confirm-gate (read-after-OWN-write): the probe MUST observe a tuple this
+  //     caller just wrote through the SAME store, so under the multi-replica
+  //     OpenFGA deployment a default (MINIMIZE_LATENCY) read can otherwise serve
+  //     a stale-negative from the other replica's cache for seconds — the
+  //     confirm-op tail-latency this field closes.
+  Consistency consistency = 5;
+
+  // Consistency — read-consistency preference (mirrors OpenFGA
+  // ConsistencyPreference). Nested to the request so it never collides with
+  // model relations.
+  enum Consistency {
+    // Unset — treated as MINIMIZE_LATENCY (default, back-compat: legacy callers
+    // that never set the field keep the cache-eligible read).
+    CONSISTENCY_UNSPECIFIED = 0;
+    // Cache/replica-eligible read (OpenFGA default) — hot enforcement gate.
+    MINIMIZE_LATENCY = 1;
+    // Bypass cache/replica-lag — strong read-after-write for confirm probes.
+    HIGHER_CONSISTENCY = 2;
+  }
 }
 
 // CheckResponse — результат authorization check.

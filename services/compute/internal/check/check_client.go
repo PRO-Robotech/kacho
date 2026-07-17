@@ -31,10 +31,24 @@ func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 // `grpcsrv.UnaryPrincipalExtract` увидел реального caller'а, а не SystemPrincipal()
 // = user:bootstrap.
 func (c *IAMCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
+	return c.check(ctx, subjectID, relation, object, iamv1.CheckRequest_CONSISTENCY_UNSPECIFIED)
+}
+
+// CheckConsistent — Check forcing OpenFGA HIGHER_CONSISTENCY (strong
+// read-after-write). Used by the owner-tuple confirm-gate probe (Instance/Disk): the
+// tuple was written synchronously to the same OpenFGA store on the create path, so
+// under the multi-replica deployment the probe must not read a stale-replica
+// negative (the confirm-op tail, Koren-1).
+func (c *IAMCheckClient) CheckConsistent(ctx context.Context, subjectID, relation, object string) (bool, error) {
+	return c.check(ctx, subjectID, relation, object, iamv1.CheckRequest_HIGHER_CONSISTENCY)
+}
+
+func (c *IAMCheckClient) check(ctx context.Context, subjectID, relation, object string, consistency iamv1.CheckRequest_Consistency) (bool, error) {
 	resp, err := c.cli.Check(auth.PropagateOutgoing(ctx), &iamv1.CheckRequest{
-		SubjectId: subjectID,
-		Relation:  relation,
-		Object:    object,
+		SubjectId:   subjectID,
+		Relation:    relation,
+		Object:      object,
+		Consistency: consistency,
 	})
 	if err != nil {
 		return false, err

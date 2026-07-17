@@ -54,7 +54,10 @@ func buildOwnerConfirm(ctx context.Context, confirmer OwnerConfirmer, kind, reso
 	p := operations.PrincipalFromContext(ctx)
 	subject := authz.FormatSubject(p.Type, p.ID)
 	return func(cctx context.Context) (bool, error) {
-		allowed, err := confirmer.Check(cctx, subject, ownerConfirmRelation, object)
+		// HIGHER_CONSISTENCY: read-after-OWN-write — owner-tuple записан синхронно в
+		// тот же store, default-read под multi-replica мог бы вернуть stale-negative
+		// с другой реплики (хвост confirm-op, Koren-1).
+		allowed, err := confirmer.CheckConsistent(cctx, subject, ownerConfirmRelation, object)
 		if err != nil {
 			// transient (peer Unavailable / probe error) → worker ретраит в пределах
 			// confirmation-deadline; не считаем confirmed.

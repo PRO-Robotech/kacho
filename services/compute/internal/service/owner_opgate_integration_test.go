@@ -180,10 +180,11 @@ func (f *fakeFGA) resetCalls() {
 	f.calls = nil
 }
 
-// fakeConfirmer — service.OwnerConfirmer поверх fakeFGA.check.
+// fakeConfirmer — service.OwnerConfirmer поверх fakeFGA.check. CheckConsistent
+// (HIGHER_CONSISTENCY) — read-after-own-write путь confirm-пробы.
 type fakeConfirmer struct{ fga *fakeFGA }
 
-func (c fakeConfirmer) Check(_ context.Context, subject, relation, object string) (bool, error) {
+func (c fakeConfirmer) CheckConsistent(_ context.Context, subject, relation, object string) (bool, error) {
 	return c.fga.check(subject, relation, object), nil
 }
 
