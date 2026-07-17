@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "03a34ad2-7f49-4644-8577-c7497b6d0799",
+    "_postman_id": "3d1f36b8-aee3-47d5-b5fe-2b9d7cd37a34",
     "name": "kacho-vpc / newman / security-group",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -15007,7 +15007,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-nicatt-sub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.0.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-nicatt-sub-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.0.0/24\"]}",
               "options": {
                 "raw": {
                   "language": "json"

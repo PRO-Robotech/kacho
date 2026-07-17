@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6ae80f8a-545d-46af-9ea2-08604ea70d4c",
+    "_postman_id": "e2a02a45-4c91-4784-967b-2eaa8b824e5b",
     "name": "kacho-vpc / newman / concurrency",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1009,7 +1009,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"conc-macu-sub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.250.50.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"conc-macu-sub-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.250.50.0/24\"]}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9aebca49-4694-4374-9fc0-5b746207e9a8",
+    "_postman_id": "e89de589-3144-456f-95c4-4ea6b93ab447",
     "name": "kacho-vpc / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -507,7 +507,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"oplistdel-sub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.7.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"oplistdel-sub-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.7.0/24\"]}",
               "options": {
                 "raw": {
                   "language": "json"
