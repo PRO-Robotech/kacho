@@ -246,18 +246,42 @@ print("")
 if [ -z "$POOL_ID" ]; then
   log "3.5/5 creating external AddressPool kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, zone=$ZONE_ID)"
   # 198.51.100.0/24 = TEST-NET-2 (RFC 5737) — the documented production external
-  # CIDR (see `make seed-ipam`); on a fresh stand no EXTERNAL_PUBLIC pool exists so
-  # the address_pool_cidrs EXCLUDE (kind, block &&) does not conflict.
+  # CIDR (see `make seed-ipam`). On a truly fresh stand (CI wipes the vpc DB) no
+  # EXTERNAL_PUBLIC pool exists, so the address_pool_cidrs EXCLUDE (kind, block &&)
+  # does not conflict. On a re-run / shared vpc DB it CAN conflict (see fallback below).
   pbody='{"name":"kac-nlb-seed-ext-pool","description":"KAC-NLB seed external VIP pool","kind":"EXTERNAL_PUBLIC","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["198.51.100.0/24"],"v6CidrBlocks":[]}'
   POOL_ID=$(curl_internal POST "/vpc/v1/addressPools" "$pbody" | extract "id" || true)
+  if [ -z "$POOL_ID" ]; then
+    # Create returned no id. The most common cause on a re-run / shared vpc DB is the
+    # address_pool_cidrs EXCLUDE (kind, block &&) — keyed on (kind, block) GLOBALLY,
+    # ignoring name and zone — already holding 198.51.100.0/24 for EXTERNAL_PUBLIC from
+    # a prior seed run or the vpc newman suite (which seeds the same CIDR). Idempotency-
+    # by-name (above) can't detect that pool. Fall back to REUSING an existing
+    # EXTERNAL_PUBLIC pool in $ZONE_ID so GetDefaultForZone($ZONE_ID, EXTERNAL_PUBLIC)
+    # still resolves for allocation. Re-list fresh in case one appeared since.
+    POOL_ID=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null | ZONE="$ZONE_ID" python3 -c '
+import os, sys, json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+zone=os.environ.get("ZONE","")
+for p in d.get("pools", []):
+    if p.get("kind")=="EXTERNAL_PUBLIC" and p.get("zoneId")==zone:
+        print(p.get("id","")); sys.exit(0)
+print("")
+' || true)
+    if [ -n "$POOL_ID" ]; then
+      log "3.5/5 AddressPool.Create conflicted (CIDR overlap?); reusing existing EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID"
+    fi
+  fi
   if [ -n "$POOL_ID" ]; then
     # Allocation picks the pool ONLY when is_default=true for (zone, kind); the
     # Create RPC has no isDefault field, so flip it via Update (update_mask=isDefault).
+    # Idempotent: PATCH on an already-default pool is a no-op.
     curl_internal PATCH "/vpc/v1/addressPools/$POOL_ID" \
       '{"updateMask":"isDefault","isDefault":true}' >/dev/null 2>&1 || \
       log "    could not set is_default on $POOL_ID (a default pool for this zone/kind may already exist)"
   else
-    log "    AddressPool.Create did not return an id (internal mux unreachable at $INTERNAL_BASE_URL, or insufficient admin tier) — external VIP allocation may fail; whitelist non-T31 nlb external-create cases if so"
+    log "    AddressPool.Create did not return an id and no EXTERNAL_PUBLIC pool exists in zone $ZONE_ID (internal mux unreachable at $INTERNAL_BASE_URL, or insufficient admin tier) — external VIP allocation may fail; whitelist non-T31 nlb external-create cases if so"
   fi
 else
   log "3.5/5 reusing existing external AddressPool $POOL_ID"
@@ -275,8 +299,16 @@ for a in d.get("addresses", []):
 print("")
 ')
 if [ -z "$EXT_ADDR_ID" ]; then
-  log "4/5 creating external Address kac-nlb-seed-ext-addr"
-  body='{"projectId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-ext-addr","externalIpv4Address":{"regionId":"'"$REGION_ID"'"}}'
+  log "4/5 creating external Address kac-nlb-seed-ext-addr (ZONAL, zone=$ZONE_ID)"
+  # External Address IPAM is ZONE-scoped: the request field is
+  # `externalIpv4AddressSpec` (not `externalIpv4Address`, which is a field on the
+  # Address *resource*), and ExternalIpv4AddressSpec carries only zoneId — there is
+  # NO regionId on it (proto address_service.proto). The resolver keys the default
+  # pool by zone (address_pool.go GetDefaultForZone($zone, EXTERNAL_PUBLIC)), so a
+  # zoneId that matches the ZONAL pool seeded in 3.5 is required; a region-scoped /
+  # zone-less spec would only match a GLOBAL (zone_id IS NULL) pool and 404 here.
+  # This mirrors the passing newman body ADR-CR-CRUD-EXT (address.py).
+  body='{"projectId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-ext-addr","externalIpv4AddressSpec":{"zoneId":"'"$ZONE_ID"'"}}'
   op=$(curl_json POST "/vpc/v1/addresses" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   EXT_ADDR_ID=$(wait_op "$op_id" | extract "metadata.addressId" || true)
