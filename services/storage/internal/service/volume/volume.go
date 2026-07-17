@@ -85,18 +85,6 @@ type IAMClient interface {
 	EnsureProjectExists(ctx context.Context, projectID string) error
 }
 
-// OwnerConfirmer — read-after-register owner-tuple проба Volume.Create (opgate P5).
-// Confirm возвращает confirmed=true, когда creator имеет mutate-relation (editor) на
-// storage_volume:<id> в FGA — т.е. gateway scope_extractor Check немедленной мутации
-// (Update/Delete) уже даёт ALLOW (FIX-2 consistency: та же read-after-register проба,
-// что энфорсит анти-BOLA-резолв gateway'я). Read-only, идемпотентна. Impl — reuse
-// существующего InternalIAMService.Check-клиента (ребро storage→iam, тот же authzConn),
-// живёт в internal/check; нового cross-service ребра нет (OTG-08). nil → confirm-gate
-// пропускается (dev/no-authz): прежний плоский Run без owner-tuple opgate.
-type OwnerConfirmer interface {
-	Confirm(ctx context.Context, principal operations.Principal, volumeID string) (bool, error)
-}
-
 // ErrToStatus маппит доменную/repo sentinel-ошибку в transport-status, сохраняемый
 // async-worker'ом в Operation.error. Инжектится composition root'ом
 // (serviceerr.ToStatus). Пустой (nil) → identity.
@@ -125,15 +113,6 @@ type UseCase struct {
 	// (immediate анти-BOLA-резолв; nil → sync-путь пропускается, остаётся async
 	// register-drainer как at-least-once backstop). Инжектится WithRegistrar.
 	registrar fgaregister.Registrar
-	// confirmer — read-after-register owner-tuple проба (opgate P5). non-nil →
-	// Create-op достигает success-`done` ТОЛЬКО после confirmed=true; nil →
-	// прежний плоский Run без gate. Инжектится WithOwnerConfirm.
-	confirmer OwnerConfirmer
-	// confirmWorker — явный LRO-worker для confirm-gated Create-dispatch (кастомный
-	// drain-target / тесты с коротким confirmation-deadline). nil → package-level
-	// default-registry (operations.RunWithConfirm), как остальные async-мутации
-	// storage. Инжектится WithConfirmWorker.
-	confirmWorker *operations.Worker
 }
 
 // New собирает UseCase для Volume. reader/writer — CQRS-разделённые порты;
@@ -154,28 +133,6 @@ func New(reader Reader, writer Writer, geo GeoClient, iam IAMClient, ops operati
 // nil registrar → sync-путь пропускается (dev/no-iam).
 func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 	u.registrar = r
-	return u
-}
-
-// WithOwnerConfirm подключает read-after-register owner-tuple пробу (opgate P5).
-// non-nil → Volume.Create-Operation достигает `done=true,result=response` ТОЛЬКО
-// после подтверждения owner-tuple (creator имеет editor на storage_volume:<id> в
-// FGA), закрывая 403-окно «no direct relations granted» на немедленной мутации
-// (OTG-04). Fail-closed: confirm не достигнут за confirmation-deadline → op.error
-// UNAVAILABLE «owner-tuple registration not confirmed» (worker, OTG-05); ресурс/
-// register-intent durable во всех ветках. nil (dev/no-authz) → gate пропускается.
-func (u *UseCase) WithOwnerConfirm(c OwnerConfirmer) *UseCase {
-	u.confirmer = c
-	return u
-}
-
-// WithConfirmWorker задаёт явный LRO-worker для confirm-gated Create-dispatch —
-// кастомный drain-target либо тесты с коротким confirmation-deadline
-// (operations.WithConfirmationDeadline). nil (прод-дефолт storage) → package-level
-// default-registry (тот же worker, что дренирует остальные async-мутации; deadline
-// из operations.ConfigureDefault в cmd/storage).
-func (u *UseCase) WithConfirmWorker(w *operations.Worker) *UseCase {
-	u.confirmWorker = w
 	return u
 }
 
@@ -273,42 +230,18 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 		return nil, err
 	}
 	created := *v
-	fn := func(ctx context.Context) (*anypb.Any, error) {
+	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		res, derr := u.writer.Insert(ctx, &created)
 		if derr != nil {
 			return nil, u.errStatus(derr)
 		}
 		// owner-tuple: durable register-intent уже в writer-TX (repo); синхронно
-		// регистрируем для immediate анти-BOLA-резолва (best-effort, backstop — drainer).
-		// sync-registrar идёт ЗДЕСЬ (post-commit, внутри fn); confirm-проба — ПОСЛЕ fn.
+		// регистрируем для immediate анти-BOLA-резолва (best-effort, post-commit;
+		// backstop — async register-drainer at-least-once).
 		u.registerOwnerTuple(ctx, fgaregister.VolumeItem(res.ProjectID, res.ID, res.Labels))
 		return marshalVolume(res)
-	}
-	u.dispatchCreate(ctx, op.ID, op.Principal, v.ID, fn)
+	})
 	return &op, nil
-}
-
-// dispatchCreate маршрутизирует Create-fn в LRO-worker (owner-tuple opgate P5). При
-// подключённом confirmer success-`done` достигается ТОЛЬКО после read-after-register
-// confirm owner-tuple (creator ↦ editor @ storage_volume:<id> в FGA — та же проба,
-// что энфорсит gateway scope_extractor на немедленной мутации, FIX-2), иначе
-// fail-closed по confirmation-deadline (worker → op.error Unavailable «owner-tuple
-// registration not confirmed»). confirm-проба идёт ПОСЛЕ fn (sync-registrar уже
-// отработал внутри fn post-commit). Без confirmer (dev/no-authz) confirm==nil →
-// прежний плоский Run без gate (nil-safe, back-compat). confirmWorker!=nil → явный
-// worker (тесты/кастомный drain-target), иначе package-level default-registry.
-func (u *UseCase) dispatchCreate(ctx context.Context, opID string, principal operations.Principal, volumeID string, fn func(context.Context) (*anypb.Any, error)) {
-	var confirm operations.ConfirmFunc
-	if u.confirmer != nil {
-		confirm = func(cctx context.Context) (bool, error) {
-			return u.confirmer.Confirm(cctx, principal, volumeID)
-		}
-	}
-	if u.confirmWorker != nil {
-		operations.RunWithWorkerConfirm(u.confirmWorker, ctx, u.ops, opID, fn, confirm)
-		return
-	}
-	operations.RunWithConfirm(ctx, u.ops, opID, fn, confirm)
 }
 
 // Update меняет mutable-поля Volume (async Operation). Sync-фаза: malformed-id
