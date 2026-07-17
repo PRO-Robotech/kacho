@@ -92,12 +92,20 @@ def emit(case_id_prefix, title, scope, method, path, body, subject):
     decision = EXPECT[scope][code]
     case_id = f"AUTHZ-{case_id_prefix}-{code}"
     if decision == "DENY":
-        if method == "GET" and _is_single_resource_get(path):
+        if code == "ANON":
+            # Anonymous (no credentials) fails authN BEFORE authz for EVERY RPC —
+            # Create (POST) and List (GET collection) alike, not just single-resource
+            # Get: missing credentials → UNAUTHENTICATED (16) → HTTP 401 ("credentials
+            # required"), never PERMISSION_DENIED (403/7) nor the hide-existence 404.
+            # unauthenticated ≠ unauthorized (authN precedes authz), so the whole
+            # anon row is 401/16 regardless of method/path.
+            asserts = unauth_asserts(case_id)
+        elif method == "GET" and _is_single_resource_get(path):
             # Hide-existence: a denied single-resource Get on a verb-bearing compute
             # resource → NotFound (404 / code 5), not 403. ONLY a single-resource Get
             # (path ends in /{id}, no ?query) hides existence; a denied List stays
-            # PermissionDenied (403). Anonymous (no token) → 401 (authN before authz).
-            asserts = unauth_asserts(case_id) if code == "ANON" else read_deny_asserts(case_id)
+            # PermissionDenied (403).
+            asserts = read_deny_asserts(case_id)
         else:
             asserts = deny_asserts(case_id)
     else:

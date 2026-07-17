@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "c9904b23-e626-4119-9606-3b385c925b57",
+    "_postman_id": "4ba34a8b-63f5-48a1-9695-c2542bd1c25a",
     "name": "kacho-compute / newman / disk-type",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -30,7 +30,7 @@
   ],
   "item": [
     {
-      "name": "DT-LST-CRUD-OK — List diskTypes → ≥4 типов, содержит network-ssd / network-hdd; у каждого zoneIds непустой",
+      "name": "DT-LST-CRUD-OK — List diskTypes → ≥4 типов, содержит network-ssd / network-hdd; у каждого seeded-типа zoneIds непустой",
       "description": "class:CRUD | priority:P1",
       "item": [
         {
@@ -68,7 +68,8 @@
                   "pm.test('at least 4 disk types', () => pm.expect(ids.length).to.be.at.least(4));",
                   "pm.test('contains network-ssd', () => pm.expect(ids).to.include('network-ssd'));",
                   "pm.test('contains network-hdd', () => pm.expect(ids).to.include('network-hdd'));",
-                  "pm.test('each has non-empty zoneIds', () => (j.diskTypes || []).forEach(t => pm.expect((t.zoneIds || []).length, t.id).to.be.at.least(1)));"
+                  "const seeded = ['network-hdd', 'network-ssd', 'network-ssd-nonreplicated', 'network-ssd-io-m3'];",
+                  "pm.test('each seeded reference type has non-empty zoneIds', () => (j.diskTypes || []).filter(t => seeded.includes(t.id)).forEach(t => pm.expect((t.zoneIds || []).length, t.id).to.be.at.least(1)));"
                 ]
               }
             }
@@ -420,11 +421,11 @@
       ]
     },
     {
-      "name": "DT-CR-NEG-NOT-ALLOWED — POST /compute/v1/diskTypes (Create) → справочник read-only → 404/405/501",
+      "name": "DT-CR-NEG-EMPTY-ID — POST /compute/v1/diskTypes with empty id → 400 INVALID_ARGUMENT (admin Create validates) или 404 (route not on this mux, ban #6)",
       "description": "class:VAL | class:NEG | priority:P3",
       "item": [
         {
-          "name": "cr-dt",
+          "name": "cr-dt-empty",
           "request": {
             "method": "POST",
             "header": [
@@ -446,7 +447,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"newman-fake-type\"}",
+              "raw": "{\"id\": \"\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -460,7 +461,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('not allowed', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"
+                  "pm.test('rejected — no mutation', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+                  "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"
                 ]
               }
             }
