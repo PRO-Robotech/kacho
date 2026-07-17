@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5be05d9d-1a5f-4afb-8c2c-0a1e2c8dbea4",
+    "_postman_id": "a0e6c01a-be8c-445a-9545-cb519f0f2d51",
     "name": "kacho-vpc / newman / address",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -204,7 +204,7 @@
           ]
         },
         {
-          "name": "poll-op-684",
+          "name": "poll-op-812",
           "request": {
             "method": "GET",
             "header": [
@@ -308,7 +308,7 @@
           ]
         },
         {
-          "name": "poll-op-685",
+          "name": "poll-op-813",
           "request": {
             "method": "GET",
             "header": [
@@ -412,7 +412,7 @@
           ]
         },
         {
-          "name": "poll-op-686",
+          "name": "poll-op-814",
           "request": {
             "method": "GET",
             "header": [
@@ -539,7 +539,7 @@
           ]
         },
         {
-          "name": "poll-op-687",
+          "name": "poll-op-815",
           "request": {
             "method": "GET",
             "header": [
@@ -630,7 +630,7 @@
           ]
         },
         {
-          "name": "poll-op-688",
+          "name": "poll-op-816",
           "request": {
             "method": "GET",
             "header": [
@@ -780,7 +780,7 @@
           ]
         },
         {
-          "name": "poll-op-689",
+          "name": "poll-op-817",
           "request": {
             "method": "GET",
             "header": [
@@ -908,7 +908,7 @@
           ]
         },
         {
-          "name": "poll-op-690",
+          "name": "poll-op-818",
           "request": {
             "method": "GET",
             "header": [
@@ -1071,7 +1071,7 @@
           ]
         },
         {
-          "name": "poll-op-691",
+          "name": "poll-op-819",
           "request": {
             "method": "GET",
             "header": [
@@ -1175,7 +1175,7 @@
           ]
         },
         {
-          "name": "poll-op-692",
+          "name": "poll-op-820",
           "request": {
             "method": "GET",
             "header": [
@@ -1315,7 +1315,7 @@
           ]
         },
         {
-          "name": "poll-op-693",
+          "name": "poll-op-821",
           "request": {
             "method": "GET",
             "header": [
@@ -1793,7 +1793,7 @@
           ]
         },
         {
-          "name": "poll-op-694",
+          "name": "poll-op-822",
           "request": {
             "method": "GET",
             "header": [
@@ -1897,7 +1897,7 @@
           ]
         },
         {
-          "name": "poll-op-695",
+          "name": "poll-op-823",
           "request": {
             "method": "GET",
             "header": [
@@ -2023,7 +2023,7 @@
           ]
         },
         {
-          "name": "poll-op-696",
+          "name": "poll-op-824",
           "request": {
             "method": "GET",
             "header": [
@@ -2173,7 +2173,7 @@
           ]
         },
         {
-          "name": "poll-op-697",
+          "name": "poll-op-825",
           "request": {
             "method": "GET",
             "header": [
@@ -2301,7 +2301,7 @@
           ]
         },
         {
-          "name": "poll-op-698",
+          "name": "poll-op-826",
           "request": {
             "method": "GET",
             "header": [
@@ -2635,7 +2635,7 @@
           ]
         },
         {
-          "name": "poll-op-699",
+          "name": "poll-op-827",
           "request": {
             "method": "GET",
             "header": [
@@ -2735,7 +2735,7 @@
           ]
         },
         {
-          "name": "poll-op-700",
+          "name": "poll-op-828",
           "request": {
             "method": "GET",
             "header": [
@@ -2862,7 +2862,7 @@
           ]
         },
         {
-          "name": "poll-op-701",
+          "name": "poll-op-829",
           "request": {
             "method": "GET",
             "header": [
@@ -3109,7 +3109,7 @@
           ]
         },
         {
-          "name": "poll-op-702",
+          "name": "poll-op-830",
           "request": {
             "method": "GET",
             "header": [
@@ -3320,7 +3320,7 @@
           ]
         },
         {
-          "name": "poll-op-703",
+          "name": "poll-op-831",
           "request": {
             "method": "GET",
             "header": [
@@ -3411,7 +3411,7 @@
           ]
         },
         {
-          "name": "poll-op-704",
+          "name": "poll-op-832",
           "request": {
             "method": "GET",
             "header": [
@@ -3556,7 +3556,7 @@
           ]
         },
         {
-          "name": "poll-op-705",
+          "name": "poll-op-833",
           "request": {
             "method": "GET",
             "header": [
@@ -3721,7 +3721,7 @@
           ]
         },
         {
-          "name": "poll-op-706",
+          "name": "poll-op-834",
           "request": {
             "method": "GET",
             "header": [
@@ -4895,7 +4895,7 @@
           ]
         },
         {
-          "name": "poll-create",
+          "name": "poll-op-835",
           "request": {
             "method": "GET",
             "header": [
@@ -4921,7 +4921,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -4977,7 +4995,7 @@
           ]
         },
         {
-          "name": "poll-patch",
+          "name": "poll-op-836",
           "request": {
             "method": "GET",
             "header": [
@@ -5003,7 +5021,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5085,7 +5121,7 @@
           ]
         },
         {
-          "name": "poll-cleanup",
+          "name": "poll-op-837",
           "request": {
             "method": "GET",
             "header": [
@@ -5111,7 +5147,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5177,7 +5231,7 @@
           ]
         },
         {
-          "name": "poll-create",
+          "name": "poll-op-838",
           "request": {
             "method": "GET",
             "header": [
@@ -5203,7 +5257,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5259,7 +5331,7 @@
           ]
         },
         {
-          "name": "poll-patch",
+          "name": "poll-op-839",
           "request": {
             "method": "GET",
             "header": [
@@ -5285,7 +5357,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5367,7 +5457,7 @@
           ]
         },
         {
-          "name": "poll-cleanup",
+          "name": "poll-op-840",
           "request": {
             "method": "GET",
             "header": [
@@ -5393,7 +5483,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5459,7 +5567,7 @@
           ]
         },
         {
-          "name": "poll-create",
+          "name": "poll-op-841",
           "request": {
             "method": "GET",
             "header": [
@@ -5485,7 +5593,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5541,7 +5667,7 @@
           ]
         },
         {
-          "name": "poll-patch",
+          "name": "poll-op-842",
           "request": {
             "method": "GET",
             "header": [
@@ -5567,7 +5693,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5650,7 +5794,7 @@
           ]
         },
         {
-          "name": "poll-cleanup",
+          "name": "poll-op-843",
           "request": {
             "method": "GET",
             "header": [
@@ -5676,7 +5820,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -5970,7 +6132,7 @@
           ]
         },
         {
-          "name": "poll-create",
+          "name": "poll-op-844",
           "request": {
             "method": "GET",
             "header": [
@@ -5996,7 +6158,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -6052,7 +6232,7 @@
           ]
         },
         {
-          "name": "poll-patch",
+          "name": "poll-op-845",
           "request": {
             "method": "GET",
             "header": [
@@ -6078,7 +6258,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -6164,7 +6362,7 @@
           ]
         },
         {
-          "name": "poll-cleanup",
+          "name": "poll-op-846",
           "request": {
             "method": "GET",
             "header": [
@@ -6190,7 +6388,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -6256,7 +6472,7 @@
           ]
         },
         {
-          "name": "poll",
+          "name": "poll-op-847",
           "request": {
             "method": "GET",
             "header": [
@@ -6282,7 +6498,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -6364,7 +6598,7 @@
           ]
         },
         {
-          "name": "poll-cleanup",
+          "name": "poll-op-848",
           "request": {
             "method": "GET",
             "header": [
@@ -6390,7 +6624,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -6456,7 +6708,7 @@
           ]
         },
         {
-          "name": "poll",
+          "name": "poll-op-849",
           "request": {
             "method": "GET",
             "header": [
@@ -6482,7 +6734,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -6564,7 +6834,7 @@
           ]
         },
         {
-          "name": "poll-cleanup",
+          "name": "poll-op-850",
           "request": {
             "method": "GET",
             "header": [
@@ -6590,7 +6860,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7007,7 +7295,7 @@
           ]
         },
         {
-          "name": "poll-first",
+          "name": "poll-op-851",
           "request": {
             "method": "GET",
             "header": [
@@ -7033,7 +7321,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7127,7 +7433,7 @@
           ]
         },
         {
-          "name": "poll-c1",
+          "name": "poll-op-852",
           "request": {
             "method": "GET",
             "header": [
@@ -7153,7 +7459,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7219,7 +7543,7 @@
           ]
         },
         {
-          "name": "poll-cr",
+          "name": "poll-op-853",
           "request": {
             "method": "GET",
             "header": [
@@ -7245,7 +7569,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7301,7 +7643,7 @@
           ]
         },
         {
-          "name": "poll-p",
+          "name": "poll-op-854",
           "request": {
             "method": "GET",
             "header": [
@@ -7327,7 +7669,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7412,7 +7772,7 @@
           ]
         },
         {
-          "name": "poll-c",
+          "name": "poll-op-855",
           "request": {
             "method": "GET",
             "header": [
@@ -7438,7 +7798,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7504,7 +7882,7 @@
           ]
         },
         {
-          "name": "poll-cr",
+          "name": "poll-op-856",
           "request": {
             "method": "GET",
             "header": [
@@ -7530,7 +7908,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7612,7 +8008,7 @@
           ]
         },
         {
-          "name": "poll-c",
+          "name": "poll-op-857",
           "request": {
             "method": "GET",
             "header": [
@@ -7638,7 +8034,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -7856,7 +8270,7 @@
           ]
         },
         {
-          "name": "poll-op-707",
+          "name": "poll-op-858",
           "request": {
             "method": "GET",
             "header": [
@@ -8046,7 +8460,7 @@
           ]
         },
         {
-          "name": "poll-op-708",
+          "name": "poll-op-859",
           "request": {
             "method": "GET",
             "header": [
@@ -8211,7 +8625,7 @@
           ]
         },
         {
-          "name": "poll-op-709",
+          "name": "poll-op-860",
           "request": {
             "method": "GET",
             "header": [
@@ -9266,7 +9680,7 @@
           ]
         },
         {
-          "name": "poll-op-710",
+          "name": "poll-op-861",
           "request": {
             "method": "GET",
             "header": [
@@ -9438,7 +9852,7 @@
           ]
         },
         {
-          "name": "poll-op-711",
+          "name": "poll-op-862",
           "request": {
             "method": "GET",
             "header": [
@@ -9565,7 +9979,7 @@
           ]
         },
         {
-          "name": "poll-op-712",
+          "name": "poll-op-863",
           "request": {
             "method": "GET",
             "header": [
@@ -9798,7 +10212,7 @@
           ]
         },
         {
-          "name": "poll-op-713",
+          "name": "poll-op-864",
           "request": {
             "method": "GET",
             "header": [
@@ -9927,7 +10341,7 @@
           ]
         },
         {
-          "name": "poll-op-714",
+          "name": "poll-op-865",
           "request": {
             "method": "GET",
             "header": [
@@ -10072,7 +10486,7 @@
           ]
         },
         {
-          "name": "poll-op-715",
+          "name": "poll-op-866",
           "request": {
             "method": "GET",
             "header": [
@@ -10266,7 +10680,7 @@
           ]
         },
         {
-          "name": "poll-op-716",
+          "name": "poll-op-867",
           "request": {
             "method": "GET",
             "header": [
@@ -10397,7 +10811,7 @@
           ]
         },
         {
-          "name": "poll-op-717",
+          "name": "poll-op-868",
           "request": {
             "method": "GET",
             "header": [
@@ -10501,7 +10915,7 @@
           ]
         },
         {
-          "name": "poll-op-718",
+          "name": "poll-op-869",
           "request": {
             "method": "GET",
             "header": [
@@ -10628,7 +11042,7 @@
           ]
         },
         {
-          "name": "poll-op-719",
+          "name": "poll-op-870",
           "request": {
             "method": "GET",
             "header": [
@@ -10773,7 +11187,7 @@
           ]
         },
         {
-          "name": "poll-op-720",
+          "name": "poll-op-871",
           "request": {
             "method": "GET",
             "header": [
@@ -10967,7 +11381,7 @@
           ]
         },
         {
-          "name": "poll-op-721",
+          "name": "poll-op-872",
           "request": {
             "method": "GET",
             "header": [
@@ -11196,7 +11610,7 @@
           ]
         },
         {
-          "name": "poll-op-722",
+          "name": "poll-op-873",
           "request": {
             "method": "GET",
             "header": [
@@ -11377,7 +11791,7 @@
           ]
         },
         {
-          "name": "poll-op-723",
+          "name": "poll-op-874",
           "request": {
             "method": "GET",
             "header": [
@@ -11507,7 +11921,7 @@
           ]
         },
         {
-          "name": "poll-op-724",
+          "name": "poll-op-875",
           "request": {
             "method": "GET",
             "header": [
@@ -11611,7 +12025,7 @@
           ]
         },
         {
-          "name": "poll-op-725",
+          "name": "poll-op-876",
           "request": {
             "method": "GET",
             "header": [
@@ -11745,7 +12159,7 @@
           ]
         },
         {
-          "name": "poll-op-726",
+          "name": "poll-op-877",
           "request": {
             "method": "GET",
             "header": [
@@ -11855,7 +12269,7 @@
           ]
         },
         {
-          "name": "poll-op-727",
+          "name": "poll-op-878",
           "request": {
             "method": "GET",
             "header": [
@@ -11946,7 +12360,7 @@
           ]
         },
         {
-          "name": "poll-op-728",
+          "name": "poll-op-879",
           "request": {
             "method": "GET",
             "header": [
