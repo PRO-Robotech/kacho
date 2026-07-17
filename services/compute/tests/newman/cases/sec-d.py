@@ -50,13 +50,13 @@ CASES.append(Case(
         # per-resource Get: резолвится → owner-tuple зарегистрирован в IAM (раньше
         # best-effort dual-write мог потерять tuple → DENY навсегда; теперь intent
         # durable + retried, окно DENY конечно).
-        Step(name="get", method="GET", path=f"{DISKS}/{{{{diskId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{DISKS}/{{{{diskId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('diskId')); pm.expect(j.id).to.match(/^epd/); });",
                           "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
                           "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
-                          *assert_created_at_seconds()]),
+                          *assert_created_at_seconds()])),
         Step(name="delete", method="DELETE", path=f"{DISKS}/{{{{diskId}}}}",
              test_script=[*assert_status(200), *assert_operation_envelope(),
                           *save_from_response("j.id", "opId")]),

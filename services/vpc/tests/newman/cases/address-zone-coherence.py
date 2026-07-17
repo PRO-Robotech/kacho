@@ -76,12 +76,12 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "zcAddrId")]),
         poll_operation_until_done(),
-        Step(name="get-known-zone", method="GET", path=f"{_ADDR}/{{{{zcAddrId}}}}",
+        retry_until_authorized(Step(name="get-known-zone", method="GET", path=f"{_ADDR}/{{{{zcAddrId}}}}",
              test_script=[
                  "if (!pm.environment.get('zcAddrId')) return;",
                  *assert_status(200),
                  "pm.test('has external ipv4', () => pm.expect(pm.response.json().externalIpv4Address).to.be.an('object'));",
-             ]),
+             ])),
         Step(name="cleanup-known-zone", method="DELETE", path=f"{_ADDR}/{{{{zcAddrId}}}}",
              test_script=[
                  "if (!pm.environment.get('zcAddrId')) { pm.environment.unset('opId'); return; }",

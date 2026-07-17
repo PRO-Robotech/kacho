@@ -19,7 +19,7 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -610,10 +610,10 @@ def update_happy_per_field(prefix, create_path, update_base_path, body_create):
                      test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                                   *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
                 poll_operation_until_done(),
-                Step(name="patch", method="PATCH",
+                retry_until_authorized(Step(name="patch", method="PATCH",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      body=patch_body,
-                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
                 poll_operation_until_done(),
                 Step(name="verify", method="GET", path=f"{update_base_path}/{{{{createdId}}}}",
                      test_script=[*assert_status(200), *asserts]),
@@ -743,13 +743,13 @@ def update_happy_multi_field(prefix, create_path, update_base_path, body_create)
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
             poll_operation_until_done(),
-            Step(name="patch-multi", method="PATCH",
+            retry_until_authorized(Step(name="patch-multi", method="PATCH",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  body={"updateMask": "name,description,labels",
                        "name": f"{prefix.lower()}-multi-new",
                        "description": "multi-desc",
                        "labels": {"a": "1", "b": "2"}},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
             poll_operation_until_done(),
             Step(name="verify-all", method="GET",
                  path=f"{update_base_path}/{{{{createdId}}}}",
@@ -938,11 +938,11 @@ def update_mask_partial_block(prefix, create_path, update_base_path, body_create
                      test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                                   *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
                 poll_operation_until_done(),
-                Step(name="patch-name-only", method="PATCH",
+                retry_until_authorized(Step(name="patch-name-only", method="PATCH",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      body={"updateMask": "name", "name": f"{prefix.lower()}-mnnew",
                            "description": "should-be-ignored", "labels": {"ignored": "y"}},
-                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
                 poll_operation_until_done(),
                 Step(name="verify", method="GET",
                      path=f"{update_base_path}/{{{{createdId}}}}",
@@ -972,9 +972,9 @@ def perf_baseline_get_block(prefix, get_create_path, body_create):
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "perfId")]),
             poll_operation_until_done(),
-            Step(name="get-timed", method="GET", path=f"{get_create_path}/{{{{perfId}}}}",
+            retry_until_authorized(Step(name="get-timed", method="GET", path=f"{get_create_path}/{{{{perfId}}}}",
                  test_script=[*assert_status(200),
-                              "pm.test('response time < 300ms', () => pm.expect(pm.response.responseTime).to.be.below(300));"]),
+                              "pm.test('response time < 300ms', () => pm.expect(pm.response.responseTime).to.be.below(300));"])),
             Step(name="cleanup", method="DELETE", path=f"{get_create_path}/{{{{perfId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
@@ -1081,10 +1081,10 @@ def mutable_field_accepts(prefix, create_path, update_base_path, body_create,
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
             poll_operation_until_done(),
-            Step(name="patch", method="PATCH",
+            retry_until_authorized(Step(name="patch", method="PATCH",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  body={"updateMask": mutable_field, mutable_field: mutable_value},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
             poll_operation_until_done(),
             Step(name="verify", method="GET",
                  path=f"{update_base_path}/{{{{createdId}}}}",
@@ -1379,9 +1379,9 @@ def conformance_lifecycle_pack(prefix, create_path, body_create):
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "lifeId")]),
             poll_operation_until_done(),
-            Step(name="get-1", method="GET", path=f"{create_path}/{{{{lifeId}}}}",
+            retry_until_authorized(Step(name="get-1", method="GET", path=f"{create_path}/{{{{lifeId}}}}",
                  test_script=[*assert_status(200),
-                              "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"]),
+                              "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"])),
             Step(name="lst-includes", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
                  test_script=[*assert_status(200),
@@ -1449,6 +1449,65 @@ def conf_alreadyexists_block(prefix, create_path, name_template, body_extra=None
 
 
 _POLL_SEQ = [0]
+
+
+_RYA_SEQ = [0]
+
+
+def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
+                           retry_on=(403, 404)) -> Step:
+    """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
+    read-your-writes retry over the owner-tuple materialization window.
+
+    opgate (the create confirm-gate) was removed by design-review: Operation.done now
+    means the resource is DURABLE, but its owner/creator FGA tuple materializes
+    eventually-consistent (at-least-once drainer + reconciler + sync-registrar
+    optimisation). Under load the first post-create Get/Update/Delete of the fresh
+    resource can briefly return 403 (PERMISSION_DENIED) or 404 at the authz gate
+    before the tuple is visible. This is a textbook read-your-writes lag -> the CLIENT
+    retries; it is NOT a server barrier.
+
+    Retries the SAME request (setNextRequest -> self) while the response code is in
+    `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
+    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
+    (default 15*400ms = ~6s) -- fail-closed: on any other code the wrapped step's real
+    test_script runs exactly once, and once the budget is spent it ALSO runs on the
+    terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions --
+    never masked, never infinite).
+
+    Use ONLY on the first access of the caller's OWN fresh resource. Do NOT wrap
+    negative / cross-account-deny / absent-id steps (a poll there would mask a real
+    deny). The counter/started env-vars are request-name-scoped (step names are
+    globally unique after serialization) so the loop never bleeds across cases or
+    steps -- same discipline as poll_operation_until_done.
+    """
+    retry_set = ",".join(str(c) for c in retry_on)
+    guard = [
+        "// bounded read-your-writes retry over the owner-tuple materialization window",
+        "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+        "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_authRetryCount', '0');",
+        "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+        "}",
+        "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+        f"if ([{retry_set}].includes(pm.response.code) && _arc < {budget}) {{",
+        "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+        f"  const _ard = Date.now(); while (Date.now() - _ard < {interval_ms}) {{ /* owner-tuple materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_authRetryCount');",
+        "pm.environment.unset('_authRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    # Give the wrapped step a globally-unique name so its self-retry
+    # setNextRequest(pm.info.requestName) always resolves to ITSELF. Newman resolves a
+    # setNextRequest name to the FIRST item with that name in the collection; these
+    # suites mostly do NOT prefix step names by case-id, so a wrapped step whose bare
+    # name repeats would otherwise jump the retry to an earlier same-named step — the
+    # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
+    return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
 
 
 def poll_operation_until_done() -> Step:
@@ -1729,6 +1788,7 @@ def load_cases_module(path: Path):
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
     mod.poll_operation_until_done = poll_operation_until_done
+    mod.retry_until_authorized = retry_until_authorized
     mod.crud_list_bva_block = crud_list_bva_block
     mod.conf_not_found_text = conf_not_found_text
     mod.state_update_unknown_mask = state_update_unknown_mask

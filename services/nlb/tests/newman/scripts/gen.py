@@ -24,7 +24,7 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -194,6 +194,65 @@ def assert_operation_envelope(prefix_regex: str = "^(nlb|tgr|lst)[a-z0-9]+$") ->
         "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
         "});",
     ]
+
+
+_RYA_SEQ = [0]
+
+
+def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
+                           retry_on=(403, 404)) -> Step:
+    """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
+    read-your-writes retry over the owner-tuple materialization window.
+
+    opgate (the create confirm-gate) was removed by design-review: Operation.done now
+    means the resource is DURABLE, but its owner/creator FGA tuple materializes
+    eventually-consistent (at-least-once drainer + reconciler + sync-registrar
+    optimisation). Under load the first post-create Get/Update/Delete of the fresh
+    resource can briefly return 403 (PERMISSION_DENIED) or 404 at the authz gate
+    before the tuple is visible. This is a textbook read-your-writes lag -> the CLIENT
+    retries; it is NOT a server barrier.
+
+    Retries the SAME request (setNextRequest -> self) while the response code is in
+    `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
+    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
+    (default 15*400ms = ~6s) -- fail-closed: on any other code the wrapped step's real
+    test_script runs exactly once, and once the budget is spent it ALSO runs on the
+    terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions --
+    never masked, never infinite).
+
+    Use ONLY on the first access of the caller's OWN fresh resource. Do NOT wrap
+    negative / cross-account-deny / absent-id steps (a poll there would mask a real
+    deny). The counter/started env-vars are request-name-scoped (step names are
+    globally unique after serialization) so the loop never bleeds across cases or
+    steps -- same discipline as poll_operation_until_done.
+    """
+    retry_set = ",".join(str(c) for c in retry_on)
+    guard = [
+        "// bounded read-your-writes retry over the owner-tuple materialization window",
+        "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+        "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_authRetryCount', '0');",
+        "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+        "}",
+        "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+        f"if ([{retry_set}].includes(pm.response.code) && _arc < {budget}) {{",
+        "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+        f"  const _ard = Date.now(); while (Date.now() - _ard < {interval_ms}) {{ /* owner-tuple materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_authRetryCount');",
+        "pm.environment.unset('_authRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    # Give the wrapped step a globally-unique name so its self-retry
+    # setNextRequest(pm.info.requestName) always resolves to ITSELF. Newman resolves a
+    # setNextRequest name to the FIRST item with that name in the collection; these
+    # suites mostly do NOT prefix step names by case-id, so a wrapped step whose bare
+    # name repeats would otherwise jump the retry to an earlier same-named step — the
+    # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
+    return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
 
 
 def poll_operation_until_done() -> Step:
@@ -401,6 +460,7 @@ def load_cases_module(path: Path):
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response
     mod.poll_operation_until_done = poll_operation_until_done
+    mod.retry_until_authorized = retry_until_authorized
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)

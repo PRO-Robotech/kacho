@@ -121,7 +121,7 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "instanceId")]),
         poll_operation_until_done(), assert_op_success(),
-        Step(name="get", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('instanceId')); pm.expect(j.id).to.match(/^epd/); });",
@@ -133,7 +133,7 @@ CASES.append(Case(
                           "pm.test('bootDisk present with volumeId', () => pm.expect(j.bootDisk && j.bootDisk.volumeId).to.be.a('string').and.match(/^epd/));",
                           "pm.test('resources cores=2', () => pm.expect(String(j.resources && j.resources.cores)).to.eql('2'));",
                           "pm.test('no NIC (auto-NIC removed KAC-266)', () => pm.expect((j.networkInterfaces || []).length).to.eql(0));",
-                          *assert_created_at_seconds()]),
+                          *assert_created_at_seconds()])),
         *_delete_instance_steps(),
     ],
 ))
@@ -154,8 +154,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "instanceId")]),
         poll_operation_until_done(), assert_op_success(),
-        Step(name="get", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             test_script=[*assert_status(200), "pm.test('status RUNNING', () => pm.expect(pm.response.json().status).to.eql('RUNNING'));"]),
+        retry_until_authorized(Step(name="get", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
+             test_script=[*assert_status(200), "pm.test('status RUNNING', () => pm.expect(pm.response.json().status).to.eql('RUNNING'));"])),
         *_delete_instance_steps(),
         Step(name="del-img", method="DELETE", path=f"{IMAGES}/{{{{imageId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -174,9 +174,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "instanceId")]),
         poll_operation_until_done(), assert_op_success(),
-        Step(name="get", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200),
-                          "pm.test('bootDisk.volumeId == bootDiskId', () => pm.expect(pm.response.json().bootDisk && pm.response.json().bootDisk.volumeId).to.eql(pm.environment.get('bootDiskId')));"]),
+                          "pm.test('bootDisk.volumeId == bootDiskId', () => pm.expect(pm.response.json().bootDisk && pm.response.json().bootDisk.volumeId).to.eql(pm.environment.get('bootDiskId')));"])),
         *_delete_instance_steps(),
         # autoDelete=false → диск остался → почистить
         *_delete_disk_steps(var="bootDiskId", name="cleanup-boot-disk"),
@@ -349,10 +349,10 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("upd", description="init", labels={"orig": "1"}),
-        Step(name="patch", method="PATCH", path=f"{INSTANCES}/{{{{instanceId}}}}",
+        retry_until_authorized(Step(name="patch", method="PATCH", path=f"{INSTANCES}/{{{{instanceId}}}}",
              body={"updateMask": "name,description,labels", "name": "inst-upd2-{{runId}}",
                    "description": "updated-newman", "labels": {"env": "prod"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200),
@@ -515,8 +515,8 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("restartok"),
-        Step(name="restart", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:restart", body={},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="restart", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:restart", body={},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200), "pm.test('status RUNNING', () => pm.expect(pm.response.json().status).to.eql('RUNNING'));"]),
@@ -574,10 +574,10 @@ CASES.append(Case(
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("adok"),
         *_create_disk_steps("adok-extra", save_as="extraDiskId"),
-        Step(name="attach", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
+        retry_until_authorized(Step(name="attach", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
              body={"attachedDiskSpec": {"autoDelete": False, "volumeId": "{{extraDiskId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          "pm.test('metadata has volumeId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.volumeId).to.eql(pm.environment.get('extraDiskId')));"]),
+                          "pm.test('metadata has volumeId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.volumeId).to.eql(pm.environment.get('extraDiskId')));"])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200),
@@ -624,9 +624,9 @@ CASES.append(Case(
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("adaa"),
         *_create_disk_steps("adaa-extra", save_as="extraDiskId"),
-        Step(name="attach-1", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
+        retry_until_authorized(Step(name="attach-1", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
              body={"attachedDiskSpec": {"autoDelete": False, "volumeId": "{{extraDiskId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="attach-2-dup", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
              body={"attachedDiskSpec": {"autoDelete": False, "volumeId": "{{extraDiskId}}"}},
@@ -655,9 +655,9 @@ CASES.append(Case(
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("ddok"),
         *_create_disk_steps("ddok-extra", save_as="extraDiskId"),
-        Step(name="attach", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
+        retry_until_authorized(Step(name="attach", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
              body={"attachedDiskSpec": {"autoDelete": False, "volumeId": "{{extraDiskId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="detach", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:detachDisk", body={"volumeId": "{{extraDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -678,8 +678,8 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("ddboot"),
-        Step(name="get-boot-id", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             test_script=[*assert_status(200), *save_from_response("pm.response.json().bootDisk && pm.response.json().bootDisk.volumeId", "bootDiskId")]),
+        retry_until_authorized(Step(name="get-boot-id", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
+             test_script=[*assert_status(200), *save_from_response("pm.response.json().bootDisk && pm.response.json().bootDisk.volumeId", "bootDiskId")])),
         Step(name="detach-boot", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:detachDisk", body={"volumeId": "{{bootDiskId}}"},
              # probe-needed: точный текст "Cannot detach boot disk". Может быть sync 400 или async op-error code 9.
              test_script=["pm.test('rejected (400 sync or 200+op-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
@@ -732,9 +732,9 @@ CASES.append(Case(
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("dkdel"),
         *_create_disk_steps("dkdel-extra", save_as="extraDiskId"),
-        Step(name="attach", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
+        retry_until_authorized(Step(name="attach", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachDisk",
              body={"attachedDiskSpec": {"autoDelete": False, "volumeId": "{{extraDiskId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         # Disk.Delete while attached → FailedPrecondition (FK attached_disks RESTRICT on disk_id)
         Step(name="del-disk-attached", method="DELETE", path=f"{DISKS}/{{{{extraDiskId}}}}",
@@ -774,9 +774,9 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("umeta"),
-        Step(name="umeta-upsert", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}/updateMetadata",
+        retry_until_authorized(Step(name="umeta-upsert", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}/updateMetadata",
              body={"upsert": {"foo": "bar", "ssh-keys": "ubuntu:ssh-ed25519 AAAA..."}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="get-full", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}?view=FULL",
              test_script=[*assert_status(200),
@@ -806,9 +806,9 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("spo"),
-        Step(name="spo", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}:serialPortOutput",
+        retry_until_authorized(Step(name="spo", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}:serialPortOutput",
              test_script=[*assert_status(200),
-                          "pm.test('contents is string', () => pm.expect(pm.response.json().contents).to.be.a('string'));"]),
+                          "pm.test('contents is string', () => pm.expect(pm.response.json().contents).to.be.a('string'));"])),
         *_delete_instance_steps(),
     ],
 ))
@@ -854,8 +854,8 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("lop"),
-        Step(name="list-ops", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}/operations",
-             test_script=[*assert_status(200), "pm.test('at least 1 op', () => pm.expect((pm.response.json().operations || []).length).to.be.at.least(1));"]),
+        retry_until_authorized(Step(name="list-ops", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}/operations",
+             test_script=[*assert_status(200), "pm.test('at least 1 op', () => pm.expect((pm.response.json().operations || []).length).to.be.at.least(1));"])),
         *_delete_instance_steps(),
     ],
 ))
@@ -879,8 +879,8 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("delok"),
-        Step(name="del", method="DELETE", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{INSTANCES}/{{{{instanceId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="get-404", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
@@ -894,8 +894,8 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("delad"),
-        Step(name="get-boot-id", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             test_script=[*assert_status(200), *save_from_response("pm.response.json().bootDisk && pm.response.json().bootDisk.volumeId", "bootDiskId")]),
+        retry_until_authorized(Step(name="get-boot-id", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
+             test_script=[*assert_status(200), *save_from_response("pm.response.json().bootDisk && pm.response.json().bootDisk.volumeId", "bootDiskId")])),
         Step(name="del", method="DELETE", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(), assert_op_success(),
@@ -916,8 +916,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "instanceId")]),
         poll_operation_until_done(), assert_op_success(),
-        Step(name="del", method="DELETE", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{INSTANCES}/{{{{instanceId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="disk-remains", method="GET", path=f"{DISKS}/{{{{bootDiskId}}}}",
              test_script=[*assert_status(200), "pm.test('disk still exists', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('bootDiskId')));"]),
@@ -940,9 +940,9 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("delm"),
-        Step(name="del", method="DELETE", path=f"{INSTANCES}/{{{{instanceId}}}}",
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          "pm.test('metadata has instanceId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.instanceId).to.eql(pm.environment.get('instanceId')));"]),
+                          "pm.test('metadata has instanceId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.instanceId).to.eql(pm.environment.get('instanceId')));"])),
         poll_operation_until_done(),
         Step(name="assert-empty", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
@@ -963,8 +963,8 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("life"),
-        Step(name="get-1", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             test_script=[*assert_status(200), "pm.test('id', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('instanceId')));"]),
+        retry_until_authorized(Step(name="get-1", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
+             test_script=[*assert_status(200), "pm.test('id', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('instanceId')));"])),
         Step(name="lst-includes", method="GET", path=f"{INSTANCES}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().instances || []).map(x => x.id);",
@@ -1086,10 +1086,10 @@ CASES.append(Case(
         # # requires kacho-vpc subnet {{existingSubnetId}} в зоне {{existingZoneId}}
         *_create_instance_steps("nicad"),
         *_create_nic_steps("nicad"),
-        Step(name="attach-nic", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachNetworkInterface",
+        retry_until_authorized(Step(name="attach-nic", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachNetworkInterface",
              body={"attachedNicSpec": {"nicId": "{{nicId}}"}},
              test_script=[*assert_status(200), *assert_operation_envelope(), *save_from_response("j.id", "opId"),
-                          "pm.test('metadata has nicId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.nicId).to.eql(pm.environment.get('nicId')));"]),
+                          "pm.test('metadata has nicId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.nicId).to.eql(pm.environment.get('nicId')));"])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify-attached", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
              test_script=[*assert_status(200),
@@ -1117,9 +1117,9 @@ CASES.append(Case(
         # # requires kacho-vpc subnet {{existingSubnetId}} в зоне {{existingZoneId}}
         *_create_instance_steps("nicidx"),
         *_create_nic_steps("nicidx"),
-        Step(name="attach-nic", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachNetworkInterface",
+        retry_until_authorized(Step(name="attach-nic", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:attachNetworkInterface",
              body={"attachedNicSpec": {"nicId": "{{nicId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="detach-byindex", method="POST", path=f"{INSTANCES}/{{{{instanceId}}}}:detachNetworkInterface",
              body={"index": 0},

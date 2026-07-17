@@ -116,7 +116,7 @@ CASES.append(Case(
             ],
         ),
         # Step 3: Get confirms the created Account.
-        Step(
+        retry_until_authorized(Step(
             name="get-confirms",
             method="GET",
             path="/iam/v1/accounts/{{crudAccountId}}",
@@ -143,7 +143,7 @@ CASES.append(Case(
                 "});",
                 *assert_created_at_seconds("pm.response.json().createdAt"),
             ],
-        ),
+        )),
     ],
 ))
 

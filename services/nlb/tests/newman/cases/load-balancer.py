@@ -163,7 +163,7 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get-after-create", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-after-create", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches', () => pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
@@ -176,7 +176,7 @@ CASES.append(Case(
                           "}",
                           "pm.test('placementType absent for EXTERNAL', () => "
                           "  pm.expect(j.placementType || 'PLACEMENT_TYPE_UNSPECIFIED')."
-                          "    to.be.oneOf(['', 'PLACEMENT_TYPE_UNSPECIFIED']));"]),
+                          "    to.be.oneOf(['', 'PLACEMENT_TYPE_UNSPECIFIED']));"])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -206,7 +206,7 @@ CASES.append(Case(
                  "}",
              ]),
         poll_operation_until_done(),
-        Step(name="get-int", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-int", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
                  "  pm.test('Get 200 for created INTERNAL ZONAL LB', () => pm.expect(pm.response.code).to.eql(200));",
@@ -217,7 +217,7 @@ CASES.append(Case(
                  "    pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
                  "  pm.test('v6AddressId empty (v4-only)', () => pm.expect(j.v6AddressId || '').to.eql(''));",
                  "}",
-             ]),
+             ])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -251,7 +251,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         *_setup_lb("get-ok"),
-        Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('has id', () => pm.expect(j.id).to.match(/^nlb/));",
@@ -259,7 +259,7 @@ CASES.append(Case(
                           "pm.test('has region/project', () => {",
                           "  pm.expect(j.projectId).to.be.a('string');",
                           "  pm.expect(j.regionId).to.be.a('string');",
-                          "});"]),
+                          "});"])),
         *_cleanup_lb(),
     ],
 ))
@@ -299,11 +299,11 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("upd-ok"),
-        Step(name="patch", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="patch", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "name,description,labels",
                    "name": "renamed-{{runId}}", "description": "updated",
                    "labels": {"env": "prod", "tier": "edge"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="verify", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
@@ -320,10 +320,10 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P2",
     steps=[
         *_setup_lb("upd-multi", {"sessionAffinity": "FIVE_TUPLE"}),
-        Step(name="patch-multi", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="patch-multi", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "sessionAffinity,deletionProtection",
                    "sessionAffinity": "CLIENT_IP_ONLY", "deletionProtection": False},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="verify-multi", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
@@ -340,8 +340,8 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("del-ok"),
-        Step(name="delete", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="delete", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get-after-delete", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
@@ -354,9 +354,9 @@ CASES.append(Case(
     classes=["CRUD", "LSG"], priority="P2",
     steps=[
         *_setup_lb("lops"),
-        Step(name="upd-bump-history", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="upd-bump-history", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "description", "description": "bumped"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="lops", method="GET",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}/operations?pageSize=10",
@@ -379,8 +379,8 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_setup_lb("start-ok"),
-        Step(name="start", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="start", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_lb(),
     ],
@@ -392,8 +392,8 @@ CASES.append(Case(
     classes=["STATE", "NEG"], priority="P1",
     steps=[
         *_setup_lb("start-active"),
-        Step(name="start-1", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="start-1", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="start-2-conflict", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
              test_script=[
@@ -428,8 +428,8 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_setup_lb("stop-ok"),
-        Step(name="stop", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="stop", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_lb(),
     ],
@@ -441,8 +441,8 @@ CASES.append(Case(
     classes=["STATE", "NEG"], priority="P1",
     steps=[
         *_setup_lb("stop-twice"),
-        Step(name="stop-1", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="stop-1", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="stop-2", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
              test_script=[
@@ -477,9 +477,9 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_setup_lb("mv-ok"),
-        Step(name="move", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
+        retry_until_authorized(Step(name="move", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get-moved", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
@@ -509,10 +509,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        Step(name="attach-tg", method="POST",
+        retry_until_authorized(Step(name="attach-tg", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 100},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="move-rejected", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
@@ -618,10 +618,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("att-ok"),
         *_setup_tg("att-ok"),
-        Step(name="attach", method="POST",
+        retry_until_authorized(Step(name="attach", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 100},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="detach", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
@@ -640,10 +640,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("att-idem"),
         *_setup_tg("att-idem"),
-        Step(name="att-1", method="POST",
+        retry_until_authorized(Step(name="att-1", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 100},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="att-2-repeat", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
@@ -667,10 +667,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("att-pri-upd"),
         *_setup_tg("att-pri-upd"),
-        Step(name="att-100", method="POST",
+        retry_until_authorized(Step(name="att-100", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 100},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="att-50", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
@@ -788,10 +788,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("det-ok"),
         *_setup_tg("det-ok"),
-        Step(name="att", method="POST",
+        retry_until_authorized(Step(name="att", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 100},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="det", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
@@ -835,11 +835,11 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("gts-empty"),
-        Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
+        retry_until_authorized(Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('targetStates is array (likely empty)', () => "
-                          "  pm.expect(j.targetStates || []).to.be.an('array'));"]),
+                          "  pm.expect(j.targetStates || []).to.be.an('array'));"])),
         *_cleanup_lb(),
     ],
 ))
@@ -853,13 +853,13 @@ CASES.append(Case(
         Step(name="stop", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
+        retry_until_authorized(Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "(j.targetStates || []).forEach(ts => {",
                           "  pm.test('target state INACTIVE for ' + (ts.id||'?'), () => "
                           "    pm.expect(ts.status).to.eql('INACTIVE'));",
-                          "});"]),
+                          "});"])),
         *_cleanup_lb(),
     ],
 ))
@@ -1369,9 +1369,9 @@ CASES.append(Case(
         # Best-effort race simulation — newman is sequential, so we just assert
         # the second Update either succeeds (no contention seen) or returns
         # ABORTED with the expected sentinel text.
-        Step(name="upd-1", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="upd-1", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "description", "description": "occ-1"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="upd-2", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "description", "description": "occ-2"},
@@ -1394,10 +1394,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("fk-race"),
         *_setup_tg("fk-race"),
-        Step(name="att", method="POST",
+        retry_until_authorized(Step(name="att", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 100},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="del-attached", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -1601,10 +1601,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "lifeId")]),
         poll_operation_until_done(),
-        Step(name="get-1", method="GET", path=f"{_CREATE_BASE}/{{{{lifeId}}}}",
+        retry_until_authorized(Step(name="get-1", method="GET", path=f"{_CREATE_BASE}/{{{{lifeId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('id matches', () => "
-                          "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"]),
+                          "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"])),
         # List is authz-filtered (per-object FGA). The owner-tuple for the just-
         # created LB is written asynchronously (fga_register_outbox → IAM), so it
         # can take ~0.6-2s to become visible to ListObjects. Poll-retry the List
@@ -1895,9 +1895,9 @@ CASES.append(Case(
     classes=["STATE", "IDEM"], priority="P2",
     steps=[
         *_setup_lb("noop-upd"),
-        Step(name="upd-same", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="upd-same", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "description", "description": ""},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_lb(),
     ],
@@ -2019,10 +2019,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("pri-0"),
         *_setup_tg("pri-0"),
-        Step(name="att-0", method="POST",
+        retry_until_authorized(Step(name="att-0", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 0},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="det", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
@@ -2041,10 +2041,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("pri-max"),
         *_setup_tg("pri-max"),
-        Step(name="att-1000", method="POST",
+        retry_until_authorized(Step(name="att-1000", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "{{tgId}}", "priority": 1000},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="det", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
@@ -2120,10 +2120,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('description persisted', () => "
-                          "  pm.expect(pm.response.json().description).to.eql('the edge LB'));"]),
+                          "  pm.expect(pm.response.json().description).to.eql('the edge LB'));"])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -2140,10 +2140,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('sessionAffinity persisted', () => "
-                          "  pm.expect(pm.response.json().sessionAffinity).to.eql('CLIENT_IP_ONLY'));"]),
+                          "  pm.expect(pm.response.json().sessionAffinity).to.eql('CLIENT_IP_ONLY'));"])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -2163,7 +2163,7 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('created despite removed fields', () => "
@@ -2173,7 +2173,7 @@ CASES.append(Case(
                           "pm.test('output does not echo securityGroupIds (field removed)', () => "
                           "  pm.expect(j).to.not.have.property('securityGroupIds'));",
                           "pm.test('output does not echo networkId (derived, not tenant-facing)', () => "
-                          "  pm.expect(j).to.not.have.property('networkId'));"]),
+                          "  pm.expect(j).to.not.have.property('networkId'));"])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -2224,10 +2224,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('deletion_protection persisted', () => "
-                          "  pm.expect(pm.response.json().deletionProtection).to.eql(true));"]),
+                          "  pm.expect(pm.response.json().deletionProtection).to.eql(true));"])),
         # Disable for cleanup
         Step(name="unprotect", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "deletion_protection", "deletionProtection": False},
@@ -2245,9 +2245,9 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P2",
     steps=[
         *_setup_lb("dp-toggle", {"deletionProtection": True}),
-        Step(name="disable-dp", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="disable-dp", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "deletion_protection", "deletionProtection": False},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
@@ -2278,10 +2278,10 @@ CASES.append(Case(
         Step(name="start", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
+        retry_until_authorized(Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
              test_script=[*assert_status(200),
                           "pm.test('empty target_states', () => "
-                          "  pm.expect((pm.response.json().targetStates || []).length).to.eql(0));"]),
+                          "  pm.expect((pm.response.json().targetStates || []).length).to.eql(0));"])),
         *_cleanup_lb(),
     ],
 ))
@@ -2606,12 +2606,12 @@ CASES.append(Case(
         *_provision_subnet("REGIONAL", "int-reg"),
         _internal_create_step("lb-ireg", "REGIONAL"),
         poll_operation_until_done(),
-        Step(name="get-reg", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-reg", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*_internal_happy_get_asserts("REGIONAL"),
                           "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
                           "  pm.test('disabledAnnounceZones empty (announced from all healthy zones)', () => "
                           "    pm.expect(pm.response.json().disabledAnnounceZones || []).to.be.an('array').that.is.empty);",
-                          "}"]),
+                          "}"])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
@@ -2626,7 +2626,7 @@ CASES.append(Case(
         _internal_create_step("lb-idrain", "REGIONAL",
                               {"disabledAnnounceZones": ["{{existingZoneAltId}}"]}),
         poll_operation_until_done(),
-        Step(name="get-drain", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-drain", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
                  "  pm.test('Get 200', () => pm.expect(pm.response.code).to.eql(200));",
@@ -2635,7 +2635,7 @@ CASES.append(Case(
                  "  pm.test('disabledAnnounceZones persisted as the drain intent', () => "
                  "    pm.expect(j.disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
                  "}",
-             ]),
+             ])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
@@ -2666,13 +2666,13 @@ CASES.append(Case(
                  "}",
              ]),
         poll_operation_until_done(),
-        Step(name="get-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
                  "  pm.test('v4AddressId equals the linked address', () => "
                  "    pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
                  "}",
-             ]),
+             ])),
         *_cleanup_lb(),
         # tenant-owned linked address survives LB deletion → cleaned up here
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddrId"),
@@ -2704,7 +2704,7 @@ CASES.append(Case(
                  "}",
              ]),
         poll_operation_until_done(),
-        Step(name="get-ext-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-ext-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
                  "  const j = pm.response.json();",
@@ -2712,7 +2712,7 @@ CASES.append(Case(
                  "  pm.test('v4AddressId equals the linked public address', () => "
                  "    pm.expect(j.v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
                  "}",
-             ]),
+             ])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddrId"),
     ],
@@ -2744,14 +2744,14 @@ CASES.append(Case(
                  "}",
              ]),
         poll_operation_until_done(),
-        Step(name="get-dualstack", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-dualstack", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
                  "  const j = pm.response.json();",
                  "  pm.test('v4AddressId set (auto from subnet)', () => pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
                  "  pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('existingAddressIPv6Id')));",
                  "}",
-             ]),
+             ])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
@@ -2797,7 +2797,7 @@ CASES.append(Case(
         *_provision_subnet("REGIONAL", "drain-toggle"),
         _internal_create_step("lb-dtog", "REGIONAL"),
         poll_operation_until_done(),
-        Step(name="upd-drain", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="upd-drain", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "disabled_announce_zones",
                    "disabledAnnounceZones": ["{{existingZoneAltId}}"]},
              test_script=[
@@ -2805,7 +2805,7 @@ CASES.append(Case(
                  "  pm.test('drain Update accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
                  "} else { pm.environment.unset('opId'); }",
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="get-drained", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -2838,7 +2838,7 @@ CASES.append(Case(
     classes=["STATE", "CRUD"], priority="P1",
     steps=[
         *_setup_lb("lean"),
-        Step(name="get-lean", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-lean", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('exposes tenant-facing fields (id/type/status/v4AddressId)', () => {",
@@ -2857,7 +2857,7 @@ CASES.append(Case(
                           "pm.test('does NOT leak per-zone announce / route / VRF infra state', () => {",
                           "  pm.expect(j).to.not.have.property('announceState');",
                           "  pm.expect(j).to.not.have.property('routeTableId');",
-                          "});"]),
+                          "});"])),
         *_cleanup_lb(),
     ],
 ))
@@ -2884,13 +2884,13 @@ CASES.append(Case(
                  "} else { pm.environment.unset('opId'); }",
              ]),
         poll_operation_until_done(),
-        Step(name="del-linked-lb", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="del-linked-lb", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "if (pm.environment.get('nlbId')) {",
                  "  pm.test('Delete accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
                  "} else { pm.environment.unset('opId'); }",
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="lb-gone", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[

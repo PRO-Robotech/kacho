@@ -138,7 +138,7 @@ CASES.append(Case(
                 "}",
             ],
         ),
-        Step(
+        retry_until_authorized(Step(
             name="get-confirms",
             method="GET",
             path="/iam/v1/roles/{{crudRoleId}}",
@@ -180,7 +180,7 @@ CASES.append(Case(
                 "});",
                 *assert_created_at_seconds("pm.response.json().createdAt"),
             ],
-        ),
+        )),
     ],
 ))
 

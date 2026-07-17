@@ -134,12 +134,12 @@ CASES.append(Case(
     steps=[
         *_create_external_lb("ext-flow", {"sessionAffinity": "FIVE_TUPLE"}),
         # Step 1 assertion: fresh LB has no listener/TG → INACTIVE.
-        Step(name="get-lb-inactive", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-lb-inactive", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('LB starts INACTIVE (no listener/TG yet)', () => "
                           "  pm.expect(j.status).to.eql('INACTIVE'));",
-                          "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));"]),
+                          "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));"])),
         # Step 2: listener with auto external VIP.
         Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "edge-https-{{runId}}",
@@ -246,7 +246,7 @@ CASES.append(Case(
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
              ]),
         poll_operation_until_done(),
-        Step(name="get-listener-v6", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        retry_until_authorized(Step(name="get-listener-v6", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[
                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
                  "  const j = pm.response.json();",
@@ -255,7 +255,7 @@ CASES.append(Case(
                  "    pm.expect(j.allocatedAddress).to.be.a('string').and.have.length.above(0);",
                  "  });",
                  "}",
-             ]),
+             ])),
         Step(name="cleanup-listener-best-effort", method="DELETE",
              path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -384,7 +384,7 @@ CASES.append(Case(
                  "}",
              ]),
         poll_operation_until_done(),
-        Step(name="get-internal-lb", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-internal-lb", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "pm.environment.unset('xresIntReady');",
                  "if (pm.environment.get('nlbId') && pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
@@ -397,7 +397,7 @@ CASES.append(Case(
                  "  pm.test('v4AddressId resolved to a bound vpc Address', () => "
                  "    pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
                  "}",
-             ]),
+             ])),
         Step(name="create-internal-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "int-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
@@ -485,10 +485,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get-no-network", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-no-network", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('output does not echo the removed networkId', () => "
-                          "  pm.expect(pm.response.json()).to.not.have.property('networkId'));"]),
+                          "  pm.expect(pm.response.json()).to.not.have.property('networkId'));"])),
         *_cleanup_lb(),
     ],
 ))
@@ -506,10 +506,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get-no-sg", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="get-no-sg", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('output does not echo the removed securityGroupIds', () => "
-                          "  pm.expect(pm.response.json()).to.not.have.property('securityGroupIds'));"]),
+                          "  pm.expect(pm.response.json()).to.not.have.property('securityGroupIds'));"])),
         *_cleanup_lb(),
     ],
 ))
@@ -535,10 +535,10 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
         *_create_tg("teardown"),
-        Step(name="add-external-target", method="POST",
+        retry_until_authorized(Step(name="add-external-target", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.200"}, "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="attach-tg", method="POST",
              path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
@@ -662,12 +662,12 @@ CASES.append(Case(
         # the graceful-degradation property required by data-integrity.md §4.
         *_create_external_lb("dangling"),
         *_create_tg("dangling"),
-        Step(name="add-instance-target", method="POST",
+        retry_until_authorized(Step(name="add-instance-target", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "{{existingInstanceId}}", "weight": 100}]},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         # Get(TG) survives: 200, not 404/500, even though the referenced peer is
         # not re-validated here.
