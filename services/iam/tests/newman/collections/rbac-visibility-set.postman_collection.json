@@ -1070,14 +1070,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+              "raw": "{{baseUrl}}/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}"
+                "accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000"
               ]
             }
           },
@@ -1106,7 +1106,7 @@
                   "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "const c = parseInt(pm.environment.get('_visSetCount') || '0', 10);",
                   "let arr = [];",
-                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                   "if (arr.length > 0 && c < 12) {",
                   "  pm.environment.set('visSetDup', arr[0].id);",
                   "  pm.environment.set('_visSetCount', String(c + 1));",
@@ -2216,14 +2216,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+              "raw": "{{baseUrl}}/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}"
+                "accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000"
               ]
             }
           },
@@ -2252,7 +2252,7 @@
                   "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "const c = parseInt(pm.environment.get('_visVlCount') || '0', 10);",
                   "let arr = [];",
-                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                   "if (arr.length > 0 && c < 12) {",
                   "  pm.environment.set('visVlDup', arr[0].id);",
                   "  pm.environment.set('_visVlCount', String(c + 1));",
@@ -3958,14 +3958,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+              "raw": "{{baseUrl}}/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}"
+                "accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000"
               ]
             }
           },
@@ -3994,7 +3994,7 @@
                   "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "const c = parseInt(pm.environment.get('_setSvaSetCount') || '0', 10);",
                   "let arr = [];",
-                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                   "if (arr.length > 0 && c < 12) {",
                   "  pm.environment.set('setSvaSetDup', arr[0].id);",
                   "  pm.environment.set('_setSvaSetCount', String(c + 1));",
@@ -5998,14 +5998,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+              "raw": "{{baseUrl}}/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}"
+                "accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000"
               ]
             }
           },
@@ -6034,7 +6034,7 @@
                   "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "const c = parseInt(pm.environment.get('_setRolSetCount') || '0', 10);",
                   "let arr = [];",
-                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                   "if (arr.length > 0 && c < 12) {",
                   "  pm.environment.set('setRolSetDup', arr[0].id);",
                   "  pm.environment.set('_setRolSetCount', String(c + 1));",
@@ -8038,14 +8038,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+              "raw": "{{baseUrl}}/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}"
+                "accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000"
               ]
             }
           },
@@ -8074,7 +8074,7 @@
                   "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "const c = parseInt(pm.environment.get('_setGrpSetCount') || '0', 10);",
                   "let arr = [];",
-                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                   "if (arr.length > 0 && c < 12) {",
                   "  pm.environment.set('setGrpSetDup', arr[0].id);",
                   "  pm.environment.set('_setGrpSetCount', String(c + 1));",
@@ -9175,14 +9175,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+              "raw": "{{baseUrl}}/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}"
+                "accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000"
               ]
             }
           },
@@ -9211,7 +9211,7 @@
                   "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "const c = parseInt(pm.environment.get('_setSvaVlCount') || '0', 10);",
                   "let arr = [];",
-                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                   "if (arr.length > 0 && c < 12) {",
                   "  pm.environment.set('setSvaVlDup', arr[0].id);",
                   "  pm.environment.set('_setSvaVlCount', String(c + 1));",
@@ -10011,14 +10011,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+              "raw": "{{baseUrl}}/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}"
+                "accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000"
               ]
             }
           },
@@ -10047,7 +10047,7 @@
                   "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "const c = parseInt(pm.environment.get('_setGrpVlCount') || '0', 10);",
                   "let arr = [];",
-                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                  "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                   "if (arr.length > 0 && c < 12) {",
                   "  pm.environment.set('setGrpVlDup', arr[0].id);",
                   "  pm.environment.set('_setGrpVlCount', String(c + 1));",

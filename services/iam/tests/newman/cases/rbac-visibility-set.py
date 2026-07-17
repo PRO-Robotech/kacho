@@ -59,9 +59,12 @@ account-A binding (a prior suite's best-effort, async-revoked teardown). A resid
 account-VIEWER grant would cascade onto EVERY account-A project and defeat the by-label
 filtering (M− would become visible). Each case therefore first deletes (with await) every
 active account-A binding for userINVId via a bounded list→delete→await loop, asserting the
-slate is clean (zero residual account-A bindings) before granting the by-label role. This
-makes the exact-set assertion self-contained and deterministic — it does NOT depend on any
-other case/suite having torn down.
+slate is clean (zero residual account-A bindings) before granting the by-label role. Discovery
+uses the ADMIN-AUTHORIZED :listByScope on account/accountAId (owner sees all subjects, filter
+by subjectId) — NOT :listBySubject, which is a cross-user query that 403s for the admin caller
+and yielded a FALSE clean slate (the residual binding survived and leaked M− into the visible
+set). This makes the exact-set assertion self-contained and deterministic — it does NOT depend
+on any other case/suite having torn down.
 
 PAGINATION — the reads use `pageSize=1000` so the run-created projects are returned on a
 single page even as account A accumulates projects across runs (the page-boundary lesson
@@ -152,7 +155,17 @@ def preclean_account_loop(tag, next_step):
         Step(
             name=list_step,
             method="GET",
-            path="/iam/v1/accessBindings:listBySubject?subjectType=user&subjectId={{userINVId}}",
+            # Discovery MUST use an AUTHORIZED read: :listByScope on account/accountAId
+            # (the account owner sees EVERY binding in the account scope, ALL subjects).
+            # The prior :listBySubject?subjectId=userINVId is a CROSS-user query (the
+            # jwtAccountAdminA caller is NOT the subject) → correctly 403; the test then
+            # treated the empty result as a clean slate, so a residual account-scoped
+            # view binding for userINVId leaked into the by-label visibility assertion
+            # (M− projects became visible → exact-set mismatch). listByScope returns all
+            # subjects → the filter narrows to subjectId=userINVId (pattern: IAM-ACB-CR-CRUD-OK
+            # pre-clean-dup). pageSize=1000: the account scope accumulates >50 bindings
+            # across re-runs, so the default page (50) could page-out the stale binding.
+            path="/iam/v1/accessBindings:listByScope?resourceType=account&resourceId={{accountAId}}&pageSize=1000",
             auth="jwtAccountAdminA",
             pre_script=[
                 f"if (pm.environment.get('_{tag}Started') !== pm.info.requestName) {{ pm.environment.set('_{tag}Count', '0'); pm.environment.set('_{tag}Started', pm.info.requestName); }}",
@@ -161,7 +174,7 @@ def preclean_account_loop(tag, next_step):
                 "pm.test('pre-clean list acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                 f"const c = parseInt(pm.environment.get('_{tag}Count') || '0', 10);",
                 "let arr = [];",
-                "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
+                "if (pm.response.code === 200) { arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('userINVId') && b.resourceType === 'account' && b.resourceId === pm.environment.get('accountAId')); }",
                 f"if (arr.length > 0 && c < {PRECLEAN_LIST_CAP}) {{",
                 f"  pm.environment.set('{dup}', arr[0].id);",
                 f"  pm.environment.set('_{tag}Count', String(c + 1));",
