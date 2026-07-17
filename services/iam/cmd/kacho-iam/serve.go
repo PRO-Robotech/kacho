@@ -157,14 +157,13 @@ func runServe(cfg config.Config) error {
 	// остается false до первого Run, поэтому readiness не отражает worker.
 	// ConfigureDefault обязан предшествовать Start.
 	lroRec := metricsReg.NewLRORecorder()
-	// owner-tuple op-gating (opgate P2): AccessBinding.Create dispatches on this
-	// default-registry with an in-process read-after-register confirm; the worker
-	// gates success-done on the owner-tuple becoming effective, failing closed with
-	// codes.Unavailable if not confirmed within this deadline (env-overridable).
+	// AccessBinding.Create dispatches on this default-registry. Operation.done means
+	// the binding is durably committed; the binding's per-object access materializes
+	// eventually-consistent (synchronous post-commit reconcile + co-committed event +
+	// periodic sweep backstop), not gated on op.done.
 	if err := operations.ConfigureDefault(
 		operations.WithRecorder(lroRec),
 		operations.WithLogger(logger),
-		operations.WithConfirmationDeadline(ownerConfirmDeadline()),
 	); err != nil {
 		return fmt.Errorf("configure LRO default-registry: %w", err)
 	}

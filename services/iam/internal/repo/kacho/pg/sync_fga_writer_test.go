@@ -6,19 +6,19 @@ package pg_test
 // sync_fga_writer_test.go — unit test (no DB) for the syncFGAWriter create-path
 // closer.
 //
-// INVARIANT UNDER TEST (op-done ⟹ full grant): the reconciler materializes the
-// creator's per-object owner grant as the set {v_get,v_list,v_create,v_update,
-// v_delete,tier} on ONE object. The consumer's create-Operation confirm-gate
-// (opgate) blocks until Check(creator, v_update, obj)==ALLOW. If the sync write
+// INVARIANT UNDER TEST (all-or-nothing materialization): the reconciler
+// materializes the creator's per-object owner grant as the set {v_get,v_list,
+// v_create,v_update,v_delete,tier} on ONE object. Owner-tuple materialization is
+// eventually-consistent (it does NOT gate Operation.done), but if the sync write
 // applies that object's tuples NON-atomically (per-tuple), a transient
-// write-contention on ONE tuple (e.g. v_delete) leaves the object PARTIAL: the
-// gate sees v_update and reports done, but an immediate DELETE needs v_delete
-// which is still undrained → 403 "lacks v_delete".
+// write-contention on ONE tuple (e.g. v_delete) leaves the object PARTIAL: a
+// creator doing a bounded-retry immediate mutate could see v_update (PATCH) but
+// not the still-undrained v_delete (DELETE → 403 "lacks v_delete").
 //
 // The fix makes the sync write ATOMIC PER-OBJECT: an object's whole tuple-set
 // lands in ONE transactional OpenFGA Write (all-or-nothing) OR is fully deferred
 // to the async fga_outbox drainer — NEVER partial. So v_update-visible ⟹
-// v_delete-visible and op-done ⟹ full grant.
+// v_delete-visible: the grant is never observed half-materialized.
 
 import (
 	"bytes"
@@ -94,8 +94,8 @@ func rt(t reconcile.SyncFGATuple) clients.RelationTuple {
 // TestSyncFGAWriter_OwnerGrant_AtomicPerObject_NoPartial is the core RED→GREEN
 // proof. Under a transient contention on v_delete the sync write MUST leave the
 // object either FULLY materialized or FULLY deferred — never a partial grant with
-// v_update present but v_delete missing (which would make the opgate report done
-// while an immediate DELETE 403s). The per-tuple fallback (base) leaves 5-of-6
+// v_update present but v_delete missing (which would let a creator's bounded-retry
+// PATCH succeed while an immediate DELETE 403s). The per-tuple fallback (base) leaves 5-of-6
 // tuples → partial → RED. The per-object atomic write defers the whole set → GREEN.
 func TestSyncFGAWriter_OwnerGrant_AtomicPerObject_NoPartial(t *testing.T) {
 	const (
@@ -137,7 +137,7 @@ func TestSyncFGAWriter_OwnerGrant_AtomicPerObject_NoPartial(t *testing.T) {
 }
 
 // TestSyncFGAWriter_OwnerGrant_CleanBatch_AllLand — with no contention the whole
-// owner grant lands (fast path), so the opgate resolves immediately.
+// owner grant lands (fast path), so the materialization window closes immediately.
 func TestSyncFGAWriter_OwnerGrant_CleanBatch_AllLand(t *testing.T) {
 	const (
 		creator = "user:usr_creator0000000000"

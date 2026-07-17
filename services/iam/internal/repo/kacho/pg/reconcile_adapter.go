@@ -1010,13 +1010,14 @@ func groupTuplesByObject(tuples []reconcile.SyncFGATuple) []objectTupleGroup {
 
 // WriteTuples applies the create-path read-after-write tuple set to OpenFGA
 // ATOMICALLY PER OBJECT. It is the SYNC closer for one ReconcileObject/
-// ReconcileBinding pass that the consumer's create-Operation confirm-gate (opgate)
-// depends on: the gate blocks until Check(creator, v_update, obj)==ALLOW, so the
-// owner grant on that object MUST land all-or-nothing. If it landed per-tuple, a
-// transient write-contention on ONE tuple (e.g. v_delete) would leave the object
-// PARTIAL — the gate sees v_update and reports done, but an immediate DELETE needs
-// the still-undrained v_delete → 403 "lacks v_delete". Op-done would NOT imply a
-// full grant.
+// ReconcileBinding pass. Owner-tuple materialization is eventually-consistent (it
+// does not gate Operation.done), but it MUST land all-or-nothing PER OBJECT: the
+// creator's per-object grant is the set {v_get,v_list,v_create,v_update,v_delete,
+// tier}. If it landed per-tuple, a transient write-contention on ONE tuple (e.g.
+// v_delete) would leave the object PARTIAL — a creator doing a bounded-retry
+// immediate mutate could see v_update (PATCH) but not the still-undrained v_delete
+// (DELETE → 403 "lacks v_delete"). All-or-nothing guarantees v_update-visible ⟹
+// v_delete-visible, so the grant is never observed half-materialized.
 //
 // Design (all-or-nothing per object, never partial):
 //
