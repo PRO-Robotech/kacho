@@ -158,6 +158,28 @@ def assert_field_violation(field_name: str) -> List[str]:
     ]
 
 
+def assert_unscoped_rejected() -> List[str]:
+    """Unscoped list/create (без projectId) — ОТВЕРГНУТ. Два защитимых исхода,
+    оба = «отклонено» (defense-in-depth, security.md «authz-first»):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor fail-closed
+        «no path: unscoped resource» ДО backend-валидации: нельзя авторизовать
+        запрос, у которого нет scope для anti-BOLA-проверки;
+      400 INVALID_ARGUMENT  (code 3) — backend «project_id required» при
+        passthrough.
+    Толерантен к обоим — семантика негатива (rejected) сохранена, без ложного
+    провала на корректном authz-first 403. Techniques: ECP (класс «unscoped
+    запрос») + error-guessing (authz-vs-validation ordering)."""
+    return [
+        "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+        "});",
+        "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
+        "});",
+    ]
+
+
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     """Сохранить значение из response в env."""
     return [
@@ -1674,6 +1696,7 @@ def load_cases_module(path: Path):
     mod.assert_grpc_code = assert_grpc_code
     mod.assert_transcode_error = assert_transcode_error
     mod.assert_field_violation = assert_field_violation
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
     mod.poll_operation_until_done = poll_operation_until_done

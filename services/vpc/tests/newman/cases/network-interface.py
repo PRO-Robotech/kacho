@@ -207,8 +207,10 @@ CASES.append(Case(
                           "const j = pm.response.json();",
                           "pm.test('networkInterfaces array', () => pm.expect(j.networkInterfaces || []).to.be.an('array'));",
                           "pm.test('created NIC present', () => pm.expect((j.networkInterfaces || []).map(n => n.id)).to.include(pm.environment.get('nicId')));"]),
+        # Unscoped list — gateway authz-first 403 (no path) ЛИБО backend 400. Оба =
+        # «отклонено». См. assert_unscoped_rejected (gen.py).
         Step(name="list-no-project", method="GET", path="/vpc/v1/networkInterfaces",
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
         *_cleanup_nic(),
         _cleanup_subnet(),
         poll_operation_until_done(),

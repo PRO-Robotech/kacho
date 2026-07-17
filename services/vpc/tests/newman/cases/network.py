@@ -88,18 +88,21 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-CR-VAL-PROJECT-REQUIRED",
-    title="Create без projectId → InvalidArgument (project_id required)",
-    classes=["VAL"],
+    title="Create без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
+    classes=["VAL", "AUTHZ"],
     priority="P0",
     steps=[
+        # Unscoped create — оба исхода = «отклонено» (defense-in-depth): gateway
+        # scope_extractor fail-closed 403 (no path на unscoped resource, security.md)
+        # ЛИБО backend 400 (project_id required) при passthrough. См.
+        # assert_unscoped_rejected (gen.py).
         Step(
             name="create-no-project",
             method="POST",
             path="/vpc/v1/networks",
             body={"name": "net-noflder-{{runId}}"},
             test_script=[
-                *assert_status(400),
-                *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                *assert_unscoped_rejected(),
             ],
         ),
     ],
@@ -238,17 +241,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-LST-VAL-PROJECT-REQUIRED",
-    title="List без projectId → InvalidArgument (no cross-project enum)",
+    title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, no cross-project enum)",
     classes=["VAL", "AUTHZ"],
     priority="P0",
     steps=[
+        # Unscoped list — gateway authz-first 403 (no path) ЛИБО backend 400. Оба =
+        # «отклонено» (нет cross-project enum). См. assert_unscoped_rejected (gen.py).
         Step(
             name="list-no-project",
             method="GET",
             path="/vpc/v1/networks",
             test_script=[
-                *assert_status(400),
-                *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                *assert_unscoped_rejected(),
             ],
         ),
     ],

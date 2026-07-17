@@ -429,12 +429,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SUB-LST-VAL-PROJECT-REQUIRED",
-    title="List без projectId → InvalidArgument",
+    title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"],
     priority="P0",
     steps=[
+        # Unscoped list — gateway authz-first 403 (no path) ЛИБО backend 400. Оба =
+        # «отклонено». См. assert_unscoped_rejected (gen.py).
         Step(name="list-no-project", method="GET", path="/vpc/v1/subnets",
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 
