@@ -480,17 +480,30 @@ func (s *reconcileStore) SelectorBindingsMatchingObject(ctx context.Context, obj
 	// already narrow (specific ids / labels) and their foreign-scope match is a wanted
 	// REJECTED-containment signal, so they are LEFT UNFILTERED — the reconciler still
 	// audits them.
+	//
+	// TRANSITIVE account containment: a mirror-fed object is registered with its owning
+	// PROJECT (parent_project_id); an ACCOUNT-scoped binding contains it because the
+	// project belongs to the account. The direct parent_account_id column may be empty
+	// (legacy/unresolved register), so the account arm resolves the account through the
+	// project→account hierarchy same-DB — COALESCE(NULLIF(m.parent_account_id,''),
+	// pj.account_id) — mirroring the resource_mirror reader's projection so this fast-path
+	// JOIN and the reconciler's IsContainedIn re-verify agree byte-for-byte. Bounded by
+	// the account: the object's project resolves to exactly ONE account, so an owner of a
+	// DIFFERENT account never matches (no cross-account over-grant). A cluster-scoped
+	// anchor binding still matches everything.
 	rows, err := s.tx.Query(ctx,
 		`SELECT b.id
 		   FROM kacho_iam.role_rule_selectors rrs
 		   JOIN kacho_iam.access_bindings b ON b.role_id = rrs.role_id
 		   JOIN kacho_iam.resource_mirror m
 		     ON m.object_type = $1 AND m.object_id = $2
+		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
 		  WHERE b.status = 'ACTIVE'
 		    AND $1 = ANY(rrs.object_types)
 		    AND ( (rrs.arm = 'anchor' AND (
 		                b.resource_type = 'cluster'
-		             OR (b.resource_type = 'account' AND m.parent_account_id = b.resource_id)
+		             OR (b.resource_type = 'account'
+		                 AND b.resource_id = COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id))
 		             OR (b.resource_type = 'project' AND m.parent_project_id = b.resource_id)))
 		       OR (rrs.arm = 'names'  AND $2 = ANY(rrs.resource_names))
 		       OR (rrs.arm = 'labels' AND m.labels @> rrs.match_labels) )

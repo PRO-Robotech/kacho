@@ -12,6 +12,23 @@ package resource_mirror
 // reconcile inside the writer-tx). Both surfaces are provided.
 //
 // labels @> matchLabels uses the GIN index created in migration 0019.
+//
+// TRANSITIVE parent_account resolution: a mirror-fed resource is registered with its
+// owning PROJECT (parent_project_id); the account is resolved same-DB by iam at
+// register time (register_resource.go account backfill). A row whose parent_account_id
+// is still empty (a legacy/unresolved register) would make an ACCOUNT-scoped binding
+// mis-miss the object — the object IS contained in the account (via its project), but
+// the direct parent_account_id column is blank. Every read here therefore resolves the
+// account through the project→account hierarchy same-DB:
+//
+//	COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '')
+//
+// so domain.MirrorObject.ParentAccountID always carries the FULL resolved account and
+// the pure-domain IsContainedIn predicate (the semantic source of truth) decides
+// account containment correctly WITHOUT reaching for the DB. The stored value wins when
+// present (COALESCE order); the LEFT JOIN falls back to projects.account_id; a dangling
+// project (deleted) degrades to '' (contained only in cluster) rather than erroring.
+// kacho_iam.projects is IAM-native (same DB, no peer call — the graph stays acyclic).
 
 import (
 	"context"
@@ -52,11 +69,14 @@ func MatchByLabels(ctx context.Context, q querier, types []string, matchLabels m
 		return nil, fmt.Errorf("resource_mirror: marshal matchLabels: %w", err)
 	}
 	rows, err := q.Query(ctx,
-		`SELECT object_type, object_id, parent_project_id, parent_account_id, labels
-		   FROM kacho_iam.resource_mirror
-		  WHERE object_type = ANY($1)
-		    AND labels @> $2::jsonb
-		  ORDER BY object_type ASC, object_id ASC`,
+		`SELECT m.object_type, m.object_id, m.parent_project_id,
+		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
+		        m.labels
+		   FROM kacho_iam.resource_mirror m
+		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		  WHERE m.object_type = ANY($1)
+		    AND m.labels @> $2::jsonb
+		  ORDER BY m.object_type ASC, m.object_id ASC`,
 		types, payload,
 	)
 	if err != nil {
@@ -75,10 +95,13 @@ func AllByTypes(ctx context.Context, q querier, types []string) ([]MirrorRow, er
 		return nil, nil
 	}
 	rows, err := q.Query(ctx,
-		`SELECT object_type, object_id, parent_project_id, parent_account_id, labels
-		   FROM kacho_iam.resource_mirror
-		  WHERE object_type = ANY($1)
-		  ORDER BY object_type ASC, object_id ASC`,
+		`SELECT m.object_type, m.object_id, m.parent_project_id,
+		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
+		        m.labels
+		   FROM kacho_iam.resource_mirror m
+		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		  WHERE m.object_type = ANY($1)
+		  ORDER BY m.object_type ASC, m.object_id ASC`,
 		types,
 	)
 	if err != nil {
@@ -96,10 +119,13 @@ func ByTypesAndIDs(ctx context.Context, q querier, types, ids []string) ([]Mirro
 		return nil, nil
 	}
 	rows, err := q.Query(ctx,
-		`SELECT object_type, object_id, parent_project_id, parent_account_id, labels
-		   FROM kacho_iam.resource_mirror
-		  WHERE object_type = ANY($1) AND object_id = ANY($2)
-		  ORDER BY object_type ASC, object_id ASC`,
+		`SELECT m.object_type, m.object_id, m.parent_project_id,
+		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
+		        m.labels
+		   FROM kacho_iam.resource_mirror m
+		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		  WHERE m.object_type = ANY($1) AND m.object_id = ANY($2)
+		  ORDER BY m.object_type ASC, m.object_id ASC`,
 		types, ids,
 	)
 	if err != nil {
@@ -118,9 +144,12 @@ func GetByObject(ctx context.Context, q querier, objectType, objectID string) (M
 		labelsJSON []byte
 	)
 	err := q.QueryRow(ctx,
-		`SELECT object_type, object_id, parent_project_id, parent_account_id, labels
-		   FROM kacho_iam.resource_mirror
-		  WHERE object_type = $1 AND object_id = $2`,
+		`SELECT m.object_type, m.object_id, m.parent_project_id,
+		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
+		        m.labels
+		   FROM kacho_iam.resource_mirror m
+		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		  WHERE m.object_type = $1 AND m.object_id = $2`,
 		objectType, objectID,
 	).Scan(&out.ObjectType, &out.ObjectID, &out.ParentProjectID, &out.ParentAccountID, &labelsJSON)
 	if err != nil {
