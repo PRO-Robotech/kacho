@@ -36,7 +36,9 @@ jobs:
   newman:
     name: newman e2e (kind-стенд)
     runs-on: self-hosted
-    timeout-minutes: 45
+    # e2e тяжёлый: fresh dev-up (~13м) + 4 полных newman-суита (iam/vpc/compute/nlb) +
+    # gates. 45м не хватало — compute-instance (async lifecycle) + nlb уходили в no-report.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -195,6 +197,17 @@ jobs:
             --proto-glob "${GITHUB_WORKSPACE}/proto/kacho/cloud/iam/v1/*.proto" \
             --collections-glob 'collections/*.postman_collection.json' \
             --min "$COVERAGE_MIN"
+
+      # newman-отчёты (per-suite out/*.json) — артефакт для оффлайн-диагноза сигнатур
+      # падений (какой кейс, expected-vs-got). Без него краснота гейта неотлаживаема вне раннера.
+      - name: upload newman reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-out-reports
+          path: services/*/tests/newman/out/*.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       # Логи падений: без них newman-краснота в CI неотлаживаема — видно «ожидал 200,
       # получил 500», но не видно, ПОЧЕМУ сервис отдал 500.
