@@ -16,9 +16,13 @@
 #                         existingZoneId from compute) — populates
 #                         `existingSubnetId` (Target.ip_ref tests + INTERNAL
 #                         listener subnet binding).
-#   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr; external pool —
-#                         populates `existingExternalAddressId` for BYO-VIP
-#                         test).
+#   - VPC AddressPool EXT (name: kac-nlb-seed-ext-pool; EXTERNAL_PUBLIC, zonal,
+#                         is_default=true — the IPAM source every EXTERNAL nlb
+#                         auto-VIP + zonal external Address resolves via
+#                         GetDefaultForZone. Internal mux only, ban #6).
+#   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr; allocated from the pool
+#                         above — populates `existingExternalAddressId` for
+#                         BYO-VIP test).
 #   - Compute Instance   (name: kac-nlb-seed-inst; minimal NIC on the seed
 #                         subnet) — populates `existingInstanceId` for
 #                         Target.instance_id tests.
@@ -44,6 +48,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BASE_URL="${BASE_URL:-http://localhost:28080}"
+# INTERNAL_BASE_URL — api-gateway cluster-internal REST listener (:8081). The
+# InternalAddressPoolService (admin IPAM) is exposed ONLY there (ban #6) — never on
+# the public {{baseUrl}}. Default mirrors the BASE_URL host with the internal port
+# so an operator running `make seed-nlb` after a `port-forward svc/api-gateway
+# 28081:8081` gets external-pool provisioning out of the box; the umbrella
+# (newman-e2e.sh) overrides it to the port it forwards (:18081).
+INTERNAL_BASE_URL="${INTERNAL_BASE_URL:-http://localhost:28081}"
 JWT="${JWT:-}"
 OUT_FILE="${OUT_FILE:-$REPO_ROOT/.seeded-ids.env}"
 VERBOSE="${VERBOSE:-false}"
@@ -69,6 +80,22 @@ curl_json() {
       --data "$body"
   else
     vrun curl -sS -X "$method" "$BASE_URL$path" "${auth_args[@]}"
+  fi
+}
+
+# curl_internal — same as curl_json but against the cluster-internal REST listener
+# (Internal*-RPC live there only, ban #6).
+curl_internal() {
+  local method="$1"; shift
+  local path="$1"; shift
+  local body="${1:-}"
+  if [ -n "$body" ]; then
+    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" \
+      -H 'Content-Type: application/json' \
+      "${auth_args[@]}" \
+      --data "$body"
+  else
+    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" "${auth_args[@]}"
   fi
 }
 
@@ -194,6 +221,48 @@ else
   log "3/5 reusing existing Subnet $SUBNET_ID"
 fi
 
+# ─── 3.5) Ensure External AddressPool (IPAM source for external VIPs) --------
+# The nlb EXTERNAL suites auto-allocate a public VIP (v4Source:{public:{}}) and
+# self-provision a ZONAL external vpc Address (externalIpv4AddressSpec.zoneId =
+# existingZoneId). Both resolve their pool via GetDefaultForZone(zone, EXTERNAL_PUBLIC)
+# = `WHERE zone_id=$zone AND kind='EXTERNAL_PUBLIC' AND is_default=true` (vpc
+# address_pool.go). Without a DEFAULT external pool in the zone that query returns
+# NotFound → Address.Create / EXTERNAL LB.Create fails ("zone_id is empty" / no VIP)
+# → whole external-nlb chain reds. seed-ipam is a deliberate NOOP (admin-explicit),
+# so provision it here. AddressPool is InternalAddressPoolService → internal mux only
+# (ban #6), returns the resource DIRECTLY (not an Operation). Idempotent by name;
+# best-effort (|| true) so a stand without the internal port-forward degrades to the
+# pre-existing behaviour instead of aborting the whole seed.
+POOL_LIST=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null || echo '{}')
+POOL_ID=$(printf '%s' "$POOL_LIST" | python3 -c '
+import sys, json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for p in d.get("pools", []):
+    if p.get("name") == "kac-nlb-seed-ext-pool":
+        print(p.get("id","")); sys.exit(0)
+print("")
+')
+if [ -z "$POOL_ID" ]; then
+  log "3.5/5 creating external AddressPool kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, zone=$ZONE_ID)"
+  # 198.51.100.0/24 = TEST-NET-2 (RFC 5737) — the documented production external
+  # CIDR (see `make seed-ipam`); on a fresh stand no EXTERNAL_PUBLIC pool exists so
+  # the address_pool_cidrs EXCLUDE (kind, block &&) does not conflict.
+  pbody='{"name":"kac-nlb-seed-ext-pool","description":"KAC-NLB seed external VIP pool","kind":"EXTERNAL_PUBLIC","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["198.51.100.0/24"],"v6CidrBlocks":[]}'
+  POOL_ID=$(curl_internal POST "/vpc/v1/addressPools" "$pbody" | extract "id" || true)
+  if [ -n "$POOL_ID" ]; then
+    # Allocation picks the pool ONLY when is_default=true for (zone, kind); the
+    # Create RPC has no isDefault field, so flip it via Update (update_mask=isDefault).
+    curl_internal PATCH "/vpc/v1/addressPools/$POOL_ID" \
+      '{"updateMask":"isDefault","isDefault":true}' >/dev/null 2>&1 || \
+      log "    could not set is_default on $POOL_ID (a default pool for this zone/kind may already exist)"
+  else
+    log "    AddressPool.Create did not return an id (internal mux unreachable at $INTERNAL_BASE_URL, or insufficient admin tier) — external VIP allocation may fail; whitelist non-T31 nlb external-create cases if so"
+  fi
+else
+  log "3.5/5 reusing existing external AddressPool $POOL_ID"
+fi
+
 # ─── 4) Ensure External Address (BYO VIP) ----------------------------------
 ADDR_LIST=$(curl_json GET "/vpc/v1/addresses?projectId=$PROJECT_ID&pageSize=200")
 EXT_ADDR_ID=$(printf '%s' "$ADDR_LIST" | python3 -c '
@@ -275,6 +344,7 @@ existingRegionId=$REGION_ID
 existingZoneId=$ZONE_ID
 existingNetworkId=$NET_ID
 existingSubnetId=$SUBNET_ID
+existingExternalPoolId=$POOL_ID
 existingExternalAddressId=$EXT_ADDR_ID
 existingInstanceId=$INSTANCE_ID
 existingNicId=$NIC_ID

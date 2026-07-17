@@ -103,6 +103,22 @@ DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" \
 "${MTLS_ENV[@]}" \
   bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
 
+# nlb EXTERNAL suites auto-allocate a public VIP + self-provision a zonal external
+# vpc Address; both resolve GetDefaultForZone(zone, EXTERNAL_PUBLIC) → need a DEFAULT
+# EXTERNAL_PUBLIC AddressPool in the zone. seed-ipam is a deliberate NOOP, so provision
+# it here (idempotent, best-effort) via the already-up internal-rest port-forward.
+# Only for nlb — no other suite needs the external pool. `|| true`: a failure degrades
+# to the pre-seed behaviour (external-create cases red → whitelist), never aborts the run.
+if [ "$SVC" = "nlb" ]; then
+  echo "[e2e] seeding nlb external-VIP AddressPool (idempotent, best-effort)"
+  SEED_JWT=$(python3 "$REPO_ROOT/tests/authz-fixtures/setup-jwt.py" --secret "$DEV_SECRET" --exp-hours 24 --bulk 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("jwtBootstrap",""))' 2>/dev/null || true)
+  env BASE_URL="http://localhost:$GW_PORT" \
+      INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
+      JWT="$SEED_JWT" \
+    bash "$REPO_ROOT/deploy/scripts/seed-nlb-fixtures.sh" || true
+fi
+
 echo "[e2e] regenerating newman collections"
 ( cd "$NEWMAN_DIR" && python3 scripts/gen.py >/dev/null )
 
