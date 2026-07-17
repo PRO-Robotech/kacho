@@ -500,10 +500,7 @@ CASES.append(Case(
         Step(name="cr-no-lb", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{garbageNlbId}}", "name": "nolb-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
-             test_script=[
-                 "pm.test('rejected (sync 404 or async error)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
-             ]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 
@@ -570,10 +567,7 @@ def _immutable_listener_case(case_id: str, mask: str, payload: dict) -> Case:
             Step(name="upd-imm", method="PATCH",
                  path=f"{_LST_BASE}/{{{{garbageLstId}}}}",
                  body={"updateMask": mask, **payload},
-                 test_script=[
-                     "pm.test('rejected (400 or 404)', () => "
-                     "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                 ]),
+                 test_script=[*assert_absent_id_rejected()]),
         ],
     )
 
@@ -649,7 +643,7 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         Step(name="del-unknown", method="DELETE", path=f"{_LST_BASE}/{{{{garbageLstId}}}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -887,7 +881,7 @@ CASES.append(Case(
         Step(name="cr-malformed", method="POST", path=_LST_BASE, body=None,
              pre_script=["pm.request.body = { mode: 'raw', raw: '{not json' };"],
              test_script=[
-                 "pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));",
+                 "pm.test('400/403/415', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 415]));",
              ]),
     ],
 ))
@@ -898,9 +892,7 @@ CASES.append(Case(
     classes=["VAL"], priority="P2",
     steps=[
         Step(name="cr-empty", method="POST", path=_LST_BASE, body={},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
-             ]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 

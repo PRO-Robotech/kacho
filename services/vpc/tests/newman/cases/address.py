@@ -173,7 +173,7 @@ CASES.append(Case(
     priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/addresses/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -185,7 +185,7 @@ CASES.append(Case(
     steps=[
         Step(name="patch-nx", method="PATCH", path="/vpc/v1/addresses/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -196,7 +196,7 @@ CASES.append(Case(
     priority="P0",
     steps=[
         Step(name="gbv", method="GET", path="/vpc/v1/addresses:byValue?externalIpv4Address=192.0.2.99",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -310,10 +310,7 @@ CASES.append(Case(
         Step(name="patch-nx", method="PATCH",
              path="/vpc/v1/addresses/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Address ... not found', () => pm.expect(pm.response.json().message).to.match(/^Address .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -324,10 +321,7 @@ CASES.append(Case(
     steps=[
         Step(name="del-nx", method="DELETE",
              path="/vpc/v1/addresses/{{garbageVpcId}}",
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Address ... not found', () => pm.expect(pm.response.json().message).to.match(/^Address .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -381,7 +375,7 @@ CASES.append(Case(
     steps=[
         Step(name="lbs-nx", method="GET",
              path="/vpc/v1/addresses:bySubnet?subnetId={{garbageVpcId}}",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -392,7 +386,7 @@ CASES.append(Case(
     steps=[
         Step(name="lop-nx", method="GET",
              path="/vpc/v1/addresses/{{garbageVpcId}}/operations",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -472,7 +466,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P2",
     steps=[Step(name="gbv-bad", method="GET",
                 path="/vpc/v1/addresses:byValue?externalIpv4Address=not-an-ip",
-                test_script=["pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));"])],
+                test_script=[*assert_absent_id_rejected()])],
 ))
 
 CASES.append(Case(

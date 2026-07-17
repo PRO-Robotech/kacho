@@ -449,10 +449,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-prj", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
              body={"updateMask": "project_id", "projectId": "{{_suiteProjectCrossId}}"},
-             test_script=[
-                 "pm.test('rejected 400/404', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -463,9 +460,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-reg", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
              body={"updateMask": "region_id", "regionId": "{{_suiteRegionAltId}}"},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -476,9 +471,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-targets-mask", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
              body={"updateMask": "targets", "targets": []},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -618,9 +611,7 @@ CASES.append(Case(
     steps=[
         Step(name="mv-no-dest", method="POST", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}:move",
              body={},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -631,7 +622,7 @@ CASES.append(Case(
     steps=[
         Step(name="mv-nx", method="POST", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -1011,7 +1002,7 @@ CASES.append(Case(
         Step(name="cr-malformed", method="POST", path=_TG_BASE, body=None,
              pre_script=["pm.request.body = { mode: 'raw', raw: '{not json' };"],
              test_script=[
-                 "pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));",
+                 "pm.test('400/403/415', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 415]));",
              ]),
     ],
 ))
@@ -1022,6 +1013,6 @@ CASES.append(Case(
     classes=["VAL"], priority="P2",
     steps=[
         Step(name="cr-empty", method="POST", path=_TG_BASE, body={},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))

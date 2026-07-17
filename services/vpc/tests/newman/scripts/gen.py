@@ -180,6 +180,35 @@ def assert_unscoped_rejected() -> List[str]:
     ]
 
 
+def assert_absent_id_rejected() -> List[str]:
+    """Negative-запрос на ОТСУТСТВУЮЩИЙ / malformed id (Get/Update/Delete или
+    :verb-action / вложенный list по нему) — ОТВЕРГНУТ. Три защитимых исхода,
+    все = «отклонено» (defense-in-depth, security.md «authz-first», parity с
+    unscoped-helper и compute 32be094):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor не может резолвить
+        target→project для anti-BOLA у несуществующего/битого id → fail-closed
+        ДО backend format-check / repo.Get (для МУТАЦИЙ это устойчивое поведение,
+        не зависит от фикстур — id захардкожен как garbage, не берётся из setup);
+      404 NOT_FOUND (code 5) — well-formed-но-нет: sync AuthZ-Get/repo.Get;
+      400 INVALID_ARGUMENT (code 3) — malformed id: corevalidate.ResourceID.
+    Толерантен 400|403|404 (code 3|5|7) — семантика негатива (rejected) сохранена
+    без ложного провала на корректном authz-first 403 (GATE-RUN #5:
+    del-nx/patch-nx/upd-{fld}/move-nx/lop-nx возвращали 403 вместо 400/404).
+    Message-контракт NotFound ('<Resource> <id> not found') проверяется на GET-пути
+    (get-conf), который доходит до backend; для мутаций 403 его скрывает → тут не
+    ассертим (unobservable). Techniques: ECP (класс «absent id») + error-guessing
+    (authz-vs-existence ordering)."""
+    return [
+        "pm.test('absent-id request rejected (400/403/404)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403, 404]);",
+        "});",
+        "pm.test('grpc code INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED (3/5/7)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 5, 7]);",
+        "});",
+    ]
+
+
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     """Сохранить значение из response в env."""
     return [
@@ -257,11 +286,9 @@ def state_update_unknown_mask(prefix, update_path):
         steps=[Step(name="patch-unknown-mask", method="PATCH",
                     path=f"{update_path}/{{{{garbageVpcId}}}}",
                     body={"updateMask": "some_unknown_field_xyz", "description": "x"},
-                    test_script=[
-                        # Может вернуть 404 (если sync Get срабатывает раньше mask-валидации)
-                        # либо 400 (если mask проверяется до Get).
-                        "pm.test('rejected (400 or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    ])],
+                    # PATCH по garbageVpcId: scope_extractor 403 (authz-first) ДО
+                    # mask-валидации (400) / sync Get (404) — все три = rejected.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -274,7 +301,8 @@ def authz_move_nf(prefix, move_base_path):
         steps=[Step(name="move-nx", method="POST",
                     path=f"{move_base_path}/{{{{garbageVpcId}}}}:move",
                     body={"destinationProjectId": "{{_suiteProjectId}}"},
-                    test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")])],
+                    # :move по garbageVpcId: scope_extractor 403 (authz-first) ДО sync Get 404.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -287,9 +315,9 @@ def val_move_no_dest(prefix, move_base_path):
         steps=[Step(name="move-no-dest", method="POST",
                     path=f"{move_base_path}/{{{{garbageVpcId}}}}:move",
                     body={},
-                    test_script=[
-                        "pm.test('rejected (400 or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    ])],
+                    # :move по garbageVpcId без dest: scope_extractor 403 (authz-first)
+                    # ДО backend 400 (no dest) / sync Get 404.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -302,11 +330,9 @@ def state_immutable_project(prefix, update_base_path):
         steps=[Step(name="upd-project-via-mask", method="PATCH",
                     path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                     body={"updateMask": "project_id", "projectId": "x"},
-                    test_script=[
-                        # mask immutable должен отвергнуть с 400.
-                        # Если AuthZ-Get срабатывает раньше (404), тоже OK.
-                        "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    ])],
+                    # PATCH immutable-mask по garbageVpcId: scope_extractor 403 (authz-first)
+                    # ДО immutable-check 400 / sync Get 404.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -471,7 +497,9 @@ def updatemask_decision_table(prefix, update_base_path):
             steps=[Step(name="upd-empty-mask", method="PATCH",
                         path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                         body={"description": "x"},
-                        test_script=["pm.test('rejected NF', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"])],
+                        # PATCH по garbageVpcId (несуществующий): scope_extractor 403
+                        # (authz-first) ДО sync Get 404 — 200 недостижим для garbage-id.
+                        test_script=[*assert_absent_id_rejected()])],
         ),
         Case(
             id=f"{prefix}-UPD-VAL-MASK-MULTIPLE-UNKNOWN",
@@ -480,7 +508,9 @@ def updatemask_decision_table(prefix, update_base_path):
             steps=[Step(name="upd-multi-unknown", method="PATCH",
                         path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                         body={"updateMask": "x_unknown,y_unknown", "description": "x"},
-                        test_script=["pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));"])],
+                        # PATCH unknown-mask по garbageVpcId: scope_extractor 403 (authz-first)
+                        # ДО mask-валидации 400 / sync Get 404.
+                        test_script=[*assert_absent_id_rejected()])],
         ),
     ]
 
@@ -683,10 +713,10 @@ def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None)
             steps=[Step(name="upd", method="PATCH",
                         path=f"{resource_path}/enpsnapshotnonexist02",
                         body={"updateMask": "description", "description": "x"},
-                        test_script=[
-                            *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                            _eql_test("enpsnapshotnonexist02"),
-                        ])],
+                        # PATCH-мутация по несуществующему id: scope_extractor 403
+                        # (authz-first) ДО backend 404 → not-found текст здесь
+                        # unobservable; verbatim-контракт держит GET-CONF-FULLTEXT (get).
+                        test_script=[*assert_absent_id_rejected()])],
         ),
         Case(
             id=f"{prefix}-DEL-CONF-FULLTEXT",
@@ -694,10 +724,9 @@ def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None)
             classes=["CONF", "NEG"], priority="P1",
             steps=[Step(name="del", method="DELETE",
                         path=f"{resource_path}/enpsnapshotnonexist03",
-                        test_script=[
-                            *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                            _eql_test("enpsnapshotnonexist03"),
-                        ])],
+                        # DELETE-мутация по несуществующему id: scope_extractor 403
+                        # (authz-first) ДО backend 404 → verbatim держит GET-CONF-FULLTEXT.
+                        test_script=[*assert_absent_id_rejected()])],
         ),
     ]
 
@@ -855,15 +884,19 @@ def malformed_body_block(prefix, create_path):
                             "// Подменяем body на невалидный JSON через pm.request.body",
                             "pm.request.body = { mode: 'raw', raw: '{invalid json---}' };",
                         ],
-                        test_script=["pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));"])],
+                        # 403 добавлен: malformed JSON → projectId не распарсен →
+                        # scope_extractor 403 (unscoped, authz-first) ДО транскодера 400/415.
+                        test_script=["pm.test('rejected (400/415 transcode or 403 authz-first)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 415]));"])],
         ),
         Case(
             id=f"{prefix}-CR-VAL-EMPTY-BODY",
-            title="Create с пустым body → 400",
+            title="Create с пустым body → rejected (400 project_id required | 403 unscoped authz-first)",
             classes=["VAL", "NEG"], priority="P2",
             steps=[Step(name="cr-empty-body", method="POST", path=create_path,
                         body={},
-                        test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                        # empty body → нет projectId → unscoped → scope_extractor 403
+                        # (authz-first) ЛИБО backend 400 project_id required.
+                        test_script=[*assert_unscoped_rejected()])],
         ),
     ]
 
@@ -1027,15 +1060,10 @@ def immutable_fields_matrix(prefix, update_base_path, immutable_field_names):
             steps=[Step(name=f"upd-{fld}", method="PATCH",
                         path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                         body=body,
-                        test_script=[
-                            # mask immutable отвергается 400 InvalidArgument
-                            # либо 404 если sync Get срабатывает первым (AuthZ guard)
-                            "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                            "if (pm.response.code === 400) {",
-                            "  const j = pm.response.json();",
-                            "  pm.test('error has message string', () => pm.expect(j.message).to.be.a('string'));",
-                            "}",
-                        ])],
+                        # PATCH immutable-mask по garbageVpcId (несуществующий):
+                        # scope_extractor 403 (authz-first) ДО immutable-check 400 /
+                        # sync Get 404. immutable-verbatim держит scoped-кейс на реальном id.
+                        test_script=[*assert_absent_id_rejected()])],
         ))
     return cases
 
@@ -1697,6 +1725,7 @@ def load_cases_module(path: Path):
     mod.assert_transcode_error = assert_transcode_error
     mod.assert_field_violation = assert_field_violation
     mod.assert_unscoped_rejected = assert_unscoped_rejected
+    mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
     mod.poll_operation_until_done = poll_operation_until_done

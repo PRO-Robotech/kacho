@@ -452,7 +452,7 @@ CASES.append(Case(
     steps=[
         Step(name="patch-nx", method="PATCH", path="/vpc/v1/subnets/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -491,7 +491,7 @@ CASES.append(Case(
     priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/subnets/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -792,7 +792,7 @@ CASES.append(Case(
     classes=["NEG"], priority="P2",
     steps=[
         Step(name="lop-nx", method="GET", path="/vpc/v1/subnets/{{garbageVpcId}}/operations",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -802,7 +802,7 @@ CASES.append(Case(
     classes=["NEG"], priority="P2",
     steps=[
         Step(name="lua-nx", method="GET", path="/vpc/v1/subnets/{{garbageVpcId}}/addresses",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -812,8 +812,7 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/subnets/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('Subnet ... not found', () => pm.expect(pm.response.json().message).to.match(/^Subnet .* not found$/));"]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -824,8 +823,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-nx", method="PATCH", path="/vpc/v1/subnets/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('Subnet ... not found', () => pm.expect(pm.response.json().message).to.match(/^Subnet .* not found$/));"]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 

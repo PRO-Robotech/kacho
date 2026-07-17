@@ -418,10 +418,7 @@ CASES.append(Case(
     steps=[
         Step(name="start-deleting", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:start",
-             test_script=[
-                 "pm.test('NotFound or FailedPrecondition', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404, 409]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -470,10 +467,7 @@ CASES.append(Case(
     steps=[
         Step(name="stop-deleting", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:stop",
-             test_script=[
-                 "pm.test('NotFound/FailedPrecondition', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404, 409]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -554,9 +548,7 @@ CASES.append(Case(
         Step(name="move-no-dest", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:move",
              body={},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -568,7 +560,7 @@ CASES.append(Case(
         Step(name="move-nx", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -1071,7 +1063,7 @@ CASES.append(Case(
              body=None,
              pre_script=["pm.request.body = { mode: 'raw', raw: '{not valid json' };"],
              test_script=[
-                 "pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));",
+                 "pm.test('400/403/415', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 415]));",
              ]),
     ],
 ))
@@ -1327,10 +1319,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-unknown", method="PATCH", path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 "pm.test('rejected 400/404', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -1340,7 +1329,7 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         Step(name="del-unknown", method="DELETE", path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -1921,10 +1910,7 @@ CASES.append(Case(
     steps=[
         Step(name="start-unknown", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:start",
-             test_script=[
-                 "pm.test('404 NotFound', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -1935,10 +1921,7 @@ CASES.append(Case(
     steps=[
         Step(name="stop-unknown", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:stop",
-             test_script=[
-                 "pm.test('404 NotFound', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -1950,10 +1933,7 @@ CASES.append(Case(
         Step(name="att-unknown-lb", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:attachTargetGroup",
              body={"targetGroupId": "tgrany00000000000000", "priority": 100},
-             test_script=[
-                 "pm.test('404 NotFound', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -1965,10 +1945,7 @@ CASES.append(Case(
         Step(name="det-unknown-lb", method="POST",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:detachTargetGroup",
              body={"targetGroupId": "tgrany00000000000000"},
-             test_script=[
-                 "pm.test('404 NotFound', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -2007,7 +1984,7 @@ CASES.append(Case(
     steps=[
         Step(name="gts-unknown", method="GET",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}/targetStates?targetGroupId={{{{garbageTgrId}}}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -2025,10 +2002,13 @@ CASES.append(Case(
     steps=[
         Step(name="lops-unknown", method="GET",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}/operations?pageSize=1",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
-                          "pm.test('operations empty (no ops for unknown parent)', () => "
-                          "  pm.expect(j.operations || []).to.be.an('array').that.is.empty);"]),
+             test_script=["pm.test('empty list (200) or authz-first (403)', () => "
+                          "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([200, 403]));",
+                          "if (pm.response.code === 200) {",
+                          "  const j = pm.response.json();",
+                          "  pm.test('operations empty (no ops for unknown parent)', () => "
+                          "    pm.expect(j.operations || []).to.be.an('array').that.is.empty);",
+                          "}"]),
     ],
 ))
 

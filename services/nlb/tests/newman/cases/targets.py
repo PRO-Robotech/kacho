@@ -504,10 +504,7 @@ CASES.append(Case(
         Step(name="add-deleting-proxy", method="POST",
              path=f"{_TG_BASE}/{{{{garbageTgrId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.60"}, "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected (404 or 409)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 

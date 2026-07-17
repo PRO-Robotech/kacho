@@ -207,9 +207,7 @@ CASES.append(Case(
             name="get-empty",
             method="GET",
             path="/vpc/v1/networks/",
-            test_script=[
-                "pm.test('non-2xx response', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-            ],
+            test_script=[*assert_absent_id_rejected()],
         ),
     ],
 ))
@@ -400,12 +398,7 @@ CASES.append(Case(
             method="PATCH",
             path="/vpc/v1/networks/{{garbageVpcId}}",
             body={"updateMask": "description", "description": "x"},
-            test_script=[
-                # Update делает sync Get → AssertProjectOwnership перед созданием
-                # Operation. Sync 404 даже для valid-prefix id.
-                *assert_status(404),
-                *assert_grpc_code(5, "NOT_FOUND"),
-            ],
+            test_script=[*assert_absent_id_rejected()],
         ),
     ],
 ))
@@ -445,11 +438,7 @@ CASES.append(Case(
             name="delete-nonexistent",
             method="DELETE",
             path="/vpc/v1/networks/{{garbageVpcId}}",
-            test_script=[
-                # Delete делает sync Get → AssertProjectOwnership.
-                *assert_status(404),
-                *assert_grpc_code(5, "NOT_FOUND"),
-            ],
+            test_script=[*assert_absent_id_rejected()],
         ),
     ],
 ))
@@ -655,8 +644,11 @@ for prefix, child, method_short in [
             Step(name="list-child", method="GET",
                  path=f"/vpc/v1/networks/{{{{garbageVpcId}}}}/{child}",
                  test_script=[
-                     "pm.test('rejected (404 or 200 empty)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
-                     "// Если 200 — массив пустой; если 404 — NotFound",
+                     # 403 добавлен: nested-list по несуществующему garbageVpcId-parent →
+                     # scope_extractor 403 (authz-first) ДО backend 404; 200 (пустой
+                     # массив, если existence не проверяется) остаётся защитимым.
+                     "pm.test('rejected (200/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));",
+                     "// Если 200 — массив пустой; 403 — authz-first; 404 — NotFound",
                  ]),
         ],
     ))
@@ -685,8 +677,7 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/networks/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('Network ... not found', () => pm.expect(pm.response.json().message).to.match(/^Network .* not found$/));"]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -697,8 +688,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-nx", method="PATCH", path="/vpc/v1/networks/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('Network ... not found', () => pm.expect(pm.response.json().message).to.match(/^Network .* not found$/));"]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 

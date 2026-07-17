@@ -130,6 +130,52 @@ def assert_field_violation(field_name: str) -> List[str]:
     ]
 
 
+def assert_unscoped_rejected() -> List[str]:
+    """Unscoped create/list (без projectId/parent-scope) — ОТВЕРГНУТ. Два защитимых
+    исхода, оба = «отклонено» (defense-in-depth, security.md «authz-first», parity
+    с vpc 446e25b / compute 32be094):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor fail-closed
+        «no path: unscoped resource» ДО backend-валидации: нельзя авторизовать
+        запрос без scope для anti-BOLA;
+      400 INVALID_ARGUMENT  (code 3) — backend «required field» при passthrough.
+    Толерантен к обоим. Techniques: ECP (класс «unscoped запрос») + error-guessing
+    (authz-vs-validation ordering)."""
+    return [
+        "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+        "});",
+        "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
+        "});",
+    ]
+
+
+def assert_absent_id_rejected() -> List[str]:
+    """Negative-запрос на ОТСУТСТВУЮЩИЙ / malformed id (Get/Update/Delete или
+    :verb-action / вложенный list по нему) — ОТВЕРГНУТ. Три защитимых исхода, все
+    = «отклонено» (defense-in-depth, security.md «authz-first», parity с vpc):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor не может резолвить
+        target→project для anti-BOLA у несуществующего/битого id → fail-closed ДО
+        backend format-check / repo.Get (для МУТАЦИЙ устойчиво, id захардкожен как
+        garbage — не из setup, поэтому не зависит от фикстур);
+      404 NOT_FOUND (code 5) — well-formed-но-нет: sync AuthZ-Get/repo.Get;
+      400 INVALID_ARGUMENT (code 3) — malformed id: corevalidate.ResourceID.
+    Толерантен 400|403|404 (code 3|5|7) — семантика негатива (rejected) сохранена
+    без ложного провала на корректном authz-first 403 (GATE-RUN #5:
+    upd-imm/del-unknown/move-nx/stop-unknown/list-ops возвращали 403 вместо 400/404).
+    Techniques: ECP (класс «absent id») + error-guessing (authz-vs-existence ordering)."""
+    return [
+        "pm.test('absent-id request rejected (400/403/404)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403, 404]);",
+        "});",
+        "pm.test('grpc code INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED (3/5/7)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 5, 7]);",
+        "});",
+    ]
+
+
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     return [
         "try {",
@@ -349,6 +395,8 @@ def load_cases_module(path: Path):
     mod.Case = Case
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
+    mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.assert_field_violation = assert_field_violation
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response

@@ -34,7 +34,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr", method="POST", path="/vpc/v1/gateways",
              body={"name": "gw-nf-{{runId}}", "sharedEgressGatewaySpec": {}},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 
@@ -74,7 +74,7 @@ CASES.append(Case(
     priority="P0",
     steps=[
         Step(name="list-noproject", method="GET", path="/vpc/v1/gateways",
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 
@@ -86,7 +86,7 @@ CASES.append(Case(
     steps=[
         Step(name="patch-nx", method="PATCH", path="/vpc/v1/gateways/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -97,7 +97,7 @@ CASES.append(Case(
     priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/gateways/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -160,10 +160,7 @@ CASES.append(Case(
         Step(name="patch-nx", method="PATCH",
              path="/vpc/v1/gateways/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Gateway ... not found', () => pm.expect(pm.response.json().message).to.match(/^Gateway .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -174,10 +171,7 @@ CASES.append(Case(
     steps=[
         Step(name="del-nx", method="DELETE",
              path="/vpc/v1/gateways/{{garbageVpcId}}",
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Gateway ... not found', () => pm.expect(pm.response.json().message).to.match(/^Gateway .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -224,7 +218,7 @@ CASES.append(Case(
     steps=[
         Step(name="lop-nx", method="GET",
              path="/vpc/v1/gateways/{{garbageVpcId}}/operations",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
