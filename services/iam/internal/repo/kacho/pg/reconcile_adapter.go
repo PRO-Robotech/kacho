@@ -946,56 +946,126 @@ func NewSyncFGAWriter(relations clients.RelationStore, logger *slog.Logger) reco
 	return &syncFGAWriter{relations: relations, logger: logger}
 }
 
-// WriteTuples applies the create-path read-after-write tuple set to OpenFGA. It is the
-// SYNC closer for one ReconcileObject/ReconcileBinding pass, so it must be as resilient
-// as the async fga_outbox drainer (which applies row-by-row): a fan-out over multiple
-// bounded `*.*` ARM_ANCHOR bindings on a populated account can collect a set that (a)
-// exceeds OpenFGA's per-request maxTuplesPerWrite (handled by OpenFGAHTTPClient.WriteTuples
-// chunking) AND (b) contains a tuple OpenFGA rejects for a sibling object whose tier is
-// computed-only (e.g. `iam_role#viewer` accepts no direct user) — which would otherwise
-// fail the WHOLE batched write and drop the owner's valid `iam_access_binding#viewer`
-// tuple, leaving GET-after-create at 403 (#232). On a batch error we therefore RETRY
-// per-tuple so one invalid/over-limit tuple only drops itself; the durable fga_outbox
-// enqueue + async drainer remain the at-least-once backstop for any per-tuple failure
-// (which the drainer poisons individually). Best-effort: the per-tuple pass returns nil
-// even if some tuples fail (logged by the reconciler's applyAfterCommit caller via the
-// batch error) — the goal is to land every APPLICABLE tuple synchronously.
+// maxObjectPackTuples bounds one packed sync Write to OpenFGA's per-request
+// maxTuplesPerWrite (default 100). The fast path packs WHOLE objects up to this
+// many tuples and NEVER splits an object across requests — so every object's
+// tuple-set lands in ONE transactional OpenFGA Write (all-or-nothing), even on
+// the packed happy path. An object's grant is ~6 relations (v_* + tier), so it
+// always fits well under the cap; the packing only bounds the multi-object
+// fan-out (boot backfill / sweep), keeping it a few large requests rather than
+// N tiny ones (low write-contention under HIGHER_CONSISTENCY).
+const maxObjectPackTuples = 100
+
+// objectTupleGroup — one FGA object with its full sync tuple-set. The set is
+// applied in ONE transactional OpenFGA Write, so the object materializes
+// ATOMICALLY (all its relations or none) — the create-path op-done ⟹ full-grant
+// invariant.
+type objectTupleGroup struct {
+	object string
+	tuples []clients.RelationTuple
+}
+
+// groupTuplesByObject buckets the pass tuples by their FGA object, preserving
+// first-seen order (stable → deterministic packing + logging).
+func groupTuplesByObject(tuples []reconcile.SyncFGATuple) []objectTupleGroup {
+	idx := make(map[string]int, len(tuples))
+	groups := make([]objectTupleGroup, 0, len(tuples))
+	for _, t := range tuples {
+		rt := clients.RelationTuple{User: t.User, Relation: t.Relation, Object: t.Object}
+		if i, ok := idx[t.Object]; ok {
+			groups[i].tuples = append(groups[i].tuples, rt)
+			continue
+		}
+		idx[t.Object] = len(groups)
+		groups = append(groups, objectTupleGroup{object: t.Object, tuples: []clients.RelationTuple{rt}})
+	}
+	return groups
+}
+
+// WriteTuples applies the create-path read-after-write tuple set to OpenFGA
+// ATOMICALLY PER OBJECT. It is the SYNC closer for one ReconcileObject/
+// ReconcileBinding pass that the consumer's create-Operation confirm-gate (opgate)
+// depends on: the gate blocks until Check(creator, v_update, obj)==ALLOW, so the
+// owner grant on that object MUST land all-or-nothing. If it landed per-tuple, a
+// transient write-contention on ONE tuple (e.g. v_delete) would leave the object
+// PARTIAL — the gate sees v_update and reports done, but an immediate DELETE needs
+// the still-undrained v_delete → 403 "lacks v_delete". Op-done would NOT imply a
+// full grant.
+//
+// Design (all-or-nothing per object, never partial):
+//
+//   - Group the pass tuples by object. Each object's whole set is applied in ONE
+//     transactional OpenFGA Write (all-or-nothing).
+//   - Fast path — pack WHOLE objects into ≤maxObjectPackTuples requests (an object
+//     is NEVER split, so it stays atomic even packed) and write each. A clean pass
+//     lands everything in a few large requests (low HIGHER_CONSISTENCY contention).
+//   - Resilient path — on any packed-request error, re-apply each object as its OWN
+//     atomic Write. This (a) isolates a sibling object OpenFGA rejects (a
+//     computed-only tier such as `iam_role#viewer`, #232) so it never strips the
+//     owner's valid object, AND (b) guarantees an object is never left partial: a
+//     per-OBJECT failure defers the object's FULL tuple-set to the async fga_outbox
+//     drainer (never per-tuple). OpenFGA's Write is transactional, so a failed
+//     request applies NONE of its tuples — the object is fully deferred, not
+//     half-written.
+//
+// Best-effort: per-object failures are non-fatal (the durable fga_outbox enqueue +
+// async drainer are the at-least-once backstop) but no longer silent (CWE-778) —
+// a persistently failing object is logged so an authz gap is diagnosable.
 func (w *syncFGAWriter) WriteTuples(ctx context.Context, tuples []reconcile.SyncFGATuple) error {
 	if len(tuples) == 0 {
 		return nil
 	}
-	out := make([]clients.RelationTuple, len(tuples))
-	for i, t := range tuples {
-		out[i] = clients.RelationTuple{User: t.User, Relation: t.Relation, Object: t.Object}
-	}
-	// Fast path — the whole (chunked) batch applies cleanly.
-	if err := w.relations.WriteTuples(ctx, out); err == nil {
+	groups := groupTuplesByObject(tuples)
+
+	// Fast path: pack whole objects into ≤cap requests and try them. Success ⇒ the
+	// whole pass landed (every object atomic within its packed request).
+	if w.writePacked(ctx, groups) {
 		return nil
-	} else if len(out) == 1 {
-		// A single-tuple batch already failed per-tuple — nothing to isolate; surface it.
-		return err
 	}
-	// Resilient path — a tuple in the batch was rejected (computed-only tier on a
-	// sibling object, or an over-limit chunk that still tripped). Apply each tuple on
-	// its own so a single bad tuple does not strip the rest (notably the owner's valid
-	// iam_access_binding viewer/admin tuple). Per-tuple failures are non-fatal here —
-	// the async drainer poisons them individually; the create-path closer's job is to
-	// land every applicable tuple now.
-	for i := range out {
-		if err := w.relations.WriteTuples(ctx, out[i:i+1]); err != nil && w.logger != nil {
-			// Non-fatal here (the async fga_outbox drainer re-poisons the row and
-			// retries durably), but no longer silent (CWE-778): a persistently
-			// failing authorization tuple must be observable so an authz gap is
-			// diagnosable even if the drainer also lags.
-			w.logger.WarnContext(ctx, "sync FGA per-tuple write failed — deferred to the async drainer",
-				slog.String("user", out[i].User),
-				slog.String("relation", out[i].Relation),
-				slog.String("object", out[i].Object),
+	// Resilient path: a packed request failed. Apply each object atomically so one
+	// rejected object never strips a valid sibling AND no object is left partial. A
+	// per-object failure defers the object's full set to the async drainer.
+	for _, g := range groups {
+		if err := w.relations.WriteTuples(ctx, g.tuples); err != nil && w.logger != nil {
+			w.logger.WarnContext(ctx, "sync FGA per-object write failed — full tuple-set deferred to the async drainer",
+				slog.String("object", g.object),
+				slog.Int("tuple_count", len(g.tuples)),
 				slog.String("err", err.Error()),
 			)
 		}
 	}
 	return nil
+}
+
+// writePacked greedily packs whole object-groups into ≤maxObjectPackTuples-tuple
+// requests (an object is NEVER split across requests, so each object stays atomic)
+// and writes each packed request. It returns true iff EVERY request applied
+// cleanly. false ⇒ some request failed and the caller must run the per-object
+// resilient path (re-applying cleanly-landed objects there is an idempotent no-op).
+func (w *syncFGAWriter) writePacked(ctx context.Context, groups []objectTupleGroup) bool {
+	var chunk []clients.RelationTuple
+	flush := func() bool {
+		if len(chunk) == 0 {
+			return true
+		}
+		err := w.relations.WriteTuples(ctx, chunk)
+		chunk = chunk[:0]
+		return err == nil
+	}
+	for _, g := range groups {
+		// Start a new request before an object would overflow the cap (keeps every
+		// object whole within ONE request). A lone object larger than the cap
+		// (never in practice — a grant is ~6 tuples) is still its own request; the
+		// underlying client would chunk it, but the resilient path re-applies it
+		// atomically as one Write, so partial cannot leak.
+		if len(chunk) > 0 && len(chunk)+len(g.tuples) > maxObjectPackTuples {
+			if !flush() {
+				return false
+			}
+		}
+		chunk = append(chunk, g.tuples...)
+	}
+	return flush()
 }
 
 var _ reconcile.SyncFGAWriter = (*syncFGAWriter)(nil)
