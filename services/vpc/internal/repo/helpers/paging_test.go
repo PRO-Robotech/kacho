@@ -29,8 +29,8 @@ func TestDecodePageToken(t *testing.T) {
 		}
 	})
 	malformed := map[string]string{
-		"not base64":       "not-a-real-token!!",
-		"base64 no colon":  base64.RawURLEncoding.EncodeToString([]byte("nocolon")),
+		"not base64":        "not-a-real-token!!",
+		"base64 no colon":   base64.RawURLEncoding.EncodeToString([]byte("nocolon")),
 		"non-numeric nanos": base64.RawURLEncoding.EncodeToString([]byte("notanumber:net0")),
 	}
 	for name, tok := range malformed {
