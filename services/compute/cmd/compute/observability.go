@@ -60,14 +60,10 @@ type readinessPinger interface {
 //
 // ConfigureDefault обязан предшествовать Start; вызывается один раз из composition
 // root (повторный вызов после старта вернул бы ErrWorkerStarted).
-func startLROWorker(rec operations.Recorder, logger *slog.Logger, ownerConfirmDeadline time.Duration) error {
-	// WithConfirmationDeadline — owner-tuple op-gating (P4): верхняя граница
-	// read-after-register confirm-пробы Create Instance/Disk (fail-closed по
-	// истечении → op.error Unavailable). n<=0 → corelib-дефолт (30s).
+func startLROWorker(rec operations.Recorder, logger *slog.Logger) error {
 	if err := operations.ConfigureDefault(
 		operations.WithRecorder(rec),
 		operations.WithLogger(logger),
-		operations.WithConfirmationDeadline(ownerConfirmDeadline),
 	); err != nil {
 		return fmt.Errorf("configure LRO default-registry: %w", err)
 	}

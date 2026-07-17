@@ -5,7 +5,6 @@ package config
 
 import (
 	"fmt"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -139,15 +138,6 @@ type Config struct {
 	// в dev (без него созданные ресурсы не получат owner-tuple → per-resource Check
 	// DENY). Это in-process goroutine, не cross-cluster rollout-flag.
 	FGARegisterDrainerEnabled bool `envconfig:"KACHO_COMPUTE_FGA_REGISTER_DRAINER_ENABLED" default:"true"`
-
-	// OwnerConfirmDeadline — owner-tuple op-gating (P4): верхняя граница ожидания
-	// read-after-register confirm-пробы owner-tuple при Create Instance/Disk.
-	// Create-op достигает success-done только после confirmed=true; не подтверждён
-	// за deadline → op.error(codes.Unavailable, "owner-tuple registration not
-	// confirmed") (fail-closed, FIX-1). ДОЛЖЕН быть ≪ LRO opTimeout (4m) /
-	// OrphanGrace (5m). Default 30s (corelib defaultConfirmDeadline). Тесты
-	// переопределяют на малое значение. n<=0 → corelib-дефолт.
-	OwnerConfirmDeadline time.Duration `envconfig:"KACHO_COMPUTE_OWNER_CONFIRM_DEADLINE" default:"30s"`
 
 	// RequireIAM — fail-closed boot-gate. When true,
 	// mutating Create is refused (UNAVAILABLE) and readiness is NotReady until the

@@ -52,11 +52,9 @@ type (
 	// (volume↔Instance attach/detach + batched mirror-read).
 	StorageClient = ports.StorageClient
 
-	// OwnerConfirmer — read-after-register проба owner-tuple opgate (P4);
-	// реализуется существующим compute authz Check-client'ом (reuse authzConn).
-	OwnerConfirmer = ports.OwnerConfirmer
-	// OwnerRegistrar — синхронная post-commit регистрация owner-tuple (P4);
-	// реализуется clients.SyncRegistrar поверх InternalIAMService.RegisterResource.
+	// OwnerRegistrar — синхронная post-commit регистрация owner-tuple (sync-registrar
+	// window-оптимизация); реализуется clients.SyncRegistrar поверх
+	// InternalIAMService.RegisterResource.
 	OwnerRegistrar = ports.OwnerRegistrar
 	// VolumeAttachSpec — self-describing volume-attach payload.
 	VolumeAttachSpec = ports.VolumeAttachSpec

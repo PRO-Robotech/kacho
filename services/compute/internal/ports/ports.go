@@ -55,30 +55,14 @@ type InstanceFilter struct {
 	AllowedIDs []string
 }
 
-// OwnerConfirmer — read-after-register проба owner-tuple opgate (P4). Порт
-// use-case'а: сообщает, эффективен ли owner-tuple свеже-созданного ресурса в FGA —
-// т.е. `Check`, который gateway scope_extractor выполнит на НЕМЕДЛЕННОЙ мутации
-// (`Update`/`Delete`), уже вернёт ALLOW.
-//
-// Проба ОБЯЗАНА читать с HIGHER_CONSISTENCY (`CheckConsistent`): owner-tuple записан
-// синхронно в тот же OpenFGA-store на create-пути, поэтому это read-after-OWN-write —
-// под multi-replica деплоем default-read мог бы вернуть stale-negative с другой
-// реплики и раздуть хвост confirm-op (Koren-1). `*check.IAMCheckClient` (reuse
-// authzConn) реализует порт напрямую — нового cross-service ребра нет (OTG-08).
-// Read-only, идемпотентна. `allowed=false` (tuple ещё не виден) либо transient `err`
-// → worker ретраит пробу до confirmation-deadline.
-type OwnerConfirmer interface {
-	CheckConsistent(ctx context.Context, subject, relation, object string) (allowed bool, err error)
-}
-
 // OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kacho-iam
 // (`InternalIAMService.RegisterResource`), зеркалящая тот же register-intent, что
 // эмитится транзакционно в `compute_fga_register_outbox`. Делает owner-tuple
-// эффективным СРАЗУ (до того как async register-drainer опросит outbox), поэтому
-// confirm-gate happy-path'а не ждёт poll drainer'а (OTG-03/-04). Best-effort:
-// ошибка логируется, Create НЕ проваливается — durable outbox-intent +
-// register-drainer остаются at-least-once backstop'ом (OTG-06/-07). nil = не
-// сконфигурирован (dev / нет iam-ребра) → полагаемся на drainer.
+// эффективным раньше (до того как async register-drainer опросит outbox), сужая
+// eventual-consistency-окно — чистая window-оптимизация. Best-effort: ошибка
+// логируется, Create НЕ проваливается — durable outbox-intent + register-drainer
+// остаются at-least-once backstop'ом. nil = не сконфигурирован (dev / нет
+// iam-ребра) → полагаемся на drainer.
 type OwnerRegistrar interface {
 	Register(ctx context.Context, kind, resourceID, projectID string, labels map[string]string) error
 }

@@ -62,7 +62,7 @@ func TestInstanceGet_MirrorGracefulDegradeOnUnavailable(t *testing.T) {
 	instanceRepo := portmock.NewInstanceRepo()
 	nic := portmock.NewNicClient()
 	storage := portmock.NewStorageClient()
-	nic.ListErr = context.DeadlineExceeded    // peer «down» (bound истёк)
+	nic.ListErr = context.DeadlineExceeded // peer «down» (bound истёк)
 	storage.ListErr = context.DeadlineExceeded
 	svc := NewInstanceService(instanceRepo, portmock.NewZoneRegistry(),
 		&portmock.ProjectClient{OK: true}, nic, storage, portmock.NewOpsRepo())

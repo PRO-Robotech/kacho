@@ -71,10 +71,9 @@ type DiskService struct {
 	zones         ZoneRegistry
 	projectClient ProjectClient
 	opsRepo       operations.Repo
-	// ownerConfirmer / ownerRegistrar — owner-tuple op-gating (P4). nil = opgate
-	// выключен → Create как сегодня. Подключаются в composition-root через
-	// WithOwnerOpgate после установления authzConn.
-	ownerConfirmer OwnerConfirmer
+	// ownerRegistrar — sync-registrar owner-tuple (best-effort post-commit
+	// window-оптимизация; register-drainer — at-least-once backstop). nil = только
+	// drainer. Подключается в composition-root через WithOwnerRegistrar.
 	ownerRegistrar OwnerRegistrar
 }
 
@@ -86,11 +85,10 @@ func NewDiskService(repo DiskRepo, imageRepo ImageRepo, snapshotRepo SnapshotRep
 	}
 }
 
-// WithOwnerOpgate подключает owner-tuple op-gating (P4): confirmer (read-after-
-// register через InternalIAMService.Check, reuse authzConn) + sync-registrar. Оба
-// nil-safe. Вызывается один раз из composition-root до приёма трафика.
-func (s *DiskService) WithOwnerOpgate(confirmer OwnerConfirmer, registrar OwnerRegistrar) *DiskService {
-	s.ownerConfirmer = confirmer
+// WithOwnerRegistrar подключает sync-registrar owner-tuple: немедленная post-commit
+// (best-effort) регистрация, сужающая eventual-consistency-окно до poll'а
+// register-drainer'а. nil-safe. Вызывается один раз из composition-root до трафика.
+func (s *DiskService) WithOwnerRegistrar(registrar OwnerRegistrar) *DiskService {
 	s.ownerRegistrar = registrar
 	return s
 }
@@ -140,15 +138,14 @@ func (s *DiskService) Create(ctx context.Context, req CreateDiskReq) (*operation
 	}
 
 	diskID := ids.NewID(ids.PrefixDisk)
-	// owner-tuple op-gating (P4): Create-op достигнет success-done только после
-	// read-after-register confirm owner-tuple `compute_disk:<id>` (nil confirm =
-	// opgate выключен → back-compat). Subject фиксируется из caller-ctx СЕЙЧАС.
-	confirm := buildOwnerConfirm(ctx, s.ownerConfirmer, "Disk", diskID)
-	return runOpWithConfirm(ctx, s.opsRepo, fmt.Sprintf("Create disk %s", req.Name),
+	// Operation.done = durability ресурса (row закоммичен в doCreate). Owner-tuple
+	// материализуется eventually-consistent — sync-registrar (window-оптимизация) +
+	// register-drainer/reconciler backstop, НЕ гейтит op.done.
+	return runOp(ctx, s.opsRepo, fmt.Sprintf("Create disk %s", req.Name),
 		&computev1.CreateDiskMetadata{DiskId: diskID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			return s.doCreate(ctx, diskID, req)
-		}, confirm)
+		})
 }
 
 func (s *DiskService) doCreate(ctx context.Context, diskID string, req CreateDiskReq) (*anypb.Any, error) {
