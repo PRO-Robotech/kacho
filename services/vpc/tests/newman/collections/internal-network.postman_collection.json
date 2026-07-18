@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f98d0205-9527-4b06-a4fa-8a9c7378dce0",
+    "_postman_id": "22c3f6cf-855d-468e-a08d-4674e450d8b7",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -219,7 +219,7 @@
           ]
         },
         {
-          "name": "get-internal-rya412",
+          "name": "get-internal-rya413",
           "request": {
             "method": "GET",
             "header": [
@@ -487,7 +487,7 @@
           ]
         },
         {
-          "name": "list-no-vrfid-lst413",
+          "name": "list-no-vrfid-lst414",
           "request": {
             "method": "GET",
             "header": [
@@ -822,7 +822,7 @@
           ]
         },
         {
-          "name": "get-internal-before-rya414",
+          "name": "get-internal-before-rya415",
           "request": {
             "method": "GET",
             "header": [

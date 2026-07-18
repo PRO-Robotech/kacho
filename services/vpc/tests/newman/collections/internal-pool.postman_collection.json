@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f2776a8d-bc12-48a2-aa7e-e0fb69aff6e5",
+    "_postman_id": "4de6b3e7-b94a-4e9a-8a34-359ba783a2a4",
     "name": "kacho-vpc / newman / internal-pool",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1888,7 +1888,7 @@
           ]
         },
         {
-          "name": "bind-rya415",
+          "name": "bind-rya416",
           "request": {
             "method": "POST",
             "header": [
@@ -3168,7 +3168,7 @@
           ]
         },
         {
-          "name": "get-addr-rya416",
+          "name": "get-addr",
           "request": {
             "method": "GET",
             "header": [
@@ -3178,15 +3178,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/{{rmInUseAddrId}}",
+              "raw": "{{baseUrl}}/operations/{{opId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "vpc",
-                "v1",
-                "addresses",
-                "{{rmInUseAddrId}}"
+                "operations",
+                "{{opId}}"
               ]
             }
           },
@@ -3196,23 +3194,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const ip = pm.response.json().externalIpv4Address.address;",
+                  "const op = pm.response.json();",
+                  "pm.test('addr alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
+                  "const ip = ((op.response||{}).externalIpv4Address||{}).address || '';",
                   "pm.test('allocated ip present', () => pm.expect(ip).to.be.a('string').and.not.empty);",
                   "pm.environment.set('rmInUseCidr', ip.indexOf('198.51.100.') === 0 ? '198.51.100.0/24' : '203.0.113.0/24');"
                 ]
@@ -4585,7 +4570,7 @@
           ]
         },
         {
-          "name": "get-v4-rya418",
+          "name": "get-v4",
           "request": {
             "method": "GET",
             "header": [
@@ -4595,15 +4580,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/{{dsV4AddrId}}",
+              "raw": "{{baseUrl}}/operations/{{opId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "vpc",
-                "v1",
-                "addresses",
-                "{{dsV4AddrId}}"
+                "operations",
+                "{{opId}}"
               ]
             }
           },
@@ -4613,23 +4596,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('v4 IP in pool v4 cidr', () => pm.expect(pm.response.json().externalIpv4Address.address).to.match(/^198\\.51\\.100\\./));"
+                  "const op = pm.response.json();",
+                  "pm.test('v4 alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
+                  "pm.test('v4 IP in pool v4 cidr', () => pm.expect(((op.response||{}).externalIpv4Address||{}).address || '').to.match(/^198\\.51\\.100\\./));"
                 ]
               }
             }
@@ -4740,7 +4710,7 @@
           ]
         },
         {
-          "name": "get-v6-rya419",
+          "name": "get-v6",
           "request": {
             "method": "GET",
             "header": [
@@ -4750,15 +4720,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/{{dsV6AddrId}}",
+              "raw": "{{baseUrl}}/operations/{{opId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "vpc",
-                "v1",
-                "addresses",
-                "{{dsV6AddrId}}"
+                "operations",
+                "{{opId}}"
               ]
             }
           },
@@ -4768,23 +4736,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('v6 IP in pool v6 prefix', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:ff:/));"
+                  "const op = pm.response.json();",
+                  "pm.test('v6 alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
+                  "pm.test('v6 IP in pool v6 prefix', () => pm.expect(((op.response||{}).externalIpv6Address||{}).address || '').to.match(/^2001:db8:ff:/));"
                 ]
               }
             }
@@ -5164,7 +5119,7 @@
           ]
         },
         {
-          "name": "bind-rya420",
+          "name": "bind-rya418",
           "request": {
             "method": "POST",
             "header": [
@@ -5518,7 +5473,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"ipl-exh-pool-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"198.51.100.252/30\"], \"v6CidrBlocks\": []}",
+              "raw": "{\"name\": \"ipl-exh-pool-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"198.51.100.252/30\"], \"v6CidrBlocks\": [], \"isDefault\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5544,7 +5499,7 @@
           ]
         },
         {
-          "name": "bind-rya421",
+          "name": "bind-rya419",
           "request": {
             "method": "POST",
             "header": [

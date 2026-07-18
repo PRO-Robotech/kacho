@@ -241,12 +241,15 @@ CASES.append(Case(
                    "securityGroupIds": ["{{defSgId}}"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="get-after-upd", method="GET", path="/vpc/v1/networkInterfaces/{{nicId}}",
+        # Read-your-writes: patch-nic (первый доступ) гейтится object-authz Check;
+        # этот GET — первый list-authz-доступ (enforceGetVisible) свежего NIC, чей
+        # owner-tuple grant-set материализуется независимо → без ретрая устойчивый 404.
+        retry_until_authorized(Step(name="get-after-upd", method="GET", path="/vpc/v1/networkInterfaces/{{nicId}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('description updated', () => pm.expect(j.description).to.eql('nic-upd-desc-' + pm.environment.get('runId')));",
                           "pm.test('labels updated', () => pm.expect(j.labels && j.labels.k).to.eql('v'));",
-                          "pm.test('securityGroupIds set', () => pm.expect(j.securityGroupIds || []).to.include(pm.environment.get('defSgId')));"]),
+                          "pm.test('securityGroupIds set', () => pm.expect(j.securityGroupIds || []).to.include(pm.environment.get('defSgId')));"])),
         *_cleanup_nic(),
         _cleanup_subnet(),
         poll_operation_until_done(),

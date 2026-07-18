@@ -235,9 +235,14 @@ CASES.append(Case(
                 "  pm.expect(ok, `ok=${ok} failed=${failed} ops=${JSON.stringify(ops)}`).to.eql(1);",
                 "  pm.expect(failed).to.eql(2);",
                 "});",
-                "pm.test('failures: FailedPrecondition (gRPC code 9) — CIDR overlap', () => {",
+                # Проигравшие транзакции fail-closed одним из двух ЗАКОННЫХ кодов, но
+                # НИКОГДА INTERNAL(13): 9 (FailedPrecondition) — чистый 23P01
+                # exclusion_violation (проигравший увидел уже закоммиченный ряд), либо
+                # 10 (Aborted) — 40001/40P01 serialization/deadlock под gist-EXCLUDE
+                # burst'ом (retryable-конфликт, замаплен через ErrConflict, не INTERNAL).
+                "pm.test('failures: FailedPrecondition (9, overlap) or Aborted (10, retryable conflict) — never INTERNAL/13', () => {",
                 "  const failedCodes = ops.filter(o => o.hasError).map(o => o.errCode);",
-                "  failedCodes.forEach(c => pm.expect(c, `code=${c}`).to.eql(9));",
+                "  failedCodes.forEach(c => pm.expect(c, `code=${c}`).to.be.oneOf([9, 10]));",
                 "});",
             ],
         ),

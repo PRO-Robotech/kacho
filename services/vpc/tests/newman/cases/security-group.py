@@ -398,9 +398,13 @@ CASES.append(Case(
              ]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="get-sg-rule-id", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        # Read-your-writes: первый доступ через add-rule (PATCH) гейтится object-authz
+        # Check, а этот GET — list-authz (enforceGetVisible/ListAllowedIDs), у которого
+        # свой grant-set с независимой материализацией owner-tuple → без ретрая ловит
+        # устойчивый 404. Оборачиваем как первый list-authz-доступ свежего SG.
+        retry_until_authorized(Step(name="get-sg-rule-id", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          *save_from_response("(j.rules && j.rules[0] && j.rules[0].id) || ''", "ruleId")]),
+                          *save_from_response("(j.rules && j.rules[0] && j.rules[0].id) || ''", "ruleId")])),
         Step(name="ur", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules/{{ruleId}}",
              body={"updateMask": "description", "description": "updated"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -988,10 +992,12 @@ CASES.append(Case(
         Step(name="assert-op-ok", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('same-network updateRules op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        # Read-your-writes: update-rules-same (первый доступ) гейтится object-authz;
+        # этот GET — первый list-authz-доступ свежего SG → оборачиваем ретраем.
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
                           "const rules = pm.response.json().rules || [];",
-                          "pm.test('rule targets same-network SG', () => pm.expect(rules.map(r => r.securityGroupId)).to.include(pm.environment.get('sgAId')));"]),
+                          "pm.test('rule targets same-network SG', () => pm.expect(rules.map(r => r.securityGroupId)).to.include(pm.environment.get('sgAId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

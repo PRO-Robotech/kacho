@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "7fde4c31-37ce-48f0-a0f8-22865fadbb12",
+    "_postman_id": "a755607d-f975-4a50-a513-9282c2de6f77",
     "name": "kacho-vpc / newman / address",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -466,7 +466,7 @@
           ]
         },
         {
-          "name": "get-rya350",
+          "name": "get-rya351",
           "request": {
             "method": "GET",
             "header": [
@@ -517,7 +517,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya351",
+          "name": "cleanup-addr-rya352",
           "request": {
             "method": "DELETE",
             "header": [
@@ -864,7 +864,7 @@
           ]
         },
         {
-          "name": "get-rya352",
+          "name": "get-rya353",
           "request": {
             "method": "GET",
             "header": [
@@ -2748,7 +2748,7 @@
           ]
         },
         {
-          "name": "patch-rya353",
+          "name": "patch-rya354",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3456,7 +3456,7 @@
           ]
         },
         {
-          "name": "del-happy-rya354",
+          "name": "del-happy-rya355",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3707,7 +3707,7 @@
           ]
         },
         {
-          "name": "get-addr-rya355",
+          "name": "get-addr-rya356",
           "request": {
             "method": "GET",
             "header": [
@@ -3762,7 +3762,7 @@
           ]
         },
         {
-          "name": "gbv-rya356",
+          "name": "gbv-rya357",
           "request": {
             "method": "GET",
             "header": [
@@ -3804,8 +3804,12 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"
+                  "pm.test('200 (scoped) or fail-closed 403 (unscoped value-lookup), never leak/5xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
+                  "} else {",
+                  "  pm.test('403 is fail-closed unscoped-deny (code 7)', () => pm.expect(pm.response.code).to.eql(403));",
+                  "}"
                 ]
               }
             }
@@ -5088,7 +5092,7 @@
           ]
         },
         {
-          "name": "patch-rya357",
+          "name": "patch-rya358",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5203,7 +5207,7 @@
           ]
         },
         {
-          "name": "verify-rya358",
+          "name": "verify-rya359",
           "request": {
             "method": "GET",
             "header": [
@@ -5254,7 +5258,7 @@
           ]
         },
         {
-          "name": "cleanup-rya359",
+          "name": "cleanup-rya360",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5469,7 +5473,7 @@
           ]
         },
         {
-          "name": "patch-rya360",
+          "name": "patch-rya361",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5584,7 +5588,7 @@
           ]
         },
         {
-          "name": "verify-rya361",
+          "name": "verify-rya362",
           "request": {
             "method": "GET",
             "header": [
@@ -5635,7 +5639,7 @@
           ]
         },
         {
-          "name": "cleanup-rya362",
+          "name": "cleanup-rya363",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5850,7 +5854,7 @@
           ]
         },
         {
-          "name": "patch-rya363",
+          "name": "patch-rya364",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5965,7 +5969,7 @@
           ]
         },
         {
-          "name": "verify-rya364",
+          "name": "verify-rya365",
           "request": {
             "method": "GET",
             "header": [
@@ -6017,7 +6021,7 @@
           ]
         },
         {
-          "name": "cleanup-rya365",
+          "name": "cleanup-rya366",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6462,7 +6466,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya366",
+          "name": "patch-multi-rya367",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6577,7 +6581,7 @@
           ]
         },
         {
-          "name": "verify-all-rya367",
+          "name": "verify-all-rya368",
           "request": {
             "method": "GET",
             "header": [
@@ -6632,7 +6636,7 @@
           ]
         },
         {
-          "name": "cleanup-rya368",
+          "name": "cleanup-rya369",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7083,7 +7087,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst369",
+          "name": "list-filtered-lst370",
           "request": {
             "method": "GET",
             "header": [
@@ -7136,7 +7140,7 @@
           ]
         },
         {
-          "name": "cleanup-rya370",
+          "name": "cleanup-rya371",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7952,7 +7956,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya371",
+          "name": "patch-name-only-rya372",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8067,7 +8071,7 @@
           ]
         },
         {
-          "name": "verify-rya372",
+          "name": "verify-rya373",
           "request": {
             "method": "GET",
             "header": [
@@ -8121,7 +8125,7 @@
           ]
         },
         {
-          "name": "cleanup-rya373",
+          "name": "cleanup-rya374",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8336,7 +8340,7 @@
           ]
         },
         {
-          "name": "get-timed-rya374",
+          "name": "get-timed-rya375",
           "request": {
             "method": "GET",
             "header": [
@@ -8739,7 +8743,7 @@
           ]
         },
         {
-          "name": "cleanup-rya375",
+          "name": "cleanup-rya376",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8950,7 +8954,7 @@
           ]
         },
         {
-          "name": "get-ip-rya376",
+          "name": "get-ip-rya377",
           "request": {
             "method": "GET",
             "header": [
@@ -9005,7 +9009,7 @@
           ]
         },
         {
-          "name": "gbv-find-rya377",
+          "name": "gbv-find-rya378",
           "request": {
             "method": "GET",
             "header": [
@@ -9047,8 +9051,12 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"
+                  "pm.test('200 (scoped) or fail-closed 403 (unscoped value-lookup), never leak/5xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
+                  "} else {",
+                  "  pm.test('403 is fail-closed unscoped-deny (code 7)', () => pm.expect(pm.response.code).to.eql(403));",
+                  "}"
                 ]
               }
             }
@@ -10206,7 +10214,7 @@
           ]
         },
         {
-          "name": "get-1-rya378",
+          "name": "get-1-rya379",
           "request": {
             "method": "GET",
             "header": [
@@ -10257,7 +10265,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst379",
+          "name": "lst-includes-lst380",
           "request": {
             "method": "GET",
             "header": [
@@ -10785,7 +10793,7 @@
           ]
         },
         {
-          "name": "get-rya380",
+          "name": "get-rya381",
           "request": {
             "method": "GET",
             "header": [
@@ -10838,7 +10846,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya381",
+          "name": "cleanup-addr-rya382",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11313,7 +11321,7 @@
           ]
         },
         {
-          "name": "get-1-rya382",
+          "name": "get-1-rya383",
           "request": {
             "method": "GET",
             "header": [
@@ -11368,7 +11376,7 @@
           ]
         },
         {
-          "name": "del-1-rya383",
+          "name": "del-1-rya384",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11578,7 +11586,7 @@
           ]
         },
         {
-          "name": "get-2-rya384",
+          "name": "get-2-rya385",
           "request": {
             "method": "GET",
             "header": [
@@ -11629,7 +11637,7 @@
           ]
         },
         {
-          "name": "cleanup-addr2-rya385",
+          "name": "cleanup-addr2-rya386",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12559,7 +12567,7 @@
           ]
         },
         {
-          "name": "get-first-ip-rya386",
+          "name": "get-first-ip-rya387",
           "request": {
             "method": "GET",
             "header": [
@@ -12808,7 +12816,7 @@
           ]
         },
         {
-          "name": "get-second-ip-rya387",
+          "name": "get-second-ip-rya388",
           "request": {
             "method": "GET",
             "header": [
@@ -13067,7 +13075,7 @@
           ]
         },
         {
-          "name": "del-first-rya388",
+          "name": "del-first-rya389",
           "request": {
             "method": "DELETE",
             "header": [

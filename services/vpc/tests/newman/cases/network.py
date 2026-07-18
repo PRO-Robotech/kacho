@@ -949,9 +949,12 @@ CASES.append(Case(
                           "const j = pm.response.json();",
                           "pm.test('defaultSecurityGroupId populated', () => pm.expect(j.defaultSecurityGroupId, JSON.stringify(j)).to.be.a('string').and.not.empty);",
                           *save_from_response("j.defaultSecurityGroupId", "defSgId")])),
-        Step(name="get-default-sg-alive", method="GET", path="/vpc/v1/securityGroups/{{defSgId}}",
+        # Read-your-writes: default SG создаётся сервером вместе с Network; её
+        # list-authz owner-tuple (enforceGetVisible grant-set) материализуется
+        # eventually → первый GET свежей default SG без ретрая ловит устойчивый 404.
+        retry_until_authorized(Step(name="get-default-sg-alive", method="GET", path="/vpc/v1/securityGroups/{{defSgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('default SG exists before network.delete', () => pm.expect(pm.response.json().defaultForNetwork).to.eql(true));"]),
+                          "pm.test('default SG exists before network.delete', () => pm.expect(pm.response.json().defaultForNetwork).to.eql(true));"])),
         Step(name="del-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

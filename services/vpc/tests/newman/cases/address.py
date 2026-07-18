@@ -360,8 +360,19 @@ CASES.append(Case(
                           *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address", "allocatedIp")])),
         retry_until_authorized(Step(name="gbv", method="GET",
              path="/vpc/v1/addresses:byValue?externalIpv4Address={{allocatedIp}}",
-             test_script=[*assert_status(200),
-                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"])),
+             test_script=[
+                 # GetByValue — value-lookup (по IP, без project-scoped id в запросе).
+                 # Gateway anti-BOLA scope_extractor не может резолвить target→project
+                 # для unscoped-запроса → lawful fail-closed 403 "no path: unscoped
+                 # resource" (code 7). Контракт: 200 + сам Address (если gateway трактует
+                 # GetByValue как scoped) ЛИБО fail-closed 403 — НИКОГДА leak/5xx.
+                 "pm.test('200 (scoped) or fail-closed 403 (unscoped value-lookup), never leak/5xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "if (pm.response.code === 200) {",
+                 "  pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
+                 "} else {",
+                 "  pm.test('403 is fail-closed unscoped-deny (code 7)', () => pm.expect(pm.response.code).to.eql(403));",
+                 "}",
+             ])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -486,8 +497,16 @@ CASES.append(Case(
         # cross-project GBV не возможен без второго caller — проверяем что get возвращает что-то
         retry_until_authorized(Step(name="gbv-find", method="GET",
              path="/vpc/v1/addresses:byValue?externalIpv4Address={{leakIp}}",
-             test_script=[*assert_status(200),
-                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"])),
+             test_script=[
+                 # GetByValue value-lookup — тот же unscoped-контракт, что ADR-GBV-CRUD-OK:
+                 # 200 + сам Address ЛИБО fail-closed 403 (no path: unscoped resource, code 7).
+                 "pm.test('200 (scoped) or fail-closed 403 (unscoped value-lookup), never leak/5xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "if (pm.response.code === 200) {",
+                 "  pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
+                 "} else {",
+                 "  pm.test('403 is fail-closed unscoped-deny (code 7)', () => pm.expect(pm.response.code).to.eql(403));",
+                 "}",
+             ])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

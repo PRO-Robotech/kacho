@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "af0059ac-6ca4-4a88-b1a3-240370873c90",
+    "_postman_id": "da1f983e-e8af-4e5e-afcf-2838aaa195a4",
     "name": "kacho-vpc / newman / address-zone-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -366,7 +366,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya349",
+          "name": "get-known-zone-rya350",
           "request": {
             "method": "GET",
             "header": [

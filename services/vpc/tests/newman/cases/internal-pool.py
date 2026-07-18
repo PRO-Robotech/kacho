@@ -556,12 +556,17 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "rmInUseAddrId")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-addr", method="GET", path="/vpc/v1/addresses/{{rmInUseAddrId}}",
+        # Извлекаем выделенный IP из operation.response, а не публичным Address.Get:
+        # suite ходит cluster-admin JWT, для которого per-object list-authz над
+        # project-scoped Address не материализуется → 404 (см. DUALSTACK get-v4).
+        Step(name="get-addr", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
-                          "const ip = pm.response.json().externalIpv4Address.address;",
+                          "const op = pm.response.json();",
+                          "pm.test('addr alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
+                          "const ip = ((op.response||{}).externalIpv4Address||{}).address || '';",
                           "pm.test('allocated ip present', () => pm.expect(ip).to.be.a('string').and.not.empty);",
                           # Запомним, в какой CIDR попал IP — его и попытаемся удалить.
-                          "pm.environment.set('rmInUseCidr', ip.indexOf('198.51.100.') === 0 ? '198.51.100.0/24' : '203.0.113.0/24');"])),
+                          "pm.environment.set('rmInUseCidr', ip.indexOf('198.51.100.') === 0 ? '198.51.100.0/24' : '203.0.113.0/24');"]),
         Step(name="remove-inuse", method="POST", path=POOLS + "/{{rmInUsePoolId}}:removeCidrBlocks", internal=True,
              body={"v4CidrBlocks": ["{{rmInUseCidr}}"]},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
@@ -715,9 +720,19 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "dsV4AddrId")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-v4", method="GET", path="/vpc/v1/addresses/{{dsV4AddrId}}",
+        # Проверяем аллокацию по operation.response (LRO-конверт несёт готовый
+        # Address), а НЕ публичным GET /addresses/{id}: internal-pool suite ходит
+        # форсированным cluster-admin JWT (jwtBootstrap, principalType=user), а
+        # публичный Address.Get гейтит per-object list-authz (enforceGetVisible →
+        # ListAllowedIDs grant-set), который для cluster-admin над project-scoped
+        # Address не материализуется в окне ретрая → устойчивый 404. op.response
+        # детерминирован (тот же приём, что EXHAUSTED verify-* / passing IPL-address
+        # кейсы) и проверяет ровно то же — IP из v4-блока пула.
+        Step(name="get-v4", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
-                          "pm.test('v4 IP in pool v4 cidr', () => pm.expect(pm.response.json().externalIpv4Address.address).to.match(/^198\\.51\\.100\\./));"])),
+                          "const op = pm.response.json();",
+                          "pm.test('v4 alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
+                          "pm.test('v4 IP in pool v4 cidr', () => pm.expect(((op.response||{}).externalIpv4Address||{}).address || '').to.match(/^198\\.51\\.100\\./));"]),
         # Allocate v6.
         Step(name="cr-addr-v6", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}", "name": "ipl-ds-v6-{{runId}}",
@@ -725,9 +740,13 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "dsV6AddrId")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-v6", method="GET", path="/vpc/v1/addresses/{{dsV6AddrId}}",
+        # v6: та же логика — проверяем IP из v6-блока по operation.response (не
+        # публичный Address.Get, см. get-v4 comment).
+        Step(name="get-v6", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
-                          "pm.test('v6 IP in pool v6 prefix', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:ff:/));"])),
+                          "const op = pm.response.json();",
+                          "pm.test('v6 alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
+                          "pm.test('v6 IP in pool v6 prefix', () => pm.expect(((op.response||{}).externalIpv6Address||{}).address || '').to.match(/^2001:db8:ff:/));"]),
         # Cleanup addresses → pool.
         Step(name="del-v4", method="DELETE", path="/vpc/v1/addresses/{{dsV4AddrId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -794,16 +813,25 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.networkId", "exhNetId")]),
         poll_operation_until_done(),
         # 2. Создать pool /30 — 4 addresses total, 2 usable (excl network+broadcast).
+        #    isDefault=true в {{zoneC}} → external Address.Create резолвит его через
+        #    cascade Step 2 (zone_default). ВАЖНО: external-адрес НЕ несёт network-ref,
+        #    поэтому network_default-binding (Step 1) для него недостижим by design
+        #    (Step 1 деривит networkID только из internal subnet). Bind ниже проверяет
+        #    сам bind/unbind-контракт, но резолв идёт по zone_default. {{zoneC}} не
+        #    имеет seeded default (тот на {{zoneA}}), и RMCIDR/DUALSTACK свои isDefault
+        #    пулы в этой зоне уже почистили → партишн (zone,kind,is_default) свободен.
         Step(name="cr-pool", method="POST", path=POOLS, internal=True,
              body={"name": "ipl-exh-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneC}}",
-                   "v4CidrBlocks": ["198.51.100.252/30"], "v6CidrBlocks": []},
+                   "v4CidrBlocks": ["198.51.100.252/30"], "v6CidrBlocks": [],
+                   "isDefault": True},
              test_script=[*assert_status(200), *save_from_response("j.id", "exhPoolId")]),
-        # 3. Bind network → pool.
+        # 3. Bind network → pool (проверяет bind/unbind-контракт; на резолв external
+        #    v4 не влияет — тот идёт через zone_default выше).
         retry_until_authorized(Step(name="bind", method="POST", path="/vpc/v1/networks/{{exhNetId}}/addressPoolBinding", internal=True,
              body={"poolId": "{{exhPoolId}}"},
              test_script=[*assert_status(200)])),
-        # 4. Allocate #1 — external Address (резолв cascade Step 2 = network_default → наш pool).
+        # 4. Allocate #1 — external Address (резолв cascade Step 2 = zone_default → наш pool).
         Step(name="alloc-1", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}", "name": "exh-1-{{runId}}",
                    "externalIpv4AddressSpec": {"zoneId": "{{zoneC}}"}},

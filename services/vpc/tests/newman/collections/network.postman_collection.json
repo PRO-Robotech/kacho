@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "22362cd8-5ab6-4712-9b1a-2f6d9b8ef5e8",
+    "_postman_id": "3e97cc3c-8183-4fe3-9a30-734358f3d47a",
     "name": "kacho-vpc / newman / network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -219,7 +219,7 @@
           ]
         },
         {
-          "name": "get-confirms-rya435",
+          "name": "get-confirms-rya434",
           "request": {
             "method": "GET",
             "header": [
@@ -418,7 +418,7 @@
           ]
         },
         {
-          "name": "get-no-vpnid-rya436",
+          "name": "get-no-vpnid-rya435",
           "request": {
             "method": "GET",
             "header": [
@@ -1281,7 +1281,7 @@
           ]
         },
         {
-          "name": "update-desc-rya437",
+          "name": "update-desc-rya436",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1396,7 +1396,7 @@
           ]
         },
         {
-          "name": "verify-rya438",
+          "name": "verify-rya437",
           "request": {
             "method": "GET",
             "header": [
@@ -1447,7 +1447,7 @@
           ]
         },
         {
-          "name": "cleanup-rya439",
+          "name": "cleanup-rya438",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3023,7 +3023,7 @@
           ]
         },
         {
-          "name": "delete-happy-rya440",
+          "name": "delete-happy-rya439",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4550,7 +4550,7 @@
           ]
         },
         {
-          "name": "patch-rya441",
+          "name": "patch-rya440",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4665,7 +4665,7 @@
           ]
         },
         {
-          "name": "verify-rya442",
+          "name": "verify-rya441",
           "request": {
             "method": "GET",
             "header": [
@@ -4716,7 +4716,7 @@
           ]
         },
         {
-          "name": "cleanup-rya443",
+          "name": "cleanup-rya442",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4931,7 +4931,7 @@
           ]
         },
         {
-          "name": "patch-rya444",
+          "name": "patch-rya443",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5046,7 +5046,7 @@
           ]
         },
         {
-          "name": "verify-rya445",
+          "name": "verify-rya444",
           "request": {
             "method": "GET",
             "header": [
@@ -5097,7 +5097,7 @@
           ]
         },
         {
-          "name": "cleanup-rya446",
+          "name": "cleanup-rya445",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5312,7 +5312,7 @@
           ]
         },
         {
-          "name": "patch-rya447",
+          "name": "patch-rya446",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5427,7 +5427,7 @@
           ]
         },
         {
-          "name": "verify-rya448",
+          "name": "verify-rya447",
           "request": {
             "method": "GET",
             "header": [
@@ -5479,7 +5479,7 @@
           ]
         },
         {
-          "name": "cleanup-rya449",
+          "name": "cleanup-rya448",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5924,7 +5924,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya450",
+          "name": "patch-multi-rya449",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6039,7 +6039,7 @@
           ]
         },
         {
-          "name": "verify-all-rya451",
+          "name": "verify-all-rya450",
           "request": {
             "method": "GET",
             "header": [
@@ -6094,7 +6094,7 @@
           ]
         },
         {
-          "name": "cleanup-rya452",
+          "name": "cleanup-rya451",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6545,7 +6545,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst453",
+          "name": "list-filtered-lst452",
           "request": {
             "method": "GET",
             "header": [
@@ -6598,7 +6598,7 @@
           ]
         },
         {
-          "name": "cleanup-rya454",
+          "name": "cleanup-rya453",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7414,7 +7414,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya455",
+          "name": "patch-name-only-rya454",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7529,7 +7529,7 @@
           ]
         },
         {
-          "name": "verify-rya456",
+          "name": "verify-rya455",
           "request": {
             "method": "GET",
             "header": [
@@ -7583,7 +7583,7 @@
           ]
         },
         {
-          "name": "cleanup-rya457",
+          "name": "cleanup-rya456",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7798,7 +7798,7 @@
           ]
         },
         {
-          "name": "get-timed-rya458",
+          "name": "get-timed-rya457",
           "request": {
             "method": "GET",
             "header": [
@@ -10193,7 +10193,7 @@
           ]
         },
         {
-          "name": "get-default-sg-id-rya459",
+          "name": "get-default-sg-id-rya458",
           "request": {
             "method": "GET",
             "header": [
@@ -10250,7 +10250,7 @@
           ]
         },
         {
-          "name": "get-default-sg-alive",
+          "name": "get-default-sg-alive-rya459",
           "request": {
             "method": "GET",
             "header": [
@@ -10278,6 +10278,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('default SG exists before network.delete', () => pm.expect(pm.response.json().defaultForNetwork).to.eql(true));"
                 ]

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d9ffb54e-51fb-48dc-9c0a-c98430a112d0",
+    "_postman_id": "4cbfe1e7-b853-43cc-b34a-e7047ce39b18",
     "name": "kacho-vpc / newman / concurrency",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -405,9 +405,9 @@
                   "  pm.expect(ok, `ok=${ok} failed=${failed} ops=${JSON.stringify(ops)}`).to.eql(1);",
                   "  pm.expect(failed).to.eql(2);",
                   "});",
-                  "pm.test('failures: FailedPrecondition (gRPC code 9) — CIDR overlap', () => {",
+                  "pm.test('failures: FailedPrecondition (9, overlap) or Aborted (10, retryable conflict) — never INTERNAL/13', () => {",
                   "  const failedCodes = ops.filter(o => o.hasError).map(o => o.errCode);",
-                  "  failedCodes.forEach(c => pm.expect(c, `code=${c}`).to.eql(9));",
+                  "  failedCodes.forEach(c => pm.expect(c, `code=${c}`).to.be.oneOf([9, 10]));",
                   "});"
                 ]
               }
