@@ -158,6 +158,22 @@ api-gateway:
 compute:
   image: kacho-compute:dev
   imagePullPolicy: IfNotPresent
+  # Dev/newman profile deploys iam+vpc+geo but NOT kacho-storage (storage.enabled=false,
+  # SERVICES в deploy/Makefile = iam vpc compute api-gateway nlb). Компьют-конфиг
+  # ДЕФОЛТИТ KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR на `kacho-storage…:9091`
+  # (config.go, непустой default — как iam/geo/vpc). В dev этот адрес не резолвится →
+  # каждая storage-зависимая instance-op (Delete-instance volume-release, AttachDisk,
+  # DetachDisk) ретраит down-peer'а retry.OnUnavailable ~30s → завершается code=14
+  # "storage service unavailable", а newman poll-budget (~15s) истекает раньше →
+  # done:false-каскад (instance-суита) + провал cleanup-Delete в list-filter. Пустой
+  # addr → NoopStorageClient (main.go): ListAttachments пуст → Delete/Detach быстрый
+  # success, Attach → быстрый fail-fast (не 30s-hang). envconfig(kelseyhightower):
+  # env, выставленный в "" (present), ПЕРЕБИВАЕТ непустой default (default только при
+  # unset). Прод не затронут — values.fe3455-prod.yaml выставляет реальный addr явно.
+  # Attach/Detach-VOLUME кейсы (INST-AD/INST-DD) требуют ЖИВОГО storage — зелёные только
+  # в umbrella-e2e со storage.enabled=true, не в этом compute-only профиле.
+  env:
+    KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR: ""
   # Dev kind stack: pg-compute (bitnami postgres) serves NO TLS, so the migrator
   # + serve DB channel must be sslmode=disable. The compute chart DEFAULTS to
   # `require` (stricter than vpc/iam, which default to disable), which here fails
