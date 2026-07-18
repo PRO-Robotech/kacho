@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "69b01c09-b1ce-4dfc-9d3b-92a3a32582a0",
+    "_postman_id": "0571816c-5802-4b61-b401-0115282adfce",
     "name": "kacho-nlb / newman / targets",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -140,7 +140,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya413",
+          "name": "setup-materialize-tg-rya581",
           "request": {
             "method": "GET",
             "header": [
@@ -189,7 +189,7 @@
           ]
         },
         {
-          "name": "add-inst-rya414",
+          "name": "add-inst-rya582",
           "request": {
             "method": "POST",
             "header": [
@@ -599,7 +599,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya415",
+          "name": "setup-materialize-tg-rya583",
           "request": {
             "method": "GET",
             "header": [
@@ -648,7 +648,7 @@
           ]
         },
         {
-          "name": "add-nic-rya416",
+          "name": "add-nic-rya584",
           "request": {
             "method": "POST",
             "header": [
@@ -1058,7 +1058,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya417",
+          "name": "setup-materialize-tg-rya585",
           "request": {
             "method": "GET",
             "header": [
@@ -1107,7 +1107,7 @@
           ]
         },
         {
-          "name": "add-ipref-rya418",
+          "name": "add-ipref-rya586",
           "request": {
             "method": "POST",
             "header": [
@@ -1517,7 +1517,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya419",
+          "name": "setup-materialize-tg-rya587",
           "request": {
             "method": "GET",
             "header": [
@@ -1566,7 +1566,7 @@
           ]
         },
         {
-          "name": "add-ext-rya420",
+          "name": "add-ext-rya588",
           "request": {
             "method": "POST",
             "header": [
@@ -1976,7 +1976,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya421",
+          "name": "setup-materialize-tg-rya589",
           "request": {
             "method": "GET",
             "header": [
@@ -2025,7 +2025,7 @@
           ]
         },
         {
-          "name": "add-mixed-rya422",
+          "name": "add-mixed-rya590",
           "request": {
             "method": "POST",
             "header": [
@@ -2435,7 +2435,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya423",
+          "name": "setup-materialize-tg-rya591",
           "request": {
             "method": "GET",
             "header": [
@@ -2726,7 +2726,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya424",
+          "name": "setup-materialize-tg-rya592",
           "request": {
             "method": "GET",
             "header": [
@@ -3017,7 +3017,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya425",
+          "name": "setup-materialize-tg-rya593",
           "request": {
             "method": "GET",
             "header": [
@@ -3308,7 +3308,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya426",
+          "name": "setup-materialize-tg-rya594",
           "request": {
             "method": "GET",
             "header": [
@@ -3357,7 +3357,7 @@
           ]
         },
         {
-          "name": "add-w-0-rya427",
+          "name": "add-w-0-rya595",
           "request": {
             "method": "POST",
             "header": [
@@ -3767,7 +3767,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya428",
+          "name": "setup-materialize-tg-rya596",
           "request": {
             "method": "GET",
             "header": [
@@ -3816,7 +3816,7 @@
           ]
         },
         {
-          "name": "add-w-1000-rya429",
+          "name": "add-w-1000-rya597",
           "request": {
             "method": "POST",
             "header": [
@@ -4226,7 +4226,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya430",
+          "name": "setup-materialize-tg-rya598",
           "request": {
             "method": "GET",
             "header": [
@@ -4517,7 +4517,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya431",
+          "name": "setup-materialize-tg-rya599",
           "request": {
             "method": "GET",
             "header": [
@@ -4863,7 +4863,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya432",
+          "name": "setup-materialize-tg-rya600",
           "request": {
             "method": "GET",
             "header": [
@@ -5209,7 +5209,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya433",
+          "name": "setup-materialize-tg-rya601",
           "request": {
             "method": "GET",
             "header": [
@@ -5555,7 +5555,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya434",
+          "name": "setup-materialize-tg-rya602",
           "request": {
             "method": "GET",
             "header": [
@@ -5901,7 +5901,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya435",
+          "name": "setup-materialize-tg-rya603",
           "request": {
             "method": "GET",
             "header": [
@@ -6247,7 +6247,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya436",
+          "name": "setup-materialize-tg-rya604",
           "request": {
             "method": "GET",
             "header": [
@@ -6593,7 +6593,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya437",
+          "name": "setup-materialize-tg-rya605",
           "request": {
             "method": "GET",
             "header": [
@@ -6939,7 +6939,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya438",
+          "name": "setup-materialize-tg-rya606",
           "request": {
             "method": "GET",
             "header": [
@@ -6988,7 +6988,7 @@
           ]
         },
         {
-          "name": "add-1-rya439",
+          "name": "add-1-rya607",
           "request": {
             "method": "POST",
             "header": [
@@ -7497,7 +7497,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya440",
+          "name": "setup-materialize-tg-rya608",
           "request": {
             "method": "GET",
             "header": [
@@ -7546,7 +7546,7 @@
           ]
         },
         {
-          "name": "add-1-rya441",
+          "name": "add-1-rya609",
           "request": {
             "method": "POST",
             "header": [
@@ -8055,7 +8055,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya442",
+          "name": "setup-materialize-tg-rya610",
           "request": {
             "method": "GET",
             "header": [
@@ -8104,7 +8104,7 @@
           ]
         },
         {
-          "name": "add-1-rya443",
+          "name": "add-1-rya611",
           "request": {
             "method": "POST",
             "header": [
@@ -8613,7 +8613,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya444",
+          "name": "setup-materialize-tg-rya612",
           "request": {
             "method": "GET",
             "header": [
@@ -8662,7 +8662,7 @@
           ]
         },
         {
-          "name": "add-rya445",
+          "name": "add-rya613",
           "request": {
             "method": "POST",
             "header": [
@@ -9326,7 +9326,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya446",
+          "name": "setup-materialize-tg-rya614",
           "request": {
             "method": "GET",
             "header": [
@@ -9375,7 +9375,7 @@
           ]
         },
         {
-          "name": "add-rya447",
+          "name": "add-rya615",
           "request": {
             "method": "POST",
             "header": [
@@ -9824,7 +9824,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya448",
+          "name": "setup-materialize-tg-rya616",
           "request": {
             "method": "GET",
             "header": [
@@ -9873,7 +9873,7 @@
           ]
         },
         {
-          "name": "rm-absent-rya449",
+          "name": "rm-absent-rya617",
           "request": {
             "method": "POST",
             "header": [
@@ -10185,7 +10185,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya450",
+          "name": "setup-materialize-tg-rya618",
           "request": {
             "method": "GET",
             "header": [
@@ -10234,7 +10234,7 @@
           ]
         },
         {
-          "name": "add-rya451",
+          "name": "add-rya619",
           "request": {
             "method": "POST",
             "header": [
@@ -10475,10 +10475,19 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const tgts = pm.response.json().targets || [];",
                   "const t = tgts.find(x => x.externalIp && x.externalIp.address === '203.0.113.80');",
-                  "pm.test('row absent or still DRAINING (eventually consistent)', () =>   pm.expect(!t || t.status === 'DRAINING' || t.status === 'INACTIVE').to.be.true);"
+                  "const drained = (!t || t.status === 'DRAINING' || t.status === 'INACTIVE');",
+                  "const _dpc = parseInt(pm.environment.get('_drainPoll') || '0', 10);",
+                  "if (pm.response.code === 200 && !drained && _dpc < 30) {",
+                  "  pm.environment.set('_drainPoll', String(_dpc + 1));",
+                  "  const _dd = Date.now(); while (Date.now() - _dd < 700) { /* drain-runner tick wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_drainPoll');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('row absent or DRAINING/INACTIVE after drain runner (eventually consistent)', () =>   pm.expect(drained, JSON.stringify(tgts)).to.be.true);"
                 ]
               }
             }
@@ -10772,7 +10781,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya452",
+          "name": "setup-materialize-tg-rya620",
           "request": {
             "method": "GET",
             "header": [

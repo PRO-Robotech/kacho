@@ -152,7 +152,7 @@ CASES.append(Case(
     steps=[
         *_provision_zonal_subnet("existingZoneId", "szv4", "zcSubV4Id", family="v4"),
         *_provision_zonal_subnet("existingZoneId", "szv6", "zcSubV6Id", family="v6"),
-        Step(name="create-same-zone", method="POST", path=_LB,
+        retry_create_until_present(Step(name="create-same-zone", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
                    "type": "INTERNAL", "placementType": "ZONAL", "name": "zc-sz-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubV4Id}}"},
@@ -169,7 +169,7 @@ CASES.append(Case(
                  "  pm.environment.unset('opId');",
                  "  pm.test('no fixture → lawful rejection', () => pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="zc-cleanup-lb-cond", method="DELETE", path=f"{_LB}/{{{{zcLbId}}}}",
              test_script=[
@@ -195,7 +195,7 @@ CASES.append(Case(
     classes=["NEG", "CONF"], priority="P1",
     steps=[
         *_provision_regional_subnet("existingRegionAltId", "r2", "zcSubR2Id"),
-        Step(name="create-wrong-region", method="POST", path=_LB,
+        retry_create_until_present(Step(name="create-wrong-region", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
                    "type": "INTERNAL", "placementType": "REGIONAL", "name": "zc-wr-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubR2Id}}"}},
@@ -209,7 +209,7 @@ CASES.append(Case(
                  "  pm.test('no cross-region subnet fixture → lawful rejection, never silent 200', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         *_cleanup_vpc("zcSubR2Id"),
     ],
 ))
@@ -222,7 +222,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_provision_regional_subnet("existingRegionId", "r1", "zcSubR1Id"),
-        Step(name="create-same-region", method="POST", path=_LB,
+        retry_create_until_present(Step(name="create-same-region", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
                    "type": "INTERNAL", "placementType": "REGIONAL", "name": "zc-sr-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubR1Id}}"}},
@@ -238,7 +238,7 @@ CASES.append(Case(
                  "  pm.environment.unset('opId');",
                  "  pm.test('no fixture → lawful rejection', () => pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="zc-cleanup-lb-sr", method="DELETE", path=f"{_LB}/{{{{zcLbId}}}}",
              test_script=[

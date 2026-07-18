@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "3de7d3e0-9372-436a-9d60-8f4387480f61",
+    "_postman_id": "547144d8-a711-4415-939e-7adcffb0c44f",
     "name": "kacho-nlb / newman / placement-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -719,7 +719,7 @@
           ]
         },
         {
-          "name": "create-same-zone",
+          "name": "create-same-zone-cr561",
           "request": {
             "method": "POST",
             "header": [
@@ -755,6 +755,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 20) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('zcLbId');",
                   "if (pm.environment.get('zcSubV4Id') && pm.environment.get('zcSubV6Id')) {",
                   "  pm.test('same-zone dualstack accepted as Operation (200, not placement-rejected)', () =>     pm.expect(pm.response.code).to.eql(200));",
@@ -1207,7 +1225,7 @@
           ]
         },
         {
-          "name": "create-wrong-region",
+          "name": "create-wrong-region-cr562",
           "request": {
             "method": "POST",
             "header": [
@@ -1243,6 +1261,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 20) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "if (pm.environment.get('zcSubR2Id')) {",
                   "  pm.test('cross-region subnet rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "  const j = pm.response.json();",
@@ -1464,7 +1500,7 @@
           ]
         },
         {
-          "name": "create-same-region",
+          "name": "create-same-region-cr563",
           "request": {
             "method": "POST",
             "header": [
@@ -1500,6 +1536,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 20) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('zcLbId');",
                   "if (pm.environment.get('zcSubR1Id')) {",
                   "  pm.test('same-region subnet accepted as Operation (200, not region-rejected)', () =>     pm.expect(pm.response.code).to.eql(200));",

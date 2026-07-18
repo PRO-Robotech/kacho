@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "64d916f7-7265-4598-935e-11e9d84bb322",
+    "_postman_id": "b09d531a-c217-4a29-84e2-6900fddff417",
     "name": "kacho-nlb / newman / target-group",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -140,7 +140,7 @@
           ]
         },
         {
-          "name": "get-rya396",
+          "name": "get-rya564",
           "request": {
             "method": "GET",
             "header": [
@@ -588,7 +588,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya397",
+          "name": "setup-materialize-tg-rya565",
           "request": {
             "method": "GET",
             "header": [
@@ -637,7 +637,7 @@
           ]
         },
         {
-          "name": "get-rya398",
+          "name": "get-rya566",
           "request": {
             "method": "GET",
             "header": [
@@ -820,8 +820,8 @@
       ]
     },
     {
-      "name": "TGR-LST-FILTER-REGION — List TG with filter region_id → only matching rows",
-      "description": "class:LSG | priority:P2",
+      "name": "TGR-LST-FILTER-REGION — List TG filter whitelist is name= only — region_id is not a filterable field this phase → InvalidArgument (conformance to api-conventions filter whitelist)",
+      "description": "class:LSG | class:NEG | class:CONF | priority:P2",
       "item": [
         {
           "name": "lst-filter",
@@ -851,7 +851,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('non-whitelisted filter field rejected (400 InvalidArgument), never silent', () =>   pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () =>   pm.expect(pm.response.json().code).to.eql(3));",
+                  "pm.test('message names the offending non-whitelisted field', () =>   pm.expect((pm.response.json().message || '').toLowerCase()).to.include('region_id'));"
                 ]
               }
             }
@@ -967,7 +969,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya399",
+          "name": "setup-materialize-tg-rya567",
           "request": {
             "method": "GET",
             "header": [
@@ -1016,7 +1018,7 @@
           ]
         },
         {
-          "name": "upd-rya400",
+          "name": "upd-rya568",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1039,7 +1041,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"name,deregistration_delay_seconds\", \"name\": \"tg-upd-{{runId}}\", \"deregistrationDelaySeconds\": 600}",
+              "raw": "{\"updateMask\": \"name,deregistrationDelaySeconds\", \"name\": \"tg-upd-{{runId}}\", \"deregistrationDelaySeconds\": 600}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1328,7 +1330,7 @@
           ]
         },
         {
-          "name": "del-rya401",
+          "name": "del-rya569",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1581,7 +1583,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya402",
+          "name": "setup-materialize-tg-rya570",
           "request": {
             "method": "GET",
             "header": [
@@ -1630,7 +1632,7 @@
           ]
         },
         {
-          "name": "move-rya403",
+          "name": "move-cr571",
           "request": {
             "method": "POST",
             "header": [
@@ -1667,27 +1669,37 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 20) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
+                  "pm.environment.unset('tgMoved');",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('cross-project move accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
+                  "  pm.environment.set('tgMoved', '1');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "} else {",
+                  "  pm.environment.unset('opId');",
+                  "  pm.test('destination-project fixture absent → lawful reject, never silent 200', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 403, 404]));",
+                  "}"
                 ]
               }
             }
@@ -1781,6 +1793,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "if (!pm.environment.get('tgMoved')) { pm.environment.unset('opId'); return; }",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2040,7 +2053,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya404",
+          "name": "setup-materialize-tg-rya572",
           "request": {
             "method": "GET",
             "header": [
@@ -2089,7 +2102,7 @@
           ]
         },
         {
-          "name": "lops-rya405",
+          "name": "lops-rya573",
           "request": {
             "method": "GET",
             "header": [
@@ -3739,7 +3752,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya406",
+          "name": "setup-materialize-tg-rya574",
           "request": {
             "method": "GET",
             "header": [
@@ -3989,7 +4002,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya407",
+          "name": "del-blocked-rya575",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4479,7 +4492,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya408",
+          "name": "del-blocked-rya576",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4880,7 +4893,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya409",
+          "name": "setup-materialize-tg-rya577",
           "request": {
             "method": "GET",
             "header": [
@@ -5413,7 +5426,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya410",
+          "name": "setup-materialize-tg-rya578",
           "request": {
             "method": "GET",
             "header": [
@@ -8892,7 +8905,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya411",
+          "name": "setup-materialize-tg-rya579",
           "request": {
             "method": "GET",
             "header": [
@@ -8941,7 +8954,7 @@
           ]
         },
         {
-          "name": "lst-filt-lst412",
+          "name": "lst-filt-lst580",
           "request": {
             "method": "GET",
             "header": [

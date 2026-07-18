@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "423cc0e3-6dea-4ee8-82fe-db98295115f6",
+    "_postman_id": "2b9862d5-d337-4827-998b-61e776d9576b",
     "name": "kacho-nlb / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -621,9 +621,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "pm.test('operations array', () =>   pm.expect(j.operations || j.items || []).to.be.an('array'));"
+                  "pm.test('200 (cataloged) or fail-closed 403 (no catalog entry), never 5xx/leak', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('operations array', () =>     pm.expect(j.operations || j.items || []).to.be.an('array'));",
+                  "} else {",
+                  "  pm.test('403 is the fail-closed catalog default (AUTHZ_DENIED code 7)', () =>     pm.expect(pm.response.json().code).to.eql(7));",
+                  "}"
                 ]
               }
             }

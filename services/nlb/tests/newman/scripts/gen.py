@@ -289,6 +289,61 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
                    test_script=guard + list(step.test_script))
 
 
+def retry_create_until_present(step: Step, budget: int = 20, interval_ms: int = 400) -> Step:
+    """Wrap a CREATE/POST step that references a peer resource (e.g. a vpc Subnet /
+    Address) just provisioned inline in the SAME case, in a bounded read-your-writes
+    retry over the *cross-service* visibility window.
+
+    A subnet/address created through vpc returns its Operation done (durable in vpc),
+    but the peer read on nlb's side (nlb -> vpc SubnetService.Get during LB/Listener
+    Create) is briefly stale under load: the sync create rejects with
+    InvalidArgument/NotFound `"subnet <id> not found"` (code 3/5) before vpc's write is
+    visible to the nlb peer client. Confirmed under `--jobs 4` parallel collections
+    (ci-rep2: placement-coherence create-same-zone/-region + INTERNAL-REGIONAL cr-internal
+    reddened on `subnet <id> not found`, while the identical provision->poll->create
+    pattern in cross-resource happened to win the race and stayed green). This is a
+    textbook cross-service read-your-writes lag -> the CLIENT retries the create; it is
+    NOT a server barrier.
+
+    Retries the SAME request (setNextRequest -> self) while the response is a
+    `<something> not found` rejection (400/404 whose body message contains 'not found'),
+    spacing attempts ~interval_ms (busy-wait -- newman fires setNextRequest before any
+    setTimeout). A rejected create allocates NOTHING (sync reject before the Operation is
+    even minted), so re-POSTing is leak-free and idempotent. budget*interval_ms bounds
+    the wait (default 20*400ms = ~8s) -- fail-closed: on any other outcome the wrapped
+    step's real test_script runs exactly once, and once the budget is spent it ALSO runs
+    on the terminal not-found (a genuinely-absent peer still FAILS the real assertions --
+    never masked, never infinite).
+
+    Use ONLY on a create whose peer dependency was provisioned earlier in the SAME case.
+    Do NOT wrap negative fixture-absent creates (they legitimately expect the rejection).
+    """
+    guard = [
+        "// bounded read-your-writes retry over the cross-service peer-visibility window",
+        "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+        "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+        "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_crRetryCount', '0');",
+        "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+        "}",
+        "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+        "let _crNotFound = false;",
+        "try { _crNotFound = [400, 404].includes(pm.response.code)"
+        " && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+        f"if (_crNotFound && _crc < {budget}) {{",
+        "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+        f"  const _crd = Date.now(); while (Date.now() - _crd < {interval_ms}) {{ /* peer-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_crRetryCount');",
+        "pm.environment.unset('_crRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-cr{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
 def poll_operation_until_done() -> Step:
     """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
     guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
@@ -496,6 +551,7 @@ def load_cases_module(path: Path):
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present
+    mod.retry_create_until_present = retry_create_until_present
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)

@@ -25,7 +25,15 @@ _VPC_SUBNETS = "/vpc/v1/subnets"
 # are out of scope here and tracked for a separate listener acceptance/rewrite.
 
 
-def _setup_lb(name_suffix: str, lb_type: str = "EXTERNAL"):
+def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
+    # Default parent LB is INTERNAL (subnet-backed VIP from a per-case inline /24) rather
+    # than EXTERNAL auto-public-VIP: the shared external AddressPool is contended across the
+    # `--jobs 4` parallel collections and exhausts mid-run ("could not allocate load balancer
+    # address"), leaving an EXTERNAL parent a PHANTOM LB whose owner-tuple never materialises
+    # -> the child Listener.Create then 403s (editor@lb) and every listener CRUD reds in a
+    # cascade. An INTERNAL parent is pool-independent, so the child listener flow actually
+    # runs. Cases whose semantics REQUIRE an external parent (BYO external address) pass
+    # lb_type="EXTERNAL" explicitly.
     if lb_type == "INTERNAL":
         return [
             Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS,
@@ -48,7 +56,11 @@ def _setup_lb(name_suffix: str, lb_type: str = "EXTERNAL"):
                      "} else { pm.environment.unset('opId'); }",
                  ]),
             poll_operation_until_done(),
-            Step(name="setup-lb", method="POST", path=_LB_BASE,
+            # cross-service read-your-writes: the just-provisioned subnet can be briefly
+            # invisible to nlb's vpc peer-read under parallel load -> `subnet <id> not found`.
+            # Bounded create-retry re-POSTs (leak-free) until the subnet materialises, so the
+            # parent INTERNAL LB is real (not phantom) before the child listener flow.
+            retry_create_until_present(Step(name="setup-lb", method="POST", path=_LB_BASE,
                  body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                        "name": f"lst-{name_suffix}-{{{{runId}}}}", "type": "INTERNAL",
                        "placementType": "ZONAL", "v4Source": {"subnetId": "{{lstSubnetId}}"}},
@@ -60,7 +72,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "EXTERNAL"):
                      "  if (j.id) pm.environment.set('opId', j.id);",
                      "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
                      "} else { pm.environment.unset('opId'); }",
-                 ]),
+                 ])),
             poll_operation_until_done(),
             # read-your-writes: materialize the PARENT LB owner-tuple before the child
             # Listener.Create (which is authorized against editor@lb_network_load_balancer)
@@ -107,7 +119,9 @@ CASES.append(Case(
     title="Create EXTERNAL Listener with auto VIP allocation (Verifies REQ-LST-CR-AUTO-VIP)",
     classes=["CRUD"], priority="P0",
     steps=[
-        *_setup_lb("auto-vip"),
+        # Exercises EXTERNAL auto-public-VIP listener semantics → parent must be EXTERNAL.
+        # Pool-dependent (external AddressPool) — tracked under the systemic external-pool finding.
+        *_setup_lb("auto-vip", lb_type="EXTERNAL"),
         Step(name="cr-lst", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
@@ -131,7 +145,10 @@ CASES.append(Case(
     title="Create Listener with BYO address_id — CAS SetReference (Verifies REQ-LST-CR-BYO)",
     classes=["CRUD"], priority="P0",
     steps=[
-        *_setup_lb("byo"),
+        # BYO external address → parent must be EXTERNAL (address kind must match the LB
+        # scheme). Pool-dependent: on a lane where the external AddressPool is exhausted the
+        # parent is a phantom LB — tracked under the systemic external-pool finding.
+        *_setup_lb("byo", lb_type="EXTERNAL"),
         Step(name="cr-byo", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "byo-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
@@ -183,7 +200,9 @@ CASES.append(Case(
         retry_until_authorized(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('port matches', () => pm.expect(j.port).to.eql(81));",
+                          # grpc-gateway serialises the int32 port as a JSON string ('81');
+                          # Number()-coerce so the assertion is transport-encoding-agnostic.
+                          "pm.test('port matches', () => pm.expect(Number(j.port)).to.eql(81));",
                           "pm.test('protocol matches', () => pm.expect(j.protocol).to.eql('TCP'));"])),
         *_cleanup_lst(),
         *_cleanup_lb(),
@@ -197,7 +216,7 @@ CASES.append(Case(
     steps=[
         *_setup_lb("list"),
         Step(name="lst", method="GET",
-             path=f"{_LST_BASE}?loadBalancerId={{{{nlbId}}}}&pageSize=10",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&loadBalancerId={{{{nlbId}}}}&pageSize=10",
              test_script=[*assert_status(200),
                           "pm.test('listeners array', () => "
                           "  pm.expect(pm.response.json().listeners || pm.response.json().items || []).to.be.an('array'));"]),
@@ -232,7 +251,8 @@ CASES.append(Case(
     title="Delete auto-VIP Listener — FreeIP back to pool (Verifies REQ-LST-DEL-AUTO-FREE)",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
-        *_setup_lb("del-auto"),
+        # Exercises FreeIP-back-to-external-pool on delete → parent must be EXTERNAL. Pool-dependent.
+        *_setup_lb("del-auto", lb_type="EXTERNAL"),
         Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "del-auto-{{runId}}",
                    "protocol": "TCP", "port": 83, "targetPort": 8083, "ipVersion": "IPV4"},
@@ -251,7 +271,8 @@ CASES.append(Case(
     title="Delete BYO Listener — clears used_by, does NOT FreeIP",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
-        *_setup_lb("del-byo"),
+        # BYO external address → parent must be EXTERNAL (see LST-CR-CRUD-BYO). Pool-dependent.
+        *_setup_lb("del-byo", lb_type="EXTERNAL"),
         Step(name="cr-byo", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "del-byo-{{runId}}",
                    "protocol": "TCP", "port": 84, "targetPort": 8084,
@@ -662,7 +683,7 @@ CASES.append(Case(
     classes=["NEG", "LSG"], priority="P1",
     steps=[
         Step(name="lst-unknown-lb", method="GET",
-             path=f"{_LST_BASE}?loadBalancerId={{{{garbageNlbId}}}}",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&loadBalancerId={{{{garbageNlbId}}}}",
              test_script=[
                  "pm.test('rejected (404) or empty (200)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
@@ -871,11 +892,11 @@ CASES.append(Case(
     steps=[
         *_setup_lb("page-rt"),
         Step(name="page-1", method="GET",
-             path=f"{_LST_BASE}?loadBalancerId={{{{nlbId}}}}&pageSize=1",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&loadBalancerId={{{{nlbId}}}}&pageSize=1",
              test_script=[*assert_status(200),
                           "pm.environment.set('lstNextToken', pm.response.json().nextPageToken || '');"]),
         Step(name="page-2", method="GET",
-             path=f"{_LST_BASE}?loadBalancerId={{{{nlbId}}}}&pageSize=1&pageToken={{{{lstNextToken}}}}",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&loadBalancerId={{{{nlbId}}}}&pageSize=1&pageToken={{{{lstNextToken}}}}",
              test_script=[*assert_status(200)]),
         *_cleanup_lb(),
     ],

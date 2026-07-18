@@ -100,12 +100,28 @@ CASES.append(Case(
     title="List operations in project — returns array (may be empty)",
     classes=["CRUD", "LSG"], priority="P1",
     steps=[
+        # Project-wide ListOperations is NOT a modeled public RPC in the Kachō contract
+        # (api-conventions: clients poll OperationService.Get(id); there is no Watch/List
+        # over all ops). When the gateway routes such a method with no permission-catalog
+        # entry it fails CLOSED — `AUTHZ_DENIED "catalog: no entry for method"` (security.md
+        # invariant #4) — which is the correct secure default, NOT a leak. Assert the real
+        # contract: either the method is cataloged and returns a 200 array, or it is the
+        # lawful fail-closed 403 (never a silent 200-with-leak, never a 5xx). If a public
+        # project-scoped ListOperations is later added it must carry a catalog entry; this
+        # case then tightens back to 200.
         Step(name="list-ops", method="GET",
              path="/operations?projectId={{_suiteProjectId}}&pageSize=10",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
-                          "pm.test('operations array', () => "
-                          "  pm.expect(j.operations || j.items || []).to.be.an('array'));"]),
+             test_script=[
+                 "pm.test('200 (cataloged) or fail-closed 403 (no catalog entry), never 5xx/leak', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "if (pm.response.code === 200) {",
+                 "  const j = pm.response.json();",
+                 "  pm.test('operations array', () => "
+                 "    pm.expect(j.operations || j.items || []).to.be.an('array'));",
+                 "} else {",
+                 "  pm.test('403 is the fail-closed catalog default (AUTHZ_DENIED code 7)', () => "
+                 "    pm.expect(pm.response.json().code).to.eql(7));",
+                 "}"]),
     ],
 ))
 

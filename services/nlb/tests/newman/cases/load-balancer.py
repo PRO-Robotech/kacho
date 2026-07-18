@@ -189,7 +189,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_provision_subnet("ZONAL", "cr-int"),
-        Step(name="cr-int", method="POST", path=_CREATE_BASE,
+        retry_create_until_present(Step(name="cr-int", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "INTERNAL", "placementType": "ZONAL", "name": "internal-lb-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"}},
@@ -204,7 +204,7 @@ CASES.append(Case(
                  "  pm.test('no zonal subnet fixture → subnet-source create is rejected, never silently accepted', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-int", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -228,11 +228,34 @@ CASES.append(Case(
 
 # helper to spin up an LB and remember its id under {{nlbId}} (used by many cases)
 def _setup_lb(name_suffix: str, body_extra: dict = None):
-    body = {**_LB_BODY, "name": f"setup-{name_suffix}-{{{{runId}}}}", **(body_extra or {})}
+    # Pool-INDEPENDENT setup LB: an INTERNAL ZONAL LB whose VIP is auto-allocated from a
+    # per-case inline ZONAL subnet (fresh /24 = 254 IPs), NOT from the shared external
+    # AddressPool. The seeded external pool (198.51.100.0/24) is a single contended IPAM
+    # source across the `--jobs 4` parallel collections and its addresses are not recycled
+    # promptly within a run: ci-rep2 shows only 82 distinct VIPs ever allocated against
+    # 115 `could not allocate load balancer address` FailedPrecondition errors on a
+    # 254-address pool — every EXTERNAL auto-VIP setup created a PHANTOM LB (Operation
+    # done:true WITH error), so its {{nlbId}} pointed at a never-persisted resource and
+    # every downstream Get/Update/:verb reddened 404/403 (owner-tuple never materialised)
+    # or 400 (empty child id) in a long cascade. A subnet-backed INTERNAL VIP sidesteps
+    # the shared pool entirely, keeps each case self-contained, and is confirmed working
+    # (cross-resource INTERNAL ZONAL LBs allocate a bound Address reliably). The setup LB
+    # is used opaquely by downstream cases (lifecycle / attach / update / delete) — none
+    # assert EXTERNAL-specific shape on it, so INTERNAL is a drop-in. External auto-VIP
+    # semantics stay covered by the dedicated NLB-CR-CRUD-OK / EXTERNAL cases.
+    body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+            "type": "INTERNAL", "placementType": "ZONAL",
+            "name": f"setup-{name_suffix}-{{{{runId}}}}",
+            "v4Source": {"subnetId": "{{vpcSubnetId}}"}, **(body_extra or {})}
     return [
-        Step(name="setup-create-lb", method="POST", path=_CREATE_BASE, body=body,
+        *_provision_subnet("ZONAL", f"setup-{name_suffix}"),
+        # cross-service read-your-writes: the just-provisioned subnet can be briefly
+        # invisible to nlb's vpc peer-read under parallel load -> `subnet <id> not found`.
+        # Bounded create-retry re-POSTs (leak-free: a rejected create mints no Operation)
+        # until the subnet materialises across the service boundary.
+        retry_create_until_present(Step(name="setup-create-lb", method="POST", path=_CREATE_BASE, body=body,
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
+                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")])),
         poll_operation_until_done(),
         # read-your-writes: materialize the owner-tuple before the first real access.
         # opgate removed -> owner/creator FGA tuple is eventually-consistent, so the first
@@ -2478,7 +2501,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         *_provision_subnet("REGIONAL", "pl-mismatch"),
-        Step(name="cr-mismatch", method="POST", path=_CREATE_BASE,
+        retry_create_until_present(Step(name="cr-mismatch", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "INTERNAL", "placementType": "ZONAL", "name": "pl-mm-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"}},
@@ -2492,7 +2515,7 @@ CASES.append(Case(
                  "  pm.test('message: subnet placement does not match', () => "
                  "    pm.expect((pm.response.json().message || '').toLowerCase()).to.include('placement does not match'));",
                  "}",
-             ]),
+             ])),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
 ))
@@ -2617,7 +2640,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_provision_subnet("REGIONAL", "int-reg"),
-        _internal_create_step("lb-ireg", "REGIONAL"),
+        retry_create_until_present(_internal_create_step("lb-ireg", "REGIONAL")),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-reg", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*_internal_happy_get_asserts("REGIONAL"),
@@ -2636,8 +2659,8 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_provision_subnet("REGIONAL", "int-drain"),
-        _internal_create_step("lb-idrain", "REGIONAL",
-                              {"disabledAnnounceZones": ["{{existingZoneAltId}}"]}),
+        retry_create_until_present(_internal_create_step("lb-idrain", "REGIONAL",
+                              {"disabledAnnounceZones": ["{{existingZoneAltId}}"]})),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-drain", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -2808,7 +2831,7 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_provision_subnet("REGIONAL", "drain-toggle"),
-        _internal_create_step("lb-dtog", "REGIONAL"),
+        retry_create_until_present(_internal_create_step("lb-dtog", "REGIONAL")),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="upd-drain", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "disabled_announce_zones",

@@ -573,15 +573,28 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.80"}}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        # Pad: runner ticks every ~10s. We hope it has fired by the time this runs;
-        # the assertion tolerates either state since newman is sequential and the
-        # drain timing is racey w.r.t. polling cadence.
+        # The Phase-A→B drain transition is async (drain runner ticks ~10s), so a single
+        # read races the runner: right after removeTargets the row can still read ACTIVE.
+        # Bounded self-poll (setNextRequest, busy-wait ~700ms, budget 30 ≈ 21s) waits for
+        # the row to reach a drained shape — absent OR DRAINING OR INACTIVE — then asserts
+        # once. A row that stays ACTIVE past the budget is a genuine runner failure and
+        # reds (never masked, never infinite). Techniques: state-transition (ACTIVE→DRAINING
+        # →deleted) + eventual-consistency polling.
         Step(name="poll-tg-after-drain", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             test_script=[*assert_status(200),
-                          "const tgts = pm.response.json().targets || [];",
+             test_script=["const tgts = pm.response.json().targets || [];",
                           "const t = tgts.find(x => x.externalIp && x.externalIp.address === '203.0.113.80');",
-                          "pm.test('row absent or still DRAINING (eventually consistent)', () => "
-                          "  pm.expect(!t || t.status === 'DRAINING' || t.status === 'INACTIVE').to.be.true);"]),
+                          "const drained = (!t || t.status === 'DRAINING' || t.status === 'INACTIVE');",
+                          "const _dpc = parseInt(pm.environment.get('_drainPoll') || '0', 10);",
+                          "if (pm.response.code === 200 && !drained && _dpc < 30) {",
+                          "  pm.environment.set('_drainPoll', String(_dpc + 1));",
+                          "  const _dd = Date.now(); while (Date.now() - _dd < 700) { /* drain-runner tick wait */ }",
+                          "  pm.execution.setNextRequest(pm.info.requestName);",
+                          "  return;",
+                          "}",
+                          "pm.environment.unset('_drainPoll');",
+                          *assert_status(200),
+                          "pm.test('row absent or DRAINING/INACTIVE after drain runner (eventually consistent)', () => "
+                          "  pm.expect(drained, JSON.stringify(tgts)).to.be.true);"]),
         *_cleanup_tg(),
     ],
 ))

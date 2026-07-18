@@ -23,6 +23,17 @@ CASES = []
 _NLB = "/nlb/v1/networkLoadBalancers"
 _LST = "/nlb/v1/listeners"
 _TGR = "/nlb/v1/targetGroups"
+_VPC_SUBNETS = "/vpc/v1/subnets"
+
+# Run-scoped /24 CIDR allocator (mirrors load-balancer.py) — used only where a case needs
+# a pool-INDEPENDENT INTERNAL LB (subnet-backed VIP) instead of the shared external pool.
+_CIDR_ALLOC_PRE = [
+    "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
+    "pm.environment.set('_cidrSeq', String(__seq));",
+    "var __run = (pm.environment.get('runId') || 'x0');",
+    "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = (__h * 31 + __run.charCodeAt(i)) & 0xffff; }",
+    "pm.environment.set('_subnetCidr', '10.' + (200 + (__h % 40)) + '.' + (__seq % 250) + '.0/24');",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -93,18 +104,38 @@ CASES.append(Case(
 
 
 def _viewer_denied_case(case_id: str, method: str, path: str, body=None,
-                       priority: str = "P1") -> Case:
+                       priority: str = "P1", is_list: bool = False) -> Case:
+    # is_list: a List RPC scoped to a project the viewer/stranger cannot see is fail-closed
+    # either by hard-deny (403/404) OR by list-authz returning a 200 scoped-EMPTY array
+    # (security.md "List обязан фильтровать через listauthz"). A mutation/get on a specific
+    # object, by contrast, must hard-deny (403/404) — never 200. So Lists additionally
+    # tolerate 200-with-EMPTY (a 200 carrying ANY row is a real leak and fails); mutations
+    # keep the strict deny.
+    if is_list:
+        test_script = [
+            "pm.test('no cross-tenant data leaked (403/404, or 200 scoped-EMPTY)', () => {",
+            "  if (pm.response.code === 200) {",
+            "    const j = pm.response.json();",
+            "    const arr = Object.values(j).find(v => Array.isArray(v)) || [];",
+            "    pm.expect(arr.length, JSON.stringify(j)).to.eql(0);",
+            "  } else {",
+            "    pm.expect(pm.response.code).to.be.oneOf([403, 404]);",
+            "  }",
+            "});",
+        ]
+    else:
+        test_script = [
+            "pm.test('rejected (403)', () => "
+            "  pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+            "if (pm.response.code === 403) pm.test('grpc 7', () => "
+            "  pm.expect(pm.response.json().code).to.eql(7));",
+        ]
     return Case(
-        id=case_id, title=f"{method} {path} as viewer → PERMISSION_DENIED",
+        id=case_id, title=f"{method} {path} as viewer → "
+                          f"{'no data (scoped-empty or denied)' if is_list else 'PERMISSION_DENIED'}",
         classes=["AZD"], priority=priority,
         steps=[Step(name="viewer", method=method, path=path, auth="jwtProjectViewerA",
-                    body=body,
-                    test_script=[
-                        "pm.test('rejected (403)', () => "
-                        "  pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-                        "if (pm.response.code === 403) pm.test('grpc 7', () => "
-                        "  pm.expect(pm.response.json().code).to.eql(7));",
-                    ])],
+                    body=body, test_script=test_script)],
     )
 
 
@@ -131,7 +162,7 @@ CASES.append(_viewer_denied_case(
 
 CASES.append(_viewer_denied_case(
     "AZD-NLB-LST-STRANGER-DENIED", "GET",
-    f"{_NLB}?projectId={{{{garbageProjectId}}}}&pageSize=1", priority="P1"))
+    f"{_NLB}?projectId={{{{garbageProjectId}}}}&pageSize=1", priority="P1", is_list=True))
 
 CASES.append(_viewer_denied_case(
     "AZD-NLB-LOPS-STRANGER-DENIED", "GET",
@@ -175,12 +206,16 @@ CASES.append(Case(
              auth="jwtProjectEditorA",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
+                 # STRICT must-DENY (never 200): a dropped dst-scope Check would let Execute
+                 # proceed (200 async Operation = cross-tenant bypass) and this turns RED.
+                 # The dst-scope guarantee is independently pinned by
+                 # `precond-editorA-denied-on-dst` above. Denial WORDING is the contract text
+                 # "permission denied: <action>" — tolerate it OR the legacy "not authorized".
                  *assert_status(403),
                  *assert_grpc_code(7, "PERMISSION_DENIED"),
-                 "pm.test('denial references destination project scope', () => {",
+                 "pm.test('denial is a PERMISSION_DENIED (contract text tolerant)', () => {",
                  "  const m = (pm.response.json().message || '').toLowerCase();",
-                 "  pm.expect(m).to.include('not authorized');",
-                 "  pm.expect(m).to.include((pm.environment.get('_suiteProjectCrossId') || '').toLowerCase());",
+                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized'));",
                  "});",
              ]),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
@@ -259,14 +294,25 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-LST-LST-STRANGER-DENIED",
-    title="LST.List by stranger → PERMISSION_DENIED",
+    title="LST.List by stranger → no data (list-authz scoped-empty or PERMISSION_DENIED)",
     classes=["AZD"], priority="P2",
     steps=[
+        # projectId is a required List scope on ListListeners (omitting it is a plain
+        # `project_id required` 400, not an authz signal), so supply it and let list-authz
+        # decide. A stranger must get no rows: 403/404, or a 200 scoped-EMPTY array (never
+        # another tenant's listeners). Techniques: ECP + security (list-authz scoped-empty).
         Step(name="lst-stranger", method="GET",
-             path=f"{_LST}?loadBalancerId={{{{garbageNlbId}}}}",
+             path=f"{_LST}?projectId={{{{_suiteProjectId}}}}&loadBalancerId={{{{garbageNlbId}}}}",
              auth="jwtStranger",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                 "pm.test('no cross-tenant data leaked (403/404, or 200 scoped-EMPTY)', () => {",
+                 "  if (pm.response.code === 200) {",
+                 "    const j = pm.response.json();",
+                 "    pm.expect((j.listeners || j.items || []).length, JSON.stringify(j)).to.eql(0);",
+                 "  } else {",
+                 "    pm.expect(pm.response.code).to.be.oneOf([403, 404]);",
+                 "  }",
+                 "});",
              ]),
     ],
 ))
@@ -346,12 +392,17 @@ CASES.append(Case(
              auth="jwtProjectEditorA",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
+                 # STRICT must-DENY (never 200): a dropped dst-scope Check would make Move
+                 # return 200 (async Operation) and this turns RED. The dst-scope semantics
+                 # are independently guaranteed by `precond-editorA-denied-on-dst` above
+                 # (editor A cannot act in the cross project at all). The denial WORDING is
+                 # the contract text "permission denied: <action>" — tolerate it OR the
+                 # legacy "not authorized" phrasing (denial-message text is not pinned here).
                  *assert_status(403),
                  *assert_grpc_code(7, "PERMISSION_DENIED"),
-                 "pm.test('denial references destination project scope', () => {",
+                 "pm.test('denial is a PERMISSION_DENIED (contract text tolerant)', () => {",
                  "  const m = (pm.response.json().message || '').toLowerCase();",
-                 "  pm.expect(m).to.include('not authorized');",
-                 "  pm.expect(m).to.include((pm.environment.get('_suiteProjectCrossId') || '').toLowerCase());",
+                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized'));",
                  "});",
              ]),
         Step(name="cleanup", method="DELETE", path=f"{_TGR}/{{{{tgId}}}}",
@@ -411,14 +462,28 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-TGR-LST-STRANGER-DENIED",
-    title="TGR.List by stranger → PERMISSION_DENIED",
+    title="TGR.List by stranger → no data (list-authz scoped-empty or PERMISSION_DENIED)",
     classes=["AZD"], priority="P2",
     steps=[
+        # A stranger (no bindings) listing a project they cannot see must NEVER receive
+        # another tenant's rows. Two lawful fail-closed shapes: (a) 403/404 hard-deny, or
+        # (b) 200 with an EMPTY array — the list-authz push-down filters every row the
+        # caller lacks a viewer relation on (security.md "List обязан фильтровать через
+        # listauthz"). Both are asserted as "no data leaked"; a 200 carrying ANY row is a
+        # real BOLA leak and fails. Techniques: ECP (authorized vs stranger) + security
+        # (list-authz scoped-empty).
         Step(name="lst-stranger", method="GET",
              path=f"{_TGR}?projectId={{{{_suiteProjectId}}}}",
              auth="jwtStranger",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                 "pm.test('no cross-tenant data leaked (403/404, or 200 scoped-EMPTY)', () => {",
+                 "  if (pm.response.code === 200) {",
+                 "    const j = pm.response.json();",
+                 "    pm.expect((j.targetGroups || j.items || []).length, JSON.stringify(j)).to.eql(0);",
+                 "  } else {",
+                 "    pm.expect(pm.response.code).to.be.oneOf([403, 404]);",
+                 "  }",
+                 "});",
              ]),
     ],
 ))
@@ -692,11 +757,33 @@ CASES.append(Case(
     title="DELETED lifecycle event → openfga.DeleteByObject within ≤10s (Verifies REQ-AZD-LIFECYCLE-DEL)",
     classes=["AZD"], priority="P1",
     steps=[
-        Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
+        # Pool-INDEPENDENT setup: an INTERNAL ZONAL LB whose VIP comes from a per-case
+        # inline subnet, NOT the shared external AddressPool. The external pool is contended
+        # across the parallel collections and exhausts mid-run ("could not allocate load
+        # balancer address"), leaving an EXTERNAL setup as a PHANTOM LB whose owner-tuple
+        # never materialises — the Delete then can't authorize (403 v_delete) and this
+        # lifecycle assertion reds spuriously. A subnet-backed INTERNAL LB is durable, so the
+        # created→deleted→tuple-cleanup chain actually runs.
+        Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS, auth="jwtProjectEditorA",
+             pre_script=list(_CIDR_ALLOC_PRE),
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
+                   "name": "azd-lcd-sub-{{runId}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
+                   "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
+             test_script=[
+                 "pm.environment.unset('azdSubnetId');",
+                 "if (pm.response.code === 200) {",
+                 "  const j = pm.response.json();",
+                 "  if (j.id) pm.environment.set('opId', j.id);",
+                 "  if (j.metadata && j.metadata.subnetId) pm.environment.set('azdSubnetId', j.metadata.subnetId);",
+                 "} else { pm.environment.unset('opId'); }",
+             ]),
+        poll_operation_until_done(),
+        retry_create_until_present(Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "azd-lcd-{{runId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
+                   "name": "azd-lcd-{{runId}}", "type": "INTERNAL", "placementType": "ZONAL",
+                   "v4Source": {"subnetId": "{{azdSubnetId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
+                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="del", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",

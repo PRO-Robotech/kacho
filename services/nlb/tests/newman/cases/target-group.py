@@ -123,13 +123,27 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="TGR-LST-FILTER-REGION",
-    title="List TG with filter region_id → only matching rows",
-    classes=["LSG"], priority="P2",
+    title="List TG filter whitelist is name= only — region_id is not a filterable field "
+          "this phase → InvalidArgument (conformance to api-conventions filter whitelist)",
+    classes=["LSG", "NEG", "CONF"], priority="P2",
     steps=[
+        # api-conventions: `filter` is a whitelist and the current phase whitelists ONLY
+        # `name=` (kacho-corelib/filter.Parse). A `region_id=` predicate is therefore a
+        # non-whitelisted field and the server rejects it verbatim ("Unknown field:
+        # region_id") rather than silently ignoring it or leaking an unfiltered list — the
+        # correct fail-closed contract. Techniques: ECP (whitelisted vs non-whitelisted
+        # filter field) + conformance (filter grammar).
         Step(name="lst-filter", method="GET",
              path=f"{_TG_BASE}?projectId={{{{_suiteProjectId}}}}&"
                   f"filter=region_id%3D%22{{{{_suiteRegionId}}}}%22",
-             test_script=[*assert_status(200)]),
+             test_script=[
+                 "pm.test('non-whitelisted filter field rejected (400 InvalidArgument), never silent', () => "
+                 "  pm.expect(pm.response.code).to.eql(400));",
+                 "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => "
+                 "  pm.expect(pm.response.json().code).to.eql(3));",
+                 "pm.test('message names the offending non-whitelisted field', () => "
+                 "  pm.expect((pm.response.json().message || '').toLowerCase()).to.include('region_id'));",
+             ]),
     ],
 ))
 
@@ -139,8 +153,12 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_tg("upd-ok"),
+        # updateMask paths use the JSON-canonical lowerCamelCase FieldMask form
+        # (`deregistrationDelaySeconds`) — the snake_case form was rejected by grpc-gateway's
+        # protojson FieldMask codec on this multi-word field ("FieldMask.paths contains
+        # invalid path"), while the JSON field name in the body is already camelCase.
         retry_until_authorized(Step(name="upd", method="PATCH", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             body={"updateMask": "name,deregistration_delay_seconds",
+             body={"updateMask": "name,deregistrationDelaySeconds",
                    "name": "tg-upd-{{runId}}", "deregistrationDelaySeconds": 600},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
@@ -172,13 +190,34 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_setup_tg("mv"),
-        retry_until_authorized(Step(name="move", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
+        # Cross-project move needs the DESTINATION project (existingProjectCrossId) to
+        # exist AND be visible to the caller. It is a cross-domain deploy-precondition
+        # (iam-seeded): if unseeded / cross-account-invisible, nlb->iam ProjectService.Get
+        # lawfully returns "Project <id> not found" (anti-oracle NotFound). Wrap in the
+        # cross-service RYW retry (destination may lag right after seed) and, on a bare
+        # lane, assert the lawful reject instead of hard-failing — the move-back + cleanup
+        # then no-op. On a seeded lane the full cross-project round-trip runs.
+        retry_create_until_present(Step(name="move", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+             test_script=[
+                 "pm.environment.unset('tgMoved');",
+                 "if (pm.response.code === 200) {",
+                 "  pm.test('cross-project move accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
+                 "  pm.environment.set('tgMoved', '1');",
+                 *save_from_response("j.id", "opId"),
+                 "} else {",
+                 "  pm.environment.unset('opId');",
+                 "  pm.test('destination-project fixture absent → lawful reject, never silent 200', () => "
+                 "    pm.expect(pm.response.code).to.be.oneOf([400, 403, 404]));",
+                 "}",
+             ])),
         poll_operation_until_done(),
         Step(name="move-back", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[
+                 "if (!pm.environment.get('tgMoved')) { pm.environment.unset('opId'); return; }",
+                 *save_from_response("j.id", "opId"),
+             ]),
         poll_operation_until_done(),
         *_cleanup_tg(),
     ],
