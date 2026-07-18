@@ -92,8 +92,35 @@ type reconcileStore struct {
 // duplicate fga_outbox tuples. The expiry path (ExpireBinding) keeps its CAS
 // guard (RevokeExpiredBinding) and ALSO benefits from the lock taken here.
 func (s *reconcileStore) LoadBinding(ctx context.Context, bindingID domain.AccessBindingID) (reconcile.BindingScope, bool, error) {
+	return s.loadBinding(ctx, bindingID, true /* forUpdate — full path serializes the delete-stale diff */)
+}
+
+// LoadBindingUnlocked loads the same BindingScope as LoadBinding but WITHOUT the
+// `FOR UPDATE` row-lock — the read the ADDITIVE forward fast-path
+// (reconcile.ReconcileObjectForward) uses. Forward only WRITES the freshly-registered
+// object's tuples (never a delete-stale diff), so it needs no serialization against a
+// concurrent pass of the same binding; taking the row-lock here would re-serialize all
+// registrations sharing one editor/owner binding — the exact bottleneck the fast-path
+// removes. Correctness is preserved by the async FULL ReconcileObject backstop.
+func (s *reconcileStore) LoadBindingUnlocked(ctx context.Context, bindingID domain.AccessBindingID) (reconcile.BindingScope, bool, error) {
+	return s.loadBinding(ctx, bindingID, false /* no row-lock — additive forward path */)
+}
+
+// loadBinding is the shared reader for LoadBinding (forUpdate=true) and
+// LoadBindingUnlocked (forUpdate=false). The BindingScope projection is IDENTICAL in
+// both modes — only the row-lock differs — so the full and forward paths derive the
+// same scope/selector/subject facts.
+func (s *reconcileStore) loadBinding(ctx context.Context, bindingID domain.AccessBindingID, forUpdate bool) (reconcile.BindingScope, bool, error) {
 	r := &abReader{tx: s.tx}
-	b, err := r.GetForUpdate(ctx, bindingID)
+	var (
+		b   domain.AccessBinding
+		err error
+	)
+	if forUpdate {
+		b, err = r.GetForUpdate(ctx, bindingID)
+	} else {
+		b, err = r.Get(ctx, bindingID)
+	}
 	if err != nil {
 		if errors.Is(err, iamerr.ErrNotFound) {
 			return reconcile.BindingScope{}, false, nil
@@ -147,6 +174,19 @@ func (s *reconcileStore) LoadBinding(ctx context.Context, bindingID domain.Acces
 func (s *reconcileStore) AcquireBindingLock(ctx context.Context, bindingID domain.AccessBindingID) error {
 	if _, err := s.tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, string(bindingID)); err != nil {
 		return fmt.Errorf("reconcile: advisory-lock binding %s: %w", bindingID, err)
+	}
+	return nil
+}
+
+// AcquireBindingLockShared takes pg_advisory_xact_lock_shared(hashtext(binding_id)) —
+// the SHARE-mode advisory lock the ADDITIVE forward fast-path holds. SHARE ∥ SHARE do not
+// conflict (concurrent forwards of the same binding coexist → throughput), while SHARE
+// conflicts with the EXCLUSIVE AcquireBindingLock the FULL path takes (forward and full
+// take turns on the binding → their FK-child INSERT `FOR KEY SHARE` never crosses the
+// full path's `SELECT … FOR UPDATE` on the parent row → no 40P01 deadlock). xact-scoped.
+func (s *reconcileStore) AcquireBindingLockShared(ctx context.Context, bindingID domain.AccessBindingID) error {
+	if _, err := s.tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext($1))`, string(bindingID)); err != nil {
+		return fmt.Errorf("reconcile: shared advisory-lock binding %s: %w", bindingID, err)
 	}
 	return nil
 }
@@ -733,9 +773,11 @@ func (s *reconcileStore) EmitTupleDelete(ctx context.Context, tuples []domain.Me
 
 // RecordEmittedTuples co-commits the per-member FGA tuples into the persisted
 // emitted-tuple ledger (kacho_iam.access_binding_emitted_tuples — F3/#178) on the
-// reconcile writer-tx, alongside the matching EmitTupleWrite (ban #10). It mirrors
-// abWriter.InsertEmittedTuples (`INSERT … ON CONFLICT DO NOTHING`) so a repeated
-// reconcile of the same ACTIVE member is an idempotent no-op. len==0 is a no-op.
+// reconcile writer-tx, alongside the matching EmitTupleWrite (ban #10). The INSERT is
+// `ON CONFLICT (binding_id,fga_user,relation,object) DO UPDATE SET source='member'` (the
+// DO UPDATE only re-tags a pre-0032 source='binding' row; the object-spaces are disjoint,
+// so no real binding↔member collision), so a repeated reconcile of the same ACTIVE member
+// — or a forward + async-full overlap — is an idempotent no-op. len==0 is a no-op.
 func (s *reconcileStore) RecordEmittedTuples(ctx context.Context, bindingID domain.AccessBindingID, tuples []domain.MembershipTuple) error {
 	for _, t := range tuples {
 		if t.User == "" || t.Relation == "" || t.Object == "" {

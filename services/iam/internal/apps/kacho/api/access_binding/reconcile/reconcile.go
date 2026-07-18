@@ -103,10 +103,49 @@ type ReconcileStore interface {
 	// materialization under N replicas.
 	AcquireBindingLock(ctx context.Context, bindingID domain.AccessBindingID) error
 
+	// AcquireBindingLockShared takes pg_advisory_xact_lock_shared(hashtext(binding_id))
+	// — the SHARE-mode sibling of AcquireBindingLock — on the forward writer-tx. It is
+	// the FIRST statement of the ADDITIVE forward path (forwardObjectForBinding). SHARE
+	// mode is chosen deliberately:
+	//
+	//   - SHARE ∥ SHARE do NOT conflict → N concurrent forward passes for DIFFERENT
+	//     objects of the SAME binding all hold it simultaneously and proceed CONCURRENTLY
+	//     (the throughput property — forwards never serialize on each other).
+	//   - SHARE conflicts with EXCLUSIVE (AcquireBindingLock) → a forward pass and a
+	//     concurrent FULL ReconcileObject of the SAME binding are MUTUALLY EXCLUSIVE. This
+	//     is REQUIRED for correctness: the full path holds `SELECT … FOR UPDATE` on the
+	//     access_bindings row, and the forward path's INSERT into the FK-child tables
+	//     (target_members / emitted_tuples) needs a FOR KEY SHARE lock on that same parent
+	//     row — FOR UPDATE conflicts with FOR KEY SHARE, so interleaving them deadlocks
+	//     (40P01, empirically). The SHARE advisory gate makes forward and full take turns
+	//     on the binding, so their row-locks never cross → no deadlock, and full never
+	//     revokes a just-forwarded in-mirror object as "stale".
+	//
+	// It is acquired in ASCENDING binding-id order (ReconcileObjectForward sorts the
+	// fan-out) — the SAME order the full path's dedupSortBindingIDs uses — so a forward
+	// and a full pass acquiring locks across multiple shared bindings cannot form an ABBA
+	// cycle (ordered locking). xact-scoped → auto-released on commit/rollback.
+	AcquireBindingLockShared(ctx context.Context, bindingID domain.AccessBindingID) error
+
 	// LoadBinding loads the minimal scope/selector/role facts for a binding.
 	// ok=false when the binding no longer exists (deleted — the reconciler then
 	// does nothing; the CASCADE already dropped its members).
+	//
+	// The implementation takes a `SELECT … FOR UPDATE` row-lock on the binding row so
+	// two concurrent FULL reconcile passes of the same binding serialize (the delete-
+	// stale diff must not race). The forward fast-path does NOT use this — see
+	// LoadBindingUnlocked.
 	LoadBinding(ctx context.Context, bindingID domain.AccessBindingID) (BindingScope, bool, error)
+
+	// LoadBindingUnlocked loads the SAME BindingScope facts as LoadBinding but WITHOUT
+	// the `FOR UPDATE` row-lock (and the forward fast-path additionally skips the
+	// advisory lock). It is the read the ADDITIVE forward path (ReconcileObjectForward)
+	// uses: because that path only ADDS the freshly-registered object's tuples (never a
+	// delete-stale diff), it needs no serialization against a concurrent pass of the
+	// same binding, so it must not take the binding row-lock that would re-serialize all
+	// registrations sharing one editor/owner binding (the throughput bottleneck this
+	// fast-path removes). ok=false when the binding no longer exists.
+	LoadBindingUnlocked(ctx context.Context, bindingID domain.AccessBindingID) (BindingScope, bool, error)
 
 	// MatchSelector returns the MIRROR objects matching a selector's
 	// types+matchLabels (labels @> matchLabels) — the consumer-owned feed
@@ -220,7 +259,7 @@ type ReconcileStore interface {
 	// all_in_scope / resources[] arms' tuples already in the ledger. Without this the
 	// selector member-tuples were emitted to fga_outbox but never recorded, so the
 	// revoke orphaned them and a role tier change never reconciled them.
-	// RecordEmittedTuples is INSERT … ON CONFLICT DO NOTHING (idempotent re-emit);
+	// RecordEmittedTuples is INSERT … ON CONFLICT DO UPDATE SET source='member' (idempotent re-emit);
 	// ForgetEmittedTuples removes exactly the supplied member rows (eager-revoke /
 	// fell-out). A deleted binding's rows are dropped by the FK ON DELETE CASCADE.
 	RecordEmittedTuples(ctx context.Context, bindingID domain.AccessBindingID, tuples []domain.MembershipTuple) error
@@ -707,32 +746,51 @@ func (r *Reconciler) desiredRuleMembers(ctx context.Context, s ReconcileStore, b
 			return nil, err
 		}
 		for _, o := range matched {
-			// Containment re-verify per object: a label-matched object NOT
-			// under the binding's scope (cross-scope injection via label-tampering)
-			// → REJECTED, never a tuple.
-			if !o.IsContainedIn(bs.Scope) {
-				out = append(out, DesiredMember{
-					RuleFP: sel.RuleFP, ObjectType: o.ObjectType, ObjectID: o.ObjectID,
-					Status: domain.VerificationRejected,
-				})
-				continue
-			}
-			// ACTIVE: precompute the per-object tuples from the RULE's verbs (the
-			// ARM_LABELS rule is excluded from CompileRules, so RolePerms cannot
-			// supply the tier). ruleObjectTuples reuses the per-verb/tier
-			// semantics. A type the model has no FGA object for → no tuple → skip the
-			// object (fail-closed: a typo'd type never grants).
-			tuples, ok := ruleObjectTuples(subject, sel.Verbs, o.ObjectType, o.ObjectID)
+			// Per-object verdict — SHARED with the forward fast-path
+			// (desiredMemberForObject), so the full recompute and the forward path
+			// derive BYTE-IDENTICAL tuples (idempotency: forward + async full both
+			// emit the same set, and the read-delta FGA writer skips duplicates).
+			dm, ok := desiredMemberForObject(subject, sel, o, bs.Scope)
 			if !ok {
+				// A type the model has no FGA object for → no tuple → skip the object
+				// (fail-closed: a typo'd type never grants).
 				continue
 			}
-			out = append(out, DesiredMember{
-				RuleFP: sel.RuleFP, ObjectType: o.ObjectType, ObjectID: o.ObjectID,
-				Status: domain.VerificationActive, Tuples: tuples,
-			})
+			out = append(out, dm)
 		}
 	}
 	return out, nil
+}
+
+// desiredMemberForObject computes the DesiredMember a materializing selector produces
+// for ONE candidate object. It is the single per-object decision point SHARED by the
+// full recompute (desiredRuleMembers) and the ADDITIVE forward fast-path
+// (forwardObjectForBinding), so the two paths can never drift in what tuples an object
+// grants (idempotency across forward + async-backstop).
+//
+//   - not contained in the binding's scope (cross-scope label-tampering / foreign parent)
+//     → a REJECTED member (ok=true, no tuples). The full path records it + audits; the
+//     forward path skips it (additive-only never writes a non-ACTIVE member).
+//   - contained → an ACTIVE member with the per-object tuples derived from the RULE's
+//     verbs (v_* + back-compat tier via ruleObjectTuples). ARM_LABELS/ANCHOR rules are
+//     excluded from CompileRules, so the tuples come from the rule verbs, not RolePerms.
+//   - the object's type has no FGA object type → ok=false (skip; a typo'd type never
+//     grants, fail-closed).
+func desiredMemberForObject(subject string, sel domain.RuleSelector, o domain.MirrorObject, scope domain.ScopeAnchor) (DesiredMember, bool) {
+	if !o.IsContainedIn(scope) {
+		return DesiredMember{
+			RuleFP: sel.RuleFP, ObjectType: o.ObjectType, ObjectID: o.ObjectID,
+			Status: domain.VerificationRejected,
+		}, true
+	}
+	tuples, ok := ruleObjectTuples(subject, sel.Verbs, o.ObjectType, o.ObjectID)
+	if !ok {
+		return DesiredMember{}, false
+	}
+	return DesiredMember{
+		RuleFP: sel.RuleFP, ObjectType: o.ObjectType, ObjectID: o.ObjectID,
+		Status: domain.VerificationActive, Tuples: tuples,
+	}, true
 }
 
 // applyDiff reconciles the desired set against the current materialized set: it
