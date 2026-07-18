@@ -211,7 +211,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-multi-hc", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "hc-multi-{{runId}}",
-                   "healthCheck": {"name": "x", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "tcpOptions": {"port": 8080},
                                    "httpOptions": {"port": 8080, "path": "/"}}},
@@ -231,7 +231,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-no-hc", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "hc-none-{{runId}}",
-                   "healthCheck": {"name": "x", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2}},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
@@ -903,7 +903,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-https-unsupported", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-https-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "https": {"port": 8443, "path": "/healthz",
                                              "expectedStatuses": [200]}}},
@@ -922,7 +922,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-grpc-unsupported", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-grpc-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "grpc": {"port": 9090, "service": "health.v1"}}},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),

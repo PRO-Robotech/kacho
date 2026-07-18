@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d4814225-5a03-45f8-820a-0656497ddc0b",
+    "_postman_id": "69b01c09-b1ce-4dfc-9d3b-92a3a32582a0",
     "name": "kacho-nlb / newman / targets",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -59,7 +59,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-inst-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-inst-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -518,7 +518,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-nic-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-nic-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -977,7 +977,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-ipref-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-ipref-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1436,7 +1436,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-ext-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-ext-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1895,7 +1895,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-mixed-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-mixed-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2354,7 +2354,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-empty-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-add-empty-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2645,7 +2645,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-neg-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-neg-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2936,7 +2936,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-over-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-over-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3227,7 +3227,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-min-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-min-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3686,7 +3686,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-max-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-w-max-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4145,7 +4145,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-bogon-add-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-bogon-add-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4436,7 +4436,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-ipref-out-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-ipref-out-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4782,7 +4782,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-inst-nx-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-inst-nx-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5128,7 +5128,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-nic-nx-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-nic-nx-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5474,7 +5474,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-sub-nx-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-sub-nx-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5820,7 +5820,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-inst-region-mismatch-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-inst-region-mismatch-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6166,7 +6166,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-nic-region-mismatch-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-nic-region-mismatch-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6512,7 +6512,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-sub-region-mismatch-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-sub-region-mismatch-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6858,7 +6858,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-dup-inst-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-dup-inst-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7416,7 +7416,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-dup-ipref-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-dup-ipref-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7974,7 +7974,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-dup-ext-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-dup-ext-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8532,7 +8532,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-promote-draining-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-promote-draining-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9245,7 +9245,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-phase-a-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-phase-a-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9743,7 +9743,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-rm-noop-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-rm-noop-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10104,7 +10104,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 1, \"slowStartSeconds\": 30, \"name\": \"tgt-phase-b-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 1, \"slowStartSeconds\": 30, \"name\": \"tgt-phase-b-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10691,7 +10691,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-rm-empty-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}, \"deregistrationDelaySeconds\": 300, \"slowStartSeconds\": 30, \"name\": \"tgt-rm-empty-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

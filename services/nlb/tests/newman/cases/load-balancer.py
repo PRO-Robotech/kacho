@@ -511,7 +511,7 @@ CASES.append(Case(
         Step(name="setup-tg", method="POST", path="/nlb/v1/targetGroups",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "mv-tg-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
@@ -598,7 +598,7 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 
 def _setup_tg(name_suffix: str, body_extra: dict = None):
-    base_hc = {"healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+    base_hc = {"healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                "unhealthyThreshold": 3, "healthyThreshold": 2,
                                "tcpOptions": {"port": 80}}}
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
@@ -708,7 +708,7 @@ CASES.append(Case(
         Step(name="setup-tg-alt", method="POST", path="/nlb/v1/targetGroups",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionAltId}}",
                    "name": "tg-region-alt-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),

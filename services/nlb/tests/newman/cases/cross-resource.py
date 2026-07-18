@@ -54,7 +54,7 @@ _VPC_SUBNETS = "/vpc/v1/subnets"
 # a zonal subnet inline; the listener-level fields still follow sub-phase-4.0 and
 # are tracked for a separate listener acceptance.
 
-_HC_TCP = {"name": "hc", "interval": "2s", "timeout": "1s",
+_HC_TCP = {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
            "unhealthyThreshold": 3, "healthyThreshold": 2, "tcpOptions": {"port": 8080}}
 
 # Set of TargetState.Status enum strings the computed (control-plane) ramp may

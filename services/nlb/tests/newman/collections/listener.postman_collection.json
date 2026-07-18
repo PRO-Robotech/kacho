@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "b3c5e695-444a-4492-b5d6-55fbce9382ad",
+    "_postman_id": "475aa089-5ccc-42bd-90eb-132e473520c7",
     "name": "kacho-nlb / newman / listener",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -9684,7 +9684,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"name\": \"dtgr-alt-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"name\": \"dtgr-alt-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"

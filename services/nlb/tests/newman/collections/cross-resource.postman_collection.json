@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "01da5395-f524-4ab1-8e74-0a6de515770c",
+    "_postman_id": "c4ef9b61-578a-4a19-9931-233e81324a97",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -145,7 +145,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya227",
+          "name": "materialize-lb-rya230",
           "request": {
             "method": "GET",
             "header": [
@@ -194,7 +194,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya228",
+          "name": "get-lb-inactive-rya231",
           "request": {
             "method": "GET",
             "header": [
@@ -355,7 +355,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya229",
+          "name": "get-listener-vip-rya232",
           "request": {
             "method": "GET",
             "header": [
@@ -432,7 +432,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-ext-flow-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-ext-flow-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -518,7 +518,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya230",
+          "name": "materialize-tg-rya233",
           "request": {
             "method": "GET",
             "header": [
@@ -1665,7 +1665,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya231",
+          "name": "materialize-lb-rya234",
           "request": {
             "method": "GET",
             "header": [
@@ -1817,7 +1817,7 @@
           ]
         },
         {
-          "name": "get-listener-v6-rya232",
+          "name": "get-listener-v6-rya235",
           "request": {
             "method": "GET",
             "header": [
@@ -2165,7 +2165,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya233",
+          "name": "materialize-lb-rya236",
           "request": {
             "method": "GET",
             "header": [
@@ -2339,7 +2339,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-def-unatt-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-def-unatt-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2425,7 +2425,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya234",
+          "name": "materialize-tg-rya237",
           "request": {
             "method": "GET",
             "header": [
@@ -2607,7 +2607,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya235",
+          "name": "verify-listener-unchanged-rya238",
           "request": {
             "method": "GET",
             "header": [
@@ -3040,7 +3040,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya236",
+          "name": "materialize-lb-rya239",
           "request": {
             "method": "GET",
             "header": [
@@ -3529,7 +3529,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya237",
+          "name": "get-internal-lb-rya240",
           "request": {
             "method": "GET",
             "header": [
@@ -3751,7 +3751,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-int-flow-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-int-flow-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3837,7 +3837,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya238",
+          "name": "materialize-tg-rya241",
           "request": {
             "method": "GET",
             "header": [
@@ -4645,7 +4645,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya239",
+          "name": "get-no-network-rya242",
           "request": {
             "method": "GET",
             "header": [
@@ -4894,7 +4894,7 @@
           ]
         },
         {
-          "name": "get-no-sg-rya240",
+          "name": "get-no-sg-rya243",
           "request": {
             "method": "GET",
             "header": [
@@ -5148,7 +5148,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya241",
+          "name": "materialize-lb-rya244",
           "request": {
             "method": "GET",
             "header": [
@@ -5322,7 +5322,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-teardown-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-teardown-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5408,7 +5408,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya242",
+          "name": "materialize-tg-rya245",
           "request": {
             "method": "GET",
             "header": [
@@ -5457,7 +5457,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya243",
+          "name": "add-external-target-rya246",
           "request": {
             "method": "POST",
             "header": [
@@ -6687,7 +6687,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya244",
+          "name": "materialize-lb-rya247",
           "request": {
             "method": "GET",
             "header": [
@@ -7256,7 +7256,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya245",
+          "name": "materialize-lb-rya248",
           "request": {
             "method": "GET",
             "header": [
@@ -7327,7 +7327,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-dangling-{{runId}}\", \"healthCheck\": {\"name\": \"hc\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-dangling-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7413,7 +7413,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya246",
+          "name": "materialize-tg-rya249",
           "request": {
             "method": "GET",
             "header": [
@@ -7462,7 +7462,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya247",
+          "name": "add-instance-target-rya250",
           "request": {
             "method": "POST",
             "header": [
@@ -8054,7 +8054,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya248",
+          "name": "materialize-lb-rya251",
           "request": {
             "method": "GET",
             "header": [
