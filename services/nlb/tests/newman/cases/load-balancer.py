@@ -234,6 +234,14 @@ def _setup_lb(name_suffix: str, body_extra: dict = None):
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the owner-tuple before the first real access.
+        # opgate removed -> owner/creator FGA tuple is eventually-consistent, so the first
+        # self GET/UPDATE/DELETE of the fresh LB can briefly 403/404. Silent (empty
+        # test_script) so it only spins the retry loop; negative first-access steps
+        # (immutable-400 / mask-unknown / delete-protection) then run UNWRAPPED after the
+        # tuple is visible and assert their real sync result.
+        retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
+             path=f"{_CREATE_BASE}/{{{{nlbId}}}}", test_script=[])),
     ]
 
 
@@ -600,6 +608,9 @@ def _setup_tg(name_suffix: str, body_extra: dict = None):
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the TG owner-tuple before the first real access.
+        retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
+             path="/nlb/v1/targetGroups/{{tgId}}", test_script=[])),
     ]
 
 
@@ -1221,14 +1232,16 @@ CASES.append(Case(
     classes=["LSG", "IDEM"], priority="P2",
     steps=[
         *_setup_lb("flt-match"),
-        Step(name="list-filtered", method="GET",
+        # read-your-writes over the list-authz visibility window: the filtered List returns
+        # 200 with the id ABSENT until the owner-tuple materializes -> retry while missing.
+        retry_until_present(Step(name="list-filtered", method="GET",
              path=f"{_CREATE_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=100"
                   f"&filter=name%3D%22setup-flt-match-{{{{runId}}}}%22",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "const arr = j.networkLoadBalancers || j.items || [];",
                           "pm.test('list includes own id', () => "
-                          "  pm.expect(arr.map(x => x.id)).to.include(pm.environment.get('nlbId')));"]),
+                          "  pm.expect(arr.map(x => x.id)).to.include(pm.environment.get('nlbId')));"]), "nlbId"),
         *_cleanup_lb(),
     ],
 ))

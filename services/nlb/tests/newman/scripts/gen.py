@@ -495,6 +495,7 @@ def load_cases_module(path: Path):
     mod.save_from_response = save_from_response
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_present = retry_until_present
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)

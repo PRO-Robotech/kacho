@@ -35,6 +35,10 @@ def _setup_tg(name_suffix: str, body_extra: dict = None, name_override: str = No
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the TG owner-tuple (eventually-consistent after
+        # opgate removal) before the first real self-access; silent (empty test_script).
+        retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
+             path=f"{_TG_BASE}/{{{{tgId}}}}", test_script=[])),
     ]
 
 
@@ -494,11 +498,14 @@ CASES.append(Case(
              body={"targetGroupId": "{{tgId}}", "priority": 100},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
+        # read-your-writes: the first self-access of the fresh TG can 403/404 until the
+        # owner-tuple materializes -> retry SELF; the real "blocked" assertion (200/400/409)
+        # then runs once the tuple is visible (a genuine block still surfaces, not masked).
+        retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         # Cleanup
         Step(name="detach", method="POST",
@@ -524,11 +531,14 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
+        # read-your-writes: the first self-access of the fresh TG can 403/404 until the
+        # owner-tuple materializes -> retry SELF; the real "blocked" assertion (200/400/409)
+        # then runs once the tuple is visible (a genuine block still surfaces, not masked).
+        retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         # Cleanup: drain + drop
         Step(name="rm-targets", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -983,13 +993,15 @@ CASES.append(Case(
     classes=["LSG", "IDEM"], priority="P2",
     steps=[
         *_setup_tg("flt-match"),
-        Step(name="lst-filt", method="GET",
+        # read-your-writes over the list-authz visibility window (own fresh id ABSENT from
+        # the 200 array until the owner-tuple materializes) -> retry while missing.
+        retry_until_present(Step(name="lst-filt", method="GET",
              path=f"{_TG_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=100&"
                   f"filter=name%3D%22setup-tg-flt-match-{{{{runId}}}}%22",
              test_script=[*assert_status(200),
                           "const arr = pm.response.json().targetGroups || pm.response.json().items || [];",
                           "pm.test('contains', () => "
-                          "  pm.expect(arr.map(x => x.id)).to.include(pm.environment.get('tgId')));"]),
+                          "  pm.expect(arr.map(x => x.id)).to.include(pm.environment.get('tgId')));"]), "tgId"),
         *_cleanup_tg(),
     ],
 ))

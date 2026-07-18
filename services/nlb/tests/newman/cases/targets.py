@@ -31,6 +31,10 @@ def _setup_tg(name_suffix: str, dereg_seconds: int = 300):
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the TG owner-tuple (eventually-consistent after
+        # opgate removal) before the first :addTargets / :removeTargets self-access.
+        retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
+             path=f"{_TG_BASE}/{{{{tgId}}}}", test_script=[])),
     ]
 
 

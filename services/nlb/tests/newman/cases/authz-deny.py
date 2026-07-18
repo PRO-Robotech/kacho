@@ -76,11 +76,14 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get-viewer", method="GET", path=f"{_NLB}/{{{{nlbId}}}}",
+        # read-your-writes: the viewer's read resolves via the LB->project owner/hierarchy
+        # tuple, which is eventually-consistent (opgate removed) -> a fresh LB briefly 404s
+        # at the authz gate until it materializes. Retry the SELF read on 403/404.
+        retry_until_authorized(Step(name="get-viewer", method="GET", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectViewerA",
              test_script=[*assert_status(200),
                           "pm.test('id matches', () => "
-                          "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"]),
+                          "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"])),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -446,9 +449,9 @@ CASES.append(Case(
     steps=[
         Step(name="get-out-scope", method="GET", path="/operations/{{garbageOpId}}",
              auth="jwtStranger",
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-             ]),
+             # absent/garbage op id: authz-first 403 (scope can't resolve target->project),
+             # 404 hide-existence, or 400 malformed id — all = rejected (no leak).
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -466,9 +469,11 @@ CASES.append(Case(
         # Try cancel as Editor B (different subject)
         Step(name="cancel-as-B", method="POST", path="/operations/{{opId}}:cancel",
              auth="jwtProjectEditorB",
+             # non-creator cancel: 403 deny, 404 hide-existence (B cannot see A's op via
+             # scope_extractor target->project), or already-done 400/409 — all = rejected.
              test_script=[
-                 "pm.test('rejected (403 or already-done 400/409)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 409]));",
+                 "pm.test('rejected (403 deny / 404 hide / already-done 400/409)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
              ]),
         poll_operation_until_done(),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
@@ -693,9 +698,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="del", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get-after-delete", method="GET", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
@@ -741,9 +746,11 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
         # Creator should be able to Delete (= owner-relation-implied editor permits delete).
-        Step(name="del-by-creator", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
+        # read-your-writes: the owner tuple this case asserts is eventually-consistent, so the
+        # first creator Delete can 403 until it materializes -> retry SELF on 403/404.
+        retry_until_authorized(Step(name="del-by-creator", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
     ],
 ))

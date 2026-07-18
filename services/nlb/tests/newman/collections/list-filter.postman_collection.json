@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5f97589e-331a-4824-a49e-bd80bb53d180",
+    "_postman_id": "dad8926b-3cb3-42ad-9ff0-03455c3e7e50",
     "name": "kacho-nlb / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -155,7 +155,7 @@
           ]
         },
         {
-          "name": "list-own",
+          "name": "list-own-lst252",
           "request": {
             "method": "GET",
             "header": [
@@ -197,6 +197,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfNlbId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const lbs = pm.response.json().networkLoadBalancers || [];",
                   "pm.test('[D-45] filtered List returns 200 (not 503 from list-filter)', () => pm.expect(pm.response.code).to.eql(200));",
@@ -208,7 +225,7 @@
           ]
         },
         {
-          "name": "del-own-rya85",
+          "name": "del-own-rya253",
           "request": {
             "method": "DELETE",
             "header": [
@@ -452,7 +469,7 @@
           ]
         },
         {
-          "name": "list-tg",
+          "name": "list-tg-lst254",
           "request": {
             "method": "GET",
             "header": [
@@ -494,6 +511,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfTgId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const tgs = pm.response.json().targetGroups || [];",
                   "pm.test('[D-45] filtered TG List returns 200', () => pm.expect(pm.response.code).to.eql(200));",
@@ -505,7 +539,7 @@
           ]
         },
         {
-          "name": "del-tg-rya86",
+          "name": "del-tg-rya255",
           "request": {
             "method": "DELETE",
             "header": [
@@ -866,7 +900,7 @@
           ]
         },
         {
-          "name": "del-a-rya87",
+          "name": "del-a-rya256",
           "request": {
             "method": "DELETE",
             "header": [

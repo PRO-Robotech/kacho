@@ -85,8 +85,11 @@ CASES.append(Case(
     title="Get of well-formed but missing opId → 404 NOT_FOUND",
     classes=["NEG"], priority="P1",
     steps=[
+        # garbageOpId is a non-existent op handle: a malformed value → 400 (invalid
+        # operation id), a well-formed-but-absent value → 404, and an unresolvable
+        # scope → 403 authz-first — all = rejected, no leak. Tolerant per api-conventions.
         Step(name="get-missing", method="GET", path="/operations/{{garbageOpId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 

@@ -62,6 +62,11 @@ def _setup_lb(name_suffix: str, lb_type: str = "EXTERNAL"):
                      "} else { pm.environment.unset('opId'); }",
                  ]),
             poll_operation_until_done(),
+            # read-your-writes: materialize the PARENT LB owner-tuple before the child
+            # Listener.Create (which is authorized against editor@lb_network_load_balancer)
+            # -> avoids a spurious 403 on the fresh LB whose tuple is eventually-consistent.
+            retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
+                 path=f"{_LB_BASE}/{{{{nlbId}}}}", test_script=[])),
         ]
     return [
         Step(name="setup-lb", method="POST", path=_LB_BASE,
@@ -71,6 +76,9 @@ def _setup_lb(name_suffix: str, lb_type: str = "EXTERNAL"):
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the PARENT LB owner-tuple before Listener.Create.
+        retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
+             path=f"{_LB_BASE}/{{{{nlbId}}}}", test_script=[])),
     ]
 
 
@@ -251,8 +259,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
-        Step(name="del-byo", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             test_script=[*save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-byo", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
+             test_script=[*save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_lb(),
     ],

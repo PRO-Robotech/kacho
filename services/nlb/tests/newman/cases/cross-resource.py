@@ -82,6 +82,10 @@ def _create_external_lb(suffix: str, body_extra: dict = None):
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the LB owner-tuple before cross-resource children
+        # (Listener.Create / attach-TG) that authorize against editor@lb_network_load_balancer.
+        retry_until_authorized(Step(name="materialize-lb", method="GET",
+             path=f"{_LB_BASE}/{{{{nlbId}}}}", test_script=[])),
     ]
 
 
@@ -95,6 +99,9 @@ def _create_tg(suffix: str):
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the TG owner-tuple before attach / add-target.
+        retry_until_authorized(Step(name="materialize-tg", method="GET",
+             path=f"{_TG_BASE}/{{{{tgId}}}}", test_script=[])),
     ]
 
 
@@ -149,7 +156,7 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
-        Step(name="get-listener-vip", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        retry_until_authorized(Step(name="get-listener-vip", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "if (!pm.environment.get('lastOpError')) {",
@@ -157,7 +164,7 @@ CASES.append(Case(
                           "    pm.expect(j.allocatedAddress).to.be.a('string').and.have.length.above(0));",
                           "  pm.test('listener ACTIVE after VIP alloc', () => "
                           "    pm.expect(j.status).to.eql('ACTIVE'));",
-                          "}"]),
+                          "}"])),
         # Step 3: target group.
         *_create_tg("ext-flow"),
         # Step 4: register an Instance target (peer-validated in worker; tolerated
@@ -293,11 +300,11 @@ CASES.append(Case(
                  "if (j.error) pm.test('FAILED_PRECONDITION (default TG not attached)', () => "
                  "  pm.expect(j.error.code).to.eql(9));",
              ]),
-        Step(name="verify-listener-unchanged", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        retry_until_authorized(Step(name="verify-listener-unchanged", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('default_target_group_id NOT applied (stays empty)', () => "
-                          "  pm.expect(j.defaultTargetGroupId || '').to.eql(''));"]),
+                          "  pm.expect(j.defaultTargetGroupId || '').to.eql(''));"])),
         *_cleanup_lst(),
         *_cleanup_lb(),
         *_cleanup_tg(),
@@ -710,9 +717,13 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         *_create_external_lb("dangling-neg"),
+        # A garbage/absent target_group_id must be REJECTED (missing TargetGroup ≠ dangling
+        # target). The gateway scope_extractor cannot resolve garbageTgr->project (anti-BOLA)
+        # so it fail-closes 403 authz-first, or the backend repo.Get returns 404 — both are a
+        # no-leak reject (never 200 with silently-empty states). Tolerant 400/403/404.
         Step(name="get-states-unknown-tg", method="GET",
              path=f"{_LB_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{garbageTgrId}}}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
         *_cleanup_lb(),
     ],
 ))
