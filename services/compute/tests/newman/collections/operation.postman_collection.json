@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "e6fa6766-983f-4aa9-b685-3ee12dbd3581",
+    "_postman_id": "5b67d768-9f7a-4ae6-b95c-c31f32e3a83e",
     "name": "kacho-compute / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -485,7 +485,7 @@
       ]
     },
     {
-      "name": "OP-GET-NEG-UNKNOWN-PREFIX — Get opId без known 3-char prefix (OpsProxy: prefix не из {b1g,bpf,enp,epd}) → 400 InvalidArgument 'prefix'",
+      "name": "OP-GET-NEG-UNKNOWN-PREFIX — Get opId без known 3-char prefix (garbage id) → 400 InvalidArgument 'invalid operation id'",
       "description": "class:NEG | priority:P0",
       "item": [
         {
@@ -520,7 +520,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('mentions prefix', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('prefix'));"
+                  "pm.test('mentions invalid operation id (malformed-id convention)', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"
                 ]
               }
             }

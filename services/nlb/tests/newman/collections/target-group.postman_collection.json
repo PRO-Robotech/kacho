@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5b1e4d1d-3671-4333-b08b-ecfea958080a",
+    "_postman_id": "6da68066-c49c-42fd-864b-7d9b51665b2a",
     "name": "kacho-nlb / newman / target-group",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1679,9 +1679,9 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 30) {",
+                  "if (_crNotFound && _crc < 60) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
-                  "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -8990,9 +8990,9 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('tgId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",

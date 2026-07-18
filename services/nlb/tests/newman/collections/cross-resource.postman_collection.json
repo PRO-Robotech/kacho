@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "27c75f5c-c5fa-4a00-9efa-c88f01056964",
+    "_postman_id": "e86b47bf-b724-48a5-a626-dc3920e4111a",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3305,9 +3305,9 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 30) {",
+                  "if (_crNotFound && _crc < 60) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
-                  "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",

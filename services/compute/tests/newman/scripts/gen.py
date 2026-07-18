@@ -179,8 +179,8 @@ _POLL_SEQ = [0]
 _RYA_SEQ = [0]
 
 
-def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
-                        interval_ms: int = 400) -> Step:
+def retry_until_present(step: Step, id_env_var: str, budget: int = 60,
+                        interval_ms: int = 500) -> Step:
     """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
     the returned array (read-your-writes over the list-authz visibility window; opgate
     removed -> owner-tuple eventual-consistency). The list returns 200 with the id
@@ -213,7 +213,7 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
                    test_script=guard + list(step.test_script))
 
 
-def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
+def retry_until_authorized(step: Step, budget: int = 60, interval_ms: int = 500,
                            retry_on=(403, 404)) -> Step:
     """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
     read-your-writes retry over the owner-tuple materialization window.

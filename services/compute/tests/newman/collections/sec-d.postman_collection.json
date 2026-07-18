@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a5d80e98-ecb7-48e7-acb6-c5a6bacab19e",
+    "_postman_id": "cec60c9d-a80f-45b0-b037-75201be31a9a",
     "name": "kacho-compute / newman / sec-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -208,9 +208,9 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",

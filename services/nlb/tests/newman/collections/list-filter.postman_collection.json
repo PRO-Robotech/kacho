@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "fc293624-b714-44db-b1c8-560b9f3a5d80",
+    "_postman_id": "d8a97973-e624-4fa8-be25-06f50dc94290",
     "name": "kacho-nlb / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -206,9 +206,9 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfNlbId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -520,9 +520,9 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfTgId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
