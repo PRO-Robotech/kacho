@@ -233,7 +233,7 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
                    test_script=guard + list(step.test_script))
 
 
-def retry_until_authorized(step: Step, budget: int = 40, interval_ms: int = 400,
+def retry_until_authorized(step: Step, budget: int = 60, interval_ms: int = 500,
                            retry_on=(403, 404)) -> Step:
     """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
     read-your-writes retry over the owner-tuple materialization window.
@@ -249,10 +249,16 @@ def retry_until_authorized(step: Step, budget: int = 40, interval_ms: int = 400,
     Retries the SAME request (setNextRequest -> self) while the response code is in
     `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
     fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
-    (default 40*400ms = ~16s) -- fail-closed: on any other code the wrapped step's real
-    test_script runs exactly once, and once the budget is spent it ALSO runs on the
-    terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions --
-    never masked, never infinite).
+    (default 60*500ms = ~30s -- raised from 40*400ms/~16s in round 4: under the full
+    umbrella CI run nlb races LAST (iam->vpc->compute->nlb), so the fga_register_drainer
+    backlog peaks and owner-tuple materialization tails past the old 16s window. Measured
+    in ci-rep4 load-balancer: async op-latency is ~1.5s (poll-op p90=3), but the wrapped
+    first-access materialization was p50~10s with a heavy tail -- 31/83 wrapped steps
+    fully exhausted the 16s budget. 30s captures the mid-band; the residual saturation
+    tail is a documented known-RED, see assert-suites-green.sh / kacho#11.) --
+    fail-closed: on any other code the wrapped step's real test_script runs exactly once,
+    and once the budget is spent it ALSO runs on the terminal 403/404 (a genuine,
+    non-converging deny still FAILS the real assertions -- never masked, never infinite).
 
     Use ONLY on the first access of the caller's OWN fresh resource. Do NOT wrap
     negative / cross-account-deny / absent-id steps (a poll there would mask a real

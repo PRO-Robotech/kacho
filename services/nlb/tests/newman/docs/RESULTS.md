@@ -29,6 +29,42 @@ parseable Postman collections) but cannot execute against any backend.
 | 2026-07-01 | v2 — first fe3455 run + triage | 358 | 10 (0 product bugs) | First live run of the LoadBalancer suite against fe3455: 142 cases / 544 assertions / 97% pass. All 10 failures triaged, none a product bug (see below). 5 wrong case-expectations corrected + grant-latency case made poll-tolerant + suite-wide `newman run` flow-control fixed. Target: 100% at adequate `--delay`. |
 | 2026-07-18 | round 2 — INTERNAL setup + peer-RYW retry + CI-signature triage | 362 | see below | Root-cause pass over ci-rep2 (load-balancer 62 / cross-resource 19 / listener 16 / authz-deny 6 / target-group 3 / placement-coherence 2 / targets 1 / operation 1). Setup LBs migrated off the contended external AddressPool to pool-independent INTERNAL-inline-subnet; new `retry_create_until_present` primitive for cross-service subnet read-your-writes lag; deterministic + tolerant fixes per signature. Systemic external-pool finding flagged (below). Verified locally (py_compile / gen.py / validate-cases 362); not executed (stand not raised this round). |
 | 2026-07-18 | round 3 — attach-shape conformance + protojson mask fix + serial VIP + residuals | 357 | see below | Root-cause pass over ci-rep3 (load-balancer 29 / cross-resource 8 / listener 7 / list-filter 3 / targets 1 / placement-coherence 1). ci-rep3 **disproved the "residuals = external-VIP exhaustion" hypothesis**: the dominant new signature (~12) was a stale **attach request shape** (`AttachedTargetGroup` nesting + `priority` removed from the contract — verified from proto+handler), newly surfaced because round-2's INTERNAL migration finally let the attach flow RUN. Fixes: nested attach shape everywhere + 5 obsolete `priority` cases removed; protojson-FieldMask snake→camelCase in load-balancer/cross-resource/listener/target-group (round-2 fixed only target-group's `deregistrationDelaySeconds`); nlb `run.sh --jobs` 4→1 (serial collections defeat shared-external-pool contention); list-filter TG healthCheck completion; move + region-mismatch fixture-tolerance; owner-tuple retry budget 25→40; targets add-nic-nx wrapped `retry_on=(403,)`. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised this round). |
+| 2026-07-18 | round 4 — owner-tuple-lag retry↑60 + eventual-consistency whitelist | 357 | see below | Root-cause pass over ci-rep4 (load-balancer 43 / cross-resource 17 / listener 14). `--jobs 1` (round 3) unblocked the create layer (VIP-exhaustion gone) → the **update-after-create** layer surfaced: the first post-create Get/Update/Delete/Start/Stop/Move/Attach of the caller's OWN fresh LB (and Get/Update of its OWN fresh listener) 403s (`lacks v_update/v_delete/v_get`) / 404s at the authz gate before the owner-tuple materialises. Measured: async op-latency ~1.5s (poll-op p90=3) but materialization p50~10s with a heavy tail — **31/83 wrapped steps exhausted the old 16s budget**; nlb races LAST in the umbrella (iam→vpc→compute→nlb) so the `fga_register_drainer` backlog peaks. Fix (2 levels): (1) `retry_until_authorized` budget **40→60**, interval **400→500ms** (~16s→~30s window); (2) residual saturation tail past 30s = **documented known-RED** in `assert-suites-green.sh` (23 owner-tuple-lag update/del/get/action cases, assertions RUN+report, not gate-blocking — same class as iam#257), tracked in **kacho#11**. Verified locally (py_compile / gen.py / validate-cases 357 / bash -n); not executed (stand not raised this round). |
+
+## Known failing — owner-tuple materialization lag (eventual-consistency, whitelisted, round 4)
+
+Not product bugs — **eventual-consistency LATENCY** under peak CI backlog. The owner/creator
+FGA tuple for a just-created LB/listener materializes eventually-consistent (at-least-once
+`fga_register_drainer` + reconciler); nlb races LAST in the umbrella (iam→vpc→compute→nlb) so
+the drainer backlog peaks and the first post-create access of the caller's OWN fresh resource
+can 403/404 at the authz gate before the tuple is visible. The client already retries
+(`retry_until_authorized`, budget 40→60 ×500ms ≈ 30s, round 4); the **residual tail past 30s**
+is a documented known-RED in the shared `assert-suites-green.sh` — **assertions still RUN and
+report (signal preserved), just not gate-blocking**. Same class + rationale as the iam#257
+revoke-deny-latency whitelist. Tracked in **kacho#11** (product fix = drainer throughput / nlb
+earlier in queue / per-suite fresh drainer → retire the whitelist).
+
+Whitelisted (23 cases, `.parent.name`): `NLB-{CR-CRUD-OK,CR-CRUD-WITH-DESCRIPTION,
+CR-CRUD-DELETION-PROTECTION-TRUE,UPD-STATE-IMMUTABLE-{VIP-SOURCE,PROJECT,PLACEMENT},
+UPD-STATE-{NO-CHANGE,MASK-EMPTY},UPD-CRUD-DRAIN-TOGGLE,START-CRUD-OK,STOP-CRUD-OK,
+STOP-STATE-ALREADY-STOPPED,MV-{IDM-SAME-PROJECT,CRUD-OK},DEL-{CRUD-OK,STATE-HAS-LISTENER,
+STATE-HAS-ATTACHED},ATT-{STATE-REGION-MISMATCH,NEG-TG-UNKNOWN},LIFECYCLE-CONF}` +
+`LST-{GET-CRUD-OK,UPD-CRUD-OK,UPD-STATE-DEFAULT-TG-REGION-MISMATCH}`.
+
+**NOT whitelisted (stay RED / fully gated — never masked):**
+- `NLB-GET-STATE-LEAN-PROJECTION` — carries no-leak assertions; whitelisting the case would
+  risk masking a real VIP-source/networkId/subnetId/announce leak, so it stays gated (its
+  GET-lag relies on the budget=60 fix, not the whitelist).
+- `NLB-GTS-{CRUD-EMPTY,CRUD-EMPTY-LB-ACTIVE,STATE-LB-STOPPED}` — **case-expectation finding,
+  not lag**: these call `GetTargetStates` LB-wide expecting `[]`, but the contract requires
+  `target_group_id` (→ 400 `"target_group_id: required"`, already documented for
+  `NLB-GTS-NEG-NF-UNKNOWN`). Needs a case-vs-acceptance reconciliation (own RED→GREEN cycle),
+  not owner-tuple retry. Budget-independent.
+- `cross-resource XRES-*` (create-fail / cross-service peer-visibility `"subnet <id> not
+  found"` + parent-LB `editor`-lag on UNWRAPPED child-create steps) and `listener LST-CR-*`
+  (parent-LB `editor`-lag on unwrapped `loadbalancer.listeners.create`) — the create-fail
+  class, task-excluded from the owner-tuple whitelist; fixing them needs create-step wrapping
+  or drainer throughput (kacho#11).
 
 ## First fe3455 run — triage & corrections (2026-07-01)
 
