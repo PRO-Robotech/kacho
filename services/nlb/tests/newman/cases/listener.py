@@ -602,16 +602,16 @@ def _immutable_listener_case(case_id: str, mask: str, payload: dict) -> Case:
 
 
 CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-LB-ID",
-                                      "load_balancer_id",
+                                      "loadBalancerId",
                                       {"loadBalancerId": "nlbany00000000000000"}))
 CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-PROTOCOL",
                                       "protocol", {"protocol": "UDP"}))
 CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-PORT",
                                       "port", {"port": 9999}))
 CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-IP-VERSION",
-                                      "ip_version", {"ipVersion": "IPV6"}))
+                                      "ipVersion", {"ipVersion": "IPV6"}))
 CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-ADDRESS-ID",
-                                      "address_id", {"addressId": "e9bany00000000000000"}))
+                                      "addressId", {"addressId": "e9bany00000000000000"}))
 
 CASES.append(Case(
     id="LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH",
@@ -636,7 +636,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgAltId")]),
         poll_operation_until_done(),
         Step(name="upd-default-tg-mismatch", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "default_target_group_id", "defaultTargetGroupId": "{{tgAltId}}"},
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgAltId}}"},
              test_script=[
                  "pm.test('rejected (sync or async)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
@@ -847,7 +847,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="upd-clear", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "default_target_group_id", "defaultTargetGroupId": ""},
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
              test_script=[
                  "pm.test('accepted or no-op', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",

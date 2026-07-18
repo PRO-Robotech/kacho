@@ -491,7 +491,7 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         Step(name="upd-prj", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
-             body={"updateMask": "project_id", "projectId": "{{_suiteProjectCrossId}}"},
+             body={"updateMask": "projectId", "projectId": "{{_suiteProjectCrossId}}"},
              test_script=[*assert_absent_id_rejected()]),
     ],
 ))
@@ -502,7 +502,7 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         Step(name="upd-reg", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
-             body={"updateMask": "region_id", "regionId": "{{_suiteRegionAltId}}"},
+             body={"updateMask": "regionId", "regionId": "{{_suiteRegionAltId}}"},
              test_script=[*assert_absent_id_rejected()]),
     ],
 ))
@@ -534,7 +534,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="att", method="POST",
              path="/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
-             body={"targetGroupId": "{{tgId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # read-your-writes: the first self-access of the fresh TG can 403/404 until the
@@ -631,7 +631,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="att", method="POST",
              path="/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
-             body={"targetGroupId": "{{tgId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="mv-blocked", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",

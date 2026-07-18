@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "24a1e283-7a65-451e-a93e-010eda0563b2",
+    "_postman_id": "08d1b304-7747-4ee6-8ee9-755c5539044b",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -145,7 +145,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya315",
+          "name": "materialize-lb-rya299",
           "request": {
             "method": "GET",
             "header": [
@@ -180,7 +180,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -194,7 +194,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya316",
+          "name": "get-lb-inactive-rya300",
           "request": {
             "method": "GET",
             "header": [
@@ -229,7 +229,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -355,7 +355,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya317",
+          "name": "get-listener-vip-rya301",
           "request": {
             "method": "GET",
             "header": [
@@ -390,7 +390,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -518,7 +518,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya318",
+          "name": "materialize-tg-rya302",
           "request": {
             "method": "GET",
             "header": [
@@ -553,7 +553,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -694,7 +694,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"targetGroupId\": \"{{tgId}}\", \"priority\": 100}",
+              "raw": "{\"attachedTargetGroup\": {\"targetGroupId\": \"{{tgId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -798,7 +798,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"default_target_group_id\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1013,7 +1013,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"default_target_group_id\", \"defaultTargetGroupId\": \"\"}",
+              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1665,7 +1665,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya319",
+          "name": "materialize-lb-rya303",
           "request": {
             "method": "GET",
             "header": [
@@ -1700,7 +1700,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -1817,7 +1817,7 @@
           ]
         },
         {
-          "name": "get-listener-v6-rya320",
+          "name": "get-listener-v6-rya304",
           "request": {
             "method": "GET",
             "header": [
@@ -1852,7 +1852,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -2165,7 +2165,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya321",
+          "name": "materialize-lb-rya305",
           "request": {
             "method": "GET",
             "header": [
@@ -2200,7 +2200,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -2425,7 +2425,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya322",
+          "name": "materialize-tg-rya306",
           "request": {
             "method": "GET",
             "header": [
@@ -2460,7 +2460,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -2497,7 +2497,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"default_target_group_id\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2607,7 +2607,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya323",
+          "name": "verify-listener-unchanged-rya307",
           "request": {
             "method": "GET",
             "header": [
@@ -2642,7 +2642,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -3040,7 +3040,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya324",
+          "name": "materialize-lb-rya308",
           "request": {
             "method": "GET",
             "header": [
@@ -3075,7 +3075,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -3529,7 +3529,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya325",
+          "name": "get-internal-lb-rya309",
           "request": {
             "method": "GET",
             "header": [
@@ -3564,7 +3564,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -3837,7 +3837,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya326",
+          "name": "materialize-tg-rya310",
           "request": {
             "method": "GET",
             "header": [
@@ -3872,7 +3872,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -3909,7 +3909,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"targetGroupId\": \"{{tgId}}\", \"priority\": 100}",
+              "raw": "{\"attachedTargetGroup\": {\"targetGroupId\": \"{{tgId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4645,7 +4645,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya327",
+          "name": "get-no-network-rya311",
           "request": {
             "method": "GET",
             "header": [
@@ -4680,7 +4680,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -4894,7 +4894,7 @@
           ]
         },
         {
-          "name": "get-no-sg-rya328",
+          "name": "get-no-sg-rya312",
           "request": {
             "method": "GET",
             "header": [
@@ -4929,7 +4929,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5148,7 +5148,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya329",
+          "name": "materialize-lb-rya313",
           "request": {
             "method": "GET",
             "header": [
@@ -5183,7 +5183,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5408,7 +5408,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya330",
+          "name": "materialize-tg-rya314",
           "request": {
             "method": "GET",
             "header": [
@@ -5443,7 +5443,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5457,7 +5457,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya331",
+          "name": "add-external-target-rya315",
           "request": {
             "method": "POST",
             "header": [
@@ -5501,7 +5501,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5594,7 +5594,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"targetGroupId\": \"{{tgId}}\", \"priority\": 100}",
+              "raw": "{\"attachedTargetGroup\": {\"targetGroupId\": \"{{tgId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5693,7 +5693,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"default_target_group_id\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5951,7 +5951,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"default_target_group_id\", \"defaultTargetGroupId\": \"\"}",
+              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6687,7 +6687,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya332",
+          "name": "materialize-lb-rya316",
           "request": {
             "method": "GET",
             "header": [
@@ -6722,7 +6722,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7256,7 +7256,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya333",
+          "name": "materialize-lb-rya317",
           "request": {
             "method": "GET",
             "header": [
@@ -7291,7 +7291,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7413,7 +7413,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya334",
+          "name": "materialize-tg-rya318",
           "request": {
             "method": "GET",
             "header": [
@@ -7448,7 +7448,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7462,7 +7462,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya335",
+          "name": "add-instance-target-rya319",
           "request": {
             "method": "POST",
             "header": [
@@ -7506,7 +7506,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -8054,7 +8054,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya336",
+          "name": "materialize-lb-rya320",
           "request": {
             "method": "GET",
             "header": [
@@ -8089,7 +8089,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

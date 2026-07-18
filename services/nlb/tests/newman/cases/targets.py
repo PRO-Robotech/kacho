@@ -314,12 +314,15 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         *_setup_tg("nic-nx"),
-        Step(name="add-nic-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        # retry ONLY on 403 (fresh-TG editor owner-tuple read-your-writes lag) — the
+        # legitimate NotFound (unknown nic) 404 is the EXPECTED outcome and must NOT be
+        # retried away, so retry_on is narrowed to (403,).
+        retry_until_authorized(Step(name="add-nic-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"nicId": "e9bnicdoesnotexist00", "weight": 100}]},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ]), retry_on=(403,)),
         poll_operation_until_done(),
         *_cleanup_tg(),
     ],

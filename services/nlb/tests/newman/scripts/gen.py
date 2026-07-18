@@ -233,7 +233,7 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
                    test_script=guard + list(step.test_script))
 
 
-def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
+def retry_until_authorized(step: Step, budget: int = 40, interval_ms: int = 400,
                            retry_on=(403, 404)) -> Step:
     """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
     read-your-writes retry over the owner-tuple materialization window.
@@ -249,7 +249,7 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
     Retries the SAME request (setNextRequest -> self) while the response code is in
     `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
     fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
-    (default 15*400ms = ~6s) -- fail-closed: on any other code the wrapped step's real
+    (default 40*400ms = ~16s) -- fail-closed: on any other code the wrapped step's real
     test_script runs exactly once, and once the budget is spent it ALSO runs on the
     terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions --
     never masked, never infinite).
@@ -289,7 +289,7 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
                    test_script=guard + list(step.test_script))
 
 
-def retry_create_until_present(step: Step, budget: int = 20, interval_ms: int = 400) -> Step:
+def retry_create_until_present(step: Step, budget: int = 30, interval_ms: int = 400) -> Step:
     """Wrap a CREATE/POST step that references a peer resource (e.g. a vpc Subnet /
     Address) just provisioned inline in the SAME case, in a bounded read-your-writes
     retry over the *cross-service* visibility window.
@@ -310,7 +310,7 @@ def retry_create_until_present(step: Step, budget: int = 20, interval_ms: int = 
     spacing attempts ~interval_ms (busy-wait -- newman fires setNextRequest before any
     setTimeout). A rejected create allocates NOTHING (sync reject before the Operation is
     even minted), so re-POSTing is leak-free and idempotent. budget*interval_ms bounds
-    the wait (default 20*400ms = ~8s) -- fail-closed: on any other outcome the wrapped
+    the wait (default 30*400ms = ~12s) -- fail-closed: on any other outcome the wrapped
     step's real test_script runs exactly once, and once the budget is spent it ALSO runs
     on the terminal not-found (a genuinely-absent peer still FAILS the real assertions --
     never masked, never infinite).

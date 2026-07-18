@@ -28,6 +28,7 @@ parseable Postman collections) but cannot execute against any backend.
 | 2026-07-01 | v1 — sub-phase 8.1 VIP model | 358 | not-yet-run | LoadBalancer VIP-source rewrite (see below). `validate-cases.py` OK, all collections regenerated; not executed (stand mid-redeploy). |
 | 2026-07-01 | v2 — first fe3455 run + triage | 358 | 10 (0 product bugs) | First live run of the LoadBalancer suite against fe3455: 142 cases / 544 assertions / 97% pass. All 10 failures triaged, none a product bug (see below). 5 wrong case-expectations corrected + grant-latency case made poll-tolerant + suite-wide `newman run` flow-control fixed. Target: 100% at adequate `--delay`. |
 | 2026-07-18 | round 2 — INTERNAL setup + peer-RYW retry + CI-signature triage | 362 | see below | Root-cause pass over ci-rep2 (load-balancer 62 / cross-resource 19 / listener 16 / authz-deny 6 / target-group 3 / placement-coherence 2 / targets 1 / operation 1). Setup LBs migrated off the contended external AddressPool to pool-independent INTERNAL-inline-subnet; new `retry_create_until_present` primitive for cross-service subnet read-your-writes lag; deterministic + tolerant fixes per signature. Systemic external-pool finding flagged (below). Verified locally (py_compile / gen.py / validate-cases 362); not executed (stand not raised this round). |
+| 2026-07-18 | round 3 — attach-shape conformance + protojson mask fix + serial VIP + residuals | 357 | see below | Root-cause pass over ci-rep3 (load-balancer 29 / cross-resource 8 / listener 7 / list-filter 3 / targets 1 / placement-coherence 1). ci-rep3 **disproved the "residuals = external-VIP exhaustion" hypothesis**: the dominant new signature (~12) was a stale **attach request shape** (`AttachedTargetGroup` nesting + `priority` removed from the contract — verified from proto+handler), newly surfaced because round-2's INTERNAL migration finally let the attach flow RUN. Fixes: nested attach shape everywhere + 5 obsolete `priority` cases removed; protojson-FieldMask snake→camelCase in load-balancer/cross-resource/listener/target-group (round-2 fixed only target-group's `deregistrationDelaySeconds`); nlb `run.sh --jobs` 4→1 (serial collections defeat shared-external-pool contention); list-filter TG healthCheck completion; move + region-mismatch fixture-tolerance; owner-tuple retry budget 25→40; targets add-nic-nx wrapped `retry_on=(403,)`. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised this round). |
 
 ## First fe3455 run — triage & corrections (2026-07-01)
 
@@ -186,6 +187,133 @@ masked.** Tracked with the Root-cause-A follow-up:
 
 Recommended verifiable follow-up (needs a live stand): confirm VIP free-on-delete for auto-VIP LBs,
 then either fix the leak (product) or migrate these E2E setups likewise / run nlb `--jobs 1`.
+
+## Round 3 (2026-07-18) — root-cause pass over ci-rep3
+
+Triaged ci-rep3 per-collection (`jq .run.failures` + response-body decode + per-request
+retry-convergence analysis). **The parent hypothesis (residual = EXTERNAL-VIP AddressPool
+exhaustion) did NOT hold for ci-rep3** — round-2's INTERNAL-setup migration already removed
+the setup-LB pool dependency (every `setup-create-lb-cr*` now *converges* to 200 via
+`retry_create_until_present`; the transient `subnet not found` 400s are retried away, not
+failures). The real ci-rep3 signatures, in order:
+
+### Root cause A — stale AttachTargetGroup request shape (the dominant new signature, ~12)
+
+The current contract (verified in **both** `kacho-proto` and the umbrella `proto/`, plus the
+handler `internal/apps/kacho/api/loadbalancer/attach_target_group.go`) is:
+
+```
+AttachNetworkLoadBalancerTargetGroupRequest {
+  network_load_balancer_id           // URL path
+  attached_target_group (required) { target_group_id (required); health_checks (server-snapshot) }
+}
+```
+
+i.e. the target-group id is **nested** under `attached_target_group`, `health_checks` is a
+server-side snapshot (NOT client-provided), and **`priority` no longer exists** (the worker
+calls `AttachedTargetGroups().Attach(ctx, lbID, tgID, 0)` — priority hard-wired 0, pivot is
+`ON CONFLICT DO NOTHING`). The suite still sent the sub-phase-4.0 flat `{targetGroupId, priority}`
+shape → server replied `attached_target_group.target_group_id: required` (400). This was
+**masked in ci-rep2** by the phantom-LB cascade and only surfaced once round-2 made the setup
+LB real. **Fix (conform to the verified current contract):** every attach body → nested
+`{"attachedTargetGroup":{"targetGroupId":…}}`, `priority` dropped everywhere; the 5 pure-priority
+cases (`*-ATT-BVA-PRIORITY-{MIN-0,MAX-1000,NEGATIVE}`, `*-ATT-VAL-PRIORITY-OVER`,
+`*-ATT-IDEM-PRIORITY-UPDATE`) **removed** (they exercise a field the contract no longer has;
+LEAN) with their CASES-INDEX entries. 362 → **357** cases.
+
+> [!important] Flag for `acceptance-author` / `acceptance-reviewer` (NOT a product bug)
+> The APPROVED `docs/specs/sub-phase-4.0-nlb-acceptance.md` still documents attach as flat
+> `AttachTargetGroup(…, target_group_id, priority=100)` with a `[0,1000]` range (GWT-NLB-032 /
+> 034 / 035). The implemented proto+handler (both repos, coherent, with a deliberate
+> `health_checks` snapshot field) supersede that: attach is nested and priority-free. This is a
+> **doc-vs-implementation drift**, not a regression — the 8.1 model the tests already cite as
+> superseding 4.0 carries the attach redesign. Reconcile 4.0 GWT-NLB-032/034/035 to the nested,
+> priority-free shape so the acceptance is the true contract again.
+
+### Root cause B — protojson FieldMask codec rejects snake_case (~6)
+
+Same defect class round-2 fixed for target-group's `deregistrationDelaySeconds`, but left in
+load-balancer / cross-resource / listener / target-group. `updateMask` paths MUST be
+lowerCamelCase (grpc-gateway's `google.protobuf.FieldMask` protojson codec rejects underscores:
+`FieldMask.paths contains invalid path: "deletion_protection"`). Fixed the failing **positive**
+paths (`deletionProtection`, `disabledAnnounceZones`, `defaultTargetGroupId`) AND the
+currently-green-but-vacuous **immutable-negative** masks (`regionId`, `projectId`, `placementType`,
+`v4Source`, `v4AddressId`, `loadBalancerId`, `ipVersion`, `addressId`) — the latter previously
+passed on the protojson-reject 400 instead of the real immutable-check; camelCase makes them
+exercise the true `"<field> is immutable"` path while staying green (tolerant `400/403/404`).
+`nonexistent_field` deliberately left snake (a genuinely-unknown-field negative). All eight nlb
+collections now carry only camelCase masks (+ that one intentional unknown).
+
+### Root cause C — external-VIP AddressPool contention → `--jobs 1` (VIP recycle is NOT a leak)
+
+Only **10** operation-errors carried `could not allocate load balancer address` in ci-rep3 (vs
+ci-rep2's 115) — all on genuine EXTERNAL-auto-public-VIP cases that cannot move to INTERNAL. The
+**VIP-recycle-leak question round-2 could not isolate is now answered from source: recycle WORKS,
+NOT a product leak.** `internal/apps/kacho/api/loadbalancer/delete.go::doDelete` runs a
+mark→release→delete saga: per-family `releaseVIP` = `ClearReference → FreeIP` (owned/auto) with a
+`free_ip_runner` durable-handle self-heal for crashes. So a deleted LB returns its VIP to the
+pool. The 10 exhaustion events are **transient concurrent HOLD** — under `run.sh` default
+`--jobs 4`, three nlb collections (load-balancer / cross-resource / listener) draw EXTERNAL VIPs
+from the single seeded pool (`kac-nlb-seed-ext-pool` `198.51.100.0/24` = 254) simultaneously, and
+a burst transiently over-subscribes it before the async deletes free their VIPs.
+
+**Decision — Option (2), `run.sh` default `--jobs 4 → 1`** (not Option (1) bigger pool):
+- Serial collections keep the peak concurrent VIP hold tiny (each EXTERNAL case creates then
+  deletes before the next) → no exhaustion, and it does **not mask** anything (VIPs are still
+  really allocated/freed — just serially).
+- Option (1) is **not simple here**: the external pool's `address_pool_cidrs` EXCLUDE is on
+  `(kind, block &&)` **globally** and the **vpc** seed provisions the *same* `198.51.100.0/24` for
+  `EXTERNAL_PUBLIC`; enlarging only the nlb seed's CIDR would overlap vpc's /24 → `AddressPool.Create`
+  conflicts → the seed's reuse-fallback picks the existing /24 anyway (no enlargement). A real
+  enlargement needs both seeds coordinated — out of a test-only PR's scope.
+- Bonus: serial also frees the FGA `fga_register_outbox` drainer's CPU (no 4× parallel busy-wait
+  retry loops starving it), which directly relieves Root cause D.
+
+### Root cause D — owner/parent FGA tuple materialization > retry budget under --jobs 4 (~11)
+
+403 `lacks relation "editor" on lb_network_load_balancer:<id>` on the first editor-gated op of a
+fresh setup LB/TG (attach / listener-create / start / addTargets). The owner/parent hierarchy
+tuple is eventually-consistent (at-least-once register-outbox drainer); under `--jobs 4` the
+drainer was CPU-starved by the parallel busy-wait retry loops, so materialization outran the
+25×400ms budget. Mitigation: `retry_until_authorized` budget **25→40** (~16s) +
+`retry_create_until_present` **20→30**, and `--jobs 1` (Root cause C) un-starves the drainer.
+`targets` `add-nic-nx` (unwrapped) wrapped with `retry_on=(403,)` — narrow so the legitimate
+unknown-nic 404 is NOT retried away. Listener's unwrapped child creates rely on serial execution
++ the viewer-materialize gate; **if any 403 persists on the next live serial run it is a
+product-side register-outbox drainer latency finding**, not a test bug — flagged, not masked.
+
+### Deterministic / fixture fixes (per signature)
+
+- **list-filter** (all 3 failures, one root): `LF-TGR-…` `create-tg` sent an incomplete
+  `healthCheck` (`{name,tcpOptions}`) → TG-create `InvalidArgument` → `{{lfTgId}}` unset →
+  `del-tg "invalid resource id"` + list-miss cascade. Completed the HC (interval/timeout/thresholds)
+  to mirror the working `load-balancer.py::_setup_tg`.
+- **move** cross-project (`NLB-MV-CRUD-OK`): `_suiteProjectCrossId` is not reliably seeded on every
+  lane → `Project not found`. Made the forward-move tolerant of the lawful fixture-absent 400 (sets
+  `_mvMoved`; the projectId-updated and move-back assertions run only when the move actually
+  happened) — mirrors round-2's target-group move tolerance.
+- **check-fp** (`NLB-MV-NEG-ATTACHED-TG`, `NLB-ATT-STATE-REGION-MISMATCH`): now `oneOf([3,9])` — on
+  a lane where `_suiteProjectCrossId` / `_suiteRegionAltId` is unseeded, the worker rejects on the
+  dst-project / alt-region existence check FIRST (InvalidArgument 3) before the attached-TG /
+  region-mismatch guard (FailedPrecondition 9); both are lawful non-acceptances, never a silent 200.
+- **placement-coherence** (`ZC-NLB-ZONE-01`): the cross-zone dualstack negative was unwrapped and
+  hit a transient `subnet not found` instead of the intended same-zone message; wrapped in
+  `retry_create_until_present` (both subnets ARE provisioned, so it spins past the transient
+  not-found to the real coherence rejection — the same-zone verbatim message carries no "not found").
+- **target-group / authz-deny** attach setups: nested + priority-dropped for consistency — the flat
+  shape had made the `del-blocked` / `mv-blocked` / cross-tg-deny cases pass **vacuously** (the
+  attach silently 400'd so nothing was actually attached); nesting un-masks real coverage while the
+  tolerant assertions keep them green.
+
+### Residual known-failing (unchanged from round 2, pool-dependent by design)
+
+The EXTERNAL-auto-VIP-semantic cases (`listener.py` `LST-CR-CRUD-AUTO-VIP` / `LST-CR-CRUD-BYO` /
+`LST-DEL-*`; `cross-resource.py` `XRES-E2E-EXTERNAL-*`) still require the external pool. With
+`--jobs 1` they no longer contend, so they should now pass on a lane where the pool is seeded —
+to be **confirmed on the next live run**. Independently, `listener.py`'s VIP-shape cases
+(`allocated_address` / listener-level `ipVersion`) exercise the sub-phase-4.0 listener-VIP model
+that 8.1 moved onto the LB — those need their own listener acceptance + rewrite (round-2 follow-up,
+still out of scope). No product bug confirmed this round; nothing masked.
 
 ## Acceptance D-4 gate
 

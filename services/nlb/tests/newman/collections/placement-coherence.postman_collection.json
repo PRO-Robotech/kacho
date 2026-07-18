@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "547144d8-a711-4415-939e-7adcffb0c44f",
+    "_postman_id": "9e46143b-321f-422b-8903-469b9488c034",
     "name": "kacho-nlb / newman / placement-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -261,7 +261,7 @@
           ]
         },
         {
-          "name": "create-cross-zone",
+          "name": "create-cross-zone-cr527",
           "request": {
             "method": "POST",
             "header": [
@@ -297,6 +297,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 30) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "if (pm.environment.get('zcSubV4Id') && pm.environment.get('zcSubV6Id')) {",
                   "  pm.test('cross-zone dualstack rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "  const j = pm.response.json();",
@@ -719,7 +737,7 @@
           ]
         },
         {
-          "name": "create-same-zone-cr561",
+          "name": "create-same-zone-cr528",
           "request": {
             "method": "POST",
             "header": [
@@ -765,7 +783,7 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 20) {",
+                  "if (_crNotFound && _crc < 30) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
                   "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -1225,7 +1243,7 @@
           ]
         },
         {
-          "name": "create-wrong-region-cr562",
+          "name": "create-wrong-region-cr529",
           "request": {
             "method": "POST",
             "header": [
@@ -1271,7 +1289,7 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 20) {",
+                  "if (_crNotFound && _crc < 30) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
                   "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -1500,7 +1518,7 @@
           ]
         },
         {
-          "name": "create-same-region-cr563",
+          "name": "create-same-region-cr530",
           "request": {
             "method": "POST",
             "header": [
@@ -1546,7 +1564,7 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 20) {",
+                  "if (_crNotFound && _crc < 30) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
                   "  const _crd = Date.now(); while (Date.now() - _crd < 400) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

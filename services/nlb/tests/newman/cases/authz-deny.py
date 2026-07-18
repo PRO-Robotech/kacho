@@ -233,7 +233,7 @@ CASES.append(Case(
         Step(name="att-cross-tg", method="POST",
              path=f"{_NLB}/{{{{garbageNlbId}}}}:attachTargetGroup",
              auth="jwtProjectEditorA",
-             body={"targetGroupId": "{{garbageTgrId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{garbageTgrId}}"}},
              test_script=[
                  # STRICT deny (never 200): the caller holds no tuple on the
                  # referenced LB/TG, so attach MUST be refused. Hide-existence

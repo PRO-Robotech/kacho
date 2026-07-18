@@ -179,14 +179,14 @@ CASES.append(Case(
         # Step 5: attach TG to LB.
         Step(name="attach-tg", method="POST",
              path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"targetGroupId": "{{tgId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Step 6: now the listener default_target_group_id FK resolves (TG attached).
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "default_target_group_id", "defaultTargetGroupId": "{{tgId}}"},
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="verify-default-tg-set", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
@@ -215,7 +215,7 @@ CASES.append(Case(
                           f"  pm.expect(s.status).to.be.oneOf({_VALID_TARGET_STATE_JS})));"]),
         # Teardown (bottom-up; clear default before detach — composite FK RESTRICT).
         Step(name="clear-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "default_target_group_id", "defaultTargetGroupId": ""},
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="detach-tg", method="POST",
@@ -287,7 +287,7 @@ CASES.append(Case(
         # TG exists but is intentionally NOT attached to the LB.
         *_create_tg("def-unatt"),
         Step(name="set-default-unattached", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "default_target_group_id", "defaultTargetGroupId": "{{tgId}}"},
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[
                  "pm.test('accepted as Operation or sync-rejected', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
@@ -428,7 +428,7 @@ CASES.append(Case(
         *_create_tg("int-flow"),
         Step(name="attach-internal-tg", method="POST",
              path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"targetGroupId": "{{tgId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[
                  "pm.test('attach accepted or rejected (LB dependent)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
@@ -549,11 +549,11 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="attach-tg", method="POST",
              path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"targetGroupId": "{{tgId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "default_target_group_id", "defaultTargetGroupId": "{{tgId}}"},
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Step 1: delete LB while it still owns a listener → rejected ("not empty").
@@ -576,7 +576,7 @@ CASES.append(Case(
                           "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"]),
         # Step 2: clear listener default (composite FK must be released first).
         Step(name="clear-default", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "default_target_group_id", "defaultTargetGroupId": ""},
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Step 3: detach TG (no longer the listener default).

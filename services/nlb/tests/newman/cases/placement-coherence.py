@@ -122,7 +122,13 @@ CASES.append(Case(
     steps=[
         *_provision_zonal_subnet("existingZoneId", "z1v4", "zcSubV4Id", family="v4"),
         *_provision_zonal_subnet("existingZoneAltId", "z2v6", "zcSubV6Id", family="v6"),
-        Step(name="create-cross-zone", method="POST", path=_LB,
+        # Both zonal subnets are provisioned (v4 in zone1, v6 in zone2), so the intended
+        # rejection is the same-zone COHERENCE error — NOT a transient cross-service
+        # `subnet <id> not found` (one subnet briefly invisible to nlb's vpc peer-read).
+        # retry_create_until_present spins past that transient not-found (the same-zone
+        # verbatim message carries no "not found", so once the real coherence check fires
+        # the guard falls through to the strict assertion below).
+        retry_create_until_present(Step(name="create-cross-zone", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
                    "type": "INTERNAL", "placementType": "ZONAL", "name": "zc-xz-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubV4Id}}"},
@@ -137,7 +143,7 @@ CASES.append(Case(
                  "  pm.test('no dual zonal subnet fixture → lawful rejection, never silent 200', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         *_cleanup_vpc("zcSubV4Id"),
         *_cleanup_vpc("zcSubV6Id"),
     ],
