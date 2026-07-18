@@ -147,14 +147,18 @@ CASES.append(Case(
                           "pm.test('LB starts INACTIVE (no listener/TG yet)', () => "
                           "  pm.expect(j.status).to.eql('INACTIVE'));",
                           "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));"])),
-        # Step 2: listener with auto external VIP.
-        Step(name="create-listener", method="POST", path=_LST_BASE,
+        # Step 2: listener with auto external VIP. Child-create under the fresh LB is
+        # authorized against editor@lb_network_load_balancer — its owner-tuple is
+        # eventually-consistent, so wrap the first child-create in the same bounded
+        # read-your-writes retry as materialize-lb (round-4 wrapped update/get/del but
+        # left the child-CREATE unwrapped, so a transient 403 reddened the whole chain).
+        retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "edge-https-{{runId}}",
                    "protocol": "TCP", "port": 443, "targetPort": 8443, "ipVersion": "IPV4"},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-listener-vip", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
@@ -168,21 +172,22 @@ CASES.append(Case(
         # Step 3: target group.
         *_create_tg("ext-flow"),
         # Step 4: register an Instance target (peer-validated in worker; tolerated
-        # when the seeded Compute instance is absent on a bare lane).
-        Step(name="add-instance-target", method="POST",
+        # when the seeded Compute instance is absent on a bare lane). Authorized against
+        # editor@lb_target_group — fresh TG owner-tuple lag → bounded retry.
+        retry_until_authorized(Step(name="add-instance-target", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "{{existingInstanceId}}", "weight": 100}]},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        # Step 5: attach TG to LB.
-        Step(name="attach-tg", method="POST",
+        # Step 5: attach TG to LB. Authorized against editor@lb (fresh LB tuple lag).
+        retry_until_authorized(Step(name="attach-tg", method="POST",
              path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         # Step 6: now the listener default_target_group_id FK resolves (TG attached).
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
@@ -241,17 +246,18 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_create_external_lb("ext-v6"),
-        Step(name="create-listener-v6", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="create-listener-v6", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "edge-v6-{{runId}}",
                    "protocol": "TCP", "port": 443, "targetPort": 8443, "ipVersion": "IPV6"},
              test_script=[
                  # external-v6 pool may be unseeded → Operation RESOURCE_EXHAUSTED;
-                 # listener creation must not leak a VIP either way.
+                 # listener creation must not leak a VIP either way. Wrapped so a fresh-LB
+                 # editor-tuple lag (403) is retried, not conflated with the v6-pool reject.
                  "pm.test('accepted as Operation or rejected (v6 pool dependent)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-listener-v6", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[
@@ -278,11 +284,11 @@ CASES.append(Case(
     classes=["NEG", "STATE"], priority="P1",
     steps=[
         *_create_external_lb("def-unatt"),
-        Step(name="create-listener", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "def-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         # TG exists but is intentionally NOT attached to the LB.
         *_create_tg("def-unatt"),
@@ -318,15 +324,17 @@ CASES.append(Case(
     classes=["NEG", "VAL"], priority="P1",
     steps=[
         *_create_external_lb("v4-v6"),
-        Step(name="create-listener-family-mismatch", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="create-listener-family-mismatch", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "mm-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "ipVersion": "IPV4", "addressId": "{{existingAddressIPv6Id}}"},
              test_script=[
+                 # Wrapped so a fresh-LB editor-tuple lag (403) is retried away and the real
+                 # family-mismatch InvalidArgument is what the assertion observes.
                  "pm.test('rejected (sync InvalidArgument or async error)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="check-invalid-arg", method="GET", path="/operations/{{opId}}",
              test_script=[
@@ -372,7 +380,11 @@ CASES.append(Case(
                  "} else { pm.environment.unset('opId'); }",
              ]),
         poll_operation_until_done(),
-        Step(name="create-internal-lb", method="POST", path=_LB_BASE,
+        # The just-provisioned vpc subnet can be briefly invisible to nlb's vpc peer-read
+        # under parallel load → sync create rejects `subnet <id> not found` (400) BEFORE the
+        # Operation is minted. Bounded create-retry re-POSTs (leak-free) until the subnet
+        # materialises across the service boundary, so the INTERNAL parent LB is real.
+        retry_create_until_present(Step(name="create-internal-lb", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "INTERNAL", "placementType": "ZONAL", "name": "xres-int-{{runId}}",
                    "sessionAffinity": "CLIENT_IP_ONLY",
@@ -389,7 +401,7 @@ CASES.append(Case(
                  "  pm.test('no subnet fixture → INTERNAL subnet-source create rejected', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-internal-lb", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -405,17 +417,19 @@ CASES.append(Case(
                  "    pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
                  "}",
              ])),
-        Step(name="create-internal-listener", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="create-internal-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "int-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "ipVersion": "IPV4", "subnetId": "{{existingSubnetId}}"},
              test_script=[
+                 # Child-create under the fresh INTERNAL LB → editor@lb owner-tuple lag (403)
+                 # is retried; the real accept/reject is what the assertion observes.
                  "pm.test('listener accepted or rejected (LB/subnet dependent)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
                  "pm.environment.unset('lstId');",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="get-internal-listener-vip", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[
@@ -426,14 +440,15 @@ CASES.append(Case(
                  "}",
              ]),
         *_create_tg("int-flow"),
-        Step(name="attach-internal-tg", method="POST",
+        retry_until_authorized(Step(name="attach-internal-tg", method="POST",
              path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[
+                 # Authorized against editor@lb (fresh LB tuple lag) → bounded retry.
                  "pm.test('attach accepted or rejected (LB dependent)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="get-internal-target-states", method="GET",
              path=f"{_LB_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
@@ -535,11 +550,11 @@ CASES.append(Case(
         # Build a minimal EXTERNAL stack with an external_ip target (peer-free, so
         # the drain step is deterministic regardless of Compute fixtures).
         *_create_external_lb("teardown"),
-        Step(name="create-listener", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "td-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         *_create_tg("teardown"),
         retry_until_authorized(Step(name="add-external-target", method="POST",
@@ -547,10 +562,10 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.200"}, "weight": 100}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="attach-tg", method="POST",
+        retry_until_authorized(Step(name="attach-tg", method="POST",
              path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
@@ -621,11 +636,11 @@ CASES.append(Case(
     classes=["NEG", "STATE"], priority="P0",
     steps=[
         *_create_external_lb("del-notempty"),
-        Step(name="create-listener", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "ne-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         Step(name="delete-blocked", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[

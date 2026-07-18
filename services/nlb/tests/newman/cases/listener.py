@@ -122,12 +122,16 @@ CASES.append(Case(
         # Exercises EXTERNAL auto-public-VIP listener semantics → parent must be EXTERNAL.
         # Pool-dependent (external AddressPool) — tracked under the systemic external-pool finding.
         *_setup_lb("auto-vip", lb_type="EXTERNAL"),
-        Step(name="cr-lst", method="POST", path=_LST_BASE,
+        # Child Listener.Create is authorized against editor@lb_network_load_balancer,
+        # whose owner-tuple is eventually-consistent after the parent LB Create. round-4
+        # wrapped the setup GET/UPDATE/DELETE but left the child-CREATE unwrapped, so a
+        # transient 403 reddened the whole listener CRUD chain — wrap it too (fail-closed).
+        retry_until_authorized(Step(name="cr-lst", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "ipVersion": "IPV4", "proxyProtocolV2": False},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
@@ -149,12 +153,12 @@ CASES.append(Case(
         # scheme). Pool-dependent: on a lane where the external AddressPool is exhausted the
         # parent is a phantom LB — tracked under the systemic external-pool finding.
         *_setup_lb("byo", lb_type="EXTERNAL"),
-        Step(name="cr-byo", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-byo", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "byo-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "ipVersion": "IPV4", "addressId": "{{existingAddressId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-byo", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
@@ -173,12 +177,12 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("int", lb_type="INTERNAL"),
-        Step(name="cr-int", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-int", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "int-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "ipVersion": "IPV4", "subnetId": "{{existingSubnetId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         *_cleanup_lst(),
         *_cleanup_lb(),
@@ -191,11 +195,11 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         *_setup_lb("get-ok"),
-        Step(name="cr", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "getok-{{runId}}",
                    "protocol": "TCP", "port": 81, "targetPort": 8081, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
@@ -230,11 +234,11 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("upd-ok"),
-        Step(name="cr", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "upd-{{runId}}",
                    "protocol": "TCP", "port": 82, "targetPort": 8082, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="upd", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "name,proxy_protocol_v2",
@@ -253,11 +257,11 @@ CASES.append(Case(
     steps=[
         # Exercises FreeIP-back-to-external-pool on delete → parent must be EXTERNAL. Pool-dependent.
         *_setup_lb("del-auto", lb_type="EXTERNAL"),
-        Step(name="cr", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "del-auto-{{runId}}",
                    "protocol": "TCP", "port": 83, "targetPort": 8083, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="del", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
@@ -273,12 +277,12 @@ CASES.append(Case(
     steps=[
         # BYO external address → parent must be EXTERNAL (see LST-CR-CRUD-BYO). Pool-dependent.
         *_setup_lb("del-byo", lb_type="EXTERNAL"),
-        Step(name="cr-byo", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-byo", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "del-byo-{{runId}}",
                    "protocol": "TCP", "port": 84, "targetPort": 8084,
                    "ipVersion": "IPV4", "addressId": "{{existingAddressId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="del-byo", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*save_from_response("j.id", "opId")])),
@@ -293,11 +297,11 @@ CASES.append(Case(
     classes=["CRUD", "LSG"], priority="P2",
     steps=[
         *_setup_lb("lops"),
-        Step(name="cr", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "lops-{{runId}}",
                    "protocol": "TCP", "port": 85, "targetPort": 8085, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="lops", method="GET",
              path=f"{_LST_BASE}/{{{{lstId}}}}/operations?pageSize=10",
@@ -320,10 +324,14 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P1",
     steps=[
         *_setup_lb("port-0"),
-        Step(name="cr-p0", method="POST", path=_LST_BASE,
+        # Even a sync-validation NEGATIVE goes through the gateway editor@lb Check first, so a
+        # fresh-LB owner-tuple lag can pre-empt it with a 403 before the port=0 InvalidArgument
+        # is ever produced. Wrapping retries ONLY that transient 403/404 — the real 400 assertion
+        # still runs (fail-closed on a terminal 403), so the negative is not masked or weakened.
+        retry_until_authorized(Step(name="cr-p0", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "p0-{{runId}}",
                    "protocol": "TCP", "port": 0, "targetPort": 8080, "ipVersion": "IPV4"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
@@ -334,10 +342,10 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P1",
     steps=[
         *_setup_lb("port-over"),
-        Step(name="cr-po", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-po", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "po-{{runId}}",
                    "protocol": "TCP", "port": 65536, "targetPort": 8080, "ipVersion": "IPV4"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
@@ -348,12 +356,12 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P2",
     steps=[
         *_setup_lb("port-neg"),
-        Step(name="cr-pn", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-pn", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pn-{{runId}}",
                    "protocol": "TCP", "port": -1, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
-             ]),
+             ])),
         *_cleanup_lb(),
     ],
 ))
@@ -364,12 +372,12 @@ CASES.append(Case(
     classes=["VAL"], priority="P1",
     steps=[
         *_setup_lb("bad-proto"),
-        Step(name="cr-http", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-http", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
                    "protocol": "HTTP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
-             ]),
+             ])),
         *_cleanup_lb(),
     ],
 ))
@@ -380,14 +388,14 @@ CASES.append(Case(
     classes=["VAL"], priority="P0",
     steps=[
         *_setup_lb("int-no-subnet", lb_type="INTERNAL"),
-        Step(name="cr-int-no-subnet", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-int-no-subnet", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "noint-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected (sync or async)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="check", method="GET", path="/operations/{{opId}}",
              test_script=[
@@ -404,10 +412,10 @@ CASES.append(Case(
     classes=["VAL"], priority="P1",
     steps=[
         *_setup_lb("bad-name"),
-        Step(name="cr-bad-name", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-bad-name", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "Bad_Name!",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
@@ -423,11 +431,11 @@ CASES.append(Case(
     classes=["BVA"], priority="P2",
     steps=[
         *_setup_lb("port-1"),
-        Step(name="cr-p1", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-p1", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "p1-{{runId}}",
                    "protocol": "TCP", "port": 1, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         *_cleanup_lst(),
         *_cleanup_lb(),
@@ -440,11 +448,11 @@ CASES.append(Case(
     classes=["BVA"], priority="P2",
     steps=[
         *_setup_lb("port-max"),
-        Step(name="cr-pmax", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-pmax", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pmax-{{runId}}",
                    "protocol": "TCP", "port": 65535, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         *_cleanup_lst(),
         *_cleanup_lb(),
@@ -462,7 +470,7 @@ CASES.append(Case(
     classes=["STATE", "NEG"], priority="P0",
     steps=[
         *_setup_lb("byo-used"),
-        Step(name="cr-used", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-used", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "byou-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "ipVersion": "IPV4", "addressId": "{{existingAddressUsedId}}"},
@@ -470,7 +478,7 @@ CASES.append(Case(
                  "pm.test('rejected (sync or async)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="check", method="GET", path="/operations/{{opId}}",
              test_script=[
@@ -487,7 +495,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         *_setup_lb("byo-ipv"),
-        Step(name="cr-ipv-mismatch", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-ipv-mismatch", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "ipv-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "ipVersion": "IPV4", "addressId": "{{existingAddressIPv6Id}}"},
@@ -495,7 +503,7 @@ CASES.append(Case(
                  "pm.test('rejected (sync or async)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         *_cleanup_lb(),
     ],
@@ -539,20 +547,22 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P0",
     steps=[
         *_setup_lb("dup-pp"),
-        Step(name="cr-1", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-1", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp1-{{runId}}",
                    "protocol": "TCP", "port": 86, "targetPort": 8086, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
-        Step(name="cr-2-dup", method="POST", path=_LST_BASE,
+        # Second create is the duplicate under test — the parent-tuple is already warm from
+        # cr-1, but wrap for symmetry so a late tuple-eviction can't red the ALREADY_EXISTS.
+        retry_until_authorized(Step(name="cr-2-dup", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp2-{{runId}}",
                    "protocol": "TCP", "port": 86, "targetPort": 8086, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected (sync 409 or async)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         *_cleanup_lst(),
         *_cleanup_lb(),
@@ -568,7 +578,7 @@ CASES.append(Case(
         # surrogate: trigger a deterministic conflict by attempting Create with
         # a value that worker validation rejects after VIP allocation.
         *_setup_lb("vip-comp"),
-        Step(name="cr-likely-fail", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-likely-fail", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "vipc-{{runId}}",
                    "protocol": "TCP", "port": 87, "targetPort": 8087, "ipVersion": "IPV4",
                    "defaultTargetGroupId": "{{garbageTgrId}}"},
@@ -576,7 +586,7 @@ CASES.append(Case(
                  "pm.test('rejected or accepted', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         *_cleanup_lb(),
     ],
@@ -619,11 +629,11 @@ CASES.append(Case(
     classes=["STATE", "NEG"], priority="P1",
     steps=[
         *_setup_lb("def-tg-region"),
-        Step(name="cr", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "dtgr-{{runId}}",
                    "protocol": "TCP", "port": 88, "targetPort": 8088, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         # Make a TG in alt region
         Step(name="setup-tg-alt", method="POST", path="/nlb/v1/targetGroups",
@@ -635,13 +645,15 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgAltId")]),
         poll_operation_until_done(),
-        Step(name="upd-default-tg-mismatch", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        # First self-UPDATE of the fresh listener → v_update@lb_listener owner-tuple lag
+        # (403) is retried; the real region-mismatch reject is what the assertion observes.
+        retry_until_authorized(Step(name="upd-default-tg-mismatch", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgAltId}}"},
              test_script=[
                  "pm.test('rejected (sync or async)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="cleanup-tg-alt", method="DELETE", path="/nlb/v1/targetGroups/{{tgAltId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -719,10 +731,10 @@ CASES.append(Case(
     classes=["VAL"], priority="P1",
     steps=[
         *_setup_lb("name-digit"),
-        Step(name="cr-digit", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-digit", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "9bad-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
@@ -733,10 +745,10 @@ CASES.append(Case(
     classes=["VAL"], priority="P1",
     steps=[
         *_setup_lb("name-hyp"),
-        Step(name="cr-hyp", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-hyp", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "-bad-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
@@ -747,12 +759,15 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P1",
     steps=[
         *_setup_lb("tp-0"),
-        Step(name="cr-tp-0", method="POST", path=_LST_BASE,
+        # NAMED negative (task round-4b): the fresh-LB editor-tuple lag was pre-empting the
+        # target_port=0 InvalidArgument with a 403. Wrap retries only the transient 403/404 so
+        # the real InvalidArgument assertion runs — the negative is preserved, not weakened.
+        retry_until_authorized(Step(name="cr-tp-0", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "tp0-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 0, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-             ]),
+             ])),
         *_cleanup_lb(),
     ],
 ))
@@ -763,12 +778,12 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P1",
     steps=[
         *_setup_lb("tp-over"),
-        Step(name="cr-tp-o", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-tp-o", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "tpo-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 65536, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-             ]),
+             ])),
         *_cleanup_lb(),
     ],
 ))
@@ -779,12 +794,12 @@ CASES.append(Case(
     classes=["VAL"], priority="P1",
     steps=[
         *_setup_lb("ipv-unk"),
-        Step(name="cr-ipv-unk", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-ipv-unk", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "ipv-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV9"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-             ]),
+             ])),
         *_cleanup_lb(),
     ],
 ))
@@ -795,7 +810,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("ipv6"),
-        Step(name="cr-ipv6", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-ipv6", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "v6-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV6"},
              test_script=[
@@ -803,7 +818,7 @@ CASES.append(Case(
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="cleanup-best-effort", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -818,12 +833,12 @@ CASES.append(Case(
     classes=["CRUD"], priority="P2",
     steps=[
         *_setup_lb("pp2"),
-        Step(name="cr-pp2", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-pp2", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp2-{{runId}}",
                    "protocol": "TCP", "port": 90, "targetPort": 9090,
                    "ipVersion": "IPV4", "proxyProtocolV2": True},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
@@ -840,11 +855,11 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P2",
     steps=[
         *_setup_lb("def-tg-clear"),
-        Step(name="cr", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "dtgc-{{runId}}",
                    "protocol": "TCP", "port": 91, "targetPort": 9091, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="upd-clear", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
@@ -931,11 +946,11 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("udp"),
-        Step(name="cr-udp", method="POST", path=_LST_BASE,
+        retry_until_authorized(Step(name="cr-udp", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "udp-{{runId}}",
                    "protocol": "UDP", "port": 53, "targetPort": 53, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         *_cleanup_lst(),
         *_cleanup_lb(),

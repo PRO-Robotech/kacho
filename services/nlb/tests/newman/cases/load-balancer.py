@@ -853,35 +853,63 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-GTS-CRUD-EMPTY",
-    title="GetTargetStates on LB without attached TG → [] (Verifies REQ-NLB-GTS-01)",
+    title="GetTargetStates for a TG with no registered targets → [] (Verifies REQ-NLB-GTS-01)",
     classes=["CRUD"], priority="P1",
     steps=[
+        # GetTargetStates is a PER-TARGET-GROUP query: GetTargetStatesRequest.target_group_id
+        # is required (get_target_states.go: errInvalidArg("target_group_id","required")). An
+        # LB-wide call (no tgId) is a hard 400 by contract, not an implicit "all groups" — so
+        # this case supplies its own TG (empty, not even attached: GetTargetStates only needs
+        # same-project + viewer, not attachment) and asserts the empty-states contract.
         *_setup_lb("gts-empty"),
-        retry_until_authorized(Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
+        *_setup_tg("gts-empty"),
+        retry_until_authorized(Step(name="gts", method="GET",
+             path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('targetStates is array (likely empty)', () => "
-                          "  pm.expect(j.targetStates || []).to.be.an('array'));"])),
+                          "pm.test('targetStates is an empty array (TG has no targets)', () => "
+                          "  pm.expect(j.targetStates || []).to.be.an('array').that.is.empty);"])),
+        *_cleanup_tg(),
         *_cleanup_lb(),
     ],
 ))
 
 CASES.append(Case(
     id="NLB-GTS-STATE-LB-STOPPED",
-    title="GetTargetStates returns INACTIVE for all when LB in STOPPED",
+    title="GetTargetStates returns INACTIVE for every target when LB in STOPPED",
     classes=["STATE"], priority="P2",
     steps=[
+        # target_group_id is required (per-TG query); supply a TG with one deterministic,
+        # peer-free external_ip target so the STOPPED→INACTIVE branch of computeTargetState
+        # (lbStatus==STOPPED ⇒ INACTIVE) is actually exercised, not vacuously skipped.
         *_setup_lb("gts-stopped"),
-        Step(name="stop", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
-             test_script=[*save_from_response("j.id", "opId")]),
+        *_setup_tg("gts-stopped"),
+        retry_until_authorized(Step(name="gts-add-target", method="POST",
+             path="/nlb/v1/targetGroups/{{tgId}}:addTargets",
+             body={"targets": [{"externalIp": {"address": "203.0.113.210"}, "weight": 100}]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
+        retry_until_authorized(Step(name="stop", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="gts", method="GET",
+             path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "(j.targetStates || []).forEach(ts => {",
-                          "  pm.test('target state INACTIVE for ' + (ts.id||'?'), () => "
+                          "const states = j.targetStates || [];",
+                          "pm.test('at least one target state returned', () => "
+                          "  pm.expect(states.length).to.be.at.least(1));",
+                          "states.forEach(ts => {",
+                          "  pm.test('target state INACTIVE for ' + (ts.address||'?'), () => "
                           "    pm.expect(ts.status).to.eql('INACTIVE'));",
                           "});"])),
+        # Drain the target first — TargetGroup.Delete is blocked while it holds targets
+        # ("TargetGroup has N target(s); remove them first"). Keeps the case self-contained.
+        Step(name="gts-remove-target", method="POST", path="/nlb/v1/targetGroups/{{tgId}}:removeTargets",
+             body={"targets": [{"externalIp": {"address": "203.0.113.210"}}]},
+             test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_tg(),
         *_cleanup_lb(),
     ],
 ))
@@ -2231,17 +2259,22 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-GTS-CRUD-EMPTY-LB-ACTIVE",
-    title="GetTargetStates on ACTIVE LB with no attached TG → empty array",
+    title="GetTargetStates for an empty TG on an ACTIVE LB → empty array",
     classes=["CRUD", "STATE"], priority="P2",
     steps=[
+        # target_group_id is required (per-TG query); an empty TG on an ACTIVE LB still
+        # yields [] — LB status does not fabricate target states.
         *_setup_lb("gts-empty-active"),
-        Step(name="start", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
-             test_script=[*save_from_response("j.id", "opId")]),
+        *_setup_tg("gts-empty-active"),
+        retry_until_authorized(Step(name="start", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="gts", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates",
+        retry_until_authorized(Step(name="gts", method="GET",
+             path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('empty target_states', () => "
                           "  pm.expect((pm.response.json().targetStates || []).length).to.eql(0));"])),
+        *_cleanup_tg(),
         *_cleanup_lb(),
     ],
 ))

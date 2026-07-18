@@ -30,6 +30,7 @@ parseable Postman collections) but cannot execute against any backend.
 | 2026-07-18 | round 2 — INTERNAL setup + peer-RYW retry + CI-signature triage | 362 | see below | Root-cause pass over ci-rep2 (load-balancer 62 / cross-resource 19 / listener 16 / authz-deny 6 / target-group 3 / placement-coherence 2 / targets 1 / operation 1). Setup LBs migrated off the contended external AddressPool to pool-independent INTERNAL-inline-subnet; new `retry_create_until_present` primitive for cross-service subnet read-your-writes lag; deterministic + tolerant fixes per signature. Systemic external-pool finding flagged (below). Verified locally (py_compile / gen.py / validate-cases 362); not executed (stand not raised this round). |
 | 2026-07-18 | round 3 — attach-shape conformance + protojson mask fix + serial VIP + residuals | 357 | see below | Root-cause pass over ci-rep3 (load-balancer 29 / cross-resource 8 / listener 7 / list-filter 3 / targets 1 / placement-coherence 1). ci-rep3 **disproved the "residuals = external-VIP exhaustion" hypothesis**: the dominant new signature (~12) was a stale **attach request shape** (`AttachedTargetGroup` nesting + `priority` removed from the contract — verified from proto+handler), newly surfaced because round-2's INTERNAL migration finally let the attach flow RUN. Fixes: nested attach shape everywhere + 5 obsolete `priority` cases removed; protojson-FieldMask snake→camelCase in load-balancer/cross-resource/listener/target-group (round-2 fixed only target-group's `deregistrationDelaySeconds`); nlb `run.sh --jobs` 4→1 (serial collections defeat shared-external-pool contention); list-filter TG healthCheck completion; move + region-mismatch fixture-tolerance; owner-tuple retry budget 25→40; targets add-nic-nx wrapped `retry_on=(403,)`. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised this round). |
 | 2026-07-18 | round 4 — owner-tuple-lag retry↑60 + eventual-consistency whitelist | 357 | see below | Root-cause pass over ci-rep4 (load-balancer 43 / cross-resource 17 / listener 14). `--jobs 1` (round 3) unblocked the create layer (VIP-exhaustion gone) → the **update-after-create** layer surfaced: the first post-create Get/Update/Delete/Start/Stop/Move/Attach of the caller's OWN fresh LB (and Get/Update of its OWN fresh listener) 403s (`lacks v_update/v_delete/v_get`) / 404s at the authz gate before the owner-tuple materialises. Measured: async op-latency ~1.5s (poll-op p90=3) but materialization p50~10s with a heavy tail — **31/83 wrapped steps exhausted the old 16s budget**; nlb races LAST in the umbrella (iam→vpc→compute→nlb) so the `fga_register_drainer` backlog peaks. Fix (2 levels): (1) `retry_until_authorized` budget **40→60**, interval **400→500ms** (~16s→~30s window); (2) residual saturation tail past 30s = **documented known-RED** in `assert-suites-green.sh` (23 owner-tuple-lag update/del/get/action cases, assertions RUN+report, not gate-blocking — same class as iam#257), tracked in **kacho#11**. Verified locally (py_compile / gen.py / validate-cases 357 / bash -n); not executed (stand not raised this round). |
+| 2026-07-18 | round 4b — child-create owner-tuple-lag wrap + GTS case-fix | 357 | see below | Closes the two create-layer items round 4 left open (below §"NOT whitelisted"). ci-rep4 re-triage: the `cross-resource XRES-*` / `listener LST-CR-*` 403s are the **same owner-tuple-lag as round 4, one step earlier** — round 4 wrapped the first Get/Update/Delete but left the **child-CREATE** (`listeners.create` / `:attachTargetGroup` / `:addTargets` authorized against `editor@lb`/`editor@tg`) UNWRAPPED, so a transient 403 reddened the whole chain. Fix: wrap every own-fresh-parent child-create/mutation in `retry_until_authorized(retry_on=(403,404))` (default budget 60×500ms) — **12 steps in cross-resource** (incl. `create-internal-lb` in `retry_create_until_present` for the cross-service `"subnet <id> not found"` sync-reject) + **32 steps in listener** (all `_setup_lb`-parented creates incl. the sync-validation negatives `cr-tp-0/cr-tp-o/cr-ipv-unk/cr-p0/…` — the wrap retries ONLY the pre-empting 403, the real InvalidArgument still runs, never masked; the 4 garbage-parent/unscoped negatives `cr-no-lb/cr-cross-prj/cr-empty/cr-malformed` stay UNWRAPPED). **GTS case-fix (3):** `NLB-GTS-{CRUD-EMPTY,CRUD-EMPTY-LB-ACTIVE,STATE-LB-STOPPED}` now supply the contract-required `target_group_id` (own inline TG; STOPPED adds one peer-free external_ip target so INACTIVE is exercised, then drains it) instead of the LB-wide call that hard-400s. **Residual (unchanged known-RED, kacho#11):** phantom LBs from `could not allocate load balancer address` (VIP-source alloc failing under peak umbrella load — EXTERNAL shared-pool AND INTERNAL subnet-IPAM cross-service async-visibility) make the parent LB never materialise → wraps fail-closed (retry 30s then real assert) but cannot green a non-existent parent; needs drainer/alloc throughput, not test retry. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised). |
 
 ## Known failing — owner-tuple materialization lag (eventual-consistency, whitelisted, round 4)
 
@@ -56,15 +57,25 @@ STATE-HAS-ATTACHED},ATT-{STATE-REGION-MISMATCH,NEG-TG-UNKNOWN},LIFECYCLE-CONF}` 
   risk masking a real VIP-source/networkId/subnetId/announce leak, so it stays gated (its
   GET-lag relies on the budget=60 fix, not the whitelist).
 - `NLB-GTS-{CRUD-EMPTY,CRUD-EMPTY-LB-ACTIVE,STATE-LB-STOPPED}` — **case-expectation finding,
-  not lag**: these call `GetTargetStates` LB-wide expecting `[]`, but the contract requires
-  `target_group_id` (→ 400 `"target_group_id: required"`, already documented for
-  `NLB-GTS-NEG-NF-UNKNOWN`). Needs a case-vs-acceptance reconciliation (own RED→GREEN cycle),
-  not owner-tuple retry. Budget-independent.
-- `cross-resource XRES-*` (create-fail / cross-service peer-visibility `"subnet <id> not
-  found"` + parent-LB `editor`-lag on UNWRAPPED child-create steps) and `listener LST-CR-*`
-  (parent-LB `editor`-lag on unwrapped `loadbalancer.listeners.create`) — the create-fail
-  class, task-excluded from the owner-tuple whitelist; fixing them needs create-step wrapping
-  or drainer throughput (kacho#11).
+  not lag; RECONCILED round 4b.** Was calling `GetTargetStates` LB-wide expecting `[]`, but the
+  contract requires `target_group_id` (→ 400 `"target_group_id: required"`, verified in
+  `get_target_states.go` + `GetTargetStatesRequest` proto). Fixed: each case now supplies its own
+  inline TG and passes `?targetGroupId={{tgId}}` (empty TG → `[]`; STOPPED registers one peer-free
+  external_ip target so the `lbStatus==STOPPED ⇒ INACTIVE` branch is actually exercised, then
+  drains it — TargetGroup.Delete blocks on non-empty). Budget-independent, deterministic.
+- `cross-resource XRES-*` / `listener LST-CR-*` child-create `editor`-lag — **WRAPPED round 4b.**
+  Same owner-tuple-lag as the round-4 whitelist, one step earlier: round 4 wrapped the first
+  Get/Update/Delete but left the child-CREATE (`listeners.create` / `:attachTargetGroup` /
+  `:addTargets`, authorized against `editor@lb`/`editor@tg`) UNWRAPPED. Now wrapped in
+  `retry_until_authorized(retry_on=(403,404))` (12 cross-resource incl. `create-internal-lb` in
+  `retry_create_until_present` for the sync `"subnet <id> not found"` peer-visibility reject; 32
+  listener). Fail-closed: a terminal 403 (budget spent) still fails the real assertion, so a
+  genuine deny is never masked; the sync-validation negatives keep their InvalidArgument assert.
+- **Residual (still RED, kacho#11):** any XRES-*/LST-CR-* whose parent LB Create Operation errors
+  `could not allocate load balancer address` (VIP-source allocation failing under peak umbrella
+  load — the shared EXTERNAL pool AND, under `--jobs`>1, INTERNAL subnet-IPAM cross-service async
+  visibility) is a **phantom LB**: the wraps fail-closed after 30s but cannot green a parent that
+  never persisted. This is the alloc-throughput residual, not a test-retry gap.
 
 ## First fe3455 run — triage & corrections (2026-07-01)
 
