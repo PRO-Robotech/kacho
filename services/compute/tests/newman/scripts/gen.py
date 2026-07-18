@@ -269,16 +269,24 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 400,
                    test_script=guard + list(step.test_script))
 
 
-def poll_operation_until_done() -> Step:
+def poll_operation_until_done(auth: Optional[str] = None) -> Step:
     """Reusable poll step: до 30 попыток с ~500ms задержкой между ними (через setNextRequest),
     потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1).
     Уникальное имя per-call (poll-op-<N>): setNextRequest(pm.info.requestName) ретраит СЕБЯ, а не
-    другой poll-op коллекции (иначе прыжок через кейсы → ложный fail). e2e-newman fullscope root A3."""
+    другой poll-op коллекции (иначе прыжок через кейсы → ложный fail). e2e-newman fullscope root A3.
+
+    auth: КОГДА мутация создана НЕ дефолтным cluster-admin Bearer'ом (например
+    jwtProjectAdminA1 в list-filter authz-суите), poll ОБЯЗАН нести ту же identity —
+    `OperationService.Get` энфорсит ownership (owner = principal, создавший op) и отдаёт
+    NotFound (no-leak) чужому caller'у. Без совпадения identity poll дефолтным bearer'ом
+    получает 404 на op, созданную project-admin'ом (ownership-mismatch, НЕ GC/routing).
+    Передавай auth=<тот же env-var, что у create-шага>; None → inherit collection Bearer."""
     _POLL_SEQ[0] += 1
     return Step(
         name=f"poll-op-{_POLL_SEQ[0]}",
         method="GET",
         path="/operations/{{opId}}",
+        auth=auth,
         test_script=[
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
@@ -306,8 +314,11 @@ def poll_operation_until_done() -> Step:
 
 
 def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
-                    msg_regex: Optional[str] = None) -> Step:
-    """Поллит /operations/{opId} и проверяет, что operation завершилась с error.code == code."""
+                    msg_regex: Optional[str] = None, auth: Optional[str] = None) -> Step:
+    """Поллит /operations/{opId} и проверяет, что operation завершилась с error.code == code.
+
+    auth: как в poll_operation_until_done — при не-дефолтном создателе op читать
+    Operation обязана та же identity (ownership-энфорс), иначе NotFound (no-leak)."""
     body = [
         "const j = pm.response.json();",
         "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
@@ -317,11 +328,11 @@ def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
         body.append(f"pm.test('error text includes \"{msg_substr}\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('{msg_substr.lower()}'));")
     if msg_regex is not None:
         body.append(f"pm.test('error text matches /{msg_regex}/', () => pm.expect(j.error && j.error.message || '').to.match(/{msg_regex}/));")
-    return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", test_script=body)
+    return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", auth=auth, test_script=body)
 
 
 def assert_op_error_oneof(codes: List[int], code_names: str,
-                          msg_substr: Optional[str] = None) -> Step:
+                          msg_substr: Optional[str] = None, auth: Optional[str] = None) -> Step:
     """Как assert_op_error, но допускает НАБОР gRPC-кодов (когда точный код —
     3 vs 5 / 3 vs 9 — не зафиксирован контрактом). Проверка БЕЗУСЛОВНА: операция
     обязана завершиться с error (не response) — regression, при которой нелегальная
@@ -336,11 +347,14 @@ def assert_op_error_oneof(codes: List[int], code_names: str,
     ]
     if msg_substr is not None:
         body.append(f"pm.test('error text includes \"{msg_substr}\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('{msg_substr.lower()}'));")
-    return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", test_script=body)
+    return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", auth=auth, test_script=body)
 
 
-def assert_op_success() -> Step:
-    return Step(name="assert-op-success", method="GET", path="/operations/{{opId}}",
+def assert_op_success(auth: Optional[str] = None) -> Step:
+    # auth: как в poll_operation_until_done — при не-дефолтном создателе op
+    # (jwtProjectAdminA1 и т.п.) читать Operation обязана та же identity
+    # (ownership-энфорс на OperationService.Get), иначе NotFound (no-leak).
+    return Step(name="assert-op-success", method="GET", path="/operations/{{opId}}", auth=auth,
                 test_script=[
                     "const j = pm.response.json();",
                     "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",

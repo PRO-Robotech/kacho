@@ -58,7 +58,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "lfInstanceId")]),
-        poll_operation_until_done(), assert_op_success(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"), assert_op_success(auth="jwtProjectAdminA1"),
         # filtered List as the SAME (authorized) subject → 200 + own instance visible.
         Step(name="list-own", method="GET",
              path=f"{INSTANCES}?projectId={{{{projectA1Id}}}}&pageSize=1000",
@@ -72,7 +72,7 @@ CASES.append(Case(
         Step(name="del-own", method="DELETE", path=f"{INSTANCES}/{{{{lfInstanceId}}}}",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"),
     ],
 ))
 
@@ -114,7 +114,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "lfLeakInstanceId")]),
-        poll_operation_until_done(), assert_op_success(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"), assert_op_success(auth="jwtProjectAdminA1"),
         # Authenticated-but-not-granted subject lists project-A1. The handler
         # derives subject from the principal and consults the filter (empty
         # allow-list) → MUST NOT leak the PA1 instance. A non-empty result here
@@ -131,7 +131,7 @@ CASES.append(Case(
         Step(name="del-a1-leak", method="DELETE", path=f"{INSTANCES}/{{{{lfLeakInstanceId}}}}",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"),
     ],
 ))
 
@@ -152,7 +152,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "lfXacctInstanceId")]),
-        poll_operation_until_done(), assert_op_success(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"), assert_op_success(auth="jwtProjectAdminA1"),
         # AAB листит СВОЙ project-B1 → A1-instance не должен присутствовать.
         Step(name="list-b1-as-aab", method="GET",
              path=f"{INSTANCES}?projectId={{{{projectB1Id}}}}&pageSize=1000",
@@ -164,6 +164,6 @@ CASES.append(Case(
         Step(name="del-a1", method="DELETE", path=f"{INSTANCES}/{{{{lfXacctInstanceId}}}}",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"),
     ],
 ))
