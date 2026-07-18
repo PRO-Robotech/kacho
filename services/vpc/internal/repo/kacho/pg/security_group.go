@@ -296,11 +296,45 @@ func (w *securityGroupWriter) GetForUpdate(ctx context.Context, id string) (*kac
 	return sg, nil
 }
 
-// Delete — DELETE security_groups WHERE id = $1. row not affected → ErrNotFound
-// с текстом "Security group SecurityGroup.Id(value=<id>) not found".
+// Delete — within-service refcheck + DELETE security_groups WHERE id = $1 в ОДНОЙ
+// writer-TX (не TOCTOU). Последовательность:
+//
+//  1. `SELECT id … FOR UPDATE` — lock SG-row: подтверждает существование
+//     (иначе ErrNotFound "Security group SecurityGroup.Id(value=<id>) not found")
+//     и сериализует конкурентные Delete (второй ждёт commit первого, затем видит
+//     row удалённым → 0 rows → NotFound; ровно один проходит).
+//  2. Refcheck: `network_interfaces.security_group_ids[]` (jsonb-массив в той же
+//     БД kacho_vpc) — within-service ссылка на security_groups(id). FK/partial-
+//     UNIQUE невозможны (jsonb-массив, не scalar-колонка), поэтому инвариант
+//     энфорсится software-check'ом внутри этой же TX (rule #10, issue #27/G6).
+//     Есть ссылающийся NIC → ErrFailedPrecondition "security group is in use by
+//     network interface(s)" (→ gRPC FailedPrecondition). Проверка идёт под тем же
+//     row-lock, что и DELETE — концепт check-then-act атомарен в границах TX.
+//  3. `DELETE FROM security_groups WHERE id = $1`.
+//
+// Refcheck применяется на ВСЕХ путях Delete (прямой SG.Delete и default-SG cleanup
+// из Network.Delete): dangling ref не остаётся ни на одном из них.
 //
 // outbox-write (DELETED tombstone) — в use-case'е.
 func (w *securityGroupWriter) Delete(ctx context.Context, id string) error {
+	var lockedID string
+	if err := w.tx.QueryRow(ctx, `SELECT id FROM security_groups WHERE id = $1 FOR UPDATE`, id).Scan(&lockedID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Security group SecurityGroup.Id(value=%s) not found", helpers.ErrNotFound, id)
+		}
+		return helpers.WrapSGErr(err, id)
+	}
+
+	var inUse bool
+	if err := w.tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM network_interfaces WHERE security_group_ids @> jsonb_build_array($1::text))`,
+		id).Scan(&inUse); err != nil {
+		return helpers.WrapSGErr(err, id)
+	}
+	if inUse {
+		return fmt.Errorf("%w: security group is in use by network interface(s)", helpers.ErrFailedPrecondition)
+	}
+
 	tag, err := w.tx.Exec(ctx, `DELETE FROM security_groups WHERE id = $1`, id)
 	if err != nil {
 		return helpers.WrapSGErr(err, id)
