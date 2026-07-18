@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5cde8a4d-1d44-4d66-9f30-d904c06f87ba",
+    "_postman_id": "121f9cb3-1cb6-462b-84f9-643f902a5b56",
     "name": "kacho-compute / newman / instance",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2447,7 +2447,7 @@
       ]
     },
     {
-      "name": "INST-LST-VIEW-BASIC-NO-METADATA — List instances view=BASIC (default) → metadata не возвращается (verbatim YC)",
+      "name": "INST-LST-VIEW-BASIC-NO-METADATA — List instances view=BASIC (default) → metadata не возвращается",
       "description": "class:CONF | class:CRUD | priority:P2",
       "item": [
         {
@@ -2585,7 +2585,7 @@
           ]
         },
         {
-          "name": "list-basic",
+          "name": "list-basic-lst31",
           "request": {
             "method": "GET",
             "header": [
@@ -2612,6 +2612,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('instanceId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const me = (pm.response.json().instances || []).find(x => x.id === pm.environment.get('instanceId'));",
                   "pm.test('instance found in list', () => pm.expect(me).to.be.an('object'));",
@@ -2847,7 +2864,7 @@
           ]
         },
         {
-          "name": "patch-rya31",
+          "name": "patch-rya32",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3280,7 +3297,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"resources_spec\", \"resourcesSpec\": {\"cores\": 4, \"memory\": 4294967296, \"coreFraction\": 100}}",
+              "raw": "{\"updateMask\": \"resourcesSpec\", \"resourcesSpec\": {\"cores\": 4, \"memory\": 4294967296, \"coreFraction\": 100}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3294,7 +3311,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (400 sync or 200+op-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('accepted as async op (200) or sync 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3542,7 +3559,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"resources_spec\", \"resourcesSpec\": {\"cores\": 4, \"memory\": 4294967296, \"coreFraction\": 100}}",
+              "raw": "{\"updateMask\": \"resourcesSpec\", \"resourcesSpec\": {\"cores\": 4, \"memory\": 4294967296, \"coreFraction\": 100}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5858,7 +5875,7 @@
           ]
         },
         {
-          "name": "restart-rya32",
+          "name": "restart-rya33",
           "request": {
             "method": "POST",
             "header": [
@@ -6958,7 +6975,7 @@
           ]
         },
         {
-          "name": "attach-rya33",
+          "name": "attach-rya34",
           "request": {
             "method": "POST",
             "header": [
@@ -8186,7 +8203,7 @@
           ]
         },
         {
-          "name": "attach-1-rya34",
+          "name": "attach-1-rya35",
           "request": {
             "method": "POST",
             "header": [
@@ -8966,7 +8983,7 @@
           ]
         },
         {
-          "name": "attach-rya35",
+          "name": "attach-rya36",
           "request": {
             "method": "POST",
             "header": [
@@ -9588,7 +9605,7 @@
           ]
         },
         {
-          "name": "get-boot-id-rya36",
+          "name": "get-boot-id-rya37",
           "request": {
             "method": "GET",
             "header": [
@@ -10676,7 +10693,7 @@
           ]
         },
         {
-          "name": "attach-rya37",
+          "name": "attach-rya38",
           "request": {
             "method": "POST",
             "header": [
@@ -11495,7 +11512,7 @@
           ]
         },
         {
-          "name": "umeta-upsert-rya38",
+          "name": "umeta-upsert-rya39",
           "request": {
             "method": "POST",
             "header": [
@@ -12072,7 +12089,7 @@
           ]
         },
         {
-          "name": "spo-rya39",
+          "name": "spo-rya40",
           "request": {
             "method": "GET",
             "header": [
@@ -12745,7 +12762,7 @@
           ]
         },
         {
-          "name": "list-ops-rya40",
+          "name": "list-ops-rya41",
           "request": {
             "method": "GET",
             "header": [
@@ -13064,7 +13081,7 @@
           ]
         },
         {
-          "name": "del-rya41",
+          "name": "del-rya42",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13379,7 +13396,7 @@
           ]
         },
         {
-          "name": "get-boot-id-rya42",
+          "name": "get-boot-id-rya43",
           "request": {
             "method": "GET",
             "header": [
@@ -13833,7 +13850,7 @@
           ]
         },
         {
-          "name": "del-rya43",
+          "name": "del-rya44",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14275,7 +14292,7 @@
           ]
         },
         {
-          "name": "del-rya44",
+          "name": "del-rya45",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14553,7 +14570,7 @@
           ]
         },
         {
-          "name": "get-1-rya45",
+          "name": "get-1-rya46",
           "request": {
             "method": "GET",
             "header": [
@@ -16534,7 +16551,7 @@
           ]
         },
         {
-          "name": "attach-nic-rya46",
+          "name": "attach-nic-rya47",
           "request": {
             "method": "POST",
             "header": [
@@ -17334,7 +17351,7 @@
           ]
         },
         {
-          "name": "attach-nic-rya47",
+          "name": "attach-nic-rya48",
           "request": {
             "method": "POST",
             "header": [

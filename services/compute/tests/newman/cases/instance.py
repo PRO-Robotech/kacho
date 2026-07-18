@@ -324,16 +324,19 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-LST-VIEW-BASIC-NO-METADATA",
-    title="List instances view=BASIC (default) → metadata не возвращается (verbatim YC)",
+    title="List instances view=BASIC (default) → metadata не возвращается",
     classes=["CONF", "CRUD"], priority="P2",
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("vbasic", metadata={"foo": "bar"}),
-        Step(name="list-basic", method="GET", path=f"{INSTANCES}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
+        # read-your-writes: свежий инстанс появляется в List через окно
+        # owner-tuple-материализации (listauthz) — retry_until_present до присутствия
+        # СВОЕГО id, затем проверяем, что metadata опущена в BASIC-view.
+        retry_until_present(Step(name="list-basic", method="GET", path=f"{INSTANCES}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const me = (pm.response.json().instances || []).find(x => x.id === pm.environment.get('instanceId'));",
                           "pm.test('instance found in list', () => pm.expect(me).to.be.an('object'));",
-                          "pm.test('metadata omitted in BASIC view', () => pm.expect(me.metadata === undefined || Object.keys(me.metadata || {}).length === 0).to.eql(true));"]),
+                          "pm.test('metadata omitted in BASIC view', () => pm.expect(me.metadata === undefined || Object.keys(me.metadata || {}).length === 0).to.eql(true));"]), "instanceId"),
         *_delete_instance_steps(),
     ],
 ))
@@ -372,11 +375,15 @@ CASES.append(Case(
     steps=[
         # # requires kacho-vpc subnet {{existingSubnetId}}
         *_create_instance_steps("updres"),
-        # 1. RUNNING → Update resources → FailedPrecondition
+        # 1. RUNNING → Update resources → FailedPrecondition.
+        # updateMask ОБЯЗАН быть lowerCamelCase ("resourcesSpec"): grpc-gateway парсит
+        # google.protobuf.FieldMask из JSON в camelCase (snake_case "resources_spec" →
+        # gateway 400 "FieldMask.paths contains invalid path"), backend получает
+        # snake-path после конверсии. Backend-гейт (state != STOPPED) даёт async
+        # op-error FAILED_PRECONDITION (code 9), см. assert-prec.
         Step(name="patch-running", method="PATCH", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             body={"updateMask": "resources_spec", "resourcesSpec": _resources_spec(cores=4, memory=4294967296)},
-             # probe-needed: точный текст ("Instance must be stopped" / "Instance is not stopped"). Может быть sync 400 или async op-error code 9.
-             test_script=["pm.test('rejected (400 sync or 200+op-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             body={"updateMask": "resourcesSpec", "resourcesSpec": _resources_spec(cores=4, memory=4294967296)},
+             test_script=["pm.test('accepted as async op (200) or sync 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                           *save_from_response("j.id", "opId"),
                           "if (pm.response.code === 400) { pm.test('code 9 FAILED_PRECONDITION', () => pm.expect(pm.response.json().code).to.eql(9)); }"]),
         poll_operation_until_done(),
@@ -388,7 +395,7 @@ CASES.append(Case(
         # 2. Stop → Update resources → OK
         *_stop_instance_steps(),
         Step(name="patch-stopped", method="PATCH", path=f"{INSTANCES}/{{{{instanceId}}}}",
-             body={"updateMask": "resources_spec", "resourcesSpec": _resources_spec(cores=4, memory=4294967296)},
+             body={"updateMask": "resourcesSpec", "resourcesSpec": _resources_spec(cores=4, memory=4294967296)},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify-resources", method="GET", path=f"{INSTANCES}/{{{{instanceId}}}}",
