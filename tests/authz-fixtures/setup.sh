@@ -428,6 +428,24 @@ ROLE_VIEW="rol1bda80f2be4d3658e"    # md5('view')[:17]   — global read-only
 ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$PROJECT_A1" "$JWT_AAA"
 # AAA — account-A admin. Grantor = AAA (owner of A — self-grant on own account).
 ensure_binding "$USER_AAA" "$ROLE_ADMIN" "account" "$ACCOUNT_A" "$JWT_AAA"
+# AAA — EXPLICIT project-A1 editor (deterministic precondition for cross-service
+# label-revoke). AAA owns account-A (owner ⊇ editor on account:A) and the FGA
+# account-owner → project-editor hierarchy SHOULD cascade `editor` onto project:A1.
+# But the umbrella label-revoke suites (label-revoke-{vpc,compute,nlb}) create
+# cross-service resources in project-A1 as AAA — vpc.networks.create /
+# compute.disks.create — which the gateway authz-mw gates with
+# required_relation=editor on project:A1. Relying on the HIERARCHICAL cascade for
+# AAA flaked to a persistent 403 in umbrella CI ("subject user:<AAA> lacks relation
+# \"editor\" on project:<A1> ... no direct relations granted" — observed on 465/465
+# create attempts across a full run, i.e. NOT a materialization tail) → the whole
+# label-revoke flow cascaded RED on an unset resource var. Guarantee the precondition
+# EXPLICITLY (idempotent — same belt-and-suspenders as the PA1 line above and the INV
+# project-A1 editor below) so the label-revoke ASSERTIONS (the actual subject-under-
+# test: ARM_LABELS grant revoke-on-label-change) run instead of dying on the create
+# precondition. An EXPLICIT project binding materializes reliably (proven by PA1/INV);
+# whether the account-owner→project-editor cascade itself is a product gap is tracked
+# separately (does not block the label-revoke regression signal).
+ensure_binding "$USER_AAA" "$ROLE_EDIT" "project" "$PROJECT_A1" "$JWT_AAA"
 # AAB — account-B admin. Grantor = AAB (owner of B).
 ensure_binding "$USER_AAB" "$ROLE_ADMIN" "account" "$ACCOUNT_B" "$JWT_AAB"
 # INV — owner-of-B (his home) — admin in account-B. Grantor = AAB (owner of B).

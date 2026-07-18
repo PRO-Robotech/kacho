@@ -4,6 +4,18 @@ The suite is gated by `scripts/assert-suites-green.sh`: the gate subtracts a sma
 explicitly-enumerated known-RED set from each suite's failure count; everything else
 must be 0. The known-RED set is kept tiny and each entry has a documented reason.
 
+## Known failing — product bugs (RED-by-product-gap; NOT whitelisted, NOT masked)
+
+These fire the gate honestly (they are the canary). They are **product** defects
+confirmed from the umbrella CI report — leave RED until the product fix lands; do
+**not** whitelist and do **not** paper over with a retry.
+
+| Suite | Case / step | Signature (observed) | Root (product) |
+|---|---|---|---|
+| `rbac-subject-channel-equivalence` | `IAM-CH-USER-EQUIV-OK::teardown-user-revoke`, `IAM-CH-USER-SA-ISOLATION-DENY::teardown-usr-iso-revoke` | `DELETE /iam/v1/accessBindings/{id}` as **`jwtBootstrap`** (`system_admin@cluster_kacho_root`) → **`403 {"code":7,"message":"permission denied"}`**. The 50× 403-retry belt in `revoke_await` exhausts → persistent, NOT a materialization race. Across the umbrella run `DELETE accessBindings/{id}` = **652×403 vs 32×200** (the 200s are normal principals with a materialized per-object `v_delete`; the 403s are the cluster-admin path). | **Cluster-admin short-circuit is NOT honored at the gateway for `AccessBindingService/Delete`.** The object-scoped authz (scope_extractor → target binding's account/project) checks the caller's `v_delete` on that scope; `system_admin@cluster_kacho_root` does **not** cascade to `v_delete` on `iam_access_binding:<id>` (FGA model / permission-catalog gap). Because the revoke never commits, the downstream whitelisted `*-gone` Check-polls also stay allowed=true (consequence, not a second bug). **Needs a product fix (FGA cascade `iam_access_binding#v_delete ⇐ cluster#system_admin`, or a gateway super-admin short-circuit for AccessBindingService).** |
+| `iam-authz-grant-check-propagation` | `AUTHZGCP-SAKEY-SECRET-NOT-LEAKED::issue-sakey` (the sole non-whitelisted failure; the other 8 are anon-op / speculative-`/iam/v1/check` spot-checks already in the whitelist) | `POST /iam/v1/serviceAccounts/{sva}/keys` as **`jwtAccountAdminA`** (creator of that SA) → **`403 … lacks relation "v_update" on iam_service_account:<sva>`**. Already `retry_until_authorized`-wrapped (budget 15) and still persistent. | Same **hierarchical-cascade** family as label-revoke: AAA holds `editor` on `account:A` (owner) but the **account-editor → `iam_service_account`-`v_update`** cascade for a fresh SA does not resolve on the request path. Per-case SA (cannot be pre-bound in the fixture) → **product/FGA-model investigation**, not a test retry. |
+| `iam-user` | `IAM-USR-LS-AUTHZ-SCOPE-NONMEMBER-EMPTY::list-nonmember` (the honest canary — intentionally NOT whitelisted) | `jwtNoBindings` lists `?accountId=accountA` → 200 + **1 user** (a PENDING invitee) instead of empty. Root: `nob_preclean_account_a` cannot strip NOB's residual account-A viewer left by the #276 cross-suite collision because **`GET /iam/v1/accessBindings:listBySubject?subjectId={userNOB}` as `jwtAccountAdminA` → `403 permission denied`** (listBySubject is self/cluster-admin-scoped; an account-admin listing *another* subject is denied), so the pre-clean is a no-op. | Compound: **#276 cross-suite fixture pollution** (IAM-ACB-CR-CRUD-OK grants `userNOB` a global `*.*` viewer on account-A) + the AccessBindingService `listBySubject` non-self 403 leaves the pollution un-cleanable. Real fix = de-share the umbrella account across suites (**#276**) and/or a resource-scoped bindings-list the account-admin may call. |
+
 ## Known failing — test-timing (bounded-poll tail)
 
 | Suite | Case / step | Class | Why |
@@ -43,3 +55,34 @@ When OpenFGA is unavailable the List RPCs fail closed (Unavailable), verified by
 Genuine `system/bootstrap` callers run on the internal listener (bypassing the gateway
 annotation); on the public path `project`/`group` List treat `system/bootstrap` as anonymous →
 empty (verified by `TestListGroups_SystemBootstrapFallback_FailClosed`).
+
+## Test-side fixes (round 2 — `qa/iam-acb-fixture-green`)
+
+Two RED classes in the umbrella CI report were **test-infra** defects (not product) and
+are fixed here (verified locally via `py_compile` + `gen.py`; runtime GREEN is pending an
+umbrella run):
+
+- **`iam-invite-grant-fga` — `POST /iam/v1/internal/iam:check` → `404 page not found`
+  (8 steps: `te{1,2,3}-*`, `te4-*`).** The `check_step` helper hit the **public** cmux
+  (`{{baseUrl}}` :18080), which 404s `/iam/v1/internal/*` by design (ban #6) → JSONError on
+  the first `pm.response.json()`. Fix: `check_step` now carries the same
+  `_internal_url_override` pre-request URL rewrite to `{{internalBaseUrl}}` (:18081) that
+  `label-revoke-vpc.py` uses (proven to reach 200 in the very same CI run). The 2 TE4
+  `poll-bind-project-anchor` / `te4-post-bind-project-viewer` failures remain
+  whitelisted-RED (**#212** project-anchor role-authoring gap — unchanged).
+
+- **`label-revoke-{vpc,compute}` (and the create-half of `label-revoke-nlb`) — first
+  cross-service create 403.** Single root: `create-net` / `create-disk` as
+  `jwtAccountAdminA` (AAA) → `403 "subject user:<AAA> lacks relation \"editor\" on
+  project:<A1> … no direct relations granted"`, **persistent (465/465 create attempts
+  across the run — NOT a materialization tail)** → the whole flow cascaded RED on an unset
+  resource var. AAA relied on the account-owner → project-editor **hierarchical FGA
+  cascade**; an **explicit** `project:A1` editor binding materializes reliably (proven by
+  the PA1/INV explicit bindings and the standalone vpc suite). Fix (test fixture
+  `tests/authz-fixtures/setup.sh`): grant AAA an **explicit** `ROLE_EDIT @ project:A1`
+  (idempotent, mirrors the existing PA1 and INV lines). This de-flakes the create
+  **precondition** so the label-revoke **assertions** (the real subject-under-test) run;
+  it does not mask them — a genuine label-revoke regression still fails honestly on the
+  next run. Whether the owner→project-editor cascade itself is a product gap is flagged
+  above (issue-sakey shares the account→child-object cascade family) and tracked
+  separately.
