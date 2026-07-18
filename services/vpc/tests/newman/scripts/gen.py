@@ -592,8 +592,16 @@ def idempotency_block(prefix, create_path, name_template, body_extra=None):
                  body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
                  test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
                               "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
-            Step(name="cleanup", method="DELETE", path=f"{create_path}/{{{{idmCreatedId}}}}",
-                 test_script=[*assert_status(200)]),
+            # cleanup DELETE is the caller's first *mutating* access of its OWN fresh
+            # resource; the delete-relation owner-tuple is eventually-consistent (opgate
+            # removed → at-least-once fgaproxy drainer), so under load the gateway authz
+            # gate can briefly 403 ("lacks relation v_delete") before the tuple
+            # materialises. Bounded read-your-writes retry on that transient 403 only
+            # (the resource provably exists — cr-2 just got 409 on it — so a 404 here
+            # would be a genuine bug, never masked).
+            retry_until_authorized(Step(name="cleanup", method="DELETE",
+                 path=f"{create_path}/{{{{idmCreatedId}}}}",
+                 test_script=[*assert_status(200)]), retry_on=(403,)),
         ],
     )
 
