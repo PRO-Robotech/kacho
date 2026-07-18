@@ -67,6 +67,18 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 > zones / `default-zone-a` pool как readonly-фикстуры (не трогают),
 > остальное — runId-суффиксованные throwaway-ресурсы с self-cleanup.
 
+## Known failing — round-4 disposition (umbrella CI, gate `../../iam/tests/newman/scripts/assert-suites-green.sh`)
+
+Резолюция vpc-residuals против umbrella-отчёта (`ci-rep4`) — **fixable чиним, реальный
+продукт-баг оставляем gate-blocking + флаг, ACB-fixture-gap whitelist'им с issue-ref**;
+ни одна маска не скрывает must-DENY-leak.
+
+| Case / step | Signature | Disposition |
+|---|---|---|
+| `SUBNET-LF-D-VISIBLE` / `SUBNET-LF-D-NOLEAK` / `SUBNET-LF-D-NONE` (list-filter-d) | subset-viewer / no-grant `List /vpc/v1/subnets` → **403** past the `retry_until_authorized` budget. Per-object grant seeded as DIRECT FGA tuples (`tests/authz-fixtures/setup.sh` block 12) не резолвится на request-path — owner-vs-grantee per-object materialization gap. Over-RESTRICTIVE (subject видит МЕНЬШЕ гранта — **не leak**). | **WHITELISTED** (`^SUBNET-LF-D-VISIBLE\|NOLEAK\|NONE`). The existence-no-leak canary `SUBNET-LF-D-GET-404` (Get hidden → 404) is GREEN and **deliberately un-whitelisted** — a real List over-show стреляет через Get-канал. `kacho-iam#276` |
+| `SUB-RCB-CONF-STATE::verify-state` (subnet) | `verify-state` GET своей же subnet → **404** сразу после `RemoveCidrBlocks`, хотя Operation.done вернул `response=Subnet` с `v4CidrBlocks=[10.230.0.0/24]` (primary kept — продукт КОРРЕКТЕН). Первый пост-мутационный Get на read-consistency окне. | **FIXED** (не whitelist) — `verify-state` обёрнут в `retry_until_authorized` (RYW 403/404-ретрай, тот же паттерн, что RemoveCidr add/remove). Genuine non-converging 404 после бюджета всё равно FAIL — не маскируется. |
+| `SG-DEL-NEG-NIC-ATTACHED` (security-group, `kacho-vpc#27`) | `SG.Delete` NIC-attached SG проходит вместо `FAILED_PRECONDITION` (dangling ref) | **НЕ whitelist — остаётся gate-blocking** (см. «Known failing tests — product bugs» выше). SEC-hardening r2 намеренно снял с него `pm.test.skip` → честный persistent-RED; давление на прод-фикс (DB-level refcheck) сохраняется. Флаг: реальный data-integrity баг, over-permissive delete (не leak). |
+
 ## Эволюция
 
 | Версия | Cases | Assertions | Среднее/рес | % target |

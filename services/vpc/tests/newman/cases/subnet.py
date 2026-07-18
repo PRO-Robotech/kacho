@@ -855,10 +855,15 @@ CASES.append(Case(
              body={"v4CidrBlocks": ["10.230.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="verify-state", method="GET", path="/vpc/v1/subnets/{{subId}}",
+        # Bounded read-your-writes retry: RemoveCidrBlocks вернул Operation.done с response=Subnet
+        # (subnet DURABLE, primary CIDR kept), но первый пост-мутационный Get своей же строки может
+        # кратко отдать 404 на read-consistency окне (та же eventual-consistency, что owner-tuple lag).
+        # retry_until_authorized ретраит SELF на 403/404 и затем гоняет реальные ассерты один раз
+        # (genuine non-converging 404 после бюджета всё равно FAIL — не маскируется).
+        retry_until_authorized(Step(name="verify-state", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
                           "pm.test('removed cidr gone', () => pm.expect(pm.response.json().v4CidrBlocks).to.not.include('10.230.1.0/24'));",
-                          "pm.test('primary cidr kept', () => pm.expect(pm.response.json().v4CidrBlocks).to.include('10.230.0.0/24'));"]),
+                          "pm.test('primary cidr kept', () => pm.expect(pm.response.json().v4CidrBlocks).to.include('10.230.0.0/24'));"])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
