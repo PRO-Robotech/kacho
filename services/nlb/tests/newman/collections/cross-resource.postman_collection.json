@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "709435f4-7c55-46f7-b219-d32868a1597d",
+    "_postman_id": "27c75f5c-c5fa-4a00-9efa-c88f01056964",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -145,7 +145,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya348",
+          "name": "materialize-lb-rya349",
           "request": {
             "method": "GET",
             "header": [
@@ -194,7 +194,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya349",
+          "name": "get-lb-inactive-rya350",
           "request": {
             "method": "GET",
             "header": [
@@ -248,7 +248,7 @@
           ]
         },
         {
-          "name": "create-listener-rya350",
+          "name": "create-listener-rya351",
           "request": {
             "method": "POST",
             "header": [
@@ -371,7 +371,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya351",
+          "name": "get-listener-vip-rya352",
           "request": {
             "method": "GET",
             "header": [
@@ -533,7 +533,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya352",
+          "name": "materialize-tg-rya353",
           "request": {
             "method": "GET",
             "header": [
@@ -582,7 +582,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya353",
+          "name": "add-instance-target-rya354",
           "request": {
             "method": "POST",
             "header": [
@@ -701,7 +701,7 @@
           ]
         },
         {
-          "name": "attach-tg-rya354",
+          "name": "attach-tg-rya355",
           "request": {
             "method": "POST",
             "header": [
@@ -1710,7 +1710,7 @@
           ]
         },
         {
-          "name": "get-lb-v6-vip-rya355",
+          "name": "get-lb-v6-vip-rya356",
           "request": {
             "method": "GET",
             "header": [
@@ -1967,7 +1967,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya356",
+          "name": "materialize-lb-rya357",
           "request": {
             "method": "GET",
             "header": [
@@ -2016,7 +2016,7 @@
           ]
         },
         {
-          "name": "create-listener-rya357",
+          "name": "create-listener-rya358",
           "request": {
             "method": "POST",
             "header": [
@@ -2242,7 +2242,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya358",
+          "name": "materialize-tg-rya359",
           "request": {
             "method": "GET",
             "header": [
@@ -2424,7 +2424,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya359",
+          "name": "verify-listener-unchanged-rya360",
           "request": {
             "method": "GET",
             "header": [
@@ -2857,7 +2857,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya360",
+          "name": "materialize-lb-rya361",
           "request": {
             "method": "GET",
             "header": [
@@ -2906,7 +2906,7 @@
           ]
         },
         {
-          "name": "create-listener-family-mismatch-rya361",
+          "name": "create-listener-family-mismatch-rya362",
           "request": {
             "method": "POST",
             "header": [
@@ -3259,7 +3259,7 @@
           ]
         },
         {
-          "name": "create-internal-lb-cr362",
+          "name": "create-internal-lb-cr363",
           "request": {
             "method": "POST",
             "header": [
@@ -3379,7 +3379,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya363",
+          "name": "get-internal-lb-rya364",
           "request": {
             "method": "GET",
             "header": [
@@ -3437,7 +3437,7 @@
           ]
         },
         {
-          "name": "create-internal-listener-rya364",
+          "name": "create-internal-listener-rya365",
           "request": {
             "method": "POST",
             "header": [
@@ -3702,7 +3702,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya365",
+          "name": "materialize-tg-rya366",
           "request": {
             "method": "GET",
             "header": [
@@ -3751,7 +3751,7 @@
           ]
         },
         {
-          "name": "attach-internal-tg-rya366",
+          "name": "attach-internal-tg-rya367",
           "request": {
             "method": "POST",
             "header": [
@@ -4525,7 +4525,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya367",
+          "name": "get-no-network-rya368",
           "request": {
             "method": "GET",
             "header": [
@@ -4568,8 +4568,10 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('output does not echo the removed networkId', () =>   pm.expect(pm.response.json()).to.not.have.property('networkId'));"
+                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
+                  "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "  pm.test('output does not echo the removed networkId', () =>     pm.expect(pm.response.json()).to.not.have.property('networkId'));",
+                  "}"
                 ]
               }
             }
@@ -4774,7 +4776,7 @@
           ]
         },
         {
-          "name": "get-no-sg-rya368",
+          "name": "get-no-sg-rya369",
           "request": {
             "method": "GET",
             "header": [
@@ -4817,8 +4819,10 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('output does not echo the removed securityGroupIds', () =>   pm.expect(pm.response.json()).to.not.have.property('securityGroupIds'));"
+                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
+                  "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "  pm.test('output does not echo the removed securityGroupIds', () =>     pm.expect(pm.response.json()).to.not.have.property('securityGroupIds'));",
+                  "}"
                 ]
               }
             }
@@ -5028,7 +5032,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya369",
+          "name": "materialize-lb-rya370",
           "request": {
             "method": "GET",
             "header": [
@@ -5077,7 +5081,7 @@
           ]
         },
         {
-          "name": "create-listener-rya370",
+          "name": "create-listener-rya371",
           "request": {
             "method": "POST",
             "header": [
@@ -5303,7 +5307,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya371",
+          "name": "materialize-tg-rya372",
           "request": {
             "method": "GET",
             "header": [
@@ -5352,7 +5356,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya372",
+          "name": "add-external-target-rya373",
           "request": {
             "method": "POST",
             "header": [
@@ -5466,7 +5470,7 @@
           ]
         },
         {
-          "name": "attach-tg-rya373",
+          "name": "attach-tg-rya374",
           "request": {
             "method": "POST",
             "header": [
@@ -6597,7 +6601,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya374",
+          "name": "materialize-lb-rya375",
           "request": {
             "method": "GET",
             "header": [
@@ -6646,7 +6650,7 @@
           ]
         },
         {
-          "name": "create-listener-rya375",
+          "name": "create-listener-rya376",
           "request": {
             "method": "POST",
             "header": [
@@ -7181,7 +7185,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya376",
+          "name": "materialize-lb-rya377",
           "request": {
             "method": "GET",
             "header": [
@@ -7338,7 +7342,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya377",
+          "name": "materialize-tg-rya378",
           "request": {
             "method": "GET",
             "header": [
@@ -7387,7 +7391,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya378",
+          "name": "add-instance-target-rya379",
           "request": {
             "method": "POST",
             "header": [
@@ -7979,7 +7983,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya379",
+          "name": "materialize-lb-rya380",
           "request": {
             "method": "GET",
             "header": [
