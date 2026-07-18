@@ -232,6 +232,57 @@ def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
                    test_script=guard + list(step.test_script))
 
 
+def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
+                       interval_ms: int = 500) -> Step:
+    """Bounded retry a "must-be-ABSENT/empty" read over a read-your-writes-ON-REVOKE
+    window — the MIRROR of retry_until_authorized for the deny/revoke side.
+
+    A grant the suite just REVOKED (or a residual account-A grant it just STRIPPED via a
+    pre-clean) can still be visible for a beat: the FGA tuple removal / list-authz
+    negative-cache lags a few seconds after the revoke Operation is done (Kachō is
+    eventually-consistent — api-conventions.md). So a "non-member sees EMPTY" /
+    "not-granted subject does NOT see the id" leak-guard flakes on the pre-convergence
+    window under parallel load (the serial run's timing hid it).
+
+    `still_present_expr` is a JS boolean that is TRUE while the thing that MUST become
+    absent is STILL present (e.g. `((pm.response.json().users)||[]).length > 0`, or the
+    leaked id is still in the array). Retries SELF while it is truthy, spacing attempts by
+    ~interval_ms (busy-wait — newman fires setNextRequest before any setTimeout).
+
+    Fail-OPEN at the budget: once spent, the wrapped step's real assertions run exactly
+    once on the terminal response — so a GENUINE over-grant / real leak (the thing NEVER
+    becomes absent) still FAILS the assertion. It is impossible to mask a persistent leak;
+    only a transient revoke/pre-clean-materialization window is absorbed. Use ONLY on a
+    negative "must be absent/empty" read whose emptiness is GUARANTEED once the suite's own
+    revoke/pre-clean materializes — NEVER to paper over a cross-account deny or a real hole.
+
+    The step name is preserved (not suffixed): these leak-guard steps are often the target
+    of a pre-clean `setNextRequest('<name>')` jump, and the self-loop uses the dynamic
+    pm.info.requestName so it self-resolves without a rename."""
+    guard = [
+        "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+        "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+        "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+        "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+        "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_absRetryCount', '0');",
+        "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+        "}",
+        "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+        "let _stillPresent = false;",
+        f"try {{ _stillPresent = ({still_present_expr}); }} catch (e) {{ _stillPresent = false; }}",
+        f"if (pm.response.code === 200 && _stillPresent && _absc < {budget}) {{",
+        "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+        f"  const _absd = Date.now(); while (Date.now() - _absd < {interval_ms}) {{ /* revoke-materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_absRetryCount');",
+        "pm.environment.unset('_absRetryStarted');",
+    ]
+    return replace(step, test_script=guard + list(step.test_script))
+
+
 def poll_operation_until_done(auth: str = "jwtAccountAdminA") -> Step:
     """Reusable poll step: до POLL_CAP попыток (через setNextRequest), потом fail если done остался false.
 
@@ -907,6 +958,7 @@ def load_cases_module(path: Path):
     mod.assert_created_at_seconds = assert_created_at_seconds
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_absent = retry_until_absent
     mod.get_until_gone = get_until_gone
     mod.poll_request_until_status = poll_request_until_status
     mod.POLL_CAP = POLL_CAP

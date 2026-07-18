@@ -17,8 +17,16 @@ def _net_steps(suffix="sg"):
 
 
 def _cleanup_net():
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=[*assert_status(200), *save_from_response("j.id", "opId")])
+    # DELETE of the caller's OWN fresh network. Its v_delete/owner tuple materializes
+    # eventually-consistent (registrar + fga_outbox drain + reconciler), so under PARALLEL
+    # load the cleanup DELETE races the drain and 403s single-shot (the wrapped Create can
+    # pass permissively before the tuple lands). Bounded read-your-writes retry SELF on 403
+    # until authorized; the strict 200 assertion is preserved (SG already deleted → the net
+    # deletes cleanly). Fail-closed at the budget (a genuine deny still fails).
+    return retry_until_authorized(
+        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_on=(403,))
 
 
 def _cleanup_net_lenient():
@@ -528,12 +536,18 @@ for case_id, rule, expect_ok in [
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
             poll_operation_until_done(),
-            Step(name="update-rule-bad", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
-                 body={"additionRuleSpecs": [rule_full]},
-                 test_script=[
-                     f"pm.test('{'200' if expect_ok else 'rejected sync or async'}', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                     *(save_from_response("j.id", "opId") if expect_ok else []),
-                 ]),
+            # Mutation on the caller's OWN fresh SG rules — editor tuple can still be draining
+            # under parallel load → gateway authz-first 403 BEFORE backend rule validation.
+            # Retry SELF on 403 until authorized, THEN the PATCH reaches the backend and the
+            # real negative assertion (200 op-started | 400 sync-reject) runs — NOT masked.
+            retry_until_authorized(
+                Step(name="update-rule-bad", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
+                     body={"additionRuleSpecs": [rule_full]},
+                     test_script=[
+                         f"pm.test('{'200' if expect_ok else 'rejected sync or async'}', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                         *(save_from_response("j.id", "opId") if expect_ok else []),
+                     ]),
+                retry_on=(403,)),
         ] + ([poll_operation_until_done()] if expect_ok else []) + [
             Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
                  test_script=[*save_from_response("j.id", "opId")]),
@@ -606,12 +620,16 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
-        Step(name="get-default-sg-id", method="GET",
-             path="/vpc/v1/networks/{{netId}}/security_groups",
-             test_script=[*assert_status(200),
-                          "const def = (pm.response.json().securityGroups || []).find(s => s.defaultForNetwork === true);",
-                          "pm.expect(def, 'must have default SG').to.be.an('object');",
-                          "pm.environment.set('defaultSgId', def.id);"]),
+        # First read of the caller's OWN fresh network's SG list — v_get owner-tuple can
+        # still be draining under parallel load → transient 403/404; retry SELF until visible.
+        retry_until_authorized(
+            Step(name="get-default-sg-id", method="GET",
+                 path="/vpc/v1/networks/{{netId}}/security_groups",
+                 test_script=[*assert_status(200),
+                              "const def = (pm.response.json().securityGroups || []).find(s => s.defaultForNetwork === true);",
+                              "pm.expect(def, 'must have default SG').to.be.an('object');",
+                              "pm.environment.set('defaultSgId', def.id);"]),
+            retry_on=(403, 404)),
         Step(name="del-default-sg", method="DELETE",
              path="/vpc/v1/securityGroups/{{defaultSgId}}",
              test_script=[
@@ -625,10 +643,14 @@ CASES.append(Case(
                  "// Текущее поведение: либо OK (default SG удален, можно тогда delete network), либо error (запрет)",
                  "pm.test('completed', () => pm.expect(j.done).to.eql(true));",
              ]),
-        # cleanup — пытаемся удалить network в любом состоянии
-        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=["pm.test('cleanup attempted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
-                          *save_from_response("j.id", "opId")]),
+        # cleanup — пытаемся удалить network в любом состоянии. DELETE of the caller's OWN
+        # fresh network → v_delete owner-tuple lag can 403 under parallel load; retry SELF on
+        # 403 until authorized (the [200,404] outcome assertion is preserved).
+        retry_until_authorized(
+            Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+                 test_script=["pm.test('cleanup attempted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                              *save_from_response("j.id", "opId")]),
+            retry_on=(403,)),
         poll_operation_until_done(),
     ],
 ))

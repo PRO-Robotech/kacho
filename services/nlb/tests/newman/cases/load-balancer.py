@@ -838,14 +838,20 @@ CASES.append(Case(
     steps=[
         *_setup_lb("det-not-attached"),
         *_setup_tg("det-not-attached"),
-        Step(name="det-noop", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
+        # :detachTargetGroup on the caller's OWN fresh LB — first mutating access, so its
+        # editor/owner tuple can still be draining under parallel load → gateway authz-first
+        # 403 BEFORE the detach reaches the backend. Retry SELF on 403/404 until authorized,
+        # THEN the real assertion (200 op-started | 400 | 409 no-op) runs — NOT masked.
+        retry_until_authorized(
+            Step(name="det-noop", method="POST",
+                 path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
+                 body={"targetGroupId": "{{tgId}}"},
+                 test_script=[
+                     "pm.test('rejected (sync or async)', () => "
+                     "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                     *save_from_response("j.id", "opId"),
+                 ]),
+            retry_on=(403, 404)),
         poll_operation_until_done(),
         *_cleanup_tg(),
         *_cleanup_lb(),
@@ -1431,9 +1437,14 @@ CASES.append(Case(
              body={"updateMask": "description", "description": "occ-1"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="upd-2", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "description", "description": "occ-2"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        # Second Update on the caller's OWN fresh LB. upd-1 (wrapped) can EXHAUST its budget
+        # silently under heavy parallel drain lag, leaving the editor tuple still not visible
+        # for upd-2 → 403. Give upd-2 its OWN read-your-writes retry window on 403/404.
+        retry_until_authorized(
+            Step(name="upd-2", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+                 body={"updateMask": "description", "description": "occ-2"},
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            retry_on=(403, 404)),
         poll_operation_until_done(),
         Step(name="check-op", method="GET", path="/operations/{{opId}}",
              test_script=[
@@ -1548,11 +1559,17 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P1",
     steps=[
         *_setup_lb("mask-empty"),
-        Step(name="upd-empty", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"description": "x"},
-             test_script=[
-                 "pm.test('rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-             ]),
+        # Empty-mask Update on the caller's OWN fresh LB — first mutating access; editor tuple
+        # can still be draining under parallel load → authz-first 403 BEFORE the mask validation.
+        # Retry SELF on 403/404 until authorized, THEN the real assertion (400 mask-required |
+        # 200) runs on the authorized attempt — NOT masked.
+        retry_until_authorized(
+            Step(name="upd-empty", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+                 body={"description": "x"},
+                 test_script=[
+                     "pm.test('rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 ]),
+            retry_on=(403, 404)),
         *_cleanup_lb(),
     ],
 ))

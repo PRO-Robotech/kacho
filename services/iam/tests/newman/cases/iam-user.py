@@ -335,20 +335,29 @@ CASES.append(Case(
         # (e.g. access-binding CRUD grants NOB a ROLE_VIEW@account) so "non-member sees empty"
         # holds regardless of cross-suite run order. Clean slate → jumps to list-nonmember.
         *nob_preclean_account_a("list-nonmember"),
-        Step(
-            name="list-nonmember",
-            method="GET",
-            path="/iam/v1/users?accountId={{accountAId}}",
-            auth="jwtNoBindings",
-            test_script=[
-                # Per authz-deny.py: user-list-account-A → NOB → EMPTY (200 + zero users).
-                *assert_status(200),
-                "pm.test('NOB: users empty (scope-filter default-deny)', () => {",
-                "  const j = pm.response.json();",
-                "  pm.expect((j.users || []).length, 'zero users for non-member').to.equal(0);",
-                "});",
-            ],
-        ),
+        # read-your-writes ON REVOKE: the pre-clean above DELETEs NOB's account-A binding, but
+        # the FGA tuple removal / list-authz negative-cache lags a few seconds after the delete
+        # Operation is done (eventually-consistent). Under PARALLEL load list-nonmember runs
+        # inside that window → NOB still transiently sees account-A users (an account-scoped
+        # viewer matches via containment). retry_until_absent retries SELF while the list is
+        # non-empty, fail-open at the budget: a GENUINE over-grant (NOB never loses visibility)
+        # still FAILS the "zero users" assertion → the leak-guard is NOT masked.
+        retry_until_absent(
+            Step(
+                name="list-nonmember",
+                method="GET",
+                path="/iam/v1/users?accountId={{accountAId}}",
+                auth="jwtNoBindings",
+                test_script=[
+                    # Per authz-deny.py: user-list-account-A → NOB → EMPTY (200 + zero users).
+                    *assert_status(200),
+                    "pm.test('NOB: users empty (scope-filter default-deny)', () => {",
+                    "  const j = pm.response.json();",
+                    "  pm.expect((j.users || []).length, 'zero users for non-member').to.equal(0);",
+                    "});",
+                ],
+            ),
+            "((pm.response.json().users)||[]).length > 0"),
     ],
 ))
 

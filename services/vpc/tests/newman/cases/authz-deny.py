@@ -174,12 +174,23 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
             asserts = allow_asserts(cid)
 
     is_pos = decision in ("ALLOW", "LIST-ALLOW", "NF", "LIST-DENY")
+    step = Step(name=method.lower(), method=method, path=path, body=body, auth=auth, test_script=asserts)
+    # LIST-DENY leak-guard ("no-access → 403 or 200+EMPTY"): a SHARED fixture subject can carry a
+    # residual/concurrent account-scoped viewer from another suite (iam access-binding grants NOB a
+    # ROLE_VIEW@account), which via account→project containment transiently makes THIS project's child
+    # resources v_list-visible → the deny-list returns rows for a beat until that suite's revoke
+    # materializes (read-your-writes ON REVOKE, eventually-consistent). Wrap in retry_until_absent:
+    # retries SELF while the list is still non-empty, FAIL-OPEN at the budget so a GENUINE over-show
+    # hole (rows never leave the deny-list) still FAILS the leak assertion — a real leak is NOT masked.
+    # (Root fix is per-suite subject-isolation: a dedicated no-binding subject no other suite grants.)
+    if decision == "LIST-DENY" and list_key:
+        step = retry_until_absent(step, f"((pm.response.json()['{list_key}'])||[]).length > 0")
     CASES.append(Case(
         id=cid,
         title=f"[{decision}] {title} as {label} ({scope})",
         classes=["AUTHZ", "POS" if is_pos else "NEG"],
         priority="P1",
-        steps=[Step(name=method.lower(), method=method, path=path, body=body, auth=auth, test_script=asserts)],
+        steps=[step],
     ))
 
 

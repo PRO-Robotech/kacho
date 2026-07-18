@@ -1570,6 +1570,54 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
                    test_script=guard + list(step.test_script))
 
 
+def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
+                       interval_ms: int = 500) -> Step:
+    """Bounded retry a "must-be-ABSENT/empty" negative read over a read-your-writes-ON-
+    REVOKE window — the MIRROR of retry_until_authorized for the deny/leak-guard side.
+
+    A no-access subject's "List → EMPTY / id NOT present" leak-guard flakes under PARALLEL
+    load when the subject carries a residual/concurrent grant from ANOTHER suite (shared
+    fixture subject): e.g. an account-scoped viewer created by the iam access-binding suite
+    matches this project's child resources via account→project containment, so the deny-list
+    transiently returns rows until that suite's revoke materializes (FGA tuple / list-authz
+    negative-cache lag — eventually-consistent). The serial run's timing hid this.
+
+    `still_present_expr` is a JS boolean, TRUE while the must-be-absent thing is STILL present
+    (e.g. the list is still non-empty). Retries SELF while truthy, spacing ~interval_ms.
+    Fail-OPEN at budget: the wrapped step's real assertion then runs once on the terminal
+    response, so a GENUINE over-show hole (rows never leave the deny-list) still FAILS — a
+    persistent leak can NEVER be masked; only a transient revoke/contamination window is
+    absorbed. Use ONLY on a negative "must be absent/empty" read whose emptiness is guaranteed
+    once the contaminating grant is genuinely gone — NEVER a real cross-account deny.
+
+    The step is renamed (-abs<N>) so its self-loop setNextRequest(pm.info.requestName) resolves
+    to ITSELF (these suites do NOT prefix step names by case-id, same hazard as retry_until_authorized)."""
+    guard = [
+        "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+        "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+        "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+        "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+        "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_absRetryCount', '0');",
+        "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+        "}",
+        "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+        "let _stillPresent = false;",
+        f"try {{ _stillPresent = ({still_present_expr}); }} catch (e) {{ _stillPresent = false; }}",
+        f"if (pm.response.code === 200 && _stillPresent && _absc < {budget}) {{",
+        "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+        f"  const _absd = Date.now(); while (Date.now() - _absd < {interval_ms}) {{ /* revoke-materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_absRetryCount');",
+        "pm.environment.unset('_absRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-abs{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
 def poll_operation_until_done() -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
     До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
@@ -1853,6 +1901,7 @@ def load_cases_module(path: Path):
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present
+    mod.retry_until_absent = retry_until_absent
     mod.crud_list_bva_block = crud_list_bva_block
     mod.conf_not_found_text = conf_not_found_text
     mod.state_update_unknown_mask = state_update_unknown_mask

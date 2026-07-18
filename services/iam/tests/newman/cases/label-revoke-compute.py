@@ -112,6 +112,12 @@ def check_step(name, subject, relation, obj, expect_allowed, auth="jwtBootstrap"
             "const cc = parseInt(pm.environment.get('_ckCount') || '0', 10);",
             f"if (!(pm.response.code === 200 && j.allowed === {str(expect_allowed).lower()}) && cc < {POLL_CAP}) {{",
             "  pm.environment.set('_ckCount', String(cc + 1));",
+            # Real inter-poll delay (~500ms): newman fires setNextRequest before any
+            # setTimeout, so a busy-wait is the ONLY way to actually space out the polls.
+            # POLL_CAP*0.5s (~15s) then covers the grant/revoke FGA-materialization window
+            # under PARALLEL load instead of hammering ~30 back-to-back Checks in <2s (which
+            # never waits for the tuple to (dis)appear → the revoke-deny / grant-allow flake).
+            "  const _ckd = Date.now(); while (Date.now() - _ckd < 500) { /* inter-poll materialization wait ~500ms */ }",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",

@@ -269,6 +269,53 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
                    test_script=guard + list(step.test_script))
 
 
+def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
+                       interval_ms: int = 500) -> Step:
+    """Bounded retry a "must-be-ABSENT/empty" read over a read-your-writes-ON-REVOKE
+    window — the MIRROR of retry_until_authorized for the deny/revoke side.
+
+    A grant a subject just lost (revoked, or stripped by a pre-clean) can still be visible
+    for a beat: the FGA tuple removal / list-authz negative-cache lags a few seconds after
+    the revoke Operation is done (Kachō is eventually-consistent — api-conventions.md). So a
+    "not-granted subject does NOT see the id" leak-guard flakes on the pre-convergence window
+    under parallel load (the serial run's timing hid it).
+
+    `still_present_expr` is a JS boolean, TRUE while the thing that MUST become absent is
+    STILL present (e.g. the leaked id is still in the returned array). Retries SELF while it
+    is truthy, spacing attempts by ~interval_ms (busy-wait — newman fires setNextRequest
+    before any setTimeout).
+
+    Fail-OPEN at the budget: once spent, the wrapped step's real assertions run exactly once
+    on the terminal response — so a GENUINE over-grant / real leak (the thing NEVER becomes
+    absent) still FAILS. It is impossible to mask a persistent leak; only a transient
+    revoke/pre-clean-materialization window is absorbed. Use ONLY on a negative
+    "must be absent" read whose absence is GUARANTEED once the subject's grant is genuinely
+    gone — NEVER to paper over a cross-account deny or a real hole. The step name is preserved
+    (self-loop uses the dynamic pm.info.requestName)."""
+    guard = [
+        "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+        "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+        "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+        "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+        "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_absRetryCount', '0');",
+        "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+        "}",
+        "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+        "let _stillPresent = false;",
+        f"try {{ _stillPresent = ({still_present_expr}); }} catch (e) {{ _stillPresent = false; }}",
+        f"if (pm.response.code === 200 && _stillPresent && _absc < {budget}) {{",
+        "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+        f"  const _absd = Date.now(); while (Date.now() - _absd < {interval_ms}) {{ /* revoke-materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_absRetryCount');",
+        "pm.environment.unset('_absRetryStarted');",
+    ]
+    return replace(step, test_script=guard + list(step.test_script))
+
+
 def poll_operation_until_done(auth: Optional[str] = None) -> Step:
     """Reusable poll step: до 30 попыток с ~500ms задержкой между ними (через setNextRequest),
     потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1).
@@ -719,6 +766,7 @@ def load_cases_module(path: Path):
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present
+    mod.retry_until_absent = retry_until_absent
     mod.assert_op_error = assert_op_error
     mod.assert_op_error_oneof = assert_op_error_oneof
     mod.assert_op_success = assert_op_success

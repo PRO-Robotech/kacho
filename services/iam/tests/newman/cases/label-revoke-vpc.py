@@ -149,6 +149,12 @@ def check_step(name, subject, relation, obj, expect_allowed, auth="jwtBootstrap"
             "const cc = parseInt(pm.environment.get('_ckCount') || '0', 10);",
             f"if (!(pm.response.code === 200 && j.allowed === {str(expect_allowed).lower()}) && cc < {POLL_CAP}) {{",
             "  pm.environment.set('_ckCount', String(cc + 1));",
+            # Real inter-poll delay (~500ms): newman fires setNextRequest before any
+            # setTimeout, so a busy-wait is the ONLY way to actually space out the polls.
+            # POLL_CAP*0.5s (~15s) then covers the grant/revoke FGA-materialization window
+            # under PARALLEL load instead of hammering ~30 back-to-back Checks in <2s (which
+            # never waits for the tuple to (dis)appear → the revoke-deny / grant-allow flake).
+            "  const _ckd = Date.now(); while (Date.now() - _ckd < 500) { /* inter-poll materialization wait ~500ms */ }",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
@@ -429,11 +435,16 @@ CASES.append(Case(
         # Create-emit fix: a fresh SG with labels matches the selector.
         check_step("sg-post-grant-allow", "service_account:{{_t31SaSg}}", "v_list",
                    "vpc_security_group:{{_t31Sg}}", expect_allowed=True, poll=True),
-        # change the label → selector {sg:okun} stops matching → revoke.
-        Step(name="update-sg-labels", method="PATCH", path=f"{VPC_SG}/{{{{_t31Sg}}}}",
-             body={"updateMask": "labels", "labels": {"sg": "sudak"}},
-             auth="jwtAccountAdminA",
-             test_script=[*assert_status(200), *save_from_response("j.id", "_opuSg")]),
+        # change the label → selector {sg:okun} stops matching → revoke. This PATCH is the
+        # FIRST mutate of the caller's OWN fresh SG's editor tuple (vpc→iam RegisterResource
+        # → owner/editor tuple → reconcile → async drain), so under PARALLEL load it races the
+        # materialization and 403s single-shot. Bounded read-your-writes retry SELF on 403.
+        retry_until_authorized(
+            Step(name="update-sg-labels", method="PATCH", path=f"{VPC_SG}/{{{{_t31Sg}}}}",
+                 body={"updateMask": "labels", "labels": {"sg": "sudak"}},
+                 auth="jwtAccountAdminA",
+                 test_script=[*assert_status(200), *save_from_response("j.id", "_opuSg")]),
+            budget=25, interval_ms=500, retry_on=(403,)),
         Step(name="poll-update-sg", method="GET", path="/operations/{{_opuSg}}",
              auth="jwtAccountAdminA", test_script=poll_op_done("_opuSg")),
         check_step("sg-post-revoke-deny", "service_account:{{_t31SaSg}}", "v_list",
@@ -630,13 +641,19 @@ CASES.append(Case(
         # the resource reflects labels={} immediately.
         *update_network("_t31NetUn", "un",
                         {"updateMask": "labels", "labels": {}}),
-        Step(name="un-update-not-unavailable", method="GET", path=f"{VPC_NET}/{{{{_t31NetUn}}}}",
-             auth="jwtAccountAdminA",
-             test_script=[*assert_status(200),
-                          "pm.test('label Update applied (mutation not blocked by async mirror-emit)', () => {",
-                          "  const j = pm.response.json();",
-                          "  pm.expect(Object.keys(j.labels || {}).length, JSON.stringify(j)).to.eql(0);",
-                          "});"]),
+        # GET of the caller's OWN fresh network — first read after create/update, so the
+        # v_get/owner tuple can still be draining under parallel load → transient 403/404 at
+        # the gateway authz gate (403 hidden as 404 on hide-existence). Bounded read-your-
+        # writes retry SELF until authorized; fail-closed at the budget.
+        retry_until_authorized(
+            Step(name="un-update-not-unavailable", method="GET", path=f"{VPC_NET}/{{{{_t31NetUn}}}}",
+                 auth="jwtAccountAdminA",
+                 test_script=[*assert_status(200),
+                              "pm.test('label Update applied (mutation not blocked by async mirror-emit)', () => {",
+                              "  const j = pm.response.json();",
+                              "  pm.expect(Object.keys(j.labels || {}).length, JSON.stringify(j)).to.eql(0);",
+                              "});"]),
+            budget=25, interval_ms=500, retry_on=(403, 404)),
     ],
 ))
 
