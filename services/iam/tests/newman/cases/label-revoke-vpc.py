@@ -63,9 +63,16 @@ ECP (label match vs no-match), error-guessing (full-PATCH empty-mask zeroing
 labels; non-label Update no-op; IAM-down intent durability), use-case (invite →
 grant → revoke end-to-end). One thought per pm.test().
 
-Fixtures (tests/authz-fixtures/setup.sh): jwtBootstrap,
-jwtAccountAdminA, accountAId, projectA1Id. Resources are self-seeded per case
-with {{runId}}-suffixed names (self-contained, no cross-case collision).
+Fixtures (tests/authz-fixtures/setup.sh): jwtBootstrap, jwtAccountAdminA,
+accountAId. The PROJECT is self-seeded per case (create_suite_project → {{_t31Proj}})
+rather than read from the shared {{projectA1Id}} fixture: that fixture var could
+resolve to a PHANTOM project (an id whose IAM row never committed — the fixture's
+ensure_project extracts metadata.projectId even from a Create Operation that finished
+WITH an error), so the cross-service peer-check vpc NetworkService.Create →
+iam ProjectService.Get(projectA1Id) returned NOT_FOUND and every case cascaded RED.
+A freshly-created, op-poll-confirmed project is guaranteed to exist for the peer-check.
+All resources (project, SA, network, SG, role, binding) are self-seeded per case with
+{{runId}}-suffixed names (self-contained, no cross-case / cross-suite collision).
 """
 
 CASES = []
@@ -245,9 +252,38 @@ def bind_role_on_account(role_var, bind_op_var, subject_var, name_suffix,
     ]
 
 
+def create_suite_project(suffix):
+    """Self-contained project seed — create a FRESH project under account-A at
+    runtime and stash its id into {{_t31Proj}} (replacing the shared {{projectA1Id}}
+    fixture dependency). Prepended to every case, so each case owns a project that is
+    GUARANTEED to exist for the cross-service peer-check (vpc/compute → iam
+    ProjectService.Get). The op-poll asserts done + NO error, so a project that ever
+    fails to materialise fails LOUDLY here (not as an opaque downstream
+    'Project <id> not found'). accountAId stays the shared-tenant anchor: the
+    ARM_LABELS role is account-scoped on account:accountAId and containment matches
+    resources whose parent_account_id == accountAId — a project under account-A
+    satisfies it. Mirrors the runtime zone-discovery pattern in label-revoke-compute.py.
+    Project.Create is authz-gated by editor@account:accountAId, which jwtAccountAdminA
+    (account owner ⊇ editor) holds stably — no read-your-writes retry needed here; the
+    fresh-project OWNER-tuple lag is absorbed by create_network's retry_until_authorized."""
+    return [
+        Step(name=f"create-proj-{suffix}", method="POST", path="/iam/v1/projects",
+             body={"accountId": "{{accountAId}}",
+                   "name": f"t31-prj-{suffix}-{{{{runId}}}}",
+                   "description": "newman label-revoke self-contained project seed"},
+             auth="jwtAccountAdminA",
+             test_script=[*assert_status(200),
+                          *save_from_response("j.metadata && j.metadata.projectId", "_t31Proj"),
+                          *save_from_response("j.id", f"_op_proj_{suffix}")]),
+        Step(name=f"poll-proj-{suffix}", method="GET", path=f"/operations/{{{{_op_proj_{suffix}}}}}",
+             auth="jwtAccountAdminA", test_script=poll_op_done(f"_op_proj_{suffix}")),
+    ]
+
+
 def create_network(net_var, suffix, labels):
-    """NetworkService.Create in projectA1 with the given labels + op-poll. On
-    Create the vpc→iam RegisterResource edge feeds resource_mirror with labels."""
+    """NetworkService.Create in the self-seeded {{_t31Proj}} with the given labels +
+    op-poll. On Create the vpc→iam RegisterResource edge feeds resource_mirror with
+    labels."""
     return [
         # Bounded read-your-writes retry over AAA's create-authz materialization window:
         # NetworkService.Create needs the caller's editor/creator on project:projectA1
@@ -257,7 +293,7 @@ def create_network(net_var, suffix, labels):
         # re-firing is safe) until authorized; fail-closed at the budget.
         retry_until_authorized(
             Step(name=f"create-net-{suffix}", method="POST", path=VPC_NET,
-                 body={"projectId": "{{projectA1Id}}", "name": f"t31-net-{suffix}-{{{{runId}}}}",
+                 body={"projectId": "{{_t31Proj}}", "name": f"t31-net-{suffix}-{{{{runId}}}}",
                        "labels": labels},
                  auth="jwtAccountAdminA",
                  test_script=[*assert_status(200),
@@ -317,6 +353,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "REVOKE", "FGA", "AUTHZ", "STATE"],
     priority="P0",
     steps=[
+        *create_suite_project("n1"),
         *create_fresh_sa("_t31SaN1", "n1"),
         *create_network("_t31NetN1", "n1", {"network": "treska"}),
         # clean subject: not yet a v_list-er of the network.
@@ -364,6 +401,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "REVOKE", "FGA", "AUTHZ", "STATE"],
     priority="P0",
     steps=[
+        *create_suite_project("sg"),
         *create_fresh_sa("_t31SaSg", "sg"),
         # SG needs a parent network (immutable network_id at Create).
         *create_network("_t31NetSg", "sg", {"network": "sgparent"}),
@@ -371,7 +409,7 @@ CASES.append(Case(
         # (same cold-start FGA-cascade lag as create-net); retry SELF on 403 until authorized.
         retry_until_authorized(
             Step(name="create-sg", method="POST", path=VPC_SG,
-                 body={"projectId": "{{projectA1Id}}", "name": "t31-sg-{{runId}}",
+                 body={"projectId": "{{_t31Proj}}", "name": "t31-sg-{{runId}}",
                        "networkId": "{{_t31NetSg}}", "labels": {"sg": "okun"}},
                  auth="jwtAccountAdminA",
                  test_script=[*assert_status(200),
@@ -417,6 +455,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "ADD", "FGA", "AUTHZ", "STATE"],
     priority="P1",
     steps=[
+        *create_suite_project("add"),
         *create_fresh_sa("_t31SaAdd", "add"),
         *create_network("_t31NetAdd", "add", {"network": "plain"}),
         *create_label_role("_t31RoleAdd", VPC_NET_RULE, "add"),
@@ -451,6 +490,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "CHANGE", "FGA", "AUTHZ", "DECISION"],
     priority="P1",
     steps=[
+        *create_suite_project("chg"),
         *create_fresh_sa("_t31SaBoth", "both"),
         *create_fresh_sa("_t31SaTreska", "tre"),
         *create_network("_t31NetChg", "chg", {"network": "treska"}),
@@ -496,6 +536,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "IDM", "FGA", "AUTHZ"],
     priority="P1",
     steps=[
+        *create_suite_project("idm"),
         *create_fresh_sa("_t31SaIdm", "idm"),
         *create_network("_t31NetIdm", "idm", {"network": "treska"}),
         check_step("idm-pre-grant-deny", "service_account:{{_t31SaIdm}}", "v_list",
@@ -528,6 +569,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "REVOKE", "FULLPATCH", "FGA", "AUTHZ"],
     priority="P1",
     steps=[
+        *create_suite_project("fp"),
         # --- Case A: full-PATCH zeroing labels → revoke ---
         *create_fresh_sa("_t31SaFp", "fp"),
         *create_network("_t31NetFpA", "fpa", {"network": "treska"}),
@@ -580,6 +622,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "UNAVAIL", "ASYNC", "STATE"],
     priority="P2",
     steps=[
+        *create_suite_project("un"),
         *create_network("_t31NetUn", "un", {"network": "treska"}),
         # the label Update itself does NOT make a sync IAM call — the mirror-emit
         # is an outbox intent in the same writer-tx, drained out-of-band. So the
@@ -624,6 +667,7 @@ CASES.append(Case(
     classes=["T31", "LABELS", "REVOKE", "INVITE", "FGA", "AUTHZ", "USE-CASE"],
     priority="P0",
     steps=[
+        *create_suite_project("inv"),
         # invite a brand-new user into account A (part of the documented flow).
         Step(name="invite-user", method="POST", path="/iam/v1/users:invite",
              body={"accountId": "{{accountAId}}",

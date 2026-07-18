@@ -300,6 +300,31 @@ PROJECT_A2=$(ensure_project "authz-test-a2" "$ACCOUNT_A" "KAC-122 fixture (cross
 PROJECT_B1=$(ensure_project "authz-test-b1" "$ACCOUNT_B" "KAC-122 fixture (cross-account)" "$JWT_AAB")
 log "    projects: A1=$PROJECT_A1 A2=$PROJECT_A2 B1=$PROJECT_B1"
 
+# fixture-sync guard (diagnostic, NON-fatal). ensure_project extracts
+# metadata.projectId from the completed Create Operation WITHOUT checking op.error: a
+# Create can finish done:true WITH an error (transient FGA/DB blip at cold-start) while
+# metadata.projectId still carries the pre-allocated id. That id then gets FGA binding
+# tuples (ensure_binding below → gateway authz passes on the tuple), but the project ROW
+# never committed, so the cross-service peer-check (vpc/compute → iam ProjectService.Get)
+# returns NOT_FOUND → label-revoke-{vpc,compute} cascaded RED (ci round-3 root cause:
+# "Project prj… not found" / "Folder with id prj… not found"). The label-revoke suites
+# now SELF-SEED their own project per case (cases/label-revoke-{vpc,compute}.py
+# create_suite_project), so a phantom projectA1 no longer breaks them — this block only
+# surfaces the phantom loudly instead of letting it hide behind green FGA tuples. GET is
+# read-only; python takes the id via argv (no shell-into-code interpolation); every step
+# is `|| echo 0`/`2>/dev/null` guarded so it can never abort the fixture under set -e.
+if [ -n "$PROJECT_A1" ]; then
+  _pa1_ok=$(api GET "/iam/v1/projects/$PROJECT_A1" "$JWT_AAA" 2>/dev/null \
+    | python3 -c 'import sys,json
+try:
+    print("1" if json.load(sys.stdin).get("id") == sys.argv[1] else "0")
+except Exception:
+    print("0")' "$PROJECT_A1" 2>/dev/null || echo 0)
+  if [ "$_pa1_ok" != "1" ]; then
+    log "WARN: projectA1 ($PROJECT_A1) does NOT resolve via ProjectService.Get — PHANTOM (IAM row never committed). Shared-tenant suites keyed on {{projectA1Id}} would see cross-service NOT_FOUND; re-check ensure_project op.error handling."
+  fi
+fi
+
 # 4b) KAC-132: Clean up stale NOB viewer bindings on account-A and account-B.
 #
 # The authz-deny newman suite's AB-CR ALLOW cases (AB-CR-A-AAA, AB-CR-B-AAB,

@@ -28,6 +28,134 @@
       "description": "class:T31 | class:LABELS | class:REVOKE | class:FGA | class:AUTHZ | class:STATE | class:COMPUTE | priority:P0",
       "item": [
         {
+          "name": "T31-LBLREVOKE-COMPUTE-DISK-03 :: create-proj-disk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "projects"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"t31c-prj-disk-{{runId}}\", \"description\": \"newman compute label-revoke self-contained project seed\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.projectId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('_t31cProj', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('_op_proj_disk', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "T31-LBLREVOKE-COMPUTE-DISK-03 :: poll-proj-disk",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{_op_proj_disk}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{_op_proj_disk}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) { pm.environment.set('_pollCount', '0'); pm.environment.set('_pollStarted', pm.info.requestName); }",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation no error', () => pm.expect(j.error, JSON.stringify(j)).to.not.exist);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "T31-LBLREVOKE-COMPUTE-DISK-03 :: create-sa-disk",
           "request": {
             "method": "POST",
@@ -233,7 +361,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"t31c-disk-disk-{{runId}}\", \"zoneId\": \"{{_t31cZoneId}}\", \"size\": \"4294967296\", \"labels\": {\"tier\": \"treska\"}}",
+              "raw": "{\"projectId\": \"{{_t31cProj}}\", \"name\": \"t31c-disk-disk-{{runId}}\", \"zoneId\": \"{{_t31cZoneId}}\", \"size\": \"4294967296\", \"labels\": {\"tier\": \"treska\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -969,6 +1097,134 @@
       "description": "class:T31 | class:LABELS | class:REVOKE | class:FGA | class:AUTHZ | class:STATE | class:COMPUTE | priority:P0",
       "item": [
         {
+          "name": "T31-LBLREVOKE-COMPUTE-SNAPSHOT-03 :: create-proj-snapshot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "projects"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"t31c-prj-snapshot-{{runId}}\", \"description\": \"newman compute label-revoke self-contained project seed\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.projectId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('_t31cProj', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('_op_proj_snapshot', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "T31-LBLREVOKE-COMPUTE-SNAPSHOT-03 :: poll-proj-snapshot",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{_op_proj_snapshot}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{_op_proj_snapshot}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) { pm.environment.set('_pollCount', '0'); pm.environment.set('_pollStarted', pm.info.requestName); }",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation no error', () => pm.expect(j.error, JSON.stringify(j)).to.not.exist);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "T31-LBLREVOKE-COMPUTE-SNAPSHOT-03 :: create-sa-snapshot",
           "request": {
             "method": "POST",
@@ -1174,7 +1430,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"t31c-disk-snapsrc-{{runId}}\", \"zoneId\": \"{{_t31cZoneId}}\", \"size\": \"4294967296\", \"labels\": {}}",
+              "raw": "{\"projectId\": \"{{_t31cProj}}\", \"name\": \"t31c-disk-snapsrc-{{runId}}\", \"zoneId\": \"{{_t31cZoneId}}\", \"size\": \"4294967296\", \"labels\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1317,7 +1573,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"diskId\": \"{{_t31cSnapSrcDisk}}\", \"name\": \"t31c-snap-{{runId}}\", \"labels\": {\"tier\": \"treska\"}}",
+              "raw": "{\"projectId\": \"{{_t31cProj}}\", \"diskId\": \"{{_t31cSnapSrcDisk}}\", \"name\": \"t31c-snap-{{runId}}\", \"labels\": {\"tier\": \"treska\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2053,6 +2309,134 @@
       "description": "class:T31 | class:LABELS | class:REVOKE | class:FGA | class:AUTHZ | class:STATE | class:COMPUTE | priority:P0",
       "item": [
         {
+          "name": "T31-LBLREVOKE-COMPUTE-IMAGE-03 :: create-proj-image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "projects"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"t31c-prj-image-{{runId}}\", \"description\": \"newman compute label-revoke self-contained project seed\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.projectId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('_t31cProj', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('_op_proj_image', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "T31-LBLREVOKE-COMPUTE-IMAGE-03 :: poll-proj-image",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{_op_proj_image}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{_op_proj_image}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) { pm.environment.set('_pollCount', '0'); pm.environment.set('_pollStarted', pm.info.requestName); }",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation no error', () => pm.expect(j.error, JSON.stringify(j)).to.not.exist);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "T31-LBLREVOKE-COMPUTE-IMAGE-03 :: create-sa-image",
           "request": {
             "method": "POST",
@@ -2258,7 +2642,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"t31c-disk-imgsrc-{{runId}}\", \"zoneId\": \"{{_t31cZoneId}}\", \"size\": \"4294967296\", \"labels\": {}}",
+              "raw": "{\"projectId\": \"{{_t31cProj}}\", \"name\": \"t31c-disk-imgsrc-{{runId}}\", \"zoneId\": \"{{_t31cZoneId}}\", \"size\": \"4294967296\", \"labels\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2401,7 +2785,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"t31c-img-{{runId}}\", \"diskId\": \"{{_t31cImgSrcDisk}}\", \"labels\": {\"tier\": \"treska\"}}",
+              "raw": "{\"projectId\": \"{{_t31cProj}}\", \"name\": \"t31c-img-{{runId}}\", \"diskId\": \"{{_t31cImgSrcDisk}}\", \"labels\": {\"tier\": \"treska\"}}",
               "options": {
                 "raw": {
                   "language": "json"

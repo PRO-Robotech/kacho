@@ -71,18 +71,35 @@ umbrella run):
   `poll-bind-project-anchor` / `te4-post-bind-project-viewer` failures remain
   whitelisted-RED (**#212** project-anchor role-authoring gap — unchanged).
 
-- **`label-revoke-{vpc,compute}` (and the create-half of `label-revoke-nlb`) — first
-  cross-service create 403.** Single root: `create-net` / `create-disk` as
-  `jwtAccountAdminA` (AAA) → `403 "subject user:<AAA> lacks relation \"editor\" on
-  project:<A1> … no direct relations granted"`, **persistent (465/465 create attempts
-  across the run — NOT a materialization tail)** → the whole flow cascaded RED on an unset
-  resource var. AAA relied on the account-owner → project-editor **hierarchical FGA
-  cascade**; an **explicit** `project:A1` editor binding materializes reliably (proven by
-  the PA1/INV explicit bindings and the standalone vpc suite). Fix (test fixture
-  `tests/authz-fixtures/setup.sh`): grant AAA an **explicit** `ROLE_EDIT @ project:A1`
-  (idempotent, mirrors the existing PA1 and INV lines). This de-flakes the create
-  **precondition** so the label-revoke **assertions** (the real subject-under-test) run;
-  it does not mask them — a genuine label-revoke regression still fails honestly on the
-  next run. Whether the owner→project-editor cascade itself is a product gap is flagged
-  above (issue-sakey shares the account→child-object cascade family) and tracked
-  separately.
+- **`label-revoke-{vpc,compute}` — cross-service create against a PHANTOM project
+  (round-3 root).** Round-2 fixed the create-`403` by granting AAA an explicit
+  `ROLE_EDIT @ project:A1` in `tests/authz-fixtures/setup.sh` (so the gateway authz gate
+  passes). Round-3 CI then exposed the deeper root: the create Operation now returns `200`
+  but completes `done:true` **with an error** — `create-net` → `{code:5,"Project
+  prj3m3q…8ftb not found"}` (vpc), `create-disk` → `{code:5,"Folder with id prj3m3q…8ftb
+  not found"}` (compute) — for the shared `{{projectA1Id}}`. Root: the fixture's
+  `ensure_project` extracts `metadata.projectId` from the completed Create Operation
+  **without checking `op.error`**; a Create that finishes with an error still carries the
+  pre-allocated id in metadata, so `projectA1Id` was patched to a **phantom** — an id
+  whose IAM project ROW never committed. The round-2 `ROLE_EDIT @ project:A1` binding then
+  wrote FGA tuples **against that phantom id** (AccessBinding does not require the row to
+  exist), so the gateway authz gate passes (tuple present → `200` op), but the
+  cross-service peer-check (`vpc/compute → iam ProjectService.Get`) returns `NOT_FOUND` →
+  the create op fails → the whole flow cascades RED on an unset resource var. Confirmed:
+  `"prj3m3q… not found"` appears in **only** the two cross-service suites (36× vpc, 20×
+  compute) and in no same-service suite — two independent services agreeing on `NOT_FOUND`
+  ⇒ the row genuinely does not exist (not a per-edge bug). Fix (test-only, no product
+  change): `label-revoke-{vpc,compute}.py` now **self-seed a fresh project per case**
+  (`create_suite_project` → `{{_t31Proj}}` / `{{_t31cProj}}`, op-poll asserts `done` +
+  **no error**) under `accountAId` and route all resource creates through it, replacing
+  the shared `{{projectA1Id}}` dependency entirely — mirrors the existing runtime
+  zone-discovery pattern in `label-revoke-compute.py`. accountAId stays the shared-tenant
+  anchor (the ARM_LABELS role is account-scoped and containment matches
+  `parent_account_id == accountAId`, which a project under account-A satisfies). A
+  freshly-created, poll-confirmed project is guaranteed to exist for the peer-check, so
+  these suites are now **GREEN by construction** (verified locally via `py_compile` +
+  `gen.py`; runtime GREEN pending an umbrella run). Belt-and-suspenders: `setup.sh` gained
+  a **non-fatal** post-create diagnostic that GETs `project:A1` and logs a loud `WARN` if
+  it does not resolve, so a future phantom is diagnosable instead of hiding behind green
+  FGA tuples. `label-revoke-nlb` create-half stays whitelisted-RED (unchanged — needs the
+  umbrella to seed nlb external resources).
