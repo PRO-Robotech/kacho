@@ -89,11 +89,18 @@ fi
 echo "[parallel] regenerating collections for: $SERVICES"
 for svc in $SERVICES; do ( cd "$(suite_dir "$svc")" && python3 scripts/gen.py >/dev/null ) || { echo "gen $svc FAILED" >&2; exit 1; }; done
 
-echo "[parallel] launching suites concurrently (delay=${DELAY}ms jobs=${JOBS}/suite)"
+echo "[parallel] launching suites concurrently (delay=${DELAY}ms jobs=${JOBS}/suite; nlb forced --jobs 1)"
 declare -A SUITE_PID
 for svc in $SERVICES; do
   d="$(suite_dir "$svc")"
-  ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$JOBS" \
+  # nlb EXTERNAL suites draw auto-VIPs from ONE shared external AddressPool
+  # (198.51.100.0/24, also shared with the vpc seed) — --jobs>1 transiently exhausts it
+  # mid-run → "could not allocate load balancer address" → phantom (see nlb run.sh header).
+  # Force nlb serial (--jobs 1) regardless of $JOBS; the other suites keep $JOBS. This
+  # keeps peak concurrent VIP hold tiny even while nlb runs alongside vpc.
+  sjobs="$JOBS"; [ "$svc" = "nlb" ] && sjobs=1
+  mkdir -p "$d/out"   # redirect below opens out/suite.log BEFORE run.sh's own mkdir
+  ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
       --env-var "baseUrl=http://localhost:$GW_PORT" \
       --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
       >"$d/out/suite.log" 2>&1 ) &

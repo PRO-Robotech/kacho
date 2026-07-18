@@ -36,9 +36,11 @@ jobs:
   newman:
     name: newman e2e (kind-стенд)
     runs-on: self-hosted
-    # e2e тяжёлый: fresh dev-up (~13м) + 4 полных newman-суита (iam/vpc/compute/nlb) +
-    # gates. 45м не хватало — compute-instance (async lifecycle) + nlb уходили в no-report.
-    timeout-minutes: 90
+    # e2e тяжёлый: fresh dev-up (~13м) + newman-суиты + gates. Суиты теперь гоняются
+    # ПАРАЛЛЕЛЬНО (newman-parallel.sh: один seed → fan-out iam/vpc/compute/nlb) → wall-time
+    # = dev-up + max(суита), а не сумма. Раньше 4 серийных суита + retry-инфляция упирались
+    # в 90м (nlb уходил в no-report при cancel). Цель ≤30м; 45 — запас на первый замер.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -118,26 +120,23 @@ jobs:
       # registry в dev выключены (registry.enabled=false) — их коллекции здесь не
       # запускаются, иначе job краснел бы за отсутствующий сервис, а не за регрессию.
       #
-      # `|| true` — НЕ проглатывание ошибок. Прогон обязан дойти до конца и оставить
-      # отчёты в out/; вердикт выносит assert-suites-green.sh (шаг ниже), который
-      # (а) знает known-RED whitelist и (б) считает отсутствие отчёта провалом
-      # («(no-report)»), поэтому ранний обрыв прогона здесь спрятать нельзя.
-      # Так же было в polyrepo: newman → отдельный гейт с `if: always()`.
-      - name: newman — iam
+      # ПАРАЛЛЕЛЬНО (newman-parallel.sh): ОДИН seed (per-service изолированные accounts/
+      # projects — директива #2, фикстуры не коллизят) + port-forward один раз → fan-out
+      # iam/vpc/compute/nlb ОДНОВРЕМЕННО. wall-time = dev-up + max(суита) вместо суммы —
+      # это убирает прежний 90м-таймаут (4 серийных суита + retry-инфляция уходили в
+      # no-report при cancel). nlb внутри форсированно --jobs 1 (shared external-VIP pool),
+      # остальные --jobs=$JOBS.
+      #
+      # `|| true` — НЕ проглатывание ошибок: прогон обязан дойти до конца и оставить
+      # отчёты в out/; вердикт выносит assert-suites-green.sh (шаги ниже), который знает
+      # known-RED whitelist и считает отсутствие отчёта провалом («(no-report)»), поэтому
+      # ранний обрыв прогона спрятать нельзя.
+      - name: newman — параллельно (iam+vpc+compute+nlb, один seed+стенд)
         working-directory: deploy
-        run: ./scripts/newman-e2e.sh iam || true
-
-      - name: newman — vpc
-        working-directory: deploy
-        run: ./scripts/newman-e2e.sh vpc || true
-
-      - name: newman — compute
-        working-directory: deploy
-        run: ./scripts/newman-e2e.sh compute || true
-
-      - name: newman — nlb
-        working-directory: deploy
-        run: ./scripts/newman-e2e.sh nlb || true
+        env:
+          DELAY: "10"   # per-request pacing (ms); parallel fan-out уже нагружает стенд
+          JOBS: "2"     # per-suite collection concurrency (nlb форсированно 1)
+        run: ./scripts/newman-parallel.sh || true
 
       # НАСТОЯЩИЙ гейт. ОДИН скрипт (живёт в iam) применяется к КАЖДОМУ сервису — он
       # глобит `collections/` + `out/` относительно cwd, поэтому запускается из каталога

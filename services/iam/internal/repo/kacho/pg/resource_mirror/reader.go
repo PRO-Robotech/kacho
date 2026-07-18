@@ -86,13 +86,43 @@ func MatchByLabels(ctx context.Context, q querier, types []string, matchLabels m
 	return scanRows(rows)
 }
 
-// AllByTypes returns EVERY mirror row whose object_type ∈ types (no label filter)
-// — the ARM_ANCHOR(`all`) candidate set (RBAC explicit-model 2026). Containment
-// to the binding's scope is re-asserted in the use-case (IsContainedIn), so this may
-// over-return cluster-wide. Empty types → no rows.
-func AllByTypes(ctx context.Context, q querier, types []string) ([]MirrorRow, error) {
+// AllByTypes returns the mirror rows whose object_type ∈ types NARROWED to the binding's
+// containment scope — the ARM_ANCHOR(`all`) candidate set (RBAC explicit-model 2026).
+//
+// scopeType/scopeID push the binding's containment scope INTO the SQL as a PROVEN SUPERSET
+// of the pure-domain IsContainedIn re-verify (which the use-case still runs — this only
+// PRE-filters), so the caller receives O(scope) rows instead of O(cluster mirror). The
+// predicate MIRRORS the projected parent-scope columns byte-for-byte, so it can never DROP a
+// row IsContainedIn would accept (no under-grant); any residual over-return is narrowed by
+// the Go re-verify (over-broad is safe):
+//
+//   - "project" → parent_project_id = $2                                   (exactly IsContainedIn's project branch)
+//   - "account" → COALESCE(NULLIF(parent_account_id,”), pj.account_id,”) = $2
+//     (exactly IsContainedIn's account branch — the SAME resolution the SELECT projects, so
+//     an object registered with only its parent_project is still contained via project→account)
+//   - "cluster" / unknown → NO narrowing (cluster contains everything, IsContainedIn cluster=true;
+//     an unknown scope-type conservatively falls through to no-narrowing so the Go re-verify
+//     stays authoritative — over-broad, never under-broad)
+//
+// Empty types → no rows.
+func AllByTypes(ctx context.Context, q querier, types []string, scopeType, scopeID string) ([]MirrorRow, error) {
 	if len(types) == 0 {
 		return nil, nil
+	}
+	// The scope predicate is an EXACT mirror of the projected ParentProjectID/ParentAccountID,
+	// so the returned set is precisely {row | IsContainedIn(scope)} for project/account and the
+	// full type-set for cluster/unknown — a guaranteed superset of the Go re-verify.
+	args := []any{types}
+	var scopeClause string
+	switch scopeType {
+	case "project":
+		scopeClause = " AND m.parent_project_id = $2"
+		args = append(args, scopeID)
+	case "account":
+		scopeClause = " AND COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') = $2"
+		args = append(args, scopeID)
+	default:
+		// cluster / unknown → no narrowing (Go IsContainedIn stays authoritative).
 	}
 	rows, err := q.Query(ctx,
 		`SELECT m.object_type, m.object_id, m.parent_project_id,
@@ -100,9 +130,9 @@ func AllByTypes(ctx context.Context, q querier, types []string) ([]MirrorRow, er
 		        m.labels
 		   FROM kacho_iam.resource_mirror m
 		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
-		  WHERE m.object_type = ANY($1)
+		  WHERE m.object_type = ANY($1)`+scopeClause+`
 		  ORDER BY m.object_type ASC, m.object_id ASC`,
-		types,
+		args...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resource_mirror: all by types: %w", err)

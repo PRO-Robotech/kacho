@@ -42,7 +42,11 @@ type CreateLoadBalancerUseCase struct {
 	subnetClient  SubnetClient
 	addressReader AddressClient         // public AddressService.Get — link-resolution
 	addressClient InternalAddressClient // VIP alloc/link/release
-	logger        *slog.Logger
+	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource)
+	// вызывается BEST-EFFORT после durable commit LB. nil → только async
+	// register-drainer (dev/no-iam). См. WithRegistrar.
+	registrar Registrar
+	logger    *slog.Logger
 }
 
 // NewCreateLoadBalancerUseCase конструктор.
@@ -60,6 +64,32 @@ func NewCreateLoadBalancerUseCase(
 		projectClient: pc, regionClient: rc, zoneClient: zc,
 		subnetClient: snc, addressReader: ar, addressClient: ac,
 		logger: logger,
+	}
+}
+
+// WithRegistrar подключает sync-primary owner-tuple registrar. После durable
+// commit LB (+ его `fga_register_outbox`-intent'а) те же owner/containment-tuple'ы
+// синхронно регистрируются в kacho-iam — grant создателя доступен сразу, без
+// гонки с async register-drainer'ом. BEST-EFFORT: сбой sync-Register логируется
+// и глотается (durable intent + drainer — backstop), Operation.done НЕ гейтится
+// на видимость (ban #9). nil registrar → sync-путь пропускается. Возвращает self
+// для chaining в composition root.
+func (u *CreateLoadBalancerUseCase) WithRegistrar(r Registrar) *CreateLoadBalancerUseCase {
+	u.registrar = r
+	return u
+}
+
+// syncRegister — BEST-EFFORT sync owner-tuple регистрация после durable commit.
+// Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent +
+// register-drainer — at-least-once backstop; Operation.done НЕ гейтится на
+// видимость owner-tuple (ban #9 — иначе phantom-ресурс). nil registrar → no-op.
+func (u *CreateLoadBalancerUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+	if u.registrar == nil {
+		return
+	}
+	if err := u.registrar.Register(ctx, intent); err != nil {
+		u.logger.Warn("LoadBalancer.Create sync owner-tuple registration incomplete; register-drainer will reconcile",
+			"err", err, "load_balancer_id", intent.ResourceID)
 	}
 }
 
@@ -349,6 +379,13 @@ func (u *CreateLoadBalancerUseCase) doCreate(
 		return nil, mapDomainErr(err)
 	}
 	finalized = true
+
+	// Sync-primary owner-tuple registration (после durable commit LB + его
+	// fga_register_outbox-intent'а): grant создателя доступен сразу, закрывая
+	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
+	// + register-drainer — backstop); Operation.done НЕ гейтится на видимость
+	// owner-tuple (ban #9).
+	u.syncRegister(ctx, lbRegisterIntent(created, principal))
 
 	pb, err := lbRecordToProto(created)
 	if err != nil {

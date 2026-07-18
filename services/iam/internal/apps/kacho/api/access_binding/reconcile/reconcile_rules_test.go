@@ -95,7 +95,12 @@ func (f *fakeStore) MatchIAMDirect(ctx context.Context, types []string, ml map[s
 	return nil, nil
 }
 
-func (f *fakeStore) MatchAllInScope(ctx context.Context, types []string) ([]domain.MirrorObject, error) {
+// MatchAllInScope models the LOOSEST valid superset: it returns EVERY seeded object of the
+// types and ignores `scope`. This is deliberate — the production adapter pushes a proven
+// scope superset into SQL, but the reconciler's IsContainedIn re-verify is the authoritative
+// containment gate; the fake over-returns so the unit tests prove IsContainedIn rejects
+// foreign-scope objects even when the store hands back an over-broad candidate set.
+func (f *fakeStore) MatchAllInScope(ctx context.Context, types []string, scope domain.ScopeAnchor) ([]domain.MirrorObject, error) {
 	var out []domain.MirrorObject
 	for _, t := range types {
 		out = append(out, f.mirror[t]...)
@@ -119,7 +124,7 @@ func (f *fakeStore) MatchByIDs(ctx context.Context, types, ids []string) ([]doma
 	return out, nil
 }
 
-func (f *fakeStore) MatchAllInScopeIAMDirect(ctx context.Context, types []string) ([]domain.MirrorObject, error) {
+func (f *fakeStore) MatchAllInScopeIAMDirect(ctx context.Context, types []string, scope domain.ScopeAnchor) ([]domain.MirrorObject, error) {
 	return nil, nil
 }
 

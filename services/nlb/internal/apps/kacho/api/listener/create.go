@@ -44,7 +44,11 @@ import (
 type CreateUseCase struct {
 	repo    RepoFactory
 	opsRepo OperationsRepo
-	logger  *slog.Logger
+	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource),
+	// вызывается BEST-EFFORT после durable commit листенера. nil → только async
+	// register-drainer. См. WithRegistrar.
+	registrar Registrar
+	logger    *slog.Logger
 }
 
 // NewCreateUseCase — конструктор. Зависимости — port-интерфейсы (composition
@@ -59,6 +63,16 @@ func NewCreateUseCase(
 		opsRepo: opsRepo,
 		logger:  logger,
 	}
+}
+
+// WithRegistrar подключает sync-primary owner-tuple registrar. После durable
+// commit листенера (+ его `fga_register_outbox`-intent'а) containment-tuple
+// синхронно регистрируется в kacho-iam — grant создателя доступен сразу.
+// BEST-EFFORT: сбой sync-Register логируется и глотается (durable intent +
+// drainer — backstop), Operation.done НЕ гейтится (ban #9). Возвращает self.
+func (u *CreateUseCase) WithRegistrar(r Registrar) *CreateUseCase {
+	u.registrar = r
+	return u
 }
 
 // Run — sync validation + Operation creation + async worker spawn. Возвращает
@@ -247,7 +261,27 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 	}
 	committed = true
 
+	// Sync-primary owner-tuple registration (после durable commit листенера + его
+	// fga_register_outbox-intent'а): containment-grant виден сразу, закрывая
+	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
+	// + register-drainer — backstop); Operation.done НЕ гейтится (ban #9).
+	u.syncRegister(ctx, listenerRegisterIntent(created, in.fgaOwner))
+
 	return marshalListener(created)
+}
+
+// syncRegister — BEST-EFFORT sync owner-tuple регистрация после durable commit.
+// Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent +
+// register-drainer — at-least-once backstop; Operation.done НЕ гейтится (ban #9).
+// nil registrar → no-op.
+func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+	if u.registrar == nil {
+		return
+	}
+	if err := u.registrar.Register(ctx, intent); err != nil {
+		loggerOrDiscard(u.logger).Warn("Listener.Create sync owner-tuple registration incomplete; register-drainer will reconcile",
+			"err", err, "listener_id", intent.ResourceID)
+	}
 }
 
 // listenerRegisterIntent — FGA-register-intent для созданного Listener:

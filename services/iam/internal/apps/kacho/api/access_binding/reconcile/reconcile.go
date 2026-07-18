@@ -114,13 +114,14 @@ type ReconcileStore interface {
 	// ReconcileBinding pass.
 	MatchSelector(ctx context.Context, types []string, matchLabels map[string]string) ([]domain.MirrorObject, error)
 
-	// MatchAllInScope returns EVERY mirror object of the given types (ARM_ANCHOR /
-	// `all` — no label filter). Containment to
-	// the binding's scope is re-asserted by the reconciler (IsContainedIn) so the
-	// query may over-return; the scope filter narrows it. The consumer-owned feed
-	// (FeedMirror). `types` contains ONLY mirror-fed types (the reconciler partitions
-	// by feed-source before calling).
-	MatchAllInScope(ctx context.Context, types []string) ([]domain.MirrorObject, error)
+	// MatchAllInScope returns the mirror objects of the given types (ARM_ANCHOR /
+	// `all` — no label filter) NARROWED to the binding's containment `scope`. The scope
+	// is pushed into the SQL as a PROVEN SUPERSET of the reconciler's IsContainedIn
+	// re-verify (which STILL runs — the SQL only PRE-filters), so the reconciler receives
+	// O(scope) rows instead of O(cluster mirror). The consumer-owned feed (FeedMirror).
+	// `types` contains ONLY mirror-fed types (the reconciler partitions by feed-source
+	// before calling).
+	MatchAllInScope(ctx context.Context, types []string, scope domain.ScopeAnchor) ([]domain.MirrorObject, error)
 
 	// MatchByIDs returns the mirror objects of the given types whose object_id is in
 	// `ids` (ARM_NAMES — exact-id selector). An id not
@@ -129,9 +130,12 @@ type ReconcileStore interface {
 	MatchByIDs(ctx context.Context, types []string, ids []string) ([]domain.MirrorObject, error)
 
 	// MatchAllInScopeIAMDirect / MatchByIDsIAMDirect are the iam-direct
-	// analogues for IAM's OWN objects (iam.project / iam.account) read SAME-DB from
-	// the native tables. `types` contains ONLY iam-direct types.
-	MatchAllInScopeIAMDirect(ctx context.Context, types []string) ([]domain.MirrorObject, error)
+	// analogues for IAM's OWN objects (iam.project / iam.account + content) read SAME-DB
+	// from the native tables. `types` contains ONLY iam-direct types. MatchAllInScopeIAMDirect
+	// pushes the binding's containment `scope` into the SQL as a PROVEN SUPERSET of the
+	// IsContainedIn re-verify (same as MatchAllInScope); MatchByIDsIAMDirect (names arm) stays
+	// unscoped — a foreign-scope id-match is a wanted REJECTED-containment audit signal.
+	MatchAllInScopeIAMDirect(ctx context.Context, types []string, scope domain.ScopeAnchor) ([]domain.MirrorObject, error)
 	MatchByIDsIAMDirect(ctx context.Context, types []string, ids []string) ([]domain.MirrorObject, error)
 
 	// MatchIAMDirect returns IAM's OWN objects matching a selector's
@@ -621,19 +625,22 @@ func (r *Reconciler) desiredMembers(ctx context.Context, s ReconcileStore, bs Bi
 // matchSelectorObjects resolves the candidate objects for ONE selector per its arm,
 // across both feeds (mirror-fed + iam-direct, partitioned): ARM_ANCHOR(all) →
 // MatchAllInScope; ARM_NAMES → MatchByIDs; ARM_LABELS → MatchSelector(labels @>).
-// Containment is re-asserted by the caller; this only resolves the candidate set.
-func (r *Reconciler) matchSelectorObjects(ctx context.Context, s ReconcileStore, sel domain.RuleSelector) ([]domain.MirrorObject, error) {
+// Containment is re-asserted by the caller (IsContainedIn); this only resolves the
+// candidate set. The binding's `scope` is passed to the ANCHOR arm so the candidate set
+// is pushed-down to O(scope) in SQL rather than scanned cluster-wide + narrowed in Go —
+// the Go re-verify remains authoritative (the SQL predicate is a proven superset).
+func (r *Reconciler) matchSelectorObjects(ctx context.Context, s ReconcileStore, sel domain.RuleSelector, scope domain.ScopeAnchor) ([]domain.MirrorObject, error) {
 	mirrorTypes, iamTypes := partitionByFeed(sel.ObjectTypes)
 	var matched []domain.MirrorObject
 	if len(mirrorTypes) > 0 {
-		objs, err := r.matchByArm(ctx, sel, mirrorTypes, false, s)
+		objs, err := r.matchByArm(ctx, sel, mirrorTypes, false, s, scope)
 		if err != nil {
 			return nil, fmt.Errorf("match rule selector %s (mirror): %w", sel.RuleFP, err)
 		}
 		matched = append(matched, objs...)
 	}
 	if len(iamTypes) > 0 {
-		objs, err := r.matchByArm(ctx, sel, iamTypes, true, s)
+		objs, err := r.matchByArm(ctx, sel, iamTypes, true, s, scope)
 		if err != nil {
 			return nil, fmt.Errorf("match rule selector %s (iam-direct): %w", sel.RuleFP, err)
 		}
@@ -642,8 +649,11 @@ func (r *Reconciler) matchSelectorObjects(ctx context.Context, s ReconcileStore,
 	return matched, nil
 }
 
-// matchByArm dispatches the per-arm match to the right feed (mirror vs iam-direct).
-func (r *Reconciler) matchByArm(ctx context.Context, sel domain.RuleSelector, types []string, iamDirect bool, s ReconcileStore) ([]domain.MirrorObject, error) {
+// matchByArm dispatches the per-arm match to the right feed (mirror vs iam-direct). The
+// ANCHOR arm passes the binding's `scope` for the SQL scope push-down; the NAMES/LABELS arms
+// are already narrow (specific ids / labels) AND a foreign-scope match is a wanted
+// REJECTED-containment audit signal, so they are LEFT UNSCOPED (the reconciler re-verifies).
+func (r *Reconciler) matchByArm(ctx context.Context, sel domain.RuleSelector, types []string, iamDirect bool, s ReconcileStore, scope domain.ScopeAnchor) ([]domain.MirrorObject, error) {
 	switch sel.Arm {
 	case domain.ArmNames:
 		if iamDirect {
@@ -657,9 +667,9 @@ func (r *Reconciler) matchByArm(ctx context.Context, sel domain.RuleSelector, ty
 		return s.MatchSelector(ctx, types, sel.MatchLabels)
 	default: // ArmAnchor (all)
 		if iamDirect {
-			return s.MatchAllInScopeIAMDirect(ctx, types)
+			return s.MatchAllInScopeIAMDirect(ctx, types, scope)
 		}
-		return s.MatchAllInScope(ctx, types)
+		return s.MatchAllInScope(ctx, types, scope)
 	}
 }
 
@@ -690,7 +700,9 @@ func (r *Reconciler) desiredRuleMembers(ctx context.Context, s ReconcileStore, b
 	}
 
 	for _, sel := range bs.Selectors {
-		matched, err := r.matchSelectorObjects(ctx, s, sel)
+		// Pass the binding's scope so the ANCHOR arm pushes containment into SQL
+		// (O(scope) candidate set); IsContainedIn below stays the authoritative re-verify.
+		matched, err := r.matchSelectorObjects(ctx, s, sel, bs.Scope)
 		if err != nil {
 			return nil, err
 		}

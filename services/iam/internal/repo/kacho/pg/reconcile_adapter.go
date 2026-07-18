@@ -151,15 +151,16 @@ func (s *reconcileStore) AcquireBindingLock(ctx context.Context, bindingID domai
 	return nil
 }
 
-// MatchAllInScope returns EVERY mirror object of the given types (ARM_ANCHOR/`all`,
-// P4) — no label filter. Containment to the binding's scope is re-asserted by the
-// use-case (IsContainedIn), so the query may over-return cluster-wide and the scope
-// narrows it.
-func (s *reconcileStore) MatchAllInScope(ctx context.Context, types []string) ([]domain.MirrorObject, error) {
+// MatchAllInScope returns the mirror objects of the given types NARROWED to the binding's
+// containment scope (ARM_ANCHOR/`all`, P4) — no label filter. The scope is pushed into the
+// SQL (resource_mirror.AllByTypes) as a PROVEN SUPERSET of the use-case's IsContainedIn
+// re-verify, so the reconciler receives O(scope) rows instead of O(cluster mirror). The Go
+// IsContainedIn re-verify STAYS authoritative — this only PRE-filters (over-broad is safe).
+func (s *reconcileStore) MatchAllInScope(ctx context.Context, types []string, scope domain.ScopeAnchor) ([]domain.MirrorObject, error) {
 	if len(types) == 0 {
 		return nil, nil
 	}
-	rows, err := resource_mirror.AllByTypes(ctx, s.tx, types)
+	rows, err := resource_mirror.AllByTypes(ctx, s.tx, types, scope.Type, scope.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,20 +189,24 @@ func (s *reconcileStore) MatchByIDs(ctx context.Context, types, ids []string) ([
 	return out, nil
 }
 
-// MatchAllInScopeIAMDirect returns EVERY IAM-OWN object of the given iam-direct
-// types (iam.project / iam.account) read SAME-DB (ARM_ANCHOR/`all`, P4). Containment
-// is re-asserted by the use-case.
-func (s *reconcileStore) MatchAllInScopeIAMDirect(ctx context.Context, types []string) ([]domain.MirrorObject, error) {
-	return s.iamDirectQuery(ctx, types, "", nil)
+// MatchAllInScopeIAMDirect returns the IAM-OWN objects of the given iam-direct types
+// (iam.project/iam.account + content) read SAME-DB, NARROWED to the binding's containment
+// scope (ARM_ANCHOR/`all`, P4). Like MatchAllInScope it pushes the scope into the per-type
+// SQL as a PROVEN SUPERSET of the IsContainedIn re-verify (which still runs), so the anchor
+// arm no longer scans EVERY iam-native row of the type cluster-wide.
+func (s *reconcileStore) MatchAllInScopeIAMDirect(ctx context.Context, types []string, scope domain.ScopeAnchor) ([]domain.MirrorObject, error) {
+	return s.iamDirectQuery(ctx, types, "", nil, scope)
 }
 
 // MatchByIDsIAMDirect returns the IAM-OWN objects of the given iam-direct types
-// whose id ∈ ids (ARM_NAMES, P4).
+// whose id ∈ ids (ARM_NAMES, P4). The names arm is already narrow (specific ids) AND a
+// foreign-scope match is a WANTED REJECTED-containment signal (cross-scope injection audit),
+// so it is LEFT UNSCOPED — the reconciler still re-verifies + audits it.
 func (s *reconcileStore) MatchByIDsIAMDirect(ctx context.Context, types, ids []string) ([]domain.MirrorObject, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return s.iamDirectQuery(ctx, types, "ids", ids)
+	return s.iamDirectQuery(ctx, types, "ids", ids, domain.ScopeAnchor{})
 }
 
 // iamDirectScanSpec describes how to read ONE iam-direct (D6) native table for the
@@ -273,14 +278,43 @@ var iamDirectScanSpecs = map[string]iamDirectScanSpec{
 	},
 }
 
+// iamDirectScopePredicate builds the ANCHOR-arm scope narrowing for one iam-direct type as a
+// PROVEN SUPERSET of the domain IsContainedIn re-verify. It reuses the SAME per-type
+// parent-scope expressions the SELECT projects into ParentAccountID/ParentProjectID, so the
+// WHERE selects EXACTLY the rows IsContainedIn(scope) accepts — never fewer (no under-grant):
+//
+//   - project scope → parentProjectExpr = $1   (IsContainedIn: ParentProjectID == scope.ID)
+//   - account scope → parentAccountExpr = $1   (IsContainedIn: ParentAccountID == scope.ID)
+//   - cluster / unknown → "" (no narrowing; IsContainedIn cluster=true, unknown handled by
+//     the Go re-verify — over-broad is safe, under-broad is not).
+//
+// The expressions are fixed literals from the closed spec map (never user input) → the single
+// bound $1 carries the caller-supplied scope id, so the interpolation is injection-safe.
+func iamDirectScopePredicate(spec iamDirectScanSpec, scope domain.ScopeAnchor) (clause string, arg any) {
+	switch scope.Type {
+	case "project":
+		return spec.parentProjectExpr + " = $1", scope.ID
+	case "account":
+		return spec.parentAccountExpr + " = $1", scope.ID
+	default:
+		return "", nil
+	}
+}
+
 // iamDirectQuery is the shared iam-direct (D6) read for the ARM_ANCHOR/ARM_NAMES
 // arms: it scans each requested iam-native table (per iamDirectScanSpecs) filtered by
-// `mode` ("" → all, "ids" → id = ANY(ids)), stamping the containment parents so the
+// `mode` ("" → all-in-scope, "ids" → id = ANY(ids)), stamping the containment parents so the
 // SAME IsContainedIn predicate decides containment. No peer-call (same-DB) — the
 // graph stays acyclic. Extended from iam.project/iam.account to
 // the full iam content set (role/group/serviceAccount/user/accessBinding) so a bounded
 // owner `*.*` rule forward-materializes per-object admin on iam-native content.
-func (s *reconcileStore) iamDirectQuery(ctx context.Context, types []string, mode string, ids []string) ([]domain.MirrorObject, error) {
+//
+// The ANCHOR mode ("") pushes the binding's containment `scope` into the SQL WHERE as a
+// PROVEN SUPERSET of the IsContainedIn re-verify (SAME parent-scope expressions the SELECT
+// projects), so the anchor arm receives O(scope) iam rows, not every row of the type. The
+// NAMES mode ("ids") is LEFT UNSCOPED: it is already narrow (specific ids) and a foreign-scope
+// id-match is a WANTED REJECTED-containment audit signal, so the reconciler must still see it.
+func (s *reconcileStore) iamDirectQuery(ctx context.Context, types []string, mode string, ids []string, scope domain.ScopeAnchor) ([]domain.MirrorObject, error) {
 	if len(types) == 0 {
 		return nil, nil
 	}
@@ -304,7 +338,15 @@ func (s *reconcileStore) iamDirectQuery(ctx context.Context, types []string, mod
 		if mode == "ids" {
 			rows, err = s.tx.Query(ctx, q+" WHERE o.id = ANY($1) ORDER BY o.id ASC", ids)
 		} else {
-			rows, err = s.tx.Query(ctx, q+" ORDER BY o.id ASC")
+			// ANCHOR: narrow to scope via the SAME parent-scope expression IsContainedIn is
+			// fed (project → parentProjectExpr; account → parentAccountExpr; cluster/unknown →
+			// no narrowing, Go re-verify stays authoritative). Guaranteed superset.
+			scopeClause, scopeArg := iamDirectScopePredicate(spec, scope)
+			if scopeClause != "" {
+				rows, err = s.tx.Query(ctx, q+" WHERE "+scopeClause+" ORDER BY o.id ASC", scopeArg)
+			} else {
+				rows, err = s.tx.Query(ctx, q+" ORDER BY o.id ASC")
+			}
 		}
 		if err != nil {
 			return nil, fmt.Errorf("reconcile: iam-direct %s %s: %w", spec.objectType, mode, err)
