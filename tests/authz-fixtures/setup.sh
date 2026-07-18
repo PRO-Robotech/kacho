@@ -130,6 +130,26 @@ JWT_INV=$(echo "$JWTS" | python3 -c 'import json,sys; print(json.load(sys.stdin)
 # required_acr_min (RFC 9470), e.g. SAKeyService.Issue/Revoke.
 JWT_AAA_STEPUP=$(echo "$JWTS" | python3 -c 'import json,sys; print(json.load(sys.stdin)["jwtAccountAdminAStepUp"])')
 
+# kacho-iam#276 — DEDICATED never-granted leak-guard subject.
+#
+# `jwtNoBindings`/`userNOBId` is used DOUBLY: (a) as a grant-TARGET — the iam
+# access-binding CRUD suites (IAM-ACB-CR-*, iam-flat-authz-vbc, iam-rbac-scope-grant,
+# iam-authz-grant-check-propagation, iam-role, the authz-deny matrix) genuinely grant
+# userNOB a `view` role on account-A/-B for the duration of their run (that IS their
+# test); and (b) as a leak-guard VICTIM — the vpc/compute/iam-user "must see NOTHING"
+# scope-filter probes read NOB expecting an empty result. Under the PARALLEL newman
+# fan-out the granters' grant window overlaps the victims' reads → NOB is transiently
+# authorized via account→project containment → false leak (`expected 1 to equal 0`).
+#
+# Fix (kacho-iam#276): the see-nothing leak-guards read THIS subject instead — a real,
+# authenticated user with NO account membership that NO suite EVER grants (setup.sh
+# 4b-cleanup only touches userNOB; every ensure_binding/AddMember below targets other
+# principals). Guaranteed binding-free → the guards stay strict (sees 0 → PASS; sees
+# anything → a GENUINE over-grant still FAILS honestly, no whitelist, no retry-mask).
+# Minted the same way as the bulk subjects (HS256 dev JWT, sub = external_id).
+JWT_PURE_NOB=$(python3 "$SCRIPT_DIR/setup-jwt.py" --secret "$DEV_SECRET" \
+  --sub "auth-test-pure-no-bindings@example.com" --exp-hours "$EXP_HOURS")
+
 # Helper: curl with bearer; prints body to stdout.
 api() {
   local method="$1" path="$2" token="${3:-}" body="${4:-}"
@@ -213,18 +233,21 @@ upsert_user_grpc() {
 
 USER_BOOT=$(upsert_user_grpc "admin@prorobotech.ru"                  "admin@prorobotech.ru"                  "Bootstrap Admin")
 USER_NOB=$(upsert_user_grpc "auth-test-no-bindings@example.com"     "auth-test-no-bindings@example.com"     "AuthZ NoBindings")
+# kacho-iam#276 pure leak-guard subject — authenticated, NO membership, NEVER granted
+# by any suite (distinct from userNOB which the access-binding suites do grant).
+USER_PURE_NOB=$(upsert_user_grpc "auth-test-pure-no-bindings@example.com" "auth-test-pure-no-bindings@example.com" "AuthZ PureNoBindings")
 USER_PA1=$(upsert_user_grpc "auth-test-proj-admin-a1@example.com"   "auth-test-proj-admin-a1@example.com"   "AuthZ ProjAdminA1")
 USER_AAA=$(upsert_user_grpc "auth-test-account-admin-a@example.com" "auth-test-account-admin-a@example.com" "AuthZ AccountAdminA")
 USER_AAB=$(upsert_user_grpc "auth-test-account-admin-b@example.com" "auth-test-account-admin-b@example.com" "AuthZ AccountAdminB")
 USER_INV=$(upsert_user_grpc "auth-test-invitee@example.com"         "auth-test-invitee@example.com"         "AuthZ Invitee")
-log "    users: BOOT=$USER_BOOT NOB=$USER_NOB PA1=$USER_PA1 AAA=$USER_AAA AAB=$USER_AAB INV=$USER_INV"
+log "    users: BOOT=$USER_BOOT NOB=$USER_NOB PURE_NOB=$USER_PURE_NOB PA1=$USER_PA1 AAA=$USER_AAA AAB=$USER_AAB INV=$USER_INV"
 
 # Fail-fast — a missing user id (grpcurl could not reach kacho-iam-internal, or
 # UpsertFromIdentity/LookupSubject errored) silently cascades into empty
 # subjectId on every AccessBinding and a stack that "passes" with the wrong
 # authz state. Surface it here with an actionable message instead of producing
 # a misleading newman run.
-for _pair in "BOOT:$USER_BOOT" "NOB:$USER_NOB" "PA1:$USER_PA1" \
+for _pair in "BOOT:$USER_BOOT" "NOB:$USER_NOB" "PURE_NOB:$USER_PURE_NOB" "PA1:$USER_PA1" \
              "AAA:$USER_AAA" "AAB:$USER_AAB" "INV:$USER_INV"; do
   if [ -z "${_pair#*:}" ]; then
     echo "[setup] FATAL: user ${_pair%%:*} resolved to an empty id — UpsertFromIdentity/LookupSubject failed." >&2
@@ -982,6 +1005,7 @@ cat > "$OUT_DIR/authz-fixtures.json" <<EOF
   "baseUrl": "$BASE_URL",
   "jwtBootstrap": "$JWT_BOOTSTRAP",
   "jwtNoBindings": "$JWT_NO_BINDINGS",
+  "jwtPureNoBindings": "$JWT_PURE_NOB",
   "jwtProjectAdminA1": "$JWT_PA1",
   "jwtAccountAdminA": "$JWT_AAA",
   "jwtAccountAdminAStepUp": "$JWT_AAA_STEPUP",
@@ -995,6 +1019,7 @@ cat > "$OUT_DIR/authz-fixtures.json" <<EOF
   "seedNetworkA1Id": "$SEED_NET_A1",
   "seedNetworkB1Id": "$SEED_NET_B1",
   "userNOBId": "$USER_NOB",
+  "userPureNoBindingsId": "$USER_PURE_NOB",
   "userPA1Id": "$USER_PA1",
   "userAAAId": "$USER_AAA",
   "userAABId": "$USER_AAB",

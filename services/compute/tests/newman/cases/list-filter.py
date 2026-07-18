@@ -99,14 +99,14 @@ CASES.append(Case(
 # заголовков. До фикса subject="" → bypass-all → List возвращал ВСЕ объекты
 # проекта мимо list-authz (existence+metadata leak).
 #
-# Проверка: jwtNoBindings — аутентифицированный субъект БЕЗ грантов в project-A1.
+# Проверка: jwtPureNoBindings — аутентифицированный субъект БЕЗ грантов в project-A1.
 # Его List project-A1 обязан быть пустым (fail-closed), а instance, созданный
 # PA1, не должен в нём появиться. RED при subject-source bug (bypass-all утекал
 # instance), GREEN после фикса (principal-based subject → пустой allow-list).
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="LF-INST-LST-OVERSHOW-LEAK-GUARD",
-    title="[leak] jwtNoBindings List project-A1 → instance PA1 не виден (subject из principal, fail-closed)",
+    title="[leak] jwtPureNoBindings List project-A1 → instance PA1 не виден (subject из principal, fail-closed)",
     classes=["AUTHZ", "NEG", "LST"], priority="P0",
     steps=[
         Step(name="create-a1-pa1", method="POST", path=INSTANCES,
@@ -120,26 +120,21 @@ CASES.append(Case(
         # allow-list) → MUST NOT leak the PA1 instance. A non-empty result here
         # is the over-show leak.
         #
-        # PARALLEL-load caveat (read-your-writes ON REVOKE): jwtNoBindings is a SHARED
-        # fixture subject. Under the parallel fan-out the iam access-binding suite creates
-        # a (userNOBId, ROLE_VIEW, account:accountAId) binding; via account→project
-        # containment that account-scoped viewer transiently makes project-A1 instances
-        # v_list-visible to NOB until that suite's revoke materializes (FGA tuple / list-
-        # authz negative-cache lag). That window (not a filter hole) flips this leak-guard.
-        # retry_until_absent retries SELF while the leak id is still present, FAIL-OPEN at the
-        # budget: a GENUINE over-show hole (the id never leaves NOB's list) still FAILS the
-        # assertion → the leak-guard is NOT masked. (Root fix is subject-isolation: a dedicated
-        # per-suite no-binding subject that no other suite grants — see RESULTS.md.)
-        retry_until_absent(
-            Step(name="list-a1-as-nobindings", method="GET",
-                 path=f"{INSTANCES}?projectId={{{{projectA1Id}}}}&pageSize=1000",
-                 auth="jwtNoBindings",
-                 test_script=[
-                     "pm.test('[leak] response is not a server error (fail-closed, not 5xx)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                     "const insts = (pm.response.json().instances) || [];",
-                     "pm.test('[leak] PA1 instance NOT leaked to a not-granted subject', () => pm.expect(insts.map(x=>x.id)).to.not.include(pm.environment.get('lfLeakInstanceId')));",
-                 ]),
-            "((pm.response.json().instances)||[]).map(x=>x.id).includes(pm.environment.get('lfLeakInstanceId'))"),
+        # kacho-iam#276 root-cause fix — this reads jwtPureNoBindings, a DEDICATED subject
+        # that NO suite EVER grants (setup.sh), instead of the doubly-used jwtNoBindings
+        # (which the iam access-binding suites grant `view@account-A`, so under the parallel
+        # fan-out account→project containment transiently made project-A1 instances
+        # v_list-visible to NOB → false leak). A guaranteed binding-free principal makes this
+        # a STRICT single-shot guard (no retry-mask): the PA1 instance MUST be absent — a
+        # GENUINE over-show hole still FAILS the assertion honestly.
+        Step(name="list-a1-as-pure-nob", method="GET",
+             path=f"{INSTANCES}?projectId={{{{projectA1Id}}}}&pageSize=1000",
+             auth="jwtPureNoBindings",
+             test_script=[
+                 "pm.test('[leak] response is not a server error (fail-closed, not 5xx)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "const insts = (pm.response.json().instances) || [];",
+                 "pm.test('[leak] PA1 instance NOT leaked to a never-granted subject', () => pm.expect(insts.map(x=>x.id)).to.not.include(pm.environment.get('lfLeakInstanceId')));",
+             ]),
         # cleanup as owner.
         Step(name="del-a1-leak", method="DELETE", path=f"{INSTANCES}/{{{{lfLeakInstanceId}}}}",
              auth="jwtProjectAdminA1",

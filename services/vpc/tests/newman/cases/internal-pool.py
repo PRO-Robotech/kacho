@@ -10,6 +10,19 @@ project. Тесты создают только runId-суффиксованны
 убирают за собой; seeded `default-{{zoneA}}` pool / `zone` region /
 `zone-{a,b,c,d}` zones НЕ трогаются.
 
+Parallel-safety (EXTERNAL_PUBLIC pool namespaces are GLOBAL, not project/zone-scoped):
+  * CIDR: address_pool_cidrs EXCLUDE is `(kind, block &&)` — cross-zone GLOBAL per-kind.
+    This suite therefore uses a DEDICATED v4 block (100.100.0.0/16) that does NOT
+    overlap the persistent nlb seed pool `kac-nlb-seed-ext-pool` (198.51.100.0/24,
+    seeded once by deploy/scripts/seed-nlb-fixtures.sh and live for the whole run) nor
+    the address suite's block (100.101.0.0/16). Reusing 198.51.100.0/24 here collided
+    with that seed under the parallel umbrella (nlb runs alongside vpc) → 400 overlap.
+  * is_default: address_pools_zone_kind_default_uniq is `(zone_id, kind) WHERE is_default`.
+    Only 3 geo zones exist (ru-central1-a/b/d), so zoneC≡zoneD (both = ru-central1-d).
+    The throwaway is_default pools this suite and the address suite create there share a
+    single partition; run.sh serial-collections.txt keeps internal-pool and address from
+    running concurrently so they never contend on it (→ 409 AlreadyExists otherwise).
+
 REST gateway body — camelCase JSON.
 """
 
@@ -440,11 +453,11 @@ CASES.append(Case(
         Step(name="cr-ds", method="POST", path=POOLS, internal=True,
              body={"name": "ipl-ds-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneC}}",
-                   "v4CidrBlocks": ["198.51.100.0/24"],
+                   "v4CidrBlocks": ["100.100.0.0/24"],
                    "v6CidrBlocks": ["2001:db8:1::/64"]},
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('v4CidrBlocks echoed', () => pm.expect(j.v4CidrBlocks).to.eql(['198.51.100.0/24']));",
+                          "pm.test('v4CidrBlocks echoed', () => pm.expect(j.v4CidrBlocks).to.eql(['100.100.0.0/24']));",
                           "pm.test('v6CidrBlocks echoed', () => pm.expect(j.v6CidrBlocks).to.eql(['2001:db8:1::/64']));",
                           *save_from_response("j.id", "iplDsId")]),
         Step(name="cleanup", method="DELETE", path=POOLS + "/{{iplDsId}}", internal=True,
@@ -488,16 +501,16 @@ CASES.append(Case(
         Step(name="cr-pool", method="POST", path=POOLS, internal=True,
              body={"name": "ipl-add-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneC}}",
-                   "v4CidrBlocks": ["198.51.100.0/24"], "v6CidrBlocks": []},
+                   "v4CidrBlocks": ["100.100.0.0/24"], "v6CidrBlocks": []},
              test_script=[*assert_status(200), *save_from_response("j.id", "addPoolId")]),
         Step(name="add-v4", method="POST", path=POOLS + "/{{addPoolId}}:addCidrBlocks", internal=True,
              body={"v4CidrBlocks": ["203.0.113.0/24"]},
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('both v4 cidrs present', () => pm.expect(j.v4CidrBlocks).to.have.members(['198.51.100.0/24','203.0.113.0/24']));"]),
+                          "pm.test('both v4 cidrs present', () => pm.expect(j.v4CidrBlocks).to.have.members(['100.100.0.0/24','203.0.113.0/24']));"]),
         Step(name="verify", method="GET", path=POOLS + "/{{addPoolId}}", internal=True,
              test_script=[*assert_status(200),
-                          "pm.test('v4 persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.have.members(['198.51.100.0/24','203.0.113.0/24']));"]),
+                          "pm.test('v4 persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.have.members(['100.100.0.0/24','203.0.113.0/24']));"]),
         # Дедуп: повторный add того же блока — состав не меняется.
         Step(name="add-dup", method="POST", path=POOLS + "/{{addPoolId}}:addCidrBlocks", internal=True,
              body={"v4CidrBlocks": ["203.0.113.0/24"]},
@@ -516,19 +529,19 @@ CASES.append(Case(
         Step(name="cr-pool", method="POST", path=POOLS, internal=True,
              body={"name": "ipl-rm-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneC}}",
-                   "v4CidrBlocks": ["198.51.100.0/24", "203.0.113.0/24"], "v6CidrBlocks": []},
+                   "v4CidrBlocks": ["100.100.0.0/24", "203.0.113.0/24"], "v6CidrBlocks": []},
              test_script=[*assert_status(200), *save_from_response("j.id", "rmPoolId")]),
         Step(name="remove-v4", method="POST", path=POOLS + "/{{rmPoolId}}:removeCidrBlocks", internal=True,
              body={"v4CidrBlocks": ["203.0.113.0/24"]},
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('only first cidr remains', () => pm.expect(j.v4CidrBlocks).to.eql(['198.51.100.0/24']));"]),
+                          "pm.test('only first cidr remains', () => pm.expect(j.v4CidrBlocks).to.eql(['100.100.0.0/24']));"]),
         Step(name="verify", method="GET", path=POOLS + "/{{rmPoolId}}", internal=True,
              test_script=[*assert_status(200),
-                          "pm.test('removal persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.eql(['198.51.100.0/24']));"]),
+                          "pm.test('removal persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.eql(['100.100.0.0/24']));"]),
         # Удаление последнего CIDR → 400 (пул не может стать пустым).
         Step(name="remove-last", method="POST", path=POOLS + "/{{rmPoolId}}:removeCidrBlocks", internal=True,
-             body={"v4CidrBlocks": ["198.51.100.0/24"]},
+             body={"v4CidrBlocks": ["100.100.0.0/24"]},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('message mentions empty after removal', () => pm.expect(String(pm.response.json().message || '')).to.match(/both empty|must not be both empty/i));"]),
         Step(name="cleanup", method="DELETE", path=POOLS + "/{{rmPoolId}}", internal=True,
@@ -547,7 +560,7 @@ CASES.append(Case(
         Step(name="cr-pool", method="POST", path=POOLS, internal=True,
              body={"name": "ipl-rm-inuse-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
-                   "v4CidrBlocks": ["198.51.100.0/24", "203.0.113.0/24"],
+                   "v4CidrBlocks": ["100.100.0.0/24", "203.0.113.0/24"],
                    "isDefault": True},
              test_script=[*assert_status(200), *save_from_response("j.id", "rmInUsePoolId")]),
         Step(name="cr-addr", method="POST", path="/vpc/v1/addresses",
@@ -566,7 +579,7 @@ CASES.append(Case(
                           "const ip = ((op.response||{}).externalIpv4Address||{}).address || '';",
                           "pm.test('allocated ip present', () => pm.expect(ip).to.be.a('string').and.not.empty);",
                           # Запомним, в какой CIDR попал IP — его и попытаемся удалить.
-                          "pm.environment.set('rmInUseCidr', ip.indexOf('198.51.100.') === 0 ? '198.51.100.0/24' : '203.0.113.0/24');"]),
+                          "pm.environment.set('rmInUseCidr', ip.indexOf('100.100.0.') === 0 ? '100.100.0.0/24' : '203.0.113.0/24');"]),
         Step(name="remove-inuse", method="POST", path=POOLS + "/{{rmInUsePoolId}}:removeCidrBlocks", internal=True,
              body={"v4CidrBlocks": ["{{rmInUseCidr}}"]},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
@@ -709,7 +722,7 @@ CASES.append(Case(
         Step(name="cr-ds-pool", method="POST", path=POOLS, internal=True,
              body={"name": "ipl-ds-resolve-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
-                   "v4CidrBlocks": ["198.51.100.0/24"],
+                   "v4CidrBlocks": ["100.100.0.0/24"],
                    "v6CidrBlocks": ["2001:db8:ff::/64"],
                    "isDefault": True},
              test_script=[*assert_status(200), *save_from_response("j.id", "dsPoolId")]),
@@ -732,7 +745,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const op = pm.response.json();",
                           "pm.test('v4 alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
-                          "pm.test('v4 IP in pool v4 cidr', () => pm.expect(((op.response||{}).externalIpv4Address||{}).address || '').to.match(/^198\\.51\\.100\\./));"]),
+                          "pm.test('v4 IP in pool v4 cidr', () => pm.expect(((op.response||{}).externalIpv4Address||{}).address || '').to.match(/^100\\.100\\.0\\./));"]),
         # Allocate v6.
         Step(name="cr-addr-v6", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}", "name": "ipl-ds-v6-{{runId}}",
@@ -823,7 +836,7 @@ CASES.append(Case(
         Step(name="cr-pool", method="POST", path=POOLS, internal=True,
              body={"name": "ipl-exh-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneC}}",
-                   "v4CidrBlocks": ["198.51.100.252/30"], "v6CidrBlocks": [],
+                   "v4CidrBlocks": ["100.100.0.252/30"], "v6CidrBlocks": [],
                    "isDefault": True},
              test_script=[*assert_status(200), *save_from_response("j.id", "exhPoolId")]),
         # 3. Bind network → pool (проверяет bind/unbind-контракт; на резолв external

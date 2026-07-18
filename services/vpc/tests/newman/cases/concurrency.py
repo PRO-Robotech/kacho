@@ -190,12 +190,29 @@ CASES.append(Case(
                 "setTimeout(() => {", "}, 100);",
                 "const results = JSON.parse(pm.environment.get('burstResults') || '[]');",
                 "pm.test('all 3 burst responses captured', () => pm.expect(results.length).to.eql(3));",
-                "// Все 3 sync-ответа 200 (Operation создается для каждого; race решается в worker'е).",
-                "pm.test('all 3 sync-200 (Operation envelope)', () => results.forEach(r => pm.expect(r.code, JSON.stringify(r)).to.eql(200)));",
-                "// Соберем opIds и заполним в env через цикл sendRequest poll.",
-                "const opIds = results.map(r => r.body && r.body.id).filter(Boolean);",
+                # Subnet.Create держит ДВА уровня overlap-защиты: sync fail-fast
+                # pre-check (checkSubnetCIDROverlap, Reader-TX — subnet/create.go) И
+                # атомарный DB-EXCLUDE backstop (subnets_no_overlap_v4) в async worker'е.
+                # Под burst'ом эти два уровня РЕЙСЯТ: если проигравший create стартует
+                # ПОСЛЕ того как победитель уже закоммитил row, его sync pre-check ловит
+                # overlap ПЕРВЫМ → sync 400 (code 9 «Subnet CIDRs can not overlap»), и
+                # Operation для него не создаётся. Если все три прошли sync-check до
+                # первого commit'а — все получают Operation (200), а overlap решает
+                # EXCLUDE в worker'е (async op-error). ОБА исхода легитимны и НИКОГДА не
+                # INTERNAL. (Раньше кейс требовал строго «все 3 → 200 async», что ложно
+                # краснело под параллельной нагрузкой, когда pre-check выигрывал гонку.)
+                "pm.test('each response is 200 (op) OR 400 sync-overlap-reject — never INTERNAL', () => results.forEach(r => {",
+                "  if (r.code === 200) return;",
+                "  pm.expect(r.code, JSON.stringify(r)).to.eql(400);",
+                "  pm.expect(r.body && r.body.code, JSON.stringify(r)).to.eql(9);",
+                "  pm.expect(String((r.body && r.body.message) || ''), JSON.stringify(r)).to.match(/can not overlap/i);",
+                "}));",
+                "const opIds = results.filter(r => r.code === 200).map(r => r.body && r.body.id).filter(Boolean);",
+                "const syncRejects = results.filter(r => r.code === 400).length;",
                 "pm.environment.set('burstOpIds', JSON.stringify(opIds));",
-                "pm.test('3 opIds collected', () => pm.expect(opIds.length).to.eql(3));",
+                "pm.environment.set('burstSyncRejects', String(syncRejects));",
+                # Каждый 200 несёт opId; каждый sync-400 — нет. Их сумма = 3.
+                "pm.test('opIds == 200-count (sync rejects carry no opId)', () => pm.expect(opIds.length).to.eql(3 - syncRejects));",
             ],
         ),
         Step(
@@ -233,22 +250,29 @@ CASES.append(Case(
             name="assert-distribution", method="GET", path="/healthz",
             test_script=[
                 "const ops = JSON.parse(pm.environment.get('burstOpsResolved') || '[]');",
-                "pm.test('all 3 ops resolved (done=true)', () => {",
-                "  pm.expect(ops.length).to.eql(3);",
+                "const syncRejects = parseInt(pm.environment.get('burstSyncRejects') || '0', 10);",
+                # Резолвятся все Operation'ы, которые были СОЗДАНЫ (== число 200-ответов).
+                "pm.test('all created ops resolved (done=true)', () => {",
+                "  pm.expect(ops.length).to.eql(3 - syncRejects);",
                 "  ops.forEach(o => pm.expect(o.done, JSON.stringify(o)).to.eql(true));",
                 "});",
                 "const ok = ops.filter(o => !o.hasError).length;",
-                "const failed = ops.filter(o => o.hasError).length;",
-                "pm.test('exactly 1 succeeds + 2 fail (EXCLUDE constraint race-defense)', () => {",
-                "  pm.expect(ok, `ok=${ok} failed=${failed} ops=${JSON.stringify(ops)}`).to.eql(1);",
-                "  pm.expect(failed).to.eql(2);",
+                "const opFailed = ops.filter(o => o.hasError).length;",
+                # Инвариант race-defense (EXCLUDE + sync pre-check): из 3 identical-CIDR
+                # create'ов РОВНО 1 выигрывает; остальные 2 проигрывают — каждый либо
+                # sync-reject (400), либо async op-error (9/10). Победителей == 1;
+                # проигравших (sync + async) == 2. Это НЕ ослабление EXCLUDE-контракта:
+                # ровно одна подсеть выживает независимо от того, где отсёкся проигравший.
+                "pm.test('exactly 1 winner + 2 losers (sync-reject OR async EXCLUDE)', () => {",
+                "  pm.expect(ok, `ok=${ok} opFailed=${opFailed} syncRejects=${syncRejects} ops=${JSON.stringify(ops)}`).to.eql(1);",
+                "  pm.expect(opFailed + syncRejects, `opFailed=${opFailed} syncRejects=${syncRejects}`).to.eql(2);",
                 "});",
-                # Проигравшие транзакции fail-closed одним из двух ЗАКОННЫХ кодов, но
+                # Проигравшие async-транзакции fail-closed одним из двух ЗАКОННЫХ кодов, но
                 # НИКОГДА INTERNAL(13): 9 (FailedPrecondition) — чистый 23P01
                 # exclusion_violation (проигравший увидел уже закоммиченный ряд), либо
                 # 10 (Aborted) — 40001/40P01 serialization/deadlock под gist-EXCLUDE
                 # burst'ом (retryable-конфликт, замаплен через ErrConflict, не INTERNAL).
-                "pm.test('failures: FailedPrecondition (9, overlap) or Aborted (10, retryable conflict) — never INTERNAL/13', () => {",
+                "pm.test('async failures: FailedPrecondition (9) or Aborted (10) — never INTERNAL/13', () => {",
                 "  const failedCodes = ops.filter(o => o.hasError).map(o => o.errCode);",
                 "  failedCodes.forEach(c => pm.expect(c, `code=${c}`).to.be.oneOf([9, 10]));",
                 "});",
@@ -261,6 +285,11 @@ CASES.append(Case(
             test_script=[
                 *assert_status(200),
                 "const subs = (pm.response.json().subnets || []);",
+                # Прямой behavioral-lock EXCLUDE-инварианта: сколько бы create'ов ни
+                # ушло, в сети НИКОГДА не переживают ДВЕ пересекающиеся подсети. (at.most
+                # вместо eql — read-your-writes лаг может кратко не показать победителя,
+                # но 2+ overlapping subnets = реальный провал EXCLUDE.)
+                "pm.test('never 2 overlapping subnets survive (EXCLUDE holds)', () => pm.expect(subs.length).to.be.at.most(1));",
                 "pm.environment.set('subToCleanupIds', JSON.stringify(subs.map(s => s.id)));",
             ],
         ),

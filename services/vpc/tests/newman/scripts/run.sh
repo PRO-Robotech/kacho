@@ -156,13 +156,38 @@ main() {
     done < <( { expected_stems; present_stems; } | sort -u )
   fi
 
-  # Параллельный прогон с cap=$JOBS. Каждая коллекция runId-scoped → safe.
+  # serial-collections.txt (optional, one stem per line, '#'-comments ok): коллекции,
+  # которые НЕЛЬЗЯ гонять одновременно ДРУГ С ДРУГОМ, потому что делят
+  # GLOBAL/semi-global backend-состояние, не изолируемое {{runId}}-суффиксом (напр.
+  # EXTERNAL_PUBLIC AddressPool: CIDR-EXCLUDE `(kind, block)` глобален, а
+  # is_default-partition `(zone_id, kind)` делится при zone-collapse — только 3 geo-зоны,
+  # zoneC≡zoneD). Такие коллекции гоняются ПОСЛЕ параллельного пула, строго по одной.
+  # Файла нет → поведение прежнее (весь набор параллельно). Прочие сервисы не затронуты.
+  local -a serial_list=()
+  if [[ -f "$NEWMAN_DIR/serial-collections.txt" ]]; then
+    local line
+    while IFS= read -r line; do
+      line="${line%%#*}"; line="${line//[[:space:]]/}"
+      [[ -n "$line" ]] && serial_list+=("$line")
+    done < "$NEWMAN_DIR/serial-collections.txt"
+  fi
+  _is_serial() { local x; for x in "${serial_list[@]:-}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
+
+  # Параллельный прогон с cap=$JOBS: все коллекции, КРОМЕ serial-listed. Каждая
+  # runId-scoped → safe.
   local svc
+  local -a deferred=()
   for svc in "${stems[@]}"; do
+    if [[ -n "${SERVICE:-}" ]]; then :; elif _is_serial "$svc"; then deferred+=("$svc"); continue; fi
     while [[ "$(jobs -rp | wc -l)" -ge "$JOBS" ]]; do wait -n; done
     run_one "$svc" &
   done
   wait
+  # serial-listed коллекции — строго по одной (не конкурируют ни между собой, ни с пулом).
+  for svc in "${deferred[@]:-}"; do
+    [[ -n "$svc" ]] || continue
+    run_one "$svc"
+  done
 
   echo
   echo "===== Summary ====="

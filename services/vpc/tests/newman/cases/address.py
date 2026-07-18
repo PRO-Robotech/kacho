@@ -26,12 +26,21 @@ def _make_net_sub(suffix="a", cidr="10.100.0.0/24"):
 
 
 def _cleanup_sub_net():
+    # cleanup-sub/net — первый пост-create доступ к СВОЕМУ ресурсу: под параллельной
+    # нагрузкой owner-tuple ещё материализуется → transient 403 (authz-first). Обёрнуто
+    # в retry_until_authorized(retry_on=403) (санкц. паттерн, ср. concurrency.py): без
+    # него cleanup-sub 403 → subnet не удаляется → cleanup-net 400 "network not empty"
+    # (child-leaked каскад). Ретрай доводит subnet до удаления → net delete 200.
     return [
-        Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(
+            name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId")],
+        ), retry_on=(403,)),
         poll_operation_until_done(),
-        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(
+            name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId")],
+        ), retry_on=(403,)),
     ]
 
 
@@ -595,10 +604,18 @@ CASES.append(conformance_lifecycle_pack("ADR", "/vpc/v1/addresses",
 # = try pop released SKIP LOCKED → fallback bump cursor; ip = pool_base + offset.
 # Эти кейсы — black-box проверка через api-gateway, не знают про SQL.
 #
-# Изоляция: каждый case создает свой v6-pool в отдельной zone (нет
-# seeded-default v4-pool там — не пересекается с ADR-CR-CRUD-EXT). Cleanup
-# в обратном порядке: address → pool. Pool DELETE проходит
-# (зависимостей через FK нет; ipv6_allocated_ips → address_pools CASCADE).
+# Изоляция: каждый case создает свой v6-pool в {{zoneD}} (нет seeded-default
+# v4-pool там — не пересекается с ADR-CR-CRUD-EXT). Cleanup в обратном порядке:
+# address → pool. Pool DELETE проходит (зависимостей через FK нет;
+# ipv6_allocated_ips → address_pools CASCADE).
+#
+# Parallel-safety: EXTERNAL_PUBLIC pool namespaces are GLOBAL. The v4 fall-through
+# pool below uses the address-suite block 100.101.0.0/16 (NOT the nlb seed's
+# 198.51.100.0/24, live for the whole umbrella run, nor the internal-pool suite's
+# 100.100.0.0/16). Only 3 geo zones exist so {{zoneD}}≡{{zoneC}}≡ru-central1-d;
+# the is_default pools here therefore share ONE (zone,kind) partition with the
+# internal-pool suite → run.sh serial-collections.txt keeps the two collections
+# from running concurrently (else 409 AlreadyExists on the default partition).
 
 POOLS = "/vpc/v1/addressPools"
 ADDRS = "/vpc/v1/addresses"
@@ -820,7 +837,12 @@ CASES.append(Case(
              auth="jwtBootstrap",  # InternalAddressPoolService — system_admin gated
              body={"name": "adr-falv6-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
-                   "v4CidrBlocks": ["198.51.100.0/24"], "v6CidrBlocks": [],
+                   # Dedicated address-suite v4 block (100.101.0.0/16): the
+                   # address_pool_cidrs EXCLUDE is GLOBAL per-kind, so this must not
+                   # overlap the persistent nlb seed pool (198.51.100.0/24) nor the
+                   # internal-pool suite's block (100.100.0.0/16). See address.py
+                   # header note + internal-pool.py parallel-safety docstring.
+                   "v4CidrBlocks": ["100.101.0.0/24"], "v6CidrBlocks": [],
                    "isDefault": True},
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "falV6PoolId")]),
