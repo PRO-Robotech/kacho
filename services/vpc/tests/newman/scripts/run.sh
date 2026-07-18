@@ -124,7 +124,7 @@ main() {
   SERVICE=""
   BAIL=""
   DELAY="15"
-  JOBS="1"
+  JOBS="4"
   EXTRA=()
 
   while [[ $# -gt 0 ]]; do
