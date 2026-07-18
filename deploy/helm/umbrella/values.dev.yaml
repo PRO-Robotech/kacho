@@ -953,7 +953,15 @@ kratos-selfservice-ui:
 # с postgres работает заявленный replicaCount.
 openfga:
   enabled: true
-  replicaCount: 2
+  # replicaCount=1 в dev/newman (было 2): 2 реплики над shared-PG дают read-after-write
+  # replica-lag — write owner-tuple идёт на одну реплику, а enforcement-Check (default
+  # MINIMIZE_LATENCY consistency) может прочитать другую (stale) → флейки-403 на
+  # immediate-mutate СВОЕГО свежесозданного ресурса, хотя tuple записан синхронно
+  # (sync-registrar). Это корень eventual-consistency-флейка e2e-newman под CI-нагрузкой
+  # (падающие суиты перемещались между прогонами). Single replica = write+read один
+  # инстанс → нет replica-lag → owner-tuple виден сразу. Prod (values.*-prod) держит
+  # replicaCount>1 для HA (там HIGHER_CONSISTENCY на confirm-путях + больше запас).
+  replicaCount: 1
   datastore:
     engine: postgres
     uri: postgres://openfga:changeme-dev-openfga@kacho-umbrella-pg-openfga:5432/openfga?sslmode=disable
