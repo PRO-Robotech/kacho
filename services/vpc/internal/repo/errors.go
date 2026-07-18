@@ -30,6 +30,10 @@ var ErrFailedPrecondition = helpers.ErrFailedPrecondition
 // на gRPC Internal с фиксированным сообщением, чтобы не leak'ать pgx-текст.
 var ErrInternal = helpers.ErrInternal
 
+// ErrConflict — retryable concurrency-конфликт (SQLSTATE 40001/40P01). Маппится
+// на gRPC Aborted (retryable) с фиксированным текстом, а не INTERNAL.
+var ErrConflict = helpers.ErrConflict
+
 // ErrPoolNotResolved — ни один шаг IPAM cascade не дал результат.
 var ErrPoolNotResolved = helpers.ErrPoolNotResolved
 

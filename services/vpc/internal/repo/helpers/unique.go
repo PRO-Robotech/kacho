@@ -114,6 +114,25 @@ func IsCheckViolation(err error) bool {
 	return strings.Contains(s, "23514") || strings.Contains(s, "check constraint")
 }
 
+// IsSerializationConflict — PG SQLSTATE 40001 (serialization_failure) или 40P01
+// (deadlock_detected). Возникает под конкурентной записью на EXCLUDE/gist- или
+// UNIQUE-constraint (напр. 3 параллельных Subnet.Create одного CIDR: Postgres
+// может выдать deadlock при взаимной проверке gist-диапазонов вместо чистого
+// 23P01). Retryable-класс → маппится в gRPC Aborted (не INTERNAL): клиент по
+// контракту может безопасно повторить транзакцию.
+func IsSerializationConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "40001" || pgErr.Code == "40P01"
+	}
+	s := err.Error()
+	return strings.Contains(s, "40001") || strings.Contains(s, "40P01") ||
+		strings.Contains(s, "deadlock detected") || strings.Contains(s, "could not serialize")
+}
+
 // resourceKindText маппит camelCase Go-имя ресурса в текст для error-message
 // "invalid <kind> id 'X'": snake_case для многословных kind-ов (route_table),
 // single-word для остального.
@@ -174,8 +193,15 @@ func WrapPgErr(err error, kind, id string) error {
 	if IsExclusionViolation(err) {
 		return fmt.Errorf("%w: value conflicts with existing %s", ErrFailedPrecondition, kind)
 	}
-	// Неклассифицированный класс (напр. 40001 serialization_failure, 40P01
-	// deadlock, 57014 statement_timeout, connection reset). Клиент по контракту
+	// Retryable concurrency-конфликт (40001 serialization_failure / 40P01 deadlock):
+	// под burst-нагрузкой на EXCLUDE/gist-constraint проигравшая транзакция может
+	// получить deadlock вместо чистого 23P01 → gRPC Aborted (retryable), не INTERNAL.
+	// Root-cause сохраняем в цепочке для server-side логов (как ErrInternal ниже).
+	if IsSerializationConflict(err) {
+		return fmt.Errorf("%w: %v", ErrConflict, err)
+	}
+	// Неклассифицированный класс (напр. 57014 statement_timeout, connection reset).
+	// Клиент по контракту
 	// получит фиксированный INTERNAL (serviceerr сворачивает ErrInternal-ветку в
 	// "internal database error", no-leak), но root-cause сохраняем в цепочке для
 	// server-side логов оператора — иначе SQLSTATE/constraint/detail теряются
