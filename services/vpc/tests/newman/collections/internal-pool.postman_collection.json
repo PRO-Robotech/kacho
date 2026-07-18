@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "c1966f74-717b-4d81-adbf-b94cf02ba44d",
+    "_postman_id": "f2776a8d-bc12-48a2-aa7e-e0fb69aff6e5",
     "name": "kacho-vpc / newman / internal-pool",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1888,7 +1888,7 @@
           ]
         },
         {
-          "name": "bind-rya237",
+          "name": "bind-rya415",
           "request": {
             "method": "POST",
             "header": [
@@ -3168,7 +3168,7 @@
           ]
         },
         {
-          "name": "get-addr-rya238",
+          "name": "get-addr-rya416",
           "request": {
             "method": "GET",
             "header": [
@@ -4066,7 +4066,7 @@
           ]
         },
         {
-          "name": "bind-rya239",
+          "name": "bind-rya417",
           "request": {
             "method": "POST",
             "header": [
@@ -4585,7 +4585,7 @@
           ]
         },
         {
-          "name": "get-v4-rya240",
+          "name": "get-v4-rya418",
           "request": {
             "method": "GET",
             "header": [
@@ -4740,7 +4740,7 @@
           ]
         },
         {
-          "name": "get-v6",
+          "name": "get-v6-rya419",
           "request": {
             "method": "GET",
             "header": [
@@ -4768,6 +4768,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('v6 IP in pool v6 prefix', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:ff:/));"
                 ]
@@ -5149,7 +5164,7 @@
           ]
         },
         {
-          "name": "bind-rya241",
+          "name": "bind-rya420",
           "request": {
             "method": "POST",
             "header": [
@@ -5529,7 +5544,7 @@
           ]
         },
         {
-          "name": "bind-rya242",
+          "name": "bind-rya421",
           "request": {
             "method": "POST",
             "header": [

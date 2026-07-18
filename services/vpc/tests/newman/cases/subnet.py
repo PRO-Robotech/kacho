@@ -28,9 +28,14 @@ def _cleanup_net():
 def _cleanup_net_lenient():
     # См. route-table.py::_cleanup_net_lenient — wrap'нутый Create мог пройти permissive'но
     # (subnet создан) → DELETE сети блокируется FK RESTRICT (400). Оба исхода ОК.
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                             *save_from_response("j.id", "opId")])
+    # retry_on=(403,): DELETE своей свежей сети может краснеть 403, пока owner-tuple
+    # материализуется (eventual-consistency после opgate) — ретраим ТОЛЬКО этот транзиент;
+    # 200/400 — терминальны, 404 не крутим (сеть не удаляется дважды в этих кейсах).
+    return retry_until_authorized(
+        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                          *save_from_response("j.id", "opId")]),
+        retry_on=(403,))
 
 
 # ---------------------------------------------------------------------------
@@ -517,9 +522,9 @@ CASES.append(Case(
              body={"v4CidrBlocks": ["10.60.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
+        retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('has both cidrs', () => { const c = pm.response.json().v4CidrBlocks; pm.expect(c).to.include('10.60.0.0/24'); pm.expect(c).to.include('10.60.1.0/24'); });"]),
+                          "pm.test('has both cidrs', () => { const c = pm.response.json().v4CidrBlocks; pm.expect(c).to.include('10.60.0.0/24'); pm.expect(c).to.include('10.60.1.0/24'); });"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1244,6 +1249,14 @@ def _subnet_cidr_setup_teardown(case):
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.subnetId", "addedSubId")]),
             poll_operation_until_done(),
+            # Settle-barrier: block until the fresh subnet's read-tuple is visible
+            # (owner/viewer FGA tuple materialises eventually after opgate removal) so
+            # the pack's own reads of {{addedSubId}} (verify-*/state-*) never race the
+            # visibility window with a hide-existence 404. retry_until_authorized retries
+            # SELF on 403/404 then fails for real if it never converges (not masked).
+            retry_until_authorized(Step(name="settle-added-sub", method="GET",
+                 path="/vpc/v1/subnets/{{addedSubId}}",
+                 test_script=[*assert_status(200)])),
             *case.steps,
             Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{addedSubId}}",
                  test_script=[*save_from_response("j.id", "opId")]),
@@ -1284,9 +1297,9 @@ CASES.append(Case(
              body={"v6CidrBlocks": ["fd12:3456:789a::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
+        retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('v6 cidr present', () => pm.expect(pm.response.json().v6CidrBlocks).to.include('fd12:3456:789a::/64'));"]),
+                          "pm.test('v6 cidr present', () => pm.expect(pm.response.json().v6CidrBlocks).to.include('fd12:3456:789a::/64'));"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1311,9 +1324,9 @@ CASES.append(Case(
              body={"v6CidrBlocks": ["fd12:3456:789b::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
+        retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('v6 cidr removed', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.not.include('fd12:3456:789b::/64'));"]),
+                          "pm.test('v6 cidr removed', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.not.include('fd12:3456:789b::/64'));"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1460,13 +1473,13 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId3")]),
         poll_operation_until_done(),
-        Step(name="list-used", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+        retry_until_authorized(Step(name="list-used", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
                  "const used = j.addresses || [];",
                  "pm.test('ListUsedAddresses returns >= 3 entries (3 allocated)', () => pm.expect(used.length, JSON.stringify(used)).to.be.at.least(3));",
-             ]),
+             ])),
         Step(name="del-a1", method="DELETE", path="/vpc/v1/addresses/{{addrId1}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1507,11 +1520,11 @@ CASES.append(Case(
                               *save_from_response("j.metadata && j.metadata.addressId", f"addrId{i}")]),
             poll_operation_until_done(),
         ]],
-        Step(name="list-before-delete", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+        retry_until_authorized(Step(name="list-before-delete", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
              test_script=[
                  *assert_status(200),
                  "pm.environment.set('countBefore', String((pm.response.json().addresses || []).length));",
-             ]),
+             ])),
         # Delete middle 3 (indices 1, 2, 3).
         Step(name="del-1", method="DELETE", path="/vpc/v1/addresses/{{addrId1}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -1522,13 +1535,13 @@ CASES.append(Case(
         Step(name="del-3", method="DELETE", path="/vpc/v1/addresses/{{addrId3}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="list-after", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+        retry_until_authorized(Step(name="list-after", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
              test_script=[
                  *assert_status(200),
                  "const after = (pm.response.json().addresses || []).length;",
                  "const before = parseInt(pm.environment.get('countBefore') || '0', 10);",
                  "pm.test('count decreased by exactly 3', () => pm.expect(before - after, `before=${before} after=${after}`).to.eql(3));",
-             ]),
+             ])),
         Step(name="del-0", method="DELETE", path="/vpc/v1/addresses/{{addrId0}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

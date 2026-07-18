@@ -166,6 +166,9 @@ CASES.append(Case(
                         "({projectId: pm.environment.get('_suiteProjectId'), "
                         "networkId: pm.environment.get('netId'), "
                         "name: `conc-ov-sub-${pm.environment.get('runId')}-${i}`, "
+                        # placement_type обязателен (ZONAL|REGIONAL) — без него Create отвергается
+                        # sync 400 «placement_type is required» → нет Operation → burst-assert краснеет.
+                        "placementType: 'ZONAL', "
                         "zoneId: pm.environment.get('existingZoneId'), "
                         "v4CidrBlocks: ['10.250.40.0/24']})"
                     ),
@@ -371,7 +374,7 @@ CASES.append(Case(
                 "const items = JSON.parse(pm.environment.get('burstAddrCollected') || '[]');",
                 "pm.test('5 ops resolved', () => pm.expect(items.length).to.eql(5));",
                 "const ipv4s = items.filter(i => i.ipv4).map(i => i.ipv4);",
-                "pm.test('all alloc'd IPs are unique (no duplicate slot)', () => {",
+                "pm.test('all allocated IPs are unique (no duplicate slot)', () => {",
                 "  const unique = new Set(ipv4s);",
                 "  pm.expect(unique.size, `ipv4s=${JSON.stringify(ipv4s)}`).to.eql(ipv4s.length);",
                 "});",
@@ -562,10 +565,13 @@ CASES.append(Case(
             test_script=[
                 # Два параллельных UpdateRules: один добавляет rule A, другой — rule B,
                 # на одной и той же row → один из них должен fail на xmin-check.
+                # UpdateRules REST-контракт: PATCH /securityGroups/{id}/rules с телом
+                # {additionRuleSpecs:[...]} (НЕ POST :update-rules / {additions} — такого
+                # маршрута нет → 404, opId пуст, occResolved=[] → assert-occ краснел).
                 *_burst_block_js(
-                    2, "POST", "/vpc/v1/securityGroups/${pm.environment.get('sgId')}:update-rules",
+                    2, "PATCH", "/vpc/v1/securityGroups/${pm.environment.get('sgId')}/rules",
                     body_js=(
-                        "({additions: [{description: `conc-rule-${i}`, direction: 'EGRESS', "
+                        "({additionRuleSpecs: [{description: `conc-rule-${i}`, direction: 'EGRESS', "
                         "protocolName: 'ANY', cidrBlocks: {v4CidrBlocks: [`10.99.${i}.0/24`]}}]})"
                     ),
                 ),

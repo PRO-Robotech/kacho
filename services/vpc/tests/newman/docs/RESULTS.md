@@ -27,10 +27,11 @@
 > репозитория вместе с доменом Geography; покрытие Region/Zone — в сервисе compute. Цифры
 > в таблице выше — без него.
 
-**100% PASS, кроме 1 declared known-failing (rule #13)** — см. «Known failing tests —
-product bugs» ниже. Покрыты internal/admin-only IPAM RPC (`InternalAddressPoolService`) —
-kacho-only RPC проброшены через api-gateway cluster-internal mux, возвращают ресурсы
-напрямую (не Operation).
+**100% PASS, кроме declared known-failing (rule #13)** — см. «Known failing tests —
+product bugs» ниже (3 persistent-RED: `#27` + 2 SG-rule-target). Плюс отдельный
+under-investigation кластер IPAM-resolve (см. ниже). Покрыты internal/admin-only IPAM RPC
+(`InternalAddressPoolService`) — kacho-only RPC проброшены через api-gateway
+cluster-internal mux, возвращают ресурсы напрямую (не Operation).
 
 ## Known failing tests — product bugs (rule #13)
 
@@ -41,10 +42,23 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 | Case | Suite | Verifies | Что доказывает | Причина RED |
 |---|---|---|---|---|
 | `SG-DEL-NEG-NIC-ATTACHED` | security-group | [#27](https://github.com/PRO-Robotech/kacho-vpc/issues/27) | `SG.Delete` SG'а, прилинкованного к NIC через `security_group_ids[]`, обязана отвергаться `FAILED_PRECONDITION` (code 9) | Нет within-service refcheck на уровне БД (`network_interfaces.security_group_ids` — jsonb без FK/trigger; `securitygroup/delete.go` гардит только `DefaultForNetwork`; repo `Delete` безусловен) → SG удаляется, оставляя dangling ref. Фикс — DB-level BEFORE DELETE trigger (rule #10), отдельным behavioral-PR. |
+| `SG-NET-08-RULE-SAME-NETWORK-OK` | security-group | flagged → rpc-implementer (issue pending) | Правило с SG-target (`securityGroupId`) обязано отдаваться в `Get/List`-ответе SG (`rule.securityGroupId` == целевой SG) | `dto/toproto/security_group.go::securityGroup.toPb` мапит в `SecurityGroupRule.Target` **только** ветку `CidrBlocks`; ветки `SecurityGroupId` и `PredefinedTarget` (домен несёт `r.SecurityGroupID`/`r.PredefinedTarget`) не сериализуются → `Target=nil` → `rule.securityGroupId=undefined`. Signature: `expected [ undefined ] to include '<sgId>'`. Фикс (не в test-only PR, ban #13): добавить обе ветки в `toPb` + regression. |
+| `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` | security-group | flagged → rpc-implementer (issue pending) | То же через `UpdateRules` (PATCH `…/rules`): добавленное SG-target-правило видно в `Get` с `securityGroupId` | Та же прод-первопричина — `toPb` роняет `SecurityGroupId`/`PredefinedTarget` target. RED до прод-фикса `toPb`. |
 
 > До 2026-07-05 этот кейс маскировался условным `pm.test.skip` (assertion пропускался,
 > когда refcheck не срабатывал) → suite ложно зелёный. SEC-hardening r2 конвертировал
 > его в безусловный persistent-RED + issue #27 (rule #13).
+
+> **Под расследованием (flagged, НЕ замаскировано)** — кластер IPAM-resolve в `internal-pool`:
+> `IPL-ALLOC-POOL-EXHAUSTED` (`alloc-1/alloc-2` → Operation error `no address pool resolved
+> for address … (network , family=0)`), `IPL-RESOLVE-DUALSTACK-OK` (`get-v4/get-v6` → 404:
+> `cr-addr` Operation не резолвит case-local isDefault pool в throwaway-зоне), `IPL-RMCIDR-
+> NEG-INUSE` (`remove-inuse` текст `CIDR blocks not found` вместо `has allocated addresses`
+> — каскад от того же resolve-fail). Это НЕ read-your-writes / authz-ordering (детерминированная
+> Operation-ошибка резолва пула в throwaway-зонах zoneC/zoneD, вероятно зависит от количества
+> seeded geo-зон и/или порядка cleanup). Сигнатуры переданы rpc-implementer'у для доменного
+> разбора; кейсы не форс-гринятся и не whitelist'ятся масками. `get-v6` обёрнут в
+> `retry_until_authorized` (parity с `get-v4`), но GREEN требует резолва пула.
 
 > Деплоймент-замечание: suite требует `KACHO_VPC_DEFAULT_SG_INLINE=true`
 > (default) — `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` проверяют

@@ -725,9 +725,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "dsV6AddrId")]),
         poll_operation_until_done(),
-        Step(name="get-v6", method="GET", path="/vpc/v1/addresses/{{dsV6AddrId}}",
+        retry_until_authorized(Step(name="get-v6", method="GET", path="/vpc/v1/addresses/{{dsV6AddrId}}",
              test_script=[*assert_status(200),
-                          "pm.test('v6 IP in pool v6 prefix', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:ff:/));"]),
+                          "pm.test('v6 IP in pool v6 prefix', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:ff:/));"])),
         # Cleanup addresses → pool.
         Step(name="del-v4", method="DELETE", path="/vpc/v1/addresses/{{dsV4AddrId}}",
              test_script=[*save_from_response("j.id", "opId")]),

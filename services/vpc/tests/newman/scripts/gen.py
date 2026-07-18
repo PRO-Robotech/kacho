@@ -1758,7 +1758,10 @@ _POOL_SEED_BODY = {
 }
 
 # Collections that depend on a seeded default external pool.
-_POOL_SEED_SERVICES = {"internal-pool", "address"}
+# address-zone-coherence allocates an external v4 in existingZoneId (=zoneA) in its
+# ZONE-03 happy path; without the zoneA default pool the Create Operation errors
+# (no pool resolved) → the address never persists → get-known-zone 404s. Seed it.
+_POOL_SEED_SERVICES = {"internal-pool", "address", "address-zone-coherence"}
 
 
 def _pool_seed_item() -> Dict:
@@ -1841,6 +1844,7 @@ def load_cases_module(path: Path):
     mod.assert_operation_envelope = assert_operation_envelope
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_present = retry_until_present
     mod.crud_list_bva_block = crud_list_bva_block
     mod.conf_not_found_text = conf_not_found_text
     mod.state_update_unknown_mask = state_update_unknown_mask

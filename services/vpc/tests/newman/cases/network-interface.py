@@ -202,11 +202,12 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkInterfaceId", "nicId")]),
         poll_operation_until_done(),
-        Step(name="list", method="GET", path="/vpc/v1/networkInterfaces?projectId={{_suiteProjectId}}&pageSize=1000",
+        retry_until_present(Step(name="list", method="GET", path="/vpc/v1/networkInterfaces?projectId={{_suiteProjectId}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('networkInterfaces array', () => pm.expect(j.networkInterfaces || []).to.be.an('array'));",
                           "pm.test('created NIC present', () => pm.expect((j.networkInterfaces || []).map(n => n.id)).to.include(pm.environment.get('nicId')));"]),
+             "nicId"),
         # Unscoped list — gateway authz-first 403 (no path) ЛИБО backend 400. Оба =
         # «отклонено». См. assert_unscoped_rejected (gen.py).
         Step(name="list-no-project", method="GET", path="/vpc/v1/networkInterfaces",

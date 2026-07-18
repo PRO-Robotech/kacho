@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1b6f6552-3899-4d8e-97e6-8229484d8328",
+    "_postman_id": "62bdaefa-dad1-49a2-9fea-f04147e5de70",
     "name": "kacho-vpc / newman / network-interface",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -427,7 +427,7 @@
           ]
         },
         {
-          "name": "get-nic-rya243",
+          "name": "get-nic-rya425",
           "request": {
             "method": "GET",
             "header": [
@@ -1080,7 +1080,7 @@
           ]
         },
         {
-          "name": "get-nic-mac-rya244",
+          "name": "get-nic-mac-rya426",
           "request": {
             "method": "GET",
             "header": [
@@ -2733,7 +2733,7 @@
           ]
         },
         {
-          "name": "list",
+          "name": "list-lst427",
           "request": {
             "method": "GET",
             "header": [
@@ -2760,6 +2760,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('nicId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('networkInterfaces array', () => pm.expect(j.networkInterfaces || []).to.be.an('array'));",
@@ -3297,7 +3314,7 @@
           ]
         },
         {
-          "name": "get-net-for-sg-rya245",
+          "name": "get-net-for-sg-rya428",
           "request": {
             "method": "GET",
             "header": [
@@ -4186,7 +4203,7 @@
           ]
         },
         {
-          "name": "del-nic-rya246",
+          "name": "del-nic-rya429",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5003,7 +5020,7 @@
           ]
         },
         {
-          "name": "get-nic-rya247",
+          "name": "get-nic-rya430",
           "request": {
             "method": "GET",
             "header": [
@@ -5874,7 +5891,7 @@
           ]
         },
         {
-          "name": "get-nic-rya248",
+          "name": "get-nic-rya431",
           "request": {
             "method": "GET",
             "header": [
@@ -6849,7 +6866,7 @@
           ]
         },
         {
-          "name": "get-nic-rya249",
+          "name": "get-nic-rya432",
           "request": {
             "method": "GET",
             "header": [
@@ -8746,7 +8763,7 @@
           ]
         },
         {
-          "name": "get-nic-rya250",
+          "name": "get-nic-rya433",
           "request": {
             "method": "GET",
             "header": [
@@ -10260,7 +10277,7 @@
           ]
         },
         {
-          "name": "add-v6-cidr-rya251",
+          "name": "add-v6-cidr-rya434",
           "request": {
             "method": "POST",
             "header": [

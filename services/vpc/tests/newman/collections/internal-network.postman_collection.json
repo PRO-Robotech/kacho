@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "62c3cf68-c968-4d98-b9f1-d98e666983eb",
+    "_postman_id": "f98d0205-9527-4b06-a4fa-8a9c7378dce0",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -219,7 +219,7 @@
           ]
         },
         {
-          "name": "get-internal-rya235",
+          "name": "get-internal-rya412",
           "request": {
             "method": "GET",
             "header": [
@@ -487,7 +487,7 @@
           ]
         },
         {
-          "name": "list-no-vrfid",
+          "name": "list-no-vrfid-lst413",
           "request": {
             "method": "GET",
             "header": [
@@ -514,6 +514,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('createdNetworkId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 400) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const nets = pm.response.json().networks || [];",
                   "pm.test('list non-empty', () => pm.expect(nets.length).to.be.at.least(1));",
@@ -805,7 +822,7 @@
           ]
         },
         {
-          "name": "get-internal-before-rya236",
+          "name": "get-internal-before-rya414",
           "request": {
             "method": "GET",
             "header": [

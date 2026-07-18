@@ -24,9 +24,13 @@ def _cleanup_net():
 def _cleanup_net_lenient():
     # См. route-table.py::_cleanup_net_lenient — wrap'нутый Create мог пройти permissive'но
     # (ресурс создан) → DELETE сети блокируется FK RESTRICT (400). Оба исхода ОК.
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                             *save_from_response("j.id", "opId")])
+    # retry_on=(403,): DELETE своей свежей сети может краснеть 403, пока owner-tuple
+    # материализуется (eventual-consistency после opgate) — ретраим ТОЛЬКО этот транзиент.
+    return retry_until_authorized(
+        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                          *save_from_response("j.id", "opId")]),
+        retry_on=(403,))
 
 
 CASES.append(Case(
@@ -118,12 +122,13 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgBId")]),
         poll_operation_until_done(),
-        Step(name="list-by-network", method="GET",
+        retry_until_present(Step(name="list-by-network", method="GET",
              path="/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().securityGroups || []).map(s => s.id);",
                           "pm.test('SG in net-A present', () => pm.expect(ids).to.include(pm.environment.get('sgAId')));",
                           "pm.test('SG in net-B absent', () => pm.expect(ids).to.not.include(pm.environment.get('sgBId')));"]),
+             "sgAId"),
         Step(name="cleanup-sg-a", method="DELETE", path="/vpc/v1/securityGroups/{{sgAId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -225,9 +230,9 @@ CASES.append(Case(
              },
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="get-sg", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="get-sg", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('has 1 rule', () => pm.expect((pm.response.json().rules || []).length).to.be.at.least(1));"]),
+                          "pm.test('has 1 rule', () => pm.expect((pm.response.json().rules || []).length).to.be.at.least(1));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -816,9 +821,9 @@ CASES.append(Case(
         Step(name="patch-mask-network", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}",
              body={"updateMask": "network_id", "networkId": "{{netId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
-        Step(name="verify-unchanged", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="verify-unchanged", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('networkId unchanged', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"]),
+                          "pm.test('networkId unchanged', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -862,6 +867,14 @@ CASES.append(Case(
 
 
 # Create SG с SG-target rule на SG из той же сети → OK.
+# BUG(persistent-RED, flagged to rpc-implementer / go-style-reviewer): корректный тест
+# краснеет — GREEN требует прод-фикса. dto/toproto/security_group.go::securityGroup.toPb
+# мапит в SecurityGroupRule.Target ТОЛЬКО ветку CidrBlocks; ветки SecurityGroupId и
+# PredefinedTarget (домен несёт r.SecurityGroupID / r.PredefinedTarget) не сериализуются →
+# в Get/List-ответе SG-target-правило приходит с Target=nil → rule.securityGroupId=undefined.
+# Signature: `rule targets same-network SG :: expected [ undefined ] to include '<sgId>'`.
+# Fix (не в этом test-only PR, ban #13): добавить SecurityGroupRule_SecurityGroupId /
+# _PredefinedTarget ветки в toPb + regression на обе. Декларировано в docs/RESULTS.md.
 CASES.append(Case(
     # verifies SG-NET-08
     id="SG-NET-08-RULE-SAME-NETWORK-OK",
@@ -928,9 +941,9 @@ CASES.append(Case(
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('same-network text', () => pm.expect(pm.response.json().message).to.eql('security group rule can only reference a security group in the same network'));",
                           *assert_field_violation("addition_rule_specs[0].security_group_id")]),
-        Step(name="verify-no-rules", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="verify-no-rules", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('rules unchanged (none added)', () => pm.expect((pm.response.json().rules || []).length).to.eql(0));"]),
+                          "pm.test('rules unchanged (none added)', () => pm.expect((pm.response.json().rules || []).length).to.eql(0));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -944,6 +957,10 @@ CASES.append(Case(
 
 
 # UpdateRules добавляет SG-rule same-network → OK.
+# BUG(persistent-RED, flagged to rpc-implementer): та же прод-первопричина, что и SG-NET-08 —
+# dto/toproto/security_group.go::toPb роняет SecurityGroupId/PredefinedTarget target →
+# rule.securityGroupId=undefined в Get-ответе. Тест корректен, RED до прод-фикса toPb.
+# Signature: `rule targets same-network SG :: expected [ undefined ] to include '<sgId>'`.
 CASES.append(Case(
     # verifies SG-NET-09
     # Positive per-endpoint через UpdateRules: same-network SG-target → done.
