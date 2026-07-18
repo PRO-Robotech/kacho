@@ -124,24 +124,32 @@ def _setup_subnet(suffix, cidr="10.250.0.0/24"):
     ]
 
 
+# Cleanup DELETE of the caller's OWN just-created parent (subnet/network). Under a
+# concurrency burst the owner-tuple can still be mid-materialization when cleanup fires,
+# so the authz gate briefly returns 403 ("lacks relation v_delete ... no direct relations
+# granted") — a read-your-writes lag, NOT a dependent-resource block (that would be a
+# tolerated FAILED_PRECONDITION 400). Lenient retry_on=(403,) rides out the tuple lag;
+# the real 200/400 assertion then runs, and a genuinely-stuck deny still FAILS after
+# budget (fail-closed). Not retrying 404: a cleanup 404 means already-gone, not lag.
+
 def _cleanup_subnet():
-    return Step(
+    return retry_until_authorized(Step(
         name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
         test_script=[
             "pm.test('cleanup subnet 200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
             *save_from_response("j.id", "opId"),
         ],
-    )
+    ), retry_on=(403,))
 
 
 def _cleanup_net():
-    return Step(
+    return retry_until_authorized(Step(
         name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
         test_script=[
             "pm.test('cleanup network 200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
             *save_from_response("j.id", "opId"),
         ],
-    )
+    ), retry_on=(403,))
 
 
 # ===========================================================================

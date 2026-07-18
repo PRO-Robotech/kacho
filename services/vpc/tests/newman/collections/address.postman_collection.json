@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a755607d-f975-4a50-a513-9282c2de6f77",
+    "_postman_id": "6b42c343-2c59-4da0-a244-8cf89067b870",
     "name": "kacho-vpc / newman / address",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -466,7 +466,7 @@
           ]
         },
         {
-          "name": "get-rya351",
+          "name": "get-rya357",
           "request": {
             "method": "GET",
             "header": [
@@ -517,7 +517,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya352",
+          "name": "cleanup-addr-rya358",
           "request": {
             "method": "DELETE",
             "header": [
@@ -864,7 +864,7 @@
           ]
         },
         {
-          "name": "get-rya353",
+          "name": "get-rya359",
           "request": {
             "method": "GET",
             "header": [
@@ -2748,7 +2748,7 @@
           ]
         },
         {
-          "name": "patch-rya354",
+          "name": "patch-rya360",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2863,7 +2863,7 @@
           ]
         },
         {
-          "name": "verify",
+          "name": "verify-rya361",
           "request": {
             "method": "GET",
             "header": [
@@ -2891,6 +2891,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('upd-newman'));"
                 ]
@@ -3456,7 +3471,7 @@
           ]
         },
         {
-          "name": "del-happy-rya355",
+          "name": "del-happy-rya362",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3707,7 +3722,7 @@
           ]
         },
         {
-          "name": "get-addr-rya356",
+          "name": "get-addr-rya363",
           "request": {
             "method": "GET",
             "header": [
@@ -3762,7 +3777,7 @@
           ]
         },
         {
-          "name": "gbv-rya357",
+          "name": "gbv-rya364",
           "request": {
             "method": "GET",
             "header": [
@@ -5092,7 +5107,7 @@
           ]
         },
         {
-          "name": "patch-rya358",
+          "name": "patch-rya365",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5207,7 +5222,7 @@
           ]
         },
         {
-          "name": "verify-rya359",
+          "name": "verify-rya366",
           "request": {
             "method": "GET",
             "header": [
@@ -5258,7 +5273,7 @@
           ]
         },
         {
-          "name": "cleanup-rya360",
+          "name": "cleanup-rya367",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5473,7 +5488,7 @@
           ]
         },
         {
-          "name": "patch-rya361",
+          "name": "patch-rya368",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5588,7 +5603,7 @@
           ]
         },
         {
-          "name": "verify-rya362",
+          "name": "verify-rya369",
           "request": {
             "method": "GET",
             "header": [
@@ -5639,7 +5654,7 @@
           ]
         },
         {
-          "name": "cleanup-rya363",
+          "name": "cleanup-rya370",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5854,7 +5869,7 @@
           ]
         },
         {
-          "name": "patch-rya364",
+          "name": "patch-rya371",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5969,7 +5984,7 @@
           ]
         },
         {
-          "name": "verify-rya365",
+          "name": "verify-rya372",
           "request": {
             "method": "GET",
             "header": [
@@ -6021,7 +6036,7 @@
           ]
         },
         {
-          "name": "cleanup-rya366",
+          "name": "cleanup-rya373",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6466,7 +6481,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya367",
+          "name": "patch-multi-rya374",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6581,7 +6596,7 @@
           ]
         },
         {
-          "name": "verify-all-rya368",
+          "name": "verify-all-rya375",
           "request": {
             "method": "GET",
             "header": [
@@ -6636,7 +6651,7 @@
           ]
         },
         {
-          "name": "cleanup-rya369",
+          "name": "cleanup-rya376",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7087,7 +7102,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst370",
+          "name": "list-filtered-lst377",
           "request": {
             "method": "GET",
             "header": [
@@ -7140,7 +7155,7 @@
           ]
         },
         {
-          "name": "cleanup-rya371",
+          "name": "cleanup-rya378",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7956,7 +7971,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya372",
+          "name": "patch-name-only-rya379",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8071,7 +8086,7 @@
           ]
         },
         {
-          "name": "verify-rya373",
+          "name": "verify-rya380",
           "request": {
             "method": "GET",
             "header": [
@@ -8125,7 +8140,7 @@
           ]
         },
         {
-          "name": "cleanup-rya374",
+          "name": "cleanup-rya381",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8340,7 +8355,7 @@
           ]
         },
         {
-          "name": "get-timed-rya375",
+          "name": "get-timed-rya382",
           "request": {
             "method": "GET",
             "header": [
@@ -8743,7 +8758,7 @@
           ]
         },
         {
-          "name": "cleanup-rya376",
+          "name": "cleanup-rya383",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8954,7 +8969,7 @@
           ]
         },
         {
-          "name": "get-ip-rya377",
+          "name": "get-ip-rya384",
           "request": {
             "method": "GET",
             "header": [
@@ -9009,7 +9024,7 @@
           ]
         },
         {
-          "name": "gbv-find-rya378",
+          "name": "gbv-find-rya385",
           "request": {
             "method": "GET",
             "header": [
@@ -10214,7 +10229,7 @@
           ]
         },
         {
-          "name": "get-1-rya379",
+          "name": "get-1-rya386",
           "request": {
             "method": "GET",
             "header": [
@@ -10265,7 +10280,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst380",
+          "name": "lst-includes-lst387",
           "request": {
             "method": "GET",
             "header": [
@@ -10793,7 +10808,7 @@
           ]
         },
         {
-          "name": "get-rya381",
+          "name": "get-rya388",
           "request": {
             "method": "GET",
             "header": [
@@ -10846,7 +10861,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya382",
+          "name": "cleanup-addr-rya389",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11321,7 +11336,7 @@
           ]
         },
         {
-          "name": "get-1-rya383",
+          "name": "get-1-rya390",
           "request": {
             "method": "GET",
             "header": [
@@ -11376,7 +11391,7 @@
           ]
         },
         {
-          "name": "del-1-rya384",
+          "name": "del-1-rya391",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11586,7 +11601,7 @@
           ]
         },
         {
-          "name": "get-2-rya385",
+          "name": "get-2-rya392",
           "request": {
             "method": "GET",
             "header": [
@@ -11637,7 +11652,7 @@
           ]
         },
         {
-          "name": "cleanup-addr2-rya386",
+          "name": "cleanup-addr2-rya393",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12567,7 +12582,7 @@
           ]
         },
         {
-          "name": "get-first-ip-rya387",
+          "name": "get-first-ip-rya394",
           "request": {
             "method": "GET",
             "header": [
@@ -12816,7 +12831,7 @@
           ]
         },
         {
-          "name": "get-second-ip-rya388",
+          "name": "get-second-ip-rya395",
           "request": {
             "method": "GET",
             "header": [
@@ -13075,7 +13090,7 @@
           ]
         },
         {
-          "name": "del-first-rya389",
+          "name": "del-first-rya396",
           "request": {
             "method": "DELETE",
             "header": [

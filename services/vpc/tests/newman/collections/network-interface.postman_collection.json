@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "ae420ca9-b4be-4d5b-882e-304b46cefe50",
+    "_postman_id": "232526fa-0370-4950-98b7-bd1361ca0b59",
     "name": "kacho-vpc / newman / network-interface",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -427,7 +427,7 @@
           ]
         },
         {
-          "name": "get-nic-rya423",
+          "name": "get-nic-rya434",
           "request": {
             "method": "GET",
             "header": [
@@ -1080,7 +1080,7 @@
           ]
         },
         {
-          "name": "get-nic-mac-rya424",
+          "name": "get-nic-mac-rya435",
           "request": {
             "method": "GET",
             "header": [
@@ -2733,7 +2733,7 @@
           ]
         },
         {
-          "name": "list-lst425",
+          "name": "list-lst436",
           "request": {
             "method": "GET",
             "header": [
@@ -3314,7 +3314,7 @@
           ]
         },
         {
-          "name": "get-net-for-sg-rya426",
+          "name": "get-net-for-sg-rya437",
           "request": {
             "method": "GET",
             "header": [
@@ -3573,7 +3573,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya427",
+          "name": "get-after-upd-rya438",
           "request": {
             "method": "GET",
             "header": [
@@ -4218,7 +4218,7 @@
           ]
         },
         {
-          "name": "del-nic-rya428",
+          "name": "del-nic-rya439",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5035,7 +5035,7 @@
           ]
         },
         {
-          "name": "get-nic-rya429",
+          "name": "get-nic-rya440",
           "request": {
             "method": "GET",
             "header": [
@@ -5906,7 +5906,7 @@
           ]
         },
         {
-          "name": "get-nic-rya430",
+          "name": "get-nic-rya441",
           "request": {
             "method": "GET",
             "header": [
@@ -6881,7 +6881,7 @@
           ]
         },
         {
-          "name": "get-nic-rya431",
+          "name": "get-nic-rya442",
           "request": {
             "method": "GET",
             "header": [
@@ -8778,7 +8778,7 @@
           ]
         },
         {
-          "name": "get-nic-rya432",
+          "name": "get-nic-rya443",
           "request": {
             "method": "GET",
             "header": [
@@ -10292,7 +10292,7 @@
           ]
         },
         {
-          "name": "add-v6-cidr-rya433",
+          "name": "add-v6-cidr-rya444",
           "request": {
             "method": "POST",
             "header": [

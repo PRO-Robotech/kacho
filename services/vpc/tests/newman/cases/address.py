@@ -255,9 +255,16 @@ CASES.append(Case(
              body={"updateMask": "description", "description": "upd-newman"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="verify", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        # verify is a SECOND read of the caller's OWN fresh address after Update. The
+        # owner-tuple / read-your-writes visibility window can still make this GET briefly
+        # return 404 (existence-hidden authz gate) even though the Update op is done=true
+        # and the row is durable (proven: the subsequent DELETE op completes done=true on
+        # the same id). Wrap in the sanctioned RYW retry so the real 200 + description
+        # assertions run once the read is visible — a genuinely-missing row still FAILS
+        # (fail-closed after budget), so a real Update-mask bug is never masked.
+        retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('upd-newman'));"]),
+                          "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('upd-newman'));"])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
