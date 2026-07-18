@@ -136,9 +136,17 @@ CASES.append(Case(
         retry_until_authorized(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('allocated_address present', () => "
-                          "  pm.expect(j.allocatedAddress).to.be.a('string').and.have.length.above(0));",
+                          # sub-phase 8.1: the per-family VIP moved Listener->LoadBalancer; the
+                          # Listener no longer carries an address (allocated_address / ip_version
+                          # reserved 12-15 in listener.proto). The listener reaches ACTIVE; the
+                          # EXTERNAL auto public VIP is asserted on the parent LB below
+                          # (v4AddressId output -> bound vpc Address).
                           "pm.test('status ACTIVE', () => pm.expect(j.status).to.eql('ACTIVE'));"])),
+        retry_until_authorized(Step(name="get-lb-vip", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('EXTERNAL parent auto public VIP: v4AddressId resolved to bound vpc Address', () => "
+                          "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));"])),
         *_cleanup_lst(),
         *_cleanup_lb(),
     ],
@@ -240,8 +248,12 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
+        # FieldMask JSON paths are lowerCamelCase (proto3 JSON); a snake_case path
+        # (proxy_protocol_v2) is rejected sync as InvalidArgument "FieldMask.paths
+        # contains invalid path". Mutable listener fields per UpdateListenerRequest:
+        # name/description/labels/proxyProtocolV2/defaultTargetGroupId.
         retry_until_authorized(Step(name="upd", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "name,proxy_protocol_v2",
+             body={"updateMask": "name,proxyProtocolV2",
                    "name": "https-{{runId}}", "proxyProtocolV2": True},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
@@ -646,14 +658,20 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgAltId")]),
         poll_operation_until_done(),
         # First self-UPDATE of the fresh listener → v_update@lb_listener owner-tuple lag
-        # (403) is retried; the real region-mismatch reject is what the assertion observes.
+        # (403) is retried; the real reject is what the assertion observes. retry_on=(403,)
+        # ONLY — a 404 here is a terminal, lawful non-acceptance (the alt-region TG could
+        # not be created because `_suiteRegionAltId`=ru-central2 is unseeded on this stand
+        # → its Create Operation errors "Region not found", so tgAltId points at a TG that
+        # never persisted → the update resolves it to NotFound). Retrying that 404 would
+        # only burn the budget; tolerating it keeps the region-mismatch intent (409 when
+        # the alt region IS seeded) without reddening the fixture-absent lane.
         retry_until_authorized(Step(name="upd-default-tg-mismatch", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgAltId}}"},
              test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "pm.test('rejected (region-mismatch 409 when alt region seeded, or absent-TG 404 when unseeded)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
                  *save_from_response("j.id", "opId"),
-             ])),
+             ]), retry_on=(403,)),
         poll_operation_until_done(),
         Step(name="cleanup-tg-alt", method="DELETE", path="/nlb/v1/targetGroups/{{tgAltId}}",
              test_script=[*save_from_response("j.id", "opId")]),

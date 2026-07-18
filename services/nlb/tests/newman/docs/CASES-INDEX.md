@@ -455,7 +455,7 @@ chain on the seeded umbrella stack).
 
 ### UC-1 — EXTERNAL NLB from nothing to traffic-ready (6.0-34)
 - `XRES-E2E-EXTERNAL-FULL-FLOW` — CRUD,STATE/P0 — LB→listener(auto v4 VIP)→TG→addTargets→attach→default_tg→GetTargetStates; LB INACTIVE→ACTIVE on attach
-- `XRES-E2E-EXTERNAL-IPV6-VIP` — CRUD/P1 — EXTERNAL listener with auto IPv6 VIP (per-family dispatch; v6-pool tolerant)
+- `XRES-E2E-EXTERNAL-IPV6-VIP` — CRUD/P1 — EXTERNAL LB with auto IPv6 VIP (per-family VIP on LoadBalancer via v6Source; v6AddressId→bound vpc Address; v6-pool tolerant)
 - `XRES-E2E-DEFAULT-TG-UNATTACHED-FP` — NEG,STATE/P1 — listener default_target_group_id → un-attached TG → FAILED_PRECONDITION (composite FK)
 - `XRES-E2E-V4-LISTENER-V6-ADDRESS-INVALID` — NEG,VAL/P1 — IPV4 listener + BYO IPv6 Address → InvalidArgument (family mismatch)
 

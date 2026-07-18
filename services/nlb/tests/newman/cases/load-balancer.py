@@ -745,8 +745,14 @@ CASES.append(Case(
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
              body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 # Tolerant-negative: the mismatched attach must NOT succeed-and-link. 409 =
+                 # region-mismatch invariant (alt region seeded). 404 = absent-TG NotFound:
+                 # on this stand _suiteRegionAltId=ru-central2 is unseeded, so the alt-region
+                 # TG Create Operation errors "Region not found" and tgId points at a TG that
+                 # never persisted → the sync attach resolves it to NotFound. Both are lawful
+                 # non-acceptances of the cross-region reference.
+                 "pm.test('rejected (region-mismatch 409 when alt region seeded, or absent-TG 404 when unseeded)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),

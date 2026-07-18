@@ -140,13 +140,19 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P0",
     steps=[
         *_create_external_lb("ext-flow", {"sessionAffinity": "FIVE_TUPLE"}),
-        # Step 1 assertion: fresh LB has no listener/TG → INACTIVE.
+        # Step 1 assertion: fresh LB has no listener/TG → INACTIVE. The EXTERNAL auto
+        # public VIP (v4Source public) is allocated at LB Create → v4AddressId output
+        # resolves to a bound vpc Address (sub-phase 8.1: per-family VIP lives on the LB,
+        # not the listener). This is the auto-VIP check the get-listener-vip step used to
+        # (wrongly) assert on the listener's removed allocated_address field.
         retry_until_authorized(Step(name="get-lb-inactive", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('LB starts INACTIVE (no listener/TG yet)', () => "
                           "  pm.expect(j.status).to.eql('INACTIVE'));",
-                          "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));"])),
+                          "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
+                          "pm.test('EXTERNAL auto public VIP: v4AddressId resolved to bound vpc Address', () => "
+                          "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));"])),
         # Step 2: listener with auto external VIP. Child-create under the fresh LB is
         # authorized against editor@lb_network_load_balancer — its owner-tuple is
         # eventually-consistent, so wrap the first child-create in the same bounded
@@ -160,13 +166,14 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
+        # sub-phase 8.1: VIP moved Listener→LoadBalancer; the Listener no longer carries
+        # an address (allocated_address reserved). Assert the listener reaches ACTIVE; the
+        # auto public VIP itself is verified on the parent LB (get-lb-inactive, v4AddressId).
         retry_until_authorized(Step(name="get-listener-vip", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "if (!pm.environment.get('lastOpError')) {",
-                          "  pm.test('auto VIP allocated (allocatedAddress non-empty)', () => "
-                          "    pm.expect(j.allocatedAddress).to.be.a('string').and.have.length.above(0));",
-                          "  pm.test('listener ACTIVE after VIP alloc', () => "
+                          "  pm.test('listener ACTIVE', () => "
                           "    pm.expect(j.status).to.eql('ACTIVE'));",
                           "}"])),
         # Step 3: target group.
@@ -241,38 +248,35 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="XRES-E2E-EXTERNAL-IPV6-VIP",
-    title="UC-1 variant: EXTERNAL listener with auto IPv6 VIP (per-family dispatch) "
+    title="UC-1 variant: EXTERNAL LB with auto IPv6 VIP — per-family VIP on LoadBalancer "
           "(Verifies 6.0-34 IPv6)",
     classes=["CRUD"], priority="P1",
     steps=[
-        *_create_external_lb("ext-v6"),
-        retry_until_authorized(Step(name="create-listener-v6", method="POST", path=_LST_BASE,
-             body={"loadBalancerId": "{{nlbId}}", "name": "edge-v6-{{runId}}",
-                   "protocol": "TCP", "port": 443, "targetPort": 8443, "ipVersion": "IPV6"},
-             test_script=[
-                 # external-v6 pool may be unseeded → Operation RESOURCE_EXHAUSTED;
-                 # listener creation must not leak a VIP either way. Wrapped so a fresh-LB
-                 # editor-tuple lag (403) is retried, not conflated with the v6-pool reject.
-                 "pm.test('accepted as Operation or rejected (v6 pool dependent)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-                 *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
-             ])),
+        # sub-phase 8.1: the per-family VIP moved Listener→LoadBalancer. An IPv6 VIP is now
+        # sourced on the LB via v6Source (the Listener no longer carries an address/family;
+        # ip_version/allocated_address were reserved out of listener.proto). The external-v6
+        # pool may be unseeded on a lane → the Create Operation errors (RESOURCE_EXHAUSTED /
+        # "could not allocate load balancer address") and the LB is a phantom; that lane is
+        # tolerated (fixture-absent) and the positive v6AddressId assertion runs only when
+        # the LB actually materialised (200 GET, no lastOpError).
+        Step(name="create-lb-v6", method="POST", path=_LB_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "type": "EXTERNAL", "name": "xres-ext-v6-{{runId}}",
+                   "v6Source": {"public": {}}},
+             test_script=[*assert_status(200),
+                          *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
+                          *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-listener-v6", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        retry_until_authorized(Step(name="get-lb-v6-vip", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
                  "  const j = pm.response.json();",
-                 "  pm.test('IPv6 VIP allocated, ipVersion IPV6', () => {",
-                 "    pm.expect(j.ipVersion).to.eql('IPV6');",
-                 "    pm.expect(j.allocatedAddress).to.be.a('string').and.have.length.above(0);",
-                 "  });",
+                 "  pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
+                 "  pm.test('auto IPv6 VIP: v6AddressId resolved to bound vpc Address', () => "
+                 "    pm.expect(j.v6AddressId).to.match(/^adr[a-z0-9]+$/));",
                  "}",
              ])),
-        Step(name="cleanup-listener-best-effort", method="DELETE",
-             path=f"{_LST_BASE}/{{{{lstId}}}}",
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
         *_cleanup_lb(),
     ],
 ))
@@ -431,12 +435,16 @@ CASES.append(Case(
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
              ])),
         poll_operation_until_done(),
-        Step(name="get-internal-listener-vip", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        # sub-phase 8.1: VIP moved Listener→LoadBalancer; the Listener no longer carries an
+        # address. The INTERNAL subnet-sourced VIP is asserted on the LB above
+        # (get-internal-lb, v4AddressId → bound vpc Address). Here just confirm the listener
+        # reaches ACTIVE once created.
+        Step(name="get-internal-listener-status", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[
                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
                  "  const j = pm.response.json();",
-                 "  pm.test('internal VIP allocated', () => "
-                 "    pm.expect(j.allocatedAddress).to.be.a('string').and.have.length.above(0));",
+                 "  pm.test('internal listener ACTIVE', () => "
+                 "    pm.expect(j.status).to.eql('ACTIVE'));",
                  "}",
              ]),
         *_create_tg("int-flow"),
