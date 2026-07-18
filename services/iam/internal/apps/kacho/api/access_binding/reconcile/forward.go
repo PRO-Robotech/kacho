@@ -103,6 +103,15 @@ import (
 // sweep), driven by the co-committed reconcile-outbox event; forward is purely the
 // happy-path accelerator.
 //
+// DELETE-STALE GUARD (create-only). RegisterResource is called on a label UPDATE as well
+// as a create, and the additive forward CANNOT revoke a now-unmatched grant (it never
+// deletes). So this method is additive ONLY for a brand-NEW object (no materialized
+// members); a RE-REGISTER / label-update (the object ALREADY has members) transparently
+// delegates to the FULL ReconcileObject, whose delete-stale diff synchronously revokes the
+// stale grant. Without this, removing a grant-matching label leaves a standing grant (the
+// T31 label-revoke `post-revoke-deny` regression). The create hot-path (new resources
+// under load) has no prior members → stays on the fast additive path (throughput intact).
+//
 // iam-direct objects (iam.project / iam.account / iam content) are NOT registered over
 // the cross-service RegisterResource edge, so the forward path is a mirror-fed concern.
 // If ever called for an iam-direct type it transparently delegates to the full path
@@ -113,7 +122,29 @@ func (r *Reconciler) ReconcileObjectForward(ctx context.Context, objectType, obj
 		return r.ReconcileObject(ctx, objectType, objectID)
 	}
 	col := &syncFGACollector{}
+	// needsFull is set inside the peek below when the object already has materialized
+	// members (a RE-REGISTER / label-UPDATE), which requires the FULL delete-stale diff
+	// that the additive forward path deliberately omits (see the DELETE-STALE GUARD note).
+	needsFull := false
 	if err := r.tx.WithTx(ctx, func(ctx context.Context, s ReconcileStore) error {
+		// DELETE-STALE GUARD (regression fix — T31 label-revoke `post-revoke-deny`). The
+		// additive forward path only ADDS the object's tuples; it NEVER revokes. That is
+		// correct ONLY for a brand-NEW object (a create — nothing stale to remove). But
+		// RegisterResource is ALSO called on a label UPDATE, and removing a grant-matching
+		// label must REVOKE the now-unmatched grant — a DELETE-STALE the forward path
+		// cannot do. Discriminate by whether the object ALREADY has materialized members:
+		//   - none  ⇒ create ⇒ fast additive forward (the throughput hot-path);
+		//   - some  ⇒ re-register/update ⇒ bail to the FULL ReconcileObject (delete-stale).
+		// The check is one indexed read (target_members by object); on the create hot-path
+		// it is empty, so the extra cost is a single cheap SELECT in the same forward tx.
+		existing, err := s.BindingsForObject(ctx, objectType, objectID)
+		if err != nil {
+			return fmt.Errorf("forward: bindings for object %s:%s: %w", objectType, objectID, err)
+		}
+		if len(existing) > 0 {
+			needsFull = true
+			return nil // commit the read-only peek; run the FULL path below (fresh tx).
+		}
 		// The registered object, with its containment parents (parent_project_id +
 		// the account resolved through the project→account join) and labels — the
 		// SAME same-DB projection the full path's IsContainedIn / arm match consume.
@@ -145,6 +176,13 @@ func (r *Reconciler) ReconcileObjectForward(ctx context.Context, objectType, obj
 		return nil
 	}); err != nil {
 		return err
+	}
+	// Re-register / label-update: the object already had members, so the additive fast-path
+	// is unsafe (it cannot delete-stale). Run the FULL ReconcileObject (its own tx, EXCLUSIVE
+	// lock + delete-stale diff) so a now-unmatched grant is synchronously revoked. This keeps
+	// the create hot-path on the fast additive path while restoring correct revoke-on-update.
+	if needsFull {
+		return r.ReconcileObject(ctx, objectType, objectID)
 	}
 	// AFTER commit only (a rollback returns early): apply the collected tuples to
 	// OpenFGA synchronously (idempotent read-delta), so the creator's per-object grant

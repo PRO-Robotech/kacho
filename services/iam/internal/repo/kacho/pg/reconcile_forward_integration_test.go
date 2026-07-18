@@ -27,6 +27,10 @@ package pg_test
 //   05 RACE FWD-vs-FULL — concurrent forward(add R) + full ReconcileObject(sibling O of
 //                         the same binding) → R's tuples SURVIVE (full does not strip the
 //                         just-added, in-mirror object as stale), no deadlock.
+//   06 REVOKE-ON-UPDATE — a RE-REGISTER that REMOVES a grant-matching label REVOKES the
+//                         now-stale grant (delete-stale). The additive forward cannot do
+//                         this, so a re-register (object already has members) must route to
+//                         the FULL path. Regression guard: T31 label-revoke `post-revoke-deny`.
 //
 // Run: `make test` (testcontainers + Docker). Skipped under -short.
 
@@ -304,4 +308,61 @@ func TestReconcileForward_05_Race_ForwardVsFull_RSurvives(t *testing.T) {
 		assert.Equal(t, 1, countTargetMembers(t, ctx, pool, bid, fp, "compute.instance", rID),
 			"exactly one R member row (iter %d)", iter)
 	}
+}
+
+// Test 06 — REVOKE-ON-UPDATE (regression guard for T31 label-revoke `post-revoke-deny`).
+// A label-selector binding grants v_get on resources labeled team=a. A resource created
+// with team=a is forward-materialized (create hot-path). Then the resource is RE-
+// REGISTERED with the label REMOVED (the owning service's Update → RegisterResource with
+// new labels) — the grant MUST be REVOKED. The additive forward path cannot delete-stale,
+// so a re-register (object already has members) routes to the FULL ReconcileObject.
+//
+// RED before the delete-stale guard: the second ReconcileObjectForward stays additive and
+// never revokes → the stale grant survives (Check would still allow → the e2e
+// `post-revoke-deny {allowed:true}` failure). GREEN: the re-register revokes it.
+func TestReconcileForward_06_ReRegisterLabelRemoved_RevokeSticks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test (requires Docker)")
+	}
+	ctx := context.Background()
+	pool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pool.Close()
+	fx := setupGamma(t, ctx, pool, "fwd6")
+	rec, _ := newReconciler(pool)
+
+	// ARM_LABELS rule: v_get on compute.instance labeled team=a.
+	rule := domain.Rule{
+		Module: "compute", Resources: []string{"instance"}, Verbs: []string{"get"},
+		MatchLabels: map[string]string{"team": "a"},
+	}
+	fp := rule.Fingerprint()
+	roleID := seedRulesRole(t, ctx, pool, fx.repo, fx.prj, "fwd6role", domain.Rules{rule})
+	bid := insertThinBinding(t, ctx, fx.repo, fx.member, roleID, fx.prj)
+	subj := "user:" + string(fx.member)
+
+	now := time.Now()
+	// CREATE: resource labeled team=a → forward materializes the grant (create hot-path,
+	// no prior members → additive forward).
+	seedMirrorRow(t, ctx, pool, "compute.instance", "iLbl", string(fx.prj), string(fx.accID), map[string]string{"team": "a"}, now)
+	require.NoError(t, rec.ReconcileObjectForward(ctx, "compute.instance", "iLbl"))
+	st, ok := memberStatusByRule(t, ctx, pool, bid, fp, "compute.instance", "iLbl")
+	require.True(t, ok, "labeled resource is granted on create")
+	require.Equal(t, domain.VerificationActive, st)
+	require.True(t, ledgerHasTuple(t, ctx, pool, bid, subj, "v_get", "compute_instance:iLbl"),
+		"create materializes v_get")
+
+	// RE-REGISTER (label UPDATE): the label is REMOVED. RegisterResource is called again
+	// → ReconcileObjectForward. The object now has members → routes to the FULL path →
+	// delete-stale → the grant is REVOKED.
+	seedMirrorRow(t, ctx, pool, "compute.instance", "iLbl", string(fx.prj), string(fx.accID), map[string]string{}, now.Add(time.Second))
+	require.NoError(t, rec.ReconcileObjectForward(ctx, "compute.instance", "iLbl"))
+
+	// The grant is gone: member removed AND the per-object tuple eager-revoked.
+	_, stillMember := memberStatusByRule(t, ctx, pool, bid, fp, "compute.instance", "iLbl")
+	assert.False(t, stillMember, "label-removed resource is no longer a member (delete-stale)")
+	assert.False(t, ledgerHasTuple(t, ctx, pool, bid, subj, "v_get", "compute_instance:iLbl"),
+		"REVOKE STICKS: the stale grant's ledger tuple is gone after the re-register")
+	assert.GreaterOrEqual(t, countFGAOutbox(t, ctx, pool, "fga.tuple.delete", "compute_instance:iLbl"), 1,
+		"the label-removal re-register eager-revokes the per-object tuple (post-revoke Check must DENY)")
 }

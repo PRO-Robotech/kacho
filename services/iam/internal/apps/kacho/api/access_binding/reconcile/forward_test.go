@@ -156,3 +156,60 @@ func TestReconcileObjectForward_ObjectNotInMirror_NoOp(t *testing.T) {
 	assert.Empty(t, allWrites(f))
 	assert.Equal(t, 0, f.unlockedLoads, "no binding is loaded when the object is not in the mirror")
 }
+
+// TestReconcileObjectForward_ReRegister_DelegatesToFull_DeleteStale — the DELETE-STALE
+// guard. A RE-REGISTER / label-UPDATE (the object ALREADY has materialized members) must
+// route to the FULL ReconcileObject so a now-unmatched grant is REVOKED (delete-stale) —
+// the additive forward path never revokes, so using it on an update leaves a stale grant
+// (the T31 label-revoke `post-revoke-deny` regression). Discriminated by
+// BindingsForObject: non-empty ⇒ full path (EXCLUSIVE lock, delete-stale).
+//
+// Setup: a label-selector rule (team=a) whose member O is CURRENTLY materialized ACTIVE,
+// but O's mirror label has FLIPPED to team=b (the revoking update). The full recompute
+// must drop O (no longer matches) and revoke its ledger tuple. RED before the guard: the
+// additive forward takes only the SHARE lock (f.locks==0) and never revokes (empty
+// tdeletes) → the stale grant survives.
+func TestReconcileObjectForward_ReRegister_DelegatesToFull_DeleteStale(t *testing.T) {
+	fp := domain.Rule{
+		Module: "compute", Resources: []string{"instance"}, Verbs: []string{"get"},
+		MatchLabels: map[string]string{"team": "a"},
+	}.Fingerprint()
+	f := &fakeStore{
+		scope:       domain.ScopeAnchor{Type: "project", ID: "prj-1"},
+		subjectType: "user", subjectID: "usr-1", active: true,
+		selectors: []domain.RuleSelector{{
+			Arm: domain.ArmLabels, RuleFP: fp, ObjectTypes: []string{"compute.instance"},
+			MatchLabels: map[string]string{"team": "a"}, Verbs: []string{"get"},
+		}},
+		// O's label has FLIPPED to team=b → it no longer matches the team=a selector.
+		mirror: map[string][]domain.MirrorObject{
+			"compute.instance": {
+				{ObjectType: "compute.instance", ObjectID: "i-flip", ParentProjectID: "prj-1", Labels: map[string]string{"team": "b"}},
+			},
+		},
+		// The object ALREADY has a materialized ACTIVE member (from when it was team=a) →
+		// this is a RE-REGISTER, not a create.
+		current: []domain.TargetMember{
+			{BindingID: "acb-1", RuleFP: fp, ObjectType: "compute.instance", ObjectID: "i-flip", VerificationStatus: domain.VerificationActive},
+		},
+		ledger: []domain.MembershipTuple{
+			{User: "user:usr-1", Relation: "v_get", Object: "compute_instance:i-flip"},
+			{User: "user:usr-1", Relation: "viewer", Object: "compute_instance:i-flip"},
+		},
+		// BindingsForObject non-empty ⇒ the discriminator routes to the FULL path.
+		bindingsForObject: []domain.AccessBindingID{"acb-1"},
+	}
+	rec := New(fakeRunner{s: f}, nil)
+	require.NoError(t, rec.ReconcileObjectForward(context.Background(), "compute.instance", "i-flip"))
+
+	// Routed to the FULL path: EXCLUSIVE advisory lock taken (delete-stale serialization).
+	assert.Greater(t, f.locks, 0, "re-register must route to the FULL ReconcileObject (EXCLUSIVE lock, delete-stale)")
+	// The now-unmatched grant is REVOKED (this is the revoke that additive-forward missed).
+	var revoked []domain.MembershipTuple
+	for _, batch := range f.tdeletes {
+		revoked = append(revoked, batch...)
+	}
+	assert.True(t, hasTuple(revoked, "v_get", "compute_instance:i-flip"),
+		"label-flip revoke must STICK: the stale grant is eager-revoked via the full delete-stale diff")
+	assert.Contains(t, f.deletes, memberKey("compute.instance", "i-flip"), "stale member deleted")
+}
