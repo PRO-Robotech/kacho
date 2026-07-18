@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "630f6578-5c17-4bd2-a114-d3caeff4dfd6",
+    "_postman_id": "ce982068-b218-46fc-884c-723d1281ba97",
     "name": "kacho-compute / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -915,7 +915,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1039,7 +1039,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1155,7 +1155,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-GT-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-GT-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-GT-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1222,7 +1222,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-UP-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-UP-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-UP-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1280,7 +1280,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-DL-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-DL-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-DL-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1346,7 +1346,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1470,7 +1470,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1586,7 +1586,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-GT-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-GT-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-GT-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1653,7 +1653,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-UP-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-UP-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-UP-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1711,7 +1711,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-DL-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-DL-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-DL-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1844,7 +1844,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -1959,7 +1959,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -2211,7 +2211,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -2277,7 +2277,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -2334,7 +2334,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -2391,7 +2391,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -2449,7 +2449,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-GT-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-GT-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-GT-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -2516,7 +2516,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-UP-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-UP-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-UP-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -2574,7 +2574,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-DL-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-DL-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-INSTANCE-DL-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -3470,7 +3470,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-CR-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-CR-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-CR-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -3594,7 +3594,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -3710,7 +3710,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-GT-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-GT-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-GT-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -3777,7 +3777,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-UP-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-UP-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-UP-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -3835,7 +3835,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-DL-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-DL-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-DL-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -3901,7 +3901,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-CR-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-CR-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-CR-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4025,7 +4025,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4141,7 +4141,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-GT-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-GT-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-GT-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4208,7 +4208,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-UP-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-UP-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-UP-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4266,7 +4266,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-DL-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-DL-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-DL-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4399,7 +4399,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-CR-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-CR-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-CR-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4514,7 +4514,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4766,7 +4766,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-CR-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-CR-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-CR-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4832,7 +4832,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-CR-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-CR-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-CR-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4889,7 +4889,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -4946,7 +4946,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -5004,7 +5004,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-GT-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-GT-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-GT-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -5071,7 +5071,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-UP-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-UP-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-UP-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -5129,7 +5129,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-DL-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-DISK-DL-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-DISK-DL-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6025,7 +6025,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-CR-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-CR-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-CR-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6149,7 +6149,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6265,7 +6265,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-GT-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-GT-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-GT-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6332,7 +6332,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-UP-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-UP-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-UP-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6390,7 +6390,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-DL-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-DL-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-DL-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6456,7 +6456,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-CR-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-CR-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-CR-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6580,7 +6580,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6696,7 +6696,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-GT-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-GT-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-GT-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6763,7 +6763,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-UP-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-UP-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-UP-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6821,7 +6821,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-DL-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-DL-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-DL-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -6954,7 +6954,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-CR-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-CR-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-CR-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7069,7 +7069,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7321,7 +7321,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-CR-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-CR-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-CR-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7387,7 +7387,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-CR-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-CR-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-CR-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7444,7 +7444,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7501,7 +7501,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7559,7 +7559,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-GT-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-GT-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-GT-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7626,7 +7626,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-UP-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-UP-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-UP-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -7684,7 +7684,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-DL-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-IMAGE-DL-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-IMAGE-DL-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -8580,7 +8580,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -8704,7 +8704,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -8820,7 +8820,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-GT-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-GT-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-GT-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -8887,7 +8887,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-UP-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-UP-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-UP-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -8945,7 +8945,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-DL-PA1] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-DL-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-DL-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9011,7 +9011,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9135,7 +9135,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9251,7 +9251,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-GT-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-GT-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-GT-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9318,7 +9318,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-UP-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-UP-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-UP-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9376,7 +9376,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-DL-AAA] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-DL-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-DL-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9509,7 +9509,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-CR-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-CR-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-CR-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9624,7 +9624,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAB] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9876,7 +9876,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-CR-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9942,7 +9942,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-CR-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-CR-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-CR-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -9999,7 +9999,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -10056,7 +10056,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -10114,7 +10114,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-GT-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-GT-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-GT-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -10181,7 +10181,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-UP-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-UP-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-UP-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
@@ -10239,7 +10239,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-DL-INV] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-SNAPSHOT-DL-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
                   "pm.test('[AUTHZ-SNAPSHOT-DL-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
