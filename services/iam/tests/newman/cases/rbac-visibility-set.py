@@ -326,7 +326,13 @@ def robust_revoke_binding(name, acb_var):
         ],
         test_script=[
             f"const _rc = parseInt(pm.environment.get('_rv{acb_var}Count') || '0', 10);",
-            f"if (pm.response.code === 403 && _rc < {POLL_CAP}) {{ pm.environment.set('_rv{acb_var}Count', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }}",
+            # Real inter-poll delay (~500ms) between the 403-retries (Koren #1): the admin's
+            # v_delete on the FRESH binding object materializes via fga_outbox a beat AFTER
+            # Create→done, and each re-fire is only a ~round-trip apart, so without the
+            # busy-wait the POLL_CAP retries burn out in well under the materialization
+            # window → the DELETE stays 403 at the cap and the revoke never commits (leaving
+            # the leaked {get,list} grant that flips the v_list-only detail Get to 200).
+            f"if (pm.response.code === 403 && _rc < {POLL_CAP}) {{ pm.environment.set('_rv{acb_var}Count', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) {{ /* inter-poll delay ~500ms (Koren #1) */ }} pm.execution.setNextRequest(pm.info.requestName); return; }}",
             f"pm.environment.unset('_rv{acb_var}Count'); pm.environment.unset('_rv{acb_var}Started');",
             "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));",
         ],

@@ -328,6 +328,10 @@ def get_until_gone(path: str, label: str, auth: str = "jwtAccountAdminA") -> Ste
             f"if (pm.response.code === 200 && gc < {POLL_CAP}) {{",
             "  // resource not yet gone (async delete + FGA-tuple removal lag) — retry.",
             "  pm.environment.set('_goneCount', String(gc + 1));",
+            # Real inter-poll delay (~500ms) between retries (Koren #1) — see
+            # poll_request_until_status: back-to-back re-fires exhaust the cap before the
+            # async delete + FGA-tuple removal settles, flaking the terminal "gone" RED.
+            "  const _gd = Date.now(); while (Date.now() - _gd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
@@ -408,6 +412,13 @@ def poll_request_until_status(name: str, method: str, path: str, test_script: Li
             f"if ((_p200retryCode || _p200retryPred) && _p200c < {POLL_CAP}) {{",
             "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
             f"  pm.environment.set('{counter_var}', String(_p200c + 1));",
+            # Real inter-poll delay (~500ms) between retries (Koren #1). newman fires
+            # setNextRequest before any setTimeout, so a busy-wait is the only way to
+            # actually space out the retries; without it POLL_CAP retries fire
+            # back-to-back (~round-trip only) and exhaust the budget BEFORE the
+            # grant→FGA / owner-tuple materialization window closes → a converging
+            # access flakes RED at the cap. Same discipline as poll_operation_until_done.
+            "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
             "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",

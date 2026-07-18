@@ -220,13 +220,20 @@ def create_base_disk(disk_var, suffix, labels):
     # needed). zoneId comes from the runtime-discovered {{_t31cZoneId}}.
     return [
         discover_zone(suffix),
-        Step(name=f"create-disk-{suffix}", method="POST", path=DISKS,
-             body={"projectId": "{{projectA1Id}}", "name": f"t31c-disk-{suffix}-{{{{runId}}}}",
-                   "zoneId": "{{_t31cZoneId}}", "size": _DISK_SIZE, "labels": labels},
-             auth="jwtAccountAdminA",
-             test_script=[*assert_status(200),
-                          *save_from_response("j.metadata && j.metadata.diskId", disk_var),
-                          *save_from_response("j.id", f"_op_{disk_var}")]),
+        # Bounded read-your-writes retry over AAA's create-authz materialization window:
+        # DiskService.Create needs the caller's editor/creator on project:projectA1 (fixture
+        # grant), whose cross-service FGA-cascade tuple can still be draining at umbrella
+        # cold-start → the first Create 403s at the gateway authz gate. Retry SELF on 403
+        # (403-create materialized nothing) until authorized; fail-closed at the budget.
+        retry_until_authorized(
+            Step(name=f"create-disk-{suffix}", method="POST", path=DISKS,
+                 body={"projectId": "{{projectA1Id}}", "name": f"t31c-disk-{suffix}-{{{{runId}}}}",
+                       "zoneId": "{{_t31cZoneId}}", "size": _DISK_SIZE, "labels": labels},
+                 auth="jwtAccountAdminA",
+                 test_script=[*assert_status(200),
+                              *save_from_response("j.metadata && j.metadata.diskId", disk_var),
+                              *save_from_response("j.id", f"_op_{disk_var}")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
         Step(name=f"poll-disk-{suffix}", method="GET", path=f"/operations/{{{{_op_{disk_var}}}}}",
              auth="jwtAccountAdminA", test_script=poll_op_done(f"_op_{disk_var}", out_id_var=disk_var)),
     ]
@@ -294,13 +301,17 @@ CASES.append(revoke_case(
     create_steps=[
         # source disk (unlabeled — its labels are irrelevant to the snapshot grant).
         *create_base_disk("_t31cSnapSrcDisk", "snapsrc", {}),
-        Step(name="create-snapshot", method="POST", path=SNAPSHOTS,
-             body={"projectId": "{{projectA1Id}}", "diskId": "{{_t31cSnapSrcDisk}}",
-                   "name": "t31c-snap-{{runId}}", "labels": {"tier": "treska"}},
-             auth="jwtAccountAdminA",
-             test_script=[*assert_status(200),
-                          *save_from_response("j.metadata && j.metadata.snapshotId", "_t31cSnap"),
-                          *save_from_response("j.id", "_op_t31cSnap")]),
+        # Bounded read-your-writes retry over AAA's create-authz materialization window
+        # (same cold-start FGA-cascade lag as create-disk); retry SELF on 403 until authorized.
+        retry_until_authorized(
+            Step(name="create-snapshot", method="POST", path=SNAPSHOTS,
+                 body={"projectId": "{{projectA1Id}}", "diskId": "{{_t31cSnapSrcDisk}}",
+                       "name": "t31c-snap-{{runId}}", "labels": {"tier": "treska"}},
+                 auth="jwtAccountAdminA",
+                 test_script=[*assert_status(200),
+                              *save_from_response("j.metadata && j.metadata.snapshotId", "_t31cSnap"),
+                              *save_from_response("j.id", "_op_t31cSnap")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
         Step(name="poll-snapshot", method="GET", path="/operations/{{_op_t31cSnap}}",
              auth="jwtAccountAdminA", test_script=poll_op_done("_op_t31cSnap", out_id_var="_t31cSnap")),
     ],
@@ -318,13 +329,17 @@ CASES.append(revoke_case(
     fga_type="compute_image", resource_kind="image", base_path=IMAGES,
     create_steps=[
         *create_base_disk("_t31cImgSrcDisk", "imgsrc", {}),
-        Step(name="create-image", method="POST", path=IMAGES,
-             body={"projectId": "{{projectA1Id}}", "name": "t31c-img-{{runId}}",
-                   "diskId": "{{_t31cImgSrcDisk}}", "labels": {"tier": "treska"}},
-             auth="jwtAccountAdminA",
-             test_script=[*assert_status(200),
-                          *save_from_response("j.metadata && j.metadata.imageId", "_t31cImg"),
-                          *save_from_response("j.id", "_op_t31cImg")]),
+        # Bounded read-your-writes retry over AAA's create-authz materialization window
+        # (same cold-start FGA-cascade lag as create-disk); retry SELF on 403 until authorized.
+        retry_until_authorized(
+            Step(name="create-image", method="POST", path=IMAGES,
+                 body={"projectId": "{{projectA1Id}}", "name": "t31c-img-{{runId}}",
+                       "diskId": "{{_t31cImgSrcDisk}}", "labels": {"tier": "treska"}},
+                 auth="jwtAccountAdminA",
+                 test_script=[*assert_status(200),
+                              *save_from_response("j.metadata && j.metadata.imageId", "_t31cImg"),
+                              *save_from_response("j.id", "_op_t31cImg")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
         Step(name="poll-image", method="GET", path="/operations/{{_op_t31cImg}}",
              auth="jwtAccountAdminA", test_script=poll_op_done("_op_t31cImg", out_id_var="_t31cImg")),
     ],

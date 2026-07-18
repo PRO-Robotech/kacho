@@ -164,7 +164,7 @@
           ]
         },
         {
-          "name": "IAM-PRJ-CR-CRUD-OK :: get-confirms-rya3",
+          "name": "IAM-PRJ-CR-CRUD-OK :: get-confirms-rya4",
           "request": {
             "method": "GET",
             "header": [
@@ -2476,6 +2476,7 @@
                   "if (pm.response.code === 200 && gc < 50) {",
                   "  // resource not yet gone (async delete + FGA-tuple removal lag) — retry.",
                   "  pm.environment.set('_goneCount', String(gc + 1));",
+                  "  const _gd = Date.now(); while (Date.now() - _gd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",

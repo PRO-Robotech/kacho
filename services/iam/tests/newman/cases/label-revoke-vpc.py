@@ -249,13 +249,21 @@ def create_network(net_var, suffix, labels):
     """NetworkService.Create in projectA1 with the given labels + op-poll. On
     Create the vpc→iam RegisterResource edge feeds resource_mirror with labels."""
     return [
-        Step(name=f"create-net-{suffix}", method="POST", path=VPC_NET,
-             body={"projectId": "{{projectA1Id}}", "name": f"t31-net-{suffix}-{{{{runId}}}}",
-                   "labels": labels},
-             auth="jwtAccountAdminA",
-             test_script=[*assert_status(200),
-                          *save_from_response("j.metadata && j.metadata.networkId", net_var),
-                          *save_from_response("j.id", f"_op_{net_var}")]),
+        # Bounded read-your-writes retry over AAA's create-authz materialization window:
+        # NetworkService.Create needs the caller's editor/creator on project:projectA1
+        # (fixture grant), whose FGA cascade tuple can still be draining at umbrella
+        # cold-start → the first cross-service Create 403s at the gateway authz gate before
+        # the tuple is visible. Retry SELF on 403 (a 403-create materialized nothing, so
+        # re-firing is safe) until authorized; fail-closed at the budget.
+        retry_until_authorized(
+            Step(name=f"create-net-{suffix}", method="POST", path=VPC_NET,
+                 body={"projectId": "{{projectA1Id}}", "name": f"t31-net-{suffix}-{{{{runId}}}}",
+                       "labels": labels},
+                 auth="jwtAccountAdminA",
+                 test_script=[*assert_status(200),
+                              *save_from_response("j.metadata && j.metadata.networkId", net_var),
+                              *save_from_response("j.id", f"_op_{net_var}")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
         Step(name=f"poll-net-{suffix}", method="GET", path=f"/operations/{{{{_op_{net_var}}}}}",
              auth="jwtAccountAdminA", test_script=poll_op_done(f"_op_{net_var}", out_id_var=net_var)),
     ]
@@ -359,13 +367,17 @@ CASES.append(Case(
         *create_fresh_sa("_t31SaSg", "sg"),
         # SG needs a parent network (immutable network_id at Create).
         *create_network("_t31NetSg", "sg", {"network": "sgparent"}),
-        Step(name="create-sg", method="POST", path=VPC_SG,
-             body={"projectId": "{{projectA1Id}}", "name": "t31-sg-{{runId}}",
-                   "networkId": "{{_t31NetSg}}", "labels": {"sg": "okun"}},
-             auth="jwtAccountAdminA",
-             test_script=[*assert_status(200),
-                          *save_from_response("j.metadata && j.metadata.securityGroupId", "_t31Sg"),
-                          *save_from_response("j.id", "_opSg")]),
+        # Bounded read-your-writes retry over AAA's create-authz materialization window
+        # (same cold-start FGA-cascade lag as create-net); retry SELF on 403 until authorized.
+        retry_until_authorized(
+            Step(name="create-sg", method="POST", path=VPC_SG,
+                 body={"projectId": "{{projectA1Id}}", "name": "t31-sg-{{runId}}",
+                       "networkId": "{{_t31NetSg}}", "labels": {"sg": "okun"}},
+                 auth="jwtAccountAdminA",
+                 test_script=[*assert_status(200),
+                              *save_from_response("j.metadata && j.metadata.securityGroupId", "_t31Sg"),
+                              *save_from_response("j.id", "_opSg")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
         Step(name="poll-sg", method="GET", path="/operations/{{_opSg}}",
              auth="jwtAccountAdminA", test_script=poll_op_done("_opSg", out_id_var="_t31Sg")),
         check_step("sg-pre-grant-deny", "service_account:{{_t31SaSg}}", "v_list",

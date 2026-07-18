@@ -1542,6 +1542,7 @@
                   "if ((_p200retryCode || _p200retryPred) && _p200c < 50) {",
                   "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
                   "  pm.environment.set('_poll200_read_exact_set', String(_p200c + 1));",
+                  "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -1612,7 +1613,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const _rc = parseInt(pm.environment.get('_rvvisSetAcbCount') || '0', 10);",
-                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvvisSetAcbCount', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }",
+                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvvisSetAcbCount', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) { /* inter-poll delay ~500ms (Koren #1) */ } pm.execution.setNextRequest(pm.info.requestName); return; }",
                   "pm.environment.unset('_rvvisSetAcbCount'); pm.environment.unset('_rvvisSetAcbStarted');",
                   "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));"
                 ]
@@ -2688,6 +2689,7 @@
                   "if ((_p200retryCode || _p200retryPred) && _p200c < 50) {",
                   "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
                   "  pm.environment.set('_poll200_read_list_visible', String(_p200c + 1));",
+                  "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -2801,7 +2803,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const _rc = parseInt(pm.environment.get('_rvvisVlAcbCount') || '0', 10);",
-                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvvisVlAcbCount', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }",
+                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvvisVlAcbCount', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) { /* inter-poll delay ~500ms (Koren #1) */ } pm.execution.setNextRequest(pm.info.requestName); return; }",
                   "pm.environment.unset('_rvvisVlAcbCount'); pm.environment.unset('_rvvisVlAcbStarted');",
                   "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));"
                 ]
@@ -4430,6 +4432,7 @@
                   "if ((_p200retryCode || _p200retryPred) && _p200c < 50) {",
                   "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
                   "  pm.environment.set('_poll200_read_exact_set', String(_p200c + 1));",
+                  "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -4491,7 +4494,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const _rc = parseInt(pm.environment.get('_rvsetSvaAcbCount') || '0', 10);",
-                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetSvaAcbCount', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }",
+                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetSvaAcbCount', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) { /* inter-poll delay ~500ms (Koren #1) */ } pm.execution.setNextRequest(pm.info.requestName); return; }",
                   "pm.environment.unset('_rvsetSvaAcbCount'); pm.environment.unset('_rvsetSvaAcbStarted');",
                   "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));"
                 ]
@@ -6470,6 +6473,7 @@
                   "if ((_p200retryCode || _p200retryPred) && _p200c < 50) {",
                   "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
                   "  pm.environment.set('_poll200_read_exact_set', String(_p200c + 1));",
+                  "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -6531,7 +6535,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const _rc = parseInt(pm.environment.get('_rvsetRolAcbCount') || '0', 10);",
-                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetRolAcbCount', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }",
+                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetRolAcbCount', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) { /* inter-poll delay ~500ms (Koren #1) */ } pm.execution.setNextRequest(pm.info.requestName); return; }",
                   "pm.environment.unset('_rvsetRolAcbCount'); pm.environment.unset('_rvsetRolAcbStarted');",
                   "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));"
                 ]
@@ -8510,6 +8514,7 @@
                   "if ((_p200retryCode || _p200retryPred) && _p200c < 50) {",
                   "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
                   "  pm.environment.set('_poll200_read_exact_set', String(_p200c + 1));",
+                  "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -8571,7 +8576,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const _rc = parseInt(pm.environment.get('_rvsetGrpAcbCount') || '0', 10);",
-                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetGrpAcbCount', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }",
+                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetGrpAcbCount', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) { /* inter-poll delay ~500ms (Koren #1) */ } pm.execution.setNextRequest(pm.info.requestName); return; }",
                   "pm.environment.unset('_rvsetGrpAcbCount'); pm.environment.unset('_rvsetGrpAcbStarted');",
                   "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));"
                 ]
@@ -9647,6 +9652,7 @@
                   "if ((_p200retryCode || _p200retryPred) && _p200c < 50) {",
                   "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
                   "  pm.environment.set('_poll200_read_list_visible', String(_p200c + 1));",
+                  "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -9757,7 +9763,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const _rc = parseInt(pm.environment.get('_rvsetSvaVlAcbCount') || '0', 10);",
-                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetSvaVlAcbCount', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }",
+                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetSvaVlAcbCount', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) { /* inter-poll delay ~500ms (Koren #1) */ } pm.execution.setNextRequest(pm.info.requestName); return; }",
                   "pm.environment.unset('_rvsetSvaVlAcbCount'); pm.environment.unset('_rvsetSvaVlAcbStarted');",
                   "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));"
                 ]
@@ -10483,6 +10489,7 @@
                   "if ((_p200retryCode || _p200retryPred) && _p200c < 50) {",
                   "  // access not yet visible at the authz gate (grant→FGA propagation window) — retry.",
                   "  pm.environment.set('_poll200_read_list_visible', String(_p200c + 1));",
+                  "  const _p200d = Date.now(); while (Date.now() - _p200d < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -10593,7 +10600,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const _rc = parseInt(pm.environment.get('_rvsetGrpVlAcbCount') || '0', 10);",
-                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetGrpVlAcbCount', String(_rc + 1)); pm.execution.setNextRequest(pm.info.requestName); return; }",
+                  "if (pm.response.code === 403 && _rc < 50) { pm.environment.set('_rvsetGrpVlAcbCount', String(_rc + 1)); const _rvd = Date.now(); while (Date.now() - _rvd < 500) { /* inter-poll delay ~500ms (Koren #1) */ } pm.execution.setNextRequest(pm.info.requestName); return; }",
                   "pm.environment.unset('_rvsetGrpVlAcbCount'); pm.environment.unset('_rvsetGrpVlAcbStarted');",
                   "pm.test('by-label binding revoke committed (200 or already-gone 404)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([200, 404]));"
                 ]
