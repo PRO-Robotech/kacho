@@ -105,6 +105,13 @@ func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInsta
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
+	// boot_disk_spec required (proto (required)=true) — presence-check СИНХРОННО, до
+	// Operation (api-conventions: required-валидация первым стейтментом RPC). Оставаясь
+	// в рамках storage-split (содержимое boot_disk_spec на входе Create игнорируется,
+	// см. CreateReqFromProto) — контракт запроса всё равно требует НЕСУЩЕЕ поле.
+	if req.BootDiskSpec == nil {
+		return nil, status.Error(codes.InvalidArgument, "boot_disk_spec is required")
+	}
 	op, err := h.svc.Create(ctx, CreateReqFromProto(req))
 	if err != nil {
 		return nil, err
@@ -117,10 +124,12 @@ func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInsta
 // Create; выделен, чтобы fuzz (internal/fuzz) прогонял ровно этот путь на
 // hostile-входах.
 //
-// Storage-split cutover: boot_disk_spec / secondary_disk_specs / network_interface_specs
-// на входе Create ИГНОРИРУЮТСЯ — Instance создаётся без привязок (acceptance sec.0.3:
-// inline-attach out-of-scope). Тома/NIC подключаются явными AttachDisk/
-// AttachNetworkInterface на уже существующих ресурсах.
+// Storage-split cutover: СОДЕРЖИМОЕ boot_disk_spec / secondary_disk_specs /
+// network_interface_specs на входе Create ИГНОРИРУЕТСЯ — Instance создаётся без
+// привязок (acceptance sec.0.3: inline-attach out-of-scope). Тома/NIC подключаются
+// явными AttachDisk/AttachNetworkInterface на уже существующих ресурсах. NB:
+// ПРИСУТСТВИЕ boot_disk_spec всё равно обязательно (proto (required)=true) и
+// проверяется синхронно в Create до Operation — здесь валидируется только контент-drop.
 func CreateReqFromProto(req *computev1.CreateInstanceRequest) svc.CreateInstanceReq {
 	cr := svc.CreateInstanceReq{
 		ProjectID:        req.ProjectId,

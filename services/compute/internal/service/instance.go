@@ -36,6 +36,16 @@ const (
 // validCoreFractions — допустимые значения core_fraction (конвенция Kachō).
 var validCoreFractions = map[int64]struct{}{0: {}, 5: {}, 20: {}, 50: {}, 100: {}}
 
+// validCores — допустимые значения resources_spec.cores (proto (value)-set
+// ResourcesSpec.cores: instance_service.proto). Дискретный whitelist vCPU-count,
+// не «любое чётное»: после 36 шаг 4 (…,36,40,44,…,80). Enum-валидация СИНХРОННА
+// (первым стейтментом RPC, до Operation) — api-conventions.
+var validCores = map[int64]struct{}{
+	2: {}, 4: {}, 6: {}, 8: {}, 10: {}, 12: {}, 14: {}, 16: {}, 18: {}, 20: {},
+	22: {}, 24: {}, 26: {}, 28: {}, 30: {}, 32: {}, 34: {}, 36: {}, 40: {}, 44: {},
+	48: {}, 52: {}, 56: {}, 60: {}, 64: {}, 68: {}, 72: {}, 76: {}, 80: {},
+}
+
 // CreateInstanceReq — запрос на создание ВМ.
 //
 // Storage-split cutover: Instance.Create больше НЕ создаёт inline-диски и НЕ
@@ -737,6 +747,9 @@ type protoreflectMessage = proto.Message
 func validateResources(cores, memory, coreFraction int64, cpuGuaranteePercent int32) error {
 	if cores <= 0 {
 		return invalidArg("resources_spec.cores", "cores must be > 0")
+	}
+	if _, ok := validCores[cores]; !ok {
+		return invalidArg("resources_spec.cores", "cores must be a supported vCPU count")
 	}
 	if memory <= 0 {
 		return invalidArg("resources_spec.memory", "memory must be > 0 bytes")
