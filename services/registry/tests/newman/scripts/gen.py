@@ -24,7 +24,6 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,46 +31,22 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 CASES_DIR = ROOT / "cases"
 OUT_DIR = ROOT / "collections"
 
-# Monotonic sequence for poll-step names within a single collection build.
-# poll_operation_until_done() self-retries via pm.execution.setNextRequest(
-# pm.info.requestName); newman resolves setNextRequest by request NAME and jumps
-# to the FIRST match in the flattened collection. Identically-named "poll-op"
-# steps (one per mutation, hundreds per collection) therefore made a mid-suite
-# retry jump back to an early folder and skip the folders in between — a plain
-# `newman run <collection>` traversed only a fraction of the cases. A per-step
-# unique name keeps the self-retry unambiguous so full linear traversal is
-# preserved. Reset to 0 at the start of every module load (load_cases_module) so
-# names are deterministic per collection.
-_poll_seq = 0
-
-
-# ---------------------------------------------------------------------------
-# Declarative structures
-# ---------------------------------------------------------------------------
-
-@dataclass
-class Step:
-    """A single HTTP request within a Case."""
-    name: str
-    method: str
-    path: str  # relative; {{baseUrl}} prefix prepended automatically
-    body: Optional[Dict] = None
-    pre_script: List[str] = field(default_factory=list)
-    test_script: List[str] = field(default_factory=list)
-    # auth override per-step (None = inherit collection-level default Bearer):
-    #   "anonymous"       — strip Authorization header before request
-    #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (resolved from env)
-    auth: Optional[str] = None
-
-
-@dataclass
-class Case:
-    """One test case — may contain multiple sequential steps."""
-    id: str        # e.g. NLB-CR-CRUD-OK
-    title: str     # human-readable summary
-    classes: List[str]   # CRUD / VAL / NEG / BVA / CONF / STATE / IDEM / LSG / AZD
-    priority: str        # P0 / P1 / P2 / P3
-    steps: List[Step]
+# --- shared canonical helper-namespace (H0): import, NOT copy ---
+# tests/newman/shared/harness.py is the SINGLE source of the helper namespace
+# (Step/Case + assert_*/save_from_response/poll/retry). The per-service wrappers
+# below bind registry's parameters (op-id regex, poll budget/guards) so the
+# generated collections stay byte-identical while the code lives in ONE place.
+# ROOT = services/<svc>/tests/newman → repo root = ROOT.parents[3].
+sys.path.insert(0, str(ROOT.parents[3] / "tests" / "newman" / "shared"))
+import harness  # noqa: E402
+from harness import (  # noqa: E402
+    Step, Case,
+    assert_status, assert_grpc_code, assert_transcode_error, assert_field_violation,
+    assert_unscoped_rejected, assert_absent_id_rejected, save_from_response,
+    retry_until_present, retry_until_authorized, retry_until_absent,
+)
+from harness import assert_operation_envelope as _assert_operation_envelope  # noqa: E402
+from harness import poll_operation_until_done as _poll_operation_until_done  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -98,99 +73,23 @@ PRE_GLOBAL = [
 
 
 # ---------------------------------------------------------------------------
-# Reusable assertion snippets (pm.*) — same names as kacho-vpc
+# Per-service helper wrappers — bind registry parameters onto the shared canon.
+# (assert_status/grpc_code/field_violation/save_from_response/transcode_error/
+#  unscoped/absent-id/retry_* are imported verbatim from harness above.)
 # ---------------------------------------------------------------------------
 
-def assert_status(code: int) -> List[str]:
-    return [
-        f"pm.test('status {code}', () => pm.expect(pm.response.code).to.eql({code}));",
-    ]
-
-
-def assert_grpc_code(code: int, code_name: str) -> List[str]:
-    return [
-        f"pm.test('grpc code {code} ({code_name})', () => {{",
-        "  const j = pm.response.json();",
-        f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
-        "});",
-    ]
-
-
-def assert_field_violation(field_name: str) -> List[str]:
-    return [
-        f"pm.test('field violation on \"{field_name}\"', () => {{",
-        "  const j = pm.response.json();",
-        "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
-        "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
-        f"  const fv = (det.fieldViolations || []).find(v => v.field === '{field_name}');",
-        f"  pm.expect(fv, 'fieldViolation for {field_name}').to.be.an('object');",
-        "});",
-    ]
-
-
-def save_from_response(jsonpath: str, env_var: str) -> List[str]:
-    return [
-        "try {",
-        "  const j = pm.response.json();",
-        f"  const v = ({jsonpath});",
-        f"  if (v !== undefined && v !== null) pm.environment.set('{env_var}', String(v));",
-        "} catch (e) {}",
-    ]
-
-
 def assert_operation_envelope(prefix_regex: str = "^(nlb|tgr|lst)[a-z0-9]+$") -> List[str]:
-    return [
-        "pm.test('Operation envelope returned', () => {",
-        "  const j = pm.response.json();",
-        f"  pm.expect(j.id, 'operation.id').to.match(/{prefix_regex}/);",
-        "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-        "});",
-    ]
+    """registry op-id default regex kept as-is for byte-identity (NB: `^(nlb|tgr|lst)…`
+    is the historical nlb copy-paste default; registry call-sites pass the correct
+    `^(rop|reo)…` explicitly. Converging the default to a registry prefix is an H1
+    behaviour change — tracked separately, not part of this structural migration)."""
+    return _assert_operation_envelope(prefix_regex)
 
 
 def poll_operation_until_done() -> Step:
-    """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
-    guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
-    hammering back-to-back (~15ms/poll) which never waits for the op (Koren #1).
-
-    Each emitted step carries a unique name (`poll-op-<n>`) so the
-    setNextRequest self-retry is unambiguous under `newman run <collection>`
-    (see `_poll_seq` note): a duplicate "poll-op" name would make newman resolve
-    the retry jump to the first such step and skip intervening folders."""
-    global _poll_seq
-    _poll_seq += 1
-    return Step(
-        name=f"poll-op-{_poll_seq}",
-        method="GET",
-        path="/operations/{{opId}}",
-        test_script=[
-            "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-            "  pm.environment.unset('_pollCount');",
-            "  return;",
-            "}",
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            # Poll budget raised 6→30 to match the Koren-1 baseline of the other
-            # suites; with the ~500ms inter-poll delay below this covers ~15s.
-            "if (!j.done && pc < 30) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
-    )
+    """registry poll: opId-guard on, budget 30, no inline retry-comment, per-collection
+    `poll-op-<n>` counter (harness._POLL_SEQ, reset in load_cases_module)."""
+    return _poll_operation_until_done(retry_comment=False)
 
 
 def http_method_not_allowed_block(prefix: str, base_path: str) -> List[Case]:
@@ -335,11 +234,10 @@ def build_collection(service: str, cases: List[Case]) -> Dict:
 # ---------------------------------------------------------------------------
 
 def load_cases_module(path: Path):
-    # Reset the poll-step counter so each collection's poll-op-<n> names are
+    # Reset the shared poll-step counter so each collection's poll-op-<n> names are
     # deterministic (stable across regenerations) rather than depending on how
     # many modules were loaded before this one.
-    global _poll_seq
-    _poll_seq = 0
+    harness._POLL_SEQ[0] = 0
     spec = importlib.util.spec_from_file_location(path.stem, path)
     mod = importlib.util.module_from_spec(spec)
     # Inject helpers into the module's namespace so case files don't import gen.
@@ -347,10 +245,16 @@ def load_cases_module(path: Path):
     mod.Case = Case
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
+    mod.assert_transcode_error = assert_transcode_error
     mod.assert_field_violation = assert_field_violation
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
+    mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response
     mod.poll_operation_until_done = poll_operation_until_done
+    mod.retry_until_present = retry_until_present
+    mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_absent = retry_until_absent
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)
