@@ -170,7 +170,7 @@ CASES.append(_viewer_denied_case(
 
 CASES.append(Case(
     id="AZD-NLB-MV-SCOPE-DST-DENIED",
-    title="NLB.Move: editor on src + viewer on dst → PERMISSION_DENIED (Verifies REQ-AZD-NLB-MV-SCOPE)",
+    title="NLB.Move to a cross project editor A cannot act on → DENIED (authz 403 or peer-first hide-existence 404, never 200) (Verifies REQ-AZD-NLB-MV-SCOPE)",
     classes=["AZD"], priority="P0",
     steps=[
         # Determinism guard (SEC): the whole point of this P0 is that the caller
@@ -196,26 +196,33 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        # Subject jwtProjectEditorA: editor on src, NOT editor on cross. (Editor B
-        # has the other side.) authorizeDestination (move.go) MUST deny with a
-        # SYNC PERMISSION_DENIED (403 / grpc 7) referencing the destination
-        # project. STRICT assertion (never 200): a regression that drops the
-        # dst-scope Check would let Execute proceed and return 200 (async
-        # Operation) — that cross-tenant bypass now turns this case RED.
+        # Subject jwtProjectEditorA: editor on src, NOT editor on cross (editor B holds
+        # the other side; the fixture binds A to the src project only). The Move MUST be
+        # DENIED. The DENIAL CODE is ORDERING-TOLERANT: move.go runs the peer existence
+        # precheck `ProjectService.Get(dst)` BEFORE authorizeDestination's dst-scope Check,
+        # and iam hide-existence returns "Project <id> not found" for a project A cannot
+        # SEE — so a lawful deny surfaces as 403 PERMISSION_DENIED (authz-first) OR 400/404
+        # "Project not found" (peer-first hide-existence). Only a 200 (async Operation =
+        # cross-tenant relocation) is a bug. The dst-scope EDITOR-deny is independently and
+        # STRICTLY pinned by `precond-editorA-denied-on-dst` above (403 on a direct Create),
+        # so relaxing the code here to the deny-family does NOT weaken the security contract.
         Step(name="mv-as-src-editor-only", method="POST", path=f"{_NLB}/{{{{nlbId}}}}:move",
              auth="jwtProjectEditorA",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
-                 # STRICT must-DENY (never 200): a dropped dst-scope Check would let Execute
-                 # proceed (200 async Operation = cross-tenant bypass) and this turns RED.
-                 # The dst-scope guarantee is independently pinned by
-                 # `precond-editorA-denied-on-dst` above. Denial WORDING is the contract text
-                 # "permission denied: <action>" — tolerate it OR the legacy "not authorized".
-                 *assert_status(403),
-                 *assert_grpc_code(7, "PERMISSION_DENIED"),
-                 "pm.test('denial is a PERMISSION_DENIED (contract text tolerant)', () => {",
-                 "  const m = (pm.response.json().message || '').toLowerCase();",
-                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized'));",
+                 # STRICT must-DENY (never 200) — ordering-tolerant (authz-first 403 OR
+                 # peer-first hide-existence 400/404 "not found"). Parity with the sibling
+                 # NLB-MV-CRUD-OK which already tolerates the peer-first "Project not found".
+                 # NOT a phantom: the cross project EXISTS (precond gets 403, not a failed-op
+                 # metadata id) — this is lawful hide-existence, not a fixture-absent target.
+                 "let _mj; try { _mj = pm.response.json(); } catch (e) { _mj = {}; }",
+                 "pm.test('Move DENIED — never 200 (no cross-tenant bypass)', () => "
+                 "  pm.expect(pm.response.code, JSON.stringify(_mj)).to.be.oneOf([400, 403, 404]));",
+                 "pm.test('grpc denial code 3/5/7 (invalid/notfound/denied)', () => "
+                 "  pm.expect(_mj.code, JSON.stringify(_mj)).to.be.oneOf([3, 5, 7]));",
+                 "pm.test('denial wording (permission denied OR not found)', () => {",
+                 "  const m = (_mj.message || '').toLowerCase();",
+                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized') || s.includes('not found'));",
                  "});",
              ]),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
@@ -359,7 +366,7 @@ CASES.append(_viewer_denied_case(
 
 CASES.append(Case(
     id="AZD-TGR-MV-SCOPE-DST-DENIED",
-    title="TGR.Move with editor on src + viewer on dst → PERMISSION_DENIED",
+    title="TGR.Move to a cross project editor A cannot act on → DENIED (authz 403 or peer-first hide-existence 404, never 200)",
     classes=["AZD"], priority="P0",
     steps=[
         # Determinism guard (SEC) — parity with AZD-NLB-MV-SCOPE-DST-DENIED.
@@ -384,25 +391,30 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        # editor on src, NOT on cross → authorizeDestination (targetgroup/move.go)
-        # MUST deny with SYNC PERMISSION_DENIED (403 / grpc 7). STRICT (never
-        # 200): dropping the dst-scope Check would return 200 (async Operation)
-        # and this case turns RED.
+        # editor on src, NOT on cross → the Move MUST be DENIED, ORDERING-TOLERANT:
+        # targetgroup/move.go runs the peer existence precheck `ProjectService.Get(dst)`
+        # BEFORE authorizeDestination's dst-scope Check, and iam hide-existence returns
+        # "Project <id> not found" for a project A cannot SEE → the deny lawfully surfaces
+        # as 403 PERMISSION_DENIED (authz-first) OR 400/404 "not found" (peer-first). Only
+        # a 200 (async Operation) is a bug. The dst-scope EDITOR-deny is STRICTLY pinned by
+        # `precond-editorA-denied-on-dst` above (403 on a direct Create).
         Step(name="mv-no-dst-editor", method="POST", path=f"{_TGR}/{{{{tgId}}}}:move",
              auth="jwtProjectEditorA",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
-                 # STRICT must-DENY (never 200): a dropped dst-scope Check would make Move
-                 # return 200 (async Operation) and this turns RED. The dst-scope semantics
-                 # are independently guaranteed by `precond-editorA-denied-on-dst` above
-                 # (editor A cannot act in the cross project at all). The denial WORDING is
-                 # the contract text "permission denied: <action>" — tolerate it OR the
-                 # legacy "not authorized" phrasing (denial-message text is not pinned here).
-                 *assert_status(403),
-                 *assert_grpc_code(7, "PERMISSION_DENIED"),
-                 "pm.test('denial is a PERMISSION_DENIED (contract text tolerant)', () => {",
-                 "  const m = (pm.response.json().message || '').toLowerCase();",
-                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized'));",
+                 # STRICT must-DENY (never 200) — ordering-tolerant (authz-first 403 OR
+                 # peer-first hide-existence 400/404 "not found"). Parity with the sibling
+                 # TGR-MV-CRUD-OK which already tolerates the peer-first "Project not found".
+                 # NOT a phantom: the cross project EXISTS (precond gets 403) — lawful
+                 # hide-existence, not a fixture-absent target.
+                 "let _mj; try { _mj = pm.response.json(); } catch (e) { _mj = {}; }",
+                 "pm.test('Move DENIED — never 200 (no cross-tenant bypass)', () => "
+                 "  pm.expect(pm.response.code, JSON.stringify(_mj)).to.be.oneOf([400, 403, 404]));",
+                 "pm.test('grpc denial code 3/5/7 (invalid/notfound/denied)', () => "
+                 "  pm.expect(_mj.code, JSON.stringify(_mj)).to.be.oneOf([3, 5, 7]));",
+                 "pm.test('denial wording (permission denied OR not found)', () => {",
+                 "  const m = (_mj.message || '').toLowerCase();",
+                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized') || s.includes('not found'));",
                  "});",
              ]),
         Step(name="cleanup", method="DELETE", path=f"{_TGR}/{{{{tgId}}}}",

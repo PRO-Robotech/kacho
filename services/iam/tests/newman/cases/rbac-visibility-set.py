@@ -571,9 +571,23 @@ def exact_set_case_steps(kind, pfx, role_name):
         name="read-exact-set", method="GET",
         path=spec["path"] + "?accountId={{accountAId}}&pageSize=1000",
         auth="jwtInvitee", expect_code=200, retry_on=(403, 404),
+        # Retry until the exact-set is FULLY CONVERGED, not merely until the M+ set is
+        # present. The by-label reconciler materializes userINV's per-object v_list on the
+        # foo-matched objects eventually-consistently; while it is still landing tuples, a
+        # non-matching (M− / baz) object can be TRANSIENTLY visible before the negative
+        # filter settles. Waiting only for "all M+ present" can therefore snapshot a
+        # half-materialized set and see a baz object that a beat later is correctly hidden.
+        # Converged = all M+ present AND no M− AND no baz. Bounded — a PERMANENT other-label
+        # leak (a genuine per-object v_list over-emit) never converges, so the negative
+        # asserts below still fail it at budget exhaustion (never masked).
         retry_predicate=("(() => { try { const ids = (pm.response.json()." + spec["key"]
-                         + " || []).map(o => o.id); const want = " + want
-                         + ".map(v => pm.environment.get(v)); return !want.every(w => ids.indexOf(w) !== -1); } catch (e) { return true; } })()"),
+                         + " || []).map(o => o.id); "
+                         + "const want = " + want + ".map(v => pm.environment.get(v)); "
+                         + "const mneg = " + mneg + ".map(v => pm.environment.get(v)); "
+                         + "const bz = " + bz + ".map(v => pm.environment.get(v)); "
+                         + "return !want.every(w => ids.indexOf(w) !== -1) "
+                         + "|| mneg.some(w => ids.indexOf(w) !== -1) "
+                         + "|| bz.some(w => ids.indexOf(w) !== -1); } catch (e) { return true; } })()"),
         test_script=[
             "const j = pm.response.json();",
             "const ids = (j." + spec["key"] + " || []).map(o => o.id);",

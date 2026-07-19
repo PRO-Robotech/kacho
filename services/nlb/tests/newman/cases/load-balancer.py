@@ -2444,7 +2444,18 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         *_provision_subnet("REGIONAL", "drain-all"),
-        Step(name="cr-drain-all", method="POST", path=_CREATE_BASE,
+        # Wrap the create in the cross-service peer-visibility RYW retry (parity with the
+        # ZONAL/REGIONAL sibling creates cr-int / setup-create-lb / int-reg / int-drain):
+        # the drain-all subnet is provisioned inline through vpc and its Operation is done
+        # (durable), but nlb's vpc peer-read (SubnetService.Get on LB Create) is briefly
+        # stale under `--jobs` parallel load → a transient sync reject `subnet <id> not
+        # found` (400). Without the retry that transient 400 falls into the `else if (400)`
+        # branch and fails `message.include('cover all zones')` (it reads 'subnet ... not
+        # found' instead) — the create never reaches the real drain-all validation.
+        # retry_create_until_present retries SELF ONLY on [400,404] + /not found/, so the
+        # legitimate InvalidArgument "must not cover all zones" (no 'not found') passes
+        # straight through to the assertions below. Leak-free (a rejected create mints nothing).
+        retry_create_until_present(Step(name="cr-drain-all", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "INTERNAL", "placementType": "REGIONAL", "name": "drain-all-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"},
@@ -2465,7 +2476,7 @@ CASES.append(Case(
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         Step(name="cleanup-if-created", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),

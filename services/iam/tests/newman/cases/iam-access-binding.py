@@ -274,6 +274,30 @@ CASES.append(Case(
             path="/iam/v1/accessBindings/{{dupAcbId}}",
             auth="jwtAccountAdminA",
             test_script=[
+                # The stale (userNOBId,view,accountA) binding is typically a LEFTOVER from
+                # the authz-deny AB-CR-ALLOW suite (it grants the SAME shared 5-tuple and its
+                # best-effort teardown accepts a transient 403), or from a prior run. AAA's
+                # `v_delete` on it (admin-from-account, resolved via the binding→account
+                # parent-tuple) is EVENTUALLY-consistent: an immediate DELETE 403s until that
+                # parent-tuple drains to OpenFGA — proven CONVERGENT by
+                # AUTHZGCP-BIND-DELETE-BY-ADMIN-ALLOW (poll-fga-readiness → delete → 200).
+                # A single-shot revoke that accepts the 403 leaves the binding ACTIVE, so it
+                # keeps the strict-create UNIQUE (WHERE revoked_at IS NULL) slot and EVERY
+                # downstream (userNOBId,view,accountA) create (CR-CRUD-OK, CR-NEG-DUP, DL-FLOW,
+                # DP-*) collides ALREADY_EXISTS → crudAcbId phantom → the whole ACB suite
+                # cascades (get/list/delete 404/403). So retry SELF on the 403 delete-authority
+                # window until the revoke succeeds (200 → poll it done below) or the binding is
+                # already gone (404). Bounded; on budget exhaustion the existing fall-through to
+                # `create` still surfaces the real collision (never masked, never infinite).
+                "if (pm.environment.get('_pcrStarted') !== pm.info.requestName) { pm.environment.set('_pcrCount', '0'); pm.environment.set('_pcrStarted', pm.info.requestName); }",
+                "const _pcrc = parseInt(pm.environment.get('_pcrCount') || '0', 10);",
+                "if (pm.response.code === 403 && _pcrc < 40) {",
+                "  pm.environment.set('_pcrCount', String(_pcrc + 1));",
+                "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* delete-authority (binding→account parent-tuple) materialization wait */ }",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
+                "  return;",
+                "}",
+                "pm.environment.unset('_pcrCount'); pm.environment.unset('_pcrStarted');",
                 "pm.test('pre-clean revoke status acceptable', () => pm.expect(pm.response.code).to.be.oneOf([200, 404, 403]));",
                 "const j = pm.response.json();",
                 # A 200 returns the delete Operation → poll it done; a 404/403 means it is
