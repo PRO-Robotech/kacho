@@ -22,25 +22,21 @@ service ZoneService {
   // To get the list of zones, make a [List] request.
   rpc Get (GetZoneRequest) returns (Zone) {
     option (google.api.http) = { get: "/geo/v1/zones/{zone_id}" };
-    option (kacho.iam.authz.v1.permission)        = "geo.zones.get";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "cluster"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    // Ambient placement-catalog read: project-scope EXEMPT (authN-only). Region/
+    // Zone is an admin-curated global catalog every authenticated tenant must
+    // read to launch any placeable resource (zoneId/regionId originate here), so
+    // the gateway waives the per-RPC FGA Check (<exempt>) — a project-scope Check
+    // would 403 a zero-binding tenant. authN (JWT) stays mandatory. Documented
+    // exception, see security.md (geo public-read EXEMPT), mirrors iam JWKS-route.
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
   // Retrieves the list of zones.
   rpc List (ListZonesRequest) returns (ListZonesResponse) {
     option (google.api.http) = { get: "/geo/v1/zones" };
-    option (kacho.iam.authz.v1.permission)        = "geo.zones.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "cluster"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    // Ambient placement-catalog read — project-scope EXEMPT (authN-only); see
+    // ZoneService.Get. authN (JWT) stays; per-RPC FGA Check waived (<exempt>).
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 }
 

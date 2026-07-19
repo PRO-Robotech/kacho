@@ -207,12 +207,10 @@ const file_kacho_cloud_geo_v1_region_service_proto_rawDesc = "" +
 	"\x12open_for_placement\x18\x03 \x01(\bR\x10openForPlacement\"s\n" +
 	"\x13ListRegionsResponse\x124\n" +
 	"\aregions\x18\x01 \x03(\v2\x1a.kacho.cloud.geo.v1.RegionR\aregions\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd6\x02\n" +
-	"\rRegionService\x12\x9e\x01\n" +
-	"\x03Get\x12$.kacho.cloud.geo.v1.GetRegionRequest\x1a\x1a.kacho.cloud.geo.v1.Region\"U\x8a\xb5\x18\x0fgeo.regions.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1d\x12\x1b/geo/v1/regions/{region_id}\x12\xa3\x01\n" +
-	"\x04List\x12&.kacho.cloud.geo.v1.ListRegionsRequest\x1a'.kacho.cloud.geo.v1.ListRegionsResponse\"J\x8a\xb5\x18\x10geo.regions.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x11\x12\x0f/geo/v1/regionsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x87\x02\n" +
+	"\rRegionService\x12x\n" +
+	"\x03Get\x12$.kacho.cloud.geo.v1.GetRegionRequest\x1a\x1a.kacho.cloud.geo.v1.Region\"/\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x1d\x12\x1b/geo/v1/regions/{region_id}\x12|\n" +
+	"\x04List\x12&.kacho.cloud.geo.v1.ListRegionsRequest\x1a'.kacho.cloud.geo.v1.ListRegionsResponse\"#\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x11\x12\x0f/geo/v1/regionsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_region_service_proto_rawDescOnce sync.Once

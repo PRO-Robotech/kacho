@@ -222,12 +222,10 @@ const file_kacho_cloud_geo_v1_zone_service_proto_rawDesc = "" +
 	"\x05zones\x18\x01 \x03(\v2\x18.kacho.cloud.geo.v1.ZoneR\x05zones\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"7\n" +
 	"\x0eGetZoneRequest\x12%\n" +
-	"\azone_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId2\xc2\x02\n" +
-	"\vZoneService\x12\x94\x01\n" +
-	"\x03Get\x12\".kacho.cloud.geo.v1.GetZoneRequest\x1a\x18.kacho.cloud.geo.v1.Zone\"O\x8a\xb5\x18\rgeo.zones.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x19\x12\x17/geo/v1/zones/{zone_id}\x12\x9b\x01\n" +
-	"\x04List\x12$.kacho.cloud.geo.v1.ListZonesRequest\x1a%.kacho.cloud.geo.v1.ListZonesResponse\"F\x8a\xb5\x18\x0egeo.zones.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x0f\x12\r/geo/v1/zonesB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"\azone_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId2\xf7\x01\n" +
+	"\vZoneService\x12p\n" +
+	"\x03Get\x12\".kacho.cloud.geo.v1.GetZoneRequest\x1a\x18.kacho.cloud.geo.v1.Zone\"+\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x19\x12\x17/geo/v1/zones/{zone_id}\x12v\n" +
+	"\x04List\x12$.kacho.cloud.geo.v1.ListZonesRequest\x1a%.kacho.cloud.geo.v1.ListZonesResponse\"!\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x0f\x12\r/geo/v1/zonesB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_zone_service_proto_rawDescOnce sync.Once
