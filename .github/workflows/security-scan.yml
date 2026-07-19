@@ -68,7 +68,7 @@ jobs:
           # через upload ниже). Гейтит отдельный шаг «fail on HIGH».
           exit 0
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: gosec.sarif
@@ -115,7 +115,7 @@ jobs:
           exit-code: '0'
           ignore-unfixed: true
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-fs.sarif
@@ -141,7 +141,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-config.sarif
