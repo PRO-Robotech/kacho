@@ -365,12 +365,18 @@ CASES.append(Case(
         # whose VIP is auto-allocated from that subnet (v4Source.subnetId). Gate the
         # rest of the journey on the subnet + LB actually materialising.
         Step(name="provision-subnet", method="POST", path=_VPC_SUBNETS,
+             # Run-scoped HIGH-ENTROPY /24 (see listener.py _CIDR_ALLOC_PRE root-cause note):
+             # ~56k distinct /24s (oct2 ∈ [16,235], oct3 = run-random base + seq) replaces the
+             # old 40-value 10.200-239.x band that collided with subnets leaked by prior runs.
              pre_script=[
                  "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
                  "pm.environment.set('_cidrSeq', String(__seq));",
                  "var __run = (pm.environment.get('runId') || 'x0');",
-                 "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = (__h * 31 + __run.charCodeAt(i)) & 0xffff; }",
-                 "pm.environment.set('_subnetCidr', '10.' + (200 + (__h % 40)) + '.' + (__seq % 250) + '.0/24');",
+                 "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+                 "__h = __h & 0x7fffffff;",
+                 "var __oct2 = 16 + (__h % 220);",
+                 "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
+                 "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
              ],
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
                    "name": "xres-int-sub-{{runId}}", "v4CidrBlocks": ["{{_subnetCidr}}"],

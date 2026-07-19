@@ -15,6 +15,38 @@ _LST_BASE = "/nlb/v1/listeners"
 _LB_BASE = "/nlb/v1/networkLoadBalancers"
 _VPC_SUBNETS = "/vpc/v1/subnets"
 
+# Run-scoped, HIGH-ENTROPY /24 allocator for the per-case INTERNAL subnet.
+#
+# ROOT CAUSE it fixes (wandering e2e flake): the previous formula was
+# `10.{200 + hash(runId)%40}.{_cidrSeq}.0/24` — only 40 possible second-octet values
+# (10.200-239.x) shared with load-balancer/cross-resource/authz-deny, and `_cidrSeq`
+# RESTARTS at 1 in every newman process (each collection is its own process; runId is
+# NOT persisted back to the env file). These subnets are created in the SHARED seeded
+# `existingNetworkId` and were NEVER cleaned up, so they accumulate permanently. Any new
+# run whose `hash(runId)%40` landed on an already-saturated band collided at oct3=1,2,3…
+# → vpc `Subnet CIDRs can not overlap` (FailedPrecondition) on `setup-subnet` → the whole
+# INTERNAL LB chain cascaded (nlbId unset → child listener Create `invalid resource id
+# '{{nlbId}}'` → 18-assertion red). Which runId-hash landed on a saturated band drifted
+# run-to-run → the flake "wandered".
+#
+# The FIX spreads allocation across ~56k distinct /24s with a run-random base for BOTH
+# octets (not seq-from-1), so distinct runs land in distinct /24s and collision with
+# subnets leaked by prior/concurrent runs is improbable rather than guaranteed. Paired
+# with best-effort subnet reclaim in _cleanup_lb() (bounds accumulation). Java-style
+# 31-bit string hash (`(h<<5)-h` kept 32-bit via `|0`) — no Math.imul, newman-sandbox-safe.
+_CIDR_ALLOC_PRE = [
+    "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
+    "pm.environment.set('_cidrSeq', String(__seq));",
+    "var __run = (pm.environment.get('runId') || 'x0');",
+    "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+    "__h = __h & 0x7fffffff;",
+    # oct2 ∈ [16,235] (220 run-scoped values); oct3 = run-random base (high bits) + seq
+    # (separates subnets within one run). ~56k distinct /24 vs the old 40×{1..30} band.
+    "var __oct2 = 16 + (__h % 220);",
+    "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
+    "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
+]
+
 # NOTE (sub-phase 8.1 VIP model): the parent LoadBalancer now carries a per-family
 # VIP *source* on Create (v4Source public/subnet/address). This helper produces a
 # valid new-model parent LB (EXTERNAL → auto public VIP; INTERNAL → auto VIP from an
@@ -37,13 +69,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
     if lb_type == "INTERNAL":
         return [
             Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS,
-                 pre_script=[
-                     "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
-                     "pm.environment.set('_cidrSeq', String(__seq));",
-                     "var __run = (pm.environment.get('runId') || 'x0');",
-                     "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = (__h * 31 + __run.charCodeAt(i)) & 0xffff; }",
-                     "pm.environment.set('_subnetCidr', '10.' + (200 + (__h % 40)) + '.' + (__seq % 250) + '.0/24');",
-                 ],
+                 pre_script=_CIDR_ALLOC_PRE,
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
                        "name": f"lst-sub-{name_suffix}-{{{{runId}}}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
                        "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
@@ -81,7 +107,11 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                  path=f"{_LB_BASE}/{{{{nlbId}}}}", test_script=[])),
         ]
     return [
+        # EXTERNAL parent provisions NO subnet — clear any stale lstSubnetId carried over
+        # from a prior INTERNAL case so the best-effort subnet reclaim in _cleanup_lb() is a
+        # no-op here (it must not delete another case's subnet).
         Step(name="setup-lb", method="POST", path=_LB_BASE,
+             pre_script=["pm.environment.unset('lstSubnetId');"],
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": f"lst-{name_suffix}-{{{{runId}}}}", "type": lb_type,
                    "v4Source": {"public": {}}},
@@ -98,6 +128,25 @@ def _cleanup_lb():
     return [
         Step(name="cleanup-lb", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        # Best-effort reclaim of the per-case INTERNAL subnet (lstSubnetId), now that its only
+        # referrer — the parent LB whose VIP was allocated from it — is deleted (VIP recycled on
+        # LB delete → subnet becomes empty → deletable). Leaking it accumulated subnets in the
+        # shared network and exhausted the /24 space → 'Subnet CIDRs can not overlap' on later
+        # runs (the wandering flake this suite fixes). Guarded + fully tolerant: when no subnet
+        # was provisioned this case (EXTERNAL setup unset lstSubnetId), the DELETE hits the
+        # collection path and 4xx's harmlessly (opId cleared → the poll no-ops); a transient
+        # 'subnet not empty' during VIP free-lag is also tolerated (residual leak covered by the
+        # widened CIDR entropy). It NEVER fails the case.
+        Step(name="cleanup-lst-subnet", method="DELETE", path=f"{_VPC_SUBNETS}/{{{{lstSubnetId}}}}",
+             test_script=[
+                 "pm.test('subnet reclaim best-effort (never fails the case)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
+                 "pm.environment.unset('opId');",
+                 "if (pm.response.code === 200) { try { const j = pm.response.json();"
+                 " if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
+                 "pm.environment.unset('lstSubnetId');",
+             ]),
         poll_operation_until_done(),
     ]
 

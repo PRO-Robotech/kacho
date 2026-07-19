@@ -62,17 +62,26 @@ _VPC_ADDRESSES = "/vpc/v1/addresses"
 # ---------------------------------------------------------------------------
 
 def _cidr_alloc_pre():
-    """Pre-request: allocate a fresh, run-scoped /24 in the seeded network.
+    """Pre-request: allocate a fresh, run-scoped, HIGH-ENTROPY /24 in the seeded network.
 
-    Second octet derives from a hash of runId (stable per run, separates parallel
-    runs); third octet is a per-run monotonic counter (separates subnets within a
-    run). Block 10.200-239.x.0/24 avoids the seeded fixture subnet (10.130/10.180)."""
+    Spreads allocation across ~56k distinct /24s (oct2 ∈ [16,235] run-scoped, oct3 =
+    run-random base + per-run seq) so distinct runs land in distinct /24s. Replaces the old
+    `10.{200+hash%40}.{seq}.0/24` — only 40 second-octet values (shared with listener/
+    cross-resource/authz-deny) with seq restarting at 1 each process — which collided at
+    oct3=1,2,3… with subnets leaked by prior runs into the shared never-cleaned network →
+    `Subnet CIDRs can not overlap` (the wandering e2e flake). Java-style 31-bit string hash
+    (`(h<<5)-h` kept 32-bit via `|0`) — no Math.imul, newman-sandbox-safe. See listener.py
+    _CIDR_ALLOC_PRE for the full root-cause note; this file already reclaims its subnets via
+    _cleanup_vpc()."""
     return [
         "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
         "pm.environment.set('_cidrSeq', String(__seq));",
         "var __run = (pm.environment.get('runId') || 'x0');",
-        "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = (__h * 31 + __run.charCodeAt(i)) & 0xffff; }",
-        "pm.environment.set('_subnetCidr', '10.' + (200 + (__h % 40)) + '.' + (__seq % 250) + '.0/24');",
+        "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+        "__h = __h & 0x7fffffff;",
+        "var __oct2 = 16 + (__h % 220);",
+        "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
+        "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
     ]
 
 
@@ -2540,7 +2549,13 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         *_provision_external_address("kind-mm"),
-        Step(name="cr-kind-mismatch", method="POST", path=_CREATE_BASE,
+        # Cross-service peer read-your-writes: the just-provisioned vpc Address can be briefly
+        # invisible to nlb's vpc peer-read under parallel load → sync create rejects `address
+        # <id> not found` (400) BEFORE the real kind-mismatch validation runs. Wrap retries SELF
+        # only on a transient `not found` (message-discriminated); the REAL negative reject here
+        # ("Illegal argument addressId", grpc 3) does NOT match /not found/ → passes straight
+        # through so the assertion runs. Same pattern as the sibling cr-mismatch above.
+        retry_create_until_present(Step(name="cr-kind-mismatch", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "INTERNAL", "placementType": "REGIONAL", "name": "kind-mm-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
@@ -2554,7 +2569,7 @@ CASES.append(Case(
                  "  pm.test('generic anti-oracle message (Illegal argument addressId)', () => "
                  "    pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
                  "}",
-             ]),
+             ])),
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddrId"),
     ],
 ))
@@ -2696,7 +2711,13 @@ CASES.append(Case(
     steps=[
         *_provision_subnet("REGIONAL", "int-link"),
         *_provision_internal_address("vpcSubnetId", "int-link"),
-        Step(name="cr-link", method="POST", path=_CREATE_BASE,
+        # Cross-service RYW: the fresh vpc Address (vpcAddrId) can be briefly invisible to nlb's
+        # vpc peer-read under parallel load → `address <id> not found` (400) before vpc's write
+        # is visible. Wrap retries SELF only on a transient not-found (message-discriminated);
+        # the fixture-absent branch (vpcAddrId unset → `invalid resource id`, no "not found")
+        # passes straight through to its tolerant else. Without the wrap a transient not-found
+        # mis-fails the `code===200` happy-path assertion.
+        retry_create_until_present(Step(name="cr-link", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "INTERNAL", "placementType": "REGIONAL", "name": "lb-ilink-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
@@ -2712,7 +2733,7 @@ CASES.append(Case(
                  "  pm.test('no internal address fixture → address-link create rejected', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -2734,7 +2755,11 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_provision_external_address("ext-link"),
-        Step(name="cr-ext-link", method="POST", path=_CREATE_BASE,
+        # Cross-service RYW: fresh vpc Address peer-read can be transiently stale under parallel
+        # load (`address <id> not found`, 400). Retry SELF only on the transient not-found; the
+        # fixture-absent `invalid resource id` (no "not found") passes through to its tolerant
+        # else. See cr-link above.
+        retry_create_until_present(Step(name="cr-ext-link", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "EXTERNAL", "name": "lb-elink-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
@@ -2750,7 +2775,7 @@ CASES.append(Case(
                  "  pm.test('no external address fixture → address-link create rejected', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-ext-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -2772,7 +2797,12 @@ CASES.append(Case(
     classes=["CRUD"], priority="P2",
     steps=[
         *_provision_subnet("REGIONAL", "dualstack"),
-        Step(name="cr-dualstack", method="POST", path=_CREATE_BASE,
+        # Cross-service RYW: the fresh v4 vpc Subnet (vpcSubnetId) peer-read can be transiently
+        # stale under parallel load (`subnet <id> not found`, 400). Retry SELF only on the
+        # transient not-found so the real dualstack-accept path is exercised instead of falling
+        # into the tolerant else (which would SILENTLY skip the scenario). v6Source uses the
+        # stable seeded existingAddressIPv6Id — no retry needed for that leg.
+        retry_create_until_present(Step(name="cr-dualstack", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "INTERNAL", "placementType": "REGIONAL", "name": "lb-ds-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"},
@@ -2790,7 +2820,7 @@ CASES.append(Case(
                  "  pm.test('dualstack create either accepted or lawfully rejected (fixture-dependent), never a 5xx', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
                  "}",
-             ]),
+             ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-dualstack", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
@@ -2919,7 +2949,11 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_provision_external_address("rel-link"),
-        Step(name="cr-linked", method="POST", path=_CREATE_BASE,
+        # Cross-service RYW: fresh vpc Address peer-read can be transiently stale (`address <id>
+        # not found`, 400) → nlbId would stay unset and the whole delete-release scenario
+        # (del-linked-lb / lb-gone / linked-address-survives, all guarded by nlbId) would
+        # SILENTLY skip. Retry SELF only on the transient not-found so the scenario runs.
+        retry_create_until_present(Step(name="cr-linked", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "EXTERNAL", "name": "lb-rel-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
@@ -2930,7 +2964,7 @@ CASES.append(Case(
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
                  "} else { pm.environment.unset('opId'); }",
-             ]),
+             ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="del-linked-lb", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[

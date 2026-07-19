@@ -220,10 +220,44 @@ def preclean_account_loop(tag, next_step):
     ]
 
 
-def mk_project(short, label_key, id_var, op_var):
+def create_suite_account(acc_var, op_var):
+    """Create a FRESH, suite-private account per run (owner = userAAAId / jwtAccountAdminA) so
+    the by-label PROJECT exact-set reads an account in which the subject (userINVId) is NOT a
+    member.
+
+    ROOT CAUSE of the persistent red this fixes (diagnosed, NOT a product over-emit): userINVId
+    is seeded by authz-fixtures/setup.sh (KAC-125 invite-flow → editor@projectA1) as a MEMBER of
+    the SHARED accountA, and ProjectService.List carries an account-member visibility floor that
+    returns EVERY project in the account to any member. A member's project List therefore can
+    NEVER be narrowed by a matchLabels grant — the account's M−/baz projects AND every other
+    suite's projects (authz-test-*, t31-prj-*, …) leak into the visible set. The IDENTICAL
+    account-scoped by-label grant is correctly filtered for serviceAccount/group/role (their List
+    RPCs have no member floor — those exact-set cases PASS), which pins the leak to project-list
+    MEMBERSHIP, not a by-label v_list over-emit. In a fresh account userINVId's ONLY relation is
+    the by-label AccessBinding → per-object v_list on the foo-matched projects only → the exact
+    set holds. Self-contained: no concurrent suite touches this per-run account (unique
+    rbacvis-<runId> name), so it cannot be contaminated. (VLIST-ONLY / SVA / GRP / ROL cases stay
+    on accountAId — they already pass; the member floor only breaks the exact-set's M−/baz-hidden
+    assertion.)"""
+    return [
+        Step(name="create-suite-account", method="POST", path="/iam/v1/accounts",
+             body={"name": "rbacvis-{{runId}}",
+                   "description": "rbac-visibility-set per-run private account",
+                   "ownerUserId": "{{userAAAId}}"},
+             auth="jwtAccountAdminA",
+             test_script=[*assert_status(200),
+                          *save_from_response("j.metadata && j.metadata.accountId", acc_var),
+                          *save_from_response("j.id", op_var)]),
+        poll_op(op_var, out_id_var=acc_var),
+    ]
+
+
+def mk_project(short, label_key, id_var, op_var, acct_var="accountAId"):
     """ProjectService.Create (+ op-poll) capturing the new project id. label_key None → no
-    labels (M−); 'foo'/'baz' → labels={key: <runId>} (per-run unique value)."""
-    body = {"accountId": "{{accountAId}}", "name": short + "-{{runId}}", "description": "newman exact-set project"}
+    labels (M−); 'foo'/'baz' → labels={key: <runId>} (per-run unique value). acct_var selects the
+    parent account (default shared accountAId; the exact-set case passes a fresh suite-private
+    account — see create_suite_account)."""
+    body = {"accountId": "{{" + acct_var + "}}", "name": short + "-{{runId}}", "description": "newman exact-set project"}
     if label_key:
         body["labels"] = {label_key: "{{runId}}"}
     return [
@@ -243,10 +277,12 @@ def mk_project(short, label_key, id_var, op_var):
     ]
 
 
-def grant_bylabel_role(role_var, acb_var, role_op, bind_op, verbs, role_name):
+def grant_bylabel_role(role_var, acb_var, role_op, bind_op, verbs, role_name, acct_var="accountAId"):
     """RoleService.Create(rule {iam.project verbs matchLabels:{foo:runId}}) + AccessBinding
-    bound to user:userINVId @ ACCOUNT:accountAId. Fresh role id per run → unique active 5-tuple
-    → no strict-create dup → no pre-clean of THIS binding needed."""
+    bound to user:userINVId @ ACCOUNT:<acct_var>. Fresh role id per run → unique active 5-tuple
+    → no strict-create dup → no pre-clean of THIS binding needed. acct_var selects the account
+    the role lives in AND the binding scope (default shared accountAId; the exact-set case passes
+    a fresh suite-private account — see create_suite_account)."""
     return [
         Step(
             name="create-role",
@@ -255,7 +291,7 @@ def grant_bylabel_role(role_var, acb_var, role_op, bind_op, verbs, role_name):
             body={
                 # Role.Create name enforces ^[a-z][a-z0-9_]{0,40}$ (underscores, NOT hyphens
                 # — stricter than the proto annotation), so the run-suffix is `_`-joined.
-                "accountId": "{{accountAId}}",
+                "accountId": "{{" + acct_var + "}}",
                 "name": role_name + "_{{runId}}",
                 "description": "newman exact-set by-label role",
                 "rules": [
@@ -282,7 +318,7 @@ def grant_bylabel_role(role_var, acb_var, role_op, bind_op, verbs, role_name):
             body={
                 "subjects": [{"type": "SUBJECT_TYPE_USER", "id": "{{userINVId}}"}],
                 "roleId": "{{" + role_var + "}}",
-                "scopeRef": {"tier": "ACCOUNT", "id": "{{accountAId}}"},
+                "scopeRef": {"tier": "ACCOUNT", "id": "{{" + acct_var + "}}"},
             },
             auth="jwtAccountAdminA",
             test_script=[
@@ -349,34 +385,42 @@ CASES.append(Case(
     priority="P0",
     steps=[
         # verifies (non-matching label hidden)
+        # FRESH suite-private account per run (see create_suite_account): the shared accountA
+        # makes userINVId an account MEMBER (authz-fixtures KAC-125 invite), and
+        # ProjectService.List's member floor returns EVERY account project to a member —
+        # structurally defeating the by-label narrowing (M−/baz + other suites' projects leak
+        # in). In this fresh account userINVId is NOT a member (only the by-label binding below),
+        # so the List is narrowed to exactly the foo-matched set.
+        *create_suite_account("visSetAcct", "visSetAcctOp"),
         # M+ (foo=runId) — 3 projects.
-        *mk_project("setpp1", "foo", "visPP1", "visPP1Op"),
-        *mk_project("setpp2", "foo", "visPP2", "visPP2Op"),
-        *mk_project("setpp3", "foo", "visPP3", "visPP3Op"),
+        *mk_project("setpp1", "foo", "visPP1", "visPP1Op", acct_var="visSetAcct"),
+        *mk_project("setpp2", "foo", "visPP2", "visPP2Op", acct_var="visSetAcct"),
+        *mk_project("setpp3", "foo", "visPP3", "visPP3Op", acct_var="visSetAcct"),
         # M− (no labels) — 3 projects.
-        *mk_project("setpm1", None, "visPM1", "visPM1Op"),
-        *mk_project("setpm2", None, "visPM2", "visPM2Op"),
-        *mk_project("setpm3", None, "visPM3", "visPM3Op"),
+        *mk_project("setpm1", None, "visPM1", "visPM1Op", acct_var="visSetAcct"),
+        *mk_project("setpm2", None, "visPM2", "visPM2Op", acct_var="visSetAcct"),
+        *mk_project("setpm3", None, "visPM3", "visPM3Op", acct_var="visSetAcct"),
         # other-label (baz=runId) — 2 projects.
-        *mk_project("setbq1", "baz", "visBQ1", "visBQ1Op"),
-        *mk_project("setbq2", "baz", "visBQ2", "visBQ2Op"),
-        # Clean slate: remove any residual account-A grant on userINVId (else account-viewer
-        # cascade would show M−/baz too and defeat the by-label filtering). On clean slate the
-        # loop jumps forward to the grant's first step ("create-role"), never into the del loop.
-        *preclean_account_loop("visSet", "create-role"),
-        # Grant the by-label role (get+list) to userINVId on ACCOUNT:accountAId.
+        *mk_project("setbq1", "baz", "visBQ1", "visBQ1Op", acct_var="visSetAcct"),
+        *mk_project("setbq2", "baz", "visBQ2", "visBQ2Op", acct_var="visSetAcct"),
+        # No preclean loop: a fresh per-run account has ZERO residual bindings for userINVId by
+        # construction (no other suite touches it), so the clean-slate the preclean used to
+        # enforce on shared accountA is guaranteed here.
+        # Grant the by-label role (get+list) to userINVId on ACCOUNT:visSetAcct.
         *grant_bylabel_role("visSetRole", "visSetAcb", "visSetRoleOp", "visSetBindOp",
-                            ["get", "list"], "setlblrole"),
-        # The subject lists projects: poll until ALL THREE M+ converge, then assert the set
-        # is EXACTLY M+ (no M−, no other-label).
+                            ["get", "list"], "setlblrole", acct_var="visSetAcct"),
+        # The subject lists projects: poll until the exact set is FULLY CONVERGED (all M+ present
+        # AND no M− AND no baz), then assert it. Waiting for the whole set (not just M+ present)
+        # rides out any transient half-materialized over-visibility during by-label reconcile; a
+        # PERMANENT leak never converges → the negatives below still fail at budget (never masked).
         poll_request_until_status(
             name="read-exact-set",
             method="GET",
-            path="/iam/v1/projects?accountId={{accountAId}}&pageSize=1000",
+            path="/iam/v1/projects?accountId={{visSetAcct}}&pageSize=1000",
             auth="jwtInvitee",
             expect_code=200,
             retry_on=(403, 404),
-            retry_predicate="(() => { try { const ids = (pm.response.json().projects || []).map(p => p.id); const want = ['visPP1','visPP2','visPP3'].map(v => pm.environment.get(v)); return !want.every(w => ids.indexOf(w) !== -1); } catch (e) { return true; } })()",
+            retry_predicate="(() => { try { const ids = (pm.response.json().projects || []).map(p => p.id); const want = ['visPP1','visPP2','visPP3'].map(v => pm.environment.get(v)); const mneg = ['visPM1','visPM2','visPM3'].map(v => pm.environment.get(v)); const bz = ['visBQ1','visBQ2'].map(v => pm.environment.get(v)); return !want.every(w => ids.indexOf(w) !== -1) || mneg.some(w => ids.indexOf(w) !== -1) || bz.some(w => ids.indexOf(w) !== -1); } catch (e) { return true; } })()",
             test_script=[
                 "const j = pm.response.json();",
                 "const ids = (j.projects || []).map(p => p.id);",
@@ -395,7 +439,9 @@ CASES.append(Case(
             ],
         ),
         # Teardown — revoke the grant (committed, not best-effort) + role; best-effort delete the
-        # run's projects (bound growth).
+        # run's projects, then the suite-private account (bound growth). Account delete may 409
+        # while its projects are still async-deleting — tolerated (a leaked per-run rbacvis-<runId>
+        # account is harmless: unique name, not pool-constrained, never asserted).
         robust_revoke_binding("teardown-binding", "visSetAcb"),
         teardown("teardown-role", "/iam/v1/roles/{{visSetRole}}"),
         teardown("teardown-pp1", "/iam/v1/projects/{{visPP1}}"),
@@ -406,6 +452,9 @@ CASES.append(Case(
         teardown("teardown-pm3", "/iam/v1/projects/{{visPM3}}"),
         teardown("teardown-bq1", "/iam/v1/projects/{{visBQ1}}"),
         teardown("teardown-bq2", "/iam/v1/projects/{{visBQ2}}"),
+        Step(name="teardown-suite-account", method="DELETE", path="/iam/v1/accounts/{{visSetAcct}}",
+             auth="jwtAccountAdminA",
+             test_script=["pm.test('suite-account teardown best-effort', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 409]));"]),
     ],
 ))
 

@@ -25,14 +25,21 @@ _LST = "/nlb/v1/listeners"
 _TGR = "/nlb/v1/targetGroups"
 _VPC_SUBNETS = "/vpc/v1/subnets"
 
-# Run-scoped /24 CIDR allocator (mirrors load-balancer.py) — used only where a case needs
-# a pool-INDEPENDENT INTERNAL LB (subnet-backed VIP) instead of the shared external pool.
+# Run-scoped HIGH-ENTROPY /24 CIDR allocator (mirrors load-balancer.py _cidr_alloc_pre) —
+# used only where a case needs a pool-INDEPENDENT INTERNAL LB (subnet-backed VIP) instead of
+# the shared external pool. ~56k distinct /24s (oct2 ∈ [16,235], oct3 = run-random base + seq)
+# replaces the old 40-value 10.200-239.x band that, with seq restarting at 1 each process and
+# subnets never reclaimed from the shared network, collided → `Subnet CIDRs can not overlap`
+# (the wandering e2e flake). See listener.py _CIDR_ALLOC_PRE for the full root-cause note.
 _CIDR_ALLOC_PRE = [
     "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
     "pm.environment.set('_cidrSeq', String(__seq));",
     "var __run = (pm.environment.get('runId') || 'x0');",
-    "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = (__h * 31 + __run.charCodeAt(i)) & 0xffff; }",
-    "pm.environment.set('_subnetCidr', '10.' + (200 + (__h % 40)) + '.' + (__seq % 250) + '.0/24');",
+    "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+    "__h = __h & 0x7fffffff;",
+    "var __oct2 = 16 + (__h % 220);",
+    "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
+    "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
 ]
 
 
