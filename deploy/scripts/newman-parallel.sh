@@ -89,30 +89,55 @@ fi
 echo "[parallel] regenerating collections for: $SERVICES"
 for svc in $SERVICES; do ( cd "$(suite_dir "$svc")" && python3 scripts/gen.py >/dev/null ) || { echo "gen $svc FAILED" >&2; exit 1; }; done
 
-echo "[parallel] launching suites concurrently (delay=${DELAY}ms jobs=${JOBS}/suite; nlb forced --jobs 1)"
-declare -A SUITE_PID
-for svc in $SERVICES; do
-  d="$(suite_dir "$svc")"
-  # nlb EXTERNAL suites draw auto-VIPs from ONE shared external AddressPool
-  # (198.51.100.0/24, also shared with the vpc seed) — --jobs>1 transiently exhausts it
-  # mid-run → "could not allocate load balancer address" → phantom (see nlb run.sh header).
-  # Force nlb serial (--jobs 1) regardless of $JOBS; the other suites keep $JOBS. This
-  # keeps peak concurrent VIP hold tiny even while nlb runs alongside vpc.
-  sjobs="$JOBS"; [ "$svc" = "nlb" ] && sjobs=1
-  mkdir -p "$d/out"   # redirect below opens out/suite.log BEFORE run.sh's own mkdir
-  ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
-      --env-var "baseUrl=http://localhost:$GW_PORT" \
-      --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
-      >"$d/out/suite.log" 2>&1 ) &
-  SUITE_PID[$svc]=$!
-done
+# Two-wave scheduler. PHASE2_SERVICES (default: iam) run in a SEPARATE second wave,
+# NOT concurrent with the rest. Rationale: iam's OWN authz materialization (AccessBinding
+# CRUD, label-revoke delete-stale) is full-path EXCLUSIVE-lock serialized; under the peak
+# concurrent load of vpc+compute+nlb registering resources it drains (get-confirms 404,
+# post-revoke {allowed:true}, cross-service NOB grant-window contamination). Isolating iam
+# to its own wave gives its full-path room to materialize with no competing load. The
+# leaf-resource services keep the forward SHARE-lock fast-path in their concurrent wave.
+# wall-time = dev-up + max(wave1) + wave2(iam ~serial) instead of max(all).
+PHASE2="${PHASE2_SERVICES:-iam}"
+_in_phase2() { case " $PHASE2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 RC=0
+declare -A SUITE_PID
+
+launch_wave() {  # $@ = services to run concurrently within this wave
+  SUITE_PID=()
+  local svc d sjobs st
+  for svc in "$@"; do
+    d="$(suite_dir "$svc")"
+    # nlb EXTERNAL suites draw auto-VIPs from ONE shared external AddressPool — --jobs>1
+    # transiently exhausts it → phantom (see nlb run.sh header). Force nlb serial.
+    sjobs="$JOBS"; [ "$svc" = "nlb" ] && sjobs=1
+    mkdir -p "$d/out"   # redirect below opens out/suite.log BEFORE run.sh's own mkdir
+    ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
+        --env-var "baseUrl=http://localhost:$GW_PORT" \
+        --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
+        >"$d/out/suite.log" 2>&1 ) &
+    SUITE_PID[$svc]=$!
+  done
+  for svc in "$@"; do
+    if wait "${SUITE_PID[$svc]}"; then st="GREEN"; else st="RED"; RC=1; fi
+    echo "===== [$svc] $st ====="
+    tail -n +1 "$(suite_dir "$svc")/out/summary.txt" 2>/dev/null || echo "  (no summary — see out/suite.log)"
+  done
+}
+
+wave1=(); wave2=()
 for svc in $SERVICES; do
-  if wait "${SUITE_PID[$svc]}"; then st="GREEN"; else st="RED"; RC=1; fi
-  echo "===== [$svc] $st ====="
-  tail -n +1 "$(suite_dir "$svc")/out/summary.txt" 2>/dev/null || echo "  (no summary — see out/suite.log)"
+  if _in_phase2 "$svc"; then wave2+=("$svc"); else wave1+=("$svc"); fi
 done
+
+if [ "${#wave1[@]}" -gt 0 ]; then
+  echo "[parallel] WAVE 1 concurrent (delay=${DELAY}ms jobs=${JOBS}/suite; nlb --jobs 1): ${wave1[*]}"
+  launch_wave "${wave1[@]}"
+fi
+if [ "${#wave2[@]}" -gt 0 ]; then
+  echo "[parallel] WAVE 2 isolated (no competing load): ${wave2[*]}"
+  launch_wave "${wave2[@]}"
+fi
 
 echo
 if [ "$RC" -eq 0 ]; then echo "[parallel] ALL SUITES GREEN"; else echo "[parallel] one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi

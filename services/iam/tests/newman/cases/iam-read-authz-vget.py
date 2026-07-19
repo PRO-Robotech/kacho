@@ -214,7 +214,7 @@ CASES.append(Case(
             name="get-account-non-granted",
             method="GET",
             path="/iam/v1/accounts/{{accountAId}}",
-            auth="jwtNoBindings",
+            auth="jwtPureNoBindings",
             test_script=[
                 "pm.test('NON-GRANTED: status 404 (hide existence, was 403)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                 "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
@@ -247,7 +247,7 @@ CASES.append(Case(
             name="get-account-nonexistent",
             method="GET",
             path="/iam/v1/accounts/" + _NONEXISTENT_ACCOUNT_ID,
-            auth="jwtNoBindings",
+            auth="jwtPureNoBindings",
             test_script=[
                 "pm.test('NONEXISTENT: status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                 "let j; try { j = pm.response.json(); } catch(e) { j = null; }",

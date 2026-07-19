@@ -37,10 +37,12 @@ jobs:
     name: newman e2e (kind-стенд)
     runs-on: self-hosted
     # e2e тяжёлый: fresh dev-up (~13м) + newman-суиты + gates. Суиты теперь гоняются
-    # ПАРАЛЛЕЛЬНО (newman-parallel.sh: один seed → fan-out iam/vpc/compute/nlb) → wall-time
-    # = dev-up + max(суита), а не сумма. Раньше 4 серийных суита + retry-инфляция упирались
-    # в 90м (nlb уходил в no-report при cancel). Цель ≤30м; 45 — запас на первый замер.
-    timeout-minutes: 45
+    # ПАРАЛЛЕЛЬНО (newman-parallel.sh: один seed → 2 волны — vpc/compute/nlb concurrent,
+    # затем iam изолированно) → wall-time = dev-up + max(wave1) + wave2(iam). iam отдельной
+    # волной: его full-path authz-материализация (AccessBinding CRUD, label-revoke) под
+    # конкурентной нагрузкой leaf-сервисов дрейнила (get-confirms 404, revoke не залипал).
+    # Цель ≤30м на leaf; iam-волна добавляет ~11м → ~40м; 55 — запас на 2-фазу.
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
