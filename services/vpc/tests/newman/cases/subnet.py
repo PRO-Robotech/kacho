@@ -627,15 +627,19 @@ CASES.append(Case(
              body={"v4CidrBlocks": ["10.140.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="remove-cidr", method="POST", path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
+        retry_until_authorized(Step(name="remove-cidr", method="POST", path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
              body={"v4CidrBlocks": ["10.140.1.0/24"]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
+        # verify (GET после remove-cidr) — read-your-writes на СВОЁМ subnet: под параллелью
+        # remove-cidr Update ре-регистрирует ресурс (register-intent → forward→full re-materialize)
+        # → краткое v_get окно → GET 404 (флейк). retry_until_authorized(404) доводит до 200
+        # (op уже done → cidr снят), затем assert. Sibling verify (add-cidr выше) уже обёрнут.
+        retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('cidr removed', () => pm.expect(pm.response.json().v4CidrBlocks).to.not.include('10.140.1.0/24'));"]),
-        Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                          "pm.test('cidr removed', () => pm.expect(pm.response.json().v4CidrBlocks).to.not.include('10.140.1.0/24'));"])),
+        retry_until_authorized(Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_net(),
     ],
