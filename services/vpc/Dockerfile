@@ -17,7 +17,7 @@ RUN go mod download
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-vpc ./services/vpc/cmd/vpc \
  && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/vpc/cmd/migrator
 
-FROM mirror.gcr.io/library/alpine:3.20
+FROM mirror.gcr.io/library/alpine:3.24
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
 COPY --from=builder /kacho-vpc /usr/local/bin/kacho-vpc
 COPY --from=builder /kacho-migrator /usr/local/bin/kacho-migrator

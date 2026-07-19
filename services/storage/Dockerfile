@@ -17,7 +17,7 @@ RUN go mod download
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /storage ./services/storage/cmd/storage \
  && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/storage/cmd/migrator
 
-FROM mirror.gcr.io/library/alpine:3.20
+FROM mirror.gcr.io/library/alpine:3.24
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
 COPY --from=builder /storage /usr/local/bin/storage
 COPY --from=builder /kacho-migrator /usr/local/bin/kacho-migrator
