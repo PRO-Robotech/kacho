@@ -7,7 +7,6 @@ import (
 	"context"
 	stderrors "errors"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,23 +23,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/dberr"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/repomock"
 )
-
-// awaitOpFromHandler поллит OperationHandler.Get до done=true (тот же контракт,
-// что у клиента после async-мутации).
-func awaitOpFromHandler(t *testing.T, oh *handler.OperationHandler, opID string) *operationpb.Operation {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		op, err := oh.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: opID})
-		if err == nil && op.GetDone() {
-			return op
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("operation %s did not finish", opID)
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-}
 
 func TestRegionHandler_Get_notFound_mapsToNotFound(t *testing.T) {
 	mock := &repomock.RegionRepo{
@@ -81,10 +63,12 @@ func TestRegionHandler_Get_happy(t *testing.T) {
 	}
 }
 
-func TestZoneHandler_Get_happy_statusMapped(t *testing.T) {
+// TestZoneHandler_Get_happy_derived — public Zone (two-projection: без status) с
+// derived openForPlacement° из zone.status + region.status.
+func TestZoneHandler_Get_happy_derived(t *testing.T) {
 	mock := &repomock.ZoneRepo{
 		GetFunc: func(_ context.Context, id string) (*domain.Zone, error) {
-			return &domain.Zone{ID: id, RegionID: "region-1", Status: domain.ZoneStatusUp}, nil
+			return &domain.Zone{ID: id, RegionID: "region-1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp}, nil
 		},
 	}
 	uc := zone.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
@@ -93,8 +77,8 @@ func TestZoneHandler_Get_happy_statusMapped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get err = %v", err)
 	}
-	if resp.GetRegionId() != "region-1" || resp.GetStatus() != geov1.Zone_UP {
-		t.Fatalf("Get resp = %+v", resp)
+	if resp.GetRegionId() != "region-1" || !resp.GetOpenForPlacement() {
+		t.Fatalf("Get resp = %+v, want region-1 + openForPlacement", resp)
 	}
 }
 
@@ -126,8 +110,9 @@ func TestInternalRegionHandler_Delete_emptyID_syncInvalidArgument(t *testing.T) 
 	}
 }
 
-// TestInternalRegionHandler_Delete_failedPrecondition — FK RESTRICT (есть зоны)
-// доезжает как Operation.error FAILED_PRECONDITION (async).
+// TestInternalRegionHandler_Delete_failedPrecondition — GEO-1-18: FK RESTRICT
+// доезжает как Operation.error FAILED_PRECONDITION "region <id> is not empty".
+// Мутация каталога — синхронно-завершённый Operation{done:true} (config-INSERT).
 func TestInternalRegionHandler_Delete_failedPrecondition(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	mock := &repomock.RegionRepo{
@@ -135,47 +120,52 @@ func TestInternalRegionHandler_Delete_failedPrecondition(t *testing.T) {
 	}
 	uc := region.New(mock, mock, ops, serviceerr.ToStatus)
 	h := handler.NewInternalRegionHandler(uc)
-	oh := handler.NewOperationHandler(ops)
 	op, err := h.Delete(context.Background(), &geov1.DeleteRegionRequest{RegionId: "region-1"})
 	if err != nil {
 		t.Fatalf("Delete accept err = %v", err)
 	}
-	if op.GetDone() {
-		t.Fatalf("op must start done=false")
+	if !op.GetDone() {
+		t.Fatalf("catalog Delete must return done=true synchronously")
 	}
-	done := awaitOpFromHandler(t, oh, op.GetId())
-	if done.GetError() == nil || done.GetError().GetCode() != int32(codes.FailedPrecondition) {
-		t.Fatalf("op error = %v, want FAILED_PRECONDITION", done.GetError())
+	if op.GetError() == nil || op.GetError().GetCode() != int32(codes.FailedPrecondition) {
+		t.Fatalf("op error = %v, want FAILED_PRECONDITION", op.GetError())
+	}
+	if op.GetError().GetMessage() != "region region-1 is not empty" {
+		t.Fatalf("delete-nonempty text = %q", op.GetError().GetMessage())
 	}
 }
 
-// TestInternalZoneHandler_Create_happy — Create возвращает Operation; полл до
-// done → response=Zone.
+// TestInternalZoneHandler_Create_happy — GEO-1-16-parity: Create возвращает
+// синхронно-завершённый Operation{done:true}; response — public Zone (без status).
 func TestInternalZoneHandler_Create_happy(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	mock := &repomock.ZoneRepo{
-		InsertFunc: func(_ context.Context, z *domain.Zone) (*domain.Zone, error) { return z, nil },
+		InsertFunc: func(_ context.Context, z *domain.Zone) (*domain.Zone, error) {
+			z.RegionStatus = domain.GeoStatusUp
+			return z, nil
+		},
 	}
 	uc := zone.New(mock, mock, ops, serviceerr.ToStatus)
 	h := handler.NewInternalZoneHandler(uc)
-	oh := handler.NewOperationHandler(ops)
 	op, err := h.Create(context.Background(), &geov1.CreateZoneRequest{
-		Id: "region-1-a", RegionId: "region-1", Status: geov1.Zone_UP, Name: "Region 1 A",
+		Id: "region-1-a", RegionId: "region-1", Status: geov1.GeoStatus_UP, Name: "Region 1 A",
 	})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
 	}
-	done := awaitOpFromHandler(t, oh, op.GetId())
-	if done.GetError() != nil {
-		t.Fatalf("op error = %v", done.GetError())
+	if !op.GetDone() {
+		t.Fatalf("catalog Create must return done=true synchronously (unwrap .response)")
 	}
-	msg, err := done.GetResponse().UnmarshalNew()
+	if op.GetError() != nil {
+		t.Fatalf("op error = %v", op.GetError())
+	}
+	msg, err := op.GetResponse().UnmarshalNew()
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	z, ok := msg.(*geov1.Zone)
-	if !ok || z.GetId() != "region-1-a" || z.GetStatus() != geov1.Zone_UP {
-		t.Fatalf("response = %+v", msg)
+	if !ok || z.GetId() != "region-1-a" || !z.GetOpenForPlacement() {
+		t.Fatalf("response = %+v, want public Zone region-1-a open", msg)
 	}
 }
 
@@ -240,8 +230,8 @@ func TestZoneHandler_List_happy_mapsItemsAndPropagatesToken(t *testing.T) {
 		ListFunc: func(_ context.Context, p zone.Pagination) ([]*domain.Zone, string, error) {
 			gotPage = p
 			return []*domain.Zone{
-				{ID: "region-1-a", RegionID: "region-1", Status: domain.ZoneStatusUp, Name: "Region 1 A"},
-				{ID: "region-1-b", RegionID: "region-1", Status: domain.ZoneStatusUp, Name: "Region 1 B"},
+				{ID: "region-1-a", RegionID: "region-1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, Name: "Region 1 A"},
+				{ID: "region-1-b", RegionID: "region-1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, Name: "Region 1 B"},
 			}, "z-next", nil
 		},
 	}
@@ -255,7 +245,7 @@ func TestZoneHandler_List_happy_mapsItemsAndPropagatesToken(t *testing.T) {
 		t.Fatalf("len(zones) = %d, want 2", got)
 	}
 	if resp.GetZones()[0].GetId() != "region-1-a" || resp.GetZones()[0].GetRegionId() != "region-1" ||
-		resp.GetZones()[0].GetStatus() != geov1.Zone_UP {
+		!resp.GetZones()[0].GetOpenForPlacement() {
 		t.Fatalf("zone[0] = %+v", resp.GetZones()[0])
 	}
 	if resp.GetNextPageToken() != "z-next" {

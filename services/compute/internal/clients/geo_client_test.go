@@ -39,7 +39,8 @@ func (f *fakeGeoZoneClient) List(_ context.Context, _ *geov1.ListZonesRequest, _
 func TestGeoClient_GetZone_Found(t *testing.T) {
 	fake := &fakeGeoZoneClient{getFn: func(_ context.Context, in *geov1.GetZoneRequest) (*geov1.Zone, error) {
 		require.Equal(t, "ru-central1-a", in.GetZoneId())
-		return &geov1.Zone{Id: "ru-central1-a", RegionId: "ru-central1", Status: geov1.Zone_UP}, nil
+		// public Zone — two-projection (GEO-1): без status; GetZone проверяет только existence.
+		return &geov1.Zone{Id: "ru-central1-a", RegionId: "ru-central1", OpenForPlacement: true}, nil
 	}}
 	c := NewGeoClientWith(fake)
 

@@ -130,6 +130,12 @@ func (r *ZoneRepo) List(ctx context.Context, p zone.Pagination) ([]*domain.Zone,
 // синхронном Operation.response.
 func (r *ZoneRepo) Insert(ctx context.Context, z *domain.Zone) (*domain.Zone, error) {
 	actor := actorFromCtx(ctx)
+	// host_classes — NOT NULL TEXT[]; nil Go-slice pgx кодирует как NULL и явный
+	// INSERT обходит DB-DEFAULT '{}' → нормализуем nil→[] на границе adapter'а.
+	hostClasses := z.Infra.HostClasses
+	if hostClasses == nil {
+		hostClasses = []string{}
+	}
 	var created domain.Zone
 	var statusName, regionStatusName string
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
@@ -142,7 +148,7 @@ func (r *ZoneRepo) Insert(ctx context.Context, z *domain.Zone) (*domain.Zone, er
 			           numeric_infra_id, host_classes, failure_domain_count, underlay_anchor, capacity_hint,
 			           created_at`,
 			z.ID, z.RegionID, z.Name, geoStatusName(z.Status),
-			z.Infra.NumericInfraID, z.Infra.HostClasses, z.Infra.FailureDomainCount, z.Infra.UnderlayAnchor, z.Infra.CapacityHint,
+			z.Infra.NumericInfraID, hostClasses, z.Infra.FailureDomainCount, z.Infra.UnderlayAnchor, z.Infra.CapacityHint,
 			time.Now().UTC()).
 			Scan(&created.ID, &created.RegionID, &created.Name, &statusName,
 				&created.Infra.NumericInfraID, &created.Infra.HostClasses, &created.Infra.FailureDomainCount, &created.Infra.UnderlayAnchor, &created.Infra.CapacityHint,
@@ -243,17 +249,14 @@ func (r *ZoneRepo) Delete(ctx context.Context, id string) error {
 }
 
 // geoStatusName маппит domain.GeoStatus → строку колонки status ('UP'/'DOWN').
-// Unspecified не должен персиститься (use-case коэрсит fresh→DOWN); маппится в
-// 'STATUS_UNSPECIFIED', который отвергнет CHECK (защитная сеть от bug'а).
+// Unspecified → 'DOWN' (fail-safe, совпадает с DB-DEFAULT): use-case коэрсит
+// fresh→DOWN до repo, а прямой repo-insert без явного статуса тоже поднимается
+// DOWN (закрытый по умолчанию) — CHECK(status IN ('UP','DOWN')) не нарушается.
 func geoStatusName(s domain.GeoStatus) string {
-	switch s {
-	case domain.GeoStatusUp:
+	if s == domain.GeoStatusUp {
 		return "UP"
-	case domain.GeoStatusDown:
-		return "DOWN"
-	default:
-		return "STATUS_UNSPECIFIED"
 	}
+	return "DOWN"
 }
 
 func geoStatusFromName(s string) domain.GeoStatus {
