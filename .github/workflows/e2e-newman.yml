@@ -36,6 +36,10 @@ concurrency:
 jobs:
   newman:
     name: newman e2e (kind-стенд)
+    # Dependabot dep-bump'ы НЕ гоняют тяжёлый self-hosted kind-стенд (~35м): один runner
+    # забивается десятками PR'ов, а dep-bump валидируется ci/unit/integration. Реальные
+    # PR в main (не dependabot) проходят e2e как pre-merge гейт.
+    if: ${{ github.actor != 'dependabot[bot]' }}
     runs-on: self-hosted
     # e2e тяжёлый: fresh dev-up (~13м) + newman-суиты + gates. Суиты теперь гоняются
     # ПАРАЛЛЕЛЬНО (newman-parallel.sh: один seed → 2 волны — vpc/compute/nlb concurrent,
