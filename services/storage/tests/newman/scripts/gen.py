@@ -26,42 +26,29 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = ROOT / "cases"
 OUT_DIR = ROOT / "collections"
 
-
-# ---------------------------------------------------------------------------
-# Декларативные структуры
-# ---------------------------------------------------------------------------
-
-@dataclass
-class Step:
-    """Один HTTP-запрос внутри case."""
-    name: str
-    method: str
-    path: str  # относительный, {{baseUrl}} префикс автоматически
-    body: Optional[Dict] = None
-    pre_script: List[str] = field(default_factory=list)
-    test_script: List[str] = field(default_factory=list)
-    # KAC-122: per-step auth override для authz-deny suite.
-    #   None              — header не трогается (default — inherit collection Bearer если есть)
-    #   "anonymous"       — Authorization header снимается перед запросом
-    #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (значение читается из env при выполнении)
-    auth: Optional[str] = None
-
-
-@dataclass
-class Case:
-    """Один тестовый кейс — может содержать несколько шагов."""
-    id: str  # например DISK-CR-CRUD-OK
-    title: str  # человеко-читаемое описание
-    classes: List[str]  # CRUD / VAL / NEG / BVA / ...
-    priority: str  # P0 / P1 / P2 / P3
-    steps: List[Step]
+# --- shared canonical helper-namespace (H0): import, NOT copy ---
+# Step/Case + assert_*/save_from_response/poll/retry come from the single source
+# tests/newman/shared/harness.py. storage keeps only its resource-specific blocks
+# (assert_created_at_seconds / assert_op_* / define blocks) + thin wrappers below
+# that bind storage's params (op-id regex ^sop…, poll no-counter/no-opId-guard,
+# RYW budget 15/400) so the generated collections stay byte-identical.
+# ROOT = services/<svc>/tests/newman → repo root = ROOT.parents[3].
+sys.path.insert(0, str(ROOT.parents[3] / "tests" / "newman" / "shared"))
+from harness import (  # noqa: E402
+    Step, Case,
+    assert_status, assert_grpc_code, assert_transcode_error, assert_field_violation,
+    assert_unscoped_rejected, assert_absent_id_rejected, save_from_response,
+    retry_until_present, retry_until_absent,
+)
+from harness import assert_operation_envelope as _assert_operation_envelope  # noqa: E402
+from harness import poll_operation_until_done as _poll_operation_until_done  # noqa: E402
+from harness import retry_until_authorized as _retry_until_authorized  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -84,52 +71,10 @@ PRE_GLOBAL = [
 # Утилиты-сниппеты pm.*
 # ---------------------------------------------------------------------------
 
-def assert_status(code: int) -> List[str]:
-    return [
-        f"pm.test('status {code}', () => pm.expect(pm.response.code).to.eql({code}));",
-    ]
-
-
-def assert_grpc_code(code: int, code_name: str) -> List[str]:
-    return [
-        f"pm.test('grpc code {code} ({code_name})', () => {{",
-        "  const j = pm.response.json();",
-        f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
-        "});",
-    ]
-
-
-def assert_field_violation(field_name: str) -> List[str]:
-    return [
-        f"pm.test('field violation on \"{field_name}\"', () => {{",
-        "  const j = pm.response.json();",
-        "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
-        "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
-        f"  const fv = (det.fieldViolations || []).find(v => v.field === '{field_name}');",
-        f"  pm.expect(fv, 'fieldViolation for {field_name}').to.be.an('object');",
-        "});",
-    ]
-
-
-def save_from_response(jsonpath: str, env_var: str) -> List[str]:
-    """Сохранить значение из response в env."""
-    return [
-        "try {",
-        "  const j = pm.response.json();",
-        f"  const v = ({jsonpath});",
-        f"  if (v !== undefined && v !== null) pm.environment.set('{env_var}', String(v));",
-        "} catch (e) {}",
-    ]
-
-
-def assert_operation_envelope() -> List[str]:
-    return [
-        "pm.test('Operation envelope returned', () => {",
-        "  const j = pm.response.json();",
-        "  pm.expect(j.id, 'operation.id').to.match(/^sop[a-z0-9]+$/);",
-        "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-        "});",
-    ]
+def assert_operation_envelope(prefix_regex: str = "^sop[a-z0-9]+$") -> List[str]:
+    """storage op-id prefix `sop`. (assert_status/grpc_code/field_violation/
+    save_from_response/transcode_error/unscoped/absent-id come from harness verbatim.)"""
+    return _assert_operation_envelope(prefix_regex)
 
 
 def assert_created_at_seconds(jsonpath="pm.response.json().createdAt") -> List[str]:
@@ -145,98 +90,19 @@ def assert_created_at_seconds(jsonpath="pm.response.json().createdAt") -> List[s
     ]
 
 
-_RYA_SEQ = [0]
-
-
 def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
                            retry_on=(403, 404)) -> Step:
-    """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
-    read-your-writes retry over the owner-tuple materialization window.
-
-    opgate (the create confirm-gate) was removed by design-review: Operation.done now
-    means the resource is DURABLE, but its owner/creator FGA tuple materializes
-    eventually-consistent (at-least-once drainer + reconciler + sync-registrar
-    optimisation). Under load the first post-create Get/Update/Delete of the fresh
-    resource can briefly return 403 (PERMISSION_DENIED) or 404 at the authz gate
-    before the tuple is visible. This is a textbook read-your-writes lag -> the CLIENT
-    retries; it is NOT a server barrier.
-
-    Retries the SAME request (setNextRequest -> self) while the response code is in
-    `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
-    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
-    (default 15*400ms = ~6s) -- fail-closed: on any other code the wrapped step's real
-    test_script runs exactly once, and once the budget is spent it ALSO runs on the
-    terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions --
-    never masked, never infinite).
-
-    Use ONLY on the first access of the caller's OWN fresh resource. Do NOT wrap
-    negative / cross-account-deny / absent-id steps (a poll there would mask a real
-    deny). The counter/started env-vars are request-name-scoped (step names are
-    globally unique after serialization) so the loop never bleeds across cases or
-    steps -- same discipline as poll_operation_until_done.
-    """
-    retry_set = ",".join(str(c) for c in retry_on)
-    guard = [
-        "// bounded read-your-writes retry over the owner-tuple materialization window",
-        "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-        "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-        "  pm.environment.set('_authRetryCount', '0');",
-        "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-        "}",
-        "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-        f"if ([{retry_set}].includes(pm.response.code) && _arc < {budget}) {{",
-        "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-        f"  const _ard = Date.now(); while (Date.now() - _ard < {interval_ms}) {{ /* owner-tuple materialization wait */ }}",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        "pm.environment.unset('_authRetryCount');",
-        "pm.environment.unset('_authRetryStarted');",
-    ]
-    _RYA_SEQ[0] += 1
-    # Give the wrapped step a globally-unique name so its self-retry
-    # setNextRequest(pm.info.requestName) always resolves to ITSELF. Newman resolves a
-    # setNextRequest name to the FIRST item with that name in the collection; these
-    # suites mostly do NOT prefix step names by case-id, so a wrapped step whose bare
-    # name repeats would otherwise jump the retry to an earlier same-named step — the
-    # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
-    return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
-                   test_script=guard + list(step.test_script))
+    """storage RYW budget 15/400 (vs canon 25/500). Delegates to shared harness.
+    Uses the shared harness._RYA_SEQ counter for the -rya<N> step-name suffix."""
+    return _retry_until_authorized(step, budget=budget, interval_ms=interval_ms,
+                                   retry_on=retry_on)
 
 
 def poll_operation_until_done() -> Step:
-    """Reusable poll step: до 30 попыток с ~500ms задержкой между ними (через setNextRequest),
-    потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1)."""
-    return Step(
-        name="poll-op",
-        method="GET",
-        path="/operations/{{opId}}",
-        test_script=[
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            # Poll budget raised 8→30 (Koren-1): an async Create-op legitimately
-            # takes seconds under suite load (owner-tuple confirm-gate + worker), so
-            # the poll window must cover the p99 tail — NOT mask latency. The confirm
-            # tail itself is cut by the HIGHER_CONSISTENCY read; this is the margin.
-            "if (!j.done && pc < 30) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
-    )
+    """storage poll: bare `poll-op` name (no counter), no opId-guard, budget 30,
+    no inline retry-comment. Delegates to shared harness."""
+    return _poll_operation_until_done(budget=30, opid_guard=False,
+                                      retry_comment=False, name_counter=False)
 
 
 def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
@@ -626,12 +492,17 @@ def load_cases_module(path: Path):
     mod.Case = Case
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
+    mod.assert_transcode_error = assert_transcode_error
     mod.assert_field_violation = assert_field_violation
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
+    mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
     mod.assert_created_at_seconds = assert_created_at_seconds
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_present = retry_until_present
+    mod.retry_until_absent = retry_until_absent
     mod.assert_op_error = assert_op_error
     mod.assert_op_error_oneof = assert_op_error_oneof
     mod.assert_op_success = assert_op_success
