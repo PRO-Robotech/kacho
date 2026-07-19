@@ -12,9 +12,11 @@
 name: ci
 
 on:
+  # Только как pre-merge гейт для PR в main (не на push в main после мерджа —
+  # squash-merge переносит уже провалидированное PR-дерево, повторный прогон избыточен).
   pull_request:
-  push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read

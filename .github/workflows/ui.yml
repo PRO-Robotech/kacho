@@ -15,9 +15,9 @@
 name: ui
 
 on:
-  push:
-    branches: [main]
+  # Только pre-merge гейт для PR в main (не на push в main после мерджа).
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

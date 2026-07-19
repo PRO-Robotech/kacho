@@ -19,8 +19,9 @@
 name: e2e-newman
 
 on:
+  # Только pre-merge гейт для PR в main. НЕ на push в main: тяжёлый self-hosted kind-стенд
+  # (~35м) не нужно гонять повторно после мерджа — PR-дерево уже провалидировано.
   pull_request:
-  push:
     branches: [main]
   workflow_dispatch:
 
