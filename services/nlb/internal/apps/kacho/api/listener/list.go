@@ -61,6 +61,10 @@ func (u *ListUseCase) Run(ctx context.Context, req *lbv1.ListListenersRequest) (
 	}
 
 	// RBAC: per-object FGA filter (см. loadbalancer/list.go).
+	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see loadbalancer/list.go).
+	if err := shared.ValidatePagination(req.GetPageToken(), req.GetPageSize()); err != nil {
+		return nil, err
+	}
 	dec, err := authzfilter.Resolve(ctx, u.authz,
 		authzfilter.ResourceTypeListener, authzfilter.ActionListenerList)
 	if err != nil {

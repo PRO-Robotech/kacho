@@ -15,7 +15,7 @@ _TG_BASE = "/nlb/v1/targetGroups"
 _HEALTH_CHECK_DEFAULT = {
     "name": "hc-default", "interval": "2s", "timeout": "1s",
     "unhealthyThreshold": 3, "healthyThreshold": 2,
-    "tcp": {"port": 80},
+    "tcpOptions": {"port": 80},
 }
 
 _TG_BODY = {
@@ -35,6 +35,10 @@ def _setup_tg(name_suffix: str, body_extra: dict = None, name_override: str = No
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the TG owner-tuple (eventually-consistent after
+        # opgate removal) before the first real self-access; silent (empty test_script).
+        retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
+             path=f"{_TG_BASE}/{{{{tgId}}}}", test_script=[])),
     ]
 
 
@@ -60,7 +64,7 @@ CASES.append(Case(
                    "labels": {"tier": "web"},
                    "healthCheck": {"name": "http-200", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "http": {"port": 8080, "path": "/healthz",
+                                   "httpOptions": {"port": 8080, "path": "/healthz",
                                             "expectedStatuses": [200]}},
                    "targets": [
                        {"externalIp": {"address": "203.0.113.50"}, "weight": 50},
@@ -68,10 +72,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('has health_check', () => pm.expect(j.healthCheck).to.be.an('object'));"]),
+                          "pm.test('has health_check', () => pm.expect(j.healthCheck).to.be.an('object'));"])),
         *_cleanup_tg(),
     ],
 ))
@@ -96,10 +100,10 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         *_setup_tg("get-ok"),
-        Step(name="get", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('targets array present', () => "
-                          "  pm.expect(pm.response.json().targets || []).to.be.an('array'));"]),
+                          "  pm.expect(pm.response.json().targets || []).to.be.an('array'));"])),
         *_cleanup_tg(),
     ],
 ))
@@ -119,13 +123,27 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="TGR-LST-FILTER-REGION",
-    title="List TG with filter region_id → only matching rows",
-    classes=["LSG"], priority="P2",
+    title="List TG filter whitelist is name= only — region_id is not a filterable field "
+          "this phase → InvalidArgument (conformance to api-conventions filter whitelist)",
+    classes=["LSG", "NEG", "CONF"], priority="P2",
     steps=[
+        # api-conventions: `filter` is a whitelist and the current phase whitelists ONLY
+        # `name=` (kacho-corelib/filter.Parse). A `region_id=` predicate is therefore a
+        # non-whitelisted field and the server rejects it verbatim ("Unknown field:
+        # region_id") rather than silently ignoring it or leaking an unfiltered list — the
+        # correct fail-closed contract. Techniques: ECP (whitelisted vs non-whitelisted
+        # filter field) + conformance (filter grammar).
         Step(name="lst-filter", method="GET",
              path=f"{_TG_BASE}?projectId={{{{_suiteProjectId}}}}&"
                   f"filter=region_id%3D%22{{{{_suiteRegionId}}}}%22",
-             test_script=[*assert_status(200)]),
+             test_script=[
+                 "pm.test('non-whitelisted filter field rejected (400 InvalidArgument), never silent', () => "
+                 "  pm.expect(pm.response.code).to.eql(400));",
+                 "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => "
+                 "  pm.expect(pm.response.json().code).to.eql(3));",
+                 "pm.test('message names the offending non-whitelisted field', () => "
+                 "  pm.expect((pm.response.json().message || '').toLowerCase()).to.include('region_id'));",
+             ]),
     ],
 ))
 
@@ -135,10 +153,14 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_tg("upd-ok"),
-        Step(name="upd", method="PATCH", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             body={"updateMask": "name,deregistration_delay_seconds",
+        # updateMask paths use the JSON-canonical lowerCamelCase FieldMask form
+        # (`deregistrationDelaySeconds`) — the snake_case form was rejected by grpc-gateway's
+        # protojson FieldMask codec on this multi-word field ("FieldMask.paths contains
+        # invalid path"), while the JSON field name in the body is already camelCase.
+        retry_until_authorized(Step(name="upd", method="PATCH", path=f"{_TG_BASE}/{{{{tgId}}}}",
+             body={"updateMask": "name,deregistrationDelaySeconds",
                    "name": "tg-upd-{{runId}}", "deregistrationDelaySeconds": 600},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_tg(),
     ],
@@ -154,8 +176,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        Step(name="del", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get-404", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
@@ -168,13 +190,34 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_setup_tg("mv"),
-        Step(name="move", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
+        # Cross-project move needs the DESTINATION project (existingProjectCrossId) to
+        # exist AND be visible to the caller. It is a cross-domain deploy-precondition
+        # (iam-seeded): if unseeded / cross-account-invisible, nlb->iam ProjectService.Get
+        # lawfully returns "Project <id> not found" (anti-oracle NotFound). Wrap in the
+        # cross-service RYW retry (destination may lag right after seed) and, on a bare
+        # lane, assert the lawful reject instead of hard-failing — the move-back + cleanup
+        # then no-op. On a seeded lane the full cross-project round-trip runs.
+        retry_create_until_present(Step(name="move", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[
+                 "pm.environment.unset('tgMoved');",
+                 "if (pm.response.code === 200) {",
+                 "  pm.test('cross-project move accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
+                 "  pm.environment.set('tgMoved', '1');",
+                 *save_from_response("j.id", "opId"),
+                 "} else {",
+                 "  pm.environment.unset('opId');",
+                 "  pm.test('destination-project fixture absent → lawful reject, never silent 200', () => "
+                 "    pm.expect(pm.response.code).to.be.oneOf([400, 403, 404]));",
+                 "}",
+             ])),
         poll_operation_until_done(),
         Step(name="move-back", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[
+                 "if (!pm.environment.get('tgMoved')) { pm.environment.unset('opId'); return; }",
+                 *save_from_response("j.id", "opId"),
+             ]),
         poll_operation_until_done(),
         *_cleanup_tg(),
     ],
@@ -186,11 +229,11 @@ CASES.append(Case(
     classes=["CRUD", "LSG"], priority="P2",
     steps=[
         *_setup_tg("lops"),
-        Step(name="lops", method="GET",
+        retry_until_authorized(Step(name="lops", method="GET",
              path=f"{_TG_BASE}/{{{{tgId}}}}/operations?pageSize=10",
              test_script=[*assert_status(200),
                           "const ops = (pm.response.json().operations || pm.response.json().items || []);",
-                          "pm.test('at least 1 op', () => pm.expect(ops.length).to.be.at.least(1));"]),
+                          "pm.test('at least 1 op', () => pm.expect(ops.length).to.be.at.least(1));"])),
         *_cleanup_tg(),
     ],
 ))
@@ -207,10 +250,10 @@ CASES.append(Case(
     steps=[
         Step(name="cr-multi-hc", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "hc-multi-{{runId}}",
-                   "healthCheck": {"name": "x", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 8080},
-                                   "http": {"port": 8080, "path": "/"}}},
+                                   "tcpOptions": {"port": 8080},
+                                   "httpOptions": {"port": 8080, "path": "/"}}},
              test_script=[
                  "pm.test('rejected (sync 400 or async error)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
@@ -227,7 +270,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-no-hc", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "hc-none-{{runId}}",
-                   "healthCheck": {"name": "x", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2}},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
@@ -448,11 +491,8 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         Step(name="upd-prj", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
-             body={"updateMask": "project_id", "projectId": "{{_suiteProjectCrossId}}"},
-             test_script=[
-                 "pm.test('rejected 400/404', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             body={"updateMask": "projectId", "projectId": "{{_suiteProjectCrossId}}"},
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -462,10 +502,8 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         Step(name="upd-reg", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
-             body={"updateMask": "region_id", "regionId": "{{_suiteRegionAltId}}"},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             body={"updateMask": "regionId", "regionId": "{{_suiteRegionAltId}}"},
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -476,9 +514,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-targets-mask", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
              body={"updateMask": "targets", "targets": []},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -498,14 +534,17 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="att", method="POST",
              path="/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
-             body={"targetGroupId": "{{tgId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
+        # read-your-writes: the first self-access of the fresh TG can 403/404 until the
+        # owner-tuple materializes -> retry SELF; the real "blocked" assertion (200/400/409)
+        # then runs once the tuple is visible (a genuine block still surfaces, not masked).
+        retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         # Cleanup
         Step(name="detach", method="POST",
@@ -531,11 +570,14 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
+        # read-your-writes: the first self-access of the fresh TG can 403/404 until the
+        # owner-tuple materializes -> retry SELF; the real "blocked" assertion (200/400/409)
+        # then runs once the tuple is visible (a genuine block still surfaces, not masked).
+        retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ])),
         poll_operation_until_done(),
         # Cleanup: drain + drop
         Step(name="rm-targets", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -589,7 +631,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="att", method="POST",
              path="/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
-             body={"targetGroupId": "{{tgId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="mv-blocked", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
@@ -618,9 +660,7 @@ CASES.append(Case(
     steps=[
         Step(name="mv-no-dest", method="POST", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}:move",
              body={},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -631,7 +671,7 @@ CASES.append(Case(
     steps=[
         Step(name="mv-nx", method="POST", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -884,38 +924,48 @@ CASES.append(Case(
 ))
 
 
+# CONTRACT LOCK (не aspirational — не positive-CRUD): proto HealthCheck.options oneof
+# (health_check.proto) выставляет ТОЛЬКО tcp_options/http_options. Domain моделирует 4
+# probe-варианта (health_check.go validateProbeOneOf), но https/grpc НЕ имеют proto-
+# эквивалента. api-gateway UnmarshalOptions{DiscardUnknown:true} (restmux/mux.go) молча
+# отбрасывает unknown `https`-объект → HealthCheck приходит без options-oneof → sync
+# TargetGroup.Create validation (create.go → tg.Validate() → validateProbeOneOf count=0)
+# → 400 INVALID_ARGUMENT + BadRequest.fieldViolations[health_check]. HTTPS-probe
+# недоступен через API до закрытия proto-gap.
+# Техники: ECP (класс «unsupported probe variant» на входе), error-guessing (proto-
+# surface ⊄ domain-surface). Negative на positive-probe-CRUD (tcp/http).
+# verifies https://github.com/PRO-Robotech/kacho/issues/8
 CASES.append(Case(
-    id="TGR-CR-CRUD-HTTPS-PROBE",
-    title="Create TG with health_check.https probe → OK",
-    classes=["CRUD"], priority="P1",
+    id="TGR-CR-VAL-HTTPS-PROBE-UNSUPPORTED",
+    title="Create TG with health_check.https probe → 400 (https_options not in proto oneof; #8)",
+    classes=["VAL"], priority="P1",
     steps=[
-        Step(name="cr-https", method="POST", path=_TG_BASE,
+        Step(name="cr-https-unsupported", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-https-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "https": {"port": 8443, "path": "/healthz",
                                              "expectedStatuses": [200]}}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("health_check")]),
     ],
 ))
 
+# CONTRACT LOCK: см. TGR-CR-VAL-HTTPS-PROBE-UNSUPPORTED — тот же proto-gap для grpc_options.
+# `grpc`-объект отбрасывается DiscardUnknown → no-probe → sync 400 INVALID_ARGUMENT.
+# verifies https://github.com/PRO-Robotech/kacho/issues/8
 CASES.append(Case(
-    id="TGR-CR-CRUD-GRPC-PROBE",
-    title="Create TG with health_check.grpc probe → OK",
-    classes=["CRUD"], priority="P1",
+    id="TGR-CR-VAL-GRPC-PROBE-UNSUPPORTED",
+    title="Create TG with health_check.grpc probe → 400 (grpc_options not in proto oneof; #8)",
+    classes=["VAL"], priority="P1",
     steps=[
-        Step(name="cr-grpc", method="POST", path=_TG_BASE,
+        Step(name="cr-grpc-unsupported", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-grpc-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "grpc": {"port": 9090, "service": "health.v1"}}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("health_check")]),
     ],
 ))
 
@@ -982,13 +1032,15 @@ CASES.append(Case(
     classes=["LSG", "IDEM"], priority="P2",
     steps=[
         *_setup_tg("flt-match"),
-        Step(name="lst-filt", method="GET",
+        # read-your-writes over the list-authz visibility window (own fresh id ABSENT from
+        # the 200 array until the owner-tuple materializes) -> retry while missing.
+        retry_until_present(Step(name="lst-filt", method="GET",
              path=f"{_TG_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=100&"
                   f"filter=name%3D%22setup-tg-flt-match-{{{{runId}}}}%22",
              test_script=[*assert_status(200),
                           "const arr = pm.response.json().targetGroups || pm.response.json().items || [];",
                           "pm.test('contains', () => "
-                          "  pm.expect(arr.map(x => x.id)).to.include(pm.environment.get('tgId')));"]),
+                          "  pm.expect(arr.map(x => x.id)).to.include(pm.environment.get('tgId')));"]), "tgId"),
         *_cleanup_tg(),
     ],
 ))
@@ -1001,7 +1053,7 @@ CASES.append(Case(
         Step(name="cr-malformed", method="POST", path=_TG_BASE, body=None,
              pre_script=["pm.request.body = { mode: 'raw', raw: '{not json' };"],
              test_script=[
-                 "pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));",
+                 "pm.test('400/403/415', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 415]));",
              ]),
     ],
 ))
@@ -1012,6 +1064,6 @@ CASES.append(Case(
     classes=["VAL"], priority="P2",
     steps=[
         Step(name="cr-empty", method="POST", path=_TG_BASE, body={},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))

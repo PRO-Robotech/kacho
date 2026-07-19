@@ -15,8 +15,8 @@ CASES = []
 
 _TG_BASE = "/nlb/v1/targetGroups"
 
-_HC = {"name": "hc", "interval": "2s", "timeout": "1s",
-       "unhealthyThreshold": 3, "healthyThreshold": 2, "tcp": {"port": 80}}
+_HC = {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+       "unhealthyThreshold": 3, "healthyThreshold": 2, "tcpOptions": {"port": 80}}
 
 _TG_BODY = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
             "healthCheck": _HC, "deregistrationDelaySeconds": 300,
@@ -31,6 +31,10 @@ def _setup_tg(name_suffix: str, dereg_seconds: int = 300):
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
+        # read-your-writes: materialize the TG owner-tuple (eventually-consistent after
+        # opgate removal) before the first :addTargets / :removeTargets self-access.
+        retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
+             path=f"{_TG_BASE}/{{{{tgId}}}}", test_script=[])),
     ]
 
 
@@ -52,9 +56,9 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         *_setup_tg("add-inst"),
-        Step(name="add-inst", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-inst", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "{{existingInstanceId}}", "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm-cleanup", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -71,9 +75,9 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         *_setup_tg("add-nic"),
-        Step(name="add-nic", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-nic", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"nicId": "{{existingNicId}}", "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm-cleanup", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -90,10 +94,10 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         *_setup_tg("add-ipref"),
-        Step(name="add-ipref", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-ipref", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"ipRef": {"subnetId": "{{existingSubnetId}}",
                                           "address": "10.180.0.5"}, "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm-cleanup", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -111,9 +115,9 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         *_setup_tg("add-ext"),
-        Step(name="add-ext", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-ext", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.10"}, "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm-cleanup", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -130,7 +134,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_tg("add-mixed"),
-        Step(name="add-mixed", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-mixed", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [
                  {"instanceId": "{{existingInstanceId}}", "weight": 100},
                  {"nicId": "{{existingNicId}}", "weight": 100},
@@ -138,7 +142,7 @@ CASES.append(Case(
                   "weight": 50},
                  {"externalIp": {"address": "203.0.113.11"}, "weight": 100},
              ]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm-cleanup", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -218,9 +222,9 @@ CASES.append(Case(
     classes=["BVA"], priority="P2",
     steps=[
         *_setup_tg("w-min"),
-        Step(name="add-w-0", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-w-0", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.22"}, "weight": 0}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.22"}}]},
@@ -236,9 +240,9 @@ CASES.append(Case(
     classes=["BVA"], priority="P2",
     steps=[
         *_setup_tg("w-max"),
-        Step(name="add-w-1000", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-w-1000", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.23"}, "weight": 1000}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.23"}}]},
@@ -310,12 +314,15 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         *_setup_tg("nic-nx"),
-        Step(name="add-nic-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        # retry ONLY on 403 (fresh-TG editor owner-tuple read-your-writes lag) — the
+        # legitimate NotFound (unknown nic) 404 is the EXPECTED outcome and must NOT be
+        # retried away, so retry_on is narrowed to (403,).
+        retry_until_authorized(Step(name="add-nic-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"nicId": "e9bnicdoesnotexist00", "weight": 100}]},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
                  *save_from_response("j.id", "opId"),
-             ]),
+             ]), retry_on=(403,)),
         poll_operation_until_done(),
         *_cleanup_tg(),
     ],
@@ -405,9 +412,9 @@ CASES.append(Case(
     classes=["IDEM"], priority="P1",
     steps=[
         *_setup_tg("dup-inst"),
-        Step(name="add-1", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-1", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "{{existingInstanceId}}", "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="add-2-dup", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "{{existingInstanceId}}", "weight": 100}]},
@@ -427,10 +434,10 @@ CASES.append(Case(
     classes=["IDEM"], priority="P1",
     steps=[
         *_setup_tg("dup-ipref"),
-        Step(name="add-1", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-1", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"ipRef": {"subnetId": "{{existingSubnetId}}",
                                           "address": "10.180.0.30"}, "weight": 50}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="add-2-dup", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"ipRef": {"subnetId": "{{existingSubnetId}}",
@@ -452,9 +459,9 @@ CASES.append(Case(
     classes=["IDEM"], priority="P2",
     steps=[
         *_setup_tg("dup-ext"),
-        Step(name="add-1", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add-1", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.40"}, "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="add-2", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.40"}, "weight": 100}]},
@@ -474,9 +481,9 @@ CASES.append(Case(
     classes=["IDEM", "STATE"], priority="P1",
     steps=[
         *_setup_tg("promote-draining"),
-        Step(name="add", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.50"}, "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm-phase-a", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -504,10 +511,7 @@ CASES.append(Case(
         Step(name="add-deleting-proxy", method="POST",
              path=f"{_TG_BASE}/{{{{garbageTgrId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.60"}, "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected (404 or 409)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -522,9 +526,9 @@ CASES.append(Case(
     classes=["STATE"], priority="P0",
     steps=[
         *_setup_tg("phase-a", dereg_seconds=300),
-        Step(name="add", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.70"}, "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm-phase-a", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
@@ -548,10 +552,10 @@ CASES.append(Case(
     classes=["IDEM"], priority="P1",
     steps=[
         *_setup_tg("rm-noop"),
-        Step(name="rm-absent", method="POST",
+        retry_until_authorized(Step(name="rm-absent", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.99"}}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_tg(),
     ],
@@ -564,23 +568,36 @@ CASES.append(Case(
     steps=[
         # Use tiny dereg=1 so Phase B fires quickly inside test window.
         *_setup_tg("phase-b", dereg_seconds=1),
-        Step(name="add", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+        retry_until_authorized(Step(name="add", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.80"}, "weight": 100}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="rm", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.80"}}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        # Pad: runner ticks every ~10s. We hope it has fired by the time this runs;
-        # the assertion tolerates either state since newman is sequential and the
-        # drain timing is racey w.r.t. polling cadence.
+        # The Phase-A→B drain transition is async (drain runner ticks ~10s), so a single
+        # read races the runner: right after removeTargets the row can still read ACTIVE.
+        # Bounded self-poll (setNextRequest, busy-wait ~700ms, budget 30 ≈ 21s) waits for
+        # the row to reach a drained shape — absent OR DRAINING OR INACTIVE — then asserts
+        # once. A row that stays ACTIVE past the budget is a genuine runner failure and
+        # reds (never masked, never infinite). Techniques: state-transition (ACTIVE→DRAINING
+        # →deleted) + eventual-consistency polling.
         Step(name="poll-tg-after-drain", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             test_script=[*assert_status(200),
-                          "const tgts = pm.response.json().targets || [];",
+             test_script=["const tgts = pm.response.json().targets || [];",
                           "const t = tgts.find(x => x.externalIp && x.externalIp.address === '203.0.113.80');",
-                          "pm.test('row absent or still DRAINING (eventually consistent)', () => "
-                          "  pm.expect(!t || t.status === 'DRAINING' || t.status === 'INACTIVE').to.be.true);"]),
+                          "const drained = (!t || t.status === 'DRAINING' || t.status === 'INACTIVE');",
+                          "const _dpc = parseInt(pm.environment.get('_drainPoll') || '0', 10);",
+                          "if (pm.response.code === 200 && !drained && _dpc < 30) {",
+                          "  pm.environment.set('_drainPoll', String(_dpc + 1));",
+                          "  const _dd = Date.now(); while (Date.now() - _dd < 700) { /* drain-runner tick wait */ }",
+                          "  pm.execution.setNextRequest(pm.info.requestName);",
+                          "  return;",
+                          "}",
+                          "pm.environment.unset('_drainPoll');",
+                          *assert_status(200),
+                          "pm.test('row absent or DRAINING/INACTIVE after drain runner (eventually consistent)', () => "
+                          "  pm.expect(drained, JSON.stringify(tgts)).to.be.true);"]),
         *_cleanup_tg(),
     ],
 ))

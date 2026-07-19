@@ -1,0 +1,157 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# security-scan — gosec (Go static analysis) + trivy (fs + IaC).
+#
+# Был в СЕМИ репо polyrepo (iam/vpc/compute/geo/nlb/registry/api-gateway) и при переезде
+# в монорепу не поехал: GitHub читает workflow только из корня, а приехавшие с сервисами
+# `.github/` были мертвы и удалены. Итого монорепа осталась вообще без gosec и trivy.
+# Здесь ОДИН прогон на весь модуль вместо семи — единый go.mod покрывает граф целиком.
+#
+# Порог: ноль HIGH / ноль CRITICAL → мерж блокируется. SARIF → вкладка Security.
+name: security-scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write   # SARIF в Security-tab
+  pull-requests: write
+
+env:
+  # Отслеживаемые исключения IaC-гейта (каждое — с путём, причиной и тикетом; см. файл).
+  # Привязаны к ПУТЯМ, не к правилам целиком: Go-сервисы остаются под гейтом — проверено
+  # негативом (убрать securityContext у compute → KSV014 ловится).
+  TRIVY_IGNOREFILE: .trivyignore.yaml
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gosec:
+    name: gosec (Go static analysis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: run gosec
+        run: |
+          set +e
+          # pkg/api исключён: это сгенерённые protobuf-стабы. gosec G101 ложно
+          # срабатывает на FullMethodName-константах с подстрокой "Token"/"LogoutToken"
+          # (OIDC/IAM RPC). Рукописный код проверяется полностью; golangci-lint исключает
+          # pkg/api по той же причине.
+          "$(go env GOPATH)/bin/gosec" -exclude-dir=pkg/api -fmt sarif -out gosec.sarif ./...
+
+          # gosec пишет ДУБЛИ в rule properties.tags, а codeql-валидатор SARIF их
+          # отвергает ("contains duplicate item") → upload-sarif падает. Дедупим теги;
+          # если SARIF невалиден вовсе (напр. gosec упал на ошибке сборки) — подставляем
+          # пустой схема-валидный документ, иначе upload давится "Unexpected end of JSON".
+          if jq -e . gosec.sarif >/dev/null 2>&1; then
+            jq '(.runs[].tool.driver.rules[]?.properties.tags) |= (if . then unique else . end)' \
+              gosec.sarif > gosec.sanitized.sarif && mv gosec.sanitized.sarif gosec.sarif
+          else
+            printf '%s' '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"gosec","rules":[]}},"results":[]}]}' > gosec.sarif
+          fi
+          # exit 0 всегда: находки не роняют ЭТОТ шаг (они должны попасть в Security-tab
+          # через upload ниже). Гейтит отдельный шаг «fail on HIGH».
+          exit 0
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+      # Гейтим по SARIF `level == "error"`. ЭТО НЕ ТО ЖЕ, что `severity == HIGH` в
+      # JSON-выводе gosec: G304 в tlsutil приходил как MEDIUM в JSON, но level=error в
+      # SARIF — то есть локальная проверка «severity HIGH» показывала 0, пока CI честно
+      # краснел. Унаследованный из polyrepo комментарий утверждал «severity error
+      # (HIGH)» и уводил в сторону. Сверяться с CI надо ИМЕННО по SARIF:
+      #   gosec -fmt sarif -out g.sarif ./... && jq '[.runs[].results[]|select(.level=="error")]|length' g.sarif
+      - name: fail on level=error
+        run: |
+          if [[ ! -f gosec.sarif ]]; then exit 0; fi
+          err=$(jq '[.runs[].results[] | select(.level == "error")] | length' gosec.sarif)
+          echo "gosec level=error: $err"
+          if (( err > 0 )); then
+            # С ПУТЁМ И СТРОКОЙ: без них лог даёт лишь «- G304: Potential file inclusion
+            # via variable» на 1019 файлов — находку приходится искать вручную.
+            jq -r '.runs[].results[] | select(.level=="error")
+                   | "- \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine) — \(.message.text)"' gosec.sarif
+            echo "::error::gosec нашёл $err проблем level=error. См. вкладку Security."
+            exit 1
+          fi
+
+  trivy:
+    name: trivy (fs + IaC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Каждый скан идёт ДВАЖДЫ: sarif (exit-code 0, только в Security-tab) и table
+      # (exit-code 1 — реальный гейт). Причина: с `format: sarif` trivy-action
+      # срабатывает на ЛЮБОЕ правило в SARIF независимо от фильтра `severity`
+      # (известное поведение action'а) → sarif-проход гейтить нельзя.
+      - name: trivy fs (SARIF → Security)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: trivy fs (гейт CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: trivy config (SARIF → Security)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-config.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+      - name: trivy config (гейт CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'

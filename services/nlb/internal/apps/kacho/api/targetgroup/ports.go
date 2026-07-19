@@ -55,6 +55,13 @@ type NetworkInterfaceClient = vpcclient.NetworkInterfaceClient
 // для ip_ref-target peer-validate (Subnet existence + IP-in-CIDR + region-match).
 type SubnetClient = vpcclient.SubnetClient
 
+// Registrar — sync-primary owner-tuple registrar (kacho-iam
+// InternalIAMService.RegisterResource). Create после durable commit TG + его
+// `fga_register_outbox`-intent'а синхронно регистрирует owner/containment-tuple,
+// чтобы grant создателя был виден сразу (закрывает async-only окно). BEST-EFFORT:
+// сбой → лог, НЕ фейлит Operation (ban #9). Impl — *iamclient.SyncRegistrar.
+type Registrar = iamclient.Registrar
+
 // FGA owner-hierarchy tuple-регистрация — через transactional-outbox
 // (FGARegisterOutbox emit в writer-tx + register-drainer → IAM); FGA object-types
 // / relations живут в `internal/domain` (FGAObjectType* / FGARelation*).

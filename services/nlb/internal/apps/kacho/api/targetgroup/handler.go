@@ -77,6 +77,13 @@ func NewHandler(
 	}
 }
 
+// WithRegistrar инжектит sync-primary owner-tuple registrar в Create use-case
+// (composition root). Возвращает self для chaining.
+func (h *Handler) WithRegistrar(r Registrar) *Handler {
+	h.create.WithRegistrar(r)
+	return h
+}
+
 // ---- 3 sync read RPCs ------------------------------------------------------
 
 func (h *Handler) Get(ctx context.Context, req *lbv1.GetTargetGroupRequest) (*lbv1.TargetGroup, error) {

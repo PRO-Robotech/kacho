@@ -30,7 +30,8 @@ func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 
 // Check вызывает InternalIAMService.Check. Исходящий ctx оборачивается
 // auth.PropagateOutgoing, чтобы на стороне iam principal-extract видел реального
-// вызывающего.
+// вызывающего. Consistency не задаётся (zero value == CONSISTENCY_UNSPECIFIED):
+// enforcement-Check — default-consistency read-path.
 func (c *IAMCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
 	resp, err := c.cli.Check(auth.PropagateOutgoing(ctx), &iamv1.CheckRequest{
 		SubjectId: subjectID,

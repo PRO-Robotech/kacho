@@ -6,6 +6,7 @@ package serviceerr_test
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -29,6 +30,7 @@ func TestMapRepoErr_SentinelClassification(t *testing.T) {
 		{"failed_precondition", serviceerr.ErrFailedPrecondition, codes.FailedPrecondition},
 		{"pool_not_resolved", serviceerr.ErrPoolNotResolved, codes.FailedPrecondition},
 		{"invalid_arg", serviceerr.ErrInvalidArg, codes.InvalidArgument},
+		{"conflict", serviceerr.ErrConflict, codes.Aborted},
 		{"internal", serviceerr.ErrInternal, codes.Internal},
 	}
 	for _, tc := range cases {
@@ -67,6 +69,25 @@ func TestMapRepoErr_UnknownFallbackNoLeak(t *testing.T) {
 	}
 }
 
+// TestMapRepoErr_ConflictNoLeak — retryable concurrency-конфликт (40001/40P01,
+// обёрнутый через ErrConflict с raw pgx tail) отдаётся клиенту как Aborted с
+// ФИКСИРОВАННЫМ текстом; raw pgx-detail (SQLSTATE/serialize-текст) НЕ течёт
+// наружу. Aborted (не INTERNAL) — сигнал клиенту, что транзакцию можно повторить.
+func TestMapRepoErr_ConflictNoLeak(t *testing.T) {
+	wrapped := fmt.Errorf("%w: ERROR: could not serialize access (SQLSTATE 40001) host=db-primary.internal", serviceerr.ErrConflict)
+	got := serviceerr.MapRepoErr(wrapped)
+	if status.Code(got) != codes.Aborted {
+		t.Fatalf("code = %v, want Aborted", status.Code(got))
+	}
+	msg := status.Convert(got).Message()
+	if msg != serviceerr.ErrConflict.Error() {
+		t.Fatalf("message = %q, want fixed %q (no leak)", msg, serviceerr.ErrConflict.Error())
+	}
+	if strings.Contains(msg, "40001") || strings.Contains(msg, "db-primary") {
+		t.Fatalf("message %q leaks raw pgx detail", msg)
+	}
+}
+
 // TestMapRepoErrLeakSafe_StrictMessages — Internal/admin-вариант: sentinel-текст
 // фиксирован (strict leak-suppression), обёрнутый tail НЕ протаскивается наружу.
 func TestMapRepoErrLeakSafe_StrictMessages(t *testing.T) {
@@ -94,6 +115,7 @@ func TestMapRepoErrLeakSafe_Superset(t *testing.T) {
 		{serviceerr.ErrFailedPrecondition, codes.FailedPrecondition},
 		{serviceerr.ErrPoolNotResolved, codes.FailedPrecondition},
 		{serviceerr.ErrInvalidArg, codes.InvalidArgument},
+		{serviceerr.ErrConflict, codes.Aborted},
 		{serviceerr.ErrInternal, codes.Internal},
 	}
 	for _, tc := range cases {

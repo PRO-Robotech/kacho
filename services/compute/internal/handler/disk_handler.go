@@ -58,6 +58,12 @@ func (h *DiskHandler) List(ctx context.Context, req *computev1.ListDisksRequest)
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
+	// Validate pagination BEFORE the listauthz empty-grant short-circuit below, so a
+	// malformed page_token / out-of-range page_size is 400 InvalidArgument regardless
+	// of grant state (api-convention parity; the repo re-validates as backstop).
+	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
+		return nil, err
+	}
 	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeDisk, authzfilter.ActionDiskRead)
 	if err != nil {
 		return nil, err

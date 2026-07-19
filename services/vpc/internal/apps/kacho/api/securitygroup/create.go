@@ -157,6 +157,9 @@ func (u *CreateSecurityGroupUseCase) Execute(ctx context.Context, sg domain.Secu
 		return nil, err
 	}
 
+	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
+	// материализуется eventually-consistent (sync-registrar + drainer/reconciler
+	// backstop), а не гейтит done.
 	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, sgID, sg)
 	})

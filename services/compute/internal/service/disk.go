@@ -71,6 +71,10 @@ type DiskService struct {
 	zones         ZoneRegistry
 	projectClient ProjectClient
 	opsRepo       operations.Repo
+	// ownerRegistrar — sync-registrar owner-tuple (best-effort post-commit
+	// window-оптимизация; register-drainer — at-least-once backstop). nil = только
+	// drainer. Подключается в composition-root через WithOwnerRegistrar.
+	ownerRegistrar OwnerRegistrar
 }
 
 // NewDiskService создаёт DiskService.
@@ -79,6 +83,14 @@ func NewDiskService(repo DiskRepo, imageRepo ImageRepo, snapshotRepo SnapshotRep
 		repo: repo, imageRepo: imageRepo, snapshotRepo: snapshotRepo,
 		diskTypeRepo: diskTypeRepo, zones: zones, projectClient: projectClient, opsRepo: opsRepo,
 	}
+}
+
+// WithOwnerRegistrar подключает sync-registrar owner-tuple: немедленная post-commit
+// (best-effort) регистрация, сужающая eventual-consistency-окно до poll'а
+// register-drainer'а. nil-safe. Вызывается один раз из composition-root до трафика.
+func (s *DiskService) WithOwnerRegistrar(registrar OwnerRegistrar) *DiskService {
+	s.ownerRegistrar = registrar
+	return s
 }
 
 // Get возвращает Disk по ID.
@@ -126,6 +138,9 @@ func (s *DiskService) Create(ctx context.Context, req CreateDiskReq) (*operation
 	}
 
 	diskID := ids.NewID(ids.PrefixDisk)
+	// Operation.done = durability ресурса (row закоммичен в doCreate). Owner-tuple
+	// материализуется eventually-consistent — sync-registrar (window-оптимизация) +
+	// register-drainer/reconciler backstop, НЕ гейтит op.done.
 	return runOp(ctx, s.opsRepo, fmt.Sprintf("Create disk %s", req.Name),
 		&computev1.CreateDiskMetadata{DiskId: diskID},
 		func(ctx context.Context) (*anypb.Any, error) {
@@ -205,6 +220,9 @@ func (s *DiskService) doCreate(ctx context.Context, diskID string, req CreateDis
 	// repo.Insert writes the FGA register-intent in the SAME writer-tx as the row
 	// (compute_fga_register_outbox), and the register-drainer applies it via
 	// kacho-iam InternalIAMService.RegisterResource (no direct FGA, no dual-write).
+	// Sync-register post-commit (best-effort, P4) делает owner-tuple эффективным
+	// немедленно, чтобы confirm-gate резолвился без ожидания drainer-poll'а.
+	syncRegisterOwner(ctx, s.ownerRegistrar, "Disk", created.ID, created.ProjectID, created.Labels)
 	return anypb.New(protoconv.Disk(created))
 }
 

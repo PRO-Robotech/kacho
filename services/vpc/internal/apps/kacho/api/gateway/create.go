@@ -39,7 +39,11 @@ type CreateGatewayUseCase struct {
 
 // NewCreateGatewayUseCase создает CreateGatewayUseCase.
 func NewCreateGatewayUseCase(r Repo, projectClient ProjectClient, opsRepo operations.Repo) *CreateGatewayUseCase {
-	return &CreateGatewayUseCase{repo: r, projectClient: projectClient, opsRepo: opsRepo}
+	return &CreateGatewayUseCase{
+		repo:          r,
+		projectClient: projectClient,
+		opsRepo:       opsRepo,
+	}
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
@@ -94,6 +98,9 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 		return nil, err
 	}
 
+	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
+	// материализуется eventually-consistent (sync-registrar + drainer/reconciler
+	// backstop), а не гейтит done.
 	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, gwID, g)
 	})

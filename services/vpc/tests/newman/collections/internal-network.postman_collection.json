@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6b1bfa0f-4d95-4572-ad2e-2a7bfa121fad",
+    "_postman_id": "f2274355-7259-4f52-9a47-461d8be20876",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,12 +16,15 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
           "}",
-          "// Suite project scope: prefer the shared authz-fixture project (projectA1Id —",
-          "// the default JWT holds vpc-editor there) over the standalone-dev existingProjectId.",
-          "// Without this the suite would target an ungranted/dead project → every",
-          "// project-scoped mutation is authz-denied (403).",
-          "pm.environment.set('_suiteProjectId', pm.environment.get('projectA1Id') || pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('projectA2Id') || pm.environment.get('existingProjectCrossId'));",
+          "// Suite project scope (директива #2 — per-service isolation): prefer the vpc-",
+          "// DEDICATED existingProjectId/existingProjectCrossId (setup.sh seeds vpc-home /",
+          "// vpc-cross under a vpc-only account and grants the default JWT editor on BOTH),",
+          "// so the CRUD suites don't share projectA1/A2 with the iam matrix + nlb (cross-",
+          "// suite collision #276) and can run in parallel. Fall back to the shared matrix",
+          "// projectA1Id/A2Id only when the dedicated projects weren't seeded (standalone dev).",
+          "// NB: the 6-subject authz-deny matrix keeps using projectA1Id/B1Id directly (shared).",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId') || pm.environment.get('projectA1Id'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId') || pm.environment.get('projectA2Id'));",
           "// Zone is environment-specific (geo seeds Region/Zone; ids differ per deploy).",
           "// Resolve a live zone id once from the geo catalog; fall back to the committed",
           "// existingZoneId when geo is unreachable (standalone vpc without geo).",
@@ -165,7 +168,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-924",
           "request": {
             "method": "GET",
             "header": [
@@ -198,10 +201,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -215,7 +219,7 @@
           ]
         },
         {
-          "name": "get-internal",
+          "name": "get-internal-rya425",
           "request": {
             "method": "GET",
             "header": [
@@ -225,9 +229,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -258,6 +262,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('network.id matches', () => pm.expect(j.network.id).to.eql(pm.environment.get('createdNetworkId')));",
@@ -417,7 +436,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-925",
           "request": {
             "method": "GET",
             "header": [
@@ -450,10 +469,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -467,7 +487,7 @@
           ]
         },
         {
-          "name": "list-no-vrfid",
+          "name": "list-no-vrfid-lst426",
           "request": {
             "method": "GET",
             "header": [
@@ -494,6 +514,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('createdNetworkId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const nets = pm.response.json().networks || [];",
                   "pm.test('list non-empty', () => pm.expect(nets.length).to.be.at.least(1));",
@@ -570,9 +607,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/netaaaaaaaaaaaaaaaaa:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/netaaaaaaaaaaaaaaaaa:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -630,9 +667,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/garbage:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/garbage:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -734,7 +771,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-926",
           "request": {
             "method": "GET",
             "header": [
@@ -767,10 +804,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -784,7 +822,7 @@
           ]
         },
         {
-          "name": "get-internal-before",
+          "name": "get-internal-before-rya427",
           "request": {
             "method": "GET",
             "header": [
@@ -794,9 +832,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -827,6 +865,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -888,7 +941,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-927",
           "request": {
             "method": "GET",
             "header": [
@@ -921,10 +974,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -948,9 +1002,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
+              "raw": "{{internalBaseUrl}}/vpc/v1/networks/{{createdNetworkId}}:internal",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "vpc",
@@ -1098,7 +1152,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-928",
           "request": {
             "method": "GET",
             "header": [
@@ -1131,10 +1185,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",

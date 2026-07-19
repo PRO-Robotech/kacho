@@ -55,6 +55,18 @@ type InstanceFilter struct {
 	AllowedIDs []string
 }
 
+// OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kacho-iam
+// (`InternalIAMService.RegisterResource`), зеркалящая тот же register-intent, что
+// эмитится транзакционно в `compute_fga_register_outbox`. Делает owner-tuple
+// эффективным раньше (до того как async register-drainer опросит outbox), сужая
+// eventual-consistency-окно — чистая window-оптимизация. Best-effort: ошибка
+// логируется, Create НЕ проваливается — durable outbox-intent + register-drainer
+// остаются at-least-once backstop'ом. nil = не сконфигурирован (dev / нет
+// iam-ребра) → полагаемся на drainer.
+type OwnerRegistrar interface {
+	Register(ctx context.Context, kind, resourceID, projectID string, labels map[string]string) error
+}
+
 // DiskRepo — port-интерфейс репозитория дисков.
 type DiskRepo interface {
 	Get(ctx context.Context, id string) (*domain.Disk, error)

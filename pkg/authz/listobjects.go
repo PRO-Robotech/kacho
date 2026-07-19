@@ -269,7 +269,13 @@ func (s *ListObjectsService) ListAllowedIDs(
 		if resp.NextPageToken == "" {
 			break
 		}
-		if uint32(len(allIDs)) >= maxResults {
+		// Сравниваем в int, а НЕ сужаем len до uint32. `len(allIDs)` растёт без
+		// верхней границы (сколько отдал peer), и `uint32(len(...))` — сужение
+		// неограниченной величины: при len > 2^32 счётчик заворачивается и условие
+		// выхода перестаёт срабатывать. Расширение `int(maxResults)` безопасно
+		// доказуемо: maxResults ≤ 10000 (hard cap, см. godoc выше) и влезает в int
+		// на любой платформе. gosec G115 указывал сюда верно.
+		if len(allIDs) >= int(maxResults) {
 			break
 		}
 		// Fail-safe (not forever): stuck token, or more pages than we could ever

@@ -99,8 +99,13 @@ func resolveCheckTimeout(d time.Duration) time.Duration {
 	return d
 }
 
-// Check — см. контракт CheckClient.Check.
+// Check — см. контракт CheckClient.Check. Consistency-поле запроса не
+// выставляется (zero value == CONSISTENCY_UNSPECIFIED → OpenFGA MINIMIZE_LATENCY).
 func (c *checkClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
+	return c.check(ctx, subjectID, relation, object)
+}
+
+func (c *checkClient) check(ctx context.Context, subjectID, relation, object string) (bool, error) {
 	switch {
 	case subjectID == "":
 		return false, fmt.Errorf("%w: subject_id is empty", domain.ErrInvalidArg)

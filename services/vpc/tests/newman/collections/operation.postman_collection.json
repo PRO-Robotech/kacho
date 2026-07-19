@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f90b05ae-4d29-4c69-b049-4c8d0a183501",
+    "_postman_id": "018fa765-557d-45f1-bc1b-6e6ad9c0b49c",
     "name": "kacho-vpc / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,12 +16,15 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
           "}",
-          "// Suite project scope: prefer the shared authz-fixture project (projectA1Id —",
-          "// the default JWT holds vpc-editor there) over the standalone-dev existingProjectId.",
-          "// Without this the suite would target an ungranted/dead project → every",
-          "// project-scoped mutation is authz-denied (403).",
-          "pm.environment.set('_suiteProjectId', pm.environment.get('projectA1Id') || pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('projectA2Id') || pm.environment.get('existingProjectCrossId'));",
+          "// Suite project scope (директива #2 — per-service isolation): prefer the vpc-",
+          "// DEDICATED existingProjectId/existingProjectCrossId (setup.sh seeds vpc-home /",
+          "// vpc-cross under a vpc-only account and grants the default JWT editor on BOTH),",
+          "// so the CRUD suites don't share projectA1/A2 with the iam matrix + nlb (cross-",
+          "// suite collision #276) and can run in parallel. Fall back to the shared matrix",
+          "// projectA1Id/A2Id only when the dedicated projects weren't seeded (standalone dev).",
+          "// NB: the 6-subject authz-deny matrix keeps using projectA1Id/B1Id directly (shared).",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId') || pm.environment.get('projectA1Id'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId') || pm.environment.get('projectA2Id'));",
           "// Zone is environment-specific (geo seeds Region/Zone; ids differ per deploy).",
           "// Resolve a live zone id once from the geo catalog; fall back to the committed",
           "// existingZoneId when geo is unreachable (standalone vpc without geo).",
@@ -160,7 +163,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-1111",
           "request": {
             "method": "GET",
             "header": [
@@ -193,10 +196,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -433,7 +437,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-1112",
           "request": {
             "method": "GET",
             "header": [
@@ -466,10 +470,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -505,7 +510,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"oplistdel-sub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.7.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"oplistdel-sub-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.7.0/24\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -536,7 +541,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-1113",
           "request": {
             "method": "GET",
             "header": [
@@ -569,10 +574,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -664,7 +670,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-1114",
           "request": {
             "method": "GET",
             "header": [
@@ -697,10 +703,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
@@ -791,7 +798,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-1115",
           "request": {
             "method": "GET",
             "header": [
@@ -824,10 +831,11 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 6) {",
+                  "if (!j.done && pc < 30) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  // Postman async-friendly retry: re-invoke same request name",
-                  "  postman.setNextRequest(pm.info.requestName);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",

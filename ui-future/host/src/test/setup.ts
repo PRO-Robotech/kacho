@@ -1,26 +1,10 @@
 import "@testing-library/jest-dom";
-import React from "react";
-import { jest } from "@jest/globals";
 import { TextDecoder, TextEncoder } from "node:util";
 
-// @ant-design/icons ships as ESM; under jest's experimental-vm-modules antd's
-// internal require() of it races the concurrent import() ("Cannot require() ES
-// Module … Context.js synchronously"). Mock it to a plain <span> like every
-// other package's test setup does. antd itself stays real so Layout/footer
-// assertions keep exercising the shell's real markup.
-jest.unstable_mockModule("@ant-design/icons", () => {
-  const Icon = (props: React.HTMLAttributes<HTMLSpanElement>) => React.createElement("span", props);
-
-  return new Proxy(
-    { __esModule: true },
-    {
-      get(target, prop) {
-        if (prop in target) return target[prop as keyof typeof target];
-        return Icon;
-      },
-    },
-  );
-});
+// @ant-design/icons мокается через jest.config moduleNameMapper (стаб
+// src/test/antd-icons-stub.tsx с реальными статическими named-экспортами), НЕ через
+// jest.unstable_mockModule: Proxy-мок не давал статических named-экспортов и ESM-линкер
+// `import { XOutlined }` висел вечно под --experimental-vm-modules (kacho#7, DIAG6).
 
 Object.defineProperty(global, "TextEncoder", {
   writable: true,

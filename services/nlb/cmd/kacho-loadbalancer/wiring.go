@@ -104,6 +104,23 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	// OperationService (public, exempt: op-id опакен, owner-scoped Get/Cancel).
 	operationpb.RegisterOperationServiceServer(publicSrv, operation.NewHandler(w.opsRepo))
 
+	// Create-ops дренятся через plain operations.Run: durable commit → op done
+	// сразу. Owner-tuple ресурса материализуется eventually-consistent (writer-TX
+	// fga_register_outbox intent → register-drainer → kacho-iam RegisterResource →
+	// reconciler backstop) и не гейтит Operation.done. Sync-primary registrar
+	// (ниже) дополнительно регистрирует owner-tuple СРАЗУ после commit'а, закрывая
+	// read-your-writes окно; durable intent + drainer остаются at-least-once
+	// backstop'ом (Operation.done по-прежнему не гейтится на видимость, ban #9).
+
+	// Sync-primary owner-tuple registrar (kacho-iam RegisterResource) поверх того
+	// же mTLS-conn к iam-internal :9091, что и register-drainer. nil peer
+	// (dev/no-iam) → nil registrar → sync-путь пропускается. Typed-nil gotcha:
+	// строим конкретный *SyncRegistrar ТОЛЬКО при наличии peer'а.
+	var syncRegistrar iamclient.Registrar
+	if w.peers.Register != nil {
+		syncRegistrar = iamclient.NewSyncRegistrar(w.peers.Register)
+	}
+
 	// NetworkLoadBalancerService (public only).
 	lbHandler := lbhandler.NewHandler(
 		w.repo, w.opsRepo,
@@ -111,18 +128,19 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 		w.peers.Subnet, w.peers.Address, w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
-	)
+	).WithRegistrar(syncRegistrar)
 	lbv1.RegisterNetworkLoadBalancerServiceServer(publicSrv, lbHandler)
 
 	// ListenerService (public only). InternalAddress нужен только для release
 	// legacy-VIP в Delete (nil → Unavailable).
-	lbv1.RegisterListenerServiceServer(publicSrv, listener.NewHandler(
+	listenerHandler := listener.NewHandler(
 		w.repo,
 		w.opsRepo,
 		w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
-	))
+	).WithRegistrar(syncRegistrar)
+	lbv1.RegisterListenerServiceServer(publicSrv, listenerHandler)
 
 	// TargetGroupService (public only). Фаза B drain — отдельный background-runner.
 	tgHandler := targetgroup.NewHandler(
@@ -131,7 +149,7 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 		w.peers.Instance, w.peers.NetworkInterface, w.peers.Subnet,
 		w.peers.ListFilter,
 		w.logger,
-	)
+	).WithRegistrar(syncRegistrar)
 	lbv1.RegisterTargetGroupServiceServer(publicSrv, tgHandler)
 
 	// InternalResourceLifecycleService (internal only) — FGA tuple-sync для kacho-iam.

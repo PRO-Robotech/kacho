@@ -98,6 +98,12 @@ func TestInstance_Create_SyncValidation(t *testing.T) {
 	badCF.CoreFraction = 33
 	_, err = k.svc.Create(context.Background(), badCF)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// cores вне proto-set {2,4,6,...,80} (напр. 3) → sync InvalidArgument (до Operation).
+	badCores := baseCreateReq()
+	badCores.Cores = 3
+	_, err = k.svc.Create(context.Background(), badCores)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 func seedRunningInstance(repo *portmock.InstanceRepo, st domain.InstanceStatus) *domain.Instance {

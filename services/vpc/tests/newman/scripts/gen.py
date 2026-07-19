@@ -19,7 +19,7 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,12 +79,15 @@ PRE_GLOBAL = [
     "  const r = Math.floor(Math.random() * 1e9).toString(36);",
     "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
     "}",
-    "// Suite project scope: prefer the shared authz-fixture project (projectA1Id —",
-    "// the default JWT holds vpc-editor there) over the standalone-dev existingProjectId.",
-    "// Without this the suite would target an ungranted/dead project → every",
-    "// project-scoped mutation is authz-denied (403).",
-    "pm.environment.set('_suiteProjectId', pm.environment.get('projectA1Id') || pm.environment.get('existingProjectId'));",
-    "pm.environment.set('_suiteProjectCrossId', pm.environment.get('projectA2Id') || pm.environment.get('existingProjectCrossId'));",
+    "// Suite project scope (директива #2 — per-service isolation): prefer the vpc-",
+    "// DEDICATED existingProjectId/existingProjectCrossId (setup.sh seeds vpc-home /",
+    "// vpc-cross under a vpc-only account and grants the default JWT editor on BOTH),",
+    "// so the CRUD suites don't share projectA1/A2 with the iam matrix + nlb (cross-",
+    "// suite collision #276) and can run in parallel. Fall back to the shared matrix",
+    "// projectA1Id/A2Id only when the dedicated projects weren't seeded (standalone dev).",
+    "// NB: the 6-subject authz-deny matrix keeps using projectA1Id/B1Id directly (shared).",
+    "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId') || pm.environment.get('projectA1Id'));",
+    "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId') || pm.environment.get('projectA2Id'));",
     "// Zone is environment-specific (geo seeds Region/Zone; ids differ per deploy).",
     "// Resolve a live zone id once from the geo catalog; fall back to the committed",
     "// existingZoneId when geo is unreachable (standalone vpc without geo).",
@@ -154,6 +157,57 @@ def assert_field_violation(field_name: str) -> List[str]:
         "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
         f"  const fv = (det.fieldViolations || []).find(v => v.field === '{field_name}');",
         f"  pm.expect(fv, 'fieldViolation for {field_name}').to.be.an('object');",
+        "});",
+    ]
+
+
+def assert_unscoped_rejected() -> List[str]:
+    """Unscoped list/create (без projectId) — ОТВЕРГНУТ. Два защитимых исхода,
+    оба = «отклонено» (defense-in-depth, security.md «authz-first»):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor fail-closed
+        «no path: unscoped resource» ДО backend-валидации: нельзя авторизовать
+        запрос, у которого нет scope для anti-BOLA-проверки;
+      400 INVALID_ARGUMENT  (code 3) — backend «project_id required» при
+        passthrough.
+    Толерантен к обоим — семантика негатива (rejected) сохранена, без ложного
+    провала на корректном authz-first 403. Techniques: ECP (класс «unscoped
+    запрос») + error-guessing (authz-vs-validation ordering)."""
+    return [
+        "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+        "});",
+        "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
+        "});",
+    ]
+
+
+def assert_absent_id_rejected() -> List[str]:
+    """Negative-запрос на ОТСУТСТВУЮЩИЙ / malformed id (Get/Update/Delete или
+    :verb-action / вложенный list по нему) — ОТВЕРГНУТ. Три защитимых исхода,
+    все = «отклонено» (defense-in-depth, security.md «authz-first», parity с
+    unscoped-helper и compute 32be094):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor не может резолвить
+        target→project для anti-BOLA у несуществующего/битого id → fail-closed
+        ДО backend format-check / repo.Get (для МУТАЦИЙ это устойчивое поведение,
+        не зависит от фикстур — id захардкожен как garbage, не берётся из setup);
+      404 NOT_FOUND (code 5) — well-formed-но-нет: sync AuthZ-Get/repo.Get;
+      400 INVALID_ARGUMENT (code 3) — malformed id: corevalidate.ResourceID.
+    Толерантен 400|403|404 (code 3|5|7) — семантика негатива (rejected) сохранена
+    без ложного провала на корректном authz-first 403 (GATE-RUN #5:
+    del-nx/patch-nx/upd-{fld}/move-nx/lop-nx возвращали 403 вместо 400/404).
+    Message-контракт NotFound ('<Resource> <id> not found') проверяется на GET-пути
+    (get-conf), который доходит до backend; для мутаций 403 его скрывает → тут не
+    ассертим (unobservable). Techniques: ECP (класс «absent id») + error-guessing
+    (authz-vs-existence ordering)."""
+    return [
+        "pm.test('absent-id request rejected (400/403/404)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403, 404]);",
+        "});",
+        "pm.test('grpc code INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED (3/5/7)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 5, 7]);",
         "});",
     ]
 
@@ -235,11 +289,9 @@ def state_update_unknown_mask(prefix, update_path):
         steps=[Step(name="patch-unknown-mask", method="PATCH",
                     path=f"{update_path}/{{{{garbageVpcId}}}}",
                     body={"updateMask": "some_unknown_field_xyz", "description": "x"},
-                    test_script=[
-                        # Может вернуть 404 (если sync Get срабатывает раньше mask-валидации)
-                        # либо 400 (если mask проверяется до Get).
-                        "pm.test('rejected (400 or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    ])],
+                    # PATCH по garbageVpcId: scope_extractor 403 (authz-first) ДО
+                    # mask-валидации (400) / sync Get (404) — все три = rejected.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -252,7 +304,8 @@ def authz_move_nf(prefix, move_base_path):
         steps=[Step(name="move-nx", method="POST",
                     path=f"{move_base_path}/{{{{garbageVpcId}}}}:move",
                     body={"destinationProjectId": "{{_suiteProjectId}}"},
-                    test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")])],
+                    # :move по garbageVpcId: scope_extractor 403 (authz-first) ДО sync Get 404.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -265,9 +318,9 @@ def val_move_no_dest(prefix, move_base_path):
         steps=[Step(name="move-no-dest", method="POST",
                     path=f"{move_base_path}/{{{{garbageVpcId}}}}:move",
                     body={},
-                    test_script=[
-                        "pm.test('rejected (400 or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    ])],
+                    # :move по garbageVpcId без dest: scope_extractor 403 (authz-first)
+                    # ДО backend 400 (no dest) / sync Get 404.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -280,11 +333,9 @@ def state_immutable_project(prefix, update_base_path):
         steps=[Step(name="upd-project-via-mask", method="PATCH",
                     path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                     body={"updateMask": "project_id", "projectId": "x"},
-                    test_script=[
-                        # mask immutable должен отвергнуть с 400.
-                        # Если AuthZ-Get срабатывает раньше (404), тоже OK.
-                        "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    ])],
+                    # PATCH immutable-mask по garbageVpcId: scope_extractor 403 (authz-first)
+                    # ДО immutable-check 400 / sync Get 404.
+                    test_script=[*assert_absent_id_rejected()])],
     )
 
 
@@ -326,8 +377,10 @@ def ecp_name_block(prefix, create_path, body_extra=None):
         id=f"{prefix}-CR-BVA-NAME-MAX-63",
         title="Create с name len=63 (max) → ok",
         classes=["BVA"], priority="P2",
+        # name len exactly 63 (max) AND unique per run: "n63-"(4)+runId(10)+"-"(1)+48
+        # = 63 at runtime. Fixed literal collided across re-runs (UNIQUE name) → 409.
         steps=[Step(name="cr-max63", method="POST", path=create_path,
-                    body=base("n63" + "abcdefghij"*6),
+                    body=base("n63-{{runId}}-" + "a"*48),
                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
     ))
     cases.append(Case(
@@ -449,7 +502,9 @@ def updatemask_decision_table(prefix, update_base_path):
             steps=[Step(name="upd-empty-mask", method="PATCH",
                         path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                         body={"description": "x"},
-                        test_script=["pm.test('rejected NF', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"])],
+                        # PATCH по garbageVpcId (несуществующий): scope_extractor 403
+                        # (authz-first) ДО sync Get 404 — 200 недостижим для garbage-id.
+                        test_script=[*assert_absent_id_rejected()])],
         ),
         Case(
             id=f"{prefix}-UPD-VAL-MASK-MULTIPLE-UNKNOWN",
@@ -458,7 +513,9 @@ def updatemask_decision_table(prefix, update_base_path):
             steps=[Step(name="upd-multi-unknown", method="PATCH",
                         path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                         body={"updateMask": "x_unknown,y_unknown", "description": "x"},
-                        test_script=["pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));"])],
+                        # PATCH unknown-mask по garbageVpcId: scope_extractor 403 (authz-first)
+                        # ДО mask-валидации 400 / sync Get 404.
+                        test_script=[*assert_absent_id_rejected()])],
         ),
     ]
 
@@ -535,8 +592,16 @@ def idempotency_block(prefix, create_path, name_template, body_extra=None):
                  body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
                  test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
                               "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
-            Step(name="cleanup", method="DELETE", path=f"{create_path}/{{{{idmCreatedId}}}}",
-                 test_script=[*assert_status(200)]),
+            # cleanup DELETE is the caller's first *mutating* access of its OWN fresh
+            # resource; the delete-relation owner-tuple is eventually-consistent (opgate
+            # removed → at-least-once fgaproxy drainer), so under load the gateway authz
+            # gate can briefly 403 ("lacks relation v_delete") before the tuple
+            # materialises. Bounded read-your-writes retry on that transient 403 only
+            # (the resource provably exists — cr-2 just got 409 on it — so a 404 here
+            # would be a genuine bug, never masked).
+            retry_until_authorized(Step(name="cleanup", method="DELETE",
+                 path=f"{create_path}/{{{{idmCreatedId}}}}",
+                 test_script=[*assert_status(200)]), retry_on=(403,)),
         ],
     )
 
@@ -557,20 +622,20 @@ def update_happy_per_field(prefix, create_path, update_base_path, body_create):
                      body={**body_create, "name": f"{prefix.lower()}-upd-{field.lower()}-{{{{runId}}}}"},
                      test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                                   *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-                Step(name="poll-create", method="GET", path="/operations/{{opId}}",
-                     test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-                Step(name="patch", method="PATCH",
+                poll_operation_until_done(),
+                retry_until_authorized(Step(name="patch", method="PATCH",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      body=patch_body,
-                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-                Step(name="poll-patch", method="GET", path="/operations/{{opId}}",
-                     test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-                Step(name="verify", method="GET", path=f"{update_base_path}/{{{{createdId}}}}",
-                     test_script=[*assert_status(200), *asserts]),
-                Step(name="cleanup", method="DELETE", path=f"{update_base_path}/{{{{createdId}}}}",
-                     test_script=[*save_from_response("j.id", "opId")]),
-                Step(name="poll-cleanup", method="GET", path="/operations/{{opId}}",
-                     test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+                poll_operation_until_done(),
+                # read-your-writes: verify GET of the caller's OWN fresh resource can
+                # briefly 404 while the owner/hierarchy tuple materializes under load
+                # (opgate removed → eventual-consistency). Bounded-retry on 404/403.
+                retry_until_authorized(Step(name="verify", method="GET", path=f"{update_base_path}/{{{{createdId}}}}",
+                     test_script=[*assert_status(200), *asserts])),
+                retry_until_authorized(Step(name="cleanup", method="DELETE", path=f"{update_base_path}/{{{{createdId}}}}",
+                     test_script=[*save_from_response("j.id", "opId")])),
+                poll_operation_until_done(),
             ],
         )
     return [
@@ -615,8 +680,7 @@ def move_same_project(prefix, resource_base_path, body_create):
                  body={**body_create, "name": f"{prefix.lower()}-mv-self-{{{{runId}}}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-            Step(name="poll-create", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+            poll_operation_until_done(),
             Step(name="move-self", method="POST",
                  path=f"{resource_base_path}/{{{{createdId}}}}:move",
                  body={"destinationProjectId": "{{_suiteProjectId}}"},
@@ -629,8 +693,7 @@ def move_same_project(prefix, resource_base_path, body_create):
             Step(name="cleanup", method="DELETE",
                  path=f"{resource_base_path}/{{{{createdId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
-            Step(name="poll-cleanup", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+            poll_operation_until_done(),
         ],
     )
 
@@ -666,10 +729,10 @@ def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None)
             steps=[Step(name="upd", method="PATCH",
                         path=f"{resource_path}/enpsnapshotnonexist02",
                         body={"updateMask": "description", "description": "x"},
-                        test_script=[
-                            *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                            _eql_test("enpsnapshotnonexist02"),
-                        ])],
+                        # PATCH-мутация по несуществующему id: scope_extractor 403
+                        # (authz-first) ДО backend 404 → not-found текст здесь
+                        # unobservable; verbatim-контракт держит GET-CONF-FULLTEXT (get).
+                        test_script=[*assert_absent_id_rejected()])],
         ),
         Case(
             id=f"{prefix}-DEL-CONF-FULLTEXT",
@@ -677,10 +740,9 @@ def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None)
             classes=["CONF", "NEG"], priority="P1",
             steps=[Step(name="del", method="DELETE",
                         path=f"{resource_path}/enpsnapshotnonexist03",
-                        test_script=[
-                            *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                            _eql_test("enpsnapshotnonexist03"),
-                        ])],
+                        # DELETE-мутация по несуществующему id: scope_extractor 403
+                        # (authz-first) ДО backend 404 → verbatim держит GET-CONF-FULLTEXT.
+                        test_script=[*assert_absent_id_rejected()])],
         ),
     ]
 
@@ -696,30 +758,27 @@ def update_happy_multi_field(prefix, create_path, update_base_path, body_create)
                  body={**body_create, "name": f"{prefix.lower()}-multi-{{{{runId}}}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-            Step(name="poll-create", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-            Step(name="patch-multi", method="PATCH",
+            poll_operation_until_done(),
+            retry_until_authorized(Step(name="patch-multi", method="PATCH",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  body={"updateMask": "name,description,labels",
                        "name": f"{prefix.lower()}-multi-new",
                        "description": "multi-desc",
                        "labels": {"a": "1", "b": "2"}},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-            Step(name="poll-patch", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-            Step(name="verify-all", method="GET",
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+            poll_operation_until_done(),
+            retry_until_authorized(Step(name="verify-all", method="GET",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  test_script=[*assert_status(200),
                               "const j = pm.response.json();",
                               "pm.test('name updated', () => pm.expect(j.name).to.eql('" + prefix.lower() + "-multi-new'));",
                               "pm.test('description updated', () => pm.expect(j.description).to.eql('multi-desc'));",
                               "pm.test('labels a', () => pm.expect((j.labels || {}).a).to.eql('1'));",
-                              "pm.test('labels b', () => pm.expect((j.labels || {}).b).to.eql('2'));"]),
-            Step(name="cleanup", method="DELETE",
+                              "pm.test('labels b', () => pm.expect((j.labels || {}).b).to.eql('2'));"])),
+            retry_until_authorized(Step(name="cleanup", method="DELETE",
                  path=f"{update_base_path}/{{{{createdId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
-            Step(name="poll-cleanup", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+                 test_script=[*save_from_response("j.id", "opId")])),
+            poll_operation_until_done(),
         ],
     )
 
@@ -736,8 +795,7 @@ def cross_project_resource_block(prefix, create_path, body_create, name_field="n
                        name_field: f"{prefix.lower()}-iso-{{{{runId}}}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "isoId")]),
-            Step(name="poll", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+            poll_operation_until_done(),
             Step(name="list-in-B", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectCrossId}}}}&pageSize=100",
                  test_script=[*assert_status(200),
@@ -745,8 +803,7 @@ def cross_project_resource_block(prefix, create_path, body_create, name_field="n
                               "pm.test('isolated — not in projectB list', () => pm.expect(ids).to.not.include(pm.environment.get('isoId')));"]),
             Step(name="cleanup", method="DELETE", path=f"{create_path}/{{{{isoId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
-            Step(name="poll-cleanup", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+            poll_operation_until_done(),
         ],
     )
 
@@ -762,17 +819,15 @@ def list_filter_match_block(prefix, create_path, body_create):
                  body={**body_create, "name": f"{prefix.lower()}-flt-{{{{runId}}}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "fltId")]),
-            Step(name="poll", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-            Step(name="list-filtered", method="GET",
+            poll_operation_until_done(),
+            retry_until_present(Step(name="list-filtered", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=100&filter=name%3D%22{prefix.lower()}-flt-{{{{runId}}}}%22",
                  test_script=[*assert_status(200),
                               "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
-                              "pm.test('filtered list contains', () => pm.expect(ids).to.include(pm.environment.get('fltId')));"]),
-            Step(name="cleanup", method="DELETE", path=f"{create_path}/{{{{fltId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
-            Step(name="poll-cleanup", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+                              "pm.test('filtered list contains', () => pm.expect(ids).to.include(pm.environment.get('fltId')));"]), "fltId"),
+            retry_until_authorized(Step(name="cleanup", method="DELETE", path=f"{create_path}/{{{{fltId}}}}",
+                 test_script=[*save_from_response("j.id", "opId")])),
+            poll_operation_until_done(),
         ],
     )
 
@@ -845,15 +900,19 @@ def malformed_body_block(prefix, create_path):
                             "// Подменяем body на невалидный JSON через pm.request.body",
                             "pm.request.body = { mode: 'raw', raw: '{invalid json---}' };",
                         ],
-                        test_script=["pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));"])],
+                        # 403 добавлен: malformed JSON → projectId не распарсен →
+                        # scope_extractor 403 (unscoped, authz-first) ДО транскодера 400/415.
+                        test_script=["pm.test('rejected (400/415 transcode or 403 authz-first)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 415]));"])],
         ),
         Case(
             id=f"{prefix}-CR-VAL-EMPTY-BODY",
-            title="Create с пустым body → 400",
+            title="Create с пустым body → rejected (400 project_id required | 403 unscoped authz-first)",
             classes=["VAL", "NEG"], priority="P2",
             steps=[Step(name="cr-empty-body", method="POST", path=create_path,
                         body={},
-                        test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                        # empty body → нет projectId → unscoped → scope_extractor 403
+                        # (authz-first) ЛИБО backend 400 project_id required.
+                        test_script=[*assert_unscoped_rejected()])],
         ),
     ]
 
@@ -869,16 +928,14 @@ def alreadyexists_dup_name_for(prefix, create_path, body_create):
                  body={**body_create, "name": f"{prefix.lower()}-dupck-{{{{runId}}}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "firstId")]),
-            Step(name="poll-first", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+            poll_operation_until_done(),
             Step(name="cr-dup", method="POST", path=create_path,
                  body={**body_create, "name": f"{prefix.lower()}-dupck-{{{{runId}}}}"},
                  test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
                               "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
             Step(name="cleanup-first", method="DELETE", path=f"{create_path}/{{{{firstId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
-            Step(name="poll-c1", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+            poll_operation_until_done(),
         ],
     )
 
@@ -896,27 +953,26 @@ def update_mask_partial_block(prefix, create_path, update_base_path, body_create
                            "description": "init", "labels": {"orig": "1"}},
                      test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                                   *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-                Step(name="poll-cr", method="GET", path="/operations/{{opId}}",
-                     test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-                Step(name="patch-name-only", method="PATCH",
+                poll_operation_until_done(),
+                retry_until_authorized(Step(name="patch-name-only", method="PATCH",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      body={"updateMask": "name", "name": f"{prefix.lower()}-mnnew",
                            "description": "should-be-ignored", "labels": {"ignored": "y"}},
-                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-                Step(name="poll-p", method="GET", path="/operations/{{opId}}",
-                     test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-                Step(name="verify", method="GET",
+                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+                poll_operation_until_done(),
+                # read-your-writes: bounded-retry the fresh-resource verify GET over
+                # the owner-tuple materialization window (opgate removed).
+                retry_until_authorized(Step(name="verify", method="GET",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      test_script=[*assert_status(200),
                                   "const j = pm.response.json();",
                                   "pm.test('name updated', () => pm.expect(j.name).to.eql('" + prefix.lower() + "-mnnew'));",
                                   "pm.test('description preserved', () => pm.expect(j.description).to.eql('init'));",
-                                  "pm.test('labels preserved', () => pm.expect((j.labels || {}).orig).to.eql('1'));"]),
-                Step(name="cleanup", method="DELETE",
+                                  "pm.test('labels preserved', () => pm.expect((j.labels || {}).orig).to.eql('1'));"])),
+                retry_until_authorized(Step(name="cleanup", method="DELETE",
                      path=f"{update_base_path}/{{{{createdId}}}}",
-                     test_script=[*save_from_response("j.id", "opId")]),
-                Step(name="poll-c", method="GET", path="/operations/{{opId}}",
-                     test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+                     test_script=[*save_from_response("j.id", "opId")])),
+                poll_operation_until_done(),
             ],
         ),
     ]
@@ -933,15 +989,13 @@ def perf_baseline_get_block(prefix, get_create_path, body_create):
                  body={**body_create, "name": f"{prefix.lower()}-perf-{{{{runId}}}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "perfId")]),
-            Step(name="poll-cr", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
-            Step(name="get-timed", method="GET", path=f"{get_create_path}/{{{{perfId}}}}",
+            poll_operation_until_done(),
+            retry_until_authorized(Step(name="get-timed", method="GET", path=f"{get_create_path}/{{{{perfId}}}}",
                  test_script=[*assert_status(200),
-                              "pm.test('response time < 300ms', () => pm.expect(pm.response.responseTime).to.be.below(300));"]),
+                              "pm.test('response time < 300ms', () => pm.expect(pm.response.responseTime).to.be.below(300));"])),
             Step(name="cleanup", method="DELETE", path=f"{get_create_path}/{{{{perfId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
-            Step(name="poll-c", method="GET", path="/operations/{{opId}}",
-                 test_script=["pm.test('done', () => pm.expect(pm.response.json().done).to.eql(true));"]),
+            poll_operation_until_done(),
         ],
     )
 
@@ -989,18 +1043,26 @@ def required_fields_matrix(prefix, create_path, body_full, required_field_names)
     cases = []
     for fld in required_field_names:
         body_missing = {k: v for k, v in body_full.items() if k != fld}
+        # projectId is the authz SCOPE field: a create missing it is UNSCOPED, so the
+        # api-gateway scope_extractor yields `project:*` → fail-closed 403 BEFORE the
+        # backend's required-field validation ever runs (authz-first, security.md;
+        # parity with assert_absent_id_rejected / compute 32be094). Tolerate 403 for
+        # the scope field only — for non-scope fields projectId is present, the request
+        # IS scoped, and 403 would be a genuine unexpected deny.
+        codes = "[400, 200, 403, 404]" if fld == "projectId" else "[400, 200, 404]"
         cases.append(Case(
             id=f"{prefix}-CR-VAL-REQ-{fld.upper().replace('_','-')}",
-            title=f"Create без required поля '{fld}' → 400 InvalidArgument",
+            title=f"Create без required поля '{fld}' → 400 InvalidArgument (unscoped → 403 authz-first)",
             classes=["VAL"], priority="P0",
             steps=[Step(name=f"cr-no-{fld}", method="POST", path=create_path,
                         body=body_missing,
                         test_script=[
                             # 400 — sync InvalidArgument (missing required field).
                             # 200 — поле проверяется async (op.error code=3/5).
+                            # 403 — missing projectId → unscoped → authz-first fail-closed.
                             # 404 — body использует garbage parent id (PE: networkId={{garbageVpcId}});
                             #       sync existence-check parent'а отрабатывает раньше → NotFound.
-                            "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200, 404]));",
+                            f"pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf({codes}));",
                         ])],
         ))
     return cases
@@ -1024,15 +1086,10 @@ def immutable_fields_matrix(prefix, update_base_path, immutable_field_names):
             steps=[Step(name=f"upd-{fld}", method="PATCH",
                         path=f"{update_base_path}/{{{{garbageVpcId}}}}",
                         body=body,
-                        test_script=[
-                            # mask immutable отвергается 400 InvalidArgument
-                            # либо 404 если sync Get срабатывает первым (AuthZ guard)
-                            "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                            "if (pm.response.code === 400) {",
-                            "  const j = pm.response.json();",
-                            "  pm.test('error has message string', () => pm.expect(j.message).to.be.a('string'));",
-                            "}",
-                        ])],
+                        # PATCH immutable-mask по garbageVpcId (несуществующий):
+                        # scope_extractor 403 (authz-first) ДО immutable-check 400 /
+                        # sync Get 404. immutable-verbatim держит scoped-кейс на реальном id.
+                        test_script=[*assert_absent_id_rejected()])],
         ))
     return cases
 
@@ -1050,10 +1107,10 @@ def mutable_field_accepts(prefix, create_path, update_base_path, body_create,
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
             poll_operation_until_done(),
-            Step(name="patch", method="PATCH",
+            retry_until_authorized(Step(name="patch", method="PATCH",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  body={"updateMask": mutable_field, mutable_field: mutable_value},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
             poll_operation_until_done(),
             Step(name="verify", method="GET",
                  path=f"{update_base_path}/{{{{createdId}}}}",
@@ -1348,14 +1405,14 @@ def conformance_lifecycle_pack(prefix, create_path, body_create):
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "lifeId")]),
             poll_operation_until_done(),
-            Step(name="get-1", method="GET", path=f"{create_path}/{{{{lifeId}}}}",
+            retry_until_authorized(Step(name="get-1", method="GET", path=f"{create_path}/{{{{lifeId}}}}",
                  test_script=[*assert_status(200),
-                              "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"]),
-            Step(name="lst-includes", method="GET",
+                              "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"])),
+            retry_until_present(Step(name="lst-includes", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
                  test_script=[*assert_status(200),
                               "const items = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];",
-                              "pm.test('list contains', () => pm.expect(items.map(x => x.id)).to.include(pm.environment.get('lifeId')));"]),
+                              "pm.test('list contains', () => pm.expect(items.map(x => x.id)).to.include(pm.environment.get('lifeId')));"]), "lifeId"),
             Step(name="upd", method="PATCH", path=f"{create_path}/{{{{lifeId}}}}",
                  body={"updateMask": "description", "description": "life-conf"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -1417,15 +1474,166 @@ def conf_alreadyexists_block(prefix, create_path, name_template, body_extra=None
     )
 
 
+_POLL_SEQ = [0]
+
+
+_RYA_SEQ = [0]
+
+
+def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
+                        interval_ms: int = 500) -> Step:
+    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
+    the returned array (read-your-writes over the list-authz visibility window; opgate
+    removed -> owner-tuple eventual-consistency). The list returns 200 with the id
+    ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
+    apply -- we retry while the id is missing. Fail-open after budget: the real
+    assertion then runs once and FAILS if still absent (never masked, never infinite).
+    Use ONLY on a list of the caller's OWN just-created resource."""
+    guard = [
+        "// bounded read-your-writes retry until own fresh id is present in the list",
+        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_lstRetryCount', '0');",
+        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+        "}",
+        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+        "let _present = false;",
+        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
+        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
+        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
+        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_lstRetryCount');",
+        "pm.environment.unset('_lstRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
+                           retry_on=(403, 404)) -> Step:
+    """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
+    read-your-writes retry over the owner-tuple materialization window.
+
+    opgate (the create confirm-gate) was removed by design-review: Operation.done now
+    means the resource is DURABLE, but its owner/creator FGA tuple materializes
+    eventually-consistent (at-least-once drainer + reconciler + sync-registrar
+    optimisation). Under load the first post-create Get/Update/Delete of the fresh
+    resource can briefly return 403 (PERMISSION_DENIED) or 404 at the authz gate
+    before the tuple is visible. This is a textbook read-your-writes lag -> the CLIENT
+    retries; it is NOT a server barrier.
+
+    Retries the SAME request (setNextRequest -> self) while the response code is in
+    `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
+    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
+    (default 15*400ms = ~6s) -- fail-closed: on any other code the wrapped step's real
+    test_script runs exactly once, and once the budget is spent it ALSO runs on the
+    terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions --
+    never masked, never infinite).
+
+    Use ONLY on the first access of the caller's OWN fresh resource. Do NOT wrap
+    negative / cross-account-deny / absent-id steps (a poll there would mask a real
+    deny). The counter/started env-vars are request-name-scoped (step names are
+    globally unique after serialization) so the loop never bleeds across cases or
+    steps -- same discipline as poll_operation_until_done.
+    """
+    retry_set = ",".join(str(c) for c in retry_on)
+    guard = [
+        "// bounded read-your-writes retry over the owner-tuple materialization window",
+        "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+        "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_authRetryCount', '0');",
+        "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+        "}",
+        "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+        f"if ([{retry_set}].includes(pm.response.code) && _arc < {budget}) {{",
+        "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+        f"  const _ard = Date.now(); while (Date.now() - _ard < {interval_ms}) {{ /* owner-tuple materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_authRetryCount');",
+        "pm.environment.unset('_authRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    # Give the wrapped step a globally-unique name so its self-retry
+    # setNextRequest(pm.info.requestName) always resolves to ITSELF. Newman resolves a
+    # setNextRequest name to the FIRST item with that name in the collection; these
+    # suites mostly do NOT prefix step names by case-id, so a wrapped step whose bare
+    # name repeats would otherwise jump the retry to an earlier same-named step — the
+    # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
+    return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
+                       interval_ms: int = 500) -> Step:
+    """Bounded retry a "must-be-ABSENT/empty" negative read over a read-your-writes-ON-
+    REVOKE window — the MIRROR of retry_until_authorized for the deny/leak-guard side.
+
+    A no-access subject's "List → EMPTY / id NOT present" leak-guard flakes under PARALLEL
+    load when the subject carries a residual/concurrent grant from ANOTHER suite (shared
+    fixture subject): e.g. an account-scoped viewer created by the iam access-binding suite
+    matches this project's child resources via account→project containment, so the deny-list
+    transiently returns rows until that suite's revoke materializes (FGA tuple / list-authz
+    negative-cache lag — eventually-consistent). The serial run's timing hid this.
+
+    `still_present_expr` is a JS boolean, TRUE while the must-be-absent thing is STILL present
+    (e.g. the list is still non-empty). Retries SELF while truthy, spacing ~interval_ms.
+    Fail-OPEN at budget: the wrapped step's real assertion then runs once on the terminal
+    response, so a GENUINE over-show hole (rows never leave the deny-list) still FAILS — a
+    persistent leak can NEVER be masked; only a transient revoke/contamination window is
+    absorbed. Use ONLY on a negative "must be absent/empty" read whose emptiness is guaranteed
+    once the contaminating grant is genuinely gone — NEVER a real cross-account deny.
+
+    The step is renamed (-abs<N>) so its self-loop setNextRequest(pm.info.requestName) resolves
+    to ITSELF (these suites do NOT prefix step names by case-id, same hazard as retry_until_authorized)."""
+    guard = [
+        "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+        "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+        "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+        "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+        "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_absRetryCount', '0');",
+        "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+        "}",
+        "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+        "let _stillPresent = false;",
+        f"try {{ _stillPresent = ({still_present_expr}); }} catch (e) {{ _stillPresent = false; }}",
+        f"if (pm.response.code === 200 && _stillPresent && _absc < {budget}) {{",
+        "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+        f"  const _absd = Date.now(); while (Date.now() - _absd < {interval_ms}) {{ /* revoke-materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_absRetryCount');",
+        "pm.environment.unset('_absRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-abs{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
 def poll_operation_until_done() -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
-    До 6 попыток, потом fail если done остался false.
+    До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
+    потом fail если done остался false.
+
+    КАЖДЫЙ poll-шаг получает УНИКАЛЬНОЕ имя (poll-op-<N>): setNextRequest(
+    pm.info.requestName) обязан ретраить СЕБЯ. При общем имени 'poll-op' newman
+    резолвит имя в ДРУГОЙ (последний) poll-op коллекции → прыжок через все кейсы и
+    пропуск их setup-шагов → массовый ложный fail (e2e-newman fullscope root A3).
 
     Если opId пустой (предыдущий шаг был отклонен синхронно, напр. 403 bad-project),
     шаг пропускается: тесты не запускаются, не добавляются к failure count.
     """
+    _POLL_SEQ[0] += 1
     return Step(
-        name="poll-op",
+        name=f"poll-op-{_POLL_SEQ[0]}",
         method="GET",
         path="/operations/{{opId}}",
         pre_script=[
@@ -1442,10 +1650,18 @@ def poll_operation_until_done() -> Step:
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 6) {",
+            # Poll budget raised 20→30 (Koren-1): cover the p99 async-op tail under
+            # suite load; the confirm-gate tail is cut by the HIGHER_CONSISTENCY read.
+            "if (!j.done && pc < 30) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
+            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
+            # synchronously and fires setNextRequest before any setTimeout callback, so a
+            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
+            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
+            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
+            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
             "  // Postman async-friendly retry: re-invoke same request name",
-            "  postman.setNextRequest(pm.info.requestName);",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
             "pm.environment.unset('_pollCount');",
@@ -1598,7 +1814,10 @@ _POOL_SEED_BODY = {
 }
 
 # Collections that depend on a seeded default external pool.
-_POOL_SEED_SERVICES = {"internal-pool", "address"}
+# address-zone-coherence allocates an external v4 in existingZoneId (=zoneA) in its
+# ZONE-03 happy path; without the zoneA default pool the Create Operation errors
+# (no pool resolved) → the address never persists → get-known-zone 404s. Seed it.
+_POOL_SEED_SERVICES = {"internal-pool", "address", "address-zone-coherence"}
 
 
 def _pool_seed_item() -> Dict:
@@ -1675,9 +1894,14 @@ def load_cases_module(path: Path):
     mod.assert_grpc_code = assert_grpc_code
     mod.assert_transcode_error = assert_transcode_error
     mod.assert_field_violation = assert_field_violation
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
+    mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
     mod.poll_operation_until_done = poll_operation_until_done
+    mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_present = retry_until_present
+    mod.retry_until_absent = retry_until_absent
     mod.crud_list_bva_block = crud_list_bva_block
     mod.conf_not_found_text = conf_not_found_text
     mod.state_update_unknown_mask = state_update_unknown_mask

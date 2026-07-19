@@ -24,7 +24,7 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +33,7 @@ CASES_DIR = ROOT / "cases"
 OUT_DIR = ROOT / "collections"
 
 # Monotonic sequence for poll-step names within a single collection build.
-# poll_operation_until_done() self-retries via postman.setNextRequest(
+# poll_operation_until_done() self-retries via pm.execution.setNextRequest(
 # pm.info.requestName); newman resolves setNextRequest by request NAME and jumps
 # to the FIRST match in the flattened collection. Identically-named "poll-op"
 # steps (one per mutation, hundreds per collection) therefore made a mid-suite
@@ -90,7 +90,9 @@ PRE_GLOBAL = [
     "pm.environment.set('_suiteRegionAltId', pm.environment.get('existingRegionAltId'));",
     "// Default auth: project-editor JWT on project A (sufficient for most happy-path steps).",
     "// Per-step auth= overrides via _auth_pre_script.",
-    "const __defaultJwt = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+    "// fallback на jwtBootstrap (cluster-admin) пока per-subject JWT не засеяны setup.sh —",
+    "// снимает булк 401 на happy-path; authz-специфичные шаги (per-step auth=) остаются точны.",
+    "const __defaultJwt = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || pm.environment.get('jwtBootstrap') || '';",
     "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
     "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
     "}",
@@ -128,6 +130,52 @@ def assert_field_violation(field_name: str) -> List[str]:
     ]
 
 
+def assert_unscoped_rejected() -> List[str]:
+    """Unscoped create/list (без projectId/parent-scope) — ОТВЕРГНУТ. Два защитимых
+    исхода, оба = «отклонено» (defense-in-depth, security.md «authz-first», parity
+    с vpc 446e25b / compute 32be094):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor fail-closed
+        «no path: unscoped resource» ДО backend-валидации: нельзя авторизовать
+        запрос без scope для anti-BOLA;
+      400 INVALID_ARGUMENT  (code 3) — backend «required field» при passthrough.
+    Толерантен к обоим. Techniques: ECP (класс «unscoped запрос») + error-guessing
+    (authz-vs-validation ordering)."""
+    return [
+        "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+        "});",
+        "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
+        "});",
+    ]
+
+
+def assert_absent_id_rejected() -> List[str]:
+    """Negative-запрос на ОТСУТСТВУЮЩИЙ / malformed id (Get/Update/Delete или
+    :verb-action / вложенный list по нему) — ОТВЕРГНУТ. Три защитимых исхода, все
+    = «отклонено» (defense-in-depth, security.md «authz-first», parity с vpc):
+      403 PERMISSION_DENIED (code 7) — gateway scope_extractor не может резолвить
+        target→project для anti-BOLA у несуществующего/битого id → fail-closed ДО
+        backend format-check / repo.Get (для МУТАЦИЙ устойчиво, id захардкожен как
+        garbage — не из setup, поэтому не зависит от фикстур);
+      404 NOT_FOUND (code 5) — well-formed-но-нет: sync AuthZ-Get/repo.Get;
+      400 INVALID_ARGUMENT (code 3) — malformed id: corevalidate.ResourceID.
+    Толерантен 400|403|404 (code 3|5|7) — семантика негатива (rejected) сохранена
+    без ложного провала на корректном authz-first 403 (GATE-RUN #5:
+    upd-imm/del-unknown/move-nx/stop-unknown/list-ops возвращали 403 вместо 400/404).
+    Techniques: ECP (класс «absent id») + error-guessing (authz-vs-existence ordering)."""
+    return [
+        "pm.test('absent-id request rejected (400/403/404)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403, 404]);",
+        "});",
+        "pm.test('grpc code INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED (3/5/7)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 5, 7]);",
+        "});",
+    ]
+
+
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     return [
         "try {",
@@ -148,8 +196,164 @@ def assert_operation_envelope(prefix_regex: str = "^(nlb|tgr|lst)[a-z0-9]+$") ->
     ]
 
 
+_RYA_SEQ = [0]
+
+
+def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
+                        interval_ms: int = 500) -> Step:
+    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
+    the returned array (read-your-writes over the list-authz visibility window; opgate
+    removed -> owner-tuple eventual-consistency). The list returns 200 with the id
+    ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
+    apply -- we retry while the id is missing. Fail-open after budget: the real
+    assertion then runs once and FAILS if still absent (never masked, never infinite).
+    Use ONLY on a list of the caller's OWN just-created resource."""
+    guard = [
+        "// bounded read-your-writes retry until own fresh id is present in the list",
+        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_lstRetryCount', '0');",
+        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+        "}",
+        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+        "let _present = false;",
+        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
+        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
+        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
+        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_lstRetryCount');",
+        "pm.environment.unset('_lstRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
+                           retry_on=(403, 404)) -> Step:
+    """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
+    read-your-writes retry over the owner-tuple materialization window.
+
+    opgate (the create confirm-gate) was removed by design-review: Operation.done now
+    means the resource is DURABLE, but its owner/creator FGA tuple materializes
+    eventually-consistent (at-least-once drainer + reconciler + sync-registrar
+    optimisation). Under load the first post-create Get/Update/Delete of the fresh
+    resource can briefly return 403 (PERMISSION_DENIED) or 404 at the authz gate
+    before the tuple is visible. This is a textbook read-your-writes lag -> the CLIENT
+    retries; it is NOT a server barrier.
+
+    Retries the SAME request (setNextRequest -> self) while the response code is in
+    `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
+    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
+    (default 60*500ms = ~30s -- raised from 40*400ms/~16s in round 4: under the full
+    umbrella CI run nlb races LAST (iam->vpc->compute->nlb), so the fga_register_drainer
+    backlog peaks and owner-tuple materialization tails past the old 16s window. Measured
+    in ci-rep4 load-balancer: async op-latency is ~1.5s (poll-op p90=3), but the wrapped
+    first-access materialization was p50~10s with a heavy tail -- 31/83 wrapped steps
+    fully exhausted the 16s budget. 30s captures the mid-band; the residual saturation
+    tail is a documented known-RED, see assert-suites-green.sh / kacho#11.) --
+    fail-closed: on any other code the wrapped step's real test_script runs exactly once,
+    and once the budget is spent it ALSO runs on the terminal 403/404 (a genuine,
+    non-converging deny still FAILS the real assertions -- never masked, never infinite).
+
+    Use ONLY on the first access of the caller's OWN fresh resource. Do NOT wrap
+    negative / cross-account-deny / absent-id steps (a poll there would mask a real
+    deny). The counter/started env-vars are request-name-scoped (step names are
+    globally unique after serialization) so the loop never bleeds across cases or
+    steps -- same discipline as poll_operation_until_done.
+    """
+    retry_set = ",".join(str(c) for c in retry_on)
+    guard = [
+        "// bounded read-your-writes retry over the owner-tuple materialization window",
+        "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+        "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_authRetryCount', '0');",
+        "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+        "}",
+        "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+        f"if ([{retry_set}].includes(pm.response.code) && _arc < {budget}) {{",
+        "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+        f"  const _ard = Date.now(); while (Date.now() - _ard < {interval_ms}) {{ /* owner-tuple materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_authRetryCount');",
+        "pm.environment.unset('_authRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    # Give the wrapped step a globally-unique name so its self-retry
+    # setNextRequest(pm.info.requestName) always resolves to ITSELF. Newman resolves a
+    # setNextRequest name to the FIRST item with that name in the collection; these
+    # suites mostly do NOT prefix step names by case-id, so a wrapped step whose bare
+    # name repeats would otherwise jump the retry to an earlier same-named step — the
+    # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
+    return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 500) -> Step:
+    """Wrap a CREATE/POST step that references a peer resource (e.g. a vpc Subnet /
+    Address) just provisioned inline in the SAME case, in a bounded read-your-writes
+    retry over the *cross-service* visibility window.
+
+    A subnet/address created through vpc returns its Operation done (durable in vpc),
+    but the peer read on nlb's side (nlb -> vpc SubnetService.Get during LB/Listener
+    Create) is briefly stale under load: the sync create rejects with
+    InvalidArgument/NotFound `"subnet <id> not found"` (code 3/5) before vpc's write is
+    visible to the nlb peer client. Confirmed under `--jobs 4` parallel collections
+    (ci-rep2: placement-coherence create-same-zone/-region + INTERNAL-REGIONAL cr-internal
+    reddened on `subnet <id> not found`, while the identical provision->poll->create
+    pattern in cross-resource happened to win the race and stayed green). This is a
+    textbook cross-service read-your-writes lag -> the CLIENT retries the create; it is
+    NOT a server barrier.
+
+    Retries the SAME request (setNextRequest -> self) while the response is a
+    `<something> not found` rejection (400/404 whose body message contains 'not found'),
+    spacing attempts ~interval_ms (busy-wait -- newman fires setNextRequest before any
+    setTimeout). A rejected create allocates NOTHING (sync reject before the Operation is
+    even minted), so re-POSTing is leak-free and idempotent. budget*interval_ms bounds
+    the wait (default 30*400ms = ~12s) -- fail-closed: on any other outcome the wrapped
+    step's real test_script runs exactly once, and once the budget is spent it ALSO runs
+    on the terminal not-found (a genuinely-absent peer still FAILS the real assertions --
+    never masked, never infinite).
+
+    Use ONLY on a create whose peer dependency was provisioned earlier in the SAME case.
+    Do NOT wrap negative fixture-absent creates (they legitimately expect the rejection).
+    """
+    guard = [
+        "// bounded read-your-writes retry over the cross-service peer-visibility window",
+        "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+        "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+        "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_crRetryCount', '0');",
+        "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+        "}",
+        "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+        "let _crNotFound = false;",
+        "try { _crNotFound = [400, 404].includes(pm.response.code)"
+        " && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+        f"if (_crNotFound && _crc < {budget}) {{",
+        "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+        f"  const _crd = Date.now(); while (Date.now() - _crd < {interval_ms}) {{ /* peer-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_crRetryCount');",
+        "pm.environment.unset('_crRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-cr{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
 def poll_operation_until_done() -> Step:
-    """Reusable poll step with up-to-6 setNextRequest retries; guards on empty opId.
+    """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
+    guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
+    hammering back-to-back (~15ms/poll) which never waits for the op (Koren #1).
 
     Each emitted step carries a unique name (`poll-op-<n>`) so the
     setNextRequest self-retry is unambiguous under `newman run <collection>`
@@ -169,9 +373,17 @@ def poll_operation_until_done() -> Step:
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 6) {",
+            # Poll budget raised 6→30 to match the Koren-1 baseline of the other
+            # suites; with the ~500ms inter-poll delay below this covers ~15s.
+            "if (!j.done && pc < 30) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
-            "  postman.setNextRequest(pm.info.requestName);",
+            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
+            # synchronously and fires setNextRequest before any setTimeout callback, so a
+            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
+            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
+            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
+            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
             "pm.environment.unset('_pollCount');",
@@ -337,10 +549,15 @@ def load_cases_module(path: Path):
     mod.Case = Case
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
+    mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.assert_field_violation = assert_field_violation
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response
     mod.poll_operation_until_done = poll_operation_until_done
+    mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_present = retry_until_present
+    mod.retry_create_until_present = retry_create_until_present
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)

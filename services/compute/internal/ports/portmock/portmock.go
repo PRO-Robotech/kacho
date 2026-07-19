@@ -661,6 +661,9 @@ type NicClient struct {
 	Err error
 	// ListErr — injected error for ListByInstance only (mirror graceful-degrade test).
 	ListErr error
+	// LastListCtx — ctx, полученный последним ListByInstance-вызовом (mirror-read
+	// bound test: mirror обязан нести короткий per-call deadline, не 30s retry-storm).
+	LastListCtx context.Context
 }
 
 // NewNicClient создаёт пустой fake NicClient.
@@ -729,9 +732,10 @@ func (c *NicClient) Detach(_ context.Context, nicID, instanceID string) error {
 }
 
 // ListByInstance — batched read of NIC-привязок по instance-ids.
-func (c *NicClient) ListByInstance(_ context.Context, instanceIDs []string) ([]ports.NicAttachment, error) {
+func (c *NicClient) ListByInstance(ctx context.Context, instanceIDs []string) ([]ports.NicAttachment, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.LastListCtx = ctx
 	if c.ListErr != nil {
 		return nil, c.ListErr
 	}
@@ -767,6 +771,9 @@ type StorageClient struct {
 	Err error
 	// ListErr — injected error for ListAttachments only (mirror graceful-degrade test).
 	ListErr error
+	// LastListCtx — ctx, полученный последним ListAttachments-вызовом (mirror-read
+	// bound test: mirror обязан нести короткий per-call deadline, не 30s retry-storm).
+	LastListCtx context.Context
 }
 
 // NewStorageClient создаёт пустой fake StorageClient.
@@ -832,9 +839,10 @@ func (c *StorageClient) Detach(_ context.Context, volumeID, instanceID string) e
 }
 
 // ListAttachments — batched read volume-привязок по instance-ids.
-func (c *StorageClient) ListAttachments(_ context.Context, instanceIDs []string) ([]ports.VolumeAttachmentInfo, error) {
+func (c *StorageClient) ListAttachments(ctx context.Context, instanceIDs []string) ([]ports.VolumeAttachmentInfo, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.LastListCtx = ctx
 	if c.ListErr != nil {
 		return nil, c.ListErr
 	}

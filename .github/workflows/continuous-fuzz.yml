@@ -1,0 +1,107 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# continuous-fuzz — ночной фаззинг по расписанию.
+#
+# Был в ПЯТИ репо polyrepo (iam/vpc/compute/nlb/api-gateway) и при переезде не поехал:
+# GitHub читает workflow только из корня. Здесь одна матрица на все таргеты монорепы.
+#
+# Матрица перечисляет ТОЛЬКО реально существующие Fuzz-функции. В polyrepo у kacho-nlb
+# в списке стоял `FuzzInstanceSpecValidate`, которого в nlb нет (он в compute) — job
+# гонял пустоту и зеленел. Проверка на это — джоба `matrix-complete` ниже: она сверяет
+# матрицу с `grep func Fuzz` по дереву и падает при расхождении в ЛЮБУЮ сторону.
+name: continuous-fuzz
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: 'Длительность на таргет (напр. 1h)'
+        required: false
+        default: '1h'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  fuzz:
+    name: fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: FuzzJWTVerify,               pkg: ./services/iam/internal/fuzz }
+          - { target: FuzzCELExpression,           pkg: ./services/iam/internal/fuzz }
+          - { target: FuzzPermissionCatalogLookup, pkg: ./services/iam/internal/fuzz }
+          - { target: FuzzCIDRParse,               pkg: ./services/vpc/internal/fuzz }
+          - { target: FuzzPolicyParse,             pkg: ./services/vpc/internal/fuzz }
+          - { target: FuzzInstanceSpecValidate,    pkg: ./services/compute/internal/fuzz }
+          - { target: FuzzDPoPProof,               pkg: ./gateway/internal/fuzz }
+          - { target: FuzzAuthzMiddleware,         pkg: ./gateway/internal/fuzz }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Корпус переживает прогоны: фаззер накапливает интересные входы, и без
+      # восстановления каждая ночь начинала бы с нуля.
+      - name: restore fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: run fuzz
+        env:
+          FUZZTIME: ${{ inputs.fuzztime || '1h' }}
+        run: |
+          go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime="${FUZZTIME}" \
+            ${{ matrix.pkg }} 2>&1 | tee fuzz-output.log
+
+      - name: upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failure-${{ matrix.target }}
+          path: |
+            ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}/
+            fuzz-output.log
+
+  # Гейт против «матрица разошлась с кодом» — ровно того дефекта, который был у nlb:
+  # таргет в списке есть, функции нет → `go test -fuzz` не находит цель, но job зелёный.
+  # Обратное не менее вредно: написали Fuzz-функцию, в матрицу не внесли — она не
+  # гоняется НИКОГДА, и об этом никто не узнает.
+  matrix-complete:
+    name: матрица покрывает все Fuzz-функции
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: сверить матрицу с деревом
+        run: |
+          # Что есть в коде
+          grep -rhoE '^func (Fuzz[A-Za-z0-9_]+)\(' --include='*_test.go' . \
+            | sed -E 's/^func (Fuzz[A-Za-z0-9_]+)\(/\1/' | sort -u > /tmp/in-code.txt
+          # Что перечислено в матрице этого файла
+          grep -oE '\{ target: (Fuzz[A-Za-z0-9_]+),' .github/workflows/continuous-fuzz.yml \
+            | sed -E 's/\{ target: (Fuzz[A-Za-z0-9_]+),/\1/' | sort -u > /tmp/in-matrix.txt
+
+          echo "=== в коде:";   cat /tmp/in-code.txt
+          echo "=== в матрице:"; cat /tmp/in-matrix.txt
+
+          if ! diff -u /tmp/in-matrix.txt /tmp/in-code.txt > /tmp/d.txt; then
+            echo "::error::матрица continuous-fuzz разошлась с кодом"
+            echo "  '-' есть в матрице, но НЕТ в коде → таргет не гоняется, job зеленеет впустую"
+            echo "  '+' есть в коде, но НЕТ в матрице → функция не фаззится никогда"
+            cat /tmp/d.txt
+            exit 1
+          fi
+          echo "✓ матрица и код совпадают ($(wc -l < /tmp/in-code.txt) таргетов)"

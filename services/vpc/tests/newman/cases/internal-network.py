@@ -8,6 +8,12 @@ GET /vpc/v1/networks/{id}:internal. Возвращает GetInternalNetworkRespo
 { network, vrfId } — инфра-чувствительный vrf_id (SRv6 VRF id). Проверки:
 vrf_id присутствует ТОЛЬКО на internal-пути, НЕ на public GET/List.
 
+Каждый `:internal`-шаг обязан нести `internal=True` → gen.py маршрутизирует его на
+`{{internalBaseUrl}}` (cluster-internal REST listener), где InternalNetworkService
+зарегистрирован. На публичном `{{baseUrl}}` этого маршрута НЕТ by design (ban #6) —
+без флага шаг получает «404 page not found» (паттерн internal-pool.py). CRUD/public
+шаги (create/get-public/list/update/delete) остаются на `{{baseUrl}}`.
+
 ⚠️ REST gateway body — camelCase JSON.
 
 Helpers инжектятся gen.py: Step, Case, assert_status, assert_grpc_code,
@@ -33,13 +39,13 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "createdNetworkId")]),
         poll_operation_until_done(),
-        Step(name="get-internal", method="GET", path=NETWORKS + "/{{createdNetworkId}}:internal", auth="jwtBootstrap",
+        retry_until_authorized(Step(name="get-internal", method="GET", path=NETWORKS + "/{{createdNetworkId}}:internal", auth="jwtBootstrap", internal=True,
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('network.id matches', () => pm.expect(j.network.id).to.eql(pm.environment.get('createdNetworkId')));",
                           "pm.test('vrfId is a number', () => pm.expect(j.vrfId).to.be.a('number'));",
                           "pm.test('vrfId allocated (>=1, 0 reserved)', () => pm.expect(j.vrfId).to.be.at.least(1));",
-                          "pm.test('vrfId not leaked into nested network', () => pm.expect(j.network).to.not.have.property('vrfId'));"]),
+                          "pm.test('vrfId not leaked into nested network', () => pm.expect(j.network).to.not.have.property('vrfId'));"])),
         Step(name="get-public-no-vrfid", method="GET", path=NETWORKS + "/{{createdNetworkId}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
@@ -64,11 +70,12 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "createdNetworkId")]),
         poll_operation_until_done(),
-        Step(name="list-no-vrfid", method="GET", path=NETWORKS + "?projectId={{_suiteProjectId}}",
+        retry_until_present(Step(name="list-no-vrfid", method="GET", path=NETWORKS + "?projectId={{_suiteProjectId}}",
              test_script=[*assert_status(200),
                           "const nets = pm.response.json().networks || [];",
                           "pm.test('list non-empty', () => pm.expect(nets.length).to.be.at.least(1));",
                           "pm.test('no element has vrfId', () => nets.forEach(n => pm.expect(n).to.not.have.property('vrfId')));"]),
+             "createdNetworkId"),
         Step(name="cleanup-delete", method="DELETE", path=NETWORKS + "/{{createdNetworkId}}", auth="jwtAccountAdminA",
              test_script=[*assert_status(200)]),
     ],
@@ -83,7 +90,7 @@ CASES.append(Case(
     title="Internal GetNetwork well-formed-но-нет → NotFound",
     classes=["VAL"], priority="P1",
     steps=[
-        Step(name="get-internal-nx", method="GET", auth="jwtBootstrap",
+        Step(name="get-internal-nx", method="GET", auth="jwtBootstrap", internal=True,
              path=NETWORKS + "/netaaaaaaaaaaaaaaaaa:internal",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
@@ -98,7 +105,7 @@ CASES.append(Case(
     title="Internal GetNetwork malformed id → InvalidArgument 'invalid network id'",
     classes=["VAL"], priority="P1",
     steps=[
-        Step(name="get-internal-garbage", method="GET", auth="jwtBootstrap",
+        Step(name="get-internal-garbage", method="GET", auth="jwtBootstrap", internal=True,
              path=NETWORKS + "/garbage:internal",
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('msg mentions invalid network id', () => pm.expect(pm.response.json().message).to.match(/invalid network id/));"]),
@@ -119,14 +126,14 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "createdNetworkId")]),
         poll_operation_until_done(),
-        Step(name="get-internal-before", method="GET", path=NETWORKS + "/{{createdNetworkId}}:internal", auth="jwtBootstrap",
+        retry_until_authorized(Step(name="get-internal-before", method="GET", path=NETWORKS + "/{{createdNetworkId}}:internal", auth="jwtBootstrap", internal=True,
              test_script=[*assert_status(200),
-                          *save_from_response("j.vrfId", "cil0VrfId")]),
+                          *save_from_response("j.vrfId", "cil0VrfId")])),
         Step(name="update-name", method="PATCH", path=NETWORKS + "/{{createdNetworkId}}",
              body={"updateMask": "name", "name": "net-cil0s2-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="get-internal-after", method="GET", path=NETWORKS + "/{{createdNetworkId}}:internal", auth="jwtBootstrap",
+        Step(name="get-internal-after", method="GET", path=NETWORKS + "/{{createdNetworkId}}:internal", auth="jwtBootstrap", internal=True,
              test_script=[*assert_status(200),
                           "pm.test('vrfId unchanged after update', () => pm.expect(String(pm.response.json().vrfId)).to.eql(pm.environment.get('cil0VrfId')));"]),
         Step(name="cleanup-delete", method="DELETE", path=NETWORKS + "/{{createdNetworkId}}", auth="jwtAccountAdminA",

@@ -36,6 +36,16 @@ const (
 // validCoreFractions — допустимые значения core_fraction (конвенция Kachō).
 var validCoreFractions = map[int64]struct{}{0: {}, 5: {}, 20: {}, 50: {}, 100: {}}
 
+// validCores — допустимые значения resources_spec.cores (proto (value)-set
+// ResourcesSpec.cores: instance_service.proto). Дискретный whitelist vCPU-count,
+// не «любое чётное»: после 36 шаг 4 (…,36,40,44,…,80). Enum-валидация СИНХРОННА
+// (первым стейтментом RPC, до Operation) — api-conventions.
+var validCores = map[int64]struct{}{
+	2: {}, 4: {}, 6: {}, 8: {}, 10: {}, 12: {}, 14: {}, 16: {}, 18: {}, 20: {},
+	22: {}, 24: {}, 26: {}, 28: {}, 30: {}, 32: {}, 34: {}, 36: {}, 40: {}, 44: {},
+	48: {}, 52: {}, 56: {}, 60: {}, 64: {}, 68: {}, 72: {}, 76: {}, 80: {},
+}
+
 // CreateInstanceReq — запрос на создание ВМ.
 //
 // Storage-split cutover: Instance.Create больше НЕ создаёт inline-диски и НЕ
@@ -109,6 +119,10 @@ type InstanceService struct {
 	// мутации fail-closed Unavailable, read-mirror грациозно опускается.
 	storageClient StorageClient
 	opsRepo       operations.Repo
+	// ownerRegistrar — sync-registrar owner-tuple (best-effort post-commit
+	// window-оптимизация; register-drainer — at-least-once backstop). nil = только
+	// drainer. Подключается в composition-root через WithOwnerRegistrar.
+	ownerRegistrar OwnerRegistrar
 }
 
 // NewInstanceService создаёт InstanceService.
@@ -117,6 +131,15 @@ func NewInstanceService(repo InstanceRepo, zones ZoneRegistry, projectClient Pro
 		repo: repo, zones: zones, projectClient: projectClient,
 		nicClient: nicClient, storageClient: storageClient, opsRepo: opsRepo,
 	}
+}
+
+// WithOwnerRegistrar подключает sync-registrar owner-tuple: немедленная post-commit
+// (best-effort) регистрация owner-tuple, сужающая eventual-consistency-окно до того,
+// как register-drainer опросит outbox. nil-safe. Вызывается ОДИН раз из
+// composition-root до приёма трафика (single-threaded boot).
+func (s *InstanceService) WithOwnerRegistrar(registrar OwnerRegistrar) *InstanceService {
+	s.ownerRegistrar = registrar
+	return s
 }
 
 // Get возвращает Instance по ID. NIC- и volume-зеркала подтягиваются из kacho-vpc /
@@ -181,6 +204,9 @@ func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*o
 	}
 
 	instanceID := ids.NewID(ids.PrefixInstance)
+	// Operation.done = durability ресурса (row закоммичен в doCreate). Owner-tuple
+	// материализуется eventually-consistent — sync-registrar (window-оптимизация) +
+	// register-drainer/reconciler backstop, НЕ гейтит op.done.
 	return runOp(ctx, s.opsRepo, fmt.Sprintf("Create instance %s", req.Name),
 		&computev1.CreateInstanceMetadata{InstanceId: instanceID},
 		func(ctx context.Context) (*anypb.Any, error) {
@@ -234,6 +260,12 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
+	// Sync-register owner-tuple post-commit (best-effort window-оптимизация) — делает
+	// `project:<proj> #project @compute_instance:<id>` эффективным раньше, чем async
+	// register-drainer опросит outbox, сужая окно, в котором немедленная мутация
+	// создателя могла бы кратко 403/404. Durable outbox-intent (writer-tx repo.Insert)
+	// + drainer — at-least-once backstop; НЕ гейтит op.done.
+	syncRegisterOwner(ctx, s.ownerRegistrar, "Instance", created.ID, created.ProjectID, created.Labels)
 	return anypb.New(protoconv.Instance(created))
 }
 
@@ -610,6 +642,18 @@ func (s *InstanceService) ListOperations(ctx context.Context, id string, p Pagin
 	return s.opsRepo.List(ctx, operations.ListFilter{ResourceID: id, PageSize: p.PageSize, PageToken: p.PageToken})
 }
 
+// mirrorReadTimeout — верхняя граница best-effort mirror-READ (Get/List NIC/volume
+// зеркала) на КАЖДЫЙ peer-вызов. Зеркало output-only (data-integrity: source of
+// truth = kacho-vpc/kacho-storage), graceful-degrade на ЛЮБОЙ ошибке — поэтому НЕ
+// должно крутить полный retry.OnUnavailable (MaxElapsed=30s): против Unavailable
+// peer'а это вешало Get/List на ~30s/зеркало (×2 nic+volume = ~55s/RPC — доминирующий
+// bottleneck instance-суита; disk/image/snapshot без зеркал —
+// быстрые). Короткий bound → быстрый degrade: peer up — read в ms (bound не
+// срабатывает); peer down/blip — зеркало опускается, следующий read перечитает.
+// Мутации (attach/detach/release-сага, worker fn) сохраняют полный 30s retry —
+// fail-closed для них корректен (down-peer ⇒ Unavailable/leak-safety), их НЕ трогаем.
+const mirrorReadTimeout = 3 * time.Second
+
 // ---- mirrors (read-only проекции attach-состояния из storage/vpc) ----
 
 // reloadWithMirror перечитывает инстанс и накладывает NIC/volume-зеркала — общий
@@ -631,6 +675,9 @@ func (s *InstanceService) applyVolumeMirror(ctx context.Context, in *domain.Inst
 	if s.storageClient == nil || in == nil {
 		return
 	}
+	// best-effort read → короткий bound, не 30s retry.OnUnavailable (mirrorReadTimeout).
+	ctx, cancel := context.WithTimeout(ctx, mirrorReadTimeout)
+	defer cancel()
 	atts, err := s.storageClient.ListAttachments(ctx, []string{in.ID})
 	if err != nil {
 		return
@@ -648,6 +695,9 @@ func (s *InstanceService) applyVolumeMirrorBatch(ctx context.Context, list []*do
 	for _, in := range list {
 		instIDs = append(instIDs, in.ID)
 	}
+	// best-effort read → короткий bound, не 30s retry.OnUnavailable (mirrorReadTimeout).
+	ctx, cancel := context.WithTimeout(ctx, mirrorReadTimeout)
+	defer cancel()
 	atts, err := s.storageClient.ListAttachments(ctx, instIDs)
 	if err != nil {
 		return
@@ -698,6 +748,9 @@ func validateResources(cores, memory, coreFraction int64, cpuGuaranteePercent in
 	if cores <= 0 {
 		return invalidArg("resources_spec.cores", "cores must be > 0")
 	}
+	if _, ok := validCores[cores]; !ok {
+		return invalidArg("resources_spec.cores", "cores must be a supported vCPU count")
+	}
 	if memory <= 0 {
 		return invalidArg("resources_spec.memory", "memory must be > 0 bytes")
 	}
@@ -734,7 +787,7 @@ func orDefault(v, def string) string {
 }
 
 func instanceStatusName(s domain.InstanceStatus) string {
-	if v, ok := computev1.Instance_Status_name[int32(s)]; ok {
+	if v, ok := computev1.Instance_Status_name[int32(s)]; ok { // #nosec G115 -- s — domain.InstanceStatus (малый enum, зеркалит proto); индекс в Instance_Status_name
 		return v
 	}
 	return "STATUS_UNSPECIFIED"

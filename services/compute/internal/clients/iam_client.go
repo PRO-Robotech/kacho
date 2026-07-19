@@ -110,7 +110,14 @@ func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, err
 		_, rerr := c.cli.Get(auth.PropagateOutgoing(callCtx), &iamv1.GetProjectRequest{ProjectId: projectID})
 		if rerr != nil {
 			st, ok := status.FromError(rerr)
-			if ok && st.Code() == codes.NotFound {
+			// A referenced project id iam cannot resolve — NotFound (well-formed but
+			// absent) OR InvalidArgument (malformed prefix/format) — both mean the peer
+			// ref does not exist → exists=false (→ checkProject NotFound "Folder not
+			// found"). Do NOT propagate these as errors: that maps to Unavailable
+			// ("folder check failed"), falsely telling the caller "retry later" when the
+			// input is a bad/absent id. Only genuine peer-unavailability stays an error.
+			// Parity with vpc ProjectClient.Exists.
+			if ok && (st.Code() == codes.NotFound || st.Code() == codes.InvalidArgument) {
 				exists = false
 				return nil
 			}

@@ -22,6 +22,10 @@ import (
 func LoadCAPool(files []string) (*x509.CertPool, error) {
 	pool := x509.NewCertPool()
 	for _, f := range files {
+		// #nosec G304 -- путь приходит из КОНФИГА сервиса (список CA-бандлов mTLS,
+		// монтируемых cert-manager'ом), а не из запроса: caller-controlled данных в нём
+		// нет и path-traversal взяться неоткуда. Кто правит конфиг — уже имеет доступ к
+		// файлам процесса, так что проверка пути ничего не добавляет.
 		pem, err := os.ReadFile(f)
 		if err != nil {
 			return nil, fmt.Errorf("read CA file %q: %w", f, err)

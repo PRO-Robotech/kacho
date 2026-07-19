@@ -34,13 +34,19 @@ CASES = []
 
 
 def _list_subnets_step(name, auth, test_script):
-    return Step(
+    # Bounded read-your-writes retry over the GRANT-tuple materialization window: the
+    # per-object subnet grants are seeded by tests/authz-fixtures/setup.sh and their FGA
+    # tuples become visible eventually-consistent. The subject's FIRST List can briefly
+    # 403 at the authz gate before the grant tuple is visible (same eventual-consistency
+    # class as owner-tuple lag). retry_until_authorized retries SELF on 403/404 then runs
+    # the real assertion once (a genuine, non-converging deny still FAILS — not masked).
+    return retry_until_authorized(Step(
         name=name,
         method="GET",
         path="/vpc/v1/subnets?projectId={{listFilterProjectId}}&pageSize=1000",
         auth=auth,
         test_script=test_script,
-    )
+    ))
 
 
 # SUBNET-LF-D-VISIBLE: granted subnet appears in the filtered List.

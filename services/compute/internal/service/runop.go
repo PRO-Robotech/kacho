@@ -23,6 +23,10 @@ import (
 // error-mapping, outbox-emit) сохранены дословно — централизуется только
 // hand-copied обвязка. desc/meta/worker — единственная per-site вариация; синхронную
 // pre-валидацию (guard'ы id/req) call-site выполняет ДО вызова runOp.
+//
+// Operation.done = durability ресурса (worker-fn закоммитил row). Owner-tuple
+// материализуется eventually-consistent (sync-registrar window-оптимизация +
+// register-drainer/reconciler at-least-once backstop) — НЕ гейтит op.done.
 func runOp(ctx context.Context, opsRepo operations.Repo, desc string, meta proto.Message,
 	fn func(context.Context) (*anypb.Any, error)) (*operations.Operation, error) {
 	op, err := operations.New(ids.PrefixOperationCompute, desc, meta)

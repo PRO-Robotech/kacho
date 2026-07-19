@@ -16,10 +16,18 @@ spec:
       labels:
         app: {{ .Values.name }}
     spec:
+      # INFRA sec-hardening (2026-07-16) — единый security-floor, идентичный
+      # kacho-iam/geo/nlb/registry. До этого у gateway securityContext не было вовсе:
+      # IaC-скан в polyrepo стоял ТОЛЬКО в kacho-iam, где k8s-манифестов нет (чарты
+      # жили в kacho-deploy) — гейт зеленел, не проверяя ничего.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Values.name }}
           image: "{{ .Values.image }}"
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           command: ["/usr/local/bin/api-gateway"]
           ports:
             - name: cmux
@@ -233,8 +241,12 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
-          {{- if or .Values.tls.enabled .Values.mtls.enable }}
+          # volumeMounts стал БЕЗУСЛОВНЫМ: /tmp нужен всегда, потому что rootfs
+          # read-only независимо от tls/mtls. Записи tls/mtls остаются под своими if.
           volumeMounts:
+            # Writable scratch для read-only-rootfs.
+            - name: tmp
+              mountPath: /tmp
             {{- if .Values.tls.enabled }}
             - name: tls
               mountPath: /etc/api-gateway/tls
@@ -246,7 +258,6 @@ spec:
               mountPath: {{ .Values.mtls.mountPath | quote }}
               readOnly: true
             {{- end }}
-          {{- end }}
           readinessProbe:
             httpGet:
               path: /healthz
@@ -266,8 +277,10 @@ spec:
             limits:
               cpu: {{ .Values.resources.limits.cpu }}
               memory: {{ .Values.resources.limits.memory }}
-      {{- if or .Values.tls.enabled .Values.mtls.enable }}
+      # volumes стал БЕЗУСЛОВНЫМ ради tmp (см. volumeMounts выше).
       volumes:
+        - name: tmp
+          emptyDir: {}
         {{- if .Values.tls.enabled }}
         - name: tls
           secret:
@@ -279,4 +292,3 @@ spec:
           secret:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
         {{- end }}
-      {{- end }}

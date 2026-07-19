@@ -104,7 +104,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          # cache: false — ОСОЗНАННО, не оплошность. С `cache: true` джоба флакала:
+          #   /usr/bin/tar: .../toolchain@v0.0.1-go1.25.12.linux-amd64/README.md:
+          #     Cannot open: File exists
+          # go.mod несёт toolchain-директиву → setup-go СКАЧИВАЕТ тулчейн, а следом
+          # restore кэша распаковывает его же поверх → tar падает на существующих
+          # файлах. Проявляется через раз (зависит от того, что лежит в кэше), из-за
+          # чего выглядит как «CI моргает».
+          # Терять тут нечего: джобе нужен лишь `go install` трёх protoc-плагинов,
+          # кэш экономил секунды и стоил красных прогонов.
+          cache: false
       # Пин: buf влияет и на lint-правила, и на генерацию. Разъезд local-vs-CI уже
       # стоил ложного «unused import» (свежий buf ловит то, что 1.69.0 пропускал) —
       # находка была ВЕРНАЯ, но версия должна быть одна и та же у всех.
@@ -193,7 +202,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # ПИН ОБЯЗАТЕЛЕН. setup-helm без version ставит ПОСЛЕДНЮЮ — и притащил Helm 4.2.3,
+      # тогда как локально и на проде helm v3.17. Helm 4 по умолчанию делает
+      # SERVER-SIDE APPLY (Helm 3 — client-side 3-way merge), а это разная семантика
+      # владения полями: apply упирается в чужой field-manager и валится
+      #   UPGRADE FAILED: conflict with "kubectl-patch" using apps/v1:
+      #   .spec.template.metadata.annotations.kacho.cloud/openfga-model-id-rev
+      # (аннотацию объявляет чарт kacho-iam и патчит openfga-bootstrap-job — двойное
+      # владение, для Helm 3 безобидное). Гейт при этом «зеленел», проверяя чарты НЕ той
+      # версией, которой разворачивается прод, — ложная уверенность.
       - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
 
       # Только `helm lint`, БЕЗ голого `helm template <chart>`: последний НЕ является
       # валидным гейтом — часть чартов ОСОЗНАННО падает без секретов (kacho-nlb:
@@ -229,6 +249,13 @@ jobs:
       - name: umbrella template — prod-профиль
         working-directory: deploy/helm/umbrella
         run: helm template ci . -f values.prod.yaml -f values.fe3455.yaml -f values.fe3455-prod.yaml > /dev/null
+
+      # helm template/lint НЕ ловят монт на несуществующий том — манифест рендерится, а
+      # валится только на apiserver, уже при деплое. Проверяем МАТРИЦУ тумблеров, потому
+      # что дефолт чарта её не покрывает (поймано на себе: у compute volumes были под
+      # `if or opa mtls`, и при обоих false — профиль umbrella-фазы 1 — том исчезал).
+      - name: каждый volumeMount имеет свой volume (матрица тумблеров)
+        run: bash .github/scripts/check-volume-mounts.sh
 
       - name: mtls-off список покрывает values.dev.yaml
         working-directory: deploy

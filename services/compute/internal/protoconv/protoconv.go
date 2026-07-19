@@ -35,7 +35,7 @@ func Disk(d *domain.Disk) *computev1.Disk {
 		Size:                d.Size,
 		BlockSize:           d.BlockSize,
 		ProductIds:          d.ProductIDs,
-		Status:              computev1.Disk_Status(d.Status),
+		Status:              computev1.Disk_Status(d.Status), // #nosec G115 -- domain.DiskStatus зеркалит computev1.Disk_Status (малые константы) — сужение доказуемо безопасно
 		InstanceIds:         d.InstanceIDs,
 		DiskPlacementPolicy: d.DiskPlacementPolicy,
 		HardwareGeneration:  d.HardwareGeneration,
@@ -63,13 +63,13 @@ func Image(i *domain.Image) *computev1.Image {
 		StorageSize:        i.StorageSize,
 		MinDiskSize:        i.MinDiskSize,
 		ProductIds:         i.ProductIDs,
-		Status:             computev1.Image_Status(i.Status),
+		Status:             computev1.Image_Status(i.Status), // #nosec G115 -- domain.ImageStatus зеркалит computev1.Image_Status
 		Pooled:             i.Pooled,
 		HardwareGeneration: i.HardwareGeneration,
 		KmsKey:             i.KMSKey,
 	}
 	if i.OsType != domain.OsTypeUnspecified || i.OsNvidiaDriver != "" {
-		os := &computev1.Os{Type: computev1.Os_Type(i.OsType)}
+		os := &computev1.Os{Type: computev1.Os_Type(i.OsType)} // #nosec G115 -- domain OsType зеркалит computev1.Os_Type
 		if i.OsNvidiaDriver != "" {
 			os.Nvidia = &computev1.Nvidia{Driver: i.OsNvidiaDriver}
 		}
@@ -90,7 +90,7 @@ func Snapshot(s *domain.Snapshot) *computev1.Snapshot {
 		StorageSize:        s.StorageSize,
 		DiskSize:           s.DiskSize,
 		ProductIds:         s.ProductIDs,
-		Status:             computev1.Snapshot_Status(s.Status),
+		Status:             computev1.Snapshot_Status(s.Status), // #nosec G115 -- domain.SnapshotStatus зеркалит computev1.Snapshot_Status
 		SourceDiskId:       s.SourceDiskID,
 		HardwareGeneration: s.HardwareGeneration,
 		KmsKey:             s.KMSKey,
@@ -126,7 +126,7 @@ func Instance(in *domain.Instance) *computev1.Instance {
 		CpuGuaranteePercent:    in.CPUGuaranteePercent,
 		Image:                  in.Image,
 		ImageDigest:            in.ImageDigest,
-		Status:                 computev1.Instance_Status(in.Status),
+		Status:                 computev1.Instance_Status(in.Status), // #nosec G115 -- domain.InstanceStatus зеркалит computev1.Instance_Status
 		Metadata:               in.Metadata,
 		MetadataOptions:        in.MetadataOptions,
 		ServiceAccountId:       in.ServiceAccountID,
@@ -162,7 +162,7 @@ func Instance(in *domain.Instance) *computev1.Instance {
 
 func attachedDisk(ad *domain.AttachedDisk) *computev1.AttachedDisk {
 	return &computev1.AttachedDisk{
-		Mode:       computev1.AttachedDisk_Mode(ad.Mode),
+		Mode:       computev1.AttachedDisk_Mode(ad.Mode), // #nosec G115 -- domain AttachedDisk Mode зеркалит computev1.AttachedDisk_Mode
 		DeviceName: ad.DeviceName,
 		AutoDelete: ad.AutoDelete,
 		// disk_id was renamed to volume_id in the storage-split proto. During the

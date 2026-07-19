@@ -363,7 +363,10 @@ func (d *Drainer[T]) drainBatch(ctx context.Context) {
 		// Random small batch (1..4) per claim. Single-drainer overhead
 		// negligible (5 iterations vs 1 на 20-row catch-up, ~5ms total
 		// при 1ms per row); HA-fairness гарантирована.
-		limit := 1 + rand.IntN(haFairnessLimit(d.cfg.BatchSize))
+		// math/rand достаточно: это HA-СПРАВЕДЛИВОСТЬ, а не крипто. Предсказуемость
+		// размера батча не даёт атакующему ничего (он не влияет ни на доступ, ни на
+		// содержимое), а crypto/rand стоил бы syscall на каждой итерации claim-цикла.
+		limit := 1 + rand.IntN(haFairnessLimit(d.cfg.BatchSize)) // #nosec G404 -- см. выше
 
 		rows, tx, err := d.claimRows(ctx, limit)
 		if err != nil {
@@ -431,7 +434,8 @@ func (d *Drainer[T]) drainBatch(ctx context.Context) {
 // matching drainBatch step-3 godoc. Applied between claim iterations to give
 // another HA replica a chance to claim the next batch before this drainer loops.
 func interBatchJitter() time.Duration {
-	return time.Duration(rand.IntN(11)) * time.Millisecond
+	// math/rand достаточно: джиттер планирования, не крипто (см. drainBatch).
+	return time.Duration(rand.IntN(11)) * time.Millisecond // #nosec G404 -- джиттер HA-справедливости
 }
 
 // haFairnessLimit returns max(1, min(4, batchSize)) — upper bound для random

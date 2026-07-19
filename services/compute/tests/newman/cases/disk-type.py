@@ -3,8 +3,9 @@
 
 """Case-set для DiskTypeService (kacho-compute) — read-only справочник.
 
-Covered RPCs: Get, List. Seed: network-hdd, network-ssd, network-ssd-nonreplicated,
-network-ssd-io-m3 (см. internal/migrations/0001_initial.sql). Кейсы спроектированы под verbatim YC.
+Covered RPCs (public): Get, List. Admin CRUD (Create/Update/Delete) is the Internal
+InternalDiskTypeService (ban #6) — not part of the public surface. Seed: network-hdd,
+network-ssd, network-ssd-nonreplicated, network-ssd-io-m3 (internal/migrations/0001_initial.sql).
 """
 
 CASES = []
@@ -15,7 +16,7 @@ _SEEDED = ["network-hdd", "network-ssd", "network-ssd-nonreplicated", "network-s
 
 CASES.append(Case(
     id="DT-LST-CRUD-OK",
-    title="List diskTypes → ≥4 типов, содержит network-ssd / network-hdd; у каждого zoneIds непустой",
+    title="List diskTypes → ≥4 типов, содержит network-ssd / network-hdd; у каждого seeded-типа zoneIds непустой",
     classes=["CRUD"], priority="P1",
     steps=[Step(name="list", method="GET", path=DT,
                 test_script=[*assert_status(200),
@@ -25,7 +26,14 @@ CASES.append(Case(
                              "pm.test('at least 4 disk types', () => pm.expect(ids.length).to.be.at.least(4));",
                              "pm.test('contains network-ssd', () => pm.expect(ids).to.include('network-ssd'));",
                              "pm.test('contains network-hdd', () => pm.expect(ids).to.include('network-hdd'));",
-                             "pm.test('each has non-empty zoneIds', () => (j.diskTypes || []).forEach(t => pm.expect((t.zoneIds || []).length, t.id).to.be.at.least(1)));"])],
+                             # zoneIds is asserted ONLY on the migration-seeded reference types.
+                             # DiskType.Create is an admin Internal RPC (ban #6) that permits a
+                             # type with empty zone_ids (DB DEFAULT '[]'); an admin/test-created
+                             # zoneless type is a legit catalog state, so a blanket "every type
+                             # has zoneIds" is over-strict and flakes on it. The seeded reference
+                             # set (0001_initial.sql) is guaranteed multi-zone.
+                             f"const seeded = {_SEEDED!r};",
+                             "pm.test('each seeded reference type has non-empty zoneIds', () => (j.diskTypes || []).filter(t => seeded.includes(t.id)).forEach(t => pm.expect((t.zoneIds || []).length, t.id).to.be.at.least(1)));"])],
 ))
 
 CASES.append(Case(
@@ -63,7 +71,7 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P1",
     steps=[Step(name="get-nx", method="GET", path=f"{DT}/garbage-disk-type-xyz",
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                             # probe-needed: точный verbatim YC text — предполагаем "Disk type <id> not found"
+                             # contract tone (api-conventions): "<Resource> %s not found"
                              "pm.test('text mentions not found', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));"])],
 ))
 
@@ -102,9 +110,21 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="DT-CR-NEG-NOT-ALLOWED",
-    title="POST /compute/v1/diskTypes (Create) → справочник read-only → 404/405/501",
+    # DiskType.Create is an admin-only Internal RPC (InternalDiskTypeService, ban #6),
+    # exposed on the cluster-internal listener (:9091) and bridged to POST
+    # /compute/v1/diskTypes ONLY via the api-gateway internal mux. It is NOT read-only:
+    # the earlier `POST {id:"newman-fake-type"}` DID materialize a persistent zoneless
+    # disk type through the umbrella's combined mux (200 first run → 409 ALREADY_EXISTS
+    # on reruns) and polluted DT-LST-CRUD-OK. This negative therefore does NOT mutate:
+    # empty id must be rejected by the admin Create's input validation ("id required" →
+    # INVALID_ARGUMENT, 400) BEFORE any insert. On a public-only mux (no internal bridge)
+    # the route is absent (ban #6) → 404. Both are correct product behaviour; neither
+    # creates a row, so the case is deterministic across reruns and never pollutes.
+    id="DT-CR-NEG-EMPTY-ID",
+    title="POST /compute/v1/diskTypes with empty id → 400 INVALID_ARGUMENT (admin Create validates) или 404 (route not on this mux, ban #6)",
     classes=["VAL", "NEG"], priority="P3",
-    steps=[Step(name="cr-dt", method="POST", path=DT, body={"id": "newman-fake-type"},
-                test_script=["pm.test('not allowed', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"])],
+    steps=[Step(name="cr-dt-empty", method="POST", path=DT, body={"id": ""},
+                test_script=[
+                    "pm.test('rejected — no mutation', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+                    "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"])],
 ))

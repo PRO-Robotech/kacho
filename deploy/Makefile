@@ -84,8 +84,16 @@ check-mtls-off-complete:
 	miss=want-have; \
 	sys.exit('ERROR: mtls включён в values.dev.yaml, но НЕ заглушен в MTLS_SUBCHARTS: '+', '.join(sorted(miss))+chr(10)+'       Фаза 1 (до CRD cert-manager) упадёт на Certificate.' ) if miss else print('mtls-off complete:', ' '.join(sorted(have)))"
 
+# `set -e` — ОБЯЗАТЕЛЕН, а не косметика. Рецепт — одна `; \`-цепочка, т.е. упавшая
+# команда НЕ прерывает цель: следующая просто выполняется. Реально наблюдалось
+# 2026-07-16 в CI — `helm phase 2` упал с UPGRADE FAILED, а цель дошла до конца и
+# напечатала «dev-up complete», отдав exit 0. Стенд был собран наполовину (mTLS-фаза не
+# применена, fga-bootstrap без SA), а CI считал его поднятым и шёл гонять newman —
+# краснота вылезла позже и совсем в другом месте.
+# Тот же класс, что near-miss 2026-07-15 (см. guard-kind-context ниже): упавший
+# `use-context` не прервал цепочку, и стенд поехал на ПРОД.
 dev-up: preflight
-	@start=$$(date +%s); \
+	@set -e; start=$$(date +%s); \
 	kind get clusters | grep -q "^$(CLUSTER_NAME)$$" || ./kind/create-cluster.sh; \
 	kubectl config use-context kind-$(CLUSTER_NAME) || { \
 	  echo "ERROR: нет kubectl-контекста kind-$(CLUSTER_NAME)."; \
@@ -150,18 +158,20 @@ reload-svc:
 ifndef SVC
 	$(error SVC variable is required, e.g. make reload-svc SVC=compute)
 endif
-	@if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "iam" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
+	@if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "storage" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "iam" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
 		echo "ERROR: unknown service '$(SVC)'"; exit 1; \
 	fi; \
 	DEPLOY_NAME=$(SVC); \
 	if [ "$(SVC)" = "iam" ]; then DEPLOY_NAME=kacho-iam; fi; \
 	if [ "$(SVC)" = "ui" ]; then DEPLOY_NAME=ui; fi; \
 	if [ "$(SVC)" = "nlb" ]; then DEPLOY_NAME=kacho-nlb; fi; \
+	if [ "$(SVC)" = "storage" ]; then DEPLOY_NAME=kacho-storage; fi; \
 	if ! kubectl -n kacho get deploy $$DEPLOY_NAME >/dev/null 2>&1; then \
 		echo "WARN: service '$(SVC)' (deployment '$$DEPLOY_NAME') is not deployed yet (planned for sub-phase 0.X — see roadmap)"; \
 		exit 0; \
 	fi; \
 	if [ "$(SVC)" = "ui" ]; then \
+		: ; \
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
 		cd .. && docker build -f $$d/Dockerfile -t kacho-$(SVC):dev .; \

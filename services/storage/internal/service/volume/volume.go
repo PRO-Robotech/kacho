@@ -236,7 +236,8 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 			return nil, u.errStatus(derr)
 		}
 		// owner-tuple: durable register-intent уже в writer-TX (repo); синхронно
-		// регистрируем для immediate анти-BOLA-резолва (best-effort, backstop — drainer).
+		// регистрируем для immediate анти-BOLA-резолва (best-effort, post-commit;
+		// backstop — async register-drainer at-least-once).
 		u.registerOwnerTuple(ctx, fgaregister.VolumeItem(res.ProjectID, res.ID, res.Labels))
 		return marshalVolume(res)
 	})

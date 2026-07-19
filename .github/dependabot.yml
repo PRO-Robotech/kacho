@@ -1,0 +1,83 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# dependabot — автообновление зависимостей и версий инструментов.
+#
+# В polyrepo этот файл был ТОЛЬКО у kacho-compute и kacho-vpc (2 репо из 12) и покрывал
+# лишь gomod + github-actions. Остальные репо не обновлялись вообще, а в монорепу файл
+# не переехал (GitHub читает .github только из корня). Здесь — единообразно и на все
+# экосистемы сразу: единый go.mod покрывает весь Go-граф, плюс npm консоли и базовые
+# образы Dockerfile'ов.
+#
+# ЗАЧЕМ ЭТО ВАЖНО ИМЕННО СЕЙЧАС: мы осознанно запинили инструменты, чтобы local == CI
+# (buf, golangci-lint, helm, kind, grpcurl, trivy-action — см. kacho-ci-determinism в
+# vault). Пин без автообновления протухает молча: trivy со старой базой CVE, gosec без
+# новых правил, helm — не той версии, что на проде. Бот превращает пин из «замороженного
+# навсегда» в «обновляется осознанно, через PR с зелёным CI».
+version: 2
+updates:
+  # Go — единый модуль на всю платформу (proto + corelib + 7 сервисов + gateway).
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Группируем связанное: grpc и protobuf обязаны идти в ногу с версиями
+      # protoc-плагинов (tools/tools.go), иначе generate-diff начнёт мигать.
+      go-grpc:
+        patterns: ['google.golang.org/grpc*', 'google.golang.org/protobuf*']
+      go-otel:
+        patterns: ['go.opentelemetry.io/*']
+
+  # GitHub Actions — сюда попадают и SECURITY-инструменты: aquasecurity/trivy-action,
+  # github/codeql-action, actions/setup-*. Именно этот блок держит сканеры свежими.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly   # было monthly — сканеры безопасности не должны отставать на месяц
+    open-pull-requests-limit: 5
+    groups:
+      security-tools:
+        patterns: ['aquasecurity/*', 'github/codeql-action*']
+
+  # Базовые образы Dockerfile'ов (golang:1.26-alpine, alpine:3.20, nginx) — их CVE
+  # закрываются апстримом, а мы бы узнавали об этом только из падения trivy fs.
+  - package-ecosystem: docker
+    directories:
+      - /services/iam
+      - /services/vpc
+      - /services/compute
+      - /services/geo
+      - /services/nlb
+      - /services/storage
+      - /services/registry
+      - /gateway
+      - /gateway/docs-site
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      base-images:
+        patterns: ['*']
+
+  # Консоль: workspace-корень (shared/vpc/iam/system) + standalone-пакеты со своим
+  # package-lock.json. Перечислены ВСЕ — в polyrepo-CI compute и storage выпадали из
+  # списков, и их зависимости жили сами по себе.
+  - package-ecosystem: npm
+    directories:
+      - /ui-future
+      - /ui-future/host
+      - /ui-future/dashboard
+      - /ui-future/compute
+      - /ui-future/storage
+      - /ui-future/nlb
+      - /ui-future/registry
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns: ['react', 'react-dom', '@types/react*']
+      test-tooling:
+        patterns: ['jest*', '@testing-library/*', '@playwright/*', 'playwright*']

@@ -521,6 +521,7 @@ func (w *Worker) execute(j job) {
 		})
 		return
 	}
+
 	w.terminalWrite(j.repo, j.opID, "MarkDone", func(ctx context.Context) error {
 		return j.repo.MarkDone(ctx, j.opID, resp)
 	})

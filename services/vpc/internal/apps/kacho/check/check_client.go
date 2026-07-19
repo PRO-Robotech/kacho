@@ -85,6 +85,9 @@ func NewIAMCheckClientWithProbe(conn grpc.ClientConnInterface, probe ResourceExi
 // зовущие operations.PrincipalFromContext (audit, scope-filter, OPA-overlay), видели бы
 // bootstrap независимо от реального caller'а.
 func (c *IAMCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
+	// Consistency остаётся невыставленным: zero value CheckRequest_CONSISTENCY_UNSPECIFIED
+	// ⇒ OpenFGA default MINIMIZE_LATENCY — идентичное wire-поведение прежнему явному
+	// CONSISTENCY_UNSPECIFIED.
 	resp, err := c.cli.Check(auth.PropagateOutgoing(ctx), &iamv1.CheckRequest{
 		SubjectId: subjectID,
 		Relation:  relation,

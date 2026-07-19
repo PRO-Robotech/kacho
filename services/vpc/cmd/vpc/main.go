@@ -889,8 +889,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// Gateway use-case'ы работают через CQRS-Repository (kachoRepo) — конструктор
 	// принимает Repository, каждый use-case открывает Reader/Writer внутри.
+	gwCreateUC := gatewayapp.NewCreateGatewayUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
 	gwHandler := gatewayapp.NewHandler(
-		gatewayapp.NewCreateGatewayUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar),
+		gwCreateUC,
 		gatewayapp.NewUpdateGatewayUseCase(kachoRepo, opsRepo),
 		gatewayapp.NewDeleteGatewayUseCase(kachoRepo, opsRepo),
 		gatewayapp.NewGetGatewayUseCase(kachoRepo, listFilter),
@@ -900,8 +901,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// RouteTable use-case'ы работают через CQRS-Repository. routeTableAdapter
 	// передается Network.Delete для child-check.
+	rtCreateUC := routetableapp.NewCreateRouteTableUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
 	rtHandler := routetableapp.NewHandler(
-		routetableapp.NewCreateRouteTableUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar),
+		rtCreateUC,
 		routetableapp.NewUpdateRouteTableUseCase(kachoRepo, opsRepo),
 		routetableapp.NewDeleteRouteTableUseCase(kachoRepo, opsRepo),
 		routetableapp.NewGetRouteTableUseCase(kachoRepo, listFilter),
@@ -911,8 +913,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// Subnet use-case'ы работают через CQRS-Repository (kachoRepo). niAdapter
 	// передается в Delete для precondition-check «нет привязанных NIC».
+	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).WithRegistrar(registrar)
 	subnetHandler := subnetapp.NewHandler(
-		subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).WithRegistrar(registrar),
+		subnetCreateUC,
 		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo),
 		subnetapp.NewDeleteSubnetUseCase(kachoRepo, niAdapter, opsRepo),
 		subnetapp.NewGetSubnetUseCase(kachoRepo, listFilter),
@@ -956,9 +959,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// sgAdapter (cqrsadapter поверх kachoRepo) передается в Network use-case'ы для
 	// checkNetworkEmpty / default-SG cleanup при Network.Delete (отдельная TX от
 	// Network writer'а).
+	sgCreateUC := sgapp.NewCreateSecurityGroupUseCase(kachoRepo, networkAdapter, projectClient, opsRepo).
+		WithSGReader(sgAdapter).WithRegistrar(registrar)
 	sgHandler := sgapp.NewHandler(
-		sgapp.NewCreateSecurityGroupUseCase(kachoRepo, networkAdapter, projectClient, opsRepo).
-			WithSGReader(sgAdapter).WithRegistrar(registrar),
+		sgCreateUC,
 		sgapp.NewUpdateSecurityGroupUseCase(kachoRepo, opsRepo).WithSGReader(sgAdapter),
 		// sgAdapter (SecurityGroupReader) — same-network-валидация SG-target-правил
 		// на UpdateRules/UpdateRule.
@@ -974,8 +978,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// CQRS-Repository (`kachoRepo`). У NIC нет Move RPC (NIC привязан к Subnet).
 	// Address-attach/detach идёт через writer-TX (`w.Addresses()`) внутри Create/
 	// Update — отдельный addressAdapter в эти UC больше не передаётся.
+	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
 	niHandler := niapp.NewHandler(
-		niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar),
+		niCreateUC,
 		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewDeleteNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewGetNetworkInterfaceUseCase(kachoRepo, listFilter),

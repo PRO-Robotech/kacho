@@ -1,0 +1,55 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# pinned-tools-freshness — сторож за версиями, ЗАПИНЕННЫМИ ВНУТРИ шагов workflow.
+#
+# Дополняет dependabot, а не дублирует. Dependabot обновляет `uses: owner/action@v4`,
+# go.mod, package.json и Dockerfile-FROM — но НЕ видит версию, заданную входом шага
+# (`with: {version: v3.17.0}`), командой (`go install …@v2.12.2`) или URL'ом в curl
+# (kind, grpcurl). Мы пиним именно так, осознанно, ради local == CI: незапиненный
+# setup-helm однажды притащил Helm 4, и helm-гейт зеленел на версии, которой нет на
+# проде. Без сторожа такой пин протухает МОЛЧА — trivy со старой базой CVE, gosec без
+# новых правил.
+#
+# Вся логика — в .github/scripts/check-pinned-tools.sh (её можно прогнать локально:
+# `bash .github/scripts/check-pinned-tools.sh`). Здесь только расписание и issue.
+name: pinned-tools-freshness
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # понедельник, до начала недели
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: пины vs апстрим
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: сверить версии
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # stdout скрипта — markdown-строки отставших (пусто = всё свежее);
+          # человекочитаемый отчёт идёт в stderr и виден в логе job'а.
+          out="$(bash .github/scripts/check-pinned-tools.sh)" || true
+          {
+            echo 'stale<<PINEOF'
+            printf '%s\n' "$out"
+            echo 'PINEOF'
+          } >> "$GITHUB_OUTPUT"
+
+      # ОДИН переиспользуемый issue вместо нового каждую неделю — иначе трекер зарастает
+      # и его перестают читать.
+      - name: завести/обновить issue
+        if: steps.check.outputs.stale != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STALE: ${{ steps.check.outputs.stale }}
+        run: bash .github/scripts/report-stale-pins.sh

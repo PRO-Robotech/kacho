@@ -8,20 +8,6 @@ Object.assign(globalThis, {
   TextEncoder,
 });
 
-jest.unstable_mockModule("@ant-design/icons", () => {
-  const Icon = (props: React.HTMLAttributes<HTMLSpanElement>) => React.createElement("span", props);
-
-  return new Proxy(
-    { __esModule: true },
-    {
-      get(target, prop) {
-        if (prop in target) return target[prop as keyof typeof target];
-        return Icon;
-      },
-    },
-  );
-});
-
 jest.unstable_mockModule("@monaco-editor/react", () => ({
   __esModule: true,
   default: (props: React.HTMLAttributes<HTMLDivElement>) => React.createElement("div", props),

@@ -11,9 +11,19 @@ jest.unstable_mockModule("@/components/organisms/form/RefSelect", () => ({ RefSe
 const { REGISTRY, getResource, resourceServicePrefix, resourceProjectPath } = await import("./resource-registry");
 
 describe("NLB resource-registry", () => {
-  it("registers the three NLB resources + compute-regions / vpc ref-targets", () => {
+  it("registers the three NLB resources + compute/vpc ref-targets для VIP-picker'а", () => {
     expect(Object.keys(REGISTRY).sort()).toEqual(
-      ["addresses", "compute-regions", "listeners", "load-balancers", "subnets", "target-groups"].sort(),
+      [
+        "addresses",
+        "compute-instances",
+        "compute-regions",
+        "listeners",
+        "load-balancers",
+        "network-interfaces",
+        "subnets",
+        "target-groups",
+        "zones",
+      ].sort(),
     );
   });
 
@@ -100,8 +110,10 @@ describe("NLB resource-registry", () => {
 
   it("load-balancers validate — требует хотя бы одно семейство VIP", () => {
     const lb = getResource("load-balancers")!;
-    expect(lb.validate!({ vip_source: { _v4_enabled: false, _v6_enabled: false } })).toMatch(/семейство VIP/);
-    expect(lb.validate!({ vip_source: { _v4_enabled: true, _v6_enabled: false } })).toBeNull();
+    // validate строит source через _v4_mode/v4 (не _v4_enabled): без источника → ошибка.
+    expect(lb.validate!({ vip_source: {} })).toMatch(/источник VIP/);
+    // с валидным источником одного семейства (subnet) → null.
+    expect(lb.validate!({ vip_source: { _v4_mode: "subnet", v4: { subnet_id: "sub-x" } } })).toBeNull();
   });
 
   it("service prefix + project path routing", () => {

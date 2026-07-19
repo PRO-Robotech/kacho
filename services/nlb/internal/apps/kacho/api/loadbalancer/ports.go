@@ -68,3 +68,11 @@ type SubnetClient = vpcclient.SubnetClient
 // резолвится под tenant-identity, проверяются kind/family/ownership/placement.
 // Анти-oracle: несоответствие/no-access → generic InvalidArgument.
 type AddressClient = vpcclient.AddressClient
+
+// Registrar — sync-primary owner-tuple registrar (kacho-iam
+// InternalIAMService.RegisterResource). Create после durable commit ресурса +
+// его `fga_register_outbox`-intent'а синхронно регистрирует owner/containment-
+// tuple, чтобы grant создателя был виден сразу (закрывает async-only окно). nil
+// → sync-путь пропускается (остаётся at-least-once register-drainer backstop).
+// BEST-EFFORT: сбой → лог, НЕ фейлит Operation (ban #9). Impl — *iamclient.SyncRegistrar.
+type Registrar = iamclient.Registrar

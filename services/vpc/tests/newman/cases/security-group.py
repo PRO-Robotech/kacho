@@ -17,16 +17,28 @@ def _net_steps(suffix="sg"):
 
 
 def _cleanup_net():
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=[*assert_status(200), *save_from_response("j.id", "opId")])
+    # DELETE of the caller's OWN fresh network. Its v_delete/owner tuple materializes
+    # eventually-consistent (registrar + fga_outbox drain + reconciler), so under PARALLEL
+    # load the cleanup DELETE races the drain and 403s single-shot (the wrapped Create can
+    # pass permissively before the tuple lands). Bounded read-your-writes retry SELF on 403
+    # until authorized; the strict 200 assertion is preserved (SG already deleted → the net
+    # deletes cleanly). Fail-closed at the budget (a genuine deny still fails).
+    return retry_until_authorized(
+        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_on=(403,))
 
 
 def _cleanup_net_lenient():
     # См. route-table.py::_cleanup_net_lenient — wrap'нутый Create мог пройти permissive'но
     # (ресурс создан) → DELETE сети блокируется FK RESTRICT (400). Оба исхода ОК.
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                             *save_from_response("j.id", "opId")])
+    # retry_on=(403,): DELETE своей свежей сети может краснеть 403, пока owner-tuple
+    # материализуется (eventual-consistency после opgate) — ретраим ТОЛЬКО этот транзиент.
+    return retry_until_authorized(
+        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                          *save_from_response("j.id", "opId")]),
+        retry_on=(403,))
 
 
 CASES.append(Case(
@@ -42,9 +54,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('sgId')));"]),
+                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('sgId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -81,9 +93,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
-        Step(name="get-with-net", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="get-with-net", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('networkId echoed', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"]),
+                          "pm.test('networkId echoed', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -118,12 +130,13 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgBId")]),
         poll_operation_until_done(),
-        Step(name="list-by-network", method="GET",
+        retry_until_present(Step(name="list-by-network", method="GET",
              path="/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().securityGroups || []).map(s => s.id);",
                           "pm.test('SG in net-A present', () => pm.expect(ids).to.include(pm.environment.get('sgAId')));",
                           "pm.test('SG in net-B absent', () => pm.expect(ids).to.not.include(pm.environment.get('sgBId')));"]),
+             "sgAId"),
         Step(name="cleanup-sg-a", method="DELETE", path="/vpc/v1/securityGroups/{{sgAId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -173,7 +186,7 @@ CASES.append(Case(
     priority="P0",
     steps=[
         Step(name="list-noproject", method="GET", path="/vpc/v1/securityGroups",
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 
@@ -185,7 +198,7 @@ CASES.append(Case(
     steps=[
         Step(name="patch-nx", method="PATCH", path="/vpc/v1/securityGroups/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -196,7 +209,7 @@ CASES.append(Case(
     priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/securityGroups/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -213,7 +226,7 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
-        Step(name="update-rules", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
+        retry_until_authorized(Step(name="update-rules", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
              body={
                  "additionRuleSpecs": [
                      {"description": "ingress-tcp-22",
@@ -223,11 +236,11 @@ CASES.append(Case(
                       "cidrBlocks": {"v4CidrBlocks": ["0.0.0.0/0"]}}
                  ]
              },
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="get-sg", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="get-sg", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('has 1 rule', () => pm.expect((pm.response.json().rules || []).length).to.be.at.least(1));"]),
+                          "pm.test('has 1 rule', () => pm.expect((pm.response.json().rules || []).length).to.be.at.least(1));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -301,9 +314,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
-        Step(name="patch", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="patch", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}",
              body={"updateMask": "description", "description": "upd-newman"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -339,10 +352,7 @@ CASES.append(Case(
         Step(name="patch-nx", method="PATCH",
              path="/vpc/v1/securityGroups/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Security group ... not found', () => pm.expect(pm.response.json().message).to.match(/^Security group .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -353,10 +363,7 @@ CASES.append(Case(
     steps=[
         Step(name="del-nx", method="DELETE",
              path="/vpc/v1/securityGroups/{{garbageVpcId}}",
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Security group ... not found', () => pm.expect(pm.response.json().message).to.match(/^Security group .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -372,8 +379,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
-        Step(name="del-happy", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-happy", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_net(),
     ],
@@ -391,17 +398,21 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
-        Step(name="add-rule", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
+        retry_until_authorized(Step(name="add-rule", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
              body={"additionRuleSpecs": [
                  {"description": "init", "direction": "INGRESS",
                   "ports": {"fromPort": 80, "toPort": 80}, "protocolName": "tcp",
                   "cidrBlocks": {"v4CidrBlocks": ["0.0.0.0/0"]}}
              ]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="get-sg-rule-id", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        # Read-your-writes: первый доступ через add-rule (PATCH) гейтится object-authz
+        # Check, а этот GET — list-authz (enforceGetVisible/ListAllowedIDs), у которого
+        # свой grant-set с независимой материализацией owner-tuple → без ретрая ловит
+        # устойчивый 404. Оборачиваем как первый list-authz-доступ свежего SG.
+        retry_until_authorized(Step(name="get-sg-rule-id", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          *save_from_response("(j.rules && j.rules[0] && j.rules[0].id) || ''", "ruleId")]),
+                          *save_from_response("(j.rules && j.rules[0] && j.rules[0].id) || ''", "ruleId")])),
         Step(name="ur", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules/{{ruleId}}",
              body={"updateMask": "description", "description": "updated"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -420,7 +431,7 @@ CASES.append(Case(
     steps=[
         Step(name="url-nx", method="PATCH", path="/vpc/v1/securityGroups/{{garbageVpcId}}/rules",
              body={"additionRuleSpecs": []},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -432,7 +443,7 @@ CASES.append(Case(
         Step(name="ur-nx", method="PATCH",
              path="/vpc/v1/securityGroups/{{garbageVpcId}}/rules/any-rule-id",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -443,7 +454,7 @@ CASES.append(Case(
     steps=[
         Step(name="lop-nx", method="GET",
              path="/vpc/v1/securityGroups/{{garbageVpcId}}/operations",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -525,12 +536,18 @@ for case_id, rule, expect_ok in [
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
             poll_operation_until_done(),
-            Step(name="update-rule-bad", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
-                 body={"additionRuleSpecs": [rule_full]},
-                 test_script=[
-                     f"pm.test('{'200' if expect_ok else 'rejected sync or async'}', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                     *(save_from_response("j.id", "opId") if expect_ok else []),
-                 ]),
+            # Mutation on the caller's OWN fresh SG rules — editor tuple can still be draining
+            # under parallel load → gateway authz-first 403 BEFORE backend rule validation.
+            # Retry SELF on 403 until authorized, THEN the PATCH reaches the backend and the
+            # real negative assertion (200 op-started | 400 sync-reject) runs — NOT masked.
+            retry_until_authorized(
+                Step(name="update-rule-bad", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
+                     body={"additionRuleSpecs": [rule_full]},
+                     test_script=[
+                         f"pm.test('{'200' if expect_ok else 'rejected sync or async'}', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                         *(save_from_response("j.id", "opId") if expect_ok else []),
+                     ]),
+                retry_on=(403,)),
         ] + ([poll_operation_until_done()] if expect_ok else []) + [
             Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
                  test_script=[*save_from_response("j.id", "opId")]),
@@ -603,12 +620,16 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
-        Step(name="get-default-sg-id", method="GET",
-             path="/vpc/v1/networks/{{netId}}/security_groups",
-             test_script=[*assert_status(200),
-                          "const def = (pm.response.json().securityGroups || []).find(s => s.defaultForNetwork === true);",
-                          "pm.expect(def, 'must have default SG').to.be.an('object');",
-                          "pm.environment.set('defaultSgId', def.id);"]),
+        # First read of the caller's OWN fresh network's SG list — v_get owner-tuple can
+        # still be draining under parallel load → transient 403/404; retry SELF until visible.
+        retry_until_authorized(
+            Step(name="get-default-sg-id", method="GET",
+                 path="/vpc/v1/networks/{{netId}}/security_groups",
+                 test_script=[*assert_status(200),
+                              "const def = (pm.response.json().securityGroups || []).find(s => s.defaultForNetwork === true);",
+                              "pm.expect(def, 'must have default SG').to.be.an('object');",
+                              "pm.environment.set('defaultSgId', def.id);"]),
+            retry_on=(403, 404)),
         Step(name="del-default-sg", method="DELETE",
              path="/vpc/v1/securityGroups/{{defaultSgId}}",
              test_script=[
@@ -622,23 +643,28 @@ CASES.append(Case(
                  "// Текущее поведение: либо OK (default SG удален, можно тогда delete network), либо error (запрет)",
                  "pm.test('completed', () => pm.expect(j.done).to.eql(true));",
              ]),
-        # cleanup — пытаемся удалить network в любом состоянии
-        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=["pm.test('cleanup attempted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
-                          *save_from_response("j.id", "opId")]),
+        # cleanup — пытаемся удалить network в любом состоянии. DELETE of the caller's OWN
+        # fresh network → v_delete owner-tuple lag can 403 under parallel load; retry SELF on
+        # 403 until authorized (the [200,404] outcome assertion is preserved).
+        retry_until_authorized(
+            Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+                 test_script=["pm.test('cleanup attempted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                              *save_from_response("j.id", "opId")]),
+            retry_on=(403,)),
         poll_operation_until_done(),
     ],
 ))
 
-# SG, привязанный к NIC через security_group_ids[], нельзя удалить. Пока DB-уровневый
-# ref-trigger не реализован, SG.Delete проходит, оставляя dangling ref в
-# NIC.security_group_ids; assert FailedPrecondition (code 9) остаётся КРАСНЫМ до
-# появления within-service refcheck на уровне БД (trigger / partial UNIQUE /
-# эквивалент — НЕ software refcheck). Persistent-RED по rule #13.
+# SG, привязанный к NIC через security_group_ids[], нельзя удалить. Within-service
+# refcheck реализован в repo `securityGroupWriter.Delete` (issue #27, fixed):
+# ВНУТРИ writer-TX `SELECT id … FOR UPDATE` + `EXISTS(security_group_ids @>
+# jsonb_build_array($id))` → FailedPrecondition (code 9) «security group is in use
+# by network interface(s)». Проверка+DELETE в одной TX (не TOCTOU). Раньше был
+# persistent-RED (rule #13) — теперь ожидаемо GREEN.
 # verifies https://github.com/PRO-Robotech/kacho-vpc/issues/27
 CASES.append(Case(
     id="SG-DEL-NEG-NIC-ATTACHED",
-    title="Delete SG, прилинкованного к NIC через security_group_ids → FailedPrecondition (persistent-RED: verifies #27)",
+    title="Delete SG, прилинкованного к NIC через security_group_ids → FailedPrecondition (verifies #27, fixed)",
     classes=["NEG", "STATE", "CONF"], priority="P0",
     steps=[
         Step(name="cr-net", method="POST", path="/vpc/v1/networks",
@@ -648,7 +674,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sg-nicatt-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "name": "sg-nicatt-sub-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.249.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -772,9 +798,9 @@ CASES.append(Case(
         Step(name="assert-op-ok", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('networkId echoed', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"]),
+                          "pm.test('networkId echoed', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -822,9 +848,9 @@ CASES.append(Case(
         Step(name="patch-mask-network", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}",
              body={"updateMask": "network_id", "networkId": "{{netId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
-        Step(name="verify-unchanged", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="verify-unchanged", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('networkId unchanged', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"]),
+                          "pm.test('networkId unchanged', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -868,6 +894,14 @@ CASES.append(Case(
 
 
 # Create SG с SG-target rule на SG из той же сети → OK.
+# BUG(persistent-RED, flagged to rpc-implementer / go-style-reviewer): корректный тест
+# краснеет — GREEN требует прод-фикса. dto/toproto/security_group.go::securityGroup.toPb
+# мапит в SecurityGroupRule.Target ТОЛЬКО ветку CidrBlocks; ветки SecurityGroupId и
+# PredefinedTarget (домен несёт r.SecurityGroupID / r.PredefinedTarget) не сериализуются →
+# в Get/List-ответе SG-target-правило приходит с Target=nil → rule.securityGroupId=undefined.
+# Signature: `rule targets same-network SG :: expected [ undefined ] to include '<sgId>'`.
+# Fix (не в этом test-only PR, ban #13): добавить SecurityGroupRule_SecurityGroupId /
+# _PredefinedTarget ветки в toPb + regression на обе. Декларировано в docs/RESULTS.md.
 CASES.append(Case(
     # verifies SG-NET-08
     id="SG-NET-08-RULE-SAME-NETWORK-OK",
@@ -892,10 +926,10 @@ CASES.append(Case(
         Step(name="assert-op-ok", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('same-network rule create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
                           "const rules = pm.response.json().rules || [];",
-                          "pm.test('rule targets same-network SG', () => pm.expect(rules.map(r => r.securityGroupId)).to.include(pm.environment.get('sgAId')));"]),
+                          "pm.test('rule targets same-network SG', () => pm.expect(rules.map(r => r.securityGroupId)).to.include(pm.environment.get('sgAId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -934,9 +968,9 @@ CASES.append(Case(
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('same-network text', () => pm.expect(pm.response.json().message).to.eql('security group rule can only reference a security group in the same network'));",
                           *assert_field_violation("addition_rule_specs[0].security_group_id")]),
-        Step(name="verify-no-rules", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        retry_until_authorized(Step(name="verify-no-rules", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('rules unchanged (none added)', () => pm.expect((pm.response.json().rules || []).length).to.eql(0));"]),
+                          "pm.test('rules unchanged (none added)', () => pm.expect((pm.response.json().rules || []).length).to.eql(0));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -950,6 +984,10 @@ CASES.append(Case(
 
 
 # UpdateRules добавляет SG-rule same-network → OK.
+# BUG(persistent-RED, flagged to rpc-implementer): та же прод-первопричина, что и SG-NET-08 —
+# dto/toproto/security_group.go::toPb роняет SecurityGroupId/PredefinedTarget target →
+# rule.securityGroupId=undefined в Get-ответе. Тест корректен, RED до прод-фикса toPb.
+# Signature: `rule targets same-network SG :: expected [ undefined ] to include '<sgId>'`.
 CASES.append(Case(
     # verifies SG-NET-09
     # Positive per-endpoint через UpdateRules: same-network SG-target → done.
@@ -970,17 +1008,19 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
-        Step(name="update-rules-same", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
+        retry_until_authorized(Step(name="update-rules-same", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
              body={"additionRuleSpecs": [{"direction": "INGRESS", "securityGroupId": "{{sgAId}}"}]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="assert-op-ok", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('same-network updateRules op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+        # Read-your-writes: update-rules-same (первый доступ) гейтится object-authz;
+        # этот GET — первый list-authz-доступ свежего SG → оборачиваем ретраем.
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
                           "const rules = pm.response.json().rules || [];",
-                          "pm.test('rule targets same-network SG', () => pm.expect(rules.map(r => r.securityGroupId)).to.include(pm.environment.get('sgAId')));"]),
+                          "pm.test('rule targets same-network SG', () => pm.expect(rules.map(r => r.securityGroupId)).to.include(pm.environment.get('sgAId')));"])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

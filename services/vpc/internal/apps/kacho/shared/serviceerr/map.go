@@ -33,6 +33,10 @@ func classifyRepoSentinel(err error) (code codes.Code, sentinel error, ok bool) 
 		return codes.FailedPrecondition, ErrPoolNotResolved, true
 	case errors.Is(err, ErrInvalidArg):
 		return codes.InvalidArgument, ErrInvalidArg, true
+	case errors.Is(err, ErrConflict):
+		// Retryable concurrency-конфликт (40001/40P01) → Aborted, не INTERNAL:
+		// клиент по контракту может безопасно повторить транзакцию.
+		return codes.Aborted, ErrConflict, true
 	case errors.Is(err, ErrInternal):
 		return codes.Internal, ErrInternal, true
 	}
@@ -61,6 +65,11 @@ func MapRepoErr(err error) error {
 	if code, sentinel, ok := classifyRepoSentinel(err); ok {
 		if sentinel == ErrInternal {
 			return status.Error(codes.Internal, "internal database error")
+		}
+		if sentinel == ErrConflict {
+			// Фиксированный текст: ErrConflict оборачивает raw pgx (root-cause для
+			// логов), stripSentinel вернул бы pgx-tail → leak. Отдаём чистый sentinel.
+			return status.Error(codes.Aborted, ErrConflict.Error())
 		}
 		return status.Error(code, stripSentinel(err, sentinel))
 	}

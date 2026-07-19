@@ -1,0 +1,74 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# .trivyignore.yaml — ОТСЛЕЖИВАЕМЫЕ исключения IaC-гейта.
+#
+# Тот же принцип, что known-RED whitelist у newman (assert-suites-green.sh): гейт обязан
+# защищать от НОВЫХ находок, а известные — быть записаны, с тикетом и причиной. Молча
+# понижать порог нельзя.
+#
+# КАЖДОЕ исключение привязано к ПУТИ, а не к правилу целиком. Глобальный `KSV118`
+# отключил бы проверку и для Go-сервисов, где она как раз работает: vpc/compute/storage/
+# gateway вычищены 2026-07-16 до нуля по эталону kacho-iam. Новый сервис без
+# securityContext обязан упасть — и упадёт.
+#
+# Контекст: security-scan впервые покрыл весь репозиторий (в polyrepo IaC-скан стоял
+# только в kacho-iam, а там нет ни одного k8s-манифеста — чарты жили в kacho-deploy,
+# где security-scan не было вовсе; гейт зеленел, не проверяя ничего). Находки не новые —
+# новый сканер.
+
+misconfigurations:
+  # ── nginx-образы: ui-future (9 remotes) + docs-site (5) ───────────────────────────
+  # nginx по умолчанию требует root: биндит :80 и пишет в /var/cache/nginx,
+  # /var/run/nginx.pid. Перевод на non-root — не однострочник: база
+  # nginx-unprivileged ЛИБО правка nginx.conf (listen 8080, pid /tmp), перенос
+  # Service/Ingress/containerPort 80→8080 и emptyDir под cache/tmp. Риск — сломать
+  # консоль на проде (uif держит kacho.in-cloud.io), поэтому нужен отдельный прогон с
+  # проверкой в браузере.
+  # Отслеживается: PRO-Robotech/kacho#4
+  - id: AVD-DS-0002
+    paths:
+      - "ui-future/*/Dockerfile"
+      - "*/docs-site/Dockerfile"
+      - "services/*/docs-site/Dockerfile"
+    statement: "nginx требует root (:80 + /var/cache/nginx) — kacho#4"
+
+  - id: AVD-KSV-0118
+    paths:
+      - "ui-future/deploy/templates/*.yaml"
+      - "gateway/docs-site/deploy/templates/*.yaml"
+      - "services/*/docs-site/deploy/templates/*.yaml"
+    statement: "securityContext для nginx-деплойментов — kacho#4"
+
+  - id: AVD-KSV-0014
+    paths:
+      - "ui-future/deploy/templates/*.yaml"
+      - "gateway/docs-site/deploy/templates/*.yaml"
+      - "services/*/docs-site/deploy/templates/*.yaml"
+    statement: "read-only rootfs для nginx требует emptyDir под cache/tmp — kacho#4"
+
+  # ── k6 / ghz — НАГРУЗОЧНЫЕ джобы, не прод ────────────────────────────────────────
+  # Эфемерные Job'ы, которые запускают вручную под нагрузочный прогон. В кластере не
+  # живут, tenant-данных не касаются, снаружи не доступны. Хардить их полезно, но
+  # приоритет ниже прод-нагрузки.
+  # Отслеживается: PRO-Robotech/kacho#4
+  - id: AVD-KSV-0118
+    paths:
+      - "deploy/load-tests/*.yaml"
+      - "services/*/tests/k6/**/*.yaml"
+    statement: "эфемерные нагрузочные Job'ы — kacho#4"
+
+  - id: AVD-KSV-0014
+    paths:
+      - "deploy/load-tests/*.yaml"
+      - "services/*/tests/k6/**/*.yaml"
+    statement: "эфемерные нагрузочные Job'ы — kacho#4"
+
+  # ── zot (registry data-plane) ────────────────────────────────────────────────────
+  # Сторонний образ zot пишет в свой data-dir; read-only rootfs требует проверки на
+  # живом реестре (kacho.in-cloud.io обслуживает docker push/pull).
+  # Отслеживается: PRO-Robotech/kacho#4
+  - id: AVD-KSV-0014
+    paths:
+      - "services/registry/deploy/templates/statefulset-zot.yaml"
+    statement: "zot пишет в data-dir; нужен прогон на живом реестре — kacho#4"

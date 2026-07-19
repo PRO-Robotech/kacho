@@ -1,0 +1,161 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# ui — гейты консоли ui-future (module federation: host + 8 remotes + shared).
+#
+# В монорепе UI не проверялся ВООБЩЕ: у kacho-ui-future был свой `.github/workflows/`,
+# но GitHub читает workflow только из корня — при переезде он стал мёртв и был удалён
+# вместе с остальными 18 приехавшими `.github/`.
+#
+# Покрытие — ЕДИНООБРАЗНОЕ, все 9 пакетов. В polyrepo его не было: матрица образов несла
+# 7 проектов (без compute и storage), а standalone-зависимости ставились только для
+# `host dashboard nlb registry` — при том, что корневой `npm run typecheck` перебирает
+# ВСЕ 9 через `--prefix`. То есть typecheck для compute/storage там падал бы на
+# неустановленных зависимостях. Здесь список один и тот же везде.
+name: ui
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: ui-future
+
+env:
+  # Пакеты со СВОИМ package-lock.json — они standalone и корневой `npm ci` их не ставит.
+  # Workspaces (shared/vpc/iam/system, см. package.json) ставятся корневым npm ci.
+  STANDALONE: host dashboard compute storage nlb registry
+
+jobs:
+  typecheck:
+    name: typecheck (9 пакетов)
+    runs-on: ubuntu-latest
+    # hard-гейт качества UI (tsc --noEmit по всем 9 пакетам). timeout-backstop, чтобы
+    # зависший tsc не держал прогон; типичный прогон — пара минут.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui-future/package-lock.json
+      - name: зависимости workspace
+        run: npm ci
+      - name: зависимости standalone-пакетов
+        run: for p in $STANDALONE; do npm ci --prefix "$p"; done
+      - run: npm run typecheck
+
+  test:
+    name: unit (${{ matrix.pkg }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Каждый пакет — свой параллельный job. Прежде 9 пакетов шли ПОСЛЕДОВАТЕЛЬНО в одном
+    # job (npm test --prefix X && …) → не влезали в 20-мин timeout (vpc 170 тестов/102 suites
+    # под ts-jest-ESM). Матрица — быстрый фидбэк (~5 мин/пакет параллельно). Корень бывшего
+    # host-hang (@ant-design/icons unstable_mockModule Proxy → ESM-link-hang) устранён стабом
+    # jest.config moduleNameMapper → src/test/antd-icons-stub.tsx (kacho#7).
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui-future/package-lock.json
+      - name: зависимости (workspace + standalone-пакет если нужно)
+        run: |
+          npm ci
+          case " $STANDALONE " in *" ${{ matrix.pkg }} "*) npm ci --prefix "${{ matrix.pkg }}" ;; esac
+      # host-hang guard (kacho#7): 3 shell-integration файла (App/HostShell/HostRail) виснут,
+      # если @ant-design/icons НЕ замаплен на статический стаб. КОРЕНЬ (DIAG6): HostRail
+      # импортит 20 named-иконок; прежний setup.ts jest.unstable_mockModule Proxy-мок не давал
+      # статических named-экспортов → ESM-линкер `import { XOutlined }` висел вечно под
+      # --experimental-vm-modules (доказано: `import { ApartmentOutlined }` виснет на link ДАЖЕ
+      # без рендера; lucide — ok). Fix: moduleNameMapper → src/test/antd-icons-stub.tsx (реальные
+      # named-экспорты). Guard гоняет эти 3 файла с таймаутом ПЕРЕД полным npm test → быстрый
+      # сигнал регресса (иначе полный сьют висел бы до 20-мин job-timeout). set +e чтобы собрать
+      # все 3, потом exit по агрегату.
+      # host виснул на @ant-design/icons без статического стаба (kacho#7, DIAG6). Guard ловит
+      # регресс этого класса на 3 shell-тестах (все рендерят HostRail — единственный импортёр
+      # @ant-design/icons). Только для pkg=host.
+      - name: host-hang guard (kacho#7)
+        if: matrix.pkg == 'host'
+        working-directory: ui-future/host
+        run: |
+          set +e
+          J="node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js"
+          rc_all=0
+          for f in src/App.test.tsx \
+                   src/components/organisms/HostShell/HostShell.test.tsx \
+                   src/components/organisms/HostRail/HostRail.test.tsx; do
+            timeout 120 $J --runInBand --silent "$f" >/dev/null 2>&1; rc=$?
+            if [ "$rc" = "124" ]; then echo "::error::$(basename "$f") ВИСНЕТ (kacho#7 регресс — @ant-design/icons стаб / mapper)"; rc_all=1
+            elif [ "$rc" != "0" ]; then echo "::error::$(basename "$f") упал rc=$rc"; rc_all=1
+            else echo "  ✓ $(basename "$f") прошёл"; fi
+          done
+          exit $rc_all
+      - run: npm test --prefix ${{ matrix.pkg }}
+
+  build:
+    name: build ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # ВСЕ 9 remotes — ровно те, для которых есть Dockerfile и которые деплоит
+        # ui-future/deploy. compute и storage в polyrepo-матрице отсутствовали.
+        project: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: build ${{ matrix.project }}
+        uses: docker/build-push-action@v6
+        with:
+          # Контекст — ui-future/: Dockerfile'ы remotes копируют shared/ рядом.
+          context: ui-future
+          file: ui-future/${{ matrix.project }}/Dockerfile
+          push: false
+          provenance: false
+          tags: kacho-ui-future-${{ matrix.project }}:ci
+          cache-from: type=gha,scope=uif-${{ matrix.project }}
+          cache-to: type=gha,scope=uif-${{ matrix.project }},mode=max
+
+  # Гейт против дрейфа «пакет есть, а в CI его нет» — ровно того, из-за чего compute и
+  # storage не проверялись в polyrepo. Сверяет матрицу build с Dockerfile'ами на диске.
+  matrix-complete:
+    name: матрица покрывает все remotes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: сверить матрицу с деревом
+        run: |
+          find . -maxdepth 2 -name Dockerfile -not -path './node_modules/*' \
+            | sed -E 's|^\./([^/]+)/Dockerfile$|\1|' | sort -u > /tmp/on-disk.txt
+          grep -oE '^        project: \[.*\]$' ../.github/workflows/ui.yml \
+            | sed -E 's/^        project: \[(.*)\]$/\1/' | tr ',' '\n' | tr -d ' ' | sort -u > /tmp/in-matrix.txt
+
+          echo "=== Dockerfile'ы на диске:"; tr '\n' ' ' < /tmp/on-disk.txt; echo
+          echo "=== в матрице:";             tr '\n' ' ' < /tmp/in-matrix.txt; echo
+
+          if ! diff -u /tmp/in-matrix.txt /tmp/on-disk.txt > /tmp/d.txt; then
+            echo "::error::матрица build разошлась с Dockerfile'ами"
+            echo "  '+' пакет есть на диске, но НЕ собирается в CI (так было с compute/storage)"
+            echo "  '-' пакет в матрице, но Dockerfile'а нет → job упадёт"
+            cat /tmp/d.txt
+            exit 1
+          fi
+          echo "✓ матрица и дерево совпадают ($(wc -l < /tmp/on-disk.txt) remotes)"

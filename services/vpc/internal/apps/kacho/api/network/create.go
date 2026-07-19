@@ -131,6 +131,9 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 		return nil, err
 	}
 
+	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
+	// материализуется eventually-consistent (sync-registrar после commit +
+	// register-drainer/reconciler backstop), а не гейтит done.
 	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (res *anypb.Any, derr error) {
 		// Поднимаем наружу диагностику падений async-worker'а. operations.Run
 		// маскирует любую не-gRPC-status ошибку (и panic) как Operation `INTERNAL

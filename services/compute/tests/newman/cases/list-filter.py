@@ -58,7 +58,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "lfInstanceId")]),
-        poll_operation_until_done(), assert_op_success(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"), assert_op_success(auth="jwtProjectAdminA1"),
         # filtered List as the SAME (authorized) subject → 200 + own instance visible.
         Step(name="list-own", method="GET",
              path=f"{INSTANCES}?projectId={{{{projectA1Id}}}}&pageSize=1000",
@@ -72,7 +72,7 @@ CASES.append(Case(
         Step(name="del-own", method="DELETE", path=f"{INSTANCES}/{{{{lfInstanceId}}}}",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"),
     ],
 ))
 
@@ -99,14 +99,14 @@ CASES.append(Case(
 # заголовков. До фикса subject="" → bypass-all → List возвращал ВСЕ объекты
 # проекта мимо list-authz (existence+metadata leak).
 #
-# Проверка: jwtNoBindings — аутентифицированный субъект БЕЗ грантов в project-A1.
+# Проверка: jwtPureNoBindings — аутентифицированный субъект БЕЗ грантов в project-A1.
 # Его List project-A1 обязан быть пустым (fail-closed), а instance, созданный
 # PA1, не должен в нём появиться. RED при subject-source bug (bypass-all утекал
 # instance), GREEN после фикса (principal-based subject → пустой allow-list).
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="LF-INST-LST-OVERSHOW-LEAK-GUARD",
-    title="[leak] jwtNoBindings List project-A1 → instance PA1 не виден (subject из principal, fail-closed)",
+    title="[leak] jwtPureNoBindings List project-A1 → instance PA1 не виден (subject из principal, fail-closed)",
     classes=["AUTHZ", "NEG", "LST"], priority="P0",
     steps=[
         Step(name="create-a1-pa1", method="POST", path=INSTANCES,
@@ -114,24 +114,32 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "lfLeakInstanceId")]),
-        poll_operation_until_done(), assert_op_success(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"), assert_op_success(auth="jwtProjectAdminA1"),
         # Authenticated-but-not-granted subject lists project-A1. The handler
         # derives subject from the principal and consults the filter (empty
         # allow-list) → MUST NOT leak the PA1 instance. A non-empty result here
         # is the over-show leak.
-        Step(name="list-a1-as-nobindings", method="GET",
+        #
+        # kacho-iam#276 root-cause fix — this reads jwtPureNoBindings, a DEDICATED subject
+        # that NO suite EVER grants (setup.sh), instead of the doubly-used jwtNoBindings
+        # (which the iam access-binding suites grant `view@account-A`, so under the parallel
+        # fan-out account→project containment transiently made project-A1 instances
+        # v_list-visible to NOB → false leak). A guaranteed binding-free principal makes this
+        # a STRICT single-shot guard (no retry-mask): the PA1 instance MUST be absent — a
+        # GENUINE over-show hole still FAILS the assertion honestly.
+        Step(name="list-a1-as-pure-nob", method="GET",
              path=f"{INSTANCES}?projectId={{{{projectA1Id}}}}&pageSize=1000",
-             auth="jwtNoBindings",
+             auth="jwtPureNoBindings",
              test_script=[
                  "pm.test('[leak] response is not a server error (fail-closed, not 5xx)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                  "const insts = (pm.response.json().instances) || [];",
-                 "pm.test('[leak] PA1 instance NOT leaked to a not-granted subject', () => pm.expect(insts.map(x=>x.id)).to.not.include(pm.environment.get('lfLeakInstanceId')));",
+                 "pm.test('[leak] PA1 instance NOT leaked to a never-granted subject', () => pm.expect(insts.map(x=>x.id)).to.not.include(pm.environment.get('lfLeakInstanceId')));",
              ]),
         # cleanup as owner.
         Step(name="del-a1-leak", method="DELETE", path=f"{INSTANCES}/{{{{lfLeakInstanceId}}}}",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"),
     ],
 ))
 
@@ -152,7 +160,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "lfXacctInstanceId")]),
-        poll_operation_until_done(), assert_op_success(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"), assert_op_success(auth="jwtProjectAdminA1"),
         # AAB листит СВОЙ project-B1 → A1-instance не должен присутствовать.
         Step(name="list-b1-as-aab", method="GET",
              path=f"{INSTANCES}?projectId={{{{projectB1Id}}}}&pageSize=1000",
@@ -164,6 +172,6 @@ CASES.append(Case(
         Step(name="del-a1", method="DELETE", path=f"{INSTANCES}/{{{{lfXacctInstanceId}}}}",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectAdminA1"),
     ],
 ))

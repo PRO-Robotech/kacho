@@ -16,9 +16,13 @@
 #                         existingZoneId from compute) — populates
 #                         `existingSubnetId` (Target.ip_ref tests + INTERNAL
 #                         listener subnet binding).
-#   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr; external pool —
-#                         populates `existingExternalAddressId` for BYO-VIP
-#                         test).
+#   - VPC AddressPool EXT (name: kac-nlb-seed-ext-pool; EXTERNAL_PUBLIC, zonal,
+#                         is_default=true — the IPAM source every EXTERNAL nlb
+#                         auto-VIP + zonal external Address resolves via
+#                         GetDefaultForZone. Internal mux only, ban #6).
+#   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr; allocated from the pool
+#                         above — populates `existingExternalAddressId` for
+#                         BYO-VIP test).
 #   - Compute Instance   (name: kac-nlb-seed-inst; minimal NIC on the seed
 #                         subnet) — populates `existingInstanceId` for
 #                         Target.instance_id tests.
@@ -44,6 +48,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BASE_URL="${BASE_URL:-http://localhost:28080}"
+# INTERNAL_BASE_URL — api-gateway cluster-internal REST listener (:8081). The
+# InternalAddressPoolService (admin IPAM) is exposed ONLY there (ban #6) — never on
+# the public {{baseUrl}}. Default mirrors the BASE_URL host with the internal port
+# so an operator running `make seed-nlb` after a `port-forward svc/api-gateway
+# 28081:8081` gets external-pool provisioning out of the box; the umbrella
+# (newman-e2e.sh) overrides it to the port it forwards (:18081).
+INTERNAL_BASE_URL="${INTERNAL_BASE_URL:-http://localhost:28081}"
 JWT="${JWT:-}"
 OUT_FILE="${OUT_FILE:-$REPO_ROOT/.seeded-ids.env}"
 VERBOSE="${VERBOSE:-false}"
@@ -72,10 +83,34 @@ curl_json() {
   fi
 }
 
+# curl_internal — same as curl_json but against the cluster-internal REST listener
+# (Internal*-RPC live there only, ban #6).
+curl_internal() {
+  local method="$1"; shift
+  local path="$1"; shift
+  local body="${1:-}"
+  if [ -n "$body" ]; then
+    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" \
+      -H 'Content-Type: application/json' \
+      "${auth_args[@]}" \
+      --data "$body"
+  else
+    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" "${auth_args[@]}"
+  fi
+}
+
 # wait_op <operation-id> — poll OperationService.Get until done=true.
 # Returns the operation JSON on stdout. Times out after 60s.
 wait_op() {
   local op_id="$1"
+  # Fast-fail on empty id: a Create that returned an error envelope (e.g.
+  # ALREADY_EXISTS, or a validation reject) has no operation id — polling it
+  # would just burn the full 60s deadline before FATAL. Surface it immediately
+  # so the caller's `|| true` / blank-id guard can proceed.
+  if [ -z "$op_id" ]; then
+    log "wait_op: empty operation id (create returned an error, not an Operation) — skipping"
+    return 1
+  fi
   local deadline=$(( $(date +%s) + 60 ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
     local op
@@ -145,7 +180,7 @@ REGION_ID=$(curl_json GET "/compute/v1/zones/$ZONE_ID" | extract "regionId")
 log "    region_id=$REGION_ID"
 
 # ─── 2) Ensure VPC Network ---------------------------------------------------
-NET_LIST=$(curl_json GET "/vpc/v1/networks?folderId=$PROJECT_ID&pageSize=200")
+NET_LIST=$(curl_json GET "/vpc/v1/networks?projectId=$PROJECT_ID&pageSize=200")
 NET_ID=$(printf '%s' "$NET_LIST" | python3 -c '
 import sys, json
 try: d=json.load(sys.stdin)
@@ -178,7 +213,7 @@ print("")
 ')
 if [ -z "$SUBNET_ID" ]; then
   log "3/5 creating Subnet kac-nlb-seed-subnet"
-  body='{"folderId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["10.130.0.0/24"]}'
+  body='{"projectId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","placementType":"ZONAL","v4CidrBlocks":["10.130.0.0/24"]}'
   op=$(curl_json POST "/vpc/v1/subnets" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   SUBNET_ID=$(wait_op "$op_id" | extract "metadata.subnetId")
@@ -186,8 +221,74 @@ else
   log "3/5 reusing existing Subnet $SUBNET_ID"
 fi
 
+# ─── 3.5) Ensure External AddressPool (IPAM source for external VIPs) --------
+# The nlb EXTERNAL suites auto-allocate a public VIP (v4Source:{public:{}}) and
+# self-provision a ZONAL external vpc Address (externalIpv4AddressSpec.zoneId =
+# existingZoneId). Both resolve their pool via GetDefaultForZone(zone, EXTERNAL_PUBLIC)
+# = `WHERE zone_id=$zone AND kind='EXTERNAL_PUBLIC' AND is_default=true` (vpc
+# address_pool.go). Without a DEFAULT external pool in the zone that query returns
+# NotFound → Address.Create / EXTERNAL LB.Create fails ("zone_id is empty" / no VIP)
+# → whole external-nlb chain reds. seed-ipam is a deliberate NOOP (admin-explicit),
+# so provision it here. AddressPool is InternalAddressPoolService → internal mux only
+# (ban #6), returns the resource DIRECTLY (not an Operation). Idempotent by name;
+# best-effort (|| true) so a stand without the internal port-forward degrades to the
+# pre-existing behaviour instead of aborting the whole seed.
+POOL_LIST=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null || echo '{}')
+POOL_ID=$(printf '%s' "$POOL_LIST" | python3 -c '
+import sys, json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for p in d.get("pools", []):
+    if p.get("name") == "kac-nlb-seed-ext-pool":
+        print(p.get("id","")); sys.exit(0)
+print("")
+')
+if [ -z "$POOL_ID" ]; then
+  log "3.5/5 creating external AddressPool kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, zone=$ZONE_ID)"
+  # 198.51.100.0/24 = TEST-NET-2 (RFC 5737) — the documented production external
+  # CIDR (see `make seed-ipam`). On a truly fresh stand (CI wipes the vpc DB) no
+  # EXTERNAL_PUBLIC pool exists, so the address_pool_cidrs EXCLUDE (kind, block &&)
+  # does not conflict. On a re-run / shared vpc DB it CAN conflict (see fallback below).
+  pbody='{"name":"kac-nlb-seed-ext-pool","description":"KAC-NLB seed external VIP pool","kind":"EXTERNAL_PUBLIC","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["198.51.100.0/24"],"v6CidrBlocks":[]}'
+  POOL_ID=$(curl_internal POST "/vpc/v1/addressPools" "$pbody" | extract "id" || true)
+  if [ -z "$POOL_ID" ]; then
+    # Create returned no id. The most common cause on a re-run / shared vpc DB is the
+    # address_pool_cidrs EXCLUDE (kind, block &&) — keyed on (kind, block) GLOBALLY,
+    # ignoring name and zone — already holding 198.51.100.0/24 for EXTERNAL_PUBLIC from
+    # a prior seed run or the vpc newman suite (which seeds the same CIDR). Idempotency-
+    # by-name (above) can't detect that pool. Fall back to REUSING an existing
+    # EXTERNAL_PUBLIC pool in $ZONE_ID so GetDefaultForZone($ZONE_ID, EXTERNAL_PUBLIC)
+    # still resolves for allocation. Re-list fresh in case one appeared since.
+    POOL_ID=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null | ZONE="$ZONE_ID" python3 -c '
+import os, sys, json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+zone=os.environ.get("ZONE","")
+for p in d.get("pools", []):
+    if p.get("kind")=="EXTERNAL_PUBLIC" and p.get("zoneId")==zone:
+        print(p.get("id","")); sys.exit(0)
+print("")
+' || true)
+    if [ -n "$POOL_ID" ]; then
+      log "3.5/5 AddressPool.Create conflicted (CIDR overlap?); reusing existing EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID"
+    fi
+  fi
+  if [ -n "$POOL_ID" ]; then
+    # Allocation picks the pool ONLY when is_default=true for (zone, kind); the
+    # Create RPC has no isDefault field, so flip it via Update (update_mask=isDefault).
+    # Idempotent: PATCH on an already-default pool is a no-op.
+    curl_internal PATCH "/vpc/v1/addressPools/$POOL_ID" \
+      '{"updateMask":"isDefault","isDefault":true}' >/dev/null 2>&1 || \
+      log "    could not set is_default on $POOL_ID (a default pool for this zone/kind may already exist)"
+  else
+    log "    AddressPool.Create did not return an id and no EXTERNAL_PUBLIC pool exists in zone $ZONE_ID (internal mux unreachable at $INTERNAL_BASE_URL, or insufficient admin tier) — external VIP allocation may fail; whitelist non-T31 nlb external-create cases if so"
+  fi
+else
+  log "3.5/5 reusing existing external AddressPool $POOL_ID"
+fi
+
 # ─── 4) Ensure External Address (BYO VIP) ----------------------------------
-ADDR_LIST=$(curl_json GET "/vpc/v1/addresses?folderId=$PROJECT_ID&pageSize=200")
+ADDR_LIST=$(curl_json GET "/vpc/v1/addresses?projectId=$PROJECT_ID&pageSize=200")
 EXT_ADDR_ID=$(printf '%s' "$ADDR_LIST" | python3 -c '
 import sys, json
 try: d=json.load(sys.stdin)
@@ -198,8 +299,16 @@ for a in d.get("addresses", []):
 print("")
 ')
 if [ -z "$EXT_ADDR_ID" ]; then
-  log "4/5 creating external Address kac-nlb-seed-ext-addr"
-  body='{"folderId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-ext-addr","externalIpv4Address":{"regionId":"'"$REGION_ID"'"}}'
+  log "4/5 creating external Address kac-nlb-seed-ext-addr (ZONAL, zone=$ZONE_ID)"
+  # External Address IPAM is ZONE-scoped: the request field is
+  # `externalIpv4AddressSpec` (not `externalIpv4Address`, which is a field on the
+  # Address *resource*), and ExternalIpv4AddressSpec carries only zoneId — there is
+  # NO regionId on it (proto address_service.proto). The resolver keys the default
+  # pool by zone (address_pool.go GetDefaultForZone($zone, EXTERNAL_PUBLIC)), so a
+  # zoneId that matches the ZONAL pool seeded in 3.5 is required; a region-scoped /
+  # zone-less spec would only match a GLOBAL (zone_id IS NULL) pool and 404 here.
+  # This mirrors the passing newman body ADR-CR-CRUD-EXT (address.py).
+  body='{"projectId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-ext-addr","externalIpv4AddressSpec":{"zoneId":"'"$ZONE_ID"'"}}'
   op=$(curl_json POST "/vpc/v1/addresses" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   EXT_ADDR_ID=$(wait_op "$op_id" | extract "metadata.addressId" || true)
@@ -211,7 +320,7 @@ else
 fi
 
 # ─── 5) Ensure Compute Instance + discover its NIC -------------------------
-INST_LIST=$(curl_json GET "/compute/v1/instances?folderId=$PROJECT_ID&pageSize=200")
+INST_LIST=$(curl_json GET "/compute/v1/instances?projectId=$PROJECT_ID&pageSize=200")
 INSTANCE_ID=$(printf '%s' "$INST_LIST" | python3 -c '
 import sys, json
 try: d=json.load(sys.stdin)
@@ -225,7 +334,7 @@ if [ -z "$INSTANCE_ID" ]; then
   log "5/5 creating Instance kac-nlb-seed-inst"
   body=$(cat <<EOF
 {
-  "folderId":"$PROJECT_ID",
+  "projectId":"$PROJECT_ID",
   "zoneId":"$ZONE_ID",
   "name":"kac-nlb-seed-inst",
   "resourcesSpec":{"memory":"1073741824","cores":"1"},
@@ -267,6 +376,7 @@ existingRegionId=$REGION_ID
 existingZoneId=$ZONE_ID
 existingNetworkId=$NET_ID
 existingSubnetId=$SUBNET_ID
+existingExternalPoolId=$POOL_ID
 existingExternalAddressId=$EXT_ADDR_ID
 existingInstanceId=$INSTANCE_ID
 existingNicId=$NIC_ID

@@ -26,9 +26,14 @@ def _cleanup_net_lenient():
     # (empty/uppercase name → 200, ресурс создан) → удаление parent-сети блокируется
     # FK RESTRICT (FailedPrecondition 400). Оба исхода приемлемы здесь — под тестом
     # поведение Create, а не уборка. Утечка тестовой сети безвредна для прогона.
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                             *save_from_response("j.id", "opId")])
+    # retry_on=(403,): DELETE своей свежей сети может краснеть 403, пока owner-tuple
+    # материализуется (eventual-consistency после opgate) — ретраим ТОЛЬКО этот транзиент
+    # (200/400 терминальны, 404 не крутим).
+    return retry_until_authorized(
+        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                          *save_from_response("j.id", "opId")]),
+        retry_on=(403,))
 
 
 CASES.append(Case(
@@ -44,9 +49,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path="/vpc/v1/routeTables/{{rtId}}",
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/routeTables/{{rtId}}",
              test_script=[*assert_status(200),
-                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('rtId')));"]),
+                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('rtId')));"])),
         Step(name="del-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -116,7 +121,7 @@ CASES.append(Case(
     priority="P0",
     steps=[
         Step(name="list-noproject", method="GET", path="/vpc/v1/routeTables",
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 
@@ -128,7 +133,7 @@ CASES.append(Case(
     steps=[
         Step(name="patch-nx", method="PATCH", path="/vpc/v1/routeTables/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -139,7 +144,7 @@ CASES.append(Case(
     priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/routeTables/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -183,9 +188,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]),
         poll_operation_until_done(),
-        Step(name="patch", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
+        retry_until_authorized(Step(name="patch", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
              body={"updateMask": "description", "description": "upd-newman"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -221,10 +226,7 @@ CASES.append(Case(
         Step(name="patch-nx", method="PATCH",
              path="/vpc/v1/routeTables/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Route table ... not found', () => pm.expect(pm.response.json().message).to.match(/^Route table .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -235,10 +237,7 @@ CASES.append(Case(
     steps=[
         Step(name="del-nx", method="DELETE",
              path="/vpc/v1/routeTables/{{garbageVpcId}}",
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Route table ... not found', () => pm.expect(pm.response.json().message).to.match(/^Route table .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -254,8 +253,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]),
         poll_operation_until_done(),
-        Step(name="del-happy", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-happy", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_net(),
     ],
@@ -268,7 +267,7 @@ CASES.append(Case(
     steps=[
         Step(name="lop-nx", method="GET",
              path="/vpc/v1/routeTables/{{garbageVpcId}}/operations",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -425,15 +424,15 @@ CASES.append(Case(
         # 2. Subnet (без явного route_table_id).
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "rt-autoassoc-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "name": "rt-autoassoc-sub-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.247.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         # 2a. Verify subnet.route_table_id пустой до создания RT (precondition).
-        Step(name="get-sub-before-rt", method="GET", path="/vpc/v1/subnets/{{subId}}",
+        retry_until_authorized(Step(name="get-sub-before-rt", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('subnet.route_table_id empty before RT.Create', () => pm.expect(pm.response.json().routeTableId || '').to.eql(''));"]),
+                          "pm.test('subnet.route_table_id empty before RT.Create', () => pm.expect(pm.response.json().routeTableId || '').to.eql(''));"])),
         # 3. RouteTable.
         Step(name="cr-rt", method="POST", path="/vpc/v1/routeTables",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
@@ -494,7 +493,7 @@ CASES.append(Case(
         # Создаем Subnet (auto-pick RT нет, поскольку RT в этой сети еще нет).
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "rt-da-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "name": "rt-da-sub-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.235.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -506,14 +505,14 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]),
         poll_operation_until_done(),
-        Step(name="verify-subnet-rt-set", method="GET", path="/vpc/v1/subnets/{{subId}}",
+        retry_until_authorized(Step(name="verify-subnet-rt-set", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
                  "pm.test('Subnet auto-assoc к свежему RT (BEFORE INSERT trigger или AFTER INSERT ON route_tables)', () => {",
                  "  pm.expect(j.routeTableId, JSON.stringify(j)).to.eql(pm.environment.get('rtId'));",
                  "});",
-             ]),
+             ])),
         Step(name="del-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

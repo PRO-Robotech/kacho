@@ -6,6 +6,7 @@ package listener
 import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -28,6 +29,13 @@ type OperationsRepo = operations.Repo
 // клиент остаётся только для release legacy-VIP в Delete (FreeIP / ClearReference)
 // — pre-cut листенеры до hard-cut могли нести собственный address_id.
 type InternalAddressClient = vpcclient.InternalAddressClient
+
+// Registrar — sync-primary owner-tuple registrar (kacho-iam
+// InternalIAMService.RegisterResource). Create после durable commit листенера +
+// его `fga_register_outbox`-intent'а синхронно регистрирует containment-tuple,
+// чтобы grant создателя был виден сразу (закрывает async-only окно). BEST-EFFORT:
+// сбой → лог, НЕ фейлит Operation (ban #9). Impl — *iamclient.SyncRegistrar.
+type Registrar = iamclient.Registrar
 
 // FGA owner-hierarchy / creator / parent-link tuple-регистрация — через
 // transactional-outbox (FGARegisterOutbox emit в writer-tx + register-drainer →

@@ -16,11 +16,23 @@ spec:
       labels:
         app: {{ .Release.Name }}-storage
     spec:
+      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        # Writable scratch для read-only-rootfs контейнеров.
+        - name: tmp
+          emptyDir: {}
       {{- if .Values.migrator.enabled }}
       initContainers:
         - name: migrator
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           command: ["/usr/local/bin/kacho-migrator", "up"]
           envFrom:
             - configMapRef:
@@ -32,6 +44,11 @@ spec:
         - name: storage
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           args: ["serve"]
           ports:
             - name: grpc-public

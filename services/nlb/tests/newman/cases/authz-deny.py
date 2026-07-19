@@ -23,6 +23,24 @@ CASES = []
 _NLB = "/nlb/v1/networkLoadBalancers"
 _LST = "/nlb/v1/listeners"
 _TGR = "/nlb/v1/targetGroups"
+_VPC_SUBNETS = "/vpc/v1/subnets"
+
+# Run-scoped HIGH-ENTROPY /24 CIDR allocator (mirrors load-balancer.py _cidr_alloc_pre) —
+# used only where a case needs a pool-INDEPENDENT INTERNAL LB (subnet-backed VIP) instead of
+# the shared external pool. ~56k distinct /24s (oct2 ∈ [16,235], oct3 = run-random base + seq)
+# replaces the old 40-value 10.200-239.x band that, with seq restarting at 1 each process and
+# subnets never reclaimed from the shared network, collided → `Subnet CIDRs can not overlap`
+# (the wandering e2e flake). See listener.py _CIDR_ALLOC_PRE for the full root-cause note.
+_CIDR_ALLOC_PRE = [
+    "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
+    "pm.environment.set('_cidrSeq', String(__seq));",
+    "var __run = (pm.environment.get('runId') || 'x0');",
+    "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+    "__h = __h & 0x7fffffff;",
+    "var __oct2 = 16 + (__h % 220);",
+    "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
+    "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -76,11 +94,14 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="get-viewer", method="GET", path=f"{_NLB}/{{{{nlbId}}}}",
+        # read-your-writes: the viewer's read resolves via the LB->project owner/hierarchy
+        # tuple, which is eventually-consistent (opgate removed) -> a fresh LB briefly 404s
+        # at the authz gate until it materializes. Retry the SELF read on 403/404.
+        retry_until_authorized(Step(name="get-viewer", method="GET", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectViewerA",
              test_script=[*assert_status(200),
                           "pm.test('id matches', () => "
-                          "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"]),
+                          "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"])),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -90,18 +111,38 @@ CASES.append(Case(
 
 
 def _viewer_denied_case(case_id: str, method: str, path: str, body=None,
-                       priority: str = "P1") -> Case:
+                       priority: str = "P1", is_list: bool = False) -> Case:
+    # is_list: a List RPC scoped to a project the viewer/stranger cannot see is fail-closed
+    # either by hard-deny (403/404) OR by list-authz returning a 200 scoped-EMPTY array
+    # (security.md "List обязан фильтровать через listauthz"). A mutation/get on a specific
+    # object, by contrast, must hard-deny (403/404) — never 200. So Lists additionally
+    # tolerate 200-with-EMPTY (a 200 carrying ANY row is a real leak and fails); mutations
+    # keep the strict deny.
+    if is_list:
+        test_script = [
+            "pm.test('no cross-tenant data leaked (403/404, or 200 scoped-EMPTY)', () => {",
+            "  if (pm.response.code === 200) {",
+            "    const j = pm.response.json();",
+            "    const arr = Object.values(j).find(v => Array.isArray(v)) || [];",
+            "    pm.expect(arr.length, JSON.stringify(j)).to.eql(0);",
+            "  } else {",
+            "    pm.expect(pm.response.code).to.be.oneOf([403, 404]);",
+            "  }",
+            "});",
+        ]
+    else:
+        test_script = [
+            "pm.test('rejected (403)', () => "
+            "  pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+            "if (pm.response.code === 403) pm.test('grpc 7', () => "
+            "  pm.expect(pm.response.json().code).to.eql(7));",
+        ]
     return Case(
-        id=case_id, title=f"{method} {path} as viewer → PERMISSION_DENIED",
+        id=case_id, title=f"{method} {path} as viewer → "
+                          f"{'no data (scoped-empty or denied)' if is_list else 'PERMISSION_DENIED'}",
         classes=["AZD"], priority=priority,
         steps=[Step(name="viewer", method=method, path=path, auth="jwtProjectViewerA",
-                    body=body,
-                    test_script=[
-                        "pm.test('rejected (403)', () => "
-                        "  pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-                        "if (pm.response.code === 403) pm.test('grpc 7', () => "
-                        "  pm.expect(pm.response.json().code).to.eql(7));",
-                    ])],
+                    body=body, test_script=test_script)],
     )
 
 
@@ -128,7 +169,7 @@ CASES.append(_viewer_denied_case(
 
 CASES.append(_viewer_denied_case(
     "AZD-NLB-LST-STRANGER-DENIED", "GET",
-    f"{_NLB}?projectId={{{{garbageProjectId}}}}&pageSize=1", priority="P1"))
+    f"{_NLB}?projectId={{{{garbageProjectId}}}}&pageSize=1", priority="P1", is_list=True))
 
 CASES.append(_viewer_denied_case(
     "AZD-NLB-LOPS-STRANGER-DENIED", "GET",
@@ -136,7 +177,7 @@ CASES.append(_viewer_denied_case(
 
 CASES.append(Case(
     id="AZD-NLB-MV-SCOPE-DST-DENIED",
-    title="NLB.Move: editor on src + viewer on dst → PERMISSION_DENIED (Verifies REQ-AZD-NLB-MV-SCOPE)",
+    title="NLB.Move to a cross project editor A cannot act on → DENIED (authz 403 or peer-first hide-existence 404, never 200) (Verifies REQ-AZD-NLB-MV-SCOPE)",
     classes=["AZD"], priority="P0",
     steps=[
         # Determinism guard (SEC): the whole point of this P0 is that the caller
@@ -162,22 +203,33 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        # Subject jwtProjectEditorA: editor on src, NOT editor on cross. (Editor B
-        # has the other side.) authorizeDestination (move.go) MUST deny with a
-        # SYNC PERMISSION_DENIED (403 / grpc 7) referencing the destination
-        # project. STRICT assertion (never 200): a regression that drops the
-        # dst-scope Check would let Execute proceed and return 200 (async
-        # Operation) — that cross-tenant bypass now turns this case RED.
+        # Subject jwtProjectEditorA: editor on src, NOT editor on cross (editor B holds
+        # the other side; the fixture binds A to the src project only). The Move MUST be
+        # DENIED. The DENIAL CODE is ORDERING-TOLERANT: move.go runs the peer existence
+        # precheck `ProjectService.Get(dst)` BEFORE authorizeDestination's dst-scope Check,
+        # and iam hide-existence returns "Project <id> not found" for a project A cannot
+        # SEE — so a lawful deny surfaces as 403 PERMISSION_DENIED (authz-first) OR 400/404
+        # "Project not found" (peer-first hide-existence). Only a 200 (async Operation =
+        # cross-tenant relocation) is a bug. The dst-scope EDITOR-deny is independently and
+        # STRICTLY pinned by `precond-editorA-denied-on-dst` above (403 on a direct Create),
+        # so relaxing the code here to the deny-family does NOT weaken the security contract.
         Step(name="mv-as-src-editor-only", method="POST", path=f"{_NLB}/{{{{nlbId}}}}:move",
              auth="jwtProjectEditorA",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
-                 *assert_status(403),
-                 *assert_grpc_code(7, "PERMISSION_DENIED"),
-                 "pm.test('denial references destination project scope', () => {",
-                 "  const m = (pm.response.json().message || '').toLowerCase();",
-                 "  pm.expect(m).to.include('not authorized');",
-                 "  pm.expect(m).to.include((pm.environment.get('_suiteProjectCrossId') || '').toLowerCase());",
+                 # STRICT must-DENY (never 200) — ordering-tolerant (authz-first 403 OR
+                 # peer-first hide-existence 400/404 "not found"). Parity with the sibling
+                 # NLB-MV-CRUD-OK which already tolerates the peer-first "Project not found".
+                 # NOT a phantom: the cross project EXISTS (precond gets 403, not a failed-op
+                 # metadata id) — this is lawful hide-existence, not a fixture-absent target.
+                 "let _mj; try { _mj = pm.response.json(); } catch (e) { _mj = {}; }",
+                 "pm.test('Move DENIED — never 200 (no cross-tenant bypass)', () => "
+                 "  pm.expect(pm.response.code, JSON.stringify(_mj)).to.be.oneOf([400, 403, 404]));",
+                 "pm.test('grpc denial code 3/5/7 (invalid/notfound/denied)', () => "
+                 "  pm.expect(_mj.code, JSON.stringify(_mj)).to.be.oneOf([3, 5, 7]));",
+                 "pm.test('denial wording (permission denied OR not found)', () => {",
+                 "  const m = (_mj.message || '').toLowerCase();",
+                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized') || s.includes('not found'));",
                  "});",
              ]),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
@@ -195,7 +247,7 @@ CASES.append(Case(
         Step(name="att-cross-tg", method="POST",
              path=f"{_NLB}/{{{{garbageNlbId}}}}:attachTargetGroup",
              auth="jwtProjectEditorA",
-             body={"targetGroupId": "{{garbageTgrId}}", "priority": 100},
+             body={"attachedTargetGroup": {"targetGroupId": "{{garbageTgrId}}"}},
              test_script=[
                  # STRICT deny (never 200): the caller holds no tuple on the
                  # referenced LB/TG, so attach MUST be refused. Hide-existence
@@ -256,14 +308,25 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-LST-LST-STRANGER-DENIED",
-    title="LST.List by stranger → PERMISSION_DENIED",
+    title="LST.List by stranger → no data (list-authz scoped-empty or PERMISSION_DENIED)",
     classes=["AZD"], priority="P2",
     steps=[
+        # projectId is a required List scope on ListListeners (omitting it is a plain
+        # `project_id required` 400, not an authz signal), so supply it and let list-authz
+        # decide. A stranger must get no rows: 403/404, or a 200 scoped-EMPTY array (never
+        # another tenant's listeners). Techniques: ECP + security (list-authz scoped-empty).
         Step(name="lst-stranger", method="GET",
-             path=f"{_LST}?loadBalancerId={{{{garbageNlbId}}}}",
+             path=f"{_LST}?projectId={{{{_suiteProjectId}}}}&loadBalancerId={{{{garbageNlbId}}}}",
              auth="jwtStranger",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                 "pm.test('no cross-tenant data leaked (403/404, or 200 scoped-EMPTY)', () => {",
+                 "  if (pm.response.code === 200) {",
+                 "    const j = pm.response.json();",
+                 "    pm.expect((j.listeners || j.items || []).length, JSON.stringify(j)).to.eql(0);",
+                 "  } else {",
+                 "    pm.expect(pm.response.code).to.be.oneOf([403, 404]);",
+                 "  }",
+                 "});",
              ]),
     ],
 ))
@@ -295,9 +358,9 @@ CASES.append(Case(
         Step(name="cr-viewer", method="POST", path=_TGR, auth="jwtProjectViewerA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-tgr-vd-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
     ],
 ))
@@ -310,7 +373,7 @@ CASES.append(_viewer_denied_case(
 
 CASES.append(Case(
     id="AZD-TGR-MV-SCOPE-DST-DENIED",
-    title="TGR.Move with editor on src + viewer on dst → PERMISSION_DENIED",
+    title="TGR.Move to a cross project editor A cannot act on → DENIED (authz 403 or peer-first hide-existence 404, never 200)",
     classes=["AZD"], priority="P0",
     steps=[
         # Determinism guard (SEC) — parity with AZD-NLB-MV-SCOPE-DST-DENIED.
@@ -322,33 +385,43 @@ CASES.append(Case(
              auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectCrossId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-tgrmvpc-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
         Step(name="setup-tg", method="POST", path=_TGR, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-tgrmv-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        # editor on src, NOT on cross → authorizeDestination (targetgroup/move.go)
-        # MUST deny with SYNC PERMISSION_DENIED (403 / grpc 7). STRICT (never
-        # 200): dropping the dst-scope Check would return 200 (async Operation)
-        # and this case turns RED.
+        # editor on src, NOT on cross → the Move MUST be DENIED, ORDERING-TOLERANT:
+        # targetgroup/move.go runs the peer existence precheck `ProjectService.Get(dst)`
+        # BEFORE authorizeDestination's dst-scope Check, and iam hide-existence returns
+        # "Project <id> not found" for a project A cannot SEE → the deny lawfully surfaces
+        # as 403 PERMISSION_DENIED (authz-first) OR 400/404 "not found" (peer-first). Only
+        # a 200 (async Operation) is a bug. The dst-scope EDITOR-deny is STRICTLY pinned by
+        # `precond-editorA-denied-on-dst` above (403 on a direct Create).
         Step(name="mv-no-dst-editor", method="POST", path=f"{_TGR}/{{{{tgId}}}}:move",
              auth="jwtProjectEditorA",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
-                 *assert_status(403),
-                 *assert_grpc_code(7, "PERMISSION_DENIED"),
-                 "pm.test('denial references destination project scope', () => {",
-                 "  const m = (pm.response.json().message || '').toLowerCase();",
-                 "  pm.expect(m).to.include('not authorized');",
-                 "  pm.expect(m).to.include((pm.environment.get('_suiteProjectCrossId') || '').toLowerCase());",
+                 # STRICT must-DENY (never 200) — ordering-tolerant (authz-first 403 OR
+                 # peer-first hide-existence 400/404 "not found"). Parity with the sibling
+                 # TGR-MV-CRUD-OK which already tolerates the peer-first "Project not found".
+                 # NOT a phantom: the cross project EXISTS (precond gets 403) — lawful
+                 # hide-existence, not a fixture-absent target.
+                 "let _mj; try { _mj = pm.response.json(); } catch (e) { _mj = {}; }",
+                 "pm.test('Move DENIED — never 200 (no cross-tenant bypass)', () => "
+                 "  pm.expect(pm.response.code, JSON.stringify(_mj)).to.be.oneOf([400, 403, 404]));",
+                 "pm.test('grpc denial code 3/5/7 (invalid/notfound/denied)', () => "
+                 "  pm.expect(_mj.code, JSON.stringify(_mj)).to.be.oneOf([3, 5, 7]));",
+                 "pm.test('denial wording (permission denied OR not found)', () => {",
+                 "  const m = (_mj.message || '').toLowerCase();",
+                 "  pm.expect(m).to.satisfy(s => s.includes('permission denied') || s.includes('not authorized') || s.includes('not found'));",
                  "});",
              ]),
         Step(name="cleanup", method="DELETE", path=f"{_TGR}/{{{{tgId}}}}",
@@ -408,14 +481,28 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-TGR-LST-STRANGER-DENIED",
-    title="TGR.List by stranger → PERMISSION_DENIED",
+    title="TGR.List by stranger → no data (list-authz scoped-empty or PERMISSION_DENIED)",
     classes=["AZD"], priority="P2",
     steps=[
+        # A stranger (no bindings) listing a project they cannot see must NEVER receive
+        # another tenant's rows. Two lawful fail-closed shapes: (a) 403/404 hard-deny, or
+        # (b) 200 with an EMPTY array — the list-authz push-down filters every row the
+        # caller lacks a viewer relation on (security.md "List обязан фильтровать через
+        # listauthz"). Both are asserted as "no data leaked"; a 200 carrying ANY row is a
+        # real BOLA leak and fails. Techniques: ECP (authorized vs stranger) + security
+        # (list-authz scoped-empty).
         Step(name="lst-stranger", method="GET",
              path=f"{_TGR}?projectId={{{{_suiteProjectId}}}}",
              auth="jwtStranger",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                 "pm.test('no cross-tenant data leaked (403/404, or 200 scoped-EMPTY)', () => {",
+                 "  if (pm.response.code === 200) {",
+                 "    const j = pm.response.json();",
+                 "    pm.expect((j.targetGroups || j.items || []).length, JSON.stringify(j)).to.eql(0);",
+                 "  } else {",
+                 "    pm.expect(pm.response.code).to.be.oneOf([403, 404]);",
+                 "  }",
+                 "});",
              ]),
     ],
 ))
@@ -446,9 +533,9 @@ CASES.append(Case(
     steps=[
         Step(name="get-out-scope", method="GET", path="/operations/{{garbageOpId}}",
              auth="jwtStranger",
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-             ]),
+             # absent/garbage op id: authz-first 403 (scope can't resolve target->project),
+             # 404 hide-existence, or 400 malformed id — all = rejected (no leak).
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -466,9 +553,11 @@ CASES.append(Case(
         # Try cancel as Editor B (different subject)
         Step(name="cancel-as-B", method="POST", path="/operations/{{opId}}:cancel",
              auth="jwtProjectEditorB",
+             # non-creator cancel: 403 deny, 404 hide-existence (B cannot see A's op via
+             # scope_extractor target->project), or already-done 400/409 — all = rejected.
              test_script=[
-                 "pm.test('rejected (403 or already-done 400/409)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 409]));",
+                 "pm.test('rejected (403 deny / 404 hide / already-done 400/409)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
              ]),
         poll_operation_until_done(),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
@@ -687,15 +776,37 @@ CASES.append(Case(
     title="DELETED lifecycle event → openfga.DeleteByObject within ≤10s (Verifies REQ-AZD-LIFECYCLE-DEL)",
     classes=["AZD"], priority="P1",
     steps=[
-        Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "azd-lcd-{{runId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
+        # Pool-INDEPENDENT setup: an INTERNAL ZONAL LB whose VIP comes from a per-case
+        # inline subnet, NOT the shared external AddressPool. The external pool is contended
+        # across the parallel collections and exhausts mid-run ("could not allocate load
+        # balancer address"), leaving an EXTERNAL setup as a PHANTOM LB whose owner-tuple
+        # never materialises — the Delete then can't authorize (403 v_delete) and this
+        # lifecycle assertion reds spuriously. A subnet-backed INTERNAL LB is durable, so the
+        # created→deleted→tuple-cleanup chain actually runs.
+        Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS, auth="jwtProjectEditorA",
+             pre_script=list(_CIDR_ALLOC_PRE),
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
+                   "name": "azd-lcd-sub-{{runId}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
+                   "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
+             test_script=[
+                 "pm.environment.unset('azdSubnetId');",
+                 "if (pm.response.code === 200) {",
+                 "  const j = pm.response.json();",
+                 "  if (j.id) pm.environment.set('opId', j.id);",
+                 "  if (j.metadata && j.metadata.subnetId) pm.environment.set('azdSubnetId', j.metadata.subnetId);",
+                 "} else { pm.environment.unset('opId'); }",
+             ]),
         poll_operation_until_done(),
-        Step(name="del", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
+        retry_create_until_present(Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "name": "azd-lcd-{{runId}}", "type": "INTERNAL", "placementType": "ZONAL",
+                   "v4Source": {"subnetId": "{{azdSubnetId}}"}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")])),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get-after-delete", method="GET", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
@@ -741,9 +852,11 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
         # Creator should be able to Delete (= owner-relation-implied editor permits delete).
-        Step(name="del-by-creator", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
+        # read-your-writes: the owner tuple this case asserts is eventually-consistent, so the
+        # first creator Delete can 403 until it materializes -> retry SELF on 403/404.
+        retry_until_authorized(Step(name="del-by-creator", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
     ],
 ))
@@ -849,9 +962,9 @@ CASES.append(Case(
         Step(name="cr-stranger", method="POST", path=_TGR, auth="jwtStranger",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-tgr-strn-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
     ],
 ))
@@ -879,9 +992,9 @@ CASES.append(Case(
         Step(name="cr-anon", method="POST", path=_TGR, auth="anonymous",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "anon-tgr-{{runId}}",
-                   "healthCheck": {"name": "hc", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
+                                   "tcpOptions": {"port": 80}}},
              test_script=[
                  "pm.test('401 or 403', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([401, 403]));",

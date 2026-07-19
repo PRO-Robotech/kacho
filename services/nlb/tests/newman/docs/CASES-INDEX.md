@@ -88,10 +88,8 @@ existing pattern, no separate catalogue entry needed").
 - `*-STOP-STATE-DELETING` — STATE,NEG/P1 — Stop on DELETING → FailedPrecondition
 - `*-ATT-STATE-REGION-MISMATCH` — STATE,NEG/P0 — TG in different region → FailedPrecondition (Verifies REQ-NLB-SAME-REGION)
 - `*-ATT-STATE-TG-DELETING` — STATE,NEG/P1 — TG in DELETING → FailedPrecondition
-- `*-ATT-VAL-PRIORITY-OVER` — VAL,BVA/P1 — priority out of [0,1000]
 - `*-ATT-NEG-TG-UNKNOWN` — NEG/P1 — unknown TG id → NotFound
-- `*-ATT-IDEM-REPEAT-OK` — IDEM/P1 — repeat Attach with same priority → OK (no duplicate row)
-- `*-ATT-IDEM-PRIORITY-UPDATE` — IDEM,STATE/P1 — Attach with new priority → ON CONFLICT DO UPDATE
+- `*-ATT-IDEM-REPEAT-OK` — IDEM/P1 — repeat Attach (idempotent, ON CONFLICT DO NOTHING) → OK (no duplicate row)
 - `*-DET-NEG-NOT-ATTACHED` — NEG,STATE/P1 — Detach when no attach exists → FailedPrecondition
 - `*-MV-NEG-ATTACHED-TG` — NEG,STATE/P0 — Move with attached TG → FailedPrecondition (Verifies REQ-NLB-MV-NEG)
 - `*-MV-VAL-MISSING-DEST` — VAL/P1 — destinationProjectId required
@@ -394,9 +392,6 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-DET-NEG-TG-UNKNOWN` — NEG/P1 — Detach unknown TG id → 404
 - `*-GTS-NEG-NF-UNKNOWN` — NEG/P1 — GetTargetStates of unknown LB (with well-formed targetGroupId query param) → 404 NotFound (target_group_id is required and validated first)
 - `*-LOPS-NEG-NF-UNKNOWN` — NEG/P1 — ListOperations of unknown id → 200 + empty operations (list-by-parent, no existence check)
-- `*-ATT-BVA-PRIORITY-MIN-0` — BVA/P2 — priority=0 (lower bound) → OK
-- `*-ATT-BVA-PRIORITY-MAX-1000` — BVA/P2 — priority=1000 (upper) → OK
-- `*-ATT-BVA-PRIORITY-NEGATIVE` — VAL,BVA/P1 — priority=-1 → InvalidArgument
 - `*-CR-BVA-LABELS-MAX-64` — BVA/P2 — exactly 64 labels (upper bound) → OK
 - `*-CR-CRUD-NO-OPTIONAL-FIELDS` — CRUD/P2 — Create with only required fields → OK
 - `*-CR-CRUD-WITH-DESCRIPTION` — CRUD/P2 — Create with non-empty description → OK
@@ -420,8 +415,8 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-LST-FILTER-NAME` — LSG/P2 — List with filter name="X" → handled
 - `*-LST-PAGE-ROUNDTRIP` — CRUD,LSG,BVA/P2 — pagination round-trip on listeners
 - `*-CR-CRUD-UDP-PROTOCOL` — CRUD/P1 — Create Listener protocol=UDP → OK
-- `*-CR-CRUD-HTTPS-PROBE` — CRUD/P1 — Create TG with https probe → OK
-- `*-CR-CRUD-GRPC-PROBE` — CRUD/P1 — Create TG with grpc probe → OK
+- `*-CR-VAL-HTTPS-PROBE-UNSUPPORTED` — VAL/P1 — Create TG with https probe → 400 (proto oneof lacks https_options; verifies #8)
+- `*-CR-VAL-GRPC-PROBE-UNSUPPORTED` — VAL/P1 — Create TG with grpc probe → 400 (proto oneof lacks grpc_options; verifies #8)
 - `*-CR-CRUD-DEREG-MIN-0` — BVA,CRUD/P2 — deregistration_delay_seconds=0 → OK
 - `*-CR-CRUD-DEREG-MAX-3600` — BVA,CRUD/P2 — deregistration_delay_seconds=3600 → OK
 - `*-CR-CRUD-SLOW-START-MIN-0` — BVA,CRUD/P2 — slow_start_seconds=0 → OK
@@ -460,7 +455,7 @@ chain on the seeded umbrella stack).
 
 ### UC-1 — EXTERNAL NLB from nothing to traffic-ready (6.0-34)
 - `XRES-E2E-EXTERNAL-FULL-FLOW` — CRUD,STATE/P0 — LB→listener(auto v4 VIP)→TG→addTargets→attach→default_tg→GetTargetStates; LB INACTIVE→ACTIVE on attach
-- `XRES-E2E-EXTERNAL-IPV6-VIP` — CRUD/P1 — EXTERNAL listener with auto IPv6 VIP (per-family dispatch; v6-pool tolerant)
+- `XRES-E2E-EXTERNAL-IPV6-VIP` — CRUD/P1 — EXTERNAL LB with auto IPv6 VIP (per-family VIP on LoadBalancer via v6Source; v6AddressId→bound vpc Address; v6-pool tolerant)
 - `XRES-E2E-DEFAULT-TG-UNATTACHED-FP` — NEG,STATE/P1 — listener default_target_group_id → un-attached TG → FAILED_PRECONDITION (composite FK)
 - `XRES-E2E-V4-LISTENER-V6-ADDRESS-INVALID` — NEG,VAL/P1 — IPV4 listener + BYO IPv6 Address → InvalidArgument (family mismatch)
 

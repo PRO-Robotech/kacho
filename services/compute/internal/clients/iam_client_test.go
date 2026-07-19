@@ -76,6 +76,23 @@ func TestProjectClient_Exists_NotFound(t *testing.T) {
 	require.False(t, exists)
 }
 
+// TestProjectClient_Exists_MalformedInvalidArgument — iam InvalidArgument (malformed
+// project id, e.g. wrong prefix) → (false, nil), NOT an error. A non-resolvable peer
+// ref (absent OR malformed) is exists=false → checkProject NotFound "Folder not found";
+// it must NOT map to Unavailable (which falsely says "retry later" for a bad input).
+// Regression for DISK-CR-NEG-FOLDER-NOTFOUND (garbageRmId=b1g... → was code 14). Parity
+// with vpc ProjectClient.Exists.
+func TestProjectClient_Exists_MalformedInvalidArgument(t *testing.T) {
+	fake := &fakeProjectServiceClient{getFn: func(_ context.Context, _ *iamv1.GetProjectRequest) (*iamv1.Project, error) {
+		return nil, status.Error(codes.InvalidArgument, "invalid project id 'b1gnonexistent999999'")
+	}}
+	c := NewProjectClientWith(fake)
+
+	exists, err := c.Exists(context.Background(), "b1gnonexistent999999")
+	require.NoError(t, err)
+	require.False(t, exists)
+}
+
 // TestProjectClient_Exists_Unavailable — iam недоступен (transport-ошибка) →
 // Exists пробрасывает ошибку (НЕ трактует как not-found, НЕ silent-success);
 // checkProject мапит это в Unavailable "folder check: ..." (fail-closed).

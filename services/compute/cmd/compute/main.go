@@ -305,6 +305,22 @@ func runServe(cfg config.Config) error {
 		logger.Warn("authz interceptor NOT enabled — KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR not configured (dev mode)")
 	}
 
+	// sync-registrar owner-tuple (window-оптимизация): немедленная post-commit
+	// регистрация owner-tuple Instance/Disk через InternalIAMService.RegisterResource,
+	// сужающая eventual-consistency-окно до poll'а register-drainer'а. register-drainer
+	// остаётся at-least-once backstop'ом. Активен только когда authzConn сконфигурирован
+	// (production/authz-on) и drainer включён; иначе — только drainer.
+	if authzConn != nil && cfg.FGARegisterDrainerEnabled {
+		reg, closeReg, rerr := buildSyncRegistrar(cfg, logger)
+		if rerr != nil {
+			return fmt.Errorf("build owner-tuple sync registrar: %w", rerr)
+		}
+		defer closeReg()
+		svcs.instance.WithOwnerRegistrar(reg)
+		svcs.disk.WithOwnerRegistrar(reg)
+		logger.Info("owner-tuple sync-registrar enabled (Instance/Disk Create)")
+	}
+
 	// FGA-filtered List handlers. Build the filter from
 	// configurable env vars (ListFilter*). If iam-authz conn is unavailable
 	// (dev / breakglass), filter is nil → handler bypasses FGA filtering.
@@ -907,6 +923,30 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 		"iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
 
 	return d.Run, func() { _ = conn.Close() }, nil
+}
+
+// buildSyncRegistrar дилит kacho-iam internal :9091 (InternalIAMService.
+// RegisterResource) тем же compute→iam fga-proxy ребром (mTLS opt-in через
+// cfg.IAMRegisterClientCreds — enable=false → insecure dev) и собирает синхронный
+// owner-tuple registrar (owner-tuple op-gating P4). Отдельный dial-conn
+// (idle-keepalive: registrar срабатывает лишь на Create-всплесках); возвращает
+// closer. Addr выводится из AuthZIAMGRPCAddr (тот же iam-internal, что для Check),
+// fallback — IAMGRPCAddr. Зеркалит kacho-vpc buildSyncRegistrar.
+func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRegistrar, func(), error) {
+	addr := cfg.AuthZIAMGRPCAddr
+	if addr == "" {
+		addr = cfg.IAMGRPCAddr
+	}
+	creds, cerr := cfg.IAMRegisterClientCreds()
+	if cerr != nil {
+		return nil, nil, fmt.Errorf("compute→iam sync-register mTLS creds: %w", cerr)
+	}
+	conn, cerr := grpc.NewClient(addr, creds, grpcclient.KeepaliveDialOption(true))
+	if cerr != nil {
+		return nil, nil, fmt.Errorf("dial kacho-iam (sync registrar): %w", cerr)
+	}
+	logger.Info("owner-tuple sync-registrar dialed", "iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
+	return clients.NewSyncRegistrar(conn), func() { _ = conn.Close() }, nil
 }
 
 // registerInternalServices — kacho-only/admin RPC на internal listener (:9091,

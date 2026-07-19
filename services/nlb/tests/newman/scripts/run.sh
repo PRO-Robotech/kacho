@@ -10,7 +10,19 @@
 #   ./scripts/run.sh --service load-balancer  # single collection
 #   ./scripts/run.sh --service listener --bail
 #   ./scripts/run.sh --delay 100              # inter-request delay (ms)
-#   ./scripts/run.sh --jobs 2                 # max parallel collections (default 4)
+#   ./scripts/run.sh --jobs 2                 # max parallel collections (default 1)
+#
+# --jobs default is 1 (serial collections) — the nlb load-balancer / cross-resource /
+# listener collections all draw EXTERNAL auto-VIPs from the SINGLE seeded external
+# AddressPool (kac-nlb-seed-ext-pool, 198.51.100.0/24 = 254 addrs). Under >1 concurrent
+# collection that pool is transiently exhausted mid-run (`could not allocate load balancer
+# address`) even though the VIP is correctly recycled on LB delete (release VIP =
+# ClearReference→FreeIP + free_ip_runner self-heal, delete.go) — it is bursty concurrent
+# HOLD, not a pool leak. Serial collections keep the peak concurrent VIP hold tiny (each
+# EXTERNAL case creates then deletes its LB before the next) → no exhaustion, no masking.
+# The external pool's (kind, block) EXCLUDE is GLOBAL and shared with the vpc seed
+# (same 198.51.100.0/24), so simply enlarging THIS seed's CIDR would collide with vpc's
+# /24 and fall back to reusing the /24 — serialization is the reliable, self-contained fix.
 #   ./scripts/run.sh --env environments/kind-stand.postman_environment.json
 #
 # Each collection is isolated via {{runId}}-suffixed resource names within a
@@ -27,7 +39,7 @@ cd "$(dirname "$0")/.."
 SERVICE=""
 BAIL=""
 DELAY="15"
-JOBS="4"
+JOBS="1"   # serial collections: shared external AddressPool contention (see header)
 ENV="environments/local.postman_environment.json"
 EXTRA=()
 
@@ -66,7 +78,7 @@ mkdir -p out
 if [[ -n "$SERVICE" ]]; then
   run_one "$SERVICE"
 else
-  for svc in load-balancer listener target-group targets operation authz-deny; do
+  for svc in load-balancer listener target-group targets operation authz-deny cross-resource list-filter placement-coherence; do
     while [[ "$(jobs -rp | wc -l)" -ge "$JOBS" ]]; do wait -n; done
     run_one "$svc" &
   done

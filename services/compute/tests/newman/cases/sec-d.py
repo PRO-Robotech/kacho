@@ -50,43 +50,43 @@ CASES.append(Case(
         # per-resource Get: резолвится → owner-tuple зарегистрирован в IAM (раньше
         # best-effort dual-write мог потерять tuple → DENY навсегда; теперь intent
         # durable + retried, окно DENY конечно).
-        Step(name="get", method="GET", path=f"{DISKS}/{{{{diskId}}}}",
+        retry_until_authorized(Step(name="get", method="GET", path=f"{DISKS}/{{{{diskId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('diskId')); pm.expect(j.id).to.match(/^epd/); });",
                           "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
                           "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
-                          *assert_created_at_seconds()]),
+                          *assert_created_at_seconds()])),
         Step(name="delete", method="DELETE", path=f"{DISKS}/{{{{diskId}}}}",
              test_script=[*assert_status(200), *assert_operation_envelope(),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         assert_op_success(),
         # после Delete — Get → 404 (unregister-intent тоже записан в writer-tx).
+        # HTTP-статус 404, grpc-код в теле = 5 (NOT_FOUND) — не путать (404 — транспорт).
         Step(name="get-after-delete", method="GET", path=f"{DISKS}/{{{{diskId}}}}",
-             test_script=[*assert_grpc_code(404, "NOT_FOUND")]),
+             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
 ))
 
 
 # ---------------------------------------------------------------------------
 # SEC-D negative (deterministic, без управления инфраструктурой): Delete
-# несуществующего ресурса → async Operation завершается error NOT_FOUND. Это
-# тот же async-мутация-путь (Operation), что и happy-case, но через него видно,
-# что мутация корректно фейлится, а unregister-intent для отсутствующего ресурса
-# не пишется (нет orphan-intent).
+# несуществующего ресурса. Delete-мутация делает ownership-pre-check (svc.Get)
+# ПЕРВЫМ стейтментом (defense-in-depth, зеркалит Get/Update/Delete): well-formed-но-
+# отсутствующий id → repo.Get NotFound → sync 404 (grpc code 5) ДО создания
+# Operation. Никакого async-op не заводится → orphan unregister-intent тривиально
+# отсутствует (нечему записаться). Тот же путь, что get-after-delete happy-кейса.
 # ---------------------------------------------------------------------------
 
 CASES.append(Case(
     id="SECD-DEL-NEG-NOT-FOUND",
-    title="SEC-D: Delete несуществующего disk → Operation error NOT_FOUND (async-мутация-путь корректно фейлится, orphan unregister-intent не пишется)",
+    title="SEC-D: Delete несуществующего disk → sync 404 NOT_FOUND (ownership pre-check фиксирует отсутствие ДО Operation; orphan unregister-intent не пишется)",
     classes=["NEG"], priority="P2",
     steps=[
         Step(name="delete-missing", method="DELETE", path=f"{DISKS}/epd00000000000000000",
-             test_script=[*assert_status(200), *assert_operation_envelope(),
-                          *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        assert_op_error(5, "NOT_FOUND", msg_substr="not found"),
+             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                          "pm.test('text mentions not found', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));"]),
     ],
 ))
 

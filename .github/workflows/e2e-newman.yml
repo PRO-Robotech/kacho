@@ -1,0 +1,231 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# e2e-newman — чёрный ящик против REST api-gateway на живом стенде.
+#
+# Закрывает главный пробел CI: 69 newman-коллекций (iam 27, vpc 15, nlb 9, compute 9,
+# storage 6, registry 3) не гонялись НИ РАЗУ автоматически — только руками. Всё, что
+# ловится лишь на собранном стенде (регистрация RPC в gateway, проброс Internal*,
+# authz-цепочка, миграции, fga-seed), проверялось глазами и «когда вспомнили».
+#
+# ПОЧЕМУ self-hosted (beget-runner). Замерено, а не предположено: стенд требует 4.2 ГБ
+# memory.requests, а у ранера после апгрейда 2026-07-16 — 15 ГБ (14 свободно) и 12 ядер
+# против 4 ядер у ubuntu-latest. До апгрейда было 3.8 ГБ и стенд не влезал даже урезанным
+# (3.08 ГБ + kind control-plane ~0.7 ГБ), поэтому job изначально жил на ubuntu-latest.
+#
+# Диск ранера — УЗКОЕ МЕСТО: 29 ГБ всего, ~11 ГБ свободно (кэш buildkit от docker-build
+# занимает остальное). Поэтому кластер сносится после КАЖДОГО прогона (см. ниже) — и ради
+# места, и ради герметичности.
+name: e2e-newman
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Стенд тяжёлый (~20 мин). Гонять его для устаревшего коммита незачем.
+concurrency:
+  group: e2e-newman-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  newman:
+    name: newman e2e (kind-стенд)
+    runs-on: self-hosted
+    # e2e тяжёлый: fresh dev-up (~13м) + newman-суиты + gates. Суиты теперь гоняются
+    # ПАРАЛЛЕЛЬНО (newman-parallel.sh: один seed → 2 волны — vpc/compute/nlb concurrent,
+    # затем iam изолированно) → wall-time = dev-up + max(wave1) + wave2(iam). iam отдельной
+    # волной: его full-path authz-материализация (AccessBinding CRUD, label-revoke) под
+    # конкурентной нагрузкой leaf-сервисов дрейнила (get-confirms 404, revoke не залипал).
+    # Цель ≤30м на leaf; iam-волна добавляет ~11м → ~40м; 55 — запас на 2-фазу.
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      # На ранере из тулчейнов есть только docker/git/jq/make — go/helm/node/kubectl/kind
+      # ставим сами (setup-* кэшируют их в tool-cache ранера, т.е. платим один раз).
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # ПИН ОБЯЗАТЕЛЕН. setup-helm без version ставит ПОСЛЕДНЮЮ — и притащил Helm 4.2.3,
+      # тогда как локально и на проде helm v3.17. Helm 4 по умолчанию делает
+      # SERVER-SIDE APPLY (Helm 3 — client-side 3-way merge), а это разная семантика
+      # владения полями: apply упирается в чужой field-manager и валится
+      #   UPGRADE FAILED: conflict with "kubectl-patch" using apps/v1:
+      #   .spec.template.metadata.annotations.kacho.cloud/openfga-model-id-rev
+      # (аннотацию объявляет чарт kacho-iam и патчит openfga-bootstrap-job — двойное
+      # владение, для Helm 3 безобидное). Гейт при этом «зеленел», проверяя чарты НЕ той
+      # версией, которой разворачивается прод, — ложная уверенность.
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: azure/setup-kubectl@v4
+
+      # kind — БИНАРЬ, без создания кластера (kind-action создаёт его сам и не умеет
+      # переиспользовать наш путь). Кластер поднимает `make dev-up`: он уже делает
+      # `kind get clusters | grep -q kacho || ./kind/create-cluster.sh` с НАШИМ
+      # kind-config (host-port mappings для ingress; дефолтный конфиг их не несёт).
+      # Так CI идёт ровно тем же путём, что и разработчик локально.
+      # БЕЗ sudo: на self-hosted ранере беспарольный sudo не гарантирован (на
+      # ubuntu-latest он есть всегда — это ровно тот класс различий, на котором
+      # «работало на hosted» ломается при переезде). Ставим в ~/bin и кладём в PATH
+      # через GITHUB_PATH.
+      - name: kind
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -sSLo "$HOME/bin/kind" https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64
+          chmod +x "$HOME/bin/kind"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/kind" version
+
+      - name: newman
+        run: npm i -g newman@6
+
+      # grpcurl нужен фикстурам (tests/authz-fixtures/setup.sh сеет пользователей через
+      # kacho-iam-internal:9091). Без него шаг падает `FATAL: 'grpcurl' not found in PATH`
+      # ДО первой коллекции — стенд поднят, а проверено ноль.
+      - name: grpcurl
+        run: |
+          curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz \
+            | tar -xz -C "$HOME/bin" grpcurl
+          grpcurl --version
+
+      # КРИТИЧНО на self-hosted и не нужно на ubuntu-latest: там VM умирает вместе с
+      # job'ом, здесь машина живёт и kind-кластер переживает прогоны.
+      # Переиспользованный стенд — НЕ экономия, а источник ложных падений: доказано
+      # вручную 2026-07-16 — в кластере, пережившем много прогонов, накопились мусорные
+      # AccessBinding'и, и кейсы, ждущие чистое состояние, краснели «сами по себе».
+      #
+      # Сносим ДО, а не только ПОСЛЕ: прошлый job мог упасть жёстко (timeout/kill) и не
+      # дойти до уборки.
+      - name: снести кластер от прошлого прогона
+        run: |
+          kind delete cluster --name kacho 2>/dev/null || true
+          echo "=== диск до стенда:"; df -h / | tail -1
+
+      - name: стенд (dev-up)
+        working-directory: deploy
+        run: make dev-up
+
+      - name: что поднялось
+        if: always()
+        run: kubectl -n kacho get pods -o wide
+
+      # Наборы гоняем по сервисам, которые dev-профиль реально поднимает. storage и
+      # registry в dev выключены (registry.enabled=false) — их коллекции здесь не
+      # запускаются, иначе job краснел бы за отсутствующий сервис, а не за регрессию.
+      #
+      # ПАРАЛЛЕЛЬНО (newman-parallel.sh): ОДИН seed (per-service изолированные accounts/
+      # projects — директива #2, фикстуры не коллизят) + port-forward один раз → fan-out
+      # iam/vpc/compute/nlb ОДНОВРЕМЕННО. wall-time = dev-up + max(суита) вместо суммы —
+      # это убирает прежний 90м-таймаут (4 серийных суита + retry-инфляция уходили в
+      # no-report при cancel). nlb внутри форсированно --jobs 1 (shared external-VIP pool),
+      # остальные --jobs=$JOBS.
+      #
+      # `|| true` — НЕ проглатывание ошибок: прогон обязан дойти до конца и оставить
+      # отчёты в out/; вердикт выносит assert-suites-green.sh (шаги ниже), который знает
+      # known-RED whitelist и считает отсутствие отчёта провалом («(no-report)»), поэтому
+      # ранний обрыв прогона спрятать нельзя.
+      - name: newman — параллельно (iam+vpc+compute+nlb, один seed+стенд)
+        working-directory: deploy
+        env:
+          DELAY: "10"   # per-request pacing (ms); parallel fan-out уже нагружает стенд
+          JOBS: "2"     # per-suite collection concurrency (nlb форсированно 1)
+        run: ./scripts/newman-parallel.sh || true
+
+      # НАСТОЯЩИЙ гейт. ОДИН скрипт (живёт в iam) применяется к КАЖДОМУ сервису — он
+      # глобит `collections/` + `out/` относительно cwd, поэтому запускается из каталога
+      # проверяемого сервиса. Ровно так было в polyrepo: там vpc/compute/nlb звали
+      # `${GITHUB_WORKSPACE}/kacho-iam/tests/newman/scripts/assert-suites-green.sh` со
+      # своим working-directory.
+      #
+      # Зачем один скрипт: whitelist раньше дублировался инлайном в newman-e2e.yml
+      # каждого репо и РАЗЪЕХАЛСЯ — правки доезжали только до копии kacho-iam, а
+      # vpc/compute/nlb оставались красными на тех же самых общих наборах, которые iam
+      # рапортовал зелёными.
+      #
+      # При переезде в монорепу вызов гейта потерялся вовсе, и краснота шла с кейсов,
+      # RED-by-design: SEC-C-A-* (fga-proxy Register/UnregisterResource) — это
+      # cluster-internal :9091-RPC БЕЗ `google.api.http` mapping (ban #6), grpc-gateway
+      # REST-хендлер для них не генерирует вообще → как black-box REST они неисполнимы
+      # (покрыты fgaproxy_test.go). Все 9 проверок падали «expected 403 to deeply equal
+      # 200» — притом что 403 и есть ПРАВИЛЬНОЕ поведение продукта, прячущего Internal*
+      # с публичного порта.
+      #
+      # Whitelist вычитает только известные (каждый — с тикетом); НОВОЕ падение и
+      # отсутствие отчёта («(no-report)») гейт по-прежнему валит.
+      - name: гейт — newman зелёный (iam)
+        if: always()
+        working-directory: services/iam/tests/newman
+        run: bash scripts/assert-suites-green.sh
+
+      - name: гейт — newman зелёный (vpc)
+        if: always()
+        working-directory: services/vpc/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      - name: гейт — newman зелёный (compute)
+        if: always()
+        working-directory: services/compute/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      - name: гейт — newman зелёный (nlb)
+        if: always()
+        working-directory: services/nlb/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      # coverage-гейт: proto RPC → newman case-id. Тоже был в polyrepo и тоже потерялся.
+      # Порог — не «сколько получилось», а ПОЛ, ниже которого падаем: он ловит регресс
+      # (RPC добавили, кейс — нет). Замерено на монорепе: iam 54/96 RPC (56%).
+      #
+      # proto-glob указывает ВНУТРЬ монорепы. В polyrepo он смотрел на sibling-чекаут
+      # kacho-proto ($GITHUB_WORKSPACE/kacho-proto/...), а до этого — на in-repo дерево,
+      # которого уже не существовало, и гейт падал «no RPCs discovered» (exit 2).
+      - name: coverage-гейт (proto RPC → newman)
+        if: always()
+        working-directory: services/iam/tests/newman
+        env:
+          COVERAGE_MIN: "30"
+        run: |
+          python3 scripts/coverage.py \
+            --proto-glob "${GITHUB_WORKSPACE}/proto/kacho/cloud/iam/v1/*.proto" \
+            --collections-glob 'collections/*.postman_collection.json' \
+            --min "$COVERAGE_MIN"
+
+      # newman-отчёты (per-suite out/*.json) — артефакт для оффлайн-диагноза сигнатур
+      # падений (какой кейс, expected-vs-got). Без него краснота гейта неотлаживаема вне раннера.
+      - name: upload newman reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-out-reports
+          path: services/*/tests/newman/out/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Логи падений: без них newman-краснота в CI неотлаживаема — видно «ожидал 200,
+      # получил 500», но не видно, ПОЧЕМУ сервис отдал 500.
+      - name: логи сервисов при падении
+        if: failure()
+        run: |
+          for d in kacho-iam vpc compute kacho-nlb api-gateway; do
+            echo "───────── $d"
+            kubectl -n kacho logs "deploy/$d" --tail=60 2>/dev/null || echo "  (нет)"
+          done
+          kubectl -n kacho get events --sort-by=.lastTimestamp | tail -25
+
+      # if: always() — кластер надо снести и когда прогон упал. Иначе красный job
+      # оставляет за собой ~5 ГБ на диске, где свободно 11, и следующая СБОРКА падает на
+      # `no space left on device` — в месте, никак не связанном с причиной.
+      - name: снести стенд
+        if: always()
+        run: |
+          kind delete cluster --name kacho 2>/dev/null || true
+          echo "=== диск после уборки:"; df -h / | tail -1

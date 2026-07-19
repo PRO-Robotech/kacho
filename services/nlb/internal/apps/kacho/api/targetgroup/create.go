@@ -49,7 +49,11 @@ type CreateTargetGroupUseCase struct {
 	opsRepo       OpsRepo
 	projectClient ProjectClient
 	regionClient  RegionClient
-	logger        *slog.Logger
+	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource),
+	// вызывается BEST-EFFORT после durable commit TG. nil → только async
+	// register-drainer. См. WithRegistrar.
+	registrar Registrar
+	logger    *slog.Logger
 }
 
 // NewCreateTargetGroupUseCase конструктор.
@@ -66,6 +70,16 @@ func NewCreateTargetGroupUseCase(
 		projectClient: pc, regionClient: rc,
 		logger: logger,
 	}
+}
+
+// WithRegistrar подключает sync-primary owner-tuple registrar. После durable
+// commit TG (+ его `fga_register_outbox`-intent'а) те же owner/containment-tuple'ы
+// синхронно регистрируются в kacho-iam — grant создателя доступен сразу.
+// BEST-EFFORT: сбой sync-Register логируется и глотается (durable intent +
+// drainer — backstop), Operation.done НЕ гейтится (ban #9). Возвращает self.
+func (u *CreateTargetGroupUseCase) WithRegistrar(r Registrar) *CreateTargetGroupUseCase {
+	u.registrar = r
+	return u
 }
 
 // Execute — sync validate + ops insert + spawn worker.
@@ -130,6 +144,10 @@ func (u *CreateTargetGroupUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 
+	// Durable commit → op done сразу. Owner-tuple TargetGroup материализуется
+	// eventually-consistent (writer-TX fga_register_outbox intent → register-
+	// drainer → kacho-iam RegisterResource → reconciler backstop); Operation.done
+	// означает durability ресурса, не видимость owner-tuple в FGA.
 	operations.Run(ctx, u.opsRepo, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		return u.doCreate(workerCtx, tg, principal)
 	})
@@ -180,8 +198,28 @@ func (u *CreateTargetGroupUseCase) doCreate(
 		return nil, mapDomainErr(err)
 	}
 
+	// Sync-primary owner-tuple registration (после durable commit TG + его
+	// fga_register_outbox-intent'а): grant создателя виден сразу, закрывая
+	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
+	// + register-drainer — backstop); Operation.done НЕ гейтится (ban #9).
+	u.syncRegister(ctx, tgRegisterIntent(created, principal))
+
 	// 4. Marshal response.
 	return marshalTargetGroup(created)
+}
+
+// syncRegister — BEST-EFFORT sync owner-tuple регистрация после durable commit.
+// Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent +
+// register-drainer — at-least-once backstop; Operation.done НЕ гейтится (ban #9).
+// nil registrar → no-op.
+func (u *CreateTargetGroupUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+	if u.registrar == nil {
+		return
+	}
+	if err := u.registrar.Register(ctx, intent); err != nil {
+		u.logger.Warn("TargetGroup.Create sync owner-tuple registration incomplete; register-drainer will reconcile",
+			"err", err, "target_group_id", intent.ResourceID)
+	}
 }
 
 // assertNameUnique — sync precheck дубликата (project_id, name).

@@ -19,7 +19,13 @@ spec:
         # ConfigMap-content hash → pod rolling-restart при изменении config.yaml.
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
+        # Writable scratch для read-only-rootfs контейнеров.
+        - name: tmp
+          emptyDir: {}
         - name: config
           configMap:
             name: {{ .Values.name }}-config
@@ -48,8 +54,12 @@ spec:
         - name: migrate
           image: "{{ .Values.image }}"
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           command: ["/usr/local/bin/kacho-migrator", "up"]
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: config
               mountPath: /etc/kacho-vpc
               readOnly: true
@@ -65,6 +75,8 @@ spec:
         - name: {{ .Values.name }}
           image: "{{ .Values.image }}"
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           command: ["/usr/local/bin/kacho-vpc", "serve"]
           ports:
             - name: grpc
@@ -72,6 +84,8 @@ spec:
             - name: grpc-internal
               containerPort: {{ .Values.ports.internalGrpc }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: config
               mountPath: /etc/kacho-vpc
               readOnly: true
@@ -248,6 +262,8 @@ spec:
               containerPort: {{ .Values.opa.port }}
               protocol: TCP
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: opa-config
               mountPath: /etc/opa
               readOnly: true

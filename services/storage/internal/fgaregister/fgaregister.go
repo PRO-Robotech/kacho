@@ -4,11 +4,13 @@
 // Package fgaregister описывает owner-hierarchy tuple storage-ресурса через
 // transactional-outbox (SEC-D).
 //
-// Созданному Volume/Snapshot нужен owner-hierarchy tuple в FGA, чтобы per-resource
-// Check (public Get/Update/Delete, internal Attach/Detach) и gateway
-// scope_extractor {storage_volume,volume_id}/{storage_snapshot,snapshot_id}
-// разрешались по каскаду `<rel> from project`. Без tuple анти-BOLA-gate не может
-// резолвить target→project → owner видит DENY на свой же только что созданный ресурс.
+// Созданному Volume/Snapshot нужен owner-hierarchy intent, чтобы per-resource Check
+// (public Get/Update/Delete, internal Attach/Detach) и gateway scope_extractor
+// {storage_volume,volume_id}/{storage_snapshot,snapshot_id} разрешались. Под flat-моделью
+// (Contract-A: `<rel> from project`-каскад удалён) intent несёт parent_project ресурса в
+// resource_mirror iam, откуда реконсайлер МАТЕРИАЛИЗУЕТ per-object v_* owner-биндинга и
+// фиксирует containment target→project для анти-BOLA-gate. Без него gate не резолвит
+// target→project → owner видит DENY на свой же только что созданный ресурс.
 //
 // INTENT на tuple пишется outbox-строкой (kacho_storage.fga_register_outbox) в ТОЙ
 // ЖЕ writer-TX, что вставляет/удаляет ресурс (один commit, без dual-write). Отдельный
@@ -129,8 +131,10 @@ func Decode(b []byte) (Payload, error) {
 }
 
 // ProjectHierarchy строит канонический tuple `project:<projectID> #project
-// @<objectType>:<objectID>`, нужный каждому storage-ресурсу, чтобы per-resource
-// Check разрешался по каскаду `<rel> from project`.
+// @<objectType>:<objectID>` — parent-pointer containment объект→проект, который
+// iam-реконсайлер читает (через RegisterResource → resource_mirror.parent_project), чтобы
+// материализовать per-object v_* на ресурсе. Под flat-моделью (Contract-A) он НЕ
+// потребляется каскадом `<rel> from project` (удалён).
 func ProjectHierarchy(projectID, objectType, objectID string) Tuple {
 	return Tuple{
 		SubjectID: "project:" + projectID,

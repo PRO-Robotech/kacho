@@ -135,7 +135,7 @@ CASES.append(Case(
                     "const _n = parseInt(pm.environment.get('_azViewerRetry') || '0', 10);",
                     "if (pm.response.code === 404 && _n < 20) {",
                     "  pm.environment.set('_azViewerRetry', String(_n + 1));",
-                    "  postman.setNextRequest(pm.info.requestName);",
+                    "  pm.execution.setNextRequest(pm.info.requestName);",
                     "  return;",
                     "}",
                     "pm.environment.unset('_azViewerRetry');",

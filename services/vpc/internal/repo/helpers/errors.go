@@ -41,6 +41,15 @@ var ErrFailedPrecondition = errors.New("failed precondition")
 // Маппится на gRPC Internal с фиксированным сообщением (no leak).
 var ErrInternal = errors.New("internal database error")
 
+// ErrConflict — retryable concurrency-конфликт: SQLSTATE 40001
+// (serialization_failure) или 40P01 (deadlock_detected). Возникает под
+// параллельной записью на EXCLUDE/gist-constraint (напр. burst из 3 overlapping
+// Subnet.Create одного CIDR: Postgres может выдать deadlock при взаимной проверке
+// gist-диапазонов вместо чистого 23P01). Service-слой маппит в gRPC Aborted
+// (retryable по контракту), а НЕ INTERNAL — клиент может безопасно повторить.
+// Фиксированный текст (no leak, как ErrInternal).
+var ErrConflict = errors.New("conflicting concurrent update")
+
 // ErrPoolNotResolved — ни один шаг IPAM cascade не дал результат.
 var ErrPoolNotResolved = errors.New("no address pool resolved")
 

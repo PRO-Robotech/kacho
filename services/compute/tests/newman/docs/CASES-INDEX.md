@@ -86,9 +86,9 @@ Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
 
 ## DiskType (10 кейсов) — `cases/disk-type.py`
 
-LST-CRUD-OK (≥4 seeded, contains network-ssd/-hdd, zoneIds non-empty), GET-CRUD-OK (network-ssd, zoneIds⊇existingZone),
+LST-CRUD-OK (≥4 seeded, contains network-ssd/-hdd, seeded-types zoneIds non-empty), GET-CRUD-OK (network-ssd, zoneIds⊇existingZone),
 GET-CRUD-HDD-OK, GET-NEG-NOTFOUND, GET-CONF-NF-TEXT, LST-BVA-PAGESIZE-{1,ZERO,OVER-1001}, LST-PAGE-TOKEN-GARBAGE,
-CR-NEG-NOT-ALLOWED (read-only).
+CR-NEG-EMPTY-ID (admin Create is Internal InternalDiskTypeService, ban #6; empty id → 400 INVALID_ARGUMENT or 404 route-absent — non-mutating).
 
 ## Zone / Region — removed (Stage S7)
 
@@ -103,7 +103,7 @@ GET-CRUD-OK (done op + response + metadata.epd), GET-CRUD-FAILED-OP (error code 
 GET-NEG-NOTFOUND-VALID-PREFIX, GET-CONF-NF-TEXT, GET-NEG-UNKNOWN-PREFIX (→400 "prefix"),
 CANCEL-NEG-ALREADY-DONE (→FailedPrec/idempotent), CANCEL-NEG-NOTFOUND, CANCEL-NEG-UNKNOWN-PREFIX.
 
-## `# probe-needed:` маркеры (точный YC-контракт ещё не verified)
+## `# probe-needed:` маркеры (точный Kachō-контракт ещё не verified на стенде)
 
 | Где | Что probed | Текущая формулировка |
 |---|---|---|

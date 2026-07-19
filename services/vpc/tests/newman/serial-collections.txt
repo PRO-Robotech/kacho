@@ -1,0 +1,13 @@
+# Collections that must NOT run concurrently with each other (read by scripts/run.sh).
+#
+# Both create throwaway EXTERNAL_PUBLIC AddressPools with is_default=true. The
+# is_default uniqueness is `(zone_id, kind) WHERE is_default` and only 3 geo zones
+# exist (ru-central1-a/b/d) so the suite's zoneC and zoneD both resolve to
+# ru-central1-d — a SINGLE default partition these two collections would otherwise
+# contend on under --jobs>1 (→ 409 ALREADY_EXISTS). They also share the global
+# per-kind CIDR EXCLUDE for any v6 pool CIDR they happen to reuse. Serialising the
+# two removes that cross-collection collision without serialising the whole suite.
+# (Cross-SERVICE isolation from the nlb seed pool is handled separately via disjoint
+# CIDR blocks 100.100.0.0/16 (internal-pool) / 100.101.0.0/16 (address).)
+internal-pool
+address

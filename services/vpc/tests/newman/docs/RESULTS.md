@@ -27,10 +27,12 @@
 > репозитория вместе с доменом Geography; покрытие Region/Zone — в сервисе compute. Цифры
 > в таблице выше — без него.
 
-**100% PASS, кроме 1 declared known-failing (rule #13)** — см. «Known failing tests —
-product bugs» ниже. Покрыты internal/admin-only IPAM RPC (`InternalAddressPoolService`) —
-kacho-only RPC проброшены через api-gateway cluster-internal mux, возвращают ресурсы
-напрямую (не Operation).
+**100% PASS, кроме declared known-failing (rule #13)** — см. «Known failing tests —
+product bugs» ниже (2 persistent-RED SG-rule-target; `#27` — **FIXED**, product-side
+refcheck реализован). Плюс отдельный
+under-investigation кластер IPAM-resolve (см. ниже). Покрыты internal/admin-only IPAM RPC
+(`InternalAddressPoolService`) — kacho-only RPC проброшены через api-gateway
+cluster-internal mux, возвращают ресурсы напрямую (не Operation).
 
 ## Known failing tests — product bugs (rule #13)
 
@@ -40,11 +42,32 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 
 | Case | Suite | Verifies | Что доказывает | Причина RED |
 |---|---|---|---|---|
-| `SG-DEL-NEG-NIC-ATTACHED` | security-group | [#27](https://github.com/PRO-Robotech/kacho-vpc/issues/27) | `SG.Delete` SG'а, прилинкованного к NIC через `security_group_ids[]`, обязана отвергаться `FAILED_PRECONDITION` (code 9) | Нет within-service refcheck на уровне БД (`network_interfaces.security_group_ids` — jsonb без FK/trigger; `securitygroup/delete.go` гардит только `DefaultForNetwork`; repo `Delete` безусловен) → SG удаляется, оставляя dangling ref. Фикс — DB-level BEFORE DELETE trigger (rule #10), отдельным behavioral-PR. |
+| `SG-NET-08-RULE-SAME-NETWORK-OK` | security-group | flagged → rpc-implementer (issue pending) | Правило с SG-target (`securityGroupId`) обязано отдаваться в `Get/List`-ответе SG (`rule.securityGroupId` == целевой SG) | `dto/toproto/security_group.go::securityGroup.toPb` мапит в `SecurityGroupRule.Target` **только** ветку `CidrBlocks`; ветки `SecurityGroupId` и `PredefinedTarget` (домен несёт `r.SecurityGroupID`/`r.PredefinedTarget`) не сериализуются → `Target=nil` → `rule.securityGroupId=undefined`. Signature: `expected [ undefined ] to include '<sgId>'`. Фикс (не в test-only PR, ban #13): добавить обе ветки в `toPb` + regression. |
+| `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` | security-group | flagged → rpc-implementer (issue pending) | То же через `UpdateRules` (PATCH `…/rules`): добавленное SG-target-правило видно в `Get` с `securityGroupId` | Та же прод-первопричина — `toPb` роняет `SecurityGroupId`/`PredefinedTarget` target. RED до прод-фикса `toPb`. |
 
-> До 2026-07-05 этот кейс маскировался условным `pm.test.skip` (assertion пропускался,
-> когда refcheck не срабатывал) → suite ложно зелёный. SEC-hardening r2 конвертировал
-> его в безусловный persistent-RED + issue #27 (rule #13).
+> **`SG-DEL-NEG-NIC-ATTACHED` ([#27](https://github.com/PRO-Robotech/kacho-vpc/issues/27)) — FIXED.**
+> `SG.Delete` SG'а, прилинкованного к NIC через `security_group_ids[]`, теперь отвергается
+> `FAILED_PRECONDITION` (code 9). Product-side refcheck реализован в repo
+> `securityGroupWriter.Delete`: ВНУТРИ writer-TX `SELECT id … FOR UPDATE` +
+> `EXISTS(security_group_ids @> jsonb_build_array($id))` → `ErrFailedPrecondition`
+> «security group is in use by network interface(s)» (не TOCTOU — проверка+DELETE в одной TX).
+> Покрыто integration-тестами `TestCQRS_SG_Delete_BlockedByNICReference` /
+> `…_Concurrent_Referenced_AllBlocked` / `…_Concurrent_Unreferenced_ExactlyOne`
+> (`internal/repo/kacho/pg/security_group_refcheck_integration_test.go`, testcontainers, `-race`).
+> Кейс перестал быть persistent-RED — ожидаемо GREEN при следующем прогоне suite против стенда.
+> (До 2026-07-05 он маскировался условным `pm.test.skip`; SEC-hardening r2 сделал его
+> безусловным persistent-RED + issue #27, что и держало давление на прод-фикс.)
+
+> **Под расследованием (flagged, НЕ замаскировано)** — кластер IPAM-resolve в `internal-pool`:
+> `IPL-ALLOC-POOL-EXHAUSTED` (`alloc-1/alloc-2` → Operation error `no address pool resolved
+> for address … (network , family=0)`), `IPL-RESOLVE-DUALSTACK-OK` (`get-v4/get-v6` → 404:
+> `cr-addr` Operation не резолвит case-local isDefault pool в throwaway-зоне), `IPL-RMCIDR-
+> NEG-INUSE` (`remove-inuse` текст `CIDR blocks not found` вместо `has allocated addresses`
+> — каскад от того же resolve-fail). Это НЕ read-your-writes / authz-ordering (детерминированная
+> Operation-ошибка резолва пула в throwaway-зонах zoneC/zoneD, вероятно зависит от количества
+> seeded geo-зон и/или порядка cleanup). Сигнатуры переданы rpc-implementer'у для доменного
+> разбора; кейсы не форс-гринятся и не whitelist'ятся масками. `get-v6` обёрнут в
+> `retry_until_authorized` (parity с `get-v4`), но GREEN требует резолва пула.
 
 > Деплоймент-замечание: suite требует `KACHO_VPC_DEFAULT_SG_INLINE=true`
 > (default) — `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` проверяют
@@ -52,6 +75,18 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 > internal-* кейсы используют seeded `zone` region / `zone-{a,b,c,d}`
 > zones / `default-zone-a` pool как readonly-фикстуры (не трогают),
 > остальное — runId-суффиксованные throwaway-ресурсы с self-cleanup.
+
+## Known failing — round-4 disposition (umbrella CI, gate `../../iam/tests/newman/scripts/assert-suites-green.sh`)
+
+Резолюция vpc-residuals против umbrella-отчёта (`ci-rep4`) — **fixable чиним, реальный
+продукт-баг оставляем gate-blocking + флаг, ACB-fixture-gap whitelist'им с issue-ref**;
+ни одна маска не скрывает must-DENY-leak.
+
+| Case / step | Signature | Disposition |
+|---|---|---|
+| `SUBNET-LF-D-VISIBLE` / `SUBNET-LF-D-NOLEAK` / `SUBNET-LF-D-NONE` (list-filter-d) | subset-viewer / no-grant `List /vpc/v1/subnets` → **403** past the `retry_until_authorized` budget. Per-object grant seeded as DIRECT FGA tuples (`tests/authz-fixtures/setup.sh` block 12) не резолвится на request-path — owner-vs-grantee per-object materialization gap. Over-RESTRICTIVE (subject видит МЕНЬШЕ гранта — **не leak**). | **WHITELISTED** (`^SUBNET-LF-D-VISIBLE\|NOLEAK\|NONE`). The existence-no-leak canary `SUBNET-LF-D-GET-404` (Get hidden → 404) is GREEN and **deliberately un-whitelisted** — a real List over-show стреляет через Get-канал. `kacho-iam#276` |
+| `SUB-RCB-CONF-STATE::verify-state` (subnet) | `verify-state` GET своей же subnet → **404** сразу после `RemoveCidrBlocks`, хотя Operation.done вернул `response=Subnet` с `v4CidrBlocks=[10.230.0.0/24]` (primary kept — продукт КОРРЕКТЕН). Первый пост-мутационный Get на read-consistency окне. | **FIXED** (не whitelist) — `verify-state` обёрнут в `retry_until_authorized` (RYW 403/404-ретрай, тот же паттерн, что RemoveCidr add/remove). Genuine non-converging 404 после бюджета всё равно FAIL — не маскируется. |
+| `SG-DEL-NEG-NIC-ATTACHED` (security-group, `kacho-vpc#27`) | `SG.Delete` NIC-attached SG проходит вместо `FAILED_PRECONDITION` (dangling ref) | **FIXED** — product-side within-service refcheck реализован в repo `securityGroupWriter.Delete` (writer-TX: `FOR UPDATE` + `EXISTS(security_group_ids @> jsonb_build_array($id))` → FailedPrecondition, не TOCTOU). Persistent-RED снят; кейс ожидаемо GREEN. Integration-покрытие — `security_group_refcheck_integration_test.go`. |
 
 ## Эволюция
 

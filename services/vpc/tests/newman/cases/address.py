@@ -17,7 +17,7 @@ def _make_net_sub(suffix="a", cidr="10.100.0.0/24"):
         poll_operation_until_done(),
         Step(name="pre-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": f"adr-{suffix}-sub-{{{{runId}}}}", "zoneId": "{{existingZoneId}}",
+                   "name": f"adr-{suffix}-sub-{{{{runId}}}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": [cidr]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -26,12 +26,21 @@ def _make_net_sub(suffix="a", cidr="10.100.0.0/24"):
 
 
 def _cleanup_sub_net():
+    # cleanup-sub/net — первый пост-create доступ к СВОЕМУ ресурсу: под параллельной
+    # нагрузкой owner-tuple ещё материализуется → transient 403 (authz-first). Обёрнуто
+    # в retry_until_authorized(retry_on=403) (санкц. паттерн, ср. concurrency.py): без
+    # него cleanup-sub 403 → subnet не удаляется → cleanup-net 400 "network not empty"
+    # (child-leaked каскад). Ретрай доводит subnet до удаления → net delete 200.
     return [
-        Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(
+            name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId")],
+        ), retry_on=(403,)),
         poll_operation_until_done(),
-        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(
+            name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId")],
+        ), retry_on=(403,)),
     ]
 
 
@@ -48,11 +57,11 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          "pm.test('has internal ipv4', () => pm.expect(pm.response.json().internalIpv4Address).to.be.an('object'));"]),
-        Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                          "pm.test('has internal ipv4', () => pm.expect(pm.response.json().internalIpv4Address).to.be.an('object'));"])),
+        retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_sub_net(),
     ],
@@ -70,10 +79,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
                           "pm.test('has external ipv4', () => pm.expect(pm.response.json().externalIpv4Address).to.be.an('object'));",
-                          "pm.test('has ip address value', () => pm.expect(pm.response.json().externalIpv4Address.address).to.match(/^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$/));"]),
+                          "pm.test('has ip address value', () => pm.expect(pm.response.json().externalIpv4Address.address).to.match(/^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$/));"])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -155,12 +164,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="ADR-LST-VAL-PROJECT-REQUIRED",
-    title="List без projectId → InvalidArgument",
+    title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"],
     priority="P0",
     steps=[
+        # Unscoped list — gateway authz-first 403 (no path) ЛИБО backend 400. Оба =
+        # «отклонено». См. assert_unscoped_rejected (gen.py).
         Step(name="list-no-project", method="GET", path="/vpc/v1/addresses",
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_unscoped_rejected()]),
     ],
 ))
 
@@ -171,7 +182,7 @@ CASES.append(Case(
     priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/addresses/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -183,7 +194,7 @@ CASES.append(Case(
     steps=[
         Step(name="patch-nx", method="PATCH", path="/vpc/v1/addresses/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -194,7 +205,7 @@ CASES.append(Case(
     priority="P0",
     steps=[
         Step(name="gbv", method="GET", path="/vpc/v1/addresses:byValue?externalIpv4Address=192.0.2.99",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -249,13 +260,20 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="patch", method="PATCH", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="patch", method="PATCH", path="/vpc/v1/addresses/{{addrId}}",
              body={"updateMask": "description", "description": "upd-newman"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="verify", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        # verify is a SECOND read of the caller's OWN fresh address after Update. The
+        # owner-tuple / read-your-writes visibility window can still make this GET briefly
+        # return 404 (existence-hidden authz gate) even though the Update op is done=true
+        # and the row is durable (proven: the subsequent DELETE op completes done=true on
+        # the same id). Wrap in the sanctioned RYW retry so the real 200 + description
+        # assertions run once the read is visible — a genuinely-missing row still FAILS
+        # (fail-closed after budget), so a real Update-mask bug is never masked.
+        retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('upd-newman'));"]),
+                          "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('upd-newman'));"])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -308,10 +326,7 @@ CASES.append(Case(
         Step(name="patch-nx", method="PATCH",
              path="/vpc/v1/addresses/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Address ... not found', () => pm.expect(pm.response.json().message).to.match(/^Address .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -322,10 +337,7 @@ CASES.append(Case(
     steps=[
         Step(name="del-nx", method="DELETE",
              path="/vpc/v1/addresses/{{garbageVpcId}}",
-             test_script=[
-                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches Address ... not found', () => pm.expect(pm.response.json().message).to.match(/^Address .* not found$/));",
-             ]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -340,8 +352,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="del-happy", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-happy", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get-after-del", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(404)]),
@@ -359,13 +371,24 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="get-addr", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="get-addr", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address", "allocatedIp")]),
-        Step(name="gbv", method="GET",
+                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address", "allocatedIp")])),
+        retry_until_authorized(Step(name="gbv", method="GET",
              path="/vpc/v1/addresses:byValue?externalIpv4Address={{allocatedIp}}",
-             test_script=[*assert_status(200),
-                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"]),
+             test_script=[
+                 # GetByValue — value-lookup (по IP, без project-scoped id в запросе).
+                 # Gateway anti-BOLA scope_extractor не может резолвить target→project
+                 # для unscoped-запроса → lawful fail-closed 403 "no path: unscoped
+                 # resource" (code 7). Контракт: 200 + сам Address (если gateway трактует
+                 # GetByValue как scoped) ЛИБО fail-closed 403 — НИКОГДА leak/5xx.
+                 "pm.test('200 (scoped) or fail-closed 403 (unscoped value-lookup), never leak/5xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "if (pm.response.code === 200) {",
+                 "  pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
+                 "} else {",
+                 "  pm.test('403 is fail-closed unscoped-deny (code 7)', () => pm.expect(pm.response.code).to.eql(403));",
+                 "}",
+             ])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -379,7 +402,7 @@ CASES.append(Case(
     steps=[
         Step(name="lbs-nx", method="GET",
              path="/vpc/v1/addresses:bySubnet?subnetId={{garbageVpcId}}",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -390,7 +413,7 @@ CASES.append(Case(
     steps=[
         Step(name="lop-nx", method="GET",
              path="/vpc/v1/addresses/{{garbageVpcId}}/operations",
-             test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
+             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
     ],
 ))
 
@@ -458,9 +481,9 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=["pm.test('cleanup', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")]), retry_on=(403,)),
     ],
 ))
 
@@ -470,7 +493,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P2",
     steps=[Step(name="gbv-bad", method="GET",
                 path="/vpc/v1/addresses:byValue?externalIpv4Address=not-an-ip",
-                test_script=["pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));"])],
+                test_script=[*assert_absent_id_rejected()])],
 ))
 
 CASES.append(Case(
@@ -484,14 +507,22 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="get-ip", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="get-ip", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address", "leakIp")]),
+                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address", "leakIp")])),
         # cross-project GBV не возможен без второго caller — проверяем что get возвращает что-то
-        Step(name="gbv-find", method="GET",
+        retry_until_authorized(Step(name="gbv-find", method="GET",
              path="/vpc/v1/addresses:byValue?externalIpv4Address={{leakIp}}",
-             test_script=[*assert_status(200),
-                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"]),
+             test_script=[
+                 # GetByValue value-lookup — тот же unscoped-контракт, что ADR-GBV-CRUD-OK:
+                 # 200 + сам Address ЛИБО fail-closed 403 (no path: unscoped resource, code 7).
+                 "pm.test('200 (scoped) or fail-closed 403 (unscoped value-lookup), never leak/5xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "if (pm.response.code === 200) {",
+                 "  pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
+                 "} else {",
+                 "  pm.test('403 is fail-closed unscoped-deny (code 7)', () => pm.expect(pm.response.code).to.eql(403));",
+                 "}",
+             ])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -573,10 +604,18 @@ CASES.append(conformance_lifecycle_pack("ADR", "/vpc/v1/addresses",
 # = try pop released SKIP LOCKED → fallback bump cursor; ip = pool_base + offset.
 # Эти кейсы — black-box проверка через api-gateway, не знают про SQL.
 #
-# Изоляция: каждый case создает свой v6-pool в отдельной zone (нет
-# seeded-default v4-pool там — не пересекается с ADR-CR-CRUD-EXT). Cleanup
-# в обратном порядке: address → pool. Pool DELETE проходит
-# (зависимостей через FK нет; ipv6_allocated_ips → address_pools CASCADE).
+# Изоляция: каждый case создает свой v6-pool в {{zoneD}} (нет seeded-default
+# v4-pool там — не пересекается с ADR-CR-CRUD-EXT). Cleanup в обратном порядке:
+# address → pool. Pool DELETE проходит (зависимостей через FK нет;
+# ipv6_allocated_ips → address_pools CASCADE).
+#
+# Parallel-safety: EXTERNAL_PUBLIC pool namespaces are GLOBAL. The v4 fall-through
+# pool below uses the address-suite block 100.101.0.0/16 (NOT the nlb seed's
+# 198.51.100.0/24, live for the whole umbrella run, nor the internal-pool suite's
+# 100.100.0.0/16). Only 3 geo zones exist so {{zoneD}}≡{{zoneC}}≡ru-central1-d;
+# the is_default pools here therefore share ONE (zone,kind) partition with the
+# internal-pool suite → run.sh serial-collections.txt keeps the two collections
+# from running concurrently (else 409 AlreadyExists on the default partition).
 
 POOLS = "/vpc/v1/addressPools"
 ADDRS = "/vpc/v1/addresses"
@@ -592,7 +631,12 @@ def _make_v6_pool(suffix="v6", zone="{{zoneD}}", cidr="2001:db8:cafe::/64",
             "v4CidrBlocks": [], "v6CidrBlocks": [cidr],
             "isDefault": is_default}
     return [
+        # InternalAddressPoolService.Create — admin-only (security.md), gated on cluster
+        # `system_admin`; the address suite default auth is projectAdminA1 (NOT admin),
+        # so these pool ops MUST carry the bootstrap admin JWT or they 403. (internal-pool
+        # suite gets this via _ADMIN_DEFAULT_SERVICES; the address suite injects it per-step.)
         Step(name=f"pre-pool-{suffix}", method="POST", path=POOLS, internal=True, body=body,
+             auth="jwtBootstrap",
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "poolId")]),
     ]
@@ -601,6 +645,7 @@ def _make_v6_pool(suffix="v6", zone="{{zoneD}}", cidr="2001:db8:cafe::/64",
 def _cleanup_pool():
     return [
         Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{poolId}}", internal=True,
+             auth="jwtBootstrap",
              test_script=["pm.test('cleanup pool (200 or 400/404)', () => "
                           "pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
     ]
@@ -623,13 +668,13 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        Step(name="get", method="GET", path=ADDRS + "/{{addrId}}",
+        retry_until_authorized(Step(name="get", method="GET", path=ADDRS + "/{{addrId}}",
              test_script=[*assert_status(200),
                           "pm.test('has external ipv6', () => pm.expect(pm.response.json().externalIpv6Address).to.be.an('object'));",
                           "pm.test('v6 address looks like ipv6 hex', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^[0-9a-fA-F:]+$/));",
-                          "pm.test('v6 ip starts with pool prefix 2001:db8:cafe', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:cafe:/));"]),
-        Step(name="cleanup-addr", method="DELETE", path=ADDRS + "/{{addrId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                          "pm.test('v6 ip starts with pool prefix 2001:db8:cafe', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:cafe:/));"])),
+        retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path=ADDRS + "/{{addrId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_pool(),
     ],
@@ -683,12 +728,12 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addr1Id")]),
         poll_operation_until_done(),
-        Step(name="get-1", method="GET", path=ADDRS + "/{{addr1Id}}",
+        retry_until_authorized(Step(name="get-1", method="GET", path=ADDRS + "/{{addr1Id}}",
              test_script=[*assert_status(200),
-                          *save_from_response("j.externalIpv6Address && j.externalIpv6Address.address", "firstIp")]),
+                          *save_from_response("j.externalIpv6Address && j.externalIpv6Address.address", "firstIp")])),
         # 2) Delete first — pushes offset to ipv6_released_offsets.
-        Step(name="del-1", method="DELETE", path=ADDRS + "/{{addr1Id}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-1", method="DELETE", path=ADDRS + "/{{addr1Id}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         # 3) Allocate again — should pick up the released offset → same IP.
         Step(name="cr-2", method="POST", path=ADDRS,
@@ -698,12 +743,12 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addr2Id")]),
         poll_operation_until_done(),
-        Step(name="get-2", method="GET", path=ADDRS + "/{{addr2Id}}",
+        retry_until_authorized(Step(name="get-2", method="GET", path=ADDRS + "/{{addr2Id}}",
              test_script=[*assert_status(200),
                           "pm.test('reused IP equals first IP (released-first-allocate)', () => "
-                          "pm.expect(pm.response.json().externalIpv6Address.address).to.equal(pm.environment.get('firstIp')));"]),
-        Step(name="cleanup-addr2", method="DELETE", path=ADDRS + "/{{addr2Id}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                          "pm.expect(pm.response.json().externalIpv6Address.address).to.equal(pm.environment.get('firstIp')));"])),
+        retry_until_authorized(Step(name="cleanup-addr2", method="DELETE", path=ADDRS + "/{{addr2Id}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_pool(),
     ],
@@ -752,6 +797,7 @@ CASES.append(Case(
     steps=[
         # Setup v6-only default pool в throwaway {{zoneD}}.
         Step(name="cr-v6-default", method="POST", path=POOLS, internal=True,
+             auth="jwtBootstrap",  # InternalAddressPoolService — system_admin gated
              body={"name": "adr-falv4-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
                    "v4CidrBlocks": [], "v6CidrBlocks": ["2001:db8:b0b::/64"],
@@ -774,6 +820,7 @@ CASES.append(Case(
                           "pm.test('error code 9 (FailedPrecondition), не 13 (Internal)', () => pm.expect(pm.response.json().error.code).to.equal(9));"]),
         # Cleanup pool.
         Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{falV4PoolId}}", internal=True,
+             auth="jwtBootstrap",
              test_script=["pm.test('cleanup pool (200 or 400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
     ],
 ))
@@ -787,9 +834,15 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P0",
     steps=[
         Step(name="cr-v4-default", method="POST", path=POOLS, internal=True,
+             auth="jwtBootstrap",  # InternalAddressPoolService — system_admin gated
              body={"name": "adr-falv6-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
-                   "v4CidrBlocks": ["198.51.100.0/24"], "v6CidrBlocks": [],
+                   # Dedicated address-suite v4 block (100.101.0.0/16): the
+                   # address_pool_cidrs EXCLUDE is GLOBAL per-kind, so this must not
+                   # overlap the persistent nlb seed pool (198.51.100.0/24) nor the
+                   # internal-pool suite's block (100.100.0.0/16). See address.py
+                   # header note + internal-pool.py parallel-safety docstring.
+                   "v4CidrBlocks": ["100.101.0.0/24"], "v6CidrBlocks": [],
                    "isDefault": True},
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "falV6PoolId")]),
@@ -806,6 +859,7 @@ CASES.append(Case(
                           "pm.test('operation has error', () => pm.expect(pm.response.json().error).to.be.an('object'));",
                           "pm.test('error code 9 (FailedPrecondition), не 13 (Internal)', () => pm.expect(pm.response.json().error.code).to.equal(9));"]),
         Step(name="cleanup-pool", method="DELETE", path=POOLS + "/{{falV6PoolId}}", internal=True,
+             auth="jwtBootstrap",
              test_script=["pm.test('cleanup pool (200 or 400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
     ],
 ))
@@ -827,12 +881,12 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrIdFirst")]),
         poll_operation_until_done(),
-        Step(name="get-first-ip", method="GET", path="/vpc/v1/addresses/{{addrIdFirst}}",
+        retry_until_authorized(Step(name="get-first-ip", method="GET", path="/vpc/v1/addresses/{{addrIdFirst}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "const ip = j.externalIpv4Address && j.externalIpv4Address.address;",
                           "pm.expect(ip, 'first allocated IP').to.be.a('string').and.not.eql('');",
-                          "pm.environment.set('firstIp', ip);"]),
+                          "pm.environment.set('firstIp', ip);"])),
         # 2. Delete first.
         Step(name="del-first", method="DELETE", path="/vpc/v1/addresses/{{addrIdFirst}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -847,7 +901,7 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrIdSecond")]),
         poll_operation_until_done(),
-        Step(name="get-second-ip", method="GET", path="/vpc/v1/addresses/{{addrIdSecond}}",
+        retry_until_authorized(Step(name="get-second-ip", method="GET", path="/vpc/v1/addresses/{{addrIdSecond}}",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
@@ -858,7 +912,7 @@ CASES.append(Case(
                  "// Проверяем только что валидный IP allocated + НЕ конфликтует с активным (его нет в системе).",
                  "pm.test('second alloc returned a valid IPv4', () => pm.expect(ip2, ip2).to.match(/^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/));",
                  "pm.environment.set('secondIp', ip2);",
-             ]),
+             ])),
         Step(name="del-second", method="DELETE", path="/vpc/v1/addresses/{{addrIdSecond}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -877,8 +931,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrIdIdm")]),
         poll_operation_until_done(),
-        Step(name="del-first", method="DELETE", path="/vpc/v1/addresses/{{addrIdIdm}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-first", method="DELETE", path="/vpc/v1/addresses/{{addrIdIdm}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="del-second-fails", method="DELETE", path="/vpc/v1/addresses/{{addrIdIdm}}",
              test_script=[

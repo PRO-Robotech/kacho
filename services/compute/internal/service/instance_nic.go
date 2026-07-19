@@ -130,6 +130,9 @@ func (s *InstanceService) applyNicMirror(ctx context.Context, in *domain.Instanc
 	if s.nicClient == nil || in == nil {
 		return
 	}
+	// best-effort read → короткий bound, не 30s retry.OnUnavailable (mirrorReadTimeout).
+	ctx, cancel := context.WithTimeout(ctx, mirrorReadTimeout)
+	defer cancel()
 	atts, err := s.nicClient.ListByInstance(ctx, []string{in.ID})
 	if err != nil {
 		return
@@ -147,6 +150,9 @@ func (s *InstanceService) applyNicMirrorBatch(ctx context.Context, list []*domai
 	for _, in := range list {
 		ids = append(ids, in.ID)
 	}
+	// best-effort read → короткий bound, не 30s retry.OnUnavailable (mirrorReadTimeout).
+	ctx, cancel := context.WithTimeout(ctx, mirrorReadTimeout)
+	defer cancel()
 	atts, err := s.nicClient.ListByInstance(ctx, ids)
 	if err != nil {
 		return

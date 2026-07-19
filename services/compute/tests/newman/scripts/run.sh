@@ -31,6 +31,10 @@ while [[ $# -gt 0 ]]; do
     --service) SERVICE="$2"; shift 2 ;;
     --bail)    BAIL="--bail"; shift ;;
     --delay)   DELAY="$2"; shift 2 ;;
+    # --jobs: принят для паритета с newman-parallel.sh (директива #1) — consume-and-
+    # ignore, НЕ пробрасывать в `newman run` (иначе `unknown option '--jobs'` → часть
+    # коллекций без отчёта → ложный no-report/false-green). compute-суита серийна.
+    --jobs)    shift 2 ;;
     *)         EXTRA+=("$1"); shift ;;
   esac
 done
@@ -55,12 +59,18 @@ run_one() {
     "${EXTRA[@]}" 2>&1 | tee "out/${res}.cli" || true
 }
 
+# Start from a clean out/ — a stale reporter JSON from an earlier run would let
+# the suite-green gate (assert-suites-green.sh) pass a suite that did not run
+# this time. out/ is .gitignore'd; this rm is the belt to that.
+rm -rf out
 mkdir -p out
 
 if [[ -n "$SERVICE" ]]; then
   run_one "$SERVICE"
 else
-  for res in disk image snapshot instance disk-type operation list-filter; do
+  # ВСЕ 9 коллекций — иначе assert-suites-green.sh (грейдит collections/*.json
+  # глобом) видит authz-deny/sec-d без отчёта → "(no-report)" → phantom FAIL.
+  for res in disk image snapshot instance disk-type operation list-filter authz-deny sec-d; do
     run_one "$res"
   done
 fi

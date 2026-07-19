@@ -158,6 +158,40 @@ api-gateway:
 compute:
   image: kacho-compute:dev
   imagePullPolicy: IfNotPresent
+  # Dev/newman profile deploys iam+vpc+geo but NOT kacho-storage (storage.enabled=false,
+  # SERVICES в deploy/Makefile = iam vpc compute api-gateway nlb). Компьют-конфиг
+  # ДЕФОЛТИТ KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR на `kacho-storage…:9091`
+  # (config.go, непустой default — как iam/geo/vpc). В dev этот адрес не резолвится →
+  # каждая storage-зависимая instance-op (Delete-instance volume-release, AttachDisk,
+  # DetachDisk) ретраит down-peer'а retry.OnUnavailable ~30s → завершается code=14
+  # "storage service unavailable", а newman poll-budget (~15s) истекает раньше →
+  # done:false-каскад (instance-суита) + провал cleanup-Delete в list-filter. Пустой
+  # addr → NoopStorageClient (main.go): ListAttachments пуст → step-3 delete-саги и
+  # Detach быстрые, Attach → быстрый fail-fast (не 30s-hang). envconfig(kelseyhightower):
+  # env, выставленный в "" (present), ПЕРЕБИВАЕТ непустой default (default только при
+  # unset). Прод не затронут — values.fe3455-prod.yaml выставляет реальный addr явно.
+  # Attach/Detach-VOLUME кейсы (INST-AD/INST-DD) требуют ЖИВОГО storage — зелёные только
+  # в umbrella-e2e со storage.enabled=true, не в этом compute-only профиле.
+  env:
+    KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR: ""
+  # Delete-instance сага (internal/service/instance.go) НЕ становится fast-success от
+  # одного лишь storage-Noop: перед step-3 (storage volume-release) идёт step-2 —
+  # NIC-release через compute→vpc InternalNetworkInterfaceService.ListByInstance на
+  # vpc INTERNAL :9091 (нижний mTLS-листенер, НЕ public :9090). Этот edge в
+  # dev/newman-профиле не доступен компьюту (transport codes.Unavailable — единственный
+  # retryable-код: не 5s-DeadlineExceeded, не authz-403), поэтому ListByInstance жжёт
+  # весь 30s retry.OnUnavailable-бюджет ЛЮБОГО Delete (шаг безусловный, вызывается даже
+  # для инстансов без NIC) > 15s newman poll → done:false. Это ровно тот же класс, что
+  # ce01e92 закрыл для storage, но для vpc-NIC-ребра: 36 Delete-instance зависаний +
+  # каскад cleanup-Delete по всей instance-суите. Пустой addr → NoopNicClient (main.go):
+  # ListByInstance пуст (задокументированный degraded-path delete-саги — при неподнятом
+  # peer'е NIC-привязки не отслеживаются) → step-2 мгновенный → Delete завершается.
+  # В этом профиле NIC-attach всё равно не работает (:attachNetworkInterface отдаёт 403
+  # на gateway), а NIC-mirror и так пуст (graceful-degrade), так что рабочей
+  # функциональности не теряем. Прод не затронут — vpcInternalAddr там реальный
+  # (compute chart default vpc.kacho.svc.cluster.local:9091). NIC-AD/DD-кейсы требуют
+  # ЖИВОГО vpc-internal — зелёные только в umbrella-e2e, не в compute-only профиле.
+  vpcInternalAddr: ""
   # Dev kind stack: pg-compute (bitnami postgres) serves NO TLS, so the migrator
   # + serve DB channel must be sslmode=disable. The compute chart DEFAULTS to
   # `require` (stricter than vpc/iam, which default to disable), which here fails
@@ -919,7 +953,15 @@ kratos-selfservice-ui:
 # с postgres работает заявленный replicaCount.
 openfga:
   enabled: true
-  replicaCount: 2
+  # replicaCount=1 в dev/newman (было 2): 2 реплики над shared-PG дают read-after-write
+  # replica-lag — write owner-tuple идёт на одну реплику, а enforcement-Check (default
+  # MINIMIZE_LATENCY consistency) может прочитать другую (stale) → флейки-403 на
+  # immediate-mutate СВОЕГО свежесозданного ресурса, хотя tuple записан синхронно
+  # (sync-registrar). Это корень eventual-consistency-флейка e2e-newman под CI-нагрузкой
+  # (падающие суиты перемещались между прогонами). Single replica = write+read один
+  # инстанс → нет replica-lag → owner-tuple виден сразу. Prod (values.*-prod) держит
+  # replicaCount>1 для HA (там HIGHER_CONSISTENCY на confirm-путях + больше запас).
+  replicaCount: 1
   datastore:
     engine: postgres
     uri: postgres://openfga:changeme-dev-openfga@kacho-umbrella-pg-openfga:5432/openfga?sslmode=disable

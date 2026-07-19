@@ -21,11 +21,15 @@ projects, users, bindings, seed networks) и патчит env-файл:
   - INV → admin    @ account:B (каскад на project:B1) + editor @ project:A1
           (KAC-125 invite-flow: AAA приглашает INV в account-A editor'ом на
           project-A1) → INV имеет доступ к ОБОИМ project-A1 и project-B1.
-  - NOB → грантов нет (НО см. kacho-iam#276: iam-suite IAM-ACB-CR-CRUD-OK грантит
-    userNOB глобальную *.* view-роль на account-A/-B — cross-suite fixture collision.
-    Поэтому AUTHZ-*-LS-{OWN,CROSS}-NOB сейчас known-RED, issue-backed, до owner-decided
-    semantics/test-hygiene фикса. NOB фактически authorized; кейсы остаются красными
-    честно (ban#13), но whitelisted в assert-suites-green.sh. verifies kacho-iam#276)
+  - NOB → грантов нет. Субъект-код "NOB" биндится к `jwtPureNoBindings` — ВЫДЕЛЕННЫЙ
+    never-granted principal (kacho-iam#276 fix), который НИ ОДНА suite не грантит
+    (setup.sh: ни ensure_binding, ни 4b-cleanup его не трогают). Раньше здесь стоял
+    `jwtNoBindings`, который iam access-binding suites РЕАЛЬНО грантят `view@account-A/-B`
+    на время своего прогона → под параллельным fan-out'ом account→project containment
+    транзитно авторизовывал NOB → AUTHZ-*-LS-{OWN,CROSS}-NOB ложно RED (known-RED,
+    whitelisted в assert-suites-green.sh). С pure-субъектом эти LIST-DENY leak-guard'ы
+    строгие и зелёные (whitelist-запись для *-NOB теперь избыточна-но-безвредна:
+    subtraction clamps to 0). verifies kacho-iam#276)
 
 Контракт ответов (api-gateway authz middleware, см. kacho-api-gateway):
   - Анонимный запрос (нет токена) → 401 UNAUTHENTICATED (grpc 16) ВЕЗДЕ.
@@ -48,7 +52,8 @@ CASES = []
 SUBJECTS = [
     # code, label, auth (None→anonymous, иначе env-var-name)
     ("ANON", "anon",       "anonymous"),
-    ("NOB",  "no-bind",    "jwtNoBindings"),
+    # kacho-iam#276: NOB → dedicated never-granted `jwtPureNoBindings` (см. docstring).
+    ("NOB",  "no-bind",    "jwtPureNoBindings"),
     ("PA1",  "proj-adm",   "jwtProjectAdminA1"),
     ("AAA",  "acct-adm-a", "jwtAccountAdminA"),
     ("AAB",  "acct-adm-b", "jwtAccountAdminB"),
@@ -174,12 +179,23 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
             asserts = allow_asserts(cid)
 
     is_pos = decision in ("ALLOW", "LIST-ALLOW", "NF", "LIST-DENY")
+    step = Step(name=method.lower(), method=method, path=path, body=body, auth=auth, test_script=asserts)
+    # LIST-DENY leak-guard ("no-access → 403 or 200+EMPTY"): a SHARED fixture subject can carry a
+    # residual/concurrent account-scoped viewer from another suite (iam access-binding grants NOB a
+    # ROLE_VIEW@account), which via account→project containment transiently makes THIS project's child
+    # resources v_list-visible → the deny-list returns rows for a beat until that suite's revoke
+    # materializes (read-your-writes ON REVOKE, eventually-consistent). Wrap in retry_until_absent:
+    # retries SELF while the list is still non-empty, FAIL-OPEN at the budget so a GENUINE over-show
+    # hole (rows never leave the deny-list) still FAILS the leak assertion — a real leak is NOT masked.
+    # (Root fix is per-suite subject-isolation: a dedicated no-binding subject no other suite grants.)
+    if decision == "LIST-DENY" and list_key:
+        step = retry_until_absent(step, f"((pm.response.json()['{list_key}'])||[]).length > 0")
     CASES.append(Case(
         id=cid,
         title=f"[{decision}] {title} as {label} ({scope})",
         classes=["AUTHZ", "POS" if is_pos else "NEG"],
         priority="P1",
-        steps=[Step(name=method.lower(), method=method, path=path, body=body, auth=auth, test_script=asserts)],
+        steps=[step],
     ))
 
 

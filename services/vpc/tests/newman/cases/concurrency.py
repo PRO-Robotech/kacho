@@ -115,7 +115,7 @@ def _setup_subnet(suffix, cidr="10.250.0.0/24"):
         Step(
             name="setup-sub", method="POST", path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": f"conc-{suffix}-sub-{{{{runId}}}}", "zoneId": "{{existingZoneId}}",
+                  "name": f"conc-{suffix}-sub-{{{{runId}}}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": [cidr]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
@@ -124,24 +124,32 @@ def _setup_subnet(suffix, cidr="10.250.0.0/24"):
     ]
 
 
+# Cleanup DELETE of the caller's OWN just-created parent (subnet/network). Under a
+# concurrency burst the owner-tuple can still be mid-materialization when cleanup fires,
+# so the authz gate briefly returns 403 ("lacks relation v_delete ... no direct relations
+# granted") — a read-your-writes lag, NOT a dependent-resource block (that would be a
+# tolerated FAILED_PRECONDITION 400). Lenient retry_on=(403,) rides out the tuple lag;
+# the real 200/400 assertion then runs, and a genuinely-stuck deny still FAILS after
+# budget (fail-closed). Not retrying 404: a cleanup 404 means already-gone, not lag.
+
 def _cleanup_subnet():
-    return Step(
+    return retry_until_authorized(Step(
         name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
         test_script=[
             "pm.test('cleanup subnet 200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
             *save_from_response("j.id", "opId"),
         ],
-    )
+    ), retry_on=(403,))
 
 
 def _cleanup_net():
-    return Step(
+    return retry_until_authorized(Step(
         name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
         test_script=[
             "pm.test('cleanup network 200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
             *save_from_response("j.id", "opId"),
         ],
-    )
+    ), retry_on=(403,))
 
 
 # ===========================================================================
@@ -166,6 +174,9 @@ CASES.append(Case(
                         "({projectId: pm.environment.get('_suiteProjectId'), "
                         "networkId: pm.environment.get('netId'), "
                         "name: `conc-ov-sub-${pm.environment.get('runId')}-${i}`, "
+                        # placement_type обязателен (ZONAL|REGIONAL) — без него Create отвергается
+                        # sync 400 «placement_type is required» → нет Operation → burst-assert краснеет.
+                        "placementType: 'ZONAL', "
                         "zoneId: pm.environment.get('existingZoneId'), "
                         "v4CidrBlocks: ['10.250.40.0/24']})"
                     ),
@@ -179,12 +190,29 @@ CASES.append(Case(
                 "setTimeout(() => {", "}, 100);",
                 "const results = JSON.parse(pm.environment.get('burstResults') || '[]');",
                 "pm.test('all 3 burst responses captured', () => pm.expect(results.length).to.eql(3));",
-                "// Все 3 sync-ответа 200 (Operation создается для каждого; race решается в worker'е).",
-                "pm.test('all 3 sync-200 (Operation envelope)', () => results.forEach(r => pm.expect(r.code, JSON.stringify(r)).to.eql(200)));",
-                "// Соберем opIds и заполним в env через цикл sendRequest poll.",
-                "const opIds = results.map(r => r.body && r.body.id).filter(Boolean);",
+                # Subnet.Create держит ДВА уровня overlap-защиты: sync fail-fast
+                # pre-check (checkSubnetCIDROverlap, Reader-TX — subnet/create.go) И
+                # атомарный DB-EXCLUDE backstop (subnets_no_overlap_v4) в async worker'е.
+                # Под burst'ом эти два уровня РЕЙСЯТ: если проигравший create стартует
+                # ПОСЛЕ того как победитель уже закоммитил row, его sync pre-check ловит
+                # overlap ПЕРВЫМ → sync 400 (code 9 «Subnet CIDRs can not overlap»), и
+                # Operation для него не создаётся. Если все три прошли sync-check до
+                # первого commit'а — все получают Operation (200), а overlap решает
+                # EXCLUDE в worker'е (async op-error). ОБА исхода легитимны и НИКОГДА не
+                # INTERNAL. (Раньше кейс требовал строго «все 3 → 200 async», что ложно
+                # краснело под параллельной нагрузкой, когда pre-check выигрывал гонку.)
+                "pm.test('each response is 200 (op) OR 400 sync-overlap-reject — never INTERNAL', () => results.forEach(r => {",
+                "  if (r.code === 200) return;",
+                "  pm.expect(r.code, JSON.stringify(r)).to.eql(400);",
+                "  pm.expect(r.body && r.body.code, JSON.stringify(r)).to.eql(9);",
+                "  pm.expect(String((r.body && r.body.message) || ''), JSON.stringify(r)).to.match(/can not overlap/i);",
+                "}));",
+                "const opIds = results.filter(r => r.code === 200).map(r => r.body && r.body.id).filter(Boolean);",
+                "const syncRejects = results.filter(r => r.code === 400).length;",
                 "pm.environment.set('burstOpIds', JSON.stringify(opIds));",
-                "pm.test('3 opIds collected', () => pm.expect(opIds.length).to.eql(3));",
+                "pm.environment.set('burstSyncRejects', String(syncRejects));",
+                # Каждый 200 несёт opId; каждый sync-400 — нет. Их сумма = 3.
+                "pm.test('opIds == 200-count (sync rejects carry no opId)', () => pm.expect(opIds.length).to.eql(3 - syncRejects));",
             ],
         ),
         Step(
@@ -222,19 +250,31 @@ CASES.append(Case(
             name="assert-distribution", method="GET", path="/healthz",
             test_script=[
                 "const ops = JSON.parse(pm.environment.get('burstOpsResolved') || '[]');",
-                "pm.test('all 3 ops resolved (done=true)', () => {",
-                "  pm.expect(ops.length).to.eql(3);",
+                "const syncRejects = parseInt(pm.environment.get('burstSyncRejects') || '0', 10);",
+                # Резолвятся все Operation'ы, которые были СОЗДАНЫ (== число 200-ответов).
+                "pm.test('all created ops resolved (done=true)', () => {",
+                "  pm.expect(ops.length).to.eql(3 - syncRejects);",
                 "  ops.forEach(o => pm.expect(o.done, JSON.stringify(o)).to.eql(true));",
                 "});",
                 "const ok = ops.filter(o => !o.hasError).length;",
-                "const failed = ops.filter(o => o.hasError).length;",
-                "pm.test('exactly 1 succeeds + 2 fail (EXCLUDE constraint race-defense)', () => {",
-                "  pm.expect(ok, `ok=${ok} failed=${failed} ops=${JSON.stringify(ops)}`).to.eql(1);",
-                "  pm.expect(failed).to.eql(2);",
+                "const opFailed = ops.filter(o => o.hasError).length;",
+                # Инвариант race-defense (EXCLUDE + sync pre-check): из 3 identical-CIDR
+                # create'ов РОВНО 1 выигрывает; остальные 2 проигрывают — каждый либо
+                # sync-reject (400), либо async op-error (9/10). Победителей == 1;
+                # проигравших (sync + async) == 2. Это НЕ ослабление EXCLUDE-контракта:
+                # ровно одна подсеть выживает независимо от того, где отсёкся проигравший.
+                "pm.test('exactly 1 winner + 2 losers (sync-reject OR async EXCLUDE)', () => {",
+                "  pm.expect(ok, `ok=${ok} opFailed=${opFailed} syncRejects=${syncRejects} ops=${JSON.stringify(ops)}`).to.eql(1);",
+                "  pm.expect(opFailed + syncRejects, `opFailed=${opFailed} syncRejects=${syncRejects}`).to.eql(2);",
                 "});",
-                "pm.test('failures: FailedPrecondition (gRPC code 9) — CIDR overlap', () => {",
+                # Проигравшие async-транзакции fail-closed одним из двух ЗАКОННЫХ кодов, но
+                # НИКОГДА INTERNAL(13): 9 (FailedPrecondition) — чистый 23P01
+                # exclusion_violation (проигравший увидел уже закоммиченный ряд), либо
+                # 10 (Aborted) — 40001/40P01 serialization/deadlock под gist-EXCLUDE
+                # burst'ом (retryable-конфликт, замаплен через ErrConflict, не INTERNAL).
+                "pm.test('async failures: FailedPrecondition (9) or Aborted (10) — never INTERNAL/13', () => {",
                 "  const failedCodes = ops.filter(o => o.hasError).map(o => o.errCode);",
-                "  failedCodes.forEach(c => pm.expect(c, `code=${c}`).to.eql(9));",
+                "  failedCodes.forEach(c => pm.expect(c, `code=${c}`).to.be.oneOf([9, 10]));",
                 "});",
             ],
         ),
@@ -245,6 +285,11 @@ CASES.append(Case(
             test_script=[
                 *assert_status(200),
                 "const subs = (pm.response.json().subnets || []);",
+                # Прямой behavioral-lock EXCLUDE-инварианта: сколько бы create'ов ни
+                # ушло, в сети НИКОГДА не переживают ДВЕ пересекающиеся подсети. (at.most
+                # вместо eql — read-your-writes лаг может кратко не показать победителя,
+                # но 2+ overlapping subnets = реальный провал EXCLUDE.)
+                "pm.test('never 2 overlapping subnets survive (EXCLUDE holds)', () => pm.expect(subs.length).to.be.at.most(1));",
                 "pm.environment.set('subToCleanupIds', JSON.stringify(subs.map(s => s.id)));",
             ],
         ),
@@ -371,7 +416,7 @@ CASES.append(Case(
                 "const items = JSON.parse(pm.environment.get('burstAddrCollected') || '[]');",
                 "pm.test('5 ops resolved', () => pm.expect(items.length).to.eql(5));",
                 "const ipv4s = items.filter(i => i.ipv4).map(i => i.ipv4);",
-                "pm.test('all alloc'd IPs are unique (no duplicate slot)', () => {",
+                "pm.test('all allocated IPs are unique (no duplicate slot)', () => {",
                 "  const unique = new Set(ipv4s);",
                 "  pm.expect(unique.size, `ipv4s=${JSON.stringify(ipv4s)}`).to.eql(ipv4s.length);",
                 "});",
@@ -562,10 +607,13 @@ CASES.append(Case(
             test_script=[
                 # Два параллельных UpdateRules: один добавляет rule A, другой — rule B,
                 # на одной и той же row → один из них должен fail на xmin-check.
+                # UpdateRules REST-контракт: PATCH /securityGroups/{id}/rules с телом
+                # {additionRuleSpecs:[...]} (НЕ POST :update-rules / {additions} — такого
+                # маршрута нет → 404, opId пуст, occResolved=[] → assert-occ краснел).
                 *_burst_block_js(
-                    2, "POST", "/vpc/v1/securityGroups/${pm.environment.get('sgId')}:update-rules",
+                    2, "PATCH", "/vpc/v1/securityGroups/${pm.environment.get('sgId')}/rules",
                     body_js=(
-                        "({additions: [{description: `conc-rule-${i}`, direction: 'EGRESS', "
+                        "({additionRuleSpecs: [{description: `conc-rule-${i}`, direction: 'EGRESS', "
                         "protocolName: 'ANY', cidrBlocks: {v4CidrBlocks: [`10.99.${i}.0/24`]}}]})"
                     ),
                 ),

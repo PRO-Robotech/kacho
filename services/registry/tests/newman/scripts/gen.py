@@ -33,7 +33,7 @@ CASES_DIR = ROOT / "cases"
 OUT_DIR = ROOT / "collections"
 
 # Monotonic sequence for poll-step names within a single collection build.
-# poll_operation_until_done() self-retries via postman.setNextRequest(
+# poll_operation_until_done() self-retries via pm.execution.setNextRequest(
 # pm.info.requestName); newman resolves setNextRequest by request NAME and jumps
 # to the FIRST match in the flattened collection. Identically-named "poll-op"
 # steps (one per mutation, hundreds per collection) therefore made a mid-suite
@@ -149,7 +149,9 @@ def assert_operation_envelope(prefix_regex: str = "^(nlb|tgr|lst)[a-z0-9]+$") ->
 
 
 def poll_operation_until_done() -> Step:
-    """Reusable poll step with up-to-6 setNextRequest retries; guards on empty opId.
+    """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
+    guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
+    hammering back-to-back (~15ms/poll) which never waits for the op (Koren #1).
 
     Each emitted step carries a unique name (`poll-op-<n>`) so the
     setNextRequest self-retry is unambiguous under `newman run <collection>`
@@ -169,9 +171,17 @@ def poll_operation_until_done() -> Step:
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 6) {",
+            # Poll budget raised 6→30 to match the Koren-1 baseline of the other
+            # suites; with the ~500ms inter-poll delay below this covers ~15s.
+            "if (!j.done && pc < 30) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
-            "  postman.setNextRequest(pm.info.requestName);",
+            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
+            # synchronously and fires setNextRequest before any setTimeout callback, so a
+            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
+            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
+            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
+            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
             "  return;",
             "}",
             "pm.environment.unset('_pollCount');",

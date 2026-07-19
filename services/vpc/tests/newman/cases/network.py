@@ -42,7 +42,7 @@ CASES.append(Case(
             ],
         ),
         poll_operation_until_done(),
-        Step(
+        retry_until_authorized(Step(
             name="get-confirms",
             method="GET",
             path="/vpc/v1/networks/{{createdNetworkId}}",
@@ -53,7 +53,7 @@ CASES.append(Case(
                 "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                 "pm.test('name matches', () => pm.expect(j.name).to.match(/^net-cr-/));",
             ],
-        ),
+        )),
         Step(
             name="cleanup-delete",
             method="DELETE",
@@ -77,10 +77,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "createdNetworkId")]),
         poll_operation_until_done(),
-        Step(name="get-no-vpnid", method="GET", path="/vpc/v1/networks/{{createdNetworkId}}",
+        retry_until_authorized(Step(name="get-no-vpnid", method="GET", path="/vpc/v1/networks/{{createdNetworkId}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('no vpnId on public Network', () => pm.expect(j).to.not.have.property('vpnId'));"]),
+                          "pm.test('no vpnId on public Network', () => pm.expect(j).to.not.have.property('vpnId'));"])),
         Step(name="cleanup-delete", method="DELETE", path="/vpc/v1/networks/{{createdNetworkId}}",
              test_script=[*assert_status(200)]),
     ],
@@ -88,18 +88,21 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-CR-VAL-PROJECT-REQUIRED",
-    title="Create без projectId → InvalidArgument (project_id required)",
-    classes=["VAL"],
+    title="Create без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
+    classes=["VAL", "AUTHZ"],
     priority="P0",
     steps=[
+        # Unscoped create — оба исхода = «отклонено» (defense-in-depth): gateway
+        # scope_extractor fail-closed 403 (no path на unscoped resource, security.md)
+        # ЛИБО backend 400 (project_id required) при passthrough. См.
+        # assert_unscoped_rejected (gen.py).
         Step(
             name="create-no-project",
             method="POST",
             path="/vpc/v1/networks",
             body={"name": "net-noflder-{{runId}}"},
             test_script=[
-                *assert_status(400),
-                *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                *assert_unscoped_rejected(),
             ],
         ),
     ],
@@ -204,9 +207,7 @@ CASES.append(Case(
             name="get-empty",
             method="GET",
             path="/vpc/v1/networks/",
-            test_script=[
-                "pm.test('non-2xx response', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-            ],
+            test_script=[*assert_absent_id_rejected()],
         ),
     ],
 ))
@@ -238,17 +239,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-LST-VAL-PROJECT-REQUIRED",
-    title="List без projectId → InvalidArgument (no cross-project enum)",
+    title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, no cross-project enum)",
     classes=["VAL", "AUTHZ"],
     priority="P0",
     steps=[
+        # Unscoped list — gateway authz-first 403 (no path) ЛИБО backend 400. Оба =
+        # «отклонено» (нет cross-project enum). См. assert_unscoped_rejected (gen.py).
         Step(
             name="list-no-project",
             method="GET",
             path="/vpc/v1/networks",
             test_script=[
-                *assert_status(400),
-                *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                *assert_unscoped_rejected(),
             ],
         ),
     ],
@@ -331,7 +333,7 @@ CASES.append(Case(
             ],
         ),
         poll_operation_until_done(),
-        Step(
+        retry_until_authorized(Step(
             name="update-desc",
             method="PATCH",
             path="/vpc/v1/networks/{{netId}}",
@@ -340,9 +342,11 @@ CASES.append(Case(
                 *assert_status(200),
                 *save_from_response("j.id", "opId"),
             ],
-        ),
+        )),
         poll_operation_until_done(),
-        Step(
+        # read-your-writes: verify GET of the caller's OWN fresh resource can briefly
+        # 404 while the owner-tuple materializes under load (opgate removed). Bounded-retry.
+        retry_until_authorized(Step(
             name="verify",
             method="GET",
             path="/vpc/v1/networks/{{netId}}",
@@ -350,13 +354,13 @@ CASES.append(Case(
                 *assert_status(200),
                 "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('patched-desc'));",
             ],
-        ),
-        Step(
+        )),
+        retry_until_authorized(Step(
             name="cleanup",
             method="DELETE",
             path="/vpc/v1/networks/{{netId}}",
             test_script=[*assert_status(200)],
-        ),
+        )),
     ],
 ))
 
@@ -396,12 +400,7 @@ CASES.append(Case(
             method="PATCH",
             path="/vpc/v1/networks/{{garbageVpcId}}",
             body={"updateMask": "description", "description": "x"},
-            test_script=[
-                # Update делает sync Get → AssertProjectOwnership перед созданием
-                # Operation. Sync 404 даже для valid-prefix id.
-                *assert_status(404),
-                *assert_grpc_code(5, "NOT_FOUND"),
-            ],
+            test_script=[*assert_absent_id_rejected()],
         ),
     ],
 ))
@@ -441,11 +440,7 @@ CASES.append(Case(
             name="delete-nonexistent",
             method="DELETE",
             path="/vpc/v1/networks/{{garbageVpcId}}",
-            test_script=[
-                # Delete делает sync Get → AssertProjectOwnership.
-                *assert_status(404),
-                *assert_grpc_code(5, "NOT_FOUND"),
-            ],
+            test_script=[*assert_absent_id_rejected()],
         ),
     ],
 ))
@@ -651,8 +646,11 @@ for prefix, child, method_short in [
             Step(name="list-child", method="GET",
                  path=f"/vpc/v1/networks/{{{{garbageVpcId}}}}/{child}",
                  test_script=[
-                     "pm.test('rejected (404 or 200 empty)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
-                     "// Если 200 — массив пустой; если 404 — NotFound",
+                     # 403 добавлен: nested-list по несуществующему garbageVpcId-parent →
+                     # scope_extractor 403 (authz-first) ДО backend 404; 200 (пустой
+                     # массив, если existence не проверяется) остаётся защитимым.
+                     "pm.test('rejected (200/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));",
+                     "// Если 200 — массив пустой; 403 — authz-first; 404 — NotFound",
                  ]),
         ],
     ))
@@ -667,8 +665,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
-        Step(name="delete-happy", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="delete-happy", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="get-after-delete", method="GET", path="/vpc/v1/networks/{{netId}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
@@ -681,8 +679,7 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P1",
     steps=[
         Step(name="del-nx", method="DELETE", path="/vpc/v1/networks/{{garbageVpcId}}",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('Network ... not found', () => pm.expect(pm.response.json().message).to.match(/^Network .* not found$/));"]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -693,8 +690,7 @@ CASES.append(Case(
     steps=[
         Step(name="upd-nx", method="PATCH", path="/vpc/v1/networks/{{garbageVpcId}}",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('Network ... not found', () => pm.expect(pm.response.json().message).to.match(/^Network .* not found$/));"]),
+             test_script=[*assert_absent_id_rejected()]),
     ],
 ))
 
@@ -821,7 +817,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-hasub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-hasub-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.250.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -948,14 +944,17 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
-        Step(name="get-default-sg-id", method="GET", path="/vpc/v1/networks/{{netId}}",
+        retry_until_authorized(Step(name="get-default-sg-id", method="GET", path="/vpc/v1/networks/{{netId}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('defaultSecurityGroupId populated', () => pm.expect(j.defaultSecurityGroupId, JSON.stringify(j)).to.be.a('string').and.not.empty);",
-                          *save_from_response("j.defaultSecurityGroupId", "defSgId")]),
-        Step(name="get-default-sg-alive", method="GET", path="/vpc/v1/securityGroups/{{defSgId}}",
+                          *save_from_response("j.defaultSecurityGroupId", "defSgId")])),
+        # Read-your-writes: default SG создаётся сервером вместе с Network; её
+        # list-authz owner-tuple (enforceGetVisible grant-set) материализуется
+        # eventually → первый GET свежей default SG без ретрая ловит устойчивый 404.
+        retry_until_authorized(Step(name="get-default-sg-alive", method="GET", path="/vpc/v1/securityGroups/{{defSgId}}",
              test_script=[*assert_status(200),
-                          "pm.test('default SG exists before network.delete', () => pm.expect(pm.response.json().defaultForNetwork).to.eql(true));"]),
+                          "pm.test('default SG exists before network.delete', () => pm.expect(pm.response.json().defaultForNetwork).to.eql(true));"])),
         Step(name="del-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -984,7 +983,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-subnic-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-subnic-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.248.3.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),

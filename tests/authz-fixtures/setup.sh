@@ -130,6 +130,26 @@ JWT_INV=$(echo "$JWTS" | python3 -c 'import json,sys; print(json.load(sys.stdin)
 # required_acr_min (RFC 9470), e.g. SAKeyService.Issue/Revoke.
 JWT_AAA_STEPUP=$(echo "$JWTS" | python3 -c 'import json,sys; print(json.load(sys.stdin)["jwtAccountAdminAStepUp"])')
 
+# kacho-iam#276 — DEDICATED never-granted leak-guard subject.
+#
+# `jwtNoBindings`/`userNOBId` is used DOUBLY: (a) as a grant-TARGET — the iam
+# access-binding CRUD suites (IAM-ACB-CR-*, iam-flat-authz-vbc, iam-rbac-scope-grant,
+# iam-authz-grant-check-propagation, iam-role, the authz-deny matrix) genuinely grant
+# userNOB a `view` role on account-A/-B for the duration of their run (that IS their
+# test); and (b) as a leak-guard VICTIM — the vpc/compute/iam-user "must see NOTHING"
+# scope-filter probes read NOB expecting an empty result. Under the PARALLEL newman
+# fan-out the granters' grant window overlaps the victims' reads → NOB is transiently
+# authorized via account→project containment → false leak (`expected 1 to equal 0`).
+#
+# Fix (kacho-iam#276): the see-nothing leak-guards read THIS subject instead — a real,
+# authenticated user with NO account membership that NO suite EVER grants (setup.sh
+# 4b-cleanup only touches userNOB; every ensure_binding/AddMember below targets other
+# principals). Guaranteed binding-free → the guards stay strict (sees 0 → PASS; sees
+# anything → a GENUINE over-grant still FAILS honestly, no whitelist, no retry-mask).
+# Minted the same way as the bulk subjects (HS256 dev JWT, sub = external_id).
+JWT_PURE_NOB=$(python3 "$SCRIPT_DIR/setup-jwt.py" --secret "$DEV_SECRET" \
+  --sub "auth-test-pure-no-bindings@example.com" --exp-hours "$EXP_HOURS")
+
 # Helper: curl with bearer; prints body to stdout.
 api() {
   local method="$1" path="$2" token="${3:-}" body="${4:-}"
@@ -213,18 +233,21 @@ upsert_user_grpc() {
 
 USER_BOOT=$(upsert_user_grpc "admin@prorobotech.ru"                  "admin@prorobotech.ru"                  "Bootstrap Admin")
 USER_NOB=$(upsert_user_grpc "auth-test-no-bindings@example.com"     "auth-test-no-bindings@example.com"     "AuthZ NoBindings")
+# kacho-iam#276 pure leak-guard subject — authenticated, NO membership, NEVER granted
+# by any suite (distinct from userNOB which the access-binding suites do grant).
+USER_PURE_NOB=$(upsert_user_grpc "auth-test-pure-no-bindings@example.com" "auth-test-pure-no-bindings@example.com" "AuthZ PureNoBindings")
 USER_PA1=$(upsert_user_grpc "auth-test-proj-admin-a1@example.com"   "auth-test-proj-admin-a1@example.com"   "AuthZ ProjAdminA1")
 USER_AAA=$(upsert_user_grpc "auth-test-account-admin-a@example.com" "auth-test-account-admin-a@example.com" "AuthZ AccountAdminA")
 USER_AAB=$(upsert_user_grpc "auth-test-account-admin-b@example.com" "auth-test-account-admin-b@example.com" "AuthZ AccountAdminB")
 USER_INV=$(upsert_user_grpc "auth-test-invitee@example.com"         "auth-test-invitee@example.com"         "AuthZ Invitee")
-log "    users: BOOT=$USER_BOOT NOB=$USER_NOB PA1=$USER_PA1 AAA=$USER_AAA AAB=$USER_AAB INV=$USER_INV"
+log "    users: BOOT=$USER_BOOT NOB=$USER_NOB PURE_NOB=$USER_PURE_NOB PA1=$USER_PA1 AAA=$USER_AAA AAB=$USER_AAB INV=$USER_INV"
 
 # Fail-fast — a missing user id (grpcurl could not reach kacho-iam-internal, or
 # UpsertFromIdentity/LookupSubject errored) silently cascades into empty
 # subjectId on every AccessBinding and a stack that "passes" with the wrong
 # authz state. Surface it here with an actionable message instead of producing
 # a misleading newman run.
-for _pair in "BOOT:$USER_BOOT" "NOB:$USER_NOB" "PA1:$USER_PA1" \
+for _pair in "BOOT:$USER_BOOT" "NOB:$USER_NOB" "PURE_NOB:$USER_PURE_NOB" "PA1:$USER_PA1" \
              "AAA:$USER_AAA" "AAB:$USER_AAB" "INV:$USER_INV"; do
   if [ -z "${_pair#*:}" ]; then
     echo "[setup] FATAL: user ${_pair%%:*} resolved to an empty id — UpsertFromIdentity/LookupSubject failed." >&2
@@ -300,6 +323,31 @@ PROJECT_A2=$(ensure_project "authz-test-a2" "$ACCOUNT_A" "KAC-122 fixture (cross
 PROJECT_B1=$(ensure_project "authz-test-b1" "$ACCOUNT_B" "KAC-122 fixture (cross-account)" "$JWT_AAB")
 log "    projects: A1=$PROJECT_A1 A2=$PROJECT_A2 B1=$PROJECT_B1"
 
+# fixture-sync guard (diagnostic, NON-fatal). ensure_project extracts
+# metadata.projectId from the completed Create Operation WITHOUT checking op.error: a
+# Create can finish done:true WITH an error (transient FGA/DB blip at cold-start) while
+# metadata.projectId still carries the pre-allocated id. That id then gets FGA binding
+# tuples (ensure_binding below → gateway authz passes on the tuple), but the project ROW
+# never committed, so the cross-service peer-check (vpc/compute → iam ProjectService.Get)
+# returns NOT_FOUND → label-revoke-{vpc,compute} cascaded RED (ci round-3 root cause:
+# "Project prj… not found" / "Folder with id prj… not found"). The label-revoke suites
+# now SELF-SEED their own project per case (cases/label-revoke-{vpc,compute}.py
+# create_suite_project), so a phantom projectA1 no longer breaks them — this block only
+# surfaces the phantom loudly instead of letting it hide behind green FGA tuples. GET is
+# read-only; python takes the id via argv (no shell-into-code interpolation); every step
+# is `|| echo 0`/`2>/dev/null` guarded so it can never abort the fixture under set -e.
+if [ -n "$PROJECT_A1" ]; then
+  _pa1_ok=$(api GET "/iam/v1/projects/$PROJECT_A1" "$JWT_AAA" 2>/dev/null \
+    | python3 -c 'import sys,json
+try:
+    print("1" if json.load(sys.stdin).get("id") == sys.argv[1] else "0")
+except Exception:
+    print("0")' "$PROJECT_A1" 2>/dev/null || echo 0)
+  if [ "$_pa1_ok" != "1" ]; then
+    log "WARN: projectA1 ($PROJECT_A1) does NOT resolve via ProjectService.Get — PHANTOM (IAM row never committed). Shared-tenant suites keyed on {{projectA1Id}} would see cross-service NOT_FOUND; re-check ensure_project op.error handling."
+  fi
+fi
+
 # 4b) KAC-132: Clean up stale NOB viewer bindings on account-A and account-B.
 #
 # The authz-deny newman suite's AB-CR ALLOW cases (AB-CR-A-AAA, AB-CR-B-AAB,
@@ -322,12 +370,18 @@ log "4b/10 cleaning up stale NOB viewer bindings on account-A / account-B (KAC-1
 
 delete_binding_if_exists() {
   local subject_id="$1" resource_type="$2" resource_id="$3" grantor_token="$4"
-  # Use ListByResource to find bindings for this resource, then filter by subject.
-  # (AccessBindingService has no flat GET /accessBindings — only ListByResource
-  #  and ListBySubject actions. ListByResource returns all bindings for the
-  #  account; we filter client-side by subjectId.)
+  # ListByScope находит binding'и скоупа, дальше фильтруем по субъекту клиентски
+  # (плоского GET /accessBindings у AccessBindingService нет — только :listByScope
+  #  и :listBySubject).
+  #
+  # НЕ :listByResource — этот роут УДАЛЁН (RPC переименован в ListByScope, wire-имя
+  # снято; kacho#1 локает это кейсом IAM-ACB-F50-ROUTES-REMOVED: legacy-путь обязан
+  # отдавать 403 catalog-miss). Обращение к нему возвращало 403 с ВАЛИДНЫМ JSON'ом
+  # ошибки, python его успешно парсил, `.get('accessBindings', [])` давал пустой
+  # список — и очистка молча не удаляла НИЧЕГО. Мусорные binding'и от прошлых
+  # прогонов копились, ломая кейсы, которые ждут чистое состояние.
   local resp ab_ids
-  resp=$(api GET "/iam/v1/accessBindings:listByResource?resourceType=${resource_type}&resourceId=${resource_id}" "$grantor_token" 2>/dev/null || true)
+  resp=$(api GET "/iam/v1/accessBindings:listByScope?resourceType=${resource_type}&resourceId=${resource_id}" "$grantor_token" 2>/dev/null || true)
   ab_ids=$(echo "$resp" | python3 -c "
 import sys, json
 try:
@@ -422,6 +476,24 @@ ROLE_VIEW="rol1bda80f2be4d3658e"    # md5('view')[:17]   — global read-only
 ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$PROJECT_A1" "$JWT_AAA"
 # AAA — account-A admin. Grantor = AAA (owner of A — self-grant on own account).
 ensure_binding "$USER_AAA" "$ROLE_ADMIN" "account" "$ACCOUNT_A" "$JWT_AAA"
+# AAA — EXPLICIT project-A1 editor (deterministic precondition for cross-service
+# label-revoke). AAA owns account-A (owner ⊇ editor on account:A) and the FGA
+# account-owner → project-editor hierarchy SHOULD cascade `editor` onto project:A1.
+# But the umbrella label-revoke suites (label-revoke-{vpc,compute,nlb}) create
+# cross-service resources in project-A1 as AAA — vpc.networks.create /
+# compute.disks.create — which the gateway authz-mw gates with
+# required_relation=editor on project:A1. Relying on the HIERARCHICAL cascade for
+# AAA flaked to a persistent 403 in umbrella CI ("subject user:<AAA> lacks relation
+# \"editor\" on project:<A1> ... no direct relations granted" — observed on 465/465
+# create attempts across a full run, i.e. NOT a materialization tail) → the whole
+# label-revoke flow cascaded RED on an unset resource var. Guarantee the precondition
+# EXPLICITLY (idempotent — same belt-and-suspenders as the PA1 line above and the INV
+# project-A1 editor below) so the label-revoke ASSERTIONS (the actual subject-under-
+# test: ARM_LABELS grant revoke-on-label-change) run instead of dying on the create
+# precondition. An EXPLICIT project binding materializes reliably (proven by PA1/INV);
+# whether the account-owner→project-editor cascade itself is a product gap is tracked
+# separately (does not block the label-revoke regression signal).
+ensure_binding "$USER_AAA" "$ROLE_EDIT" "project" "$PROJECT_A1" "$JWT_AAA"
 # AAB — account-B admin. Grantor = AAB (owner of B).
 ensure_binding "$USER_AAB" "$ROLE_ADMIN" "account" "$ACCOUNT_B" "$JWT_AAB"
 # INV — owner-of-B (his home) — admin in account-B. Grantor = AAB (owner of B).
@@ -448,9 +520,15 @@ if [ -n "$JWT_BOOTSTRAP" ] && [ -n "$ACCOUNT_A" ]; then
   boot_ok=""
   boot_iters=$(( CLUSTER_ADMIN_WAIT_SECS / 2 )); [ "$boot_iters" -lt 1 ] && boot_iters=1
   for i in $(seq 1 "$boot_iters"); do
-    # listByResource(cluster) by the bootstrap admin returns 200 once the
-    # reconciler's system_admin@cluster tuple has propagated to OpenFGA.
-    code=$(api_status GET "/iam/v1/accessBindings:listByResource?resourceType=cluster&resourceId=cluster_kacho_root" "$JWT_BOOTSTRAP" 2>/dev/null || echo 000)
+    # :listByScope(cluster) от bootstrap-админа отдаёт 200, как только tuple
+    # system_admin@cluster от reconciler'а долетел до OpenFGA.
+    #
+    # НЕ :listByResource — роут УДАЛЁН (см. delete_binding_if_exists выше). Проба по
+    # нему получала 403 catalog-miss ВСЕГДА, независимо от готовности → выжигала весь
+    # бюджет CLUSTER_ADMIN_WAIT_SECS (180с) на КАЖДОМ прогоне и заканчивалась
+    # «WARN: cluster cases may fail». Проба, которая не может стать зелёной, не
+    # проверяет готовность — она измеряет только собственный таймаут.
+    code=$(api_status GET "/iam/v1/accessBindings:listByScope?resourceType=cluster&resourceId=cluster_kacho_root" "$JWT_BOOTSTRAP" 2>/dev/null || echo 000)
     if [ "$code" = "200" ]; then boot_ok=1; log "    bootstrap cluster-admin ready (${i}x2s, code=200)"; break; fi
     sleep 2
   done
@@ -498,6 +576,12 @@ else
 fi
 # Re-upsert INV by external-id to activate PENDING-row (KAC-125 D-7).
 upsert_user_grpc "auth-test-invitee@example.com" "auth-test-invitee@example.com" "AuthZ Invitee" >/dev/null
+# Deterministic fixture state for the AUTHZ-PRJ-UP-A1-INV matrix ALLOW case: INV must
+# hold editor on project-A1. The invite above is the intended mechanism, but its REST
+# mapping is best-effort (KAC-125) — so guarantee the required binding explicitly
+# (idempotent: if the invite already granted it, this returns "already granted"). The
+# invite MECHANISM itself is covered separately by the iam-invite-grant-fga collection.
+[ -n "$USER_INV" ] && ensure_binding "$USER_INV" "$ROLE_EDIT" "project" "$PROJECT_A1" "$JWT_AAA"
 
 # 7) Seed VPC networks in A1 + B1.
 #
@@ -639,6 +723,281 @@ fi
 # Malformed token — синтаксически битый JWS (2 сегмента вместо 3).
 API_TOKEN_MALFORMED="eyJhbGciOiJIUzI1NiJ9.bm90LWEtcmVhbC10b2tlbg"
 
+# ===========================================================================
+# 11-13) Phase B — per-service seed blocks (compute / vpc-list-filter-d / nlb).
+#
+# Historically only iam+vpc got real fixtures; compute/nlb newman env-файлы
+# несли ХАРДКОД placeholder-id (`b1gc03…`, `e9bcomputeseedsub001`, пустые
+# nlb subject-JWT), которых на чистом kind НИКТО не создаёт → compute
+# create-наборы упирались в NOT_FOUND/UNAVAILABLE, nlb authz-наборы — в 401.
+# Ниже мы создаём РЕАЛЬНЫЕ ресурсы под каждый сервис и патчим ТОЛЬКО его env
+# (таргетно, чтобы `existingProjectId` одного сервиса не затирал другой).
+# Всё идемпотентно (find-by-name / upsert / WHERE NOT EXISTS).
+# ===========================================================================
+
+# --- shared helpers for Phase B blocks -------------------------------------
+
+# ensure_subnet <project> <network> <name> <zone> <cidr> <token> → subnetId.
+# ZONAL placement (placement_type обязателен — иначе InvalidArgument).
+ensure_subnet() {
+  local proj="$1" net="$2" name="$3" zone="$4" cidr="$5" token="$6"
+  local found
+  found=$(api GET "/vpc/v1/subnets?projectId=$proj&pageSize=1000" "$token" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); n=[x for x in (d.get('subnets') or []) if x.get('name')=='$name']; print(n[0].get('id','') if n else '')" 2>/dev/null || true)
+  if [ -n "$found" ]; then echo "$found"; return; fi
+  local body op op_id
+  body=$(printf '{"projectId":"%s","networkId":"%s","name":"%s","zoneId":"%s","placementType":"ZONAL","v4CidrBlocks":["%s"]}' \
+    "$proj" "$net" "$name" "$zone" "$cidr")
+  op=$(api POST "/vpc/v1/subnets" "$token" "$body")
+  op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+  if [ -z "$op_id" ]; then echo "[setup] WARN Subnet.Create failed: $(echo "$op"|head -c 160)" >&2; echo ""; return; fi
+  poll_op "$op_id" "$token" \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("subnetId",""))'
+}
+
+# ensure_sg <project> <network> <name> <token> → securityGroupId.
+ensure_sg() {
+  local proj="$1" net="$2" name="$3" token="$4"
+  local found
+  found=$(api GET "/vpc/v1/securityGroups?projectId=$proj&pageSize=1000" "$token" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); n=[x for x in (d.get('securityGroups') or []) if x.get('name')=='$name']; print(n[0].get('id','') if n else '')" 2>/dev/null || true)
+  if [ -n "$found" ]; then echo "$found"; return; fi
+  local body op op_id
+  body=$(printf '{"projectId":"%s","networkId":"%s","name":"%s","description":"Phase B seed"}' "$proj" "$net" "$name")
+  op=$(api POST "/vpc/v1/securityGroups" "$token" "$body")
+  op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+  if [ -z "$op_id" ]; then echo "[setup] WARN SecurityGroup.Create failed: $(echo "$op"|head -c 160)" >&2; echo ""; return; fi
+  poll_op "$op_id" "$token" \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("securityGroupId",""))'
+}
+
+# fga_write <user> <relation> <object> — идемпотентный прямой FGA-tuple через
+# kacho_iam.fga_outbox (drainer применит в OpenFGA за ~1s). Тот же механизм,
+# что и seed system_viewer выше. Нужен для per-object list-filter grant'ов,
+# которые НЕ выражаются публичным AccessBinding'ом (scope=PROJECT-гвард
+# отвергает resource_type=vpc_subnet — см. domain/access_binding_scope.go:
+# DeriveFromResourceType(vpc_subnet)→ScopeProject→ValidateAgainst fail).
+fga_write() {
+  local user="$1" relation="$2" object="$3"
+  [ -z "$SV_PG_PW" ] && { log "    WARN fga_write skipped (no PG access): $user#$relation@$object"; return 0; }
+  kubectl -n "$SV_NS" exec "$SV_PG_POD" -- env PGPASSWORD="$SV_PG_PW" psql -h localhost -U iam -d kacho_iam -tAc "
+    INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+    SELECT 'fga.tuple.write',
+           jsonb_build_object('user','$user','relation','$relation','object','$object'),
+           now()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM kacho_iam.fga_outbox
+       WHERE payload->>'user'='$user' AND payload->>'relation'='$relation' AND payload->>'object'='$object'
+    );
+  " >/dev/null 2>&1 || log "    WARN fga_write failed (idempotent or schema): $user#$relation@$object"
+}
+
+# mint_user_jwt <sub> → HS256 dev JWT for that subject (exp = EXP_HOURS).
+mint_user_jwt() {
+  python3 "$SCRIPT_DIR/setup-jwt.py" --secret "$DEV_SECRET" --sub "$1" --exp-hours "$EXP_HOURS"
+}
+
+# ---------------------------------------------------------------------------
+# Директива #2 — per-service ISOLATION. Root cause of cross-suite collision #276:
+# vpc-CRUD + nlb + compute all shared account-A / projectA1 / projectA2 for their
+# resource suites, so a binding grant/revoke or a listed resource from one suite
+# leaked into another's expectations (whitelisted NOB/AAB, random interference) —
+# and made a PARALLEL run (директива #1) unsafe. Fix: each resource suite gets its
+# OWN account + home/cross projects, seeded here and patched into ONLY that
+# service's env. The 6-subject authz-deny MATRIX keeps the shared account-A/proj
+# (it IS the shared-tenant contract) — only the resource-CRUD scope is isolated.
+# All idempotent (find-by-name), owner = AAA (can own many accounts).
+log "10b/13 seeding per-service isolated accounts + projects (директива #2)"
+ACCOUNT_VPC=$(ensure_account "authz-vpc" "директива #2 — vpc-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+ACCOUNT_NLB=$(ensure_account "authz-nlb" "директива #2 — nlb-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+ACCOUNT_CMP=$(ensure_account "authz-compute" "директива #2 — compute-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+# vpc: home + cross, default suite JWT = jwtProjectAdminA1 (PA1) → grant PA1 editor
+# on BOTH so create-in-home + list-in-cross (isolation case) both authorize.
+VPC_HOME=$(ensure_project "authz-vpc-home"  "$ACCOUNT_VPC" "vpc suite home"  "$JWT_AAA")
+VPC_CROSS=$(ensure_project "authz-vpc-cross" "$ACCOUNT_VPC" "vpc suite cross" "$JWT_AAA")
+[ -n "$USER_PA1" ] && [ -n "$VPC_HOME" ]  && ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$VPC_HOME"  "$JWT_AAA"
+[ -n "$USER_PA1" ] && [ -n "$VPC_CROSS" ] && ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$VPC_CROSS" "$JWT_AAA"
+log "    vpc isolation: acct=$ACCOUNT_VPC home=$VPC_HOME cross=$VPC_CROSS (PA1 editor on both)"
+
+# ---------------------------------------------------------------------------
+# 11) COMPUTE — real project + cross-project + network + subnet + sg.
+#     compute newman env references existingProjectId (→ _suiteFolderId),
+#     existingProjectCrossId (→ _suiteFolderCrossId), existingNetworkId,
+#     existingSubnetId (33× — instance NIC), existingSgId. existingZoneId
+#     stays ru-central1-a (real geo zone). Created as AAA (account-A owner);
+#     compute suite default-Bearer = jwtBootstrap (cluster-admin) may operate
+#     in any project, so ownership only needs to be a real, resolvable project.
+# ---------------------------------------------------------------------------
+log "11/13 seeding compute fixtures (project + cross + network + subnet + sg)"
+# Директива #2: compute home+cross live in the compute-only account (was ACCOUNT_A /
+# shared PROJECT_A2). compute suite default = jwtBootstrap, which sees its OWN creates
+# via per-object creator-tuples regardless of account → isolation is safe here.
+COMPUTE_PROJ=$(ensure_project "authz-test-compute" "$ACCOUNT_CMP" "compute suite home (директива #2)" "$JWT_AAA")
+COMPUTE_CROSS=$(ensure_project "authz-compute-cross" "$ACCOUNT_CMP" "compute suite cross (директива #2)" "$JWT_AAA")
+# compute suite default JWT = jwtBootstrap. compute visibility is PROJECT-HIERARCHY (not
+# creator-tuple): system_admin@cluster gets v_get cluster-wide (Get works) but NOT project
+# v_list — so WITHOUT this grant bootstrap's LIST returns EMPTY (per-object list-filter has
+# no ids) and every list-includes/list-filtered case is RED. Grant editor on BOTH compute
+# projects so bootstrap can LIST its own creates (same pattern as vpc PA1 / nlb subjects).
+[ -n "$USER_BOOT" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$COMPUTE_PROJ"  "$JWT_AAA"
+[ -n "$USER_BOOT" ] && [ -n "$COMPUTE_CROSS" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$COMPUTE_CROSS" "$JWT_AAA"
+COMPUTE_NET=$(ensure_network "$COMPUTE_PROJ" "authz-compute-net" "$JWT_AAA")
+COMPUTE_SUBNET=""; COMPUTE_SG=""
+if [ -n "$COMPUTE_NET" ]; then
+  COMPUTE_SUBNET=$(ensure_subnet "$COMPUTE_PROJ" "$COMPUTE_NET" "authz-compute-subnet" "ru-central1-a" "10.192.0.0/24" "$JWT_AAA")
+  COMPUTE_SG=$(ensure_sg "$COMPUTE_PROJ" "$COMPUTE_NET" "authz-compute-sg" "$JWT_AAA")
+fi
+log "    compute: proj=$COMPUTE_PROJ cross=$COMPUTE_CROSS net=$COMPUTE_NET subnet=$COMPUTE_SUBNET sg=$COMPUTE_SG"
+
+# ---------------------------------------------------------------------------
+# 12) VPC list-filter-d — per-object filtered List fixtures.
+#     Subject S (subset-viewer): project#viewer (проходит method-gate List) +
+#     per-object viewer/v_get/v_list на ОДНОМ subnet'е (visible). Subject N
+#     (no-subnet-grant): только project#viewer → List возвращает 200 пустой
+#     (explicit-model: project-tier НЕ каскадит visibility на subnet'ы).
+#     Grant'ы — прямыми FGA-tuple'ами (public AccessBinding не умеет vpc_subnet
+#     scope). subnetHidden НИКОМУ не грантится (no-leak). См. cases/list-filter-d.py.
+# ---------------------------------------------------------------------------
+log "12/13 seeding vpc list-filter-d fixtures (subset-viewer + no-grant + visible/hidden subnets)"
+LF_PROJ=$(ensure_project "authz-test-listfilter" "$ACCOUNT_A" "Phase B vpc list-filter-d home" "$JWT_AAA")
+LF_NET=$(ensure_network "$LF_PROJ" "authz-lf-net" "$JWT_AAA")
+LF_SUB_VISIBLE=""; LF_SUB_HIDDEN=""
+if [ -n "$LF_NET" ]; then
+  LF_SUB_VISIBLE=$(ensure_subnet "$LF_PROJ" "$LF_NET" "authz-lf-subnet-visible" "ru-central1-a" "10.193.0.0/24" "$JWT_AAA")
+  LF_SUB_HIDDEN=$(ensure_subnet "$LF_PROJ" "$LF_NET" "authz-lf-subnet-hidden" "ru-central1-a" "10.193.1.0/24" "$JWT_AAA")
+fi
+USER_LF_SV=$(upsert_user_grpc "authz-lf-subset-viewer@example.com" "authz-lf-subset-viewer@example.com" "AuthZ LF SubsetViewer")
+USER_LF_NG=$(upsert_user_grpc "authz-lf-no-subnet-grant@example.com" "authz-lf-no-subnet-grant@example.com" "AuthZ LF NoSubnetGrant")
+JWT_LF_SV=$(mint_user_jwt "authz-lf-subset-viewer@example.com")
+JWT_LF_NG=$(mint_user_jwt "authz-lf-no-subnet-grant@example.com")
+if [ -n "$USER_LF_SV" ] && [ -n "$LF_PROJ" ]; then
+  # method-gate: api-gateway permission-catalog гейтит SubnetService.List
+  # verb-relation'ом `v_list` НА project (explicit-RBAC model — не tier `viewer`;
+  # deny: «lacks relation v_list on project ... action vpc.subnetses.list»).
+  # ОБА субъекта получают project#v_list → List отдаёт 200; но visibility
+  # per-object (ниже) не каскадит с project-уровня → no-grant видит пусто.
+  fga_write "user:$USER_LF_SV" "v_list" "project:$LF_PROJ"
+  fga_write "user:$USER_LF_NG" "v_list" "project:$LF_PROJ"
+  # per-object visibility: List-filter = `viewer ∪ v_list` на vpc_subnet →
+  # v_list делает visible-subnet виден в List; v_get даёт Get==enforce (200).
+  # ТОЛЬКО на visible для S. Hidden — никому (no-leak: List-absent + Get→404).
+  if [ -n "$LF_SUB_VISIBLE" ]; then
+    fga_write "user:$USER_LF_SV" "v_list" "vpc_subnet:$LF_SUB_VISIBLE"
+    fga_write "user:$USER_LF_SV" "v_get"  "vpc_subnet:$LF_SUB_VISIBLE"
+  fi
+fi
+log "    list-filter-d: proj=$LF_PROJ visible=$LF_SUB_VISIBLE hidden=$LF_SUB_HIDDEN SV=$USER_LF_SV NG=$USER_LF_NG"
+
+# ---------------------------------------------------------------------------
+# 13) NLB — subject JWTs + IAM/FGA grants + real existing* resources.
+#     STRICT subjects (must be granted correctly, else suite RED):
+#       jwtProjectEditorA  editor @ project:A1 (suite default author)
+#       jwtProjectEditorB  editor @ project:A2 (cross) ONLY — cross-tenant Move P0
+#       jwtProjectViewerA  viewer @ project:A1
+#       jwtProjectOwnerA   admin  @ project:A1
+#       jwtStranger        valid JWT, NO bindings (hide-existence)
+#     TOLERANT subjects (cases assert oneOf([200,403[,404]])): SA-editor
+#     (properly seeded), group-member / 2 custom-roles (best-effort; a valid
+#     but ungranted JWT already satisfies the tolerant deny). existingProjectId
+#     = A1, existingProjectCrossId = A2 (both account A → grantor AAA).
+# ---------------------------------------------------------------------------
+log "13/13 seeding nlb fixtures (5 strict subjects + SA + group + 2 custom-roles + existing* resources)"
+# Директива #2: nlb home+cross live in the nlb-only account (was the SHARED PROJECT_A1
+# / PROJECT_A2 — the primary #276 collision: nlb grants 5+ subjects + SA + group +
+# 2 custom-roles at PROJECT scope, which polluted the iam-matrix's account-A/proj
+# expectations under interleaved/parallel runs). Strict subjects below are bound on
+# these dedicated projects (grantor = AAA, owner of ACCOUNT_NLB → owner-cascade).
+NLB_PROJ=$(ensure_project "authz-nlb-home"  "$ACCOUNT_NLB" "nlb suite home (директива #2)"  "$JWT_AAA")
+NLB_CROSS=$(ensure_project "authz-nlb-cross" "$ACCOUNT_NLB" "nlb suite cross (директива #2)" "$JWT_AAA")
+
+# 13a) strict user subjects + project-scoped tier bindings (grantor AAA).
+USER_NLB_EA=$(upsert_user_grpc "authz-nlb-editor-a@example.com" "authz-nlb-editor-a@example.com" "AuthZ NLB EditorA")
+USER_NLB_EB=$(upsert_user_grpc "authz-nlb-editor-b@example.com" "authz-nlb-editor-b@example.com" "AuthZ NLB EditorB")
+USER_NLB_VA=$(upsert_user_grpc "authz-nlb-viewer-a@example.com" "authz-nlb-viewer-a@example.com" "AuthZ NLB ViewerA")
+USER_NLB_OA=$(upsert_user_grpc "authz-nlb-owner-a@example.com"  "authz-nlb-owner-a@example.com"  "AuthZ NLB OwnerA")
+USER_NLB_STR=$(upsert_user_grpc "authz-nlb-stranger@example.com" "authz-nlb-stranger@example.com" "AuthZ NLB Stranger")
+JWT_NLB_EA=$(mint_user_jwt "authz-nlb-editor-a@example.com")
+JWT_NLB_EB=$(mint_user_jwt "authz-nlb-editor-b@example.com")
+JWT_NLB_VA=$(mint_user_jwt "authz-nlb-viewer-a@example.com")
+JWT_NLB_OA=$(mint_user_jwt "authz-nlb-owner-a@example.com")
+JWT_NLB_STR=$(mint_user_jwt "authz-nlb-stranger@example.com")
+[ -n "$USER_NLB_EA" ]  && ensure_binding "$USER_NLB_EA" "$ROLE_EDIT"  "project" "$NLB_PROJ"  "$JWT_AAA"
+[ -n "$USER_NLB_EB" ]  && ensure_binding "$USER_NLB_EB" "$ROLE_EDIT"  "project" "$NLB_CROSS" "$JWT_AAA"
+[ -n "$USER_NLB_VA" ]  && ensure_binding "$USER_NLB_VA" "$ROLE_VIEW"  "project" "$NLB_PROJ"  "$JWT_AAA"
+[ -n "$USER_NLB_OA" ]  && ensure_binding "$USER_NLB_OA" "$ROLE_ADMIN" "project" "$NLB_PROJ"  "$JWT_AAA"
+# stranger: NO bindings by design.
+
+# 13b) service-account editor subject (kacho_principal_type=service_account).
+SVA_NLB=$(ensure_sa "authz-nlb-sa" "$ACCOUNT_A" "$JWT_AAA")
+[ -n "$SVA_NLB" ] && ensure_sa_binding "$SVA_NLB" "$ROLE_EDIT" "project" "$NLB_PROJ" "$JWT_AAA"
+JWT_NLB_SA=""
+[ -n "$SVA_NLB" ] && JWT_NLB_SA=$(python3 "$SCRIPT_DIR/setup-jwt.py" --secret "$DEV_SECRET" --sa "$SVA_NLB" --exp-seconds "$((EXP_HOURS * 3600))")
+
+# 13c) group-member editor (best-effort — case tolerant oneOf([200,403])).
+USER_NLB_GM=$(upsert_user_grpc "authz-nlb-group-member@example.com" "authz-nlb-group-member@example.com" "AuthZ NLB GroupMember")
+JWT_NLB_GM=$(mint_user_jwt "authz-nlb-group-member@example.com")
+NLB_GROUP=""
+if [ -n "$USER_NLB_GM" ]; then
+  gresp=$(api POST "/iam/v1/groups" "$JWT_AAA" "$(printf '{"accountId":"%s","name":"authz-nlb-editors","description":"Phase B nlb group"}' "$ACCOUNT_A")" 2>/dev/null || true)
+  gop=$(echo "$gresp" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)
+  if [ -n "$gop" ]; then
+    NLB_GROUP=$(poll_op "$gop" "$JWT_AAA" | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("groupId",""))' 2>/dev/null || true)
+  else
+    NLB_GROUP=$(api GET "/iam/v1/groups?accountId=$ACCOUNT_A" "$JWT_AAA" | python3 -c "import sys,json; d=json.load(sys.stdin); n=[x for x in (d.get('groups') or []) if x.get('name')=='authz-nlb-editors']; print(n[0].get('id','') if n else '')" 2>/dev/null || true)
+  fi
+  if [ -n "$NLB_GROUP" ]; then
+    api POST "/iam/v1/groups/${NLB_GROUP}:addMember" "$JWT_AAA" "$(printf '{"groupId":"%s","memberType":"user","memberId":"%s"}' "$NLB_GROUP" "$USER_NLB_GM")" >/dev/null 2>&1 || true
+    # bind the GROUP editor on project:A1 (subjectType=group).
+    api POST "/iam/v1/accessBindings" "$JWT_AAA" "$(printf '{"subjectType":"group","subjectId":"%s","roleId":"%s","resourceType":"project","resourceId":"%s"}' "$NLB_GROUP" "$ROLE_EDIT" "$NLB_PROJ")" >/dev/null 2>&1 || true
+  fi
+fi
+
+# 13d) custom-role subjects (best-effort — cases tolerant).
+ensure_custom_role() {
+  local name="$1" module="$2" resources="$3" verbs="$4"
+  local found body op op_id
+  found=$(api GET "/iam/v1/roles?accountId=$ACCOUNT_A&pageSize=1000" "$JWT_AAA" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); n=[x for x in (d.get('roles') or []) if x.get('name')=='$name']; print(n[0].get('id','') if n else '')" 2>/dev/null || true)
+  if [ -n "$found" ]; then echo "$found"; return; fi
+  body=$(printf '{"accountId":"%s","name":"%s","description":"Phase B nlb custom role","rules":[{"module":"%s","resources":[%s],"verbs":[%s]}]}' \
+    "$ACCOUNT_A" "$name" "$module" "$resources" "$verbs")
+  op=$(api POST "/iam/v1/roles" "$JWT_AAA" "$body" 2>/dev/null || true)
+  op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)
+  [ -z "$op_id" ] && { echo ""; return; }
+  poll_op "$op_id" "$JWT_AAA" | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("roleId",""))' 2>/dev/null || true
+}
+USER_NLB_CRO=$(upsert_user_grpc "authz-nlb-cr-operator@example.com" "authz-nlb-cr-operator@example.com" "AuthZ NLB CustomRoleOperator")
+USER_NLB_CRT=$(upsert_user_grpc "authz-nlb-cr-targetmgr@example.com" "authz-nlb-cr-targetmgr@example.com" "AuthZ NLB CustomRoleTargetMgr")
+JWT_NLB_CRO=$(mint_user_jwt "authz-nlb-cr-operator@example.com")
+JWT_NLB_CRT=$(mint_user_jwt "authz-nlb-cr-targetmgr@example.com")
+ROLE_NLB_OP=$(ensure_custom_role "authz-nlb-operator" "loadbalancer" '"networkLoadBalancers"' '"start","stop"')
+ROLE_NLB_TM=$(ensure_custom_role "authz-nlb-targetmgr" "loadbalancer" '"targetGroups"' '"addTargets","removeTargets"')
+[ -n "$USER_NLB_CRO" ] && [ -n "$ROLE_NLB_OP" ] && ensure_binding "$USER_NLB_CRO" "$ROLE_NLB_OP" "project" "$NLB_PROJ" "$JWT_AAA"
+[ -n "$USER_NLB_CRT" ] && [ -n "$ROLE_NLB_TM" ] && ensure_binding "$USER_NLB_CRT" "$ROLE_NLB_TM" "project" "$NLB_PROJ" "$JWT_AAA"
+
+# 13e) real existing* resources for non-authz nlb cases (network/subnet/instance
+#      /nic/address) via seed-nlb-fixtures.sh — passing an explicit project +
+#      grantor JWT so it does not depend on its (polyrepo-era) fixture-path probe.
+# keep seed output inside the gitignored out/ dir (not repo root — avoids a
+# stray untracked .seeded-ids.env runtime artifact).
+NLB_SEEDED_IDS="$OUT_DIR/nlb-seeded-ids.env"
+if [ -f "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" ]; then
+  log "    invoking seed-nlb-fixtures.sh (project=$NLB_PROJ)"
+  BASE_URL="$BASE_URL" JWT="$JWT_AAA" existingProjectId="$NLB_PROJ" OUT_FILE="$NLB_SEEDED_IDS" \
+    bash "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" >/dev/null 2>&1 || log "    WARN seed-nlb-fixtures.sh partial/failed (existing* ids may be blank)"
+fi
+NLB_NET=""; NLB_SUBNET=""; NLB_INSTANCE=""; NLB_NIC=""; NLB_ADDR=""
+if [ -f "$NLB_SEEDED_IDS" ]; then
+  # shellcheck disable=SC1090
+  NLB_NET=$(grep -E '^existingNetworkId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
+  NLB_SUBNET=$(grep -E '^existingSubnetId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
+  NLB_INSTANCE=$(grep -E '^existingInstanceId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
+  NLB_NIC=$(grep -E '^existingNicId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
+  NLB_ADDR=$(grep -E '^existingExternalAddressId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
+fi
+log "    nlb subjects: EA=$USER_NLB_EA EB=$USER_NLB_EB VA=$USER_NLB_VA OA=$USER_NLB_OA STR=$USER_NLB_STR SA=$SVA_NLB"
+log "    nlb resources: net=$NLB_NET subnet=$NLB_SUBNET instance=$NLB_INSTANCE nic=$NLB_NIC addr=$NLB_ADDR"
+
 # Write authz-fixtures.json + patch env-files.
 log "writing $OUT_DIR/authz-fixtures.json"
 cat > "$OUT_DIR/authz-fixtures.json" <<EOF
@@ -646,6 +1005,7 @@ cat > "$OUT_DIR/authz-fixtures.json" <<EOF
   "baseUrl": "$BASE_URL",
   "jwtBootstrap": "$JWT_BOOTSTRAP",
   "jwtNoBindings": "$JWT_NO_BINDINGS",
+  "jwtPureNoBindings": "$JWT_PURE_NOB",
   "jwtProjectAdminA1": "$JWT_PA1",
   "jwtAccountAdminA": "$JWT_AAA",
   "jwtAccountAdminAStepUp": "$JWT_AAA_STEPUP",
@@ -659,6 +1019,7 @@ cat > "$OUT_DIR/authz-fixtures.json" <<EOF
   "seedNetworkA1Id": "$SEED_NET_A1",
   "seedNetworkB1Id": "$SEED_NET_B1",
   "userNOBId": "$USER_NOB",
+  "userPureNoBindingsId": "$USER_PURE_NOB",
   "userPA1Id": "$USER_PA1",
   "userAAAId": "$USER_AAA",
   "userAABId": "$USER_AAB",
@@ -694,6 +1055,81 @@ if [ "$PATCH_ENV" = "true" ]; then
     log "    patching newman env files (${#ENV_FILES[@]} шт.)"
     python3 "$SCRIPT_DIR/patch-env.py" "$OUT_DIR/authz-fixtures.json" "${ENV_FILES[@]}"
   fi
+
+  # --- Phase B targeted per-service patches ---------------------------------
+  # `existingProjectId`/`existingSubnetId`/subject-JWT семантически РАЗНЫЕ у
+  # каждого сервиса, поэтому патчим ТОЧЕЧНО (compute-fixtures → compute env и
+  # т.д.), а не общим глобом — иначе один existingProjectId затёр бы другой.
+  # patch_one <fixtures.json> <env-path> — патчит, предварительно ВЫКИНУВ
+  # ключи с пустым значением: неудавшийся под-seed (напр. instance create
+  # rejected) НЕ должен затирать committed-плейсхолдер пустой строкой.
+  patch_one() {
+    [ -f "$2" ] || return 0
+    local filtered="${1%.json}.nonempty.json"
+    python3 -c "
+import json
+d=json.load(open('$1'))
+json.dump({k:v for k,v in d.items() if v}, open('$filtered','w'), indent=2)
+"
+    python3 "$SCRIPT_DIR/patch-env.py" "$filtered" "$2" || true
+  }
+  COMPUTE_ENV="$WORKSPACE_DIR/services/compute/tests/newman/environments/local.postman_environment.json"
+  VPC_ENV="$WORKSPACE_DIR/services/vpc/tests/newman/environments/local.postman_environment.json"
+  NLB_ENV="$WORKSPACE_DIR/services/nlb/tests/newman/environments/local.postman_environment.json"
+
+  # compute — только непустые ключи (пустой не должен затирать committed-default).
+  cat > "$OUT_DIR/compute-fixtures.json" <<EOF
+{
+  "existingProjectId": "$COMPUTE_PROJ",
+  "existingProjectCrossId": "$COMPUTE_CROSS",
+  "existingNetworkId": "$COMPUTE_NET",
+  "existingSubnetId": "$COMPUTE_SUBNET",
+  "existingSgId": "$COMPUTE_SG"
+}
+EOF
+  patch_one "$OUT_DIR/compute-fixtures.json" "$COMPUTE_ENV"
+
+  # vpc list-filter-d subjects + subnets (additive to the shared vpc patch) +
+  # директива #2 dedicated home/cross projects. existingProjectId/CrossId drive the
+  # CRUD-suite _suiteProjectId/_suiteProjectCrossId (gen.py prelude prefers them);
+  # the authz-deny matrix keeps the shared projectA1Id/B1Id (patched by the shared JSON).
+  cat > "$OUT_DIR/vpc-listfilter-fixtures.json" <<EOF
+{
+  "jwtSubnetSubsetViewer": "$JWT_LF_SV",
+  "jwtNoSubnetGrant": "$JWT_LF_NG",
+  "listFilterProjectId": "$LF_PROJ",
+  "subnetVisibleId": "$LF_SUB_VISIBLE",
+  "subnetHiddenId": "$LF_SUB_HIDDEN",
+  "existingProjectId": "$VPC_HOME",
+  "existingProjectCrossId": "$VPC_CROSS"
+}
+EOF
+  patch_one "$OUT_DIR/vpc-listfilter-fixtures.json" "$VPC_ENV"
+
+  # nlb subjects + existing* resources.
+  cat > "$OUT_DIR/nlb-fixtures.json" <<EOF
+{
+  "existingProjectId": "$NLB_PROJ",
+  "existingProjectCrossId": "$NLB_CROSS",
+  "existingRegionId": "ru-central1",
+  "existingZoneId": "ru-central1-a",
+  "existingNetworkId": "$NLB_NET",
+  "existingSubnetId": "$NLB_SUBNET",
+  "existingInstanceId": "$NLB_INSTANCE",
+  "existingNicId": "$NLB_NIC",
+  "existingAddressId": "$NLB_ADDR",
+  "jwtProjectEditorA": "$JWT_NLB_EA",
+  "jwtProjectEditorB": "$JWT_NLB_EB",
+  "jwtProjectViewerA": "$JWT_NLB_VA",
+  "jwtProjectOwnerA": "$JWT_NLB_OA",
+  "jwtStranger": "$JWT_NLB_STR",
+  "jwtServiceAccountEditor": "$JWT_NLB_SA",
+  "jwtGroupMemberEditor": "$JWT_NLB_GM",
+  "jwtCustomRoleOperator": "$JWT_NLB_CRO",
+  "jwtCustomRoleTargetManager": "$JWT_NLB_CRT"
+}
+EOF
+  patch_one "$OUT_DIR/nlb-fixtures.json" "$NLB_ENV"
 fi
 
 log "DONE — fixtures saved to $OUT_DIR/authz-fixtures.json"

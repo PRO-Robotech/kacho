@@ -80,12 +80,15 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="OP-GET-NEG-UNKNOWN-PREFIX",
-    title="Get opId без known 3-char prefix (OpsProxy: prefix не из {b1g,bpf,enp,epd}) → 400 InvalidArgument 'prefix'",
+    title="Get opId без known 3-char prefix (garbage id) → 400 InvalidArgument 'invalid operation id'",
     classes=["NEG"], priority="P0",
     steps=[Step(name="get-garbage-prefix", method="GET", path="/operations/{{garbageId}}",
-                # OpsProxy в api-gateway отвергает id без known 3-char prefix → 400 InvalidArgument
+                # OpsProxy в api-gateway отвергает id без known 3-char prefix → 400 InvalidArgument.
+                # Наблюдаемый контракт (api-conventions «malformed id → invalid <res> id <X>»):
+                # message = `invalid operation id "<X>"` (не слово 'prefix' — это внутренняя причина,
+                # не текст ответа). Проверяем конвенциональный текст, а не термин реализации.
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('mentions prefix', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('prefix'));"])],
+                             "pm.test('mentions invalid operation id (malformed-id convention)', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"])],
 ))
 
 CASES.append(Case(

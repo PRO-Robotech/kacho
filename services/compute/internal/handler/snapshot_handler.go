@@ -54,6 +54,10 @@ func (h *SnapshotHandler) List(ctx context.Context, req *computev1.ListSnapshots
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
+	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see disk_handler).
+	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
+		return nil, err
+	}
 	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeSnapshot, authzfilter.ActionSnapshotRead)
 	if err != nil {
 		return nil, err

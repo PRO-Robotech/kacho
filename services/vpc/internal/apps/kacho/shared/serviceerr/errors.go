@@ -32,6 +32,12 @@ var ErrFailedPrecondition = repo.ErrFailedPrecondition
 // на gRPC Internal с фиксированным сообщением, чтобы не leak'ать pgx-текст.
 var ErrInternal = repo.ErrInternal
 
+// ErrConflict — retryable concurrency-конфликт (SQLSTATE 40001 serialization_failure /
+// 40P01 deadlock_detected), напр. проигравшая транзакция в burst из overlapping
+// Subnet.Create. Маппится в gRPC Aborted (retryable) с фиксированным текстом, а не
+// INTERNAL — тот же error-value использует repo (errors.Is прозрачен через слои).
+var ErrConflict = repo.ErrConflict
+
 // ErrPoolNotResolved — ни один шаг IPAM cascade не дал результат.
 // Маппится в FailedPrecondition. Тестируется через errors.Is.
 var ErrPoolNotResolved = repo.ErrPoolNotResolved

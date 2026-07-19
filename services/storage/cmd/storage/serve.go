@@ -66,7 +66,9 @@ func runServe(cfg config.Config) error {
 	// async-мутации пишут LRO-строку; фоновый worker финализирует; клиент поллит
 	// OperationService.Get(id).
 	opsRepo := operations.NewRepo(pool, config.DBSchema)
-	if err = operations.ConfigureDefault(operations.WithLogger(logger)); err != nil {
+	if err = operations.ConfigureDefault(
+		operations.WithLogger(logger),
+	); err != nil {
 		return fmt.Errorf("configure LRO worker: %w", err)
 	}
 	operations.Start()

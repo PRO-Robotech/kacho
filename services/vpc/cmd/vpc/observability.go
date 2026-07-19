@@ -56,7 +56,10 @@ var (
 // ConfigureDefault обязан предшествовать Start; вызывается один раз из composition
 // root (повторный вызов после старта вернул бы ErrWorkerStarted).
 func startLROWorker(rec operations.Recorder, logger *slog.Logger) error {
-	if err := operations.ConfigureDefault(operations.WithRecorder(rec), operations.WithLogger(logger)); err != nil {
+	if err := operations.ConfigureDefault(
+		operations.WithRecorder(rec),
+		operations.WithLogger(logger),
+	); err != nil {
 		return fmt.Errorf("configure LRO default-registry: %w", err)
 	}
 	operations.Start()
