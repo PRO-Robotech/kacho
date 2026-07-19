@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: build ${{ matrix.project }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           # Контекст — ui-future/: Dockerfile'ы remotes копируют shared/ рядом.
           context: ui-future
