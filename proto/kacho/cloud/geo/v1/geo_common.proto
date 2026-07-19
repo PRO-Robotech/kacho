@@ -1,0 +1,32 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.geo.v1;
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
+
+// GeoStatus — raw admin maintenance flag shared by Region and Zone. This is the
+// two-projection admin-plane signal: it lives ONLY on the Internal* projections
+// (InternalRegion / InternalZone) — NEVER on the public Region / Zone (see
+// security.md two-projection). UP = accepts placement; DOWN = withdrawn/new,
+// placement forbidden. Fresh Region/Zone default to DOWN (fail-safe).
+enum GeoStatus {
+  GEO_STATUS_UNSPECIFIED = 0;
+  UP                     = 1;
+  DOWN                   = 2;
+}
+
+// PlacementBlockedReason — diagnostic emitted ONLY on the public Zone (never on
+// Region — on a Region the enum would collapse to a bijection of
+// openForPlacement°, so it is removed by construction). Explains, in a single
+// call, why a zone's derived openForPlacement° is false, without a second
+// RegionService.Get. Precedence: zone.status==DOWN ⇒ ZONE_DOWN; otherwise
+// region.status==DOWN ⇒ REGION_DOWN; otherwise NONE.
+enum PlacementBlockedReason {
+  PLACEMENT_BLOCKED_REASON_UNSPECIFIED = 0;
+  NONE                                 = 1;
+  ZONE_DOWN                            = 2;
+  REGION_DOWN                          = 3;
+}

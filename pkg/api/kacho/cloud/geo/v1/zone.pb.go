@@ -25,77 +25,36 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type Zone_Status int32
-
-const (
-	Zone_STATUS_UNSPECIFIED Zone_Status = 0
-	// Zone is available; resources allocated in this zone can be accessed.
-	Zone_UP Zone_Status = 1
-	// Zone is not available.
-	Zone_DOWN Zone_Status = 2
-)
-
-// Enum value maps for Zone_Status.
-var (
-	Zone_Status_name = map[int32]string{
-		0: "STATUS_UNSPECIFIED",
-		1: "UP",
-		2: "DOWN",
-	}
-	Zone_Status_value = map[string]int32{
-		"STATUS_UNSPECIFIED": 0,
-		"UP":                 1,
-		"DOWN":               2,
-	}
-)
-
-func (x Zone_Status) Enum() *Zone_Status {
-	p := new(Zone_Status)
-	*p = x
-	return p
-}
-
-func (x Zone_Status) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (Zone_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_geo_v1_zone_proto_enumTypes[0].Descriptor()
-}
-
-func (Zone_Status) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_geo_v1_zone_proto_enumTypes[0]
-}
-
-func (x Zone_Status) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use Zone_Status.Descriptor instead.
-func (Zone_Status) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_geo_v1_zone_proto_rawDescGZIP(), []int{0, 0}
-}
-
-// Zone — global platform-topology resource (a subdivision of a Region).
+// Zone — public, tenant-facing placement-axis coordinate (ZONAL), a subdivision
+// of a Region.
 //
-// Geography (Region/Zone) is owned by kacho-geo, the leaf platform-topology
-// service. Other services reference a zone by id (string) and validate it via
-// ZoneService.Get (cross-domain ref by id, no cross-service FK). See
-// data-integrity.md §«Cross-domain ссылки».
+// LEAN public projection: the raw admin `status` (GeoStatus) and the whole infra°
+// block live ONLY on InternalZone (two-projection, security.md). The removal of
+// the public `status` field (field 3, reserved below) is an intentional breaking
+// change vs the pre-redesign proto. The placement axis (ZONAL) is NOT emitted as
+// a field — a consumer infers it from ZoneService (module-geo rule 1).
 type Zone struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the zone (e.g. "ru-central1-a"). Admin-assigned, immutable PK.
+	// ID of the zone (e.g. "ru-central1-a"). Admin-assigned immutable slug PK;
+	// coupling: id == regionId + "-" + <zoneSuffix> (strict startsWith).
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// ID of the region this zone belongs to (FK → Region.id).
+	// ID of the region this zone belongs to (class-A within-service FK →
+	// regions(id) ON DELETE RESTRICT). IMMUTABLE after create.
 	RegionId string `protobuf:"bytes,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	// Status of the zone.
-	Status Zone_Status `protobuf:"varint,3,opt,name=status,proto3,enum=kacho.cloud.geo.v1.Zone_Status" json:"status,omitempty"`
-	// Human-readable name of the zone.
+	// Human-readable label; LIVE-mutable via InternalZoneService.Update. Globally
+	// UNIQUE, required.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	// Creation timestamp.
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Creation timestamp (truncated to seconds on the wire).
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Derived: the SINGLE actionable placement signal.
+	// = zone.status==UP && region.status==UP. ADMINISTRATIVE availability, NOT a
+	// capacity guarantee — Create may still fail on capacity at schedule time.
+	OpenForPlacement bool `protobuf:"varint,6,opt,name=open_for_placement,json=openForPlacement,proto3" json:"open_for_placement,omitempty"`
+	// Diagnostic: why open_for_placement° is false, in a single call.
+	// precedence: zone.status==DOWN⇒ZONE_DOWN; else region.status==DOWN⇒REGION_DOWN.
+	PlacementBlockedReason PlacementBlockedReason `protobuf:"varint,7,opt,name=placement_blocked_reason,json=placementBlockedReason,proto3,enum=kacho.cloud.geo.v1.PlacementBlockedReason" json:"placement_blocked_reason,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *Zone) Reset() {
@@ -142,13 +101,6 @@ func (x *Zone) GetRegionId() string {
 	return ""
 }
 
-func (x *Zone) GetStatus() Zone_Status {
-	if x != nil {
-		return x.Status
-	}
-	return Zone_STATUS_UNSPECIFIED
-}
-
 func (x *Zone) GetName() string {
 	if x != nil {
 		return x.Name
@@ -163,22 +115,222 @@ func (x *Zone) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Zone) GetOpenForPlacement() bool {
+	if x != nil {
+		return x.OpenForPlacement
+	}
+	return false
+}
+
+func (x *Zone) GetPlacementBlockedReason() PlacementBlockedReason {
+	if x != nil {
+		return x.PlacementBlockedReason
+	}
+	return PlacementBlockedReason_PLACEMENT_BLOCKED_REASON_UNSPECIFIED
+}
+
+// ZoneInfra — infra-sensitive projection of a Zone. Accepted whole on
+// InternalZoneService.Create; readable via GetInternal. NEVER on the public
+// surface — in particular NOT embedded into any public capacity error
+// (security.md two-projection; module-geo rule 3).
+type ZoneInfra struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Numeric infra identifier of the zone; IMMUTABLE after create.
+	NumericInfraId int64 `protobuf:"varint,1,opt,name=numeric_infra_id,json=numericInfraId,proto3" json:"numeric_infra_id,omitempty"`
+	// Inventory of host-classes (mutable). NEVER on public.
+	HostClasses []string `protobuf:"bytes,2,rep,name=host_classes,json=hostClasses,proto3" json:"host_classes,omitempty"`
+	// Number of failure-domains inside the zone (mutable).
+	FailureDomainCount int32 `protobuf:"varint,3,opt,name=failure_domain_count,json=failureDomainCount,proto3" json:"failure_domain_count,omitempty"`
+	// Carrier/underlay coordinate (mutable).
+	UnderlayAnchor string `protobuf:"bytes,4,opt,name=underlay_anchor,json=underlayAnchor,proto3" json:"underlay_anchor,omitempty"`
+	// Scheduler/infra capacity signal {AMPLE|CONSTRAINED|FULL} (mutable). NEVER on
+	// public.
+	CapacityHint  string `protobuf:"bytes,5,opt,name=capacity_hint,json=capacityHint,proto3" json:"capacity_hint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ZoneInfra) Reset() {
+	*x = ZoneInfra{}
+	mi := &file_kacho_cloud_geo_v1_zone_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ZoneInfra) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ZoneInfra) ProtoMessage() {}
+
+func (x *ZoneInfra) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_zone_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ZoneInfra.ProtoReflect.Descriptor instead.
+func (*ZoneInfra) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_zone_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ZoneInfra) GetNumericInfraId() int64 {
+	if x != nil {
+		return x.NumericInfraId
+	}
+	return 0
+}
+
+func (x *ZoneInfra) GetHostClasses() []string {
+	if x != nil {
+		return x.HostClasses
+	}
+	return nil
+}
+
+func (x *ZoneInfra) GetFailureDomainCount() int32 {
+	if x != nil {
+		return x.FailureDomainCount
+	}
+	return 0
+}
+
+func (x *ZoneInfra) GetUnderlayAnchor() string {
+	if x != nil {
+		return x.UnderlayAnchor
+	}
+	return ""
+}
+
+func (x *ZoneInfra) GetCapacityHint() string {
+	if x != nil {
+		return x.CapacityHint
+	}
+	return ""
+}
+
+// InternalZone — full admin-plane projection (InternalZoneService.GetInternal,
+// :9091 only). Carries the raw admin `status` and the infra° block; NEVER routed
+// to the external TLS endpoint (ban #6).
+type InternalZone struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	RegionId  string                 `protobuf:"bytes,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	Name      string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Raw admin maintenance flag (UP/DOWN). LIVE-mutable via Internal Update.
+	Status GeoStatus `protobuf:"varint,5,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
+	// Infra-sensitive projection — Internal-only.
+	Infra         *ZoneInfra `protobuf:"bytes,6,opt,name=infra,proto3" json:"infra,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InternalZone) Reset() {
+	*x = InternalZone{}
+	mi := &file_kacho_cloud_geo_v1_zone_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InternalZone) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InternalZone) ProtoMessage() {}
+
+func (x *InternalZone) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_zone_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InternalZone.ProtoReflect.Descriptor instead.
+func (*InternalZone) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_zone_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *InternalZone) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *InternalZone) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *InternalZone) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *InternalZone) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *InternalZone) GetStatus() GeoStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GeoStatus_GEO_STATUS_UNSPECIFIED
+}
+
+func (x *InternalZone) GetInfra() *ZoneInfra {
+	if x != nil {
+		return x.Infra
+	}
+	return nil
+}
+
 var File_kacho_cloud_geo_v1_zone_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_zone_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/geo/v1/zone.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xef\x01\n" +
+	"\x1dkacho/cloud/geo/v1/zone.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\"\xa4\x02\n" +
 	"\x04Zone\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
-	"\tregion_id\x18\x02 \x01(\tR\bregionId\x127\n" +
-	"\x06status\x18\x03 \x01(\x0e2\x1f.kacho.cloud.geo.v1.Zone.StatusR\x06status\x12\x12\n" +
+	"\tregion_id\x18\x02 \x01(\tR\bregionId\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"2\n" +
-	"\x06Status\x12\x16\n" +
-	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x06\n" +
-	"\x02UP\x10\x01\x12\b\n" +
-	"\x04DOWN\x10\x02B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12,\n" +
+	"\x12open_for_placement\x18\x06 \x01(\bR\x10openForPlacement\x12d\n" +
+	"\x18placement_blocked_reason\x18\a \x01(\x0e2*.kacho.cloud.geo.v1.PlacementBlockedReasonR\x16placementBlockedReasonJ\x04\b\x03\x10\x04R\x06status\"\xd8\x01\n" +
+	"\tZoneInfra\x12(\n" +
+	"\x10numeric_infra_id\x18\x01 \x01(\x03R\x0enumericInfraId\x12!\n" +
+	"\fhost_classes\x18\x02 \x03(\tR\vhostClasses\x120\n" +
+	"\x14failure_domain_count\x18\x03 \x01(\x05R\x12failureDomainCount\x12'\n" +
+	"\x0funderlay_anchor\x18\x04 \x01(\tR\x0eunderlayAnchor\x12#\n" +
+	"\rcapacity_hint\x18\x05 \x01(\tR\fcapacityHint\"\xf6\x01\n" +
+	"\fInternalZone\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
+	"\tregion_id\x18\x02 \x01(\tR\bregionId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x129\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x125\n" +
+	"\x06status\x18\x05 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x123\n" +
+	"\x05infra\x18\x06 \x01(\v2\x1d.kacho.cloud.geo.v1.ZoneInfraR\x05infraB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_zone_proto_rawDescOnce sync.Once
@@ -192,21 +344,26 @@ func file_kacho_cloud_geo_v1_zone_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_geo_v1_zone_proto_rawDescData
 }
 
-var file_kacho_cloud_geo_v1_zone_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kacho_cloud_geo_v1_zone_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_kacho_cloud_geo_v1_zone_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_kacho_cloud_geo_v1_zone_proto_goTypes = []any{
-	(Zone_Status)(0),              // 0: kacho.cloud.geo.v1.Zone.Status
-	(*Zone)(nil),                  // 1: kacho.cloud.geo.v1.Zone
-	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
+	(*Zone)(nil),                  // 0: kacho.cloud.geo.v1.Zone
+	(*ZoneInfra)(nil),             // 1: kacho.cloud.geo.v1.ZoneInfra
+	(*InternalZone)(nil),          // 2: kacho.cloud.geo.v1.InternalZone
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(PlacementBlockedReason)(0),   // 4: kacho.cloud.geo.v1.PlacementBlockedReason
+	(GeoStatus)(0),                // 5: kacho.cloud.geo.v1.GeoStatus
 }
 var file_kacho_cloud_geo_v1_zone_proto_depIdxs = []int32{
-	0, // 0: kacho.cloud.geo.v1.Zone.status:type_name -> kacho.cloud.geo.v1.Zone.Status
-	2, // 1: kacho.cloud.geo.v1.Zone.created_at:type_name -> google.protobuf.Timestamp
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 0: kacho.cloud.geo.v1.Zone.created_at:type_name -> google.protobuf.Timestamp
+	4, // 1: kacho.cloud.geo.v1.Zone.placement_blocked_reason:type_name -> kacho.cloud.geo.v1.PlacementBlockedReason
+	3, // 2: kacho.cloud.geo.v1.InternalZone.created_at:type_name -> google.protobuf.Timestamp
+	5, // 3: kacho.cloud.geo.v1.InternalZone.status:type_name -> kacho.cloud.geo.v1.GeoStatus
+	1, // 4: kacho.cloud.geo.v1.InternalZone.infra:type_name -> kacho.cloud.geo.v1.ZoneInfra
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_geo_v1_zone_proto_init() }
@@ -214,19 +371,19 @@ func file_kacho_cloud_geo_v1_zone_proto_init() {
 	if File_kacho_cloud_geo_v1_zone_proto != nil {
 		return
 	}
+	file_kacho_cloud_geo_v1_geo_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_geo_v1_zone_proto_rawDesc), len(file_kacho_cloud_geo_v1_zone_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   1,
+			NumEnums:      0,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_kacho_cloud_geo_v1_zone_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_geo_v1_zone_proto_depIdxs,
-		EnumInfos:         file_kacho_cloud_geo_v1_zone_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_geo_v1_zone_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_geo_v1_zone_proto = out.File

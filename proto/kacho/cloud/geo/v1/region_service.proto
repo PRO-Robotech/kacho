@@ -54,6 +54,11 @@ message ListRegionsRequest {
   // Page token. To get the next page of results, set [page_token] to the
   // [ListRegionsResponse.next_page_token] returned by a previous list request.
   string page_token = 2 [(length) = "<=100"];
+
+  // If true, return only regions that are open for placement (derived
+  // open_for_placement°=true, i.e. status==UP). This is the ONLY placement
+  // filter — there is no raw ?status=UP on the public surface.
+  bool open_for_placement = 3;
 }
 
 message ListRegionsResponse {

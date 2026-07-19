@@ -36,9 +36,15 @@ type ListZonesRequest struct {
 	PageSize int64 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Page token. To get the next page of results, set [page_token] to the
 	// [ListZonesResponse.next_page_token] returned by a previous list request.
-	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PageToken string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// If non-empty, return only zones belonging to this region.
+	RegionId string `protobuf:"bytes,3,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// If true, return only zones that are open for placement (derived
+	// open_for_placement°=true, i.e. zone.status==UP && region.status==UP). This
+	// is the ONLY placement filter — there is no raw ?status=UP on public.
+	OpenForPlacement bool `protobuf:"varint,4,opt,name=open_for_placement,json=openForPlacement,proto3" json:"open_for_placement,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ListZonesRequest) Reset() {
@@ -83,6 +89,20 @@ func (x *ListZonesRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListZonesRequest) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *ListZonesRequest) GetOpenForPlacement() bool {
+	if x != nil {
+		return x.OpenForPlacement
+	}
+	return false
 }
 
 type ListZonesResponse struct {
@@ -190,12 +210,14 @@ var File_kacho_cloud_geo_v1_zone_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_zone_service_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"e\n" +
+	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xb0\x01\n" +
 	"\x10ListZonesRequest\x12'\n" +
 	"\tpage_size\x18\x01 \x01(\x03B\n" +
 	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"k\n" +
+	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\x1b\n" +
+	"\tregion_id\x18\x03 \x01(\tR\bregionId\x12,\n" +
+	"\x12open_for_placement\x18\x04 \x01(\bR\x10openForPlacement\"k\n" +
 	"\x11ListZonesResponse\x12.\n" +
 	"\x05zones\x18\x01 \x03(\v2\x18.kacho.cloud.geo.v1.ZoneR\x05zones\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"7\n" +

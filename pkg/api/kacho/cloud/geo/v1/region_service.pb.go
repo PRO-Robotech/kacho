@@ -78,9 +78,13 @@ type ListRegionsRequest struct {
 	PageSize int64 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Page token. To get the next page of results, set [page_token] to the
 	// [ListRegionsResponse.next_page_token] returned by a previous list request.
-	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PageToken string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// If true, return only regions that are open for placement (derived
+	// open_for_placement°=true, i.e. status==UP). This is the ONLY placement
+	// filter — there is no raw ?status=UP on the public surface.
+	OpenForPlacement bool `protobuf:"varint,3,opt,name=open_for_placement,json=openForPlacement,proto3" json:"open_for_placement,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ListRegionsRequest) Reset() {
@@ -125,6 +129,13 @@ func (x *ListRegionsRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListRegionsRequest) GetOpenForPlacement() bool {
+	if x != nil {
+		return x.OpenForPlacement
+	}
+	return false
 }
 
 type ListRegionsResponse struct {
@@ -187,12 +198,13 @@ const file_kacho_cloud_geo_v1_region_service_proto_rawDesc = "" +
 	"\n" +
 	"'kacho/cloud/geo/v1/region_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"=\n" +
 	"\x10GetRegionRequest\x12)\n" +
-	"\tregion_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bregionId\"g\n" +
+	"\tregion_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bregionId\"\x95\x01\n" +
 	"\x12ListRegionsRequest\x12'\n" +
 	"\tpage_size\x18\x01 \x01(\x03B\n" +
 	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"s\n" +
+	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12,\n" +
+	"\x12open_for_placement\x18\x03 \x01(\bR\x10openForPlacement\"s\n" +
 	"\x13ListRegionsResponse\x124\n" +
 	"\aregions\x18\x01 \x03(\v2\x1a.kacho.cloud.geo.v1.RegionR\aregions\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd6\x02\n" +
