@@ -56,6 +56,12 @@ linters:
         - (io.Closer).Close
 
   exclusions:
+    paths:
+      # ui-future/ — JS/TS фронт; node_modules может содержать сторонние .go-файлы
+      # (напр. flatted/golang/…/flatted.go), которые линтить нельзя. На self-hosted /
+      # shared-workspace node_modules переживает между job'ами и попадает в скан.
+      - (^|/)node_modules($|/)
+      - ^ui-future/
     rules:
       # Сгенерённые стабы (buf generate → pkg/api). Их пишет генератор — линтить
       # бессмысленно. Был путь polyrepo `gen/go/`; в монорепе стабы в pkg/api/.

@@ -85,6 +85,7 @@ func TestPermissionCatalog_Geo_S5_InternalAdminSystemAdmin(t *testing.T) {
 //     segment → InternalRegionService/InternalZoneService. The /internal/ segment is
 //     what routes these onto the cluster-internal sub-mux and gets them 404'd on the
 //     external listener (ban #6, GEO-1-17).
+//
 // Without these the authz middleware cannot map geo requests to catalog entries and
 // every geo REST call is denied.
 func TestRestRouter_Geo_S5_PathFQN(t *testing.T) {
