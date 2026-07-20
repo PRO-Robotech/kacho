@@ -9,9 +9,9 @@
 
 import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { PlusOutlined, KeyOutlined } from "@ant-design/icons";
+import { PlusOutlined, KeyOutlined, StopOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Table, Tag, Typography } from "antd";
+import { Button, Popconfirm, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import {
@@ -25,10 +25,24 @@ import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
-import { CopyableMonoId, fmtTs } from "@shared/components/organisms/iam/IamCommon";
+import { CopyableMonoId, fmtTs, useIamMutation } from "@shared/components/organisms/iam/IamCommon";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { getByPath } from "@shared/lib/resource-registry";
-import { iamApi, type AccessBinding, type Group, type SubjectPrivilege, type User } from "@shared/api/iam";
+import {
+  iamApi,
+  IAM,
+  roleIsSystem,
+  roleDefinitionTier,
+  targetKind,
+  type AccessBinding,
+  type AccessBindingTarget,
+  type DefinitionTier,
+  type Group,
+  type Role,
+  type Subject,
+  type SubjectPrivilege,
+  type User,
+} from "@shared/api/iam";
 
 import { useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { GroupMembersPanel } from "@/pages/iam/GroupsPage";
@@ -45,6 +59,128 @@ const dash = <Typography.Text type="secondary">—</Typography.Text>;
 function mono(v: unknown): ReactNode {
   const s = v == null ? "" : String(v);
   return s ? <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{s}</span> : dash;
+}
+
+// ─────────────────────── IAM-1 helpers (definitionTier / verbs / target / revoke) ───────────────────────
+
+// Dotted tier/scope → цвет тега (cluster=red / account=blue / project=green).
+function iamTierColor(dotted: string): string {
+  return dotted === "iam.cluster"
+    ? "red"
+    : dotted === "iam.account"
+      ? "blue"
+      : dotted === "iam.project"
+        ? "green"
+        : "default";
+}
+
+// verbChips — глаголы роли как моно-чипы. delete* (co-материализованный у editor,
+// IAM-1 F6) выделяется цветом; verbNotes[delete*] показывается подписью-tooltip.
+function verbChips(verbs: string[] | undefined, notes?: Record<string, string>): ReactNode {
+  if (!verbs || verbs.length === 0) return dash;
+  return (
+    <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+      {verbs.map((v) => {
+        const note = notes?.[v];
+        const isDeleteStar = v.startsWith("delete*") || v === "delete*";
+        return (
+          <Tag
+            key={v}
+            color={isDeleteStar ? "volcano" : undefined}
+            title={note}
+            style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          >
+            {v}
+          </Tag>
+        );
+      })}
+    </span>
+  );
+}
+
+// RevokeBindingButton — IAM-1 F10 soft-revoke (:revoke) как action в шапке detail'а
+// AccessBinding. В отличие от Delete (hard, Get→404), переводит binding в REVOKED
+// (retention). Скрыт, если binding уже REVOKED или под deletionProtection.
+function RevokeBindingButton({ id, status, detailBase }: { id: string; status?: string; detailBase: string }) {
+  const navigate = useNavigate();
+  const mut = useIamMutation({
+    method: "ACTION",
+    path: `${IAM.accessBindings}/${encodeURIComponent(id)}:revoke`,
+    invalidateKeys: [
+      ["iam", "access-bindings"],
+      ["resource", "access-bindings", id],
+    ],
+    successText: "Привязка отозвана (REVOKED)",
+    onSuccess: () => navigate(detailBase),
+  });
+  if (!id || status === "REVOKED") return null;
+  return (
+    <Popconfirm
+      title="Отозвать привязку?"
+      description="Soft-revoke: статус станет REVOKED, строка сохранится (retention). Доступ снимается."
+      okText="Отозвать"
+      cancelText="Отмена"
+      okButtonProps={{ danger: true }}
+      onConfirm={() => void mut.run({})}
+    >
+      <Button danger icon={<StopOutlined />} loading={mut.submitting}>
+        Отозвать
+      </Button>
+    </Popconfirm>
+  );
+}
+
+// Subject type (UI-строка / enum-имя) → registry specId.
+function subjectSpecId(t: string): string | undefined {
+  if (t === "user" || t === "USER" || t === "SUBJECT_TYPE_USER") return "users";
+  if (t === "group" || t === "GROUP" || t === "SUBJECT_TYPE_GROUP") return "groups";
+  if (t === "service_account" || t === "SERVICE_ACCOUNT" || t === "SUBJECT_TYPE_SERVICE_ACCOUNT")
+    return "service-accounts";
+  return undefined;
+}
+
+// subjectsView — IAM-1 subjects[] (1..N) как список ref-ссылок; legacy single fallback.
+function subjectsView(data: Record<string, unknown>): ReactNode {
+  const subjects = getByPath<Subject[]>(data, "subjects");
+  const list: Array<{ type?: string; id?: string }> =
+    Array.isArray(subjects) && subjects.length > 0
+      ? subjects
+      : getByPath<string>(data, "subject_id")
+        ? [{ type: String(getByPath<string>(data, "subject_type") ?? ""), id: getByPath<string>(data, "subject_id") }]
+        : [];
+  if (list.length === 0) return dash;
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+      {list.map((s, i) => {
+        const spec = subjectSpecId(String(s.type ?? ""));
+        return spec ? (
+          <IamRefLink key={i} specId={spec} refId={s.id} nameField={spec === "users" ? "email" : "name"} />
+        ) : (
+          <CopyableId key={i} id={String(s.id ?? "")} />
+        );
+      })}
+    </span>
+  );
+}
+
+// targetView — IAM-1 F8 target: allInScope → тег «весь scope»; resources[] →
+// ResourceRef-чипы {type:id} (closed-table, без name).
+function targetView(t: AccessBindingTarget | undefined): ReactNode {
+  const kind = targetKind(t);
+  if (kind === "allInScope") return <Tag>весь scope (allInScope)</Tag>;
+  if (kind === "resources") {
+    const res = t?.resources ?? [];
+    return (
+      <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+        {res.map((r, i) => (
+          <Tag key={i} color="geekblue" style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {r.type}:{r.id}
+          </Tag>
+        ))}
+      </span>
+    );
+  }
+  return dash;
 }
 
 // ─────────────────────── IAM: привилегии субъекта ───────────────────────
@@ -493,7 +629,11 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
                   matchLabels:
                 </Typography.Text>
                 {Object.entries(rule.match_labels ?? {}).map(([k, v]) => (
-                  <Tag key={k} color="purple" style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+                  <Tag
+                    key={k}
+                    color="purple"
+                    style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+                  >
                     {k}={v}
                   </Tag>
                 ))}
@@ -508,27 +648,42 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
 
 // ─────────────────────────── регистрация ───────────────────────────
 
-// Role: Тип (system/custom) + Правила (rules[]) + Область в overview.
+// Role (IAM-1 F4/F5/F6): Тип (isSystem° derived) + definitionTier{tierType,tierId}
+// + Правила (rules[], authored public-surface) + честные authoredVerbs°/effectiveVerbs°.
 registerDetailExtension("roles", {
   overviewExtra: ({ data }) => {
-    const rows: DescItem[] = [
-      {
-        label: "Тип",
-        value:
-          getByPath<boolean>(data, "is_system") === true || getByPath<boolean>(data, "isSystem") === true ? (
-            <Tag color="purple">system</Tag>
-          ) : (
-            <Tag>custom</Tag>
-          ),
-      },
-      { label: "Правила", value: roleRulesView(getByPath<RoleRule[]>(data, "rules")) },
-    ];
-    const acc = getByPath<string>(data, "account_id");
-    const cluster = getByPath<string>(data, "cluster_id");
-    const project = getByPath<string>(data, "project_id");
-    if (acc) rows.push({ label: "Область (Account)", value: <IamRefLink specId="accounts" refId={acc} /> });
-    if (cluster) rows.push({ label: "Область (кластер)", value: mono(cluster) });
-    if (project) rows.push({ label: "Область (проект)", value: <IamRefLink specId="projects" refId={project} /> });
+    const role = data as unknown as Role;
+    const isSystem = roleIsSystem(role);
+    const dt: DefinitionTier | undefined = roleDefinitionTier(role);
+    const tt = dt?.tier_type ?? dt?.tierType ?? "";
+    const tid = dt?.tier_id ?? dt?.tierId ?? "";
+    const rows: DescItem[] = [{ label: "Тип", value: isSystem ? <Tag color="purple">system</Tag> : <Tag>custom</Tag> }];
+    // definitionTier (dotted tierType + anchor). Legacy fallback — flat FK-поля.
+    if (tt) {
+      rows.push({ label: "Уровень (tierType)", value: <Tag color={iamTierColor(tt)}>{tt}</Tag> });
+      if (tt === "iam.account" && tid)
+        rows.push({ label: "Anchor", value: <IamRefLink specId="accounts" refId={tid} /> });
+      else if (tt === "iam.project" && tid)
+        rows.push({ label: "Anchor", value: <IamRefLink specId="projects" refId={tid} /> });
+      else if (tid) rows.push({ label: "Anchor", value: mono(tid) });
+    } else {
+      const acc = getByPath<string>(data, "account_id");
+      const cluster = getByPath<string>(data, "cluster_id");
+      const project = getByPath<string>(data, "project_id");
+      if (acc) rows.push({ label: "Область (Account)", value: <IamRefLink specId="accounts" refId={acc} /> });
+      if (cluster) rows.push({ label: "Область (кластер)", value: mono(cluster) });
+      if (project) rows.push({ label: "Область (проект)", value: <IamRefLink specId="projects" refId={project} /> });
+    }
+    rows.push({ label: "Правила", value: roleRulesView(getByPath<RoleRule[]>(data, "rules")) });
+    // Честные verb-наборы (F6): authoredVerbs° (что задано) vs effectiveVerbs°
+    // (что реально даёт — editor включает delete*). verbNotes° — дословные пояснения.
+    const notes =
+      (getByPath<Record<string, string>>(data, "verb_notes") ?? getByPath<Record<string, string>>(data, "verbNotes")) ||
+      undefined;
+    const authored = getByPath<string[]>(data, "authored_verbs") ?? getByPath<string[]>(data, "authoredVerbs");
+    const effective = getByPath<string[]>(data, "effective_verbs") ?? getByPath<string[]>(data, "effectiveVerbs");
+    if (authored && authored.length) rows.push({ label: "authoredVerbs°", value: verbChips(authored) });
+    if (effective && effective.length) rows.push({ label: "effectiveVerbs°", value: verbChips(effective, notes) });
     return rows;
   },
 });
@@ -536,12 +691,33 @@ registerDetailExtension("roles", {
 // Account — не субъект AccessBinding'а, а ресурс-скоуп: таб показывает привязки,
 // выданные НА этот account (listByResource account).
 registerDetailExtension("accounts", {
-  overviewExtra: ({ data }) => [
-    {
-      label: "Владелец",
-      value: <IamRefLink specId="users" refId={getByPath<string>(data, "owner_user_id")} nameField="email" />,
-    },
-  ],
+  overviewExtra: ({ data }) => {
+    const rows: DescItem[] = [
+      {
+        // ownerUserId° — output-only, derived-from-caller (IAM-1 F1).
+        label: "Владелец",
+        value: (
+          <IamRefLink
+            specId="users"
+            refId={getByPath<string>(data, "owner_user_id") ?? getByPath<string>(data, "ownerUserId")}
+            nameField="email"
+          />
+        ),
+      },
+    ];
+    const status = getByPath<string>(data, "status");
+    if (status) rows.push({ label: "Статус", value: <StatusBadge state={status} /> });
+    rows.push({
+      label: "Защита от удаления",
+      value:
+        getByPath<boolean>(data, "deletion_protection") || getByPath<boolean>(data, "deletionProtection") ? (
+          <Tag color="gold">Да</Tag>
+        ) : (
+          <span className="text-muted-foreground">Нет</span>
+        ),
+    });
+    return rows;
+  },
   extraTabs: ({ data, detailBase }) => {
     const id = getByPath<string>(data, "id") ?? "";
     return id ? [privilegesTab({ kind: "resource", resourceType: "account", resourceId: id }, detailBase)] : [];
@@ -608,65 +784,96 @@ registerDetailExtension("groups", {
   childCreate: privilegesChildCreate({ kind: "subject", subjectType: "group" }),
 });
 
-// AccessBinding — сводка биндинга в Обзоре: субъект/роль/ресурс (IamRefLink) +
-// статус/область/условие/защита.
+// AccessBinding (IAM-1 F7/F8/F10) — Обзор: subjects[]/роль/scopeType+scopeId(anchor)/
+// target(allInScope|resources[])/статус/защита. Header-action: :revoke (soft).
 registerDetailExtension("access-bindings", {
+  headerActions: ({ data, detailBase }) => {
+    const id = getByPath<string>(data, "id") ?? "";
+    const status = getByPath<string>(data, "status");
+    // Revoke скрыт для protected owner-binding (сначала снять защиту Update'ом).
+    const protectedFlag =
+      getByPath<boolean>(data, "deletion_protection") || getByPath<boolean>(data, "deletionProtection");
+    if (protectedFlag) return null;
+    return <RevokeBindingButton id={id} status={status} detailBase={detailBase} />;
+  },
   overviewExtra: ({ data }) => {
-    const subjType = String(getByPath<string>(data, "subject_type") ?? "");
-    const subjSpec =
-      subjType === "user"
-        ? "users"
-        : subjType === "group"
-          ? "groups"
-          : subjType === "service_account"
-            ? "service-accounts"
-            : undefined;
-    const subjId = getByPath<string>(data, "subject_id") ?? "";
-    const resType = String(getByPath<string>(data, "resource_type") ?? "");
-    const resSpec = resType === "account" ? "accounts" : resType === "project" ? "projects" : undefined;
-    const resId = getByPath<string>(data, "resource_id") ?? "";
-    const scope = String(getByPath<string>(data, "scope") ?? "");
-    const cond = getByPath<string>(data, "builtin_condition");
-    return [
-      {
-        // Тип субъекта несёт иконка IamRefLink — тип-тег не дублируем.
-        label: "Субъект",
-        value: subjSpec ? (
-          <IamRefLink specId={subjSpec} refId={subjId} nameField={subjType === "user" ? "email" : "name"} />
-        ) : (
-          <CopyableId id={subjId} />
-        ),
-      },
+    const scopeTypeDotted = String(getByPath<string>(data, "scope_type") ?? getByPath<string>(data, "scopeType") ?? "");
+    const scopeIdVal =
+      getByPath<string>(data, "scope_id") ??
+      getByPath<string>(data, "scopeId") ??
+      getByPath<string>(data, "resource_id") ??
+      "";
+    const anchorType =
+      scopeTypeDotted === "iam.account"
+        ? "account"
+        : scopeTypeDotted === "iam.project"
+          ? "project"
+          : scopeTypeDotted === "iam.cluster"
+            ? "cluster"
+            : String(getByPath<string>(data, "resource_type") ?? "");
+    const anchorSpec = anchorType === "account" ? "accounts" : anchorType === "project" ? "projects" : undefined;
+    const legacyScope = String(getByPath<string>(data, "scope") ?? "");
+    const target = getByPath<AccessBindingTarget>(data, "target");
+    const revokedAt = getByPath<string>(data, "revoked_at") ?? getByPath<string>(data, "revokedAt");
+    const grantedBy = getByPath<string>(data, "granted_by_user_id") ?? getByPath<string>(data, "grantedByUserId");
+    const rows: DescItem[] = [
+      { label: "Субъекты", value: subjectsView(data) },
       { label: "Роль", value: <IamRefLink specId="roles" refId={getByPath<string>(data, "role_id")} /> },
       {
-        // Тип ресурса несёт иконка IamRefLink — тип-тег не дублируем.
-        label: "Ресурс",
-        value: resSpec ? <IamRefLink specId={resSpec} refId={resId} /> : <CopyableId id={resId} />,
+        label: "Область (scopeType)",
+        value: scopeTypeDotted ? (
+          <Tag color={iamTierColor(scopeTypeDotted)}>{scopeTypeDotted}</Tag>
+        ) : legacyScope && legacyScope !== "SCOPE_UNSPECIFIED" ? (
+          <Tag color={scopeColor(legacyScope)}>{legacyScope}</Tag>
+        ) : (
+          dash
+        ),
       },
-      { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
       {
-        label: "Область",
-        value:
-          scope && scope !== "SCOPE_UNSPECIFIED" ? (
-            <Tag color={scopeColor(scope)}>{scope}</Tag>
+        label: "Anchor (scopeId)",
+        value: scopeIdVal ? (
+          anchorSpec ? (
+            <IamRefLink specId={anchorSpec} refId={scopeIdVal} />
           ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
+            <CopyableId id={scopeIdVal} />
+          )
+        ) : (
+          dash
+        ),
       },
-      {
-        label: "Встроенное условие",
-        value: <span style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace", fontSize: 12 }}>{cond || "—"}</span>,
-      },
-      {
-        label: "Защита от удаления",
-        value: getByPath<boolean>(data, "deletion_protection") ? (
+      { label: "Цель (target)", value: targetView(target) },
+      { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
+    ];
+    if (revokedAt) rows.push({ label: "Отозвана", value: fmtTs(revokedAt) });
+    if (grantedBy)
+      rows.push({ label: "Кто выдал", value: <IamRefLink specId="users" refId={grantedBy} nameField="email" /> });
+    rows.push({
+      label: "Защита от удаления",
+      value:
+        getByPath<boolean>(data, "deletion_protection") || getByPath<boolean>(data, "deletionProtection") ? (
           <Tag color="gold">Да</Tag>
         ) : (
           <span className="text-muted-foreground">Нет</span>
         ),
-      },
-    ];
+    });
+    return rows;
   },
+});
+
+// Project (IAM-1 F3) — Обзор: Аккаунт (immutable ref). Строго 2 уровня аренды
+// (нет parent-project/folder — иерархия не углубляется); accountId неизменяем.
+registerDetailExtension("projects", {
+  overviewExtra: ({ data }) => [
+    {
+      label: "Аккаунт",
+      value: (
+        <IamRefLink
+          specId="accounts"
+          refId={getByPath<string>(data, "account_id") ?? getByPath<string>(data, "accountId")}
+        />
+      ),
+    },
+  ],
 });
 
 // Role inline-формы (RBAC rules-model): rules[] через RulesEditor + backend
