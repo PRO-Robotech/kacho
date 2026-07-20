@@ -9,8 +9,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
@@ -52,4 +55,18 @@ func TestRepo_REG_1_14_PlacementAnchorCheck_RejectsEmptyRegion(t *testing.T) {
 	var pgErr *pgconn.PgError
 	require.ErrorAs(t, err, &pgErr)
 	require.Equal(t, "23514", pgErr.Code, "check_violation (placement-anchor)")
+}
+
+// REG-1-26 (F8, by-lane direct-read) — well-formed own-owned id, строки нет в своей БД →
+// NOT_FOUND с контракт-текстом "Registry <id> not found" (RESOURCE_NOT_FOUND-класс).
+func TestRepo_REG_1_26_GetAbsent_DirectReadNotFound(t *testing.T) {
+	pool := setupTestDB(t)
+	repo := kachopg.NewRegistryRepo(pool)
+	absent := ids.NewID(ids.PrefixRegistry)
+
+	_, err := repo.Get(context.Background(), absent)
+	require.Error(t, err)
+	st := status.Convert(serviceerr.ToStatus(err))
+	require.Equal(t, codes.NotFound, st.Code(), "direct-read lane → NOT_FOUND")
+	require.Equal(t, "Registry "+absent+" not found", st.Message(), "by-lane контракт-текст")
 }
