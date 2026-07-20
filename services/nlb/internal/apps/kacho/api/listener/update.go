@@ -73,15 +73,17 @@ var listenerMutableMaskPaths = map[string]struct{}{
 }
 
 // Immutable update_mask paths (in mask → InvalidArgument with фиксированный текст).
-// VIP консолидирован на LoadBalancer: address_id/ip_version/subnet_id/region_id
-// сняты с листенера (proto reserved), поэтому в immutable-списке их больше нет —
-// неизвестный путь → "field '<x>' is not recognised in update_mask".
+// NLB-1b F5 (NLB-1-29): VIP-анкер вернулся на Listener как immutable input →
+// address_id/subnet_id снова immutable (отвергаются ДО UpdateMask конвенционным
+// тоном "<field> is immutable after Listener.Create", а не generic "not recognised").
 var listenerImmutableMaskPaths = map[string]struct{}{
 	"load_balancer_id": {},
 	"protocol":         {},
 	"port":             {},
 	"target_port":      {},
 	"project_id":       {},
+	"address_id":       {},
+	"subnet_id":        {},
 }
 
 // Run — sync validate + spawn worker. Errors mapped to gRPC codes inline.

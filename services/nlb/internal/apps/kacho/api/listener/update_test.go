@@ -62,12 +62,12 @@ func TestUpdateListener_GWT_LST_019_ImmutableLoadBalancerID(t *testing.T) {
 }
 
 // TestUpdateListener_GWT_LST_020_ImmutableFields — all immutable mask paths
-// individually rejected. VIP консолидирован на LoadBalancer: address_id/ip_version/
-// subnet_id/region_id сняты с листенера (proto reserved) — в immutable-списке их
-// больше нет (адресовать в mask нельзя, путь → "not recognised").
+// individually rejected. NLB-1b F5 (NLB-1-29): the VIP anchor returned to the
+// Listener as immutable inputs → address_id/subnet_id rejected BEFORE UpdateMask
+// with the canonical "<field> is immutable after Listener.Create" tone.
 func TestUpdateListener_GWT_LST_020_ImmutableFields(t *testing.T) {
 	t.Parallel()
-	immutable := []string{"protocol", "port", "project_id", "target_port"}
+	immutable := []string{"protocol", "port", "project_id", "target_port", "address_id", "subnet_id"}
 	for _, field := range immutable {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
