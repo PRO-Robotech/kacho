@@ -38,6 +38,7 @@ import {
   HistoryOutlined,
   KeyOutlined,
   NodeIndexOutlined,
+  ProductOutlined,
   ProjectOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
@@ -111,10 +112,15 @@ const antdIconBySpec: Record<string, ReactElement> = {
   // compute
   instances: <DesktopOutlined style={antdSize} />,
   disks: <HddOutlined style={antdSize} />,
-  images: <FileImageOutlined style={antdSize} />,
+  // MachineType (read-only sizing-каталог, compute-remote). iconByName не несёт
+  // cpu/machine-глифа → host-валидный RemoteIconName fallback `layers`, а точную
+  // ресурс-иконку даёт этот specId-маппинг (как images/volumes/disk-types).
+  "machine-types": <ProductOutlined style={antdSize} />,
   snapshots: <CameraOutlined style={antdSize} />,
   // storage
   volumes: <HddOutlined style={antdSize} />,
+  // Образ (boot-image, storage-remote): specId "images" → FileImageOutlined.
+  images: <FileImageOutlined style={antdSize} />,
   "disk-types": <AppstoreOutlined style={antdSize} />,
   // admin / system
   "address-pools": <AppstoreOutlined style={antdSize} />,

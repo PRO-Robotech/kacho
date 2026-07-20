@@ -51,6 +51,41 @@ describe("HostRail", () => {
     expect(screen.queryByRole("button", { name: "Compute Cloud" })).not.toBeInTheDocument();
   });
 
+  it("surfaces the compute MachineType resource item inside the compute section", async () => {
+    render(
+      <HostRail
+        context={{
+          account: { id: "acc-1", name: "Account" },
+          project: { id: "project-1", name: "Project", accountId: "acc-1" },
+        }}
+        currentPath="/projects/project-1/compute/instances"
+        showReachability={false}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "Виртуальные машины" })).toBeInTheDocument();
+    // MachineType — новый ресурс редизайна (read-only sizing-каталог). Должен
+    // появиться в rail рядом с Instance (иконка резолвится через antdIconBySpec).
+    expect(screen.getByRole("button", { name: "Типы машин" })).toBeInTheDocument();
+  });
+
+  it("surfaces the storage Image resource item inside the storage section", async () => {
+    render(
+      <HostRail
+        context={{
+          account: { id: "acc-1", name: "Account" },
+          project: { id: "project-1", name: "Project", accountId: "acc-1" },
+        }}
+        currentPath="/projects/project-1/storage/volumes"
+        showReachability={false}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "Тома" })).toBeInTheDocument();
+    // Image (boot-image, STOR-1) — новый ресурс редизайна в домене Storage.
+    expect(screen.getByRole("button", { name: "Образы" })).toBeInTheDocument();
+  });
+
   it("switches to IAM section navigation on IAM routes", async () => {
     render(
       <HostRail

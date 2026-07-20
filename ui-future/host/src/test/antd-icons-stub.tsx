@@ -26,6 +26,7 @@ export const HddOutlined = Icon;
 export const HistoryOutlined = Icon;
 export const KeyOutlined = Icon;
 export const NodeIndexOutlined = Icon;
+export const ProductOutlined = Icon;
 export const ProjectOutlined = Icon;
 export const RobotOutlined = Icon;
 export const SafetyCertificateOutlined = Icon;
