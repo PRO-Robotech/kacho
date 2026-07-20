@@ -53,6 +53,8 @@ type CreateSpec struct {
 	Name        string
 	Description string
 	Labels      map[string]string
+	// RegionID — REGIONAL placement-якорь (REG-1 F4). Обязателен; peer-validate geo.
+	RegionID string
 }
 
 // UpdateSpec — вход Update. project immutable (в spec не входит); name — mutable.
@@ -161,6 +163,15 @@ type IAMClient interface {
 	ProjectExists(ctx context.Context, projectID string) error
 }
 
+// GeoClient — порт к kacho-geo: cross-domain валидация region (RegionService.Get) на
+// Create (REG-1 F4, новое ребро registry→geo). По by-lane (peer-validate lane):
+// region отсутствует → ErrFailedPrecondition (REG-1-12); geo недоступен →
+// ErrUnavailable (мутация fail-closed, REG-1-13). Per-call deadline — в adapter'е.
+type GeoClient interface {
+	// RegionExists валидирует region-якорь Registry на Create.
+	RegionExists(ctx context.Context, regionID string) error
+}
+
 // RepoRegistrar — порт эмита owner/parent-tuple intent'ов репозитория в
 // registry_outbox (тот же transactional-outbox, что CRUD реестра). Repo как
 // authz-объект появляется на первом push (register) и снимается на удалении
@@ -181,6 +192,7 @@ type UseCase struct {
 	cfg          RepositoryConfigRepo
 	zot          ZotClient
 	iam          IAMClient
+	geo          GeoClient
 	repoReg      RepoRegistrar
 	ops          operations.Repo
 	endpointBase string
@@ -191,11 +203,11 @@ type UseCase struct {
 // repoReg эмитит repo-tuple intent'ы (register-on-first-push / unregister-on-last-tag,
 // adopt-owner, public-grant governance); ops — corelib LRO-репозиторий; endpointBase —
 // tenant-facing база для output-only Registry.endpoint ("<base>/<id>").
-func New(reader RegistryReader, writer RegistryWriter, cfg RepositoryConfigRepo, zot ZotClient, iam IAMClient, repoReg RepoRegistrar, ops operations.Repo, endpointBase string) *UseCase {
+func New(reader RegistryReader, writer RegistryWriter, cfg RepositoryConfigRepo, zot ZotClient, iam IAMClient, geo GeoClient, repoReg RepoRegistrar, ops operations.Repo, endpointBase string) *UseCase {
 	if endpointBase == "" {
 		endpointBase = "registry.kacho.local"
 	}
-	return &UseCase{reader: reader, writer: writer, cfg: cfg, zot: zot, iam: iam, repoReg: repoReg, ops: ops, endpointBase: endpointBase}
+	return &UseCase{reader: reader, writer: writer, cfg: cfg, zot: zot, iam: iam, geo: geo, repoReg: repoReg, ops: ops, endpointBase: endpointBase}
 }
 
 // EndpointFor возвращает tenant-facing OCI-endpoint реестра ("<base>/<id>").
@@ -210,7 +222,7 @@ func (u *UseCase) EndpointFor(id string) string {
 // assertWired — defensive-гейт: composition root обязан подать все коллабораторы.
 // Незаполненная зависимость → Unavailable (не паника в prod-path).
 func (u *UseCase) assertWired() error {
-	if u.reader == nil || u.writer == nil || u.zot == nil || u.iam == nil || u.ops == nil {
+	if u.reader == nil || u.writer == nil || u.zot == nil || u.iam == nil || u.geo == nil || u.ops == nil {
 		return regerrors.ErrUnavailable
 	}
 	return nil

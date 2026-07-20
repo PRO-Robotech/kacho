@@ -57,6 +57,11 @@ type stubIAMFP struct{}
 
 func (stubIAMFP) ProjectExists(context.Context, string) error { return nil }
 
+// stubGeoFP — region всегда существует (REG-1 F4 peer-validate проходит).
+type stubGeoFP struct{}
+
+func (stubGeoFP) RegionExists(context.Context, string) error { return nil }
+
 func aliceCtxFP() context.Context {
 	return operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr-alice", DisplayName: "alice"})
@@ -85,10 +90,10 @@ func TestUseCase_REG01_FullCreatePath_OperationsInsert(t *testing.T) {
 	pool := setupTestDB(t)
 	repo := kachopg.NewRegistryRepo(pool)
 	ops := operations.NewRepo(pool, "kacho_registry")
-	uc := registry.New(repo, repo, kachopg.NewRepositoryConfigRepo(pool), stubZotFP{}, stubIAMFP{}, repo, ops, "registry.kacho.local")
+	uc := registry.New(repo, repo, kachopg.NewRepositoryConfigRepo(pool), stubZotFP{}, stubIAMFP{}, stubGeoFP{}, repo, ops, "registry.kacho.local")
 
 	op, err := uc.Create(aliceCtxFP(), registry.CreateSpec{
-		ProjectID: "prj-P", Name: "team-images", Description: "CI images",
+		ProjectID: "prj-P", Name: "team-images", RegionID: "eu-north-1", Description: "CI images",
 		Labels: map[string]string{"env": "prod"},
 	})
 	require.NoError(t, err, "Create must not fail on real schema (operations/registries/outbox INSERT)")

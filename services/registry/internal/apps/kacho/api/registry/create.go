@@ -35,17 +35,25 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	if spec.ProjectID == "" {
 		return nil, failInvalidArg("projectId is required")
 	}
+	// REG-1-11 (F4): regionId обязателен на Create — own-field validation первым
+	// стейтментом (операция не создаётся). placementType всегда REGIONAL (const,
+	// не входной) — registry regional-anycast.
+	if spec.RegionID == "" {
+		return nil, failInvalidArg("regionId is required")
+	}
 	if err := corevalidate.Labels("labels", spec.Labels); err != nil {
 		return nil, err
 	}
 
 	reg := &domain.Registry{
-		ID:          ids.NewID(ids.PrefixRegistry),
-		ProjectID:   spec.ProjectID,
-		Name:        spec.Name,
-		Description: spec.Description,
-		Labels:      spec.Labels,
-		Status:      domain.RegistryStatusActive,
+		ID:            ids.NewID(ids.PrefixRegistry),
+		ProjectID:     spec.ProjectID,
+		Name:          spec.Name,
+		Description:   spec.Description,
+		Labels:        spec.Labels,
+		Status:        domain.RegistryStatusActive,
+		RegionID:      spec.RegionID,
+		PlacementType: domain.PlacementTypeRegional,
 	}
 	// Self-validating domain: name DNS-safe (OCI-namespace segment), status,
 	// project_id. Ошибка → InvalidArgument (каноничный "Illegal argument"-класс).
@@ -57,6 +65,14 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	// not-found → InvalidArgument; iam недоступен → Unavailable (мутация fail-closed).
 	if err := u.iam.ProjectExists(ctx, spec.ProjectID); err != nil {
 		return nil, projectExistsErr(spec.ProjectID, err)
+	}
+
+	// Cross-domain existence region'а через geo.RegionService.Get (peer-validate lane,
+	// REG-1 F4). Отсутствует у владельца → FAILED_PRECONDITION (PEER_RESOURCE_MISSING,
+	// REG-1-12); geo недоступен → UNAVAILABLE (fail-closed мутации, REG-1-13). Ребро
+	// registry→geo (ацикличность holds — geo leaf). registry НЕ создаётся с висячим regionId.
+	if err := u.geo.RegionExists(ctx, spec.RegionID); err != nil {
+		return nil, regionExistsErr(spec.RegionID, err)
 	}
 
 	// Principal захватывается в sync-ctx (реальный вызывающий от interceptor'а) —
@@ -135,6 +151,21 @@ func projectExistsErr(projectID string, err error) error {
 		return failInvalidArg("project %s not found", projectID)
 	case errors.Is(err, regerrors.ErrUnavailable):
 		return failUnavailable("project existence check unavailable")
+	}
+	return mapRepoErr(err)
+}
+
+// regionExistsErr — маппинг cross-domain region-precheck (geo, peer-validate lane) в
+// gRPC-status (REG-1 F4, by-lane api-conventions.md):
+//
+//	region отсутствует у владельца → FailedPrecondition (PEER_RESOURCE_MISSING, REG-1-12)
+//	geo недоступен                 → Unavailable (PEER_UNAVAILABLE, fail-closed, REG-1-13)
+func regionExistsErr(regionID string, err error) error {
+	switch {
+	case errors.Is(err, regerrors.ErrFailedPrecondition):
+		return failFailedPrecondition("region %s not found", regionID)
+	case errors.Is(err, regerrors.ErrUnavailable):
+		return failUnavailable("region existence check unavailable")
 	}
 	return mapRepoErr(err)
 }

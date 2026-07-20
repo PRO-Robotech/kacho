@@ -128,8 +128,8 @@ func TestRepositoryHandler_RG1B02_FlipVisibilityNonAdmin(t *testing.T) {
 // RG-1-B10/B11 — UpdateRegistry default_visibility→PUBLIC: не-admin → PERMISSION_DENIED;
 // admin → gate пройден (не 403).
 func TestRepositoryHandler_RG1B10B11_RegistryDefaultVisibilityAdminGate(t *testing.T) {
-	mask := &fieldmaskpb.FieldMask{Paths: []string{"default_visibility"}}
-	req := &registryv1.UpdateRegistryRequest{RegistryId: validReg, DefaultVisibility: registryv1.Visibility_PUBLIC, UpdateMask: mask}
+	mask := &fieldmaskpb.FieldMask{Paths: []string{"default_repository_visibility"}}
+	req := &registryv1.UpdateRegistryRequest{RegistryId: validReg, DefaultRepositoryVisibility: registryv1.Visibility_PUBLIC, UpdateMask: mask}
 
 	// B10 не-admin → PERMISSION_DENIED.
 	hDeny := newTestHandler(&fakeZotH{}, relAuthz{allow: map[string]bool{}})

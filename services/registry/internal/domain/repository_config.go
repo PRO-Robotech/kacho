@@ -53,6 +53,38 @@ func VisibilityFromString(s string) Visibility {
 	return VisibilityPrivate
 }
 
+// Lifecycle — исчезаемость OCI-репозитория (REG-1 F7). Авторитетный output-only enum,
+// заменивший протекающий implicit-сигнал «есть overlay-строка». Ширина int32 совпадает
+// с registryv1.RepositoryLifecycle (UNSPECIFIED=0, DURABLE=1, EPHEMERAL=2), поэтому
+// конверсии domain↔proto точны.
+type Lifecycle int32
+
+// Значения Lifecycle (parity с proto-enum registry.v1.RepositoryLifecycle).
+const (
+	LifecycleUnspecified Lifecycle = iota // 0 — не задано (UNSPECIFIED → DURABLE by default)
+	LifecycleDurable                      // 1 — survives-empty (durable overlay)
+	LifecycleEphemeral                    // 2 — register-on-first-push / auto-removed-when-empty
+)
+
+// String возвращает DB-репрезентацию lifecycle (колонка TEXT + CHECK). UNSPECIFIED и
+// out-of-range схлопываются в DURABLE (omit-equivalent: явный intent-create = сохранить
+// каркас; overlay-строка durable by construction).
+func (l Lifecycle) String() string {
+	if l == LifecycleEphemeral {
+		return "EPHEMERAL"
+	}
+	return "DURABLE"
+}
+
+// LifecycleFromString парсит DB-колонку lifecycle в domain-enum (durable by default:
+// любое неизвестное значение → DURABLE, консистентно с overlay-присутствием).
+func LifecycleFromString(s string) Lifecycle {
+	if s == "EPHEMERAL" {
+		return LifecycleEphemeral
+	}
+	return LifecycleDurable
+}
+
 // repoNameRe — OCI repo-name grammar: lowercase alnum path-компоненты, разделённые
 // одиночным `/`, внутри компонента допустимы `.`/`_`/`__`/`-` как разделители
 // (шаблон `[a-z0-9]+(?:(?:[._]|__|-+|/)[a-z0-9]+)*`). Имена репозиториев несут `/`
@@ -91,6 +123,10 @@ type RepositoryConfig struct {
 	Labels      map[string]string
 	Visibility  Visibility
 	CreatedAt   time.Time
+	// Lifecycle — исчезаемость overlay-строки (REG-1 F7). Durable overlay несёт
+	// DURABLE by default; опц. вход CreateRepository может задать EPHEMERAL; overlay-set
+	// (Update/Rename) auto-promote'ит EPHEMERAL→DURABLE (DML-level).
+	Lifecycle Lifecycle
 }
 
 // Validate проверяет domain-инварианты RepositoryConfig перед persist: registry_id

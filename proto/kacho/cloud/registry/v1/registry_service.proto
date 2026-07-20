@@ -271,6 +271,11 @@ message CreateRegistryRequest {
   string name = 2;
   string description = 3;
   map<string, string> labels = 4;
+  // region_id — REGIONAL placement-якорь реестра (REG-1 F4). Обязателен на Create;
+  // peer-validate geo.v1.RegionService.Get (fail-closed: miss → FAILED_PRECONDITION,
+  // geo down → UNAVAILABLE). Immutable после Create. placement_type всегда REGIONAL
+  // (const, не входной) — registry regional-anycast (zone_id не несёт).
+  string region_id = 5;
 }
 
 message CreateRegistryMetadata {
@@ -285,10 +290,11 @@ message UpdateRegistryRequest {
   // Имя реестра — mutable (DNS-safe, UNIQUE в рамках project среди живых). Смена
   // не затрагивает endpoint/zot-namespace (те по id). Конфликт → ALREADY_EXISTS.
   string name = 5;
-  // Дефолтная публичность для НОВЫХ repo (сид Repository.visibility на create).
-  // Присутствие в update_mask с переходом →PUBLIC требует registry admin (D-6,
-  // B10/B11). Существующие repo не перекрашиваются.
-  Visibility default_visibility = 6;
+  // Дефолтная публичность для НОВЫХ repo (сид Repository.visibility на create, REG-1
+  // F5 rename default_visibility→defaultRepositoryVisibility). Присутствие в update_mask
+  // с переходом →PUBLIC требует registry admin (D-6, B10/B11). Существующие repo не
+  // перекрашиваются. regionId/placementType в mask → INVALID_ARGUMENT (immutable, F4).
+  Visibility default_repository_visibility = 6;
 }
 
 message UpdateRegistryMetadata {
@@ -362,8 +368,12 @@ message CreateRepositoryRequest {
   string description = 3;
   map<string, string> labels = 4;
   // Явная публичность. Не задано (UNSPECIFIED) → наследует
-  // Registry.default_visibility. Явный PUBLIC требует registry admin (D-6, B08).
+  // Registry.defaultRepositoryVisibility. Явный PUBLIC требует registry admin (D-6, B08).
   Visibility visibility = 5;
+  // Опц. вход lifecycle (REG-1 F7). Не задано (UNSPECIFIED) → DURABLE by default
+  // (явный intent-create = сохранить каркас). EPHEMERAL → register-on-first-push
+  // семантика. Output Repository.lifecycle авторитетно управляется системой (auto-promote).
+  RepositoryLifecycle lifecycle = 6;
 }
 
 message CreateRepositoryMetadata {
