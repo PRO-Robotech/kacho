@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link, useSearchParams, useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button, Descriptions, Dropdown, Space, Spin, Typography } from "antd";
+import { Button, Descriptions, Dropdown, Space, Spin, Tag, Typography } from "antd";
 import type { MenuProps } from "antd";
 import {
   ArrowLeftOutlined,
@@ -424,11 +424,39 @@ export function ResourceDetailPage({
           value: getByPath<boolean>(data, "used") ? "Да" : "Нет",
         }
       : null,
+    // Network-specific: declared supernet (VPC-1) — IPv4 then IPv6, multi-line.
+    spec.id === "networks"
+      ? {
+          label: "Супернет",
+          value: (() => {
+            const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
+            const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+            const all = [...v4, ...v6];
+            if (all.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+            return (
+              <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                {all.map((c, i) => (
+                  <Typography.Text key={i} code style={{ fontFamily: "monospace" }}>
+                    {c}
+                  </Typography.Text>
+                ))}
+              </Space>
+            );
+          })(),
+        }
+      : null,
     // Network-specific: Группа безопасности по умолчанию.
     spec.id === "networks" && getByPath<string>(data, "default_security_group_id")
       ? {
           label: "Группа безопасности по умолчанию",
           value: <RefNameLink specId="security-groups" refId={getByPath<string>(data, "default_security_group_id")!} />,
+        }
+      : null,
+    // Network-specific: system-provisioned default RT (VPC-1, echoed on create).
+    spec.id === "networks" && getByPath<string>(data, "default_route_table_id")
+      ? {
+          label: "Таблица маршрутизации по умолчанию",
+          value: <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")!} />,
         }
       : null,
     // SecurityGroup-specific: Правила (count + empty state).
@@ -452,18 +480,47 @@ export function ResourceDetailPage({
           })(),
         }
       : null,
-    // Subnet-specific: IPv4 CIDR (multi-line) + Route Table.
+    // Subnet-specific: derived placement (ZONAL zone / REGIONAL region).
+    spec.id === "subnets"
+      ? {
+          label: "Размещение",
+          value: (() => {
+            const region = getByPath<string>(data, "region_id") ?? "";
+            const zone = getByPath<string>(data, "zone_id") ?? "";
+            const pt = getByPath<string>(data, "placement_type") ?? "";
+            const isRegional = pt === "REGIONAL" || (!zone && !!region);
+            const anchor = isRegional ? region : zone;
+            return (
+              <Space size={8}>
+                <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
+                {anchor ? (
+                  <Typography.Text code style={{ fontFamily: "monospace" }}>
+                    {anchor}
+                  </Typography.Text>
+                ) : (
+                  <Typography.Text type="secondary">—</Typography.Text>
+                )}
+              </Space>
+            );
+          })(),
+        }
+      : null,
+    // Subnet-specific: IPv4 CIDR — immutable primary anchor + additional ranges
+    // (managed via :add/:remove-cidr-blocks). v4_cidr_blocks[] retired (VPC-1).
     spec.id === "subnets"
       ? {
           label: "IPv4 CIDR",
           value: (() => {
-            const cidrs = (getByPath<string[]>(data, "v4_cidr_blocks") ?? []) as string[];
-            if (cidrs.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+            const primary = getByPath<string>(data, "ipv4_cidr_primary") ?? "";
+            const extra = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
+            const all = [...(primary ? [primary] : []), ...extra];
+            if (all.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
             return (
               <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                {cidrs.map((c, i) => (
+                {all.map((c, i) => (
                   <Typography.Text key={i} code style={{ fontFamily: "monospace" }}>
                     {c}
+                    {i === 0 && primary ? " · основной" : ""}
                   </Typography.Text>
                 ))}
               </Space>
@@ -471,20 +528,21 @@ export function ResourceDetailPage({
           })(),
         }
       : null,
-    // Subnet-specific: IPv6 CIDR (multi-line). v6_cidr_blocks помечен editHidden
-    // в registry (управляется через SubnetCidrManager), но в read-only обзоре
-    // показывается рядом с IPv4 CIDR.
+    // Subnet-specific: IPv6 CIDR — primary anchor + additional ranges.
     spec.id === "subnets"
       ? {
           label: "IPv6 CIDR",
           value: (() => {
-            const cidrs = (getByPath<string[]>(data, "v6_cidr_blocks") ?? []) as string[];
-            if (cidrs.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+            const primary = getByPath<string>(data, "ipv6_cidr_primary") ?? "";
+            const extra = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+            const all = [...(primary ? [primary] : []), ...extra];
+            if (all.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
             return (
               <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                {cidrs.map((c, i) => (
+                {all.map((c, i) => (
                   <Typography.Text key={i} code style={{ fontFamily: "monospace" }}>
                     {c}
+                    {i === 0 && primary ? " · основной" : ""}
                   </Typography.Text>
                 ))}
               </Space>
