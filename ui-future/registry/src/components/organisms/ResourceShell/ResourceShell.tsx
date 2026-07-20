@@ -225,7 +225,9 @@ function RelatedTable({
               marginLeft: tagsRepo ? 12 : 0,
             }}
           >
-            {tagsRepo && <RepositoryTagsPanel registryId={parentId} repository={tagsRepo} onClose={() => setTagsRepo(null)} />}
+            {tagsRepo && (
+              <RepositoryTagsPanel registryId={parentId} repository={tagsRepo} onClose={() => setTagsRepo(null)} />
+            )}
           </div>
         )}
       </div>

@@ -255,7 +255,10 @@ body.ant-modal-open {
   border-radius: 12px;
   padding: 12px 14px;
   box-shadow: var(--kc-shadow-sm);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
 }
 .kc-tag-card:hover {
   transform: translateY(-1px);
