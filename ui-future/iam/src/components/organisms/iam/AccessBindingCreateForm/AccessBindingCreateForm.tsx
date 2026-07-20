@@ -42,7 +42,7 @@
 // проблемные роли.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Form, Select, Tag, Typography } from "antd";
+import { Alert, Button, Form, Input, Radio, Select, Space, Tag, Typography } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
 import { FormSection } from "@/components/organisms/form/FormSection";
@@ -178,13 +178,7 @@ interface Props {
   onCancel: () => void;
 }
 
-export function AccessBindingCreateForm({
-  lockedSubject,
-  subjectAccountId,
-  preset,
-  onSuccess,
-  onCancel,
-}: Props) {
+export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, preset, onSuccess, onCancel }: Props) {
   const qc = useQueryClient();
   const account = useContext((s) => s.account);
   const [form] = Form.useForm();
@@ -193,19 +187,19 @@ export function AccessBindingCreateForm({
   const presetSubjectId = lockedSubject?.id ?? preset?.subject_id;
   const lockSubject = !!lockedSubject;
   const reconcile = lockSubject;
-  const homeAccountId = reconcile ? subjectAccountId ?? null : null;
+  const homeAccountId = reconcile ? (subjectAccountId ?? null) : null;
 
   // Стартовый scope (scope-first). reconcile → ACCOUNT:<homeAccount>; preset
   // (deep-link) → из resource_type; иначе НЕ выбран (поле «Роли» disabled).
   const presetScope = scopeFromResourceType(preset?.resource_type);
-  const initialScope: ScopeTier | undefined = reconcile ? "ACCOUNT" : presetScope ?? undefined;
+  const initialScope: ScopeTier | undefined = reconcile ? "ACCOUNT" : (presetScope ?? undefined);
   // Какой anchor-picker рендерить (для дефолтного случая — account-ветка).
   const initialScopeForPicker: ScopeTier = initialScope ?? "ACCOUNT";
   const initialAnchorId: string | undefined = reconcile
-    ? homeAccountId ?? undefined
+    ? (homeAccountId ?? undefined)
     : presetScope === "GLOBAL"
       ? CLUSTER_RESOURCE_ID
-      : preset?.resource_id ?? undefined;
+      : (preset?.resource_id ?? undefined);
 
   const [subjectType, setSubjectType] = useState<SubjectType>(presetSubjectType ?? "user");
   const [scope, setScope] = useState<ScopeTier>(initialScopeForPicker);
@@ -224,6 +218,9 @@ export function AccessBindingCreateForm({
       role_ids: reconcile ? [] : preset?.role_id ? [preset.role_id] : [],
       scope: initialScope,
       scope_ref_id: initialAnchorId,
+      // IAM-1 F8: target REQUIRED — по умолчанию широкий opt-in allInScope{}.
+      _target_kind: "allInScope",
+      target_resources: [],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -297,9 +294,7 @@ export function AccessBindingCreateForm({
   const projects = useQuery({
     queryKey: ["iam", "projects", "by-account", headerAccountId],
     queryFn: () =>
-      iamApi.listProjects(
-        headerAccountId ? { account_id: headerAccountId, pageSize: "1000" } : { pageSize: "1000" },
-      ),
+      iamApi.listProjects(headerAccountId ? { account_id: headerAccountId, pageSize: "1000" } : { pageSize: "1000" }),
     enabled: scope === "PROJECT",
     staleTime: 30_000,
   });
@@ -324,6 +319,8 @@ export function AccessBindingCreateForm({
   // Текущий выбранный scope/anchor (watch формы). useWatch вызываем БЕЗУСЛОВНО
   // (правило хуков) — GLOBAL-ветку резолвим ниже.
   const watchedScope = Form.useWatch("scope", form) as ScopeTier | undefined;
+  // IAM-1 F8 target-дискриминатор: allInScope (широкий opt-in) vs resources[] (least-priv).
+  const watchedTargetKind = (Form.useWatch("_target_kind", form) as string | undefined) ?? "allInScope";
   const watchedScopeRefId = Form.useWatch("scope_ref_id", form) as string | undefined;
   // GLOBAL: anchor фиксирован (singleton) — не зависит от поля scope_ref_id.
   const watchedAnchorId = watchedScope === "GLOBAL" ? CLUSTER_RESOURCE_ID : watchedScopeRefId;
@@ -417,8 +414,7 @@ export function AccessBindingCreateForm({
     return { currentRoleIds: ids, roleToBindingId: map, privRoleName: names };
   }, [reconcile, allPrivileges, watchedScope, watchedAnchorId]);
 
-  const displayName = (roleId: string): string =>
-    roleNameById.get(roleId) ?? privRoleName.get(roleId) ?? roleId;
+  const displayName = (roleId: string): string => roleNameById.get(roleId) ?? privRoleName.get(roleId) ?? roleId;
 
   const selectedExtraOptions = useMemo(() => {
     const known = new Set(assignableRoles.map((r) => r.role_id));
@@ -525,9 +521,33 @@ export function AccessBindingCreateForm({
       type: SUBJECT_TYPE_ENUM[subjectType] as Subject["type"],
       id,
     }));
+
+    // IAM-1 F8: target REQUIRED (least-priv). resources → закрытый {type,id};
+    // пустой resources-набор — инвалиден (нет sentinel-по-умолчанию; для «всё под
+    // anchor'ом» есть явный allInScope{}).
+    const targetKindVal = (v._target_kind as string | undefined) ?? "allInScope";
+    let target: Record<string, unknown>;
+    if (targetKindVal === "resources") {
+      const rows = ((v.target_resources as Array<{ type?: string; id?: string }> | undefined) ?? [])
+        .filter((r) => r && r.type && r.id)
+        .map((r) => ({ type: r.type, id: r.id }));
+      if (rows.length === 0) {
+        setInlineError({
+          type: "error",
+          message:
+            "Укажите хотя бы один объект (ResourceRef) или выберите «Весь scope» (allInScope) — target обязателен (least-privilege).",
+        });
+        return;
+      }
+      target = { resources: rows };
+    } else {
+      target = { all_in_scope: {} };
+    }
+
     const baseBody = {
       subjects,
       scope_ref: scopeRef,
+      target,
     };
 
     const added = roleIds.filter((id) => !currentRoleIds.includes(id));
@@ -726,9 +746,7 @@ export function AccessBindingCreateForm({
                 <Select
                   data-testid="access-bindings-scope-ref"
                   placeholder={
-                    headerAccountId
-                      ? "Выберите Project"
-                      : "Выберите Account в шапке — тогда подгрузятся проекты"
+                    headerAccountId ? "Выберите Project" : "Выберите Account в шапке — тогда подгрузятся проекты"
                   }
                   options={projectOptions}
                   showSearch
@@ -750,13 +768,59 @@ export function AccessBindingCreateForm({
           )}
 
           {watchedScope && (
-            <Typography.Paragraph
-              type="secondary"
-              style={{ fontSize: 12, marginBottom: 4, marginLeft: 200 }}
-            >
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 4, marginLeft: 200 }}>
               {SCOPE_TIER_HINT[watchedScope]}
             </Typography.Paragraph>
           )}
+        </FormSection>
+
+        {/* ── Секция «Цель (target)» — IAM-1 F8 least-priv spine ── */}
+        <FormSection title="Цель (target)">
+          <Form.Item
+            label="Тип цели"
+            name="_target_kind"
+            tooltip="allInScope — все объекты под anchor'ом, включая будущие (широкий явный opt-in); resources — только перечисленные объекты (least-privilege)."
+          >
+            <Radio.Group data-testid="access-bindings-target-kind">
+              <Radio.Button value="allInScope">Весь scope</Radio.Button>
+              <Radio.Button value="resources">Точечно (resources)</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+          {watchedTargetKind === "resources" && (
+            <Form.Item label="Объекты (ResourceRef)" required>
+              <Form.List name="target_resources">
+                {(rows, { add, remove }) => (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {rows.map((r) => (
+                      <Space key={r.key} align="baseline">
+                        <Form.Item name={[r.name, "type"]} rules={[{ required: true, message: "type" }]} noStyle>
+                          <Input placeholder="compute.instance" style={{ width: 220 }} data-testid="target-res-type" />
+                        </Form.Item>
+                        <Form.Item name={[r.name, "id"]} rules={[{ required: true, message: "id" }]} noStyle>
+                          <Input placeholder="ins-…" style={{ width: 220 }} data-testid="target-res-id" />
+                        </Form.Item>
+                        <Button type="text" danger onClick={() => remove(r.name)}>
+                          Удалить
+                        </Button>
+                      </Space>
+                    ))}
+                    <Button
+                      type="dashed"
+                      onClick={() => add({ type: "", id: "" })}
+                      data-testid="target-res-add"
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      Добавить объект
+                    </Button>
+                  </div>
+                )}
+              </Form.List>
+            </Form.Item>
+          )}
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 200 }}>
+            target обязателен (least-privilege): «Весь scope» — явный широкий opt-in; «Точечно» — грант только на
+            перечисленные объекты (ResourceRef {"{type,id}"}, closed-table).
+          </Typography.Paragraph>
         </FormSection>
 
         {/* ── Секция «Роли» ── */}
@@ -771,10 +835,9 @@ export function AccessBindingCreateForm({
               description={
                 <>
                   На область <b>GLOBAL</b> с селектором «все объекты» можно выдать только роль{" "}
-                  <Typography.Text code>cluster-admin</Typography.Text>{" "}
-                  (<Typography.Text code>*.*.*</Typography.Text>). Для обычных ролей на GLOBAL роль
-                  обязана задавать селектор по именам или меткам (в правилах роли). Снимите{" "}
-                  {globalGuardRoles.map((id) => displayName(id)).join(", ")} или выберите область
+                  <Typography.Text code>cluster-admin</Typography.Text> (<Typography.Text code>*.*.*</Typography.Text>).
+                  Для обычных ролей на GLOBAL роль обязана задавать селектор по именам или меткам (в правилах роли).
+                  Снимите {globalGuardRoles.map((id) => displayName(id)).join(", ")} или выберите область
                   ACCOUNT/PROJECT.
                 </>
               }
@@ -817,9 +880,7 @@ export function AccessBindingCreateForm({
                 </Tag>
               )}
               loading={assignableQ.isLoading}
-              notFoundContent={
-                assignableQ.isLoading ? "Загрузка ролей…" : "Нет ролей, доступных для этой области"
-              }
+              notFoundContent={assignableQ.isLoading ? "Загрузка ролей…" : "Нет ролей, доступных для этой области"}
               style={{ width: "100%" }}
             />
           </Form.Item>
@@ -827,10 +888,7 @@ export function AccessBindingCreateForm({
           {/* Подсказка (Добавить N · Отозвать M / Будет создано). */}
           {reconcile ? (
             addedCount + removedCount > 0 ? (
-              <Typography.Paragraph
-                type="secondary"
-                style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}
-              >
+              <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}>
                 Добавить: {addedCount} · Отозвать: {removedCount}
                 <Tag color="blue" style={{ marginLeft: 8 }}>
                   +{addedCount}
@@ -838,18 +896,12 @@ export function AccessBindingCreateForm({
                 <Tag color="volcano">−{removedCount}</Tag>
               </Typography.Paragraph>
             ) : (
-              <Typography.Paragraph
-                type="secondary"
-                style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}
-              >
+              <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}>
                 Изменений нет — текущие привилегии области актуальны.
               </Typography.Paragraph>
             )
           ) : selectedRoleIds.length > 0 ? (
-            <Typography.Paragraph
-              type="secondary"
-              style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}
-            >
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}>
               Будет создано привязок: {selectedRoleIds.length}{" "}
               <Tag color="blue" style={{ marginLeft: 4 }}>
                 {selectedRoleIds.length} {pluralRole(selectedRoleIds.length)}
@@ -857,21 +909,16 @@ export function AccessBindingCreateForm({
             </Typography.Paragraph>
           ) : null}
 
-          <Typography.Paragraph
-            type="secondary"
-            style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}
-          >
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12, marginLeft: 200 }}>
             {reconcile ? (
               <>
-                Актуализация привилегий субъекта на выбранной области: выбор задаёт желаемый набор
-                ролей. Добавленные роли будут выданы, снятые — отозваны. Привилегии через группу и на
-                других областях не затрагиваются.
+                Актуализация привилегий субъекта на выбранной области: выбор задаёт желаемый набор ролей. Добавленные
+                роли будут выданы, снятые — отозваны. Привилегии через группу и на других областях не затрагиваются.
               </>
             ) : (
               <>
-                Каждая выбранная роль создаёт отдельную привязку для выбранных субъектов на выбранной
-                области. Какие именно объекты затрагивает роль — определяется её правилами (селектор all
-                / по именам / по меткам).
+                Каждая выбранная роль создаёт отдельную привязку для выбранных субъектов на выбранной области. Какие
+                именно объекты затрагивает роль — определяется её правилами (селектор all / по именам / по меткам).
               </>
             )}
           </Typography.Paragraph>
