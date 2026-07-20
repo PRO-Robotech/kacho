@@ -45,11 +45,12 @@ type fakeRepo struct {
 	loadBalancers map[string]*kachorepo.LoadBalancerRecord
 	targetGroups  map[string]*kachorepo.TargetGroupRecord
 	outbox        []fakeOutboxEvent
-	fga           []fgaIntentEvent // FGARegisterOutbox intents (flushed on Commit)
-	insertErr     error            // injected error for next Insert (TX-1 handle)
-	setVIPErr     error            // injected error for next SetVIP (TX-2 persist)
-	casErr        error            // injected error for next SetStatusCAS (TX-3 finalize)
-	commitErr     error            // injected error for next Commit
+	fga           []fgaIntentEvent  // FGARegisterOutbox intents (flushed on Commit)
+	vipZonePins   map[string]string // lbID → pinned VIP zone (NLB-1-33 anchor)
+	insertErr     error             // injected error for next Insert (TX-1 handle)
+	setVIPErr     error             // injected error for next SetVIP (TX-2 persist)
+	casErr        error             // injected error for next SetStatusCAS (TX-3 finalize)
+	commitErr     error             // injected error for next Commit
 	currentWriter *fakeWriter
 }
 
@@ -67,6 +68,7 @@ func newFakeRepo() *fakeRepo {
 		listeners:     map[string]*kachorepo.ListenerRecord{},
 		loadBalancers: map[string]*kachorepo.LoadBalancerRecord{},
 		targetGroups:  map[string]*kachorepo.TargetGroupRecord{},
+		vipZonePins:   map[string]string{},
 	}
 }
 
@@ -139,10 +141,16 @@ type fakeWriter struct {
 	r          *fakeRepo
 	pending    []fakeOutboxEvent
 	pendingFGA []fgaIntentEvent
+	pendingPin *zonePin            // buffered vip-zone CAS, applied on Commit (TX-correct)
 	inserted   []domain.ResourceID // for rollback on Abort
 	updated    []domain.ResourceID
 	deleted    []string
 	finalize   bool
+}
+
+type zonePin struct {
+	lbID string
+	zone string
 }
 
 // fgaIntentEvent records one FGARegisterOutbox.Emit  for assertions.
@@ -152,7 +160,7 @@ type fgaIntentEvent struct {
 }
 
 func (w *fakeWriter) LoadBalancers() kachorepo.LoadBalancerWriterIface {
-	return &fakeLBWriter{r: w.r}
+	return &fakeLBWriter{r: w.r, w: w}
 }
 func (w *fakeWriter) Listeners() kachorepo.ListenerWriterIface {
 	return &fakeListenerWriter{r: w.r, w: w}
@@ -176,6 +184,9 @@ func (w *fakeWriter) Commit() error {
 	}
 	w.r.outbox = append(w.r.outbox, w.pending...)
 	w.r.fga = append(w.r.fga, w.pendingFGA...)
+	if w.pendingPin != nil {
+		w.r.vipZonePins[w.pendingPin.lbID] = w.pendingPin.zone
+	}
 	w.r.currentWriter = nil
 	w.finalize = true
 	return nil
@@ -232,10 +243,30 @@ func (r *fakeLBReader) HasAttachedTargetGroups(context.Context, string) (bool, e
 	return false, nil
 }
 
-type fakeLBWriter struct{ r *fakeRepo }
+type fakeLBWriter struct {
+	r *fakeRepo
+	w *fakeWriter
+}
 
 func (w *fakeLBWriter) Get(ctx context.Context, id string) (*kachorepo.LoadBalancerRecord, error) {
 	return (&fakeLBReader{r: w.r}).Get(ctx, id)
+}
+
+// PinVIPZoneCAS — NLB-1-33: set-once CAS зоны VIP. Читает committed pin +
+// буферизует свой (TX-correct: применяется на Commit, откатывается на Abort).
+func (w *fakeLBWriter) PinVIPZoneCAS(_ context.Context, id, zone string) error {
+	w.r.mu.Lock()
+	defer w.r.mu.Unlock()
+	pinned := w.r.vipZonePins[id]
+	if pinned != "" && pinned != zone {
+		return fmt.Errorf("%w: load balancer VIP must be in the same zone", domain.ErrFailedPrecondition)
+	}
+	if w.w != nil {
+		w.w.pendingPin = &zonePin{lbID: id, zone: zone}
+	} else {
+		w.r.vipZonePins[id] = zone
+	}
+	return nil
 }
 func (w *fakeLBWriter) List(context.Context, kachorepo.LoadBalancerFilter, kachorepo.Pagination) ([]*kachorepo.LoadBalancerRecord, string, error) {
 	return nil, "", nil

@@ -318,6 +318,10 @@ func (q *fakeLBWriter) Update(ctx context.Context, lb *domain.LoadBalancer, expe
 	return &c, nil
 }
 
+// PinVIPZoneCAS — NLB-1-33 zone-anchor; not exercised by LB use-case tests (the
+// listener Create worker pins the zone). Trivial accept-stub.
+func (q *fakeLBWriter) PinVIPZoneCAS(context.Context, string, string) error { return nil }
+
 func (q *fakeLBWriter) SetStatusCAS(ctx context.Context, id string, expected, newStatus domain.LBStatus) (*kachorepo.LoadBalancerRecord, error) {
 	if q.w.r.failOnSetStatus != nil {
 		return nil, q.w.r.failOnSetStatus

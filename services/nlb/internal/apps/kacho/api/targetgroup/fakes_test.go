@@ -594,6 +594,7 @@ func (fakeLBStub) AttachVIP(context.Context, string, domain.IPVersion, string, s
 func (fakeLBStub) SetStatusCAS(context.Context, string, domain.LBStatus, domain.LBStatus) (*kachorepo.LoadBalancerRecord, error) {
 	return nil, errors.New("not used")
 }
+func (fakeLBStub) PinVIPZoneCAS(context.Context, string, string) error { return nil }
 func (fakeLBStub) MarkDeleting(context.Context, string) (*kachorepo.LoadBalancerRecord, error) {
 	return nil, errors.New("not used")
 }

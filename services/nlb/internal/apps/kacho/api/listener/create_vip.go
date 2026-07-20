@@ -22,6 +22,7 @@ import (
 type vipAnchor struct {
 	addressID string           // BYO: линк существующего vpc Address
 	subnetID  string           // auto: подсеть для аллокации свежего Address
+	zoneID    string           // NLB-1-33: зона VIP-подсети (ZONAL LB only; anycast → "")
 	origin    domain.VipOrigin // byo | auto
 }
 
@@ -45,10 +46,11 @@ func (u *CreateUseCase) resolveVIPAnchor(
 	case addressID != "":
 		return vipAnchor{addressID: addressID, origin: domain.VipOriginBYO}, nil
 	case subnetID != "":
-		if err := u.validateVIPSubnet(ctx, subnetID, lb); err != nil {
+		zone, err := u.validateVIPSubnet(ctx, subnetID, lb)
+		if err != nil {
 			return vipAnchor{}, err
 		}
-		return vipAnchor{subnetID: subnetID, origin: domain.VipOriginAuto}, nil
+		return vipAnchor{subnetID: subnetID, zoneID: zone, origin: domain.VipOriginAuto}, nil
 	default:
 		// Без собственного VIP-анкера. origin auto (дефолт-дискриминатор), но пустой
 		// address_id делает release-ветку Delete no-op.
@@ -59,32 +61,39 @@ func (u *CreateUseCase) resolveVIPAnchor(
 // validateVIPSubnet — NLB-1-32: cross-service peer-validate VIP-подсети (auto).
 // subnet.placement_type обязан совпасть с placement родительского LB, регион
 // подсети — с регионом LB (placement-coherence, cross-service — не within-service
-// TOCTOU). nil subnetClient → пропуск (минимальный existence через acquire).
-func (u *CreateUseCase) validateVIPSubnet(ctx context.Context, subnetID string, lb domain.LoadBalancer) error {
+// TOCTOU). Возвращает зону подсети для ZONAL-LB (NLB-1-33 anchor); anycast/
+// REGIONAL → "" (зоны нет — from-construction исключён). nil subnetClient →
+// пропуск (минимальный existence через acquire).
+func (u *CreateUseCase) validateVIPSubnet(ctx context.Context, subnetID string, lb domain.LoadBalancer) (string, error) {
 	if u.subnetClient == nil {
-		return nil
+		return "", nil
 	}
 	if lb.PlacementType == "" {
 		// EXTERNAL LB: subnet-VIP неприменим (subnet_id — INTERNAL-only источник).
-		return status.Error(codes.InvalidArgument,
+		return "", status.Error(codes.InvalidArgument,
 			"subnet VIP anchor is only valid for INTERNAL load balancer")
 	}
 	sn, err := u.subnetClient.Get(ctx, subnetID)
 	if err != nil {
-		return vipSubnetPeerErr(err, subnetID)
+		return "", vipSubnetPeerErr(err, subnetID)
 	}
 	if !subnetPlacementMatchesLB(sn.PlacementType, lb.PlacementType) {
-		return status.Error(codes.FailedPrecondition,
+		return "", status.Error(codes.FailedPrecondition,
 			"VIP subnet placement does not match load balancer placement")
 	}
 	// Region-coherence: подсеть self-describing region (REGIONAL → region_id;
 	// ZONAL → zone→region резолв в adapter'е). Пусто (adapter без zone-resolver'а)
 	// → пропуск. Cross-service peer-validate — не within-service TOCTOU.
 	if sn.RegionID != "" && sn.RegionID != string(lb.RegionID) {
-		return status.Errorf(codes.FailedPrecondition,
+		return "", status.Errorf(codes.FailedPrecondition,
 			"VIP subnet region %s does not match load balancer region %s", sn.RegionID, lb.RegionID)
 	}
-	return nil
+	// NLB-1-33: ZONAL-LB VIP zone-anchor — worker CAS-пинит зону подсети. REGIONAL/
+	// anycast-подсеть зоны не несёт → "" (из зональной проверки исключена).
+	if lb.PlacementType == domain.PlacementZonal {
+		return sn.ZoneID, nil
+	}
+	return "", nil
 }
 
 // subnetPlacementMatchesLB — placement-type когерентность VIP-подсети и LB:

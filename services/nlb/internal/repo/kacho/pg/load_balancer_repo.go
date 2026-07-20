@@ -431,6 +431,25 @@ func (w *loadBalancerWriter) Update(ctx context.Context, lb *domain.LoadBalancer
 }
 
 // SetStatusCAS — atomic compare-and-swap на status. 0 affected → ErrFailedPrecondition.
+// PinVIPZoneCAS — см. контракт LoadBalancerWriterIface.PinVIPZoneCAS.
+func (w *loadBalancerWriter) PinVIPZoneCAS(ctx context.Context, id, zone string) error {
+	tag, err := w.tx.Exec(ctx,
+		`UPDATE kacho_nlb.load_balancers
+            SET vip_zone_id = $2, updated_at = now()
+          WHERE id = $1 AND (vip_zone_id = '' OR vip_zone_id = $2)`,
+		id, zone,
+	)
+	if err != nil {
+		return mapPgErr(err, "NetworkLoadBalancer", id)
+	}
+	if tag.RowsAffected() == 0 {
+		// Called after the child INSERT locks the LB row → the row exists; 0 rows
+		// therefore means the pinned zone differs (placement-coherence violation).
+		return fmt.Errorf("%w: load balancer VIP must be in the same zone", kacho.ErrFailedPrecondition)
+	}
+	return nil
+}
+
 func (w *loadBalancerWriter) SetStatusCAS(ctx context.Context, id string, expected, newStatus domain.LBStatus) (*kacho.LoadBalancerRecord, error) {
 	q := fmt.Sprintf(`
         UPDATE kacho_nlb.load_balancers

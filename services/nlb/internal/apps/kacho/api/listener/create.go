@@ -347,6 +347,16 @@ func (u *CreateUseCase) doInsert(ctx context.Context, in createInput) (*anypb.An
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
+	// NLB-1-33: pin the ZONAL-LB VIP zone in the SAME TX (after the child INSERT,
+	// which locks the LB row). Set-once CAS — first ZONAL auto-VIP listener pins,
+	// subsequent binds must match; a mismatching zone → FAILED_PRECONDITION «load
+	// balancer VIP must be in the same zone» (within-service invariant on DB, not a
+	// software sibling scan; ban #10). Empty zone (BYO / REGIONAL/anycast) → no pin.
+	if in.vipAnchor.zoneID != "" {
+		if err := w.LoadBalancers().PinVIPZoneCAS(ctx, string(created.LoadBalancerID), in.vipAnchor.zoneID); err != nil {
+			return nil, mapDomainErr(err)
+		}
+	}
 	if err := w.Outbox().Emit(ctx,
 		outboxResourceTypeListener, string(created.ID), string(created.ProjectID),
 		outboxActionCreated, listenerPayloadMap(created),

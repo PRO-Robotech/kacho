@@ -66,6 +66,16 @@ type LoadBalancerWriterIface interface {
 	// CLAUDE.md «Within-service refs — DB-уровень».
 	SetStatusCAS(ctx context.Context, id string, expected, newStatus domain.LBStatus) (*LoadBalancerRecord, error)
 
+	// PinVIPZoneCAS — NLB-1b F5 (NLB-1-33): атомарный set-once CAS зоны VIP ZONAL-LB.
+	// `UPDATE … SET vip_zone_id=$2 WHERE id=$1 AND (vip_zone_id='' OR vip_zone_id=$2)`.
+	// Пинит зону первым ZONAL-auto-VIP-листенером; последующие CAS'ят против неё.
+	// Вызывается в listener-INSERT writer-TX ПОСЛЕ child-INSERT (тот берёт
+	// FOR NO KEY UPDATE OF lb), поэтому LB заведомо существует+залочен → 0 rows
+	// однозначно = zone-mismatch → ErrFailedPrecondition. Конкурентные bind'ы
+	// сериализуются на row-lock (ровно один пинит/совпадает). Within-service
+	// placement-coherence на DB-уровне (data-integrity.md, ban #10 — не TOCTOU).
+	PinVIPZoneCAS(ctx context.Context, id, zone string) error
+
 	// MarkDeleting — atomic guarded transition в status=DELETING, первый шаг
 	// Delete-саги ДО необратимого release cross-domain VIP. Guards прибиты на
 	// DB-уровне под row-lock: удаляемый LB не защищён (deletion_protection=false)

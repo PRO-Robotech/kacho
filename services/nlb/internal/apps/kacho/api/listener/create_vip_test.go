@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -166,6 +167,39 @@ func TestCreateListener_VIPSubnet_PeerMiss(t *testing.T) {
 		SubnetId: "e9b-missing",
 	})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+}
+
+// NLB-1-33: ZONAL LB — второй listener c VIP-subnet в ДРУГОЙ зоне отвергается
+// (set-once vip_zone anchor CAS). Первый пинит eu-north-a; второй (eu-north-b) →
+// op error FAILED_PRECONDITION «load balancer VIP must be in the same zone». Тот же
+// zone (idempotent) — проходит.
+func TestCreateListener_NLB_1_33_ZoneCoherence(t *testing.T) {
+	t.Parallel()
+	repo, ops := newFakeRepo(), newFakeOpsRepo()
+	lb := seedZonalLB(t, repo)
+	addr := newFakeInternalAddressClient()
+
+	createDone := func(name string, port int64, subnetZone string) *operations.Operation {
+		snet := &fakeSubnetClient{placement: "ZONAL", zoneID: subnetZone}
+		uc := newCreateUCVIP(repo, ops, addr, snet)
+		op, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
+			LoadBalancerId: string(lb.ID), Name: name,
+			Protocol: lbv1.Listener_TCP, Port: port, TargetPort: 8080,
+			SubnetId: "e9b-subnet-" + subnetZone,
+		})
+		require.NoError(t, err)
+		return awaitOpDone(t, ops, op.ID, testTimeout)
+	}
+
+	// First listener pins zone eu-north-a.
+	require.Nil(t, createDone("l-a", 443, "eu-north-a").Error)
+	// Second listener in a DIFFERENT zone → rejected.
+	confl := createDone("l-b", 8443, "eu-north-b")
+	require.NotNil(t, confl.Error)
+	require.Equal(t, int32(codes.FailedPrecondition), confl.Error.GetCode())
+	require.Contains(t, confl.Error.GetMessage(), "same zone")
+	// Third listener in the SAME zone → allowed (idempotent pin).
+	require.Nil(t, createDone("l-a2", 9443, "eu-north-a").Error)
 }
 
 // Compensation: acquire ok, но INSERT конфликтует по (lb,port,proto) → op error и
