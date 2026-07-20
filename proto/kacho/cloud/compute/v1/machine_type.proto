@@ -1,0 +1,91 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.compute.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
+
+// MachineType — sync catalog resource: the single channel for Instance sizing
+// (COMP-1 F2/F7). Flat resource; a tenant picks a size via MachineTypeService.List
+// before launch. GPU count is expressed by catalog granularity (gpu-a100-1/-2/-4/
+// -8), NOT by a request field. The catalog is admin-managed: public Get/List
+// (ambient, cluster-scoped read) live on MachineTypeService; admin CRUD lives on
+// InternalMachineTypeService (:9091, system_admin) — never on the external mux
+// (ban #6). effectiveResources / availableZones are output-only (server-derived).
+message MachineType {
+
+  // Family — coarse machine-type class. Determines whether cpuGuaranteePercent
+  // applies (only STANDARD/COMPUTE/MEMORY) and whether GPUs are authoritative (GPU).
+  enum Family {
+    FAMILY_UNSPECIFIED = 0;
+    // General-purpose balanced vCPU/memory.
+    STANDARD = 1;
+    // Compute-optimized (higher vCPU per memory).
+    COMPUTE = 2;
+    // Memory-optimized (higher memory per vCPU).
+    MEMORY = 3;
+    // GPU-accelerated; gpus/gpuType in effectiveResources are authoritative.
+    GPU = 4;
+  }
+
+  // Status — catalog availability. AVAILABLE launches; DEPRECATED launches on
+  // existing/new (compat) but is discouraged; RETIRED is rejected on Create.
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    // Bookable; can be used on Create.
+    AVAILABLE = 1;
+    // Still usable but discouraged (compat window).
+    DEPRECATED = 2;
+    // No longer bookable; rejected on Instance.Create.
+    RETIRED = 3;
+  }
+
+  // ID of the machine type (canonical "mt-<base32>"). Server-assigned, immutable PK.
+  string id = 1;
+
+  // Stable human-readable name (e.g. "std-v3-2"). Unique within the catalog and
+  // accepted as an alternate reference on Instance.machineTypeId (canonical echo
+  // is always the mt- slug).
+  string name = 2;
+
+  // Free-form description.
+  string description = 3;
+
+  // Coarse machine-type class.
+  Family family = 4;
+
+  // Output-only authoritative size mirror (server-derived from the catalog entry).
+  EffectiveResources effective_resources = 5;
+
+  // Output-only capacity hint: zones where this machine type is bookable.
+  repeated string available_zones = 6;
+
+  // Catalog availability.
+  Status status = 7;
+
+  // Labels (key/value).
+  map<string, string> labels = 8;
+
+  // Creation timestamp (truncated to seconds on the wire).
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// EffectiveResources — output-only authoritative size derived from the catalog
+// entry. Memory is expressed in MiB (not bytes). Mirrored onto Instance.
+message EffectiveResources {
+  // Number of vCPUs.
+  int32 v_cpu = 1;
+
+  // Memory in MiB (mebibytes), NOT bytes.
+  int64 memory_mib = 2;
+
+  // Number of GPUs (0 unless family=GPU).
+  int32 gpus = 3;
+
+  // GPU silicon model (empty unless family=GPU), e.g. "a100-80g".
+  string gpu_type = 4;
+}

@@ -1,0 +1,74 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.compute.v1;
+
+import "google/api/annotations.proto";
+import "kacho/cloud/compute/v1/machine_type.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
+
+// MachineTypeService — public, read-only sync catalog (discovery before launch).
+// Admin CRUD over the catalog — see InternalMachineTypeService in
+// internal_machine_type_service.proto (:9091, system_admin). Read is ambient
+// (cluster-scoped viewer, project-scope EXEMPT — any authenticated tenant reads
+// the catalog to choose a size, parity with the geo catalog).
+service MachineTypeService {
+  // Returns information about the specified machine type. To get the list, use List.
+  rpc Get (GetMachineTypeRequest) returns (MachineType) {
+    option (google.api.http) = { get: "/compute/v1/machineTypes/{machine_type_id}" };
+    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Retrieves the list of machine types. Filter whitelist: name=, family=, minGpus=.
+  rpc List (ListMachineTypesRequest) returns (ListMachineTypesResponse) {
+    option (google.api.http) = { get: "/compute/v1/machineTypes" };
+    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message GetMachineTypeRequest {
+  // ID of the machine type to return (mt-<base32>).
+  string machine_type_id = 1 [(required) = true, (length) = "<=50"];
+}
+
+message ListMachineTypesRequest {
+  // The maximum number of results per page. See ListMachineTypesResponse.next_page_token.
+  int64 page_size = 1 [(value) = "<=1000"];
+
+  // Page token from a previous ListMachineTypesResponse.next_page_token.
+  string page_token = 2 [(length) = "<=100"];
+
+  // Filter (whitelist): exact machine type name (e.g. "std-v3-2"). Empty = no filter.
+  string name = 3 [(length) = "<=63"];
+
+  // Filter (whitelist): family (e.g. "GPU"). Empty = no filter.
+  string family = 4 [(length) = "<=32"];
+
+  // Filter (whitelist): minimum GPU count (e.g. 4). 0 = no filter.
+  int32 min_gpus = 5;
+}
+
+message ListMachineTypesResponse {
+  // List of machine types.
+  repeated MachineType machine_types = 1;
+
+  // Token for getting the next page of results.
+  string next_page_token = 2;
+}

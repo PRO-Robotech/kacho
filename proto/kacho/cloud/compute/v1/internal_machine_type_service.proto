@@ -1,0 +1,124 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.compute.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/compute/v1/machine_type.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
+
+// InternalMachineTypeService — kacho-only admin API to manage the read-only
+// MachineType catalog. Exposed ONLY on the cluster-internal port of kacho-compute
+// (:9091), routed through the api-gateway internal mux onto the self-describing
+// path /compute/v1/internal/machineTypes — NEVER on the external TLS endpoint
+// (ban #6, security.md §Internal-vs-external; parity with GEO-1 internal catalog).
+//
+// Admin mutations follow the standard Kachō async form: Create/Update/Delete
+// return operation.Operation (done=false); the client polls OperationService.Get(id)
+// until done=true, then reads the final resource via MachineTypeService.Get. Read
+// RPCs (MachineTypeService.Get/List) stay synchronous and public.
+service InternalMachineTypeService {
+  rpc Create (CreateMachineTypeRequest) returns (operation.Operation) {
+    option (google.api.http) = { post: "/compute/v1/internal/machineTypes" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateMachineTypeMetadata"
+      response: "MachineType"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.create";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Update (UpdateMachineTypeRequest) returns (operation.Operation) {
+    option (google.api.http) = { patch: "/compute/v1/internal/machineTypes/{machine_type_id}" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateMachineTypeMetadata"
+      response: "MachineType"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.update";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+  rpc Delete (DeleteMachineTypeRequest) returns (operation.Operation) {
+    option (google.api.http) = { delete: "/compute/v1/internal/machineTypes/{machine_type_id}" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteMachineTypeMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.delete";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message CreateMachineTypeRequest {
+  // Stable human-readable name (e.g. "std-v3-2"). Required, UNIQUE in the catalog.
+  string name = 1;
+  // Free-form description.
+  string description = 2;
+  // Coarse machine-type class.
+  MachineType.Family family = 3;
+  // Authoritative size (memory in MiB).
+  EffectiveResources effective_resources = 4;
+  // Zones where this machine type is bookable.
+  repeated string available_zones = 5;
+  // Catalog availability (defaults to AVAILABLE when unspecified).
+  MachineType.Status status = 6;
+  // Labels (key/value).
+  map<string, string> labels = 7;
+}
+
+// CreateMachineTypeMetadata — operation.metadata for InternalMachineTypeService.Create.
+message CreateMachineTypeMetadata {
+  // ID of the MachineType that is being created.
+  string machine_type_id = 1;
+}
+
+message UpdateMachineTypeRequest {
+  // ID of the machine type to update (mt-<base32>).
+  string machine_type_id = 1;
+  // Fields to update (known-set: description, family, effective_resources,
+  // available_zones, status, labels). name is immutable after Create.
+  google.protobuf.FieldMask update_mask = 2;
+  string description = 3;
+  MachineType.Family family = 4;
+  EffectiveResources effective_resources = 5;
+  repeated string available_zones = 6;
+  MachineType.Status status = 7;
+  map<string, string> labels = 8;
+}
+
+// UpdateMachineTypeMetadata — operation.metadata for InternalMachineTypeService.Update.
+message UpdateMachineTypeMetadata {
+  // ID of the MachineType that is being updated.
+  string machine_type_id = 1;
+}
+
+message DeleteMachineTypeRequest {
+  // ID of the machine type to delete (mt-<base32>).
+  string machine_type_id = 1;
+}
+
+// DeleteMachineTypeMetadata — operation.metadata for InternalMachineTypeService.Delete.
+message DeleteMachineTypeMetadata {
+  // ID of the MachineType that is being deleted.
+  string machine_type_id = 1;
+}
