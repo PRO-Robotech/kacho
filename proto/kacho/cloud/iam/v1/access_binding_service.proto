@@ -36,17 +36,17 @@ service AccessBindingService {
   }
 
   // Creates an access binding.
-  // Идемпотентный INSERT — дубль (subject_type, subject_id, role_id, resource_type,
-  // resource_id) возвращает existing.
+  // Strict INSERT — дубль активного гранта (subject, role_id, scope_type,
+  // scope_id) → ALREADY_EXISTS (partial UNIQUE WHERE revoked_at IS NULL).
   rpc Create (CreateAccessBindingRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/accessBindings" body: "*" };
     option (kacho.cloud.api.operation) = {
       metadata: "CreateAccessBindingMetadata"
       response: "AccessBinding"
     };
-    // AccessBinding.Create grants a role on an ARBITRARY target
-    // resource — the FGA object type varies per request (`resource_type` is a
-    // request field: account / project / vpc_network / ...). The api-gateway
+    // AccessBinding.Create grants a role on an ARBITRARY scope anchor
+    // — the FGA object type varies per request (`scope_type` is a
+    // request field: iam.account / iam.project / iam.cluster). The api-gateway
     // permission catalog can only carry a STATIC object_type, so it cannot
     // build the correct `<type>:<id>` Check object here. Therefore the
     // middleware exempts this RPC and the kacho-iam handler is the
@@ -330,20 +330,15 @@ message CreateAccessBindingRequest {
   // ID of the Role to assign.
   string role_id = 3 [(required) = true, (length) = "<=20"];
 
-  // Тип resource'а ("account" | "project" | т.п.).
-  //
-  // DEPRECATED-in-favour-of `scope_ref`. Either this
-  // flat pair OR the canonical `scope_ref` (field 10) may carry the scope; if
-  // both are set they MUST be derived-equivalent, otherwise INVALID_ARGUMENT.
-  // NB: `(required)=true` is retained for buf-breaking cleanliness — the
-  // handler treats the pair as optional WHEN `scope_ref` is set (the canonical
-  // form supplies the scope), so a client sending only `scope_ref` is valid.
-  string resource_type = 4 [(required) = true, (length) = "<=32"];
+  // Scope-anchor TYPE in dotted form: `iam.cluster` | `iam.account` |
+  // `iam.project` (redesign-2026 F7 — renamed from `resource_type`; «resource» is
+  // reserved for `target`). REQUIRED (pre-Phase-0: prefix-derivation from scope_id
+  // is B3-gated, so the tier must be given explicitly). An empty / non-dotted /
+  // unknown value → sync INVALID_ARGUMENT.
+  string scope_type = 4 [(required) = true, (length) = "<=32"];
 
-  // ID resource'а.
-  //
-  // DEPRECATED-in-favour-of `scope_ref.id`. See `resource_type`.
-  string resource_id = 5 [(required) = true, (length) = "<=64"];
+  // Scope-anchor ID — the anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+  string scope_id = 5 [(required) = true, (length) = "<=64"];
 
   // Optional reference to an `AccessBindingCondition` row (`cond_xxx`) for
   // an ABAC overlay. Logical-oneof with
@@ -359,21 +354,14 @@ message CreateAccessBindingRequest {
   // gates the binding evaluation by `now() < expires_at`.
   google.protobuf.Timestamp expires_at = 8;
 
-  // TOMBSTONE. The legacy
-  // `target` (tag 9, `AccessTarget` oneof) and its canonical alias `target_ref`
-  // (tag 11, `AccessTargetRef`) are REMOVED: object-selection is now expressed
-  // ENTIRELY in `role.rules` (single source of truth). Tags 9/11 and names
-  // `target`/`target_ref` are RESERVED tombstones — never reused. Intentional
-  // breaking change.
-  reserved 9, 11;
-  reserved "target", "target_ref";
-
-  // Canonical scope dimension. {tier, id} pair
-  // replacing the deprecated flat `resource_type`/`resource_id`. When set, the
-  // server normalizes from it; if the legacy pair is ALSO set they must be
-  // derived-equivalent, else INVALID_ARGUMENT. When only the legacy
-  // pair is set, the server derives the canonical form (and fills both on read).
-  ScopeRef scope_ref = 10;
+  // TOMBSTONE. Tag 9 (`AccessTarget target`) / tag 11 (`AccessTargetRef target_ref`)
+  // held the earlier per-object target machinery; tag 10 (`ScopeRef scope_ref`) held
+  // the canonical scope pair now flattened into `scope_type`/`scope_id`
+  // (redesign-2026 F7). Tags 9/10/11 and names `target`/`target_ref`/`scope_ref` are
+  // RESERVED tombstones — never reused (append-only). F8 REINTRODUCES `target` at a
+  // NEW tag (`target = 15`).
+  reserved 9, 10, 11;
+  reserved "target", "target_ref", "scope_ref";
 
   // Multi-subject set. 1..32
   // subjects; each yields an INDEPENDENT FGA tuple-set + emitted-tuple ledger

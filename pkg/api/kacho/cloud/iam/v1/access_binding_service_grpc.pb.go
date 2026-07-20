@@ -51,8 +51,8 @@ type AccessBindingServiceClient interface {
 	// Returns the specified AccessBinding resource.
 	Get(ctx context.Context, in *GetAccessBindingRequest, opts ...grpc.CallOption) (*AccessBinding, error)
 	// Creates an access binding.
-	// Идемпотентный INSERT — дубль (subject_type, subject_id, role_id, resource_type,
-	// resource_id) возвращает existing.
+	// Strict INSERT — дубль активного гранта (subject, role_id, scope_type,
+	// scope_id) → ALREADY_EXISTS (partial UNIQUE WHERE revoked_at IS NULL).
 	Create(ctx context.Context, in *CreateAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified access binding.
 	Delete(ctx context.Context, in *DeleteAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
@@ -328,8 +328,8 @@ type AccessBindingServiceServer interface {
 	// Returns the specified AccessBinding resource.
 	Get(context.Context, *GetAccessBindingRequest) (*AccessBinding, error)
 	// Creates an access binding.
-	// Идемпотентный INSERT — дубль (subject_type, subject_id, role_id, resource_type,
-	// resource_id) возвращает existing.
+	// Strict INSERT — дубль активного гранта (subject, role_id, scope_type,
+	// scope_id) → ALREADY_EXISTS (partial UNIQUE WHERE revoked_at IS NULL).
 	Create(context.Context, *CreateAccessBindingRequest) (*operation.Operation, error)
 	// Deletes the specified access binding.
 	Delete(context.Context, *DeleteAccessBindingRequest) (*operation.Operation, error)

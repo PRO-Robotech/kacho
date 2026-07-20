@@ -199,19 +199,14 @@ type CreateAccessBindingRequest struct {
 	SubjectId string `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// ID of the Role to assign.
 	RoleId string `protobuf:"bytes,3,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
-	// Тип resource'а ("account" | "project" | т.п.).
-	//
-	// DEPRECATED-in-favour-of `scope_ref`. Either this
-	// flat pair OR the canonical `scope_ref` (field 10) may carry the scope; if
-	// both are set they MUST be derived-equivalent, otherwise INVALID_ARGUMENT.
-	// NB: `(required)=true` is retained for buf-breaking cleanliness — the
-	// handler treats the pair as optional WHEN `scope_ref` is set (the canonical
-	// form supplies the scope), so a client sending only `scope_ref` is valid.
-	ResourceType string `protobuf:"bytes,4,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
-	// ID resource'а.
-	//
-	// DEPRECATED-in-favour-of `scope_ref.id`. See `resource_type`.
-	ResourceId string `protobuf:"bytes,5,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	// Scope-anchor TYPE in dotted form: `iam.cluster` | `iam.account` |
+	// `iam.project` (redesign-2026 F7 — renamed from `resource_type`; «resource» is
+	// reserved for `target`). REQUIRED (pre-Phase-0: prefix-derivation from scope_id
+	// is B3-gated, so the tier must be given explicitly). An empty / non-dotted /
+	// unknown value → sync INVALID_ARGUMENT.
+	ScopeType string `protobuf:"bytes,4,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	// Scope-anchor ID — the anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+	ScopeId string `protobuf:"bytes,5,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
 	// Optional reference to an `AccessBindingCondition` row (`cond_xxx`) for
 	// an ABAC overlay. Logical-oneof with
 	// `builtin_condition` (field 7) — setting both is InvalidArgument.
@@ -223,12 +218,6 @@ type CreateAccessBindingRequest struct {
 	// the future by at least 5 minutes (otherwise InvalidArgument) — OPA
 	// gates the binding evaluation by `now() < expires_at`.
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	// Canonical scope dimension. {tier, id} pair
-	// replacing the deprecated flat `resource_type`/`resource_id`. When set, the
-	// server normalizes from it; if the legacy pair is ALSO set they must be
-	// derived-equivalent, else INVALID_ARGUMENT. When only the legacy
-	// pair is set, the server derives the canonical form (and fills both on read).
-	ScopeRef *ScopeRef `protobuf:"bytes,10,opt,name=scope_ref,json=scopeRef,proto3" json:"scope_ref,omitempty"`
 	// Multi-subject set. 1..32
 	// subjects; each yields an INDEPENDENT FGA tuple-set + emitted-tuple ledger
 	// lineage (per-subject revoke/audit). This is the canonical (preferred) input;
@@ -307,16 +296,16 @@ func (x *CreateAccessBindingRequest) GetRoleId() string {
 	return ""
 }
 
-func (x *CreateAccessBindingRequest) GetResourceType() string {
+func (x *CreateAccessBindingRequest) GetScopeType() string {
 	if x != nil {
-		return x.ResourceType
+		return x.ScopeType
 	}
 	return ""
 }
 
-func (x *CreateAccessBindingRequest) GetResourceId() string {
+func (x *CreateAccessBindingRequest) GetScopeId() string {
 	if x != nil {
-		return x.ResourceId
+		return x.ScopeId
 	}
 	return ""
 }
@@ -338,13 +327,6 @@ func (x *CreateAccessBindingRequest) GetBuiltinCondition() BuiltinCondition {
 func (x *CreateAccessBindingRequest) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
-	}
-	return nil
-}
-
-func (x *CreateAccessBindingRequest) GetScopeRef() *ScopeRef {
-	if x != nil {
-		return x.ScopeRef
 	}
 	return nil
 }
@@ -1720,29 +1702,28 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\n" +
 	"/kacho/cloud/iam/v1/access_binding_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a'kacho/cloud/iam/v1/access_binding.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"S\n" +
 	"\x17GetAccessBindingRequest\x128\n" +
-	"\x11access_binding_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0faccessBindingId\"\xd0\x06\n" +
+	"\x11access_binding_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0faccessBindingId\"\x9a\x06\n" +
 	"\x1aCreateAccessBindingRequest\x12/\n" +
 	"\fsubject_type\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\vsubjectType\x12+\n" +
 	"\n" +
 	"subject_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\tsubjectId\x12%\n" +
-	"\arole_id\x18\x03 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\x121\n" +
-	"\rresource_type\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\fresourceType\x12-\n" +
-	"\vresource_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\n" +
-	"resourceId\x12+\n" +
+	"\arole_id\x18\x03 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\x12+\n" +
+	"\n" +
+	"scope_type\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\tscopeType\x12'\n" +
+	"\bscope_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\ascopeId\x12+\n" +
 	"\fcondition_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=20R\vconditionId\x12Q\n" +
 	"\x11builtin_condition\x18\a \x01(\x0e2$.kacho.cloud.iam.v1.BuiltinConditionR\x10builtinCondition\x129\n" +
 	"\n" +
-	"expires_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x129\n" +
-	"\tscope_ref\x18\n" +
-	" \x01(\v2\x1c.kacho.cloud.iam.v1.ScopeRefR\bscopeRef\x127\n" +
+	"expires_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x127\n" +
 	"\bsubjects\x18\f \x03(\v2\x1b.kacho.cloud.iam.v1.SubjectR\bsubjects\x12/\n" +
 	"\x13deletion_protection\x18\r \x01(\bR\x12deletionProtection\x12\x8f\x01\n" +
 	"\x06labels\x18\x0e \x03(\v2:.kacho.cloud.iam.v1.CreateAccessBindingRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"J\x04\b\v\x10\fR\x06targetR\n" +
-	"target_ref\"V\n" +
+	"J\x04\b\n" +
+	"\x10\vJ\x04\b\v\x10\fR\x06targetR\n" +
+	"target_refR\tscope_ref\"V\n" +
 	"\x1aDeleteAccessBindingRequest\x128\n" +
 	"\x11access_binding_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0faccessBindingId\"V\n" +
 	"\x1aRevokeAccessBindingRequest\x128\n" +
@@ -1957,67 +1938,65 @@ var file_kacho_cloud_iam_v1_access_binding_service_proto_goTypes = []any{
 	nil,                                         // 24: kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntry
 	(BuiltinCondition)(0),                       // 25: kacho.cloud.iam.v1.BuiltinCondition
 	(*timestamppb.Timestamp)(nil),               // 26: google.protobuf.Timestamp
-	(*ScopeRef)(nil),                            // 27: kacho.cloud.iam.v1.ScopeRef
-	(*Subject)(nil),                             // 28: kacho.cloud.iam.v1.Subject
-	(*fieldmaskpb.FieldMask)(nil),               // 29: google.protobuf.FieldMask
-	(*AccessBinding)(nil),                       // 30: kacho.cloud.iam.v1.AccessBinding
-	(*operation.Operation)(nil),                 // 31: kacho.cloud.operation.Operation
-	(AccessBinding_Scope)(0),                    // 32: kacho.cloud.iam.v1.AccessBinding.Scope
-	(AccessBinding_Status)(0),                   // 33: kacho.cloud.iam.v1.AccessBinding.Status
-	(SubjectType)(0),                            // 34: kacho.cloud.iam.v1.SubjectType
+	(*Subject)(nil),                             // 27: kacho.cloud.iam.v1.Subject
+	(*fieldmaskpb.FieldMask)(nil),               // 28: google.protobuf.FieldMask
+	(*AccessBinding)(nil),                       // 29: kacho.cloud.iam.v1.AccessBinding
+	(*operation.Operation)(nil),                 // 30: kacho.cloud.operation.Operation
+	(AccessBinding_Scope)(0),                    // 31: kacho.cloud.iam.v1.AccessBinding.Scope
+	(AccessBinding_Status)(0),                   // 32: kacho.cloud.iam.v1.AccessBinding.Status
+	(SubjectType)(0),                            // 33: kacho.cloud.iam.v1.SubjectType
 }
 var file_kacho_cloud_iam_v1_access_binding_service_proto_depIdxs = []int32{
 	25, // 0: kacho.cloud.iam.v1.CreateAccessBindingRequest.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
 	26, // 1: kacho.cloud.iam.v1.CreateAccessBindingRequest.expires_at:type_name -> google.protobuf.Timestamp
-	27, // 2: kacho.cloud.iam.v1.CreateAccessBindingRequest.scope_ref:type_name -> kacho.cloud.iam.v1.ScopeRef
-	28, // 3: kacho.cloud.iam.v1.CreateAccessBindingRequest.subjects:type_name -> kacho.cloud.iam.v1.Subject
-	23, // 4: kacho.cloud.iam.v1.CreateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.CreateAccessBindingRequest.LabelsEntry
-	29, // 5: kacho.cloud.iam.v1.UpdateAccessBindingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	24, // 6: kacho.cloud.iam.v1.UpdateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntry
-	30, // 7: kacho.cloud.iam.v1.ListAccessBindingsResponse.access_bindings:type_name -> kacho.cloud.iam.v1.AccessBinding
-	31, // 8: kacho.cloud.iam.v1.ListAccessBindingOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	15, // 9: kacho.cloud.iam.v1.ListSubjectPrivilegesResponse.privileges:type_name -> kacho.cloud.iam.v1.SubjectPrivilege
-	32, // 10: kacho.cloud.iam.v1.SubjectPrivilege.scope:type_name -> kacho.cloud.iam.v1.AccessBinding.Scope
-	33, // 11: kacho.cloud.iam.v1.SubjectPrivilege.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
-	26, // 12: kacho.cloud.iam.v1.SubjectPrivilege.created_at:type_name -> google.protobuf.Timestamp
-	26, // 13: kacho.cloud.iam.v1.SubjectPrivilege.expires_at:type_name -> google.protobuf.Timestamp
-	0,  // 14: kacho.cloud.iam.v1.SubjectPrivilege.derivation:type_name -> kacho.cloud.iam.v1.Derivation
-	18, // 15: kacho.cloud.iam.v1.ListAssignableRolesResponse.roles:type_name -> kacho.cloud.iam.v1.AssignableRole
-	1,  // 16: kacho.cloud.iam.v1.AssignableRole.scope_group:type_name -> kacho.cloud.iam.v1.ScopeGroup
-	26, // 17: kacho.cloud.iam.v1.AssignableRole.created_at:type_name -> google.protobuf.Timestamp
-	34, // 18: kacho.cloud.iam.v1.Principal.type:type_name -> kacho.cloud.iam.v1.SubjectType
-	21, // 19: kacho.cloud.iam.v1.ExpandAccessResponse.principals:type_name -> kacho.cloud.iam.v1.Principal
-	2,  // 20: kacho.cloud.iam.v1.AccessBindingService.Get:input_type -> kacho.cloud.iam.v1.GetAccessBindingRequest
-	3,  // 21: kacho.cloud.iam.v1.AccessBindingService.Create:input_type -> kacho.cloud.iam.v1.CreateAccessBindingRequest
-	4,  // 22: kacho.cloud.iam.v1.AccessBindingService.Delete:input_type -> kacho.cloud.iam.v1.DeleteAccessBindingRequest
-	6,  // 23: kacho.cloud.iam.v1.AccessBindingService.Update:input_type -> kacho.cloud.iam.v1.UpdateAccessBindingRequest
-	7,  // 24: kacho.cloud.iam.v1.AccessBindingService.ListByScope:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByScopeRequest
-	8,  // 25: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:input_type -> kacho.cloud.iam.v1.ListAccessBindingsBySubjectRequest
-	13, // 26: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:input_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesRequest
-	16, // 27: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:input_type -> kacho.cloud.iam.v1.ListAssignableRolesRequest
-	19, // 28: kacho.cloud.iam.v1.AccessBindingService.ListByRole:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByRoleRequest
-	20, // 29: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:input_type -> kacho.cloud.iam.v1.ExpandAccessRequest
-	9,  // 30: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByAccountRequest
-	11, // 31: kacho.cloud.iam.v1.AccessBindingService.ListOperations:input_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsRequest
-	5,  // 32: kacho.cloud.iam.v1.AccessBindingService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeAccessBindingRequest
-	30, // 33: kacho.cloud.iam.v1.AccessBindingService.Get:output_type -> kacho.cloud.iam.v1.AccessBinding
-	31, // 34: kacho.cloud.iam.v1.AccessBindingService.Create:output_type -> kacho.cloud.operation.Operation
-	31, // 35: kacho.cloud.iam.v1.AccessBindingService.Delete:output_type -> kacho.cloud.operation.Operation
-	31, // 36: kacho.cloud.iam.v1.AccessBindingService.Update:output_type -> kacho.cloud.operation.Operation
-	10, // 37: kacho.cloud.iam.v1.AccessBindingService.ListByScope:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	10, // 38: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	14, // 39: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:output_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesResponse
-	17, // 40: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:output_type -> kacho.cloud.iam.v1.ListAssignableRolesResponse
-	10, // 41: kacho.cloud.iam.v1.AccessBindingService.ListByRole:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	22, // 42: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:output_type -> kacho.cloud.iam.v1.ExpandAccessResponse
-	10, // 43: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	12, // 44: kacho.cloud.iam.v1.AccessBindingService.ListOperations:output_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsResponse
-	31, // 45: kacho.cloud.iam.v1.AccessBindingService.Revoke:output_type -> kacho.cloud.operation.Operation
-	33, // [33:46] is the sub-list for method output_type
-	20, // [20:33] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	27, // 2: kacho.cloud.iam.v1.CreateAccessBindingRequest.subjects:type_name -> kacho.cloud.iam.v1.Subject
+	23, // 3: kacho.cloud.iam.v1.CreateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.CreateAccessBindingRequest.LabelsEntry
+	28, // 4: kacho.cloud.iam.v1.UpdateAccessBindingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	24, // 5: kacho.cloud.iam.v1.UpdateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntry
+	29, // 6: kacho.cloud.iam.v1.ListAccessBindingsResponse.access_bindings:type_name -> kacho.cloud.iam.v1.AccessBinding
+	30, // 7: kacho.cloud.iam.v1.ListAccessBindingOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	15, // 8: kacho.cloud.iam.v1.ListSubjectPrivilegesResponse.privileges:type_name -> kacho.cloud.iam.v1.SubjectPrivilege
+	31, // 9: kacho.cloud.iam.v1.SubjectPrivilege.scope:type_name -> kacho.cloud.iam.v1.AccessBinding.Scope
+	32, // 10: kacho.cloud.iam.v1.SubjectPrivilege.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
+	26, // 11: kacho.cloud.iam.v1.SubjectPrivilege.created_at:type_name -> google.protobuf.Timestamp
+	26, // 12: kacho.cloud.iam.v1.SubjectPrivilege.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 13: kacho.cloud.iam.v1.SubjectPrivilege.derivation:type_name -> kacho.cloud.iam.v1.Derivation
+	18, // 14: kacho.cloud.iam.v1.ListAssignableRolesResponse.roles:type_name -> kacho.cloud.iam.v1.AssignableRole
+	1,  // 15: kacho.cloud.iam.v1.AssignableRole.scope_group:type_name -> kacho.cloud.iam.v1.ScopeGroup
+	26, // 16: kacho.cloud.iam.v1.AssignableRole.created_at:type_name -> google.protobuf.Timestamp
+	33, // 17: kacho.cloud.iam.v1.Principal.type:type_name -> kacho.cloud.iam.v1.SubjectType
+	21, // 18: kacho.cloud.iam.v1.ExpandAccessResponse.principals:type_name -> kacho.cloud.iam.v1.Principal
+	2,  // 19: kacho.cloud.iam.v1.AccessBindingService.Get:input_type -> kacho.cloud.iam.v1.GetAccessBindingRequest
+	3,  // 20: kacho.cloud.iam.v1.AccessBindingService.Create:input_type -> kacho.cloud.iam.v1.CreateAccessBindingRequest
+	4,  // 21: kacho.cloud.iam.v1.AccessBindingService.Delete:input_type -> kacho.cloud.iam.v1.DeleteAccessBindingRequest
+	6,  // 22: kacho.cloud.iam.v1.AccessBindingService.Update:input_type -> kacho.cloud.iam.v1.UpdateAccessBindingRequest
+	7,  // 23: kacho.cloud.iam.v1.AccessBindingService.ListByScope:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByScopeRequest
+	8,  // 24: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:input_type -> kacho.cloud.iam.v1.ListAccessBindingsBySubjectRequest
+	13, // 25: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:input_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesRequest
+	16, // 26: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:input_type -> kacho.cloud.iam.v1.ListAssignableRolesRequest
+	19, // 27: kacho.cloud.iam.v1.AccessBindingService.ListByRole:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByRoleRequest
+	20, // 28: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:input_type -> kacho.cloud.iam.v1.ExpandAccessRequest
+	9,  // 29: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByAccountRequest
+	11, // 30: kacho.cloud.iam.v1.AccessBindingService.ListOperations:input_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsRequest
+	5,  // 31: kacho.cloud.iam.v1.AccessBindingService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeAccessBindingRequest
+	29, // 32: kacho.cloud.iam.v1.AccessBindingService.Get:output_type -> kacho.cloud.iam.v1.AccessBinding
+	30, // 33: kacho.cloud.iam.v1.AccessBindingService.Create:output_type -> kacho.cloud.operation.Operation
+	30, // 34: kacho.cloud.iam.v1.AccessBindingService.Delete:output_type -> kacho.cloud.operation.Operation
+	30, // 35: kacho.cloud.iam.v1.AccessBindingService.Update:output_type -> kacho.cloud.operation.Operation
+	10, // 36: kacho.cloud.iam.v1.AccessBindingService.ListByScope:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	10, // 37: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	14, // 38: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:output_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesResponse
+	17, // 39: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:output_type -> kacho.cloud.iam.v1.ListAssignableRolesResponse
+	10, // 40: kacho.cloud.iam.v1.AccessBindingService.ListByRole:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	22, // 41: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:output_type -> kacho.cloud.iam.v1.ExpandAccessResponse
+	10, // 42: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	12, // 43: kacho.cloud.iam.v1.AccessBindingService.ListOperations:output_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsResponse
+	30, // 44: kacho.cloud.iam.v1.AccessBindingService.Revoke:output_type -> kacho.cloud.operation.Operation
+	32, // [32:45] is the sub-list for method output_type
+	19, // [19:32] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_access_binding_service_proto_init() }
