@@ -133,6 +133,9 @@ func (u *UseCase) applyRepoUpdate(ctx context.Context, spec RepositoryConfigUpda
 		Description: spec.Description,
 		Labels:      spec.Labels,
 		Visibility:  visibility,
+		// F7 auto-promote: overlay-set на ephemeral push-repo (нет overlay) → INSERT
+		// durable overlay → lifecycle=DURABLE (наблюдаемо, REG-1-28).
+		Lifecycle: domain.LifecycleDurable,
 	}
 	promoteIntents := []OutboxIntent{}
 	if visibility == domain.VisibilityPublic {

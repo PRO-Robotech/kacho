@@ -1178,7 +1178,11 @@ type CreateRepositoryRequest struct {
 	Labels      map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Явная публичность. Не задано (UNSPECIFIED) → наследует
 	// Namespace.default_repository_visibility. Явный PUBLIC требует registry admin (D-6, B08).
-	Visibility    Visibility `protobuf:"varint,5,opt,name=visibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"visibility,omitempty"`
+	Visibility Visibility `protobuf:"varint,5,opt,name=visibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"visibility,omitempty"`
+	// Опц. вход lifecycle (REG-1 F7). Не задано (UNSPECIFIED) → DURABLE by default
+	// (explicit intent = сохранить каркас); явный EPHEMERAL перекрывает (register-on-
+	// first-push семантика). Output-lifecycle авторитетно управляется системой.
+	Lifecycle     RepositoryLifecycle `protobuf:"varint,6,opt,name=lifecycle,proto3,enum=kacho.cloud.registry.v1.RepositoryLifecycle" json:"lifecycle,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1246,6 +1250,13 @@ func (x *CreateRepositoryRequest) GetVisibility() Visibility {
 		return x.Visibility
 	}
 	return Visibility_VISIBILITY_UNSPECIFIED
+}
+
+func (x *CreateRepositoryRequest) GetLifecycle() RepositoryLifecycle {
+	if x != nil {
+		return x.Lifecycle
+	}
+	return RepositoryLifecycle_REPOSITORY_LIFECYCLE_UNSPECIFIED
 }
 
 type CreateRepositoryMetadata struct {
@@ -1886,7 +1897,7 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
-	"repository\"\xd4\x02\n" +
+	"repository\"\xa0\x03\n" +
 	"\x17CreateRepositoryRequest\x12!\n" +
 	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
@@ -1896,7 +1907,8 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"\x06labels\x18\x04 \x03(\v2<.kacho.cloud.registry.v1.CreateRepositoryRequest.LabelsEntryR\x06labels\x12C\n" +
 	"\n" +
 	"visibility\x18\x05 \x01(\x0e2#.kacho.cloud.registry.v1.VisibilityR\n" +
-	"visibility\x1a9\n" +
+	"visibility\x12J\n" +
+	"\tlifecycle\x18\x06 \x01(\x0e2,.kacho.cloud.registry.v1.RepositoryLifecycleR\tlifecycle\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +
@@ -2047,7 +2059,8 @@ var file_kacho_cloud_registry_v1_registry_service_proto_goTypes = []any{
 	(*Repository)(nil),                      // 37: kacho.cloud.registry.v1.Repository
 	(*Tag)(nil),                             // 38: kacho.cloud.registry.v1.Tag
 	(*operation.Operation)(nil),             // 39: kacho.cloud.operation.Operation
-	(*Referrer)(nil),                        // 40: kacho.cloud.registry.v1.Referrer
+	(RepositoryLifecycle)(0),                // 40: kacho.cloud.registry.v1.RepositoryLifecycle
+	(*Referrer)(nil),                        // 41: kacho.cloud.registry.v1.Referrer
 }
 var file_kacho_cloud_registry_v1_registry_service_proto_depIdxs = []int32{
 	34, // 0: kacho.cloud.registry.v1.ListNamespacesResponse.namespaces:type_name -> kacho.cloud.registry.v1.Namespace
@@ -2060,47 +2073,48 @@ var file_kacho_cloud_registry_v1_registry_service_proto_depIdxs = []int32{
 	39, // 7: kacho.cloud.registry.v1.ListNamespaceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	32, // 8: kacho.cloud.registry.v1.CreateRepositoryRequest.labels:type_name -> kacho.cloud.registry.v1.CreateRepositoryRequest.LabelsEntry
 	36, // 9: kacho.cloud.registry.v1.CreateRepositoryRequest.visibility:type_name -> kacho.cloud.registry.v1.Visibility
-	33, // 10: kacho.cloud.registry.v1.UpdateRepositoryRequest.labels:type_name -> kacho.cloud.registry.v1.UpdateRepositoryRequest.LabelsEntry
-	36, // 11: kacho.cloud.registry.v1.UpdateRepositoryRequest.visibility:type_name -> kacho.cloud.registry.v1.Visibility
-	35, // 12: kacho.cloud.registry.v1.UpdateRepositoryRequest.update_mask:type_name -> google.protobuf.FieldMask
-	40, // 13: kacho.cloud.registry.v1.ListReferrersResponse.referrers:type_name -> kacho.cloud.registry.v1.Referrer
-	0,  // 14: kacho.cloud.registry.v1.RegistryService.GetNamespace:input_type -> kacho.cloud.registry.v1.GetNamespaceRequest
-	1,  // 15: kacho.cloud.registry.v1.RegistryService.ListNamespaces:input_type -> kacho.cloud.registry.v1.ListNamespacesRequest
-	3,  // 16: kacho.cloud.registry.v1.RegistryService.CreateNamespace:input_type -> kacho.cloud.registry.v1.CreateNamespaceRequest
-	5,  // 17: kacho.cloud.registry.v1.RegistryService.UpdateNamespace:input_type -> kacho.cloud.registry.v1.UpdateNamespaceRequest
-	7,  // 18: kacho.cloud.registry.v1.RegistryService.DeleteNamespace:input_type -> kacho.cloud.registry.v1.DeleteNamespaceRequest
-	9,  // 19: kacho.cloud.registry.v1.RegistryService.RenameNamespace:input_type -> kacho.cloud.registry.v1.RenameNamespaceRequest
-	11, // 20: kacho.cloud.registry.v1.RegistryService.ListRepositories:input_type -> kacho.cloud.registry.v1.ListRepositoriesRequest
-	17, // 21: kacho.cloud.registry.v1.RegistryService.ListOperations:input_type -> kacho.cloud.registry.v1.ListNamespaceOperationsRequest
-	19, // 22: kacho.cloud.registry.v1.RegistryService.GetRepository:input_type -> kacho.cloud.registry.v1.GetRepositoryRequest
-	20, // 23: kacho.cloud.registry.v1.RegistryService.CreateRepository:input_type -> kacho.cloud.registry.v1.CreateRepositoryRequest
-	22, // 24: kacho.cloud.registry.v1.RegistryService.UpdateRepository:input_type -> kacho.cloud.registry.v1.UpdateRepositoryRequest
-	24, // 25: kacho.cloud.registry.v1.RegistryService.DeleteRepository:input_type -> kacho.cloud.registry.v1.DeleteRepositoryRequest
-	13, // 26: kacho.cloud.registry.v1.RegistryService.ListTags:input_type -> kacho.cloud.registry.v1.ListTagsRequest
-	15, // 27: kacho.cloud.registry.v1.RegistryService.DeleteTag:input_type -> kacho.cloud.registry.v1.DeleteTagRequest
-	26, // 28: kacho.cloud.registry.v1.RegistryService.RenameRepository:input_type -> kacho.cloud.registry.v1.RenameRepositoryRequest
-	28, // 29: kacho.cloud.registry.v1.RegistryService.ListReferrers:input_type -> kacho.cloud.registry.v1.ListReferrersRequest
-	34, // 30: kacho.cloud.registry.v1.RegistryService.GetNamespace:output_type -> kacho.cloud.registry.v1.Namespace
-	2,  // 31: kacho.cloud.registry.v1.RegistryService.ListNamespaces:output_type -> kacho.cloud.registry.v1.ListNamespacesResponse
-	39, // 32: kacho.cloud.registry.v1.RegistryService.CreateNamespace:output_type -> kacho.cloud.operation.Operation
-	39, // 33: kacho.cloud.registry.v1.RegistryService.UpdateNamespace:output_type -> kacho.cloud.operation.Operation
-	39, // 34: kacho.cloud.registry.v1.RegistryService.DeleteNamespace:output_type -> kacho.cloud.operation.Operation
-	39, // 35: kacho.cloud.registry.v1.RegistryService.RenameNamespace:output_type -> kacho.cloud.operation.Operation
-	12, // 36: kacho.cloud.registry.v1.RegistryService.ListRepositories:output_type -> kacho.cloud.registry.v1.ListRepositoriesResponse
-	18, // 37: kacho.cloud.registry.v1.RegistryService.ListOperations:output_type -> kacho.cloud.registry.v1.ListNamespaceOperationsResponse
-	37, // 38: kacho.cloud.registry.v1.RegistryService.GetRepository:output_type -> kacho.cloud.registry.v1.Repository
-	39, // 39: kacho.cloud.registry.v1.RegistryService.CreateRepository:output_type -> kacho.cloud.operation.Operation
-	39, // 40: kacho.cloud.registry.v1.RegistryService.UpdateRepository:output_type -> kacho.cloud.operation.Operation
-	39, // 41: kacho.cloud.registry.v1.RegistryService.DeleteRepository:output_type -> kacho.cloud.operation.Operation
-	14, // 42: kacho.cloud.registry.v1.RegistryService.ListTags:output_type -> kacho.cloud.registry.v1.ListTagsResponse
-	39, // 43: kacho.cloud.registry.v1.RegistryService.DeleteTag:output_type -> kacho.cloud.operation.Operation
-	39, // 44: kacho.cloud.registry.v1.RegistryService.RenameRepository:output_type -> kacho.cloud.operation.Operation
-	29, // 45: kacho.cloud.registry.v1.RegistryService.ListReferrers:output_type -> kacho.cloud.registry.v1.ListReferrersResponse
-	30, // [30:46] is the sub-list for method output_type
-	14, // [14:30] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	40, // 10: kacho.cloud.registry.v1.CreateRepositoryRequest.lifecycle:type_name -> kacho.cloud.registry.v1.RepositoryLifecycle
+	33, // 11: kacho.cloud.registry.v1.UpdateRepositoryRequest.labels:type_name -> kacho.cloud.registry.v1.UpdateRepositoryRequest.LabelsEntry
+	36, // 12: kacho.cloud.registry.v1.UpdateRepositoryRequest.visibility:type_name -> kacho.cloud.registry.v1.Visibility
+	35, // 13: kacho.cloud.registry.v1.UpdateRepositoryRequest.update_mask:type_name -> google.protobuf.FieldMask
+	41, // 14: kacho.cloud.registry.v1.ListReferrersResponse.referrers:type_name -> kacho.cloud.registry.v1.Referrer
+	0,  // 15: kacho.cloud.registry.v1.RegistryService.GetNamespace:input_type -> kacho.cloud.registry.v1.GetNamespaceRequest
+	1,  // 16: kacho.cloud.registry.v1.RegistryService.ListNamespaces:input_type -> kacho.cloud.registry.v1.ListNamespacesRequest
+	3,  // 17: kacho.cloud.registry.v1.RegistryService.CreateNamespace:input_type -> kacho.cloud.registry.v1.CreateNamespaceRequest
+	5,  // 18: kacho.cloud.registry.v1.RegistryService.UpdateNamespace:input_type -> kacho.cloud.registry.v1.UpdateNamespaceRequest
+	7,  // 19: kacho.cloud.registry.v1.RegistryService.DeleteNamespace:input_type -> kacho.cloud.registry.v1.DeleteNamespaceRequest
+	9,  // 20: kacho.cloud.registry.v1.RegistryService.RenameNamespace:input_type -> kacho.cloud.registry.v1.RenameNamespaceRequest
+	11, // 21: kacho.cloud.registry.v1.RegistryService.ListRepositories:input_type -> kacho.cloud.registry.v1.ListRepositoriesRequest
+	17, // 22: kacho.cloud.registry.v1.RegistryService.ListOperations:input_type -> kacho.cloud.registry.v1.ListNamespaceOperationsRequest
+	19, // 23: kacho.cloud.registry.v1.RegistryService.GetRepository:input_type -> kacho.cloud.registry.v1.GetRepositoryRequest
+	20, // 24: kacho.cloud.registry.v1.RegistryService.CreateRepository:input_type -> kacho.cloud.registry.v1.CreateRepositoryRequest
+	22, // 25: kacho.cloud.registry.v1.RegistryService.UpdateRepository:input_type -> kacho.cloud.registry.v1.UpdateRepositoryRequest
+	24, // 26: kacho.cloud.registry.v1.RegistryService.DeleteRepository:input_type -> kacho.cloud.registry.v1.DeleteRepositoryRequest
+	13, // 27: kacho.cloud.registry.v1.RegistryService.ListTags:input_type -> kacho.cloud.registry.v1.ListTagsRequest
+	15, // 28: kacho.cloud.registry.v1.RegistryService.DeleteTag:input_type -> kacho.cloud.registry.v1.DeleteTagRequest
+	26, // 29: kacho.cloud.registry.v1.RegistryService.RenameRepository:input_type -> kacho.cloud.registry.v1.RenameRepositoryRequest
+	28, // 30: kacho.cloud.registry.v1.RegistryService.ListReferrers:input_type -> kacho.cloud.registry.v1.ListReferrersRequest
+	34, // 31: kacho.cloud.registry.v1.RegistryService.GetNamespace:output_type -> kacho.cloud.registry.v1.Namespace
+	2,  // 32: kacho.cloud.registry.v1.RegistryService.ListNamespaces:output_type -> kacho.cloud.registry.v1.ListNamespacesResponse
+	39, // 33: kacho.cloud.registry.v1.RegistryService.CreateNamespace:output_type -> kacho.cloud.operation.Operation
+	39, // 34: kacho.cloud.registry.v1.RegistryService.UpdateNamespace:output_type -> kacho.cloud.operation.Operation
+	39, // 35: kacho.cloud.registry.v1.RegistryService.DeleteNamespace:output_type -> kacho.cloud.operation.Operation
+	39, // 36: kacho.cloud.registry.v1.RegistryService.RenameNamespace:output_type -> kacho.cloud.operation.Operation
+	12, // 37: kacho.cloud.registry.v1.RegistryService.ListRepositories:output_type -> kacho.cloud.registry.v1.ListRepositoriesResponse
+	18, // 38: kacho.cloud.registry.v1.RegistryService.ListOperations:output_type -> kacho.cloud.registry.v1.ListNamespaceOperationsResponse
+	37, // 39: kacho.cloud.registry.v1.RegistryService.GetRepository:output_type -> kacho.cloud.registry.v1.Repository
+	39, // 40: kacho.cloud.registry.v1.RegistryService.CreateRepository:output_type -> kacho.cloud.operation.Operation
+	39, // 41: kacho.cloud.registry.v1.RegistryService.UpdateRepository:output_type -> kacho.cloud.operation.Operation
+	39, // 42: kacho.cloud.registry.v1.RegistryService.DeleteRepository:output_type -> kacho.cloud.operation.Operation
+	14, // 43: kacho.cloud.registry.v1.RegistryService.ListTags:output_type -> kacho.cloud.registry.v1.ListTagsResponse
+	39, // 44: kacho.cloud.registry.v1.RegistryService.DeleteTag:output_type -> kacho.cloud.operation.Operation
+	39, // 45: kacho.cloud.registry.v1.RegistryService.RenameRepository:output_type -> kacho.cloud.operation.Operation
+	29, // 46: kacho.cloud.registry.v1.RegistryService.ListReferrers:output_type -> kacho.cloud.registry.v1.ListReferrersResponse
+	31, // [31:47] is the sub-list for method output_type
+	15, // [15:31] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_registry_v1_registry_service_proto_init() }

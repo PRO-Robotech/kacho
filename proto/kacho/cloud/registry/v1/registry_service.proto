@@ -407,6 +407,10 @@ message CreateRepositoryRequest {
   // Явная публичность. Не задано (UNSPECIFIED) → наследует
   // Namespace.default_repository_visibility. Явный PUBLIC требует registry admin (D-6, B08).
   Visibility visibility = 5;
+  // Опц. вход lifecycle (REG-1 F7). Не задано (UNSPECIFIED) → DURABLE by default
+  // (explicit intent = сохранить каркас); явный EPHEMERAL перекрывает (register-on-
+  // first-push семантика). Output-lifecycle авторитетно управляется системой.
+  RepositoryLifecycle lifecycle = 6;
 }
 
 message CreateRepositoryMetadata {

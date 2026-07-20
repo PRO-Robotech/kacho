@@ -179,6 +179,23 @@ message Repository {
   // Output-only: момент создания overlay-строки (durable-repo), truncate до секунд.
   // Пусто у ephemeral-repo (проекция без overlay — своей строки/created_at нет).
   google.protobuf.Timestamp created_at = 10;
+
+  // Output-only: авторитетный сигнал исчезаемости репозитория (REG-1 F7, заменил
+  // протекающий implicit durable-bool). DURABLE — survives-empty (виден с tagCount=0);
+  // EPHEMERAL — register-on-first-push / auto-removed-when-empty. Явный CreateRepository
+  // → DURABLE by default; overlay-set (Update/Rename) auto-promote'ит EPHEMERAL→DURABLE.
+  // Управляется системой (не tenant'ом) — в UpdateRepository.update_mask → INVALID_ARGUMENT.
+  RepositoryLifecycle lifecycle = 14;
+}
+
+// RepositoryLifecycle — исчезаемость OCI-репозитория (REG-1 F7). Один авторитетный
+// output-only сигнал вместо вывода из наличия overlay-field. Bare-значения (без
+// REPOSITORY_LIFECYCLE_-префикса) — JSON-проекция "DURABLE"/"EPHEMERAL" (parity с
+// Visibility PRIVATE/PUBLIC; buf ENUM_VALUE_PREFIX exempt).
+enum RepositoryLifecycle {
+  REPOSITORY_LIFECYCLE_UNSPECIFIED = 0;
+  DURABLE = 1;    // сохраняется даже без тегов (survives-empty)
+  EPHEMERAL = 2;  // авто-удаляется при опустошении (register-on-first-push)
 }
 
 // Tag — тегированный образ (манифест) в репозитории. Read-only проекция из zot.

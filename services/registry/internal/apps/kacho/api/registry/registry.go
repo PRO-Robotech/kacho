@@ -318,8 +318,10 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 			r.Labels = c.Labels
 			r.Visibility = c.Visibility
 			r.CreatedAt = c.CreatedAt
+			r.Lifecycle = c.Lifecycle // F7: авторитетно из overlay
 		} else { // ephemeral — visibility PRIVATE by default (overlay-полей нет)
 			r.Visibility = domain.VisibilityPrivate
+			r.Lifecycle = domain.LifecycleEphemeral // F7: register-on-first-push
 		}
 	}
 

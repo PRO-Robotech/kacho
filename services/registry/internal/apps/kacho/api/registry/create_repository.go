@@ -27,6 +27,9 @@ type CreateRepositorySpec struct {
 	Description string
 	Labels      map[string]string
 	Visibility  domain.Visibility
+	// Lifecycle — опц. вход (REG-1 F7). UNSPECIFIED → DURABLE by default; EPHEMERAL
+	// перекрывает (register-on-first-push семантика).
+	Lifecycle domain.RepositoryLifecycle
 }
 
 // CreateRepository — async вставка config-overlay (durable, survives-empty, D-3).
@@ -71,6 +74,8 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 		Description: spec.Description,
 		Labels:      spec.Labels,
 		Visibility:  visibility,
+		// F7: explicit Create → DURABLE by default (UNSPECIFIED); явный EPHEMERAL перекрывает.
+		Lifecycle: resolveLifecycle(spec.Lifecycle),
 	}
 
 	principal := operations.PrincipalFromContext(ctx)

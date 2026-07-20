@@ -239,6 +239,59 @@ func (Visibility) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{3}
 }
 
+// RepositoryLifecycle — исчезаемость OCI-репозитория (REG-1 F7). Один авторитетный
+// output-only сигнал вместо вывода из наличия overlay-field. Bare-значения (без
+// REPOSITORY_LIFECYCLE_-префикса) — JSON-проекция "DURABLE"/"EPHEMERAL" (parity с
+// Visibility PRIVATE/PUBLIC; buf ENUM_VALUE_PREFIX exempt).
+type RepositoryLifecycle int32
+
+const (
+	RepositoryLifecycle_REPOSITORY_LIFECYCLE_UNSPECIFIED RepositoryLifecycle = 0
+	RepositoryLifecycle_DURABLE                          RepositoryLifecycle = 1 // сохраняется даже без тегов (survives-empty)
+	RepositoryLifecycle_EPHEMERAL                        RepositoryLifecycle = 2 // авто-удаляется при опустошении (register-on-first-push)
+)
+
+// Enum value maps for RepositoryLifecycle.
+var (
+	RepositoryLifecycle_name = map[int32]string{
+		0: "REPOSITORY_LIFECYCLE_UNSPECIFIED",
+		1: "DURABLE",
+		2: "EPHEMERAL",
+	}
+	RepositoryLifecycle_value = map[string]int32{
+		"REPOSITORY_LIFECYCLE_UNSPECIFIED": 0,
+		"DURABLE":                          1,
+		"EPHEMERAL":                        2,
+	}
+)
+
+func (x RepositoryLifecycle) Enum() *RepositoryLifecycle {
+	p := new(RepositoryLifecycle)
+	*p = x
+	return p
+}
+
+func (x RepositoryLifecycle) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RepositoryLifecycle) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[4].Descriptor()
+}
+
+func (RepositoryLifecycle) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[4]
+}
+
+func (x RepositoryLifecycle) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RepositoryLifecycle.Descriptor instead.
+func (RepositoryLifecycle) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{4}
+}
+
 // Namespace — тенант-namespace OCI/Docker-реестра Kachō.
 //
 // Плоский ресурс (без K8s-envelope). Namespace — НЕ отдельный инстанс движка, а
@@ -465,7 +518,13 @@ type Repository struct {
 	Visibility Visibility `protobuf:"varint,9,opt,name=visibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"visibility,omitempty"`
 	// Output-only: момент создания overlay-строки (durable-repo), truncate до секунд.
 	// Пусто у ephemeral-repo (проекция без overlay — своей строки/created_at нет).
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Output-only: авторитетный сигнал исчезаемости репозитория (REG-1 F7, заменил
+	// протекающий implicit durable-bool). DURABLE — survives-empty (виден с tagCount=0);
+	// EPHEMERAL — register-on-first-push / auto-removed-when-empty. Явный CreateRepository
+	// → DURABLE by default; overlay-set (Update/Rename) auto-promote'ит EPHEMERAL→DURABLE.
+	// Управляется системой (не tenant'ом) — в UpdateRepository.update_mask → INVALID_ARGUMENT.
+	Lifecycle     RepositoryLifecycle `protobuf:"varint,14,opt,name=lifecycle,proto3,enum=kacho.cloud.registry.v1.RepositoryLifecycle" json:"lifecycle,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -589,6 +648,13 @@ func (x *Repository) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *Repository) GetLifecycle() RepositoryLifecycle {
+	if x != nil {
+		return x.Lifecycle
+	}
+	return RepositoryLifecycle_REPOSITORY_LIFECYCLE_UNSPECIFIED
 }
 
 // Tag — тегированный образ (манифест) в репозитории. Read-only проекция из zot.
@@ -873,7 +939,7 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"globalSlug\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe3\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaf\x06\n" +
 	"\n" +
 	"Repository\x12!\n" +
 	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x12\n" +
@@ -894,7 +960,8 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"visibility\x129\n" +
 	"\n" +
 	"created_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x1a9\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12J\n" +
+	"\tlifecycle\x18\x0e \x01(\x0e2,.kacho.cloud.registry.v1.RepositoryLifecycleR\tlifecycle\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x95\x03\n" +
@@ -949,7 +1016,11 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"\x16VISIBILITY_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aPRIVATE\x10\x01\x12\n" +
 	"\n" +
-	"\x06PUBLIC\x10\x02BJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
+	"\x06PUBLIC\x10\x02*W\n" +
+	"\x13RepositoryLifecycle\x12$\n" +
+	" REPOSITORY_LIFECYCLE_UNSPECIFIED\x10\x00\x12\v\n" +
+	"\aDURABLE\x10\x01\x12\r\n" +
+	"\tEPHEMERAL\x10\x02BJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
 
 var (
 	file_kacho_cloud_registry_v1_registry_proto_rawDescOnce sync.Once
@@ -963,44 +1034,46 @@ func file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescData
 }
 
-var file_kacho_cloud_registry_v1_registry_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_kacho_cloud_registry_v1_registry_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_kacho_cloud_registry_v1_registry_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kacho_cloud_registry_v1_registry_proto_goTypes = []any{
 	(PlacementType)(0),            // 0: kacho.cloud.registry.v1.PlacementType
 	(NamespaceStatus)(0),          // 1: kacho.cloud.registry.v1.NamespaceStatus
 	(ArtifactType)(0),             // 2: kacho.cloud.registry.v1.ArtifactType
 	(Visibility)(0),               // 3: kacho.cloud.registry.v1.Visibility
-	(*Namespace)(nil),             // 4: kacho.cloud.registry.v1.Namespace
-	(*Repository)(nil),            // 5: kacho.cloud.registry.v1.Repository
-	(*Tag)(nil),                   // 6: kacho.cloud.registry.v1.Tag
-	(*Referrer)(nil),              // 7: kacho.cloud.registry.v1.Referrer
-	nil,                           // 8: kacho.cloud.registry.v1.Namespace.LabelsEntry
-	nil,                           // 9: kacho.cloud.registry.v1.Repository.LabelsEntry
-	nil,                           // 10: kacho.cloud.registry.v1.Referrer.AnnotationsEntry
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+	(RepositoryLifecycle)(0),      // 4: kacho.cloud.registry.v1.RepositoryLifecycle
+	(*Namespace)(nil),             // 5: kacho.cloud.registry.v1.Namespace
+	(*Repository)(nil),            // 6: kacho.cloud.registry.v1.Repository
+	(*Tag)(nil),                   // 7: kacho.cloud.registry.v1.Tag
+	(*Referrer)(nil),              // 8: kacho.cloud.registry.v1.Referrer
+	nil,                           // 9: kacho.cloud.registry.v1.Namespace.LabelsEntry
+	nil,                           // 10: kacho.cloud.registry.v1.Repository.LabelsEntry
+	nil,                           // 11: kacho.cloud.registry.v1.Referrer.AnnotationsEntry
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_kacho_cloud_registry_v1_registry_proto_depIdxs = []int32{
-	11, // 0: kacho.cloud.registry.v1.Namespace.created_at:type_name -> google.protobuf.Timestamp
-	8,  // 1: kacho.cloud.registry.v1.Namespace.labels:type_name -> kacho.cloud.registry.v1.Namespace.LabelsEntry
+	12, // 0: kacho.cloud.registry.v1.Namespace.created_at:type_name -> google.protobuf.Timestamp
+	9,  // 1: kacho.cloud.registry.v1.Namespace.labels:type_name -> kacho.cloud.registry.v1.Namespace.LabelsEntry
 	1,  // 2: kacho.cloud.registry.v1.Namespace.status:type_name -> kacho.cloud.registry.v1.NamespaceStatus
 	3,  // 3: kacho.cloud.registry.v1.Namespace.default_repository_visibility:type_name -> kacho.cloud.registry.v1.Visibility
 	0,  // 4: kacho.cloud.registry.v1.Namespace.placement_type:type_name -> kacho.cloud.registry.v1.PlacementType
-	11, // 5: kacho.cloud.registry.v1.Repository.updated_at:type_name -> google.protobuf.Timestamp
+	12, // 5: kacho.cloud.registry.v1.Repository.updated_at:type_name -> google.protobuf.Timestamp
 	2,  // 6: kacho.cloud.registry.v1.Repository.artifact_type:type_name -> kacho.cloud.registry.v1.ArtifactType
 	2,  // 7: kacho.cloud.registry.v1.Repository.artifact_types:type_name -> kacho.cloud.registry.v1.ArtifactType
-	11, // 8: kacho.cloud.registry.v1.Repository.last_pulled_at:type_name -> google.protobuf.Timestamp
-	9,  // 9: kacho.cloud.registry.v1.Repository.labels:type_name -> kacho.cloud.registry.v1.Repository.LabelsEntry
+	12, // 8: kacho.cloud.registry.v1.Repository.last_pulled_at:type_name -> google.protobuf.Timestamp
+	10, // 9: kacho.cloud.registry.v1.Repository.labels:type_name -> kacho.cloud.registry.v1.Repository.LabelsEntry
 	3,  // 10: kacho.cloud.registry.v1.Repository.visibility:type_name -> kacho.cloud.registry.v1.Visibility
-	11, // 11: kacho.cloud.registry.v1.Repository.created_at:type_name -> google.protobuf.Timestamp
-	11, // 12: kacho.cloud.registry.v1.Tag.created_at:type_name -> google.protobuf.Timestamp
-	11, // 13: kacho.cloud.registry.v1.Tag.last_pulled_at:type_name -> google.protobuf.Timestamp
-	10, // 14: kacho.cloud.registry.v1.Referrer.annotations:type_name -> kacho.cloud.registry.v1.Referrer.AnnotationsEntry
-	11, // 15: kacho.cloud.registry.v1.Referrer.created_at:type_name -> google.protobuf.Timestamp
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	12, // 11: kacho.cloud.registry.v1.Repository.created_at:type_name -> google.protobuf.Timestamp
+	4,  // 12: kacho.cloud.registry.v1.Repository.lifecycle:type_name -> kacho.cloud.registry.v1.RepositoryLifecycle
+	12, // 13: kacho.cloud.registry.v1.Tag.created_at:type_name -> google.protobuf.Timestamp
+	12, // 14: kacho.cloud.registry.v1.Tag.last_pulled_at:type_name -> google.protobuf.Timestamp
+	11, // 15: kacho.cloud.registry.v1.Referrer.annotations:type_name -> kacho.cloud.registry.v1.Referrer.AnnotationsEntry
+	12, // 16: kacho.cloud.registry.v1.Referrer.created_at:type_name -> google.protobuf.Timestamp
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_registry_v1_registry_proto_init() }
@@ -1013,7 +1086,7 @@ func file_kacho_cloud_registry_v1_registry_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_registry_v1_registry_proto_rawDesc), len(file_kacho_cloud_registry_v1_registry_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      5,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,

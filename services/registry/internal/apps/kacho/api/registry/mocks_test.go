@@ -138,6 +138,9 @@ type mockZot struct {
 	statsErr    error
 	statsCalls  []string
 
+	// listReposResult — window, возвращаемый ListRepositories (projection из zot).
+	listReposResult []*domain.Repository
+
 	// RG-1 config-overlay Repository projection/engine-порты.
 	projByName   map[string]*domain.Repository
 	projFn       func(namespaceID, repository string) (*domain.Repository, error)
@@ -151,7 +154,9 @@ type mockZot struct {
 }
 
 func (z *mockZot) ListRepositories(ctx context.Context, q registry.RepoListQuery) ([]*domain.Repository, string, error) {
-	return nil, "", nil
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	return z.listReposResult, "", nil
 }
 func (z *mockZot) ListTags(ctx context.Context, q registry.TagListQuery) ([]*domain.Tag, string, error) {
 	z.mu.Lock()
@@ -518,6 +523,9 @@ func (m *mockRepoConfig) UpdateConfig(ctx context.Context, spec registry.Reposit
 	if spec.ApplyVisibility {
 		c.Visibility = spec.Visibility
 	}
+	// F7: overlay-SET (Update existing overlay) промоутит lifecycle→DURABLE (faithful к
+	// реальному repo, repository_config.go).
+	c.Lifecycle = domain.LifecycleDurable
 	return c, nil
 }
 

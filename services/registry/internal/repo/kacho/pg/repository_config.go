@@ -34,7 +34,7 @@ import (
 // Registry MarkDeleting (тот же lock), закрывая гонку «мутируем overlay в DELETING-реестре».
 
 // configColumns — канонический порядок SELECT/RETURNING overlay-строки.
-const configColumns = `namespace_id, name, description, labels, visibility, created_at`
+const configColumns = `namespace_id, name, description, labels, visibility, created_at, lifecycle`
 
 // RepositoryConfigRepo — реализация registry.RepositoryConfigRepo поверх pgxpool.
 type RepositoryConfigRepo struct {
@@ -112,11 +112,11 @@ func (r *RepositoryConfigRepo) InsertConfig(ctx context.Context, cfg *domain.Rep
 	}
 	return runConfigTx(ctx, r.pool, cfg.NamespaceID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
-			INSERT INTO %s.repository_configs (namespace_id, name, description, labels, visibility)
-			VALUES ($1, $2, $3, $4::jsonb, $5)
+			INSERT INTO %s.repository_configs (namespace_id, name, description, labels, visibility, lifecycle)
+			VALUES ($1, $2, $3, $4::jsonb, $5, $6)
 			RETURNING %s`, schema, configColumns)
 		return scanConfig(tx.QueryRow(ctx, q,
-			cfg.NamespaceID, cfg.Name, cfg.Description, labels, cfg.Visibility.String()))
+			cfg.NamespaceID, cfg.Name, cfg.Description, labels, cfg.Visibility.String(), cfg.Lifecycle.String()))
 	})
 }
 
@@ -149,6 +149,12 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 		sets = append(sets, fmt.Sprintf("visibility = $%d", idx))
 		args = append(args, spec.Visibility.String())
 	}
+	// F7 auto-promote: любой overlay-SET (Update existing overlay) промоутит
+	// lifecycle→DURABLE (наблюдаемо, REG-1-28/30). Идемпотентно (durable→durable). Только
+	// при реальном SET (len(sets)>0) — пустой Apply-набор идёт по SELECT FOR UPDATE ветке.
+	if len(sets) > 0 {
+		sets = append(sets, "lifecycle = 'DURABLE'")
+	}
 
 	return runConfigTx(ctx, r.pool, spec.NamespaceID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		if len(sets) == 0 {
@@ -174,8 +180,11 @@ func (r *RepositoryConfigRepo) RekeyConfig(ctx context.Context, namespaceID, old
 		return nil, err
 	}
 	return runConfigTx(ctx, r.pool, namespaceID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+		// Rename durable overlay = overlay-SET → F7 auto-promote lifecycle→DURABLE
+		// (explicitly-ephemeral overlay, переименованный, становится durable; идемпотентно
+		// durable→durable). Ephemeral-без-overlay rename идёт через InsertConfig(new_name).
 		q := fmt.Sprintf(`
-			UPDATE %s.repository_configs SET name = $3
+			UPDATE %s.repository_configs SET name = $3, lifecycle = 'DURABLE'
 			WHERE namespace_id = $1 AND name = $2
 			RETURNING %s`, schema, configColumns)
 		return scanConfig(tx.QueryRow(ctx, q, namespaceID, oldName, newName))
@@ -257,11 +266,12 @@ func guardRegistryActive(ctx context.Context, tx pgx.Tx, namespaceID string) err
 // scanConfig читает overlay-строку из pgx.Row/pgx.Rows в domain.RepositoryConfig.
 func scanConfig(row pgx.Row) (*domain.RepositoryConfig, error) {
 	var (
-		cfg       domain.RepositoryConfig
-		labelsRaw []byte
-		visRaw    string
+		cfg          domain.RepositoryConfig
+		labelsRaw    []byte
+		visRaw       string
+		lifecycleRaw string
 	)
-	if err := row.Scan(&cfg.NamespaceID, &cfg.Name, &cfg.Description, &labelsRaw, &visRaw, &cfg.CreatedAt); err != nil {
+	if err := row.Scan(&cfg.NamespaceID, &cfg.Name, &cfg.Description, &labelsRaw, &visRaw, &cfg.CreatedAt, &lifecycleRaw); err != nil {
 		return nil, err
 	}
 	labels, err := unmarshalLabels(labelsRaw)
@@ -270,6 +280,7 @@ func scanConfig(row pgx.Row) (*domain.RepositoryConfig, error) {
 	}
 	cfg.Labels = labels
 	cfg.Visibility = domain.VisibilityFromString(visRaw)
+	cfg.Lifecycle = domain.LifecycleFromString(lifecycleRaw)
 	return &cfg, nil
 }
 

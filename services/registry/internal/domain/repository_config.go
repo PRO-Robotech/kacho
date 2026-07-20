@@ -53,6 +53,37 @@ func VisibilityFromString(s string) Visibility {
 	return VisibilityPrivate
 }
 
+// RepositoryLifecycle — исчезаемость OCI-репозитория (REG-1 F7). Авторитетный
+// output-only сигнал (заменил implicit durable-bool). Ширина int32 совпадает с
+// registryv1.RepositoryLifecycle (UNSPECIFIED=0, DURABLE=1, EPHEMERAL=2).
+type RepositoryLifecycle int32
+
+// Значения RepositoryLifecycle (parity с proto-enum registry.v1.RepositoryLifecycle).
+const (
+	LifecycleUnspecified RepositoryLifecycle = iota // 0 — не задано (Create → DURABLE default)
+	LifecycleDurable                                // 1 — survives-empty
+	LifecycleEphemeral                              // 2 — auto-removed-when-empty (register-on-first-push)
+)
+
+// String возвращает DB-репрезентацию lifecycle (колонка TEXT + CHECK). UNSPECIFIED и
+// out-of-range схлопываются в DURABLE (explicit-Create default / survives-empty
+// fail-safe — overlay-строка никогда не пишется «эфемерной по ошибке»).
+func (l RepositoryLifecycle) String() string {
+	if l == LifecycleEphemeral {
+		return "EPHEMERAL"
+	}
+	return "DURABLE"
+}
+
+// LifecycleFromString парсит DB-колонку lifecycle в domain-enum (fail-safe: любое
+// неизвестное значение → DURABLE, не EPHEMERAL).
+func LifecycleFromString(s string) RepositoryLifecycle {
+	if s == "EPHEMERAL" {
+		return LifecycleEphemeral
+	}
+	return LifecycleDurable
+}
+
 // repoNameRe — OCI repo-name grammar: lowercase alnum path-компоненты, разделённые
 // одиночным `/`, внутри компонента допустимы `.`/`_`/`__`/`-` как разделители
 // (шаблон `[a-z0-9]+(?:(?:[._]|__|-+|/)[a-z0-9]+)*`). Имена репозиториев несут `/`
@@ -91,6 +122,9 @@ type RepositoryConfig struct {
 	Labels      map[string]string
 	Visibility  Visibility
 	CreatedAt   time.Time
+	// Lifecycle — исчезаемость (REG-1 F7). durable-overlay несёт DURABLE|EPHEMERAL;
+	// overlay-set (Update/Rename) промоутит в DURABLE.
+	Lifecycle RepositoryLifecycle
 }
 
 // Validate проверяет domain-инварианты RepositoryConfig перед persist: registry_id

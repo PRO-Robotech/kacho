@@ -72,6 +72,8 @@ func mergeRepository(namespaceID, name string, overlay *domain.RepositoryConfig,
 			Labels:      overlay.Labels,
 			Visibility:  overlay.Visibility,
 			CreatedAt:   overlay.CreatedAt,
+			// lifecycle авторитетно из overlay-строки (F7): DURABLE|EPHEMERAL.
+			Lifecycle: overlay.Lifecycle,
 		}
 		if proj != nil {
 			repo.TagCount = proj.TagCount
@@ -85,10 +87,12 @@ func mergeRepository(namespaceID, name string, overlay *domain.RepositoryConfig,
 		return repo
 	case proj != nil && proj.TagCount > 0:
 		// Ephemeral: проекция без overlay — visibility=PRIVATE by default, overlay-поля
-		// пусты, created_at нулевой (своей строки нет).
+		// пусты, created_at нулевой (своей строки нет), lifecycle=EPHEMERAL (F7:
+		// register-on-first-push, auto-removed-when-empty).
 		proj.NamespaceID = namespaceID
 		proj.Name = name
 		proj.Visibility = domain.VisibilityPrivate
+		proj.Lifecycle = domain.LifecycleEphemeral
 		return proj
 	default:
 		return nil
@@ -124,7 +128,18 @@ func (u *UseCase) ProtoRepository(r *domain.Repository) *registryv1.Repository {
 		ArtifactTypes: types,
 		LastPulledAt:  prototime.Truncate(r.LastPulledAt),
 		DownloadCount: r.DownloadCount,
+		Lifecycle:     registryv1.RepositoryLifecycle(r.Lifecycle), // F7 output-only
 	}
+}
+
+// resolveLifecycle разрешает lifecycle-вход CreateRepository (F7): явный EPHEMERAL —
+// как есть; иначе (UNSPECIFIED / out-of-range / DURABLE) → DURABLE by default
+// (explicit intent = сохранить каркас; survives-empty fail-safe).
+func resolveLifecycle(requested domain.RepositoryLifecycle) domain.RepositoryLifecycle {
+	if requested == domain.LifecycleEphemeral {
+		return domain.LifecycleEphemeral
+	}
+	return domain.LifecycleDurable
 }
 
 // resolveVisibility разрешает запрошенную visibility при create: явно заданная

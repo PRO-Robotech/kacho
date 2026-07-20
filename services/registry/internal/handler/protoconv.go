@@ -47,6 +47,7 @@ func toProtoRepository(r *domain.Repository) *registryv1.Repository {
 		ArtifactTypes: types,
 		LastPulledAt:  prototime.Truncate(r.LastPulledAt),
 		DownloadCount: r.DownloadCount,
+		Lifecycle:     registryv1.RepositoryLifecycle(r.Lifecycle), // F7 output-only
 	}
 }
 
