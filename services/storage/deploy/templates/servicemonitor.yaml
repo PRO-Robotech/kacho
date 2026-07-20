@@ -4,13 +4,13 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ .Release.Name }}-storage
+  name: {{ include "storage.fullname" . }}
   labels:
-    app: {{ .Release.Name }}-storage
+    {{- include "storage.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-storage
+      app: {{ include "storage.fullname" . }}
   endpoints:
     - port: metrics
       path: /metrics

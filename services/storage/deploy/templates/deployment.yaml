@@ -3,26 +3,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-storage
+  name: {{ include "storage.fullname" . }}
   labels:
-    app: {{ .Release.Name }}-storage
+    {{- include "storage.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-storage
+      app: {{ include "storage.fullname" . }}
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}-storage
+        app: {{ include "storage.fullname" . }}
     spec:
       # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
-        # Writable scratch для read-only-rootfs контейнеров.
+        # Writable scratch для read-only-rootfs контейнеров (безусловно: rootfs
+        # read-only независимо от mtls).
         - name: tmp
           emptyDir: {}
+        {{- if .Values.mtls.enable }}
+        # SEC-F mTLS — cert-manager internal-CA secrets (server + client, req #5).
+        - name: mtls-server
+          secret:
+            secretName: {{ .Values.mtls.serverSecretName | quote }}
+        - name: mtls-client
+          secret:
+            secretName: {{ .Values.mtls.clientSecretName | quote }}
+        {{- end }}
       {{- if .Values.migrator.enabled }}
       initContainers:
         - name: migrator
@@ -36,9 +46,15 @@ spec:
           command: ["/usr/local/bin/kacho-migrator", "up"]
           envFrom:
             - configMapRef:
-                name: {{ .Release.Name }}-storage-config
-            - secretRef:
-                name: {{ .Release.Name }}-storage-secret
+                name: {{ include "storage.fullname" . }}-config
+          env:
+            # SEC: DB password из existingSecret (никогда не в values). migrator
+            # DB-канал так же TLS (sslmode из configmap = serve).
+            - name: KACHO_STORAGE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.passwordSecretName | quote }}
+                  key: {{ .Values.db.passwordSecretKey | quote }}
       {{- end }}
       containers:
         - name: storage
@@ -49,6 +65,16 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.mtls.enable }}
+            # SEC-F mTLS — server + client leaf в раздельных каталогах (req #5).
+            # cert-manager пишет tls.crt/tls.key/ca.crt.
+            - name: mtls-server
+              mountPath: {{ printf "%s/server" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            - name: mtls-client
+              mountPath: {{ printf "%s/client" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            {{- end }}
           args: ["serve"]
           ports:
             - name: grpc-public
@@ -59,9 +85,67 @@ spec:
               containerPort: {{ .Values.ports.metrics }}
           envFrom:
             - configMapRef:
-                name: {{ .Release.Name }}-storage-config
-            - secretRef:
-                name: {{ .Release.Name }}-storage-secret
+                name: {{ include "storage.fullname" . }}-config
+          env:
+            # SEC: DB password из existingSecret (никогда не в values).
+            - name: KACHO_STORAGE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.passwordSecretName | quote }}
+                  key: {{ .Values.db.passwordSecretKey | quote }}
+            {{- if .Values.mtls.enable }}
+            {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
+            {{- $cli := printf "%s/client" .Values.mtls.mountPath }}
+            # SEC-F mTLS server-creds (оба листенера) — corelib grpcsrv.TLSServer
+            # через config.LoadPrefixed("KACHO_STORAGE"). ca.crt = client-CA bundle.
+            - name: KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_STORAGE_PUBLIC_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_STORAGE_PUBLIC_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_STORAGE_PUBLIC_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            - name: KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_STORAGE_INTERNAL_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_STORAGE_INTERNAL_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_STORAGE_INTERNAL_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- if .Values.mtls.edges.geo }}
+            # storage→geo (geo.v1.ZoneService.Get, zone_id, public :9090) client-creds
+            # — grpcclient.TLSClient. ServerName=kacho-geo (∈ geo server-cert SAN).
+            - name: KACHO_STORAGE_GEO_CLIENT_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_STORAGE_GEO_CLIENT_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_STORAGE_GEO_CLIENT_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_STORAGE_GEO_CLIENT_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_STORAGE_GEO_CLIENT_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.geo | quote }}
+            {{- end }}
+            {{- if .Values.mtls.edges.iam }}
+            # storage→iam client-creds — ОДИН leaf на все iam-дозвоны: ProjectService.Get
+            # (:9090), per-RPC Check (:9091) и RegisterResource/UnregisterResource
+            # (fga-register owner-tuple, :9091, Internal-only ban #6). ServerName=kacho-iam
+            # ∈ iam server-cert SAN (serverHosts ["kacho-iam","kacho-iam-internal"]) →
+            # валиден и для :9090, и для internal :9091.
+            - name: KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_STORAGE_IAM_CLIENT_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_STORAGE_IAM_CLIENT_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_STORAGE_IAM_CLIENT_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_STORAGE_IAM_CLIENT_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.iam | quote }}
+            {{- end }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /healthz
