@@ -55,8 +55,8 @@ type Authorizer interface {
 //
 // Реализуется clients/zot.Client. Ошибка (zot недоступен) → fail-closed.
 type Backend interface {
-	RepoExists(ctx context.Context, registryID, repo string) (bool, error)
-	BlobInRepo(ctx context.Context, registryID, repo, digest string) (bool, error)
+	RepoExists(ctx context.Context, namespaceID, repo string) (bool, error)
+	BlobInRepo(ctx context.Context, namespaceID, repo, digest string) (bool, error)
 	CatalogRepoNames(ctx context.Context) ([]string, error)
 }
 
@@ -88,7 +88,7 @@ type CapturedResponse struct {
 }
 
 // UploadRecorder — durable per-repo учёт фактически загруженных блобов (REG-33 Defect A).
-// На успешном blob PUT-finalize data-plane записывает (registryID, repo, digest), чтобы
+// На успешном blob PUT-finalize data-plane записывает (namespaceID, repo, digest), чтобы
 // последующий push-time blob HEAD/GET раскрыл только что загруженный блоб ДО того, как
 // он попадёт в какой-либо манифест repo — НЕ пере-открывая cross-tenant blob-leak (zot
 // дедуплицирует content-addressable блобы глобально: HEAD чужого глобального блоба из
@@ -99,16 +99,16 @@ type CapturedResponse struct {
 // Реализуется pg.PendingBlobRepo. nil → no-op (запись не ведётся, reveal не выдаётся).
 type UploadRecorder interface {
 	// RecordUploadedBlob идемпотентно (upsert) фиксирует, что <digest> загружен в
-	// <registryID>/<repo>. ОБЯЗАН закоммититься ДО того, как caller отпустит 2xx
+	// <namespaceID>/<repo>. ОБЯЗАН закоммититься ДО того, как caller отпустит 2xx
 	// blob-finalize клиенту (иначе немедленный HEAD за 201 гонку проиграет).
-	RecordUploadedBlob(ctx context.Context, registryID, repo, digest string) error
-	// BlobUploaded сообщает, был ли <digest> загружен в <registryID>/<repo> в пределах
+	RecordUploadedBlob(ctx context.Context, namespaceID, repo, digest string) error
+	// BlobUploaded сообщает, был ли <digest> загружен в <namespaceID>/<repo> в пределах
 	// freshness-TTL (протухшие строки игнорируются и подметаются sweeper'ом).
-	BlobUploaded(ctx context.Context, registryID, repo, digest string) (bool, error)
+	BlobUploaded(ctx context.Context, namespaceID, repo, digest string) (bool, error)
 }
 
 // PushGrantRecorder — durable per-subject учёт push-ownership репозитория (REG-33
-// immediate-pull, #33). На успешном manifest-PUT data-plane записывает (registryID, repo,
+// immediate-pull, #33). На успешном manifest-PUT data-plane записывает (namespaceID, repo,
 // subject) — факт «этот субъект только что запушил этот repo». Пока async-материализация
 // per-repo authz не догнала (register-on-first-push → registry_outbox → fga-proxy drainer →
 // IAM RegisterResource → FGA reconciler), собственный `docker pull` толкавшего упирается в
@@ -122,7 +122,7 @@ type UploadRecorder interface {
 // перестать раскрывать repo, как только реальный per-repo authz заработал ИЛИ доступ отозван.
 // Два ограничителя (оба обязательны):
 //   - delete-on-materialized (первичный): как только pull-path v_get/v_list Check ALLOW'нул
-//     (реальный per-repo authz материализовался в FGA), запись (registryID, repo, subject)
+//     (реальный per-repo authz материализовался в FGA), запись (namespaceID, repo, subject)
 //     удаляется (DeletePushGrant) — мост схлопывается к нулю. Последующий revoke → v_get
 //     denies → записи нет → 404. Без этого push-grant (в пределах TTL) раскрывал бы repo и
 //     ПОСЛЕ revoke — до истечения TTL (stale/cross-tenant-ish access leak).
@@ -136,25 +136,25 @@ type UploadRecorder interface {
 // Реализуется pg.PushGrantRepo. nil → no-op (запись не ведётся, fallback не выдаётся).
 type PushGrantRecorder interface {
 	// RecordPushGrant идемпотентно (upsert) фиксирует, что <subject> запушил
-	// <registryID>/<repo>, освежая granted_at (re-push держит запись свежей). ОБЯЗАН
+	// <namespaceID>/<repo>, освежая granted_at (re-push держит запись свежей). ОБЯЗАН
 	// закоммититься до того, как последующий `docker pull` толкавшего дойдёт до pull-path
 	// (иначе немедленный pull проиграет гонку с материализацией).
-	RecordPushGrant(ctx context.Context, registryID, repo, subject string) error
-	// PushGranted сообщает, держит ли <subject> свежий push-grant на <registryID>/<repo>
+	RecordPushGrant(ctx context.Context, namespaceID, repo, subject string) error
+	// PushGranted сообщает, держит ли <subject> свежий push-grant на <namespaceID>/<repo>
 	// (granted_at в пределах TTL; протухшие игнорируются и подметаются sweeper'ом).
-	PushGranted(ctx context.Context, registryID, repo, subject string) (bool, error)
-	// DeletePushGrant удаляет push-grant-строку (registryID, repo, subject) — вызывается на
+	PushGranted(ctx context.Context, namespaceID, repo, subject string) (bool, error)
+	// DeletePushGrant удаляет push-grant-строку (namespaceID, repo, subject) — вызывается на
 	// pull-path, как только реальный per-repo v_get/v_list Check ALLOW'нул (per-repo authz
 	// материализовался в FGA): мост больше не нужен и обязан ПЕРЕСТАТЬ раскрывать repo, иначе
 	// после последующего revoke он (в пределах TTL) продолжал бы отдавать доступ (stale-access
 	// leak). Привязывает время жизни моста к «пока реальный v_get не заработал разок». Идемпотентен:
 	// DELETE без совпадения — дешёвый индексный no-op (безопасно звать безусловно на allow-ветке).
-	DeletePushGrant(ctx context.Context, registryID, repo, subject string) error
+	DeletePushGrant(ctx context.Context, namespaceID, repo, subject string) error
 }
 
 // RepoRegistrar — эмит register-intent нового repo (register-on-first-push):
 // registry_repository:<reg>/<repo> parent+owner tuple → registry_outbox →
-// fga-proxy drainer (идемпотентно). Реализуется pg.RegistryRepo. nil → no-op.
+// fga-proxy drainer (идемпотентно). Реализуется pg.NamespaceRepo. nil → no-op.
 type RepoRegistrar interface {
 	RegisterRepository(ctx context.Context, intent domain.RegisterIntent) error
 }
@@ -162,7 +162,7 @@ type RepoRegistrar interface {
 // RegistryLookup — резолв owning-project реестра по id (control-plane read). Нужен
 // register-on-first-push, чтобы intent репо нёс ParentProjectID (containment scope в
 // iam-mirror; без него reconciler не материализует per-object v_* → репо непуллим
-// даже владельцем). Реализуется pg.RegistryRepo. nil → интент без project (best-effort).
+// даже владельцем). Реализуется pg.NamespaceRepo. nil → интент без project (best-effort).
 type RegistryLookup interface {
-	RegistryProjectID(ctx context.Context, registryID string) (string, error)
+	NamespaceProjectID(ctx context.Context, namespaceID string) (string, error)
 }

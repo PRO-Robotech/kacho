@@ -20,7 +20,7 @@ import (
 func TestPermissionMap_ScopeFiltered(t *testing.T) {
 	m := PermissionMap()
 	for _, rpc := range []string{
-		"/kacho.cloud.registry.v1.RegistryService/List",
+		"/kacho.cloud.registry.v1.RegistryService/ListNamespaces",
 		"/kacho.cloud.registry.v1.RegistryService/ListRepositories",
 		"/kacho.cloud.registry.v1.RegistryService/ListTags",
 		"/kacho.cloud.registry.v1.RegistryService/DeleteTag",
@@ -36,7 +36,7 @@ func TestPermissionMap_ScopeFiltered(t *testing.T) {
 // хендлере по registry_registry v_list, non-member → 200+empty). REG-06.
 func TestPermissionMap_List_CatalogRetained(t *testing.T) {
 	m := PermissionMap()
-	e, ok := m["/kacho.cloud.registry.v1.RegistryService/List"]
+	e, ok := m["/kacho.cloud.registry.v1.RegistryService/ListNamespaces"]
 	require.True(t, ok, "List must be mapped")
 	require.True(t, e.ScopeFiltered, "List must be ScopeFiltered (handler row-filter, not per-object Check)")
 	require.Equal(t, relVList, e.Relation, "List keeps v_list as permission-catalog doc")
@@ -48,10 +48,10 @@ func TestPermissionMap_List_CatalogRetained(t *testing.T) {
 func TestPermissionMap_CRUD_InterceptorGated(t *testing.T) {
 	m := PermissionMap()
 	for _, rpc := range []string{
-		"/kacho.cloud.registry.v1.RegistryService/Get",
-		"/kacho.cloud.registry.v1.RegistryService/Create",
-		"/kacho.cloud.registry.v1.RegistryService/Update",
-		"/kacho.cloud.registry.v1.RegistryService/Delete",
+		"/kacho.cloud.registry.v1.RegistryService/GetNamespace",
+		"/kacho.cloud.registry.v1.RegistryService/CreateNamespace",
+		"/kacho.cloud.registry.v1.RegistryService/UpdateNamespace",
+		"/kacho.cloud.registry.v1.RegistryService/DeleteNamespace",
 	} {
 		e, ok := m[rpc]
 		require.True(t, ok, "%s must be mapped", rpc)
@@ -83,11 +83,11 @@ func TestPermissionMap_ListOperations_InterceptorGated(t *testing.T) {
 // владелец проекта не может создать реестр (`permission denied`).
 func TestPermissionMap_Create_ParentProjectObjectType(t *testing.T) {
 	m := PermissionMap()
-	e, ok := m["/kacho.cloud.registry.v1.RegistryService/Create"]
+	e, ok := m["/kacho.cloud.registry.v1.RegistryService/CreateNamespace"]
 	require.True(t, ok, "Create must be mapped")
 	require.NotNil(t, e.Extract, "Create must carry parent-project extractor")
 
-	objType, objID, err := e.Extract(&registryv1.CreateRegistryRequest{ProjectId: "prjhc59hycvx38q2pxr4"})
+	objType, objID, err := e.Extract(&registryv1.CreateNamespaceRequest{ProjectId: "prjhc59hycvx38q2pxr4"})
 	require.NoError(t, err)
 	require.Equal(t, "project", objType,
 		"create-child Check must target FGA type `project` (parity с fga_intent project-tuple + FGA-моделью), не несуществующий тип")

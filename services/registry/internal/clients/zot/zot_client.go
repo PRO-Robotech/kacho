@@ -6,7 +6,7 @@
 // GC, инфра-статистику namespace. zot никогда не публично достижим — клиент
 // ходит на internal-endpoint (localhost/cluster, mTLS от proxy-SA).
 //
-// Мультитенантность — через storage-path-prefix "<registryID>/<repo>": в zot репо
+// Мультитенантность — через storage-path-prefix "<namespaceID>/<repo>": в zot репо
 // именуется полным путём с namespace-префиксом. Проекции Repository/Tag — output-only
 // зеркало zot (source of truth = zot); в БД kacho-registry НЕ хранятся. Все HTTP-сбои
 // zot → ErrUnavailable (fail-closed: проекции не отдают stale-фикцию, Delete-

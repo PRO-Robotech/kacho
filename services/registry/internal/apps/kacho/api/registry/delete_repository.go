@@ -27,11 +27,11 @@ import (
 // durable → DeleteConfig (tx: ACTIVE-guard + DELETE overlay + unregister repo-tuples +
 // public-grant, same-registry only ban #4) → Get NOT_FOUND (A13). Cascade-with-tags —
 // отдельный :deleteWithTags verb (вне scope RG-1).
-func (u *UseCase) DeleteRepository(ctx context.Context, registryID, repository string) (*operations.Operation, error) {
+func (u *UseCase) DeleteRepository(ctx context.Context, namespaceID, repository string) (*operations.Operation, error) {
 	if err := u.assertRepoWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(registryID); err != nil {
+	if err := ValidateNamespaceID(namespaceID); err != nil {
 		return nil, err
 	}
 	if err := domain.ValidateRepositoryName("repository", repository); err != nil {
@@ -41,8 +41,8 @@ func (u *UseCase) DeleteRepository(ctx context.Context, registryID, repository s
 	principal := operations.PrincipalFromContext(ctx)
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Delete Repository %s/%s", registryID, repository),
-		&registryv1.DeleteRepositoryMetadata{RegistryId: registryID, Repository: repository},
+		fmt.Sprintf("Delete Repository %s/%s", namespaceID, repository),
+		&registryv1.DeleteRepositoryMetadata{NamespaceId: namespaceID, Repository: repository},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -55,7 +55,7 @@ func (u *UseCase) DeleteRepository(ctx context.Context, registryID, repository s
 		wctx := operations.WithPrincipal(workerCtx, principal)
 		// emptiness — source of truth = engine (worker-side, D-4 anti-TOCTOU). Движок
 		// недоступен → Unavailable (fail-closed, overlay не сносим).
-		empty, eerr := u.zot.RepositoryEmpty(wctx, registryID, repository)
+		empty, eerr := u.zot.RepositoryEmpty(wctx, namespaceID, repository)
 		if eerr != nil {
 			return nil, mapRepoErr(eerr)
 		}
@@ -63,10 +63,10 @@ func (u *UseCase) DeleteRepository(ctx context.Context, registryID, repository s
 			return nil, failFailedPrecondition("repository is not empty")
 		}
 		intents := []OutboxIntent{
-			{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepo(registryID, repository)},
-			{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepoPublicGrant(registryID, repository)},
+			{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepo(namespaceID, repository)},
+			{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepoPublicGrant(namespaceID, repository)},
 		}
-		if derr := u.cfg.DeleteConfig(wctx, registryID, repository, intents...); derr != nil {
+		if derr := u.cfg.DeleteConfig(wctx, namespaceID, repository, intents...); derr != nil {
 			if errors.Is(derr, regerrors.ErrNotFound) {
 				// Идемпотентно: overlay уже снят (повторный/конкурентный Delete) — done.
 				return emptyAny()

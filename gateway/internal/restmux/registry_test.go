@@ -44,27 +44,27 @@ func TestRegistry_PublicRoutesRegistered(t *testing.T) {
 	}
 
 	publicRoutes := []struct{ method, path string }{
-		{"GET", "/registry/v1/registries"},
-		{"POST", "/registry/v1/registries"},
-		{"GET", "/registry/v1/registries/reg-1"},
-		{"PATCH", "/registry/v1/registries/reg-1"},
-		{"DELETE", "/registry/v1/registries/reg-1"},
-		{"GET", "/registry/v1/registries/reg-1/repositories"},
+		{"GET", "/registry/v1/namespaces"},
+		{"POST", "/registry/v1/namespaces"},
+		{"GET", "/registry/v1/namespaces/ns-1"},
+		{"PATCH", "/registry/v1/namespaces/ns-1"},
+		{"DELETE", "/registry/v1/namespaces/ns-1"},
+		{"GET", "/registry/v1/namespaces/ns-1/repositories"},
 		// {repository} — единичный path-сегмент в grpc-gateway pattern; проверяем
 		// сам факт регистрации route (не encoded-slash matching).
-		{"GET", "/registry/v1/registries/reg-1/repositories/web/tags"},
-		{"DELETE", "/registry/v1/registries/reg-1/repositories/web/tags/v1"},
+		{"GET", "/registry/v1/namespaces/ns-1/repositories/web/tags"},
+		{"DELETE", "/registry/v1/namespaces/ns-1/repositories/web/tags/v1"},
 		// Repository config-overlay (RG-1) — 6 public RPC на том же RegistryService.
 		// Регистрируются автоматически через RegisterRegistryServiceHandlerFromEndpoint
 		// (RG-1 добавляет методы к уже-зарегистрированному сервису → нового вызова
 		// регистрации не требуется). Пути с {repository=**} несут multi-segment repo-имя
 		// (напр. backend/api). Проверяем факт регистрации route на external listener.
-		{"GET", "/registry/v1/registries/reg-1/repositories/backend/api"},           // GetRepository
-		{"GET", "/registry/v1/registries/reg-1/repositories/backend/api/referrers"}, // ListReferrers
-		{"POST", "/registry/v1/registries/reg-1/repositories"},                      // CreateRepository (POST; ListRepositories — GET)
-		{"PATCH", "/registry/v1/registries/reg-1/repositories/backend/api"},         // UpdateRepository
-		{"DELETE", "/registry/v1/registries/reg-1/repositories/backend/api"},        // DeleteRepository
-		{"POST", "/registry/v1/registries/reg-1/repositories/backend/api:rename"},   // RenameRepository
+		{"GET", "/registry/v1/namespaces/ns-1/repositories/backend/api"},           // GetRepository
+		{"GET", "/registry/v1/namespaces/ns-1/repositories/backend/api/referrers"}, // ListReferrers
+		{"POST", "/registry/v1/namespaces/ns-1/repositories"},                      // CreateRepository (POST; ListRepositories — GET)
+		{"PATCH", "/registry/v1/namespaces/ns-1/repositories/backend/api"},         // UpdateRepository
+		{"DELETE", "/registry/v1/namespaces/ns-1/repositories/backend/api"},        // DeleteRepository
+		{"POST", "/registry/v1/namespaces/ns-1/repositories/backend/api:rename"},   // RenameRepository
 	}
 	for _, tc := range publicRoutes {
 
@@ -160,10 +160,10 @@ func TestRegistry_InternalGuard_NoInternalAddr(t *testing.T) {
 	}
 
 	// Public route still registers (served from registryAddr).
-	req := httptest.NewRequest("GET", "/registry/v1/registries", nil)
+	req := httptest.NewRequest("GET", "/registry/v1/namespaces", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code == http.StatusNotFound {
-		t.Errorf("registry public GET /registry/v1/registries: got 404 with empty registryInternalAddr — public must still register")
+		t.Errorf("registry public GET /registry/v1/namespaces: got 404 with empty registryInternalAddr — public must still register")
 	}
 }

@@ -16,7 +16,7 @@ import (
 // PendingBlobRepo — Postgres-adapter durable per-repo учёта загруженных блобов
 // (registry_pending_blob, REG-33 Defect A). Реализует порт dataplane.UploadRecorder
 // (структурно; compile-check даёт composition root): blob PUT-finalize пишет строку
-// (registryID, repo, digest), а push-time blob HEAD/GET консультируется с ней, чтобы
+// (namespaceID, repo, digest), а push-time blob HEAD/GET консультируется с ней, чтобы
 // раскрыть только-что-загруженный слой ДО появления манифеста — не пере-открывая
 // cross-tenant blob-leak (см. миграцию 0003).
 //
@@ -41,10 +41,10 @@ func (r *PendingBlobRepo) ready() error {
 }
 
 // RecordUploadedBlob идемпотентно (upsert) фиксирует факт аплоада <digest> в
-// <registryID>/<repo>. ON CONFLICT DO UPDATE освежает uploaded_at на повторном аплоаде
+// <namespaceID>/<repo>. ON CONFLICT DO UPDATE освежает uploaded_at на повторном аплоаде
 // того же слоя (retry/re-push держит строку свежей всё push-окно). Одиночный
 // INSERT-стейтмент атомарен на DB-уровне — software check-then-act не нужен.
-func (r *PendingBlobRepo) RecordUploadedBlob(ctx context.Context, registryID, repo, digest string) error {
+func (r *PendingBlobRepo) RecordUploadedBlob(ctx context.Context, namespaceID, repo, digest string) error {
 	if err := r.ready(); err != nil {
 		return err
 	}
@@ -52,15 +52,15 @@ func (r *PendingBlobRepo) RecordUploadedBlob(ctx context.Context, registryID, re
 		INSERT INTO %s.registry_pending_blob (registry_id, repo, digest)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (registry_id, repo, digest) DO UPDATE SET uploaded_at = now()`, schema)
-	if _, err := r.pool.Exec(ctx, q, registryID, repo, digest); err != nil {
-		return wrapPgErr(err, "registry_pending_blob", registryID+"/"+repo)
+	if _, err := r.pool.Exec(ctx, q, namespaceID, repo, digest); err != nil {
+		return wrapPgErr(err, "registry_pending_blob", namespaceID+"/"+repo)
 	}
 	return nil
 }
 
-// BlobUploaded сообщает, был ли <digest> загружен в <registryID>/<repo> в пределах ttl.
+// BlobUploaded сообщает, был ли <digest> загружен в <namespaceID>/<repo> в пределах ttl.
 // cutoff = now-ttl вычисляется в Go и передаётся параметром (без interval-строки в SQL).
-func (r *PendingBlobRepo) BlobUploaded(ctx context.Context, registryID, repo, digest string) (bool, error) {
+func (r *PendingBlobRepo) BlobUploaded(ctx context.Context, namespaceID, repo, digest string) (bool, error) {
 	if err := r.ready(); err != nil {
 		return false, err
 	}
@@ -71,8 +71,8 @@ func (r *PendingBlobRepo) BlobUploaded(ctx context.Context, registryID, repo, di
 			 WHERE registry_id = $1 AND repo = $2 AND digest = $3 AND uploaded_at > $4
 		)`, schema)
 	var exists bool
-	if err := r.pool.QueryRow(ctx, q, registryID, repo, digest, cutoff).Scan(&exists); err != nil {
-		return false, wrapPgErr(err, "registry_pending_blob", registryID+"/"+repo)
+	if err := r.pool.QueryRow(ctx, q, namespaceID, repo, digest, cutoff).Scan(&exists); err != nil {
+		return false, wrapPgErr(err, "registry_pending_blob", namespaceID+"/"+repo)
 	}
 	return exists, nil
 }

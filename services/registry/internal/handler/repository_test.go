@@ -48,7 +48,7 @@ func TestRepositoryHandler_RG1B08_CreatePublicNonAdmin(t *testing.T) {
 	az := relAuthz{allow: map[string]bool{"v_create " + regRef(): true}} // admin НЕ разрешён
 	h := newTestHandler(&fakeZotH{}, az)
 	_, err := h.CreateRepository(carolCtx(), &registryv1.CreateRepositoryRequest{
-		RegistryId: validReg, Repository: "open/x", Visibility: registryv1.Visibility_PUBLIC,
+		NamespaceId: validReg, Repository: "open/x", Visibility: registryv1.Visibility_PUBLIC,
 	})
 	require.Equal(t, codes.PermissionDenied, codeOf(t, err))
 	require.Equal(t, "creating a public repository requires registry admin", statusMsg(err))
@@ -60,7 +60,7 @@ func TestRepositoryHandler_RG1B12_CreateInheritNonAdmin_NoGate(t *testing.T) {
 	az := relAuthz{allow: map[string]bool{"v_create " + regRef(): true}}
 	h := newTestHandler(&fakeZotH{}, az)
 	_, err := h.CreateRepository(carolCtx(), &registryv1.CreateRepositoryRequest{
-		RegistryId: validReg, Repository: "open/inherited", // visibility UNSPECIFIED
+		NamespaceId: validReg, Repository: "open/inherited", // visibility UNSPECIFIED
 	})
 	require.NotEqual(t, codes.PermissionDenied, codeOf(t, err)) // gate не сработал (use-case reader stub → NotFound, но НЕ 403)
 }
@@ -70,16 +70,16 @@ func TestRepositoryHandler_RG1B12_CreateInheritNonAdmin_NoGate(t *testing.T) {
 func TestRepositoryHandler_RG1X04_CreateNamespaceHiding(t *testing.T) {
 	az := relAuthz{allow: map[string]bool{}} // v_create НЕ разрешён
 	h := newTestHandler(&fakeZotH{}, az)
-	_, err := h.CreateRepository(carolCtx(), &registryv1.CreateRepositoryRequest{RegistryId: validReg, Repository: "x/y"})
+	_, err := h.CreateRepository(carolCtx(), &registryv1.CreateRepositoryRequest{NamespaceId: validReg, Repository: "x/y"})
 	require.Equal(t, codes.NotFound, codeOf(t, err))
 }
 
 // RG-1-A06 — malformed registry_id → INVALID_ARGUMENT ПЕРВЫМ (до authz), все RPC.
 func TestRepositoryHandler_RG1A06_MalformedRegistryID(t *testing.T) {
 	h := newTestHandler(&fakeZotH{}, relAuthz{allow: map[string]bool{}})
-	_, err := h.GetRepository(carolCtx(), &registryv1.GetRepositoryRequest{RegistryId: "not-a-reg", Repository: "a/b"})
+	_, err := h.GetRepository(carolCtx(), &registryv1.GetRepositoryRequest{NamespaceId: "not-a-reg", Repository: "a/b"})
 	require.Equal(t, codes.InvalidArgument, codeOf(t, err))
-	require.Contains(t, statusMsg(err), "invalid registry id 'not-a-reg'")
+	require.Contains(t, statusMsg(err), "invalid namespace id 'not-a-reg'")
 }
 
 // RG-1-A08 — GetRepository unauthorized → NOT_FOUND "repository not found"
@@ -87,7 +87,7 @@ func TestRepositoryHandler_RG1A06_MalformedRegistryID(t *testing.T) {
 func TestRepositoryHandler_RG1A08_GetExistenceHiding(t *testing.T) {
 	az := relAuthz{allow: map[string]bool{}} // нет v_get
 	h := newTestHandler(&fakeZotH{}, az)
-	_, err := h.GetRepository(carolCtx(), &registryv1.GetRepositoryRequest{RegistryId: validReg, Repository: "secret/svc"})
+	_, err := h.GetRepository(carolCtx(), &registryv1.GetRepositoryRequest{NamespaceId: validReg, Repository: "secret/svc"})
 	require.Equal(t, codes.NotFound, codeOf(t, err))
 	require.Equal(t, "repository not found", statusMsg(err), "existence-hiding text (A08)")
 }
@@ -96,7 +96,7 @@ func TestRepositoryHandler_RG1A08_GetExistenceHiding(t *testing.T) {
 func TestRepositoryHandler_RG1C02_ReferrersExistenceHiding(t *testing.T) {
 	az := relAuthz{allow: map[string]bool{}}
 	h := newTestHandler(&fakeZotH{}, az)
-	_, err := h.ListReferrers(carolCtx(), &registryv1.ListReferrersRequest{RegistryId: validReg, Repository: "secret/app", SubjectDigest: "sha256:x"})
+	_, err := h.ListReferrers(carolCtx(), &registryv1.ListReferrersRequest{NamespaceId: validReg, Repository: "secret/app", SubjectDigest: "sha256:x"})
 	require.Equal(t, codes.NotFound, codeOf(t, err))
 	require.Equal(t, "repository not found", statusMsg(err))
 }
@@ -105,7 +105,7 @@ func TestRepositoryHandler_RG1C02_ReferrersExistenceHiding(t *testing.T) {
 func TestRepositoryHandler_RG1A15_DeleteExistenceHiding(t *testing.T) {
 	ops := newMemOpsH()
 	h := newTestHandlerOps(ops, relAuthz{allow: map[string]bool{}}) // нет v_delete
-	_, err := h.DeleteRepository(carolCtx(), &registryv1.DeleteRepositoryRequest{RegistryId: validReg, Repository: "secret/svc"})
+	_, err := h.DeleteRepository(carolCtx(), &registryv1.DeleteRepositoryRequest{NamespaceId: validReg, Repository: "secret/svc"})
 	require.Equal(t, codes.NotFound, codeOf(t, err))
 	require.Equal(t, "repository not found", statusMsg(err))
 	require.Equal(t, 0, ops.count(), "Operation НЕ создана на deny (A15)")
@@ -117,7 +117,7 @@ func TestRepositoryHandler_RG1B02_FlipVisibilityNonAdmin(t *testing.T) {
 	az := relAuthz{allow: map[string]bool{"v_update " + repoRef("public/img"): true}}
 	h := newTestHandler(&fakeZotH{}, az)
 	_, err := h.UpdateRepository(carolCtx(), &registryv1.UpdateRepositoryRequest{
-		RegistryId: validReg, Repository: "public/img",
+		NamespaceId: validReg, Repository: "public/img",
 		Visibility: registryv1.Visibility_PUBLIC,
 		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"visibility"}},
 	})
@@ -128,18 +128,18 @@ func TestRepositoryHandler_RG1B02_FlipVisibilityNonAdmin(t *testing.T) {
 // RG-1-B10/B11 — UpdateRegistry default_visibility→PUBLIC: не-admin → PERMISSION_DENIED;
 // admin → gate пройден (не 403).
 func TestRepositoryHandler_RG1B10B11_RegistryDefaultVisibilityAdminGate(t *testing.T) {
-	mask := &fieldmaskpb.FieldMask{Paths: []string{"default_visibility"}}
-	req := &registryv1.UpdateRegistryRequest{RegistryId: validReg, DefaultVisibility: registryv1.Visibility_PUBLIC, UpdateMask: mask}
+	mask := &fieldmaskpb.FieldMask{Paths: []string{"default_repository_visibility"}}
+	req := &registryv1.UpdateNamespaceRequest{NamespaceId: validReg, DefaultRepositoryVisibility: registryv1.Visibility_PUBLIC, UpdateMask: mask}
 
 	// B10 не-admin → PERMISSION_DENIED.
 	hDeny := newTestHandler(&fakeZotH{}, relAuthz{allow: map[string]bool{}})
-	_, err := hDeny.Update(carolCtx(), req)
+	_, err := hDeny.UpdateNamespace(carolCtx(), req)
 	require.Equal(t, codes.PermissionDenied, codeOf(t, err))
 	require.Equal(t, "changing default visibility to public requires registry admin", statusMsg(err))
 
 	// B11 admin → gate пройден (Update возвращает Operation, не 403).
 	hAllow := newTestHandler(&fakeZotH{}, relAuthz{allow: map[string]bool{"admin " + regRef(): true}})
-	op, aerr := hAllow.Update(carolCtx(), req)
+	op, aerr := hAllow.UpdateNamespace(carolCtx(), req)
 	require.NoError(t, aerr, "admin проходит gate (B11)")
 	require.NotNil(t, op)
 }

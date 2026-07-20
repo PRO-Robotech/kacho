@@ -29,10 +29,10 @@ const (
 // parsed — результат разбора пути: namespace/repo + reference (manifest ref /
 // blob digest / referrers digest).
 type parsed struct {
-	route      route
-	registryID string
-	repo       string // repo-path внутри namespace (может быть multi-segment)
-	reference  string
+	route       route
+	namespaceID string
+	repo        string // repo-path внутри namespace (может быть multi-segment)
+	reference   string
 }
 
 // errTraversal — path traversal (raw ".."/"." или URL-encoded "%2e%2e") либо
@@ -97,21 +97,21 @@ func parsePath(escapedPath string) (parsed, error) {
 	}
 }
 
-// finishName выделяет <registryID>/<repo> из name-сегментов (первый — registryID,
-// остальные — repo-path). Требует ≥2 сегмента; registryID обязан нести известный
+// finishName выделяет <namespaceID>/<repo> из name-сегментов (первый — namespaceID,
+// остальные — repo-path). Требует ≥2 сегмента; namespaceID обязан нести известный
 // Kachō-prefix (иначе routeInvalid → 404, REG-19 «без валидного registry-prefix»).
 func finishName(nameSegs []string, rt route, ref string) (parsed, error) {
 	if len(nameSegs) < 2 {
 		return parsed{route: routeInvalid}, nil
 	}
-	registryID := nameSegs[0]
-	if err := corevalidate.ResourceID("registry", ids.PrefixRegistry, registryID); err != nil {
+	namespaceID := nameSegs[0]
+	if err := corevalidate.ResourceID("registry", ids.PrefixRegistry, namespaceID); err != nil {
 		return parsed{route: routeInvalid}, nil
 	}
 	return parsed{
-		route:      rt,
-		registryID: registryID,
-		repo:       strings.Join(nameSegs[1:], "/"),
-		reference:  ref,
+		route:       rt,
+		namespaceID: namespaceID,
+		repo:        strings.Join(nameSegs[1:], "/"),
+		reference:   ref,
 	}, nil
 }

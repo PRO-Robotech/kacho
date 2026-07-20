@@ -5,7 +5,7 @@
 //
 // Use-case слой чистой архитектуры: импортирует domain + порты + corelib
 // operations; НЕ тянет pgx/grpc/transport. Здесь объявлены port-интерфейсы
-// (RegistryReader/RegistryWriter — CQRS, ZotClient, IAMClient) и общая часть
+// (NamespaceReader/NamespaceWriter — CQRS, ZotClient, IAMClient) и общая часть
 // UseCase; тела мутаций — в create.go / update.go / delete.go.
 //
 // Формы RPC (api-conventions.md): Get/List/ListRepositories/ListTags — sync;
@@ -33,17 +33,17 @@ type ListQuery struct {
 
 // RepoListQuery — вход для ListRepositories namespace (cursor-пагинация).
 type RepoListQuery struct {
-	RegistryID string
-	PageSize   int64
-	PageToken  string
+	NamespaceID string
+	PageSize    int64
+	PageToken   string
 }
 
 // TagListQuery — вход для ListTags конкретного repo (cursor-пагинация).
 type TagListQuery struct {
-	RegistryID string
-	Repository string
-	PageSize   int64
-	PageToken  string
+	NamespaceID string
+	Repository  string
+	PageSize    int64
+	PageToken   string
 }
 
 // CreateSpec — вход на создание Registry (тело CreateRegistryRequest, распарсенное
@@ -60,7 +60,7 @@ type CreateSpec struct {
 // выставляет ApplyName/ApplyDescription/ApplyLabels — по ним репозиторий строит
 // частичный UPDATE (пустая карта Labels при ApplyLabels=true реально очищает метки).
 type UpdateSpec struct {
-	RegistryID       string
+	NamespaceID      string
 	Name             string
 	Description      string
 	Labels           map[string]string
@@ -77,40 +77,40 @@ type UpdateSpec struct {
 
 // ---- Порты (АНКЕРЫ для rpc-implementer; CQRS-разделение read/write) ----------
 
-// RegistryReader — read-порт таблицы registries. Реализуется
-// internal/repo/kacho/pg.RegistryRepo; в unit-тестах подменяется mock.
-type RegistryReader interface {
+// NamespaceReader — read-порт таблицы registries. Реализуется
+// internal/repo/kacho/pg.NamespaceRepo; в unit-тестах подменяется mock.
+type NamespaceReader interface {
 	// Get возвращает реестр по id (well-formed-но-нет → ErrNotFound).
-	Get(ctx context.Context, id string) (*domain.Registry, error)
+	Get(ctx context.Context, id string) (*domain.Namespace, error)
 	// List возвращает реестры project'а (cursor-пагинация; listauthz-фильтр — в handler).
-	List(ctx context.Context, q ListQuery) ([]*domain.Registry, string, error)
+	List(ctx context.Context, q ListQuery) ([]*domain.Namespace, string, error)
 }
 
-// RegistryWriter — write-порт таблицы registries. Мутации атомарны на DB-уровне
+// NamespaceWriter — write-порт таблицы registries. Мутации атомарны на DB-уровне
 // (INSERT/UPDATE ... RETURNING, CAS-переход ACTIVE→DELETING) и пишут owner-tuple
 // intent в registry_outbox в ТОЙ ЖЕ writer-tx. Никакого software check-then-act.
-type RegistryWriter interface {
+type NamespaceWriter interface {
 	// Insert создаёт реестр + register-intent в registry_outbox одной tx. partial
 	// UNIQUE(project_id,name) WHERE status<>'DELETING' → 23505 → ErrAlreadyExists.
-	Insert(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, error)
+	Insert(ctx context.Context, r *domain.Namespace, intent domain.RegisterIntent) (*domain.Namespace, error)
 	// Update применяет mutable-поля (по Apply*-флагам) одним UPDATE ... RETURNING;
 	// mirror register-intent строится callback'ом ИЗ обновлённой строки (нужны
 	// её project_id + новые labels) и эмитится в ТОЙ ЖЕ tx (без Get/TOCTOU).
-	Update(ctx context.Context, spec UpdateSpec, mirror func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error)
+	Update(ctx context.Context, spec UpdateSpec, mirror func(*domain.Namespace) domain.RegisterIntent) (*domain.Namespace, error)
 	// MarkDeleting — атомарный forward-only CAS в DELETING (UPDATE ... WHERE
 	// status IN ('ACTIVE','DELETING') RETURNING): ACTIVE→DELETING либо идемпотентно
 	// DELETING→DELETING (уже DELETING → строка возвращается как success, чтобы
 	// retry/крэш-рекавери довели удаление до конца). 0 rows только когда строки
 	// нет (уже удалена) → ErrNotFound. DELETING терминальный: revert в ACTIVE невозможен.
-	MarkDeleting(ctx context.Context, id string) (*domain.Registry, error)
+	MarkDeleting(ctx context.Context, id string) (*domain.Namespace, error)
 	// Delete удаляет строку реестра + unregister-intent в registry_outbox одной tx.
 	Delete(ctx context.Context, id string, intent domain.RegisterIntent) error
 }
 
-// RegistryRepo — композитный CQRS-порт (read+write) для composition root.
-type RegistryRepo interface {
-	RegistryReader
-	RegistryWriter
+// NamespaceRepo — композитный CQRS-порт (read+write) для composition root.
+type NamespaceRepo interface {
+	NamespaceReader
+	NamespaceWriter
 }
 
 // ZotClient — порт к data/registry-API zot (source of truth образов). Проекции
@@ -121,35 +121,35 @@ type ZotClient interface {
 	// ListTags возвращает теги repo (проекция из zot).
 	ListTags(ctx context.Context, q TagListQuery) ([]*domain.Tag, string, error)
 	// DeleteTag удаляет тег/манифест repo в zot.
-	DeleteTag(ctx context.Context, registryID, repository, tag string) error
+	DeleteTag(ctx context.Context, namespaceID, repository, tag string) error
 	// NamespaceEmpty сообщает, пуст ли namespace (Delete непустого → FailedPrecondition).
-	NamespaceEmpty(ctx context.Context, registryID string) (bool, error)
+	NamespaceEmpty(ctx context.Context, namespaceID string) (bool, error)
 	// RemoveNamespace снимает storage-namespace реестра в zot (шаг async-Delete).
-	RemoveNamespace(ctx context.Context, registryID string) error
+	RemoveNamespace(ctx context.Context, namespaceID string) error
 	// TriggerGC запускает garbage collection namespace в zot.
-	TriggerGC(ctx context.Context, registryID string) error
+	TriggerGC(ctx context.Context, namespaceID string) error
 	// Stats возвращает инфра-статистику namespace (только для Internal-API).
-	Stats(ctx context.Context, registryID string) (*domain.RegistryStats, error)
+	Stats(ctx context.Context, namespaceID string) (*domain.RegistryStats, error)
 
 	// RepositoryProjection возвращает projection-слой одного repo (tag_count/size/
 	// artifact-типы/timestamps) для overlay ⟂ projection LEFT JOIN GetRepository.
 	// Нет проекции (repo без единого тега / ещё не пушился) → (nil, nil) — durable
 	// overlay пережил пустоту (tagCount=0), ephemeral без проекции невидим (handler
 	// existence-hiding). zot недоступен → ErrUnavailable (fail-closed).
-	RepositoryProjection(ctx context.Context, registryID, repository string) (*domain.Repository, error)
+	RepositoryProjection(ctx context.Context, namespaceID, repository string) (*domain.Repository, error)
 	// RepositoryEmpty сообщает, есть ли у repo ≥1 тег (DeleteRepository reject-if-tags,
 	// D-4: source of truth emptiness = engine). zot недоступен → ErrUnavailable
 	// (fail-closed: overlay не сносим, пока не подтвердили пустоту, A14).
-	RepositoryEmpty(ctx context.Context, registryID, repository string) (bool, error)
+	RepositoryEmpty(ctx context.Context, namespaceID, repository string) (bool, error)
 	// RenameRepository re-home'ит теги/манифесты/referrers repo old→new в движке
 	// (многошаговая НЕ-атомарная OCI-операция, D-5). Движок недоступен в середине
 	// remap → ErrUnavailable (fail-closed: без частичного rename, старое имя
 	// по-прежнему резолвится, A21). Целевое имя занято в движке → ErrAlreadyExists.
-	RenameRepository(ctx context.Context, registryID, oldName, newName string) error
+	RenameRepository(ctx context.Context, namespaceID, oldName, newName string) error
 	// ListReferrers возвращает referrer-проекцию subject_digest (bounded full-set, D-8),
 	// опционально отфильтрованную server-side по artifactType facet. Пусто → []
 	// (не ошибка, C03). zot недоступен → ErrUnavailable.
-	ListReferrers(ctx context.Context, registryID, repository, subjectDigest, artifactType string) ([]*domain.Referrer, error)
+	ListReferrers(ctx context.Context, namespaceID, repository, subjectDigest, artifactType string) ([]*domain.Referrer, error)
 }
 
 // IAMClient — порт к kacho-iam: cross-domain валидация project (ProjectService.Get)
@@ -165,7 +165,7 @@ type IAMClient interface {
 // registry_outbox (тот же transactional-outbox, что CRUD реестра). Repo как
 // authz-объект появляется на первом push (register) и снимается на удалении
 // последнего тега (unregister) — оба через durable-intent, применяемый
-// register-drainer'ом через fga-proxy идемпотентно. Реализуется pg.RegistryRepo.
+// register-drainer'ом через fga-proxy идемпотентно. Реализуется pg.NamespaceRepo.
 type RepoRegistrar interface {
 	// RegisterRepository эмитит register-intent (parent+owner tuple) нового repo.
 	RegisterRepository(ctx context.Context, intent domain.RegisterIntent) error
@@ -176,8 +176,8 @@ type RepoRegistrar interface {
 // UseCase — бизнес-логика Registry поверх портов (CQRS repo + config-overlay repo +
 // zot + iam + repo-registrar) и LRO-стека operations.
 type UseCase struct {
-	reader       RegistryReader
-	writer       RegistryWriter
+	reader       NamespaceReader
+	writer       NamespaceWriter
 	cfg          RepositoryConfigRepo
 	zot          ZotClient
 	iam          IAMClient
@@ -191,7 +191,7 @@ type UseCase struct {
 // repoReg эмитит repo-tuple intent'ы (register-on-first-push / unregister-on-last-tag,
 // adopt-owner, public-grant governance); ops — corelib LRO-репозиторий; endpointBase —
 // tenant-facing база для output-only Registry.endpoint ("<base>/<id>").
-func New(reader RegistryReader, writer RegistryWriter, cfg RepositoryConfigRepo, zot ZotClient, iam IAMClient, repoReg RepoRegistrar, ops operations.Repo, endpointBase string) *UseCase {
+func New(reader NamespaceReader, writer NamespaceWriter, cfg RepositoryConfigRepo, zot ZotClient, iam IAMClient, repoReg RepoRegistrar, ops operations.Repo, endpointBase string) *UseCase {
 	if endpointBase == "" {
 		endpointBase = "registry.kacho.local"
 	}
@@ -230,11 +230,11 @@ func (u *UseCase) assertRepoWired() error {
 }
 
 // Get возвращает Registry по id. Тонкий pass-through к read-порту.
-func (u *UseCase) Get(ctx context.Context, id string) (*domain.Registry, error) {
+func (u *UseCase) Get(ctx context.Context, id string) (*domain.Namespace, error) {
 	if err := u.assertWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(id); err != nil {
+	if err := ValidateNamespaceID(id); err != nil {
 		return nil, err
 	}
 	r, err := u.reader.Get(ctx, id)
@@ -247,7 +247,7 @@ func (u *UseCase) Get(ctx context.Context, id string) (*domain.Registry, error) 
 // List возвращает реестры project'а (listauthz-фильтр выполняет handler).
 // Sync: валидирует page_size (0→default 50, max 1000; вне диапазона →
 // InvalidArgument), затем cursor-запрос; garbage page_token → InvalidArgument.
-func (u *UseCase) List(ctx context.Context, q ListQuery) ([]*domain.Registry, string, error) {
+func (u *UseCase) List(ctx context.Context, q ListQuery) ([]*domain.Namespace, string, error) {
 	if err := u.assertWired(); err != nil {
 		return nil, "", err
 	}
@@ -281,7 +281,7 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 		return nil, "", err
 	}
 
-	configs, cerr := u.cfg.ListConfigs(ctx, q.RegistryID)
+	configs, cerr := u.cfg.ListConfigs(ctx, q.NamespaceID)
 	if cerr != nil {
 		return nil, "", mapRepoErr(cerr)
 	}
@@ -311,11 +311,11 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 			if _, ok := inWindow[c.Name]; ok {
 				continue
 			}
-			proj, perr := u.zot.RepositoryProjection(ctx, q.RegistryID, c.Name)
+			proj, perr := u.zot.RepositoryProjection(ctx, q.NamespaceID, c.Name)
 			if perr != nil {
 				return nil, "", mapRepoErr(perr)
 			}
-			window = append(window, mergeRepository(q.RegistryID, c.Name, c, proj))
+			window = append(window, mergeRepository(q.NamespaceID, c.Name, c, proj))
 		}
 	}
 	return window, next, nil
@@ -330,14 +330,14 @@ func (u *UseCase) ListTags(ctx context.Context, q TagListQuery) ([]*domain.Tag, 
 }
 
 // Stats возвращает инфра-статистику namespace (Internal-API).
-func (u *UseCase) Stats(ctx context.Context, registryID string) (*domain.RegistryStats, error) {
+func (u *UseCase) Stats(ctx context.Context, namespaceID string) (*domain.RegistryStats, error) {
 	if err := u.assertWired(); err != nil {
 		return nil, err
 	}
 	// malformed id → sync InvalidArgument первым стейтментом (parity с TriggerGC/Get);
 	// без этого malformed id доходил бы до zot-бэкенда вместо fail-fast reject.
-	if err := ValidateRegistryID(registryID); err != nil {
+	if err := ValidateNamespaceID(namespaceID); err != nil {
 		return nil, err
 	}
-	return u.zot.Stats(ctx, registryID)
+	return u.zot.Stats(ctx, namespaceID)
 }

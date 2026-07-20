@@ -120,7 +120,7 @@ func runServe(cfg config.Config) error {
 	if projectConn != nil {
 		projectIAMConn = projectConn
 	}
-	registryRepo := pg.NewRegistryRepo(pool)
+	registryRepo := pg.NewNamespaceRepo(pool)
 	// pendingBlobRepo — durable per-repo учёт загруженных блобов (registry_pending_blob,
 	// REG-33 Defect A): blob PUT-finalize пишет строку, push-time blob HEAD/GET раскрывает
 	// только-что-загруженный слой ДО появления манифеста (REG-37 сохранён).

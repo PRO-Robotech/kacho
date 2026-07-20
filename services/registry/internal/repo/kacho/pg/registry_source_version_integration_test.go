@@ -36,7 +36,7 @@ func sourceVersionAndID(t *testing.T, pool *pgxpool.Pool, resourceID string) (in
 // самой outbox-строки (numeric, commit-order-monotonic), а не timestamp'ом.
 func TestRepo_SourceVersion_EqualsOutboxRowID(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -52,7 +52,7 @@ func TestRepo_SourceVersion_EqualsOutboxRowID(t *testing.T) {
 // last-source-state-wins в iam-mirror корректен).
 func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -61,8 +61,8 @@ func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 	v0, _ := sourceVersionAndID(t, pool, r.ID)
 
 	upd := func(env string) int64 {
-		_, uerr := repo.Update(ctx, registry.UpdateSpec{RegistryID: r.ID, ApplyLabels: true, Labels: map[string]string{"env": env}},
-			func(rr *domain.Registry) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
+		_, uerr := repo.Update(ctx, registry.UpdateSpec{NamespaceID: r.ID, ApplyLabels: true, Labels: map[string]string{"env": env}},
+			func(rr *domain.Namespace) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
 		require.NoError(t, uerr)
 		v, _ := sourceVersionAndID(t, pool, r.ID)
 		return v

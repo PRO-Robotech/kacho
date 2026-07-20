@@ -30,7 +30,7 @@ const (
 
 type TriggerGarbageCollectionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -65,16 +65,16 @@ func (*TriggerGarbageCollectionRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *TriggerGarbageCollectionRequest) GetRegistryId() string {
+func (x *TriggerGarbageCollectionRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
 type TriggerGarbageCollectionMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -109,16 +109,16 @@ func (*TriggerGarbageCollectionMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *TriggerGarbageCollectionMetadata) GetRegistryId() string {
+func (x *TriggerGarbageCollectionMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
 type GarbageCollectionResult struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId     string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId    string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	BlobsRemoved   int64                  `protobuf:"varint,2,opt,name=blobs_removed,json=blobsRemoved,proto3" json:"blobs_removed,omitempty"`
 	BytesReclaimed int64                  `protobuf:"varint,3,opt,name=bytes_reclaimed,json=bytesReclaimed,proto3" json:"bytes_reclaimed,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -155,9 +155,9 @@ func (*GarbageCollectionResult) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *GarbageCollectionResult) GetRegistryId() string {
+func (x *GarbageCollectionResult) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -178,7 +178,7 @@ func (x *GarbageCollectionResult) GetBytesReclaimed() int64 {
 
 type GetRegistryStatsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -213,9 +213,9 @@ func (*GetRegistryStatsRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *GetRegistryStatsRequest) GetRegistryId() string {
+func (x *GetRegistryStatsRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -223,7 +223,7 @@ func (x *GetRegistryStatsRequest) GetRegistryId() string {
 // RegistryStats — инфра-проекция namespace (только :9091, security.md).
 type RegistryStats struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId      string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId     string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	RepositoryCount int32                  `protobuf:"varint,2,opt,name=repository_count,json=repositoryCount,proto3" json:"repository_count,omitempty"`
 	TagCount        int32                  `protobuf:"varint,3,opt,name=tag_count,json=tagCount,proto3" json:"tag_count,omitempty"`
 	TotalSizeBytes  int64                  `protobuf:"varint,4,opt,name=total_size_bytes,json=totalSizeBytes,proto3" json:"total_size_bytes,omitempty"`
@@ -263,9 +263,9 @@ func (*RegistryStats) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *RegistryStats) GetRegistryId() string {
+func (x *RegistryStats) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -309,34 +309,29 @@ var File_kacho_cloud_registry_v1_internal_registry_service_proto protoreflect.Fi
 
 const file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/registry/v1/internal_registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"B\n" +
-	"\x1fTriggerGarbageCollectionRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"C\n" +
-	" TriggerGarbageCollectionMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"\x88\x01\n" +
-	"\x17GarbageCollectionResult\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12#\n" +
+	"7kacho/cloud/registry/v1/internal_registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"D\n" +
+	"\x1fTriggerGarbageCollectionRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\"E\n" +
+	" TriggerGarbageCollectionMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\"\x8a\x01\n" +
+	"\x17GarbageCollectionResult\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12#\n" +
 	"\rblobs_removed\x18\x02 \x01(\x03R\fblobsRemoved\x12'\n" +
-	"\x0fbytes_reclaimed\x18\x03 \x01(\x03R\x0ebytesReclaimed\":\n" +
-	"\x17GetRegistryStatsRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"\xfb\x01\n" +
-	"\rRegistryStats\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12)\n" +
+	"\x0fbytes_reclaimed\x18\x03 \x01(\x03R\x0ebytesReclaimed\"<\n" +
+	"\x17GetRegistryStatsRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\"\xfd\x01\n" +
+	"\rRegistryStats\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12)\n" +
 	"\x10repository_count\x18\x02 \x01(\x05R\x0frepositoryCount\x12\x1b\n" +
 	"\ttag_count\x18\x03 \x01(\x05R\btagCount\x12(\n" +
 	"\x10total_size_bytes\x18\x04 \x01(\x03R\x0etotalSizeBytes\x12\x1d\n" +
 	"\n" +
 	"blob_count\x18\x05 \x01(\x03R\tblobCount\x128\n" +
 	"\n" +
-	"last_gc_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\blastGcAt2\xd7\x03\n" +
-	"\x17InternalRegistryService\x12\x84\x02\n" +
-	"\x18TriggerGarbageCollection\x128.kacho.cloud.registry.v1.TriggerGarbageCollectionRequest\x1a .kacho.cloud.operation.Operation\"\x8b\x01\x8a\xb5\x18\x16registry.registries.gc\x92\xb5\x18\x05admin\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x012\xb2\xd2*;\n" +
+	"last_gc_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\blastGcAt2\xd8\x03\n" +
+	"\x17InternalRegistryService\x12\x85\x02\n" +
+	"\x18TriggerGarbageCollection\x128.kacho.cloud.registry.v1.TriggerGarbageCollectionRequest\x1a .kacho.cloud.operation.Operation\"\x8c\x01\x8a\xb5\x18\x16registry.registries.gc\x92\xb5\x18\x05admin\x9a\xb5\x18!\n" +
+	"\x11registry_registry\x12\fnamespace_id\xa2\xb5\x18\x012\xb2\xd2*;\n" +
 	" TriggerGarbageCollectionMetadata\x12\x17GarbageCollectionResult\x12\xb4\x01\n" +
 	"\x10GetRegistryStats\x120.kacho.cloud.registry.v1.GetRegistryStatsRequest\x1a&.kacho.cloud.registry.v1.RegistryStats\"F\x8a\xb5\x18\x1cregistry.registries.getStats\x92\xb5\x18\rsystem_viewer\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x012BJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"

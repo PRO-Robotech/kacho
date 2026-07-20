@@ -43,7 +43,7 @@ func TestZot_GraphQLErrors_LoggedBeforeFailClosed(t *testing.T) {
 
 	buf := captureSlog(t)
 	_, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(),
-		registry.RepoListQuery{RegistryID: "reg-A"})
+		registry.RepoListQuery{NamespaceID: "reg-A"})
 
 	require.ErrorIs(t, err, regerrors.ErrUnavailable, "caller still sees only the sentinel")
 	require.Contains(t, buf.String(), "level=ERROR", "fail-closed branch must emit an error log")

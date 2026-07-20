@@ -30,7 +30,7 @@ func NewInternalRegistryHandler(uc *registry.UseCase) *InternalRegistryHandler {
 
 // TriggerGarbageCollection запускает async-GC namespace в zot и возвращает Operation.
 func (h *InternalRegistryHandler) TriggerGarbageCollection(ctx context.Context, req *registryv1.TriggerGarbageCollectionRequest) (*operationProto, error) {
-	op, err := h.uc.TriggerGC(ctx, req.GetRegistryId())
+	op, err := h.uc.TriggerGC(ctx, req.GetNamespaceId())
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -39,7 +39,7 @@ func (h *InternalRegistryHandler) TriggerGarbageCollection(ctx context.Context, 
 
 // GetRegistryStats возвращает инфра-статистику namespace (sync, только :9091).
 func (h *InternalRegistryHandler) GetRegistryStats(ctx context.Context, req *registryv1.GetRegistryStatsRequest) (*registryv1.RegistryStats, error) {
-	s, err := h.uc.Stats(ctx, req.GetRegistryId())
+	s, err := h.uc.Stats(ctx, req.GetNamespaceId())
 	if err != nil {
 		return nil, mapErr(err)
 	}

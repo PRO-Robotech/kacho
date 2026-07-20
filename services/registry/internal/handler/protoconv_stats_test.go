@@ -22,7 +22,7 @@ func TestToProtoStats_Nil(t *testing.T) {
 // не покрыт).
 func TestToProtoStats_Maps(t *testing.T) {
 	s := &domain.RegistryStats{
-		RegistryID:      "reg-abc",
+		NamespaceID:     "reg-abc",
 		RepositoryCount: 7,
 		TagCount:        42,
 		TotalSizeBytes:  1 << 30,
@@ -33,8 +33,8 @@ func TestToProtoStats_Maps(t *testing.T) {
 	if got == nil {
 		t.Fatal("toProtoStats returned nil for non-nil input")
 	}
-	if got.GetRegistryId() != s.RegistryID {
-		t.Errorf("RegistryId = %q, want %q", got.GetRegistryId(), s.RegistryID)
+	if got.GetNamespaceId() != s.NamespaceID {
+		t.Errorf("RegistryId = %q, want %q", got.GetNamespaceId(), s.NamespaceID)
 	}
 	if got.GetRepositoryCount() != s.RepositoryCount {
 		t.Errorf("RepositoryCount = %d, want %d", got.GetRepositoryCount(), s.RepositoryCount)
@@ -54,7 +54,7 @@ func TestToProtoStats_Maps(t *testing.T) {
 // GC-времени у zot): proto-поле остаётся unset (честный zero), а не всегда-нулевая
 // колонка. Регресс-лок против повторного добавления vestigial-маппинга.
 func TestToProtoStats_LastGcNotPopulated(t *testing.T) {
-	got := toProtoStats(&domain.RegistryStats{RegistryID: "reg-z"})
+	got := toProtoStats(&domain.RegistryStats{NamespaceID: "reg-z"})
 	if got == nil {
 		t.Fatal("toProtoStats returned nil for non-nil input")
 	}

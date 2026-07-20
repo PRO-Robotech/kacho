@@ -51,20 +51,20 @@ func TestRegistry_REG01_Create_HappyPath(t *testing.T) {
 	require.False(t, op.Done, "Operation returned done=false")
 	require.True(t, iam.called, "ProjectService.Get validated on request-path")
 
-	var meta registryv1.CreateRegistryMetadata
+	var meta registryv1.CreateNamespaceMetadata
 	require.NoError(t, op.Metadata.UnmarshalTo(&meta))
-	require.True(t, strings.HasPrefix(meta.GetRegistryId(), "reg"))
+	require.True(t, strings.HasPrefix(meta.GetNamespaceId(), "ns-"))
 
 	done := awaitOpDone(t, ops, op.ID)
 	require.Nil(t, done.Error)
 	require.NotNil(t, done.Response)
 
-	var reg registryv1.Registry
+	var reg registryv1.Namespace
 	require.NoError(t, done.Response.UnmarshalTo(&reg))
-	require.True(t, strings.HasPrefix(reg.GetId(), "reg"))
+	require.True(t, strings.HasPrefix(reg.GetId(), "ns-"))
 	require.Equal(t, "prj-P", reg.GetProjectId())
 	require.Equal(t, "team-images", reg.GetName())
-	require.Equal(t, registryv1.RegistryStatus_REGISTRY_STATUS_ACTIVE, reg.GetStatus())
+	require.Equal(t, registryv1.NamespaceStatus_NAMESPACE_STATUS_ACTIVE, reg.GetStatus())
 	require.Equal(t, "registry.kacho.local/"+reg.GetId(), reg.GetEndpoint())
 	require.Equal(t, map[string]string{"env": "prod"}, reg.GetLabels())
 }
@@ -84,7 +84,7 @@ func TestRegistry_REG28_Create_OwnerTupleIntentOrder(t *testing.T) {
 	// project-tuple ПЕРВЫМ (grabli listener-visibility).
 	require.Equal(t, domain.FGARelationProject, repo.insertIntent.Tuples[0].Relation)
 	require.Equal(t, "project:prj-P", repo.insertIntent.Tuples[0].SubjectID)
-	require.True(t, strings.HasPrefix(repo.insertIntent.Tuples[0].Object, "registry_registry:reg"))
+	require.True(t, strings.HasPrefix(repo.insertIntent.Tuples[0].Object, "registry_registry:ns-"))
 	// owner-tuple вторым, subject из principal.
 	require.Equal(t, domain.FGARelationOwner, repo.insertIntent.Tuples[1].Relation)
 	require.Equal(t, "user:usr-alice", repo.insertIntent.Tuples[1].SubjectID)
@@ -136,7 +136,7 @@ func TestRegistry_REG03_Create_CrossDomainProject(t *testing.T) {
 // REG-04 — дубликат имени → синхронный ALREADY_EXISTS с именем (partial UNIQUE
 // backstop транслируется репозиторием в ErrAlreadyExists).
 func TestRegistry_REG04_Create_DuplicateName(t *testing.T) {
-	repo := &mockRepo{insertFn: func(context.Context, *domain.Registry, domain.RegisterIntent) (*domain.Registry, error) {
+	repo := &mockRepo{insertFn: func(context.Context, *domain.Namespace, domain.RegisterIntent) (*domain.Namespace, error) {
 		return nil, regerrors.ErrAlreadyExists
 	}}
 	uc := newUC(repo, &mockZot{}, &mockIAM{}, newMemOps())
@@ -168,10 +168,10 @@ func TestRegistry_REG05_Get(t *testing.T) {
 		uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, newMemOps())
 		_, err := uc.Get(context.Background(), "not-an-id")
 		require.Equal(t, codes.InvalidArgument, codeOf(t, err))
-		require.Contains(t, status.Convert(err).Message(), "invalid registry id")
+		require.Contains(t, status.Convert(err).Message(), "invalid namespace id")
 	})
 	t.Run("not_found", func(t *testing.T) {
-		repo := &mockRepo{getFn: func(context.Context, string) (*domain.Registry, error) {
+		repo := &mockRepo{getFn: func(context.Context, string) (*domain.Namespace, error) {
 			return nil, regerrors.ErrNotFound
 		}}
 		uc := newUC(repo, &mockZot{}, &mockIAM{}, newMemOps())
@@ -196,25 +196,25 @@ func TestRegistry_REG36_Update_MaskDiscipline(t *testing.T) {
 		mask []string
 		msg  string
 	}{
-		{"immutable_project", []string{"project_id"}, "projectId is immutable after Registry.Create"},
+		{"immutable_project", []string{"project_id"}, "projectId is immutable after Namespace.Create"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &mockRepo{}
 			uc := newUC(repo, &mockZot{}, &mockIAM{}, newMemOps())
-			_, err := uc.Update(aliceCtx(), registry.UpdateSpec{RegistryID: validRegID, Mask: tc.mask})
+			_, err := uc.Update(aliceCtx(), registry.UpdateSpec{NamespaceID: validRegID, Mask: tc.mask})
 			require.Equal(t, codes.InvalidArgument, codeOf(t, err))
 			require.Equal(t, tc.msg, status.Convert(err).Message())
 		})
 	}
 	t.Run("unknown_field", func(t *testing.T) {
 		uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, newMemOps())
-		_, err := uc.Update(aliceCtx(), registry.UpdateSpec{RegistryID: validRegID, Mask: []string{"bogus"}})
+		_, err := uc.Update(aliceCtx(), registry.UpdateSpec{NamespaceID: validRegID, Mask: []string{"bogus"}})
 		require.Equal(t, codes.InvalidArgument, codeOf(t, err))
 	})
 	t.Run("malformed_id", func(t *testing.T) {
 		uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, newMemOps())
-		_, err := uc.Update(aliceCtx(), registry.UpdateSpec{RegistryID: "bad-id", Mask: []string{"labels"}})
+		_, err := uc.Update(aliceCtx(), registry.UpdateSpec{NamespaceID: "bad-id", Mask: []string{"labels"}})
 		require.Equal(t, codes.InvalidArgument, codeOf(t, err))
 	})
 }
@@ -224,9 +224,9 @@ func TestRegistry_REG36_Update_MaskDiscipline(t *testing.T) {
 // full-object PATCH (оба поля применяются).
 func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 	t.Run("explicit_mask", func(t *testing.T) {
-		repo := &mockRepo{updateFn: func(_ context.Context, spec registry.UpdateSpec, mirror func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error) {
-			updated := &domain.Registry{ID: spec.RegistryID, ProjectID: "prj-P", Name: "team-images",
-				Description: spec.Description, Labels: spec.Labels, Status: domain.RegistryStatusActive}
+		repo := &mockRepo{updateFn: func(_ context.Context, spec registry.UpdateSpec, mirror func(*domain.Namespace) domain.RegisterIntent) (*domain.Namespace, error) {
+			updated := &domain.Namespace{ID: spec.NamespaceID, ProjectID: "prj-P", Name: "team-images",
+				Description: spec.Description, Labels: spec.Labels, Status: domain.NamespaceStatusActive}
 			// mirror-intent строится из обновлённой строки → новые labels.
 			mi := mirror(updated)
 			require.Equal(t, spec.Labels, mi.Labels)
@@ -235,7 +235,7 @@ func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 		ops := newMemOps()
 		uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
 		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{
-			RegistryID: validRegID, Mask: []string{"labels", "description"},
+			NamespaceID: validRegID, Mask: []string{"labels", "description"},
 			Labels: map[string]string{"env": "staging"}, Description: "staging CI",
 		})
 		require.NoError(t, err)
@@ -247,7 +247,7 @@ func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 		repo := &mockRepo{}
 		ops := newMemOps()
 		uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
-		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{RegistryID: validRegID, Mask: nil})
+		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{NamespaceID: validRegID, Mask: nil})
 		require.NoError(t, err)
 		awaitOpDone(t, ops, op.ID)
 		require.True(t, repo.updateSpec.ApplyLabels, "empty mask → full PATCH")
@@ -259,7 +259,7 @@ func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 		ops := newMemOps()
 		uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
 		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{
-			RegistryID: validRegID, Mask: []string{"labels"}, Labels: map[string]string{},
+			NamespaceID: validRegID, Mask: []string{"labels"}, Labels: map[string]string{},
 		})
 		require.NoError(t, err)
 		awaitOpDone(t, ops, op.ID)
@@ -272,7 +272,7 @@ func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 		ops := newMemOps()
 		uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
 		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{
-			RegistryID: validRegID, Mask: []string{"name"}, Name: "renamed-registry",
+			NamespaceID: validRegID, Mask: []string{"name"}, Name: "renamed-registry",
 		})
 		require.NoError(t, err)
 		awaitOpDone(t, ops, op.ID)
@@ -284,7 +284,7 @@ func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 		// невалидное имя (uppercase/underscore) → InvalidArgument (те же правила, что Create).
 		uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, newMemOps())
 		_, err := uc.Update(aliceCtx(), registry.UpdateSpec{
-			RegistryID: validRegID, Mask: []string{"name"}, Name: "Bad_Name",
+			NamespaceID: validRegID, Mask: []string{"name"}, Name: "Bad_Name",
 		})
 		require.Equal(t, codes.InvalidArgument, codeOf(t, err))
 	})
@@ -293,7 +293,7 @@ func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 		repo := &mockRepo{}
 		ops := newMemOps()
 		uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
-		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{RegistryID: validRegID, Name: "patched-name"})
+		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{NamespaceID: validRegID, Name: "patched-name"})
 		require.NoError(t, err)
 		awaitOpDone(t, ops, op.ID)
 		require.True(t, repo.updateSpec.ApplyName)
@@ -311,7 +311,7 @@ func TestRegistry_REG27_Update_WorkerPrincipalPropagated(t *testing.T) {
 	uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
 
 	op, err := uc.Update(aliceCtx(), registry.UpdateSpec{
-		RegistryID: validRegID, Mask: []string{"description"}, Description: "x",
+		NamespaceID: validRegID, Mask: []string{"description"}, Description: "x",
 	})
 	require.NoError(t, err)
 	awaitOpDone(t, ops, op.ID)
@@ -325,8 +325,8 @@ func TestRegistry_REG27_Update_WorkerPrincipalPropagated(t *testing.T) {
 func TestRegistry_REG07_Delete_HappyPath(t *testing.T) {
 	zot := &mockZot{namespaceEmpty: true} // пустой namespace → Delete проходит precondition
 	repo := &mockRepo{
-		markFn: func(_ context.Context, id string) (*domain.Registry, error) {
-			return &domain.Registry{ID: id, ProjectID: "prj-P", Status: domain.RegistryStatusDeleting}, nil
+		markFn: func(_ context.Context, id string) (*domain.Namespace, error) {
+			return &domain.Namespace{ID: id, ProjectID: "prj-P", Status: domain.NamespaceStatusDeleting}, nil
 		},
 	}
 	ops := newMemOps()
@@ -347,7 +347,7 @@ func TestRegistry_REG07_Delete_HappyPath(t *testing.T) {
 func TestRegistry_REG09_Delete_Idempotent(t *testing.T) {
 	deleted := false
 	repo := &mockRepo{
-		markFn:   func(context.Context, string) (*domain.Registry, error) { return nil, regerrors.ErrNotFound },
+		markFn:   func(context.Context, string) (*domain.Namespace, error) { return nil, regerrors.ErrNotFound },
 		deleteFn: func(context.Context, string, domain.RegisterIntent) error { deleted = true; return nil },
 	}
 	ops := newMemOps()
@@ -367,8 +367,8 @@ func TestRegistry_REG09_Delete_Idempotent(t *testing.T) {
 func TestRegistry_REG08_Delete_RechecksEmptinessInWorker(t *testing.T) {
 	deleted := false
 	repo := &mockRepo{
-		markFn: func(_ context.Context, id string) (*domain.Registry, error) {
-			return &domain.Registry{ID: id, ProjectID: "prj-P", Status: domain.RegistryStatusDeleting}, nil
+		markFn: func(_ context.Context, id string) (*domain.Namespace, error) {
+			return &domain.Namespace{ID: id, ProjectID: "prj-P", Status: domain.NamespaceStatusDeleting}, nil
 		},
 		deleteFn: func(context.Context, string, domain.RegisterIntent) error { deleted = true; return nil },
 	}

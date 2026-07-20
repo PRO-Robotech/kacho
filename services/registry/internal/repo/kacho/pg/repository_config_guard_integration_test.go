@@ -26,7 +26,7 @@ import (
 // markRegistryDeleting переводит реестр в DELETING (CAS forward-only) для A24-guard.
 func markRegistryDeleting(t *testing.T, pool *pgxpool.Pool, regID string) {
 	t.Helper()
-	_, err := kachopg.NewRegistryRepo(pool).MarkDeleting(context.Background(), regID)
+	_, err := kachopg.NewNamespaceRepo(pool).MarkDeleting(context.Background(), regID)
 	require.NoError(t, err)
 }
 
@@ -50,7 +50,7 @@ func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 		require.ErrorIs(t, err, regerrors.ErrFailedPrecondition)
 		st := status.Convert(serviceerr.ToStatus(err))
 		require.Equal(t, codes.FailedPrecondition, st.Code())
-		require.Equal(t, "registry is being deleted", st.Message(), "A24 контракт-текст")
+		require.Equal(t, "namespace is being deleted", st.Message(), "A24 контракт-текст")
 	}
 
 	_, ierr := repo.InsertConfig(ctx, newCfg(regID, "new/svc", domain.VisibilityPrivate, nil))
@@ -58,7 +58,7 @@ func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 	require.Equal(t, 0, countConfigs(t, pool, regID, "new/svc"), "overlay не создан в DELETING")
 
 	_, uerr := repo.UpdateConfig(ctx, registry.RepositoryConfigUpdate{
-		RegistryID: regID, Name: "keep/svc", Description: "x", ApplyDescription: true,
+		NamespaceID: regID, Name: "keep/svc", Description: "x", ApplyDescription: true,
 	})
 	assertBeingDeleted(t, uerr)
 

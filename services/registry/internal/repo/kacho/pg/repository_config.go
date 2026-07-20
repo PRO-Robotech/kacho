@@ -22,11 +22,11 @@ import (
 // repository_config.go — Postgres-adapter (handwritten pgx) config-overlay Repository
 // (таблица repository_configs, RG-1). Реализует CQRS-порты
 // registry.RepositoryConfigReader/RepositoryConfigWriter. Все инварианты — DB-level
-// (PRIMARY KEY(registry_id,name), visibility CHECK, single-statement re-key/visibility
+// (PRIMARY KEY(namespace_id,name), visibility CHECK, single-statement re-key/visibility
 // CAS, FK ON DELETE CASCADE); adapter лишь маппит SQLSTATE→sentinel (ban #10).
 //
 // Каждый writer оборачивает DML в tx: (1) ACTIVE-guard — SELECT registries.status FOR
-// UPDATE (DELETING → FailedPrecondition "registry is being deleted", A24; отсутствует →
+// UPDATE (DELETING → FailedPrecondition "namespace is being deleted", A24; отсутствует →
 // "registry not found"); (2) overlay-DML; (3) эмиссия переданных FGA register/unregister
 // intent'ов в registry_outbox В ТОЙ ЖЕ tx (transactional-outbox: adopt-owner/public-grant
 // governance атомарна с overlay-DML, at-least-once; iam-недоступность НЕ откатывает
@@ -34,7 +34,7 @@ import (
 // Registry MarkDeleting (тот же lock), закрывая гонку «мутируем overlay в DELETING-реестре».
 
 // configColumns — канонический порядок SELECT/RETURNING overlay-строки.
-const configColumns = `registry_id, name, description, labels, visibility, created_at`
+const configColumns = `namespace_id, name, description, labels, visibility, created_at`
 
 // RepositoryConfigRepo — реализация registry.RepositoryConfigRepo поверх pgxpool.
 type RepositoryConfigRepo struct {
@@ -54,15 +54,15 @@ func (r *RepositoryConfigRepo) ready() error {
 	return nil
 }
 
-// GetConfig возвращает overlay-строку по натуральному ключу (registry_id, name).
+// GetConfig возвращает overlay-строку по натуральному ключу (namespace_id, name).
 // pgx.ErrNoRows → ErrNotFound "repository not found" (existence-hiding — в handler).
-func (r *RepositoryConfigRepo) GetConfig(ctx context.Context, registryID, name string) (*domain.RepositoryConfig, error) {
+func (r *RepositoryConfigRepo) GetConfig(ctx context.Context, namespaceID, name string) (*domain.RepositoryConfig, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
-	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs WHERE registry_id = $1 AND name = $2`,
+	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs WHERE namespace_id = $1 AND name = $2`,
 		configColumns, schema)
-	cfg, err := scanConfig(r.pool.QueryRow(ctx, q, registryID, name))
+	cfg, err := scanConfig(r.pool.QueryRow(ctx, q, namespaceID, name))
 	if err != nil {
 		return nil, mapConfigErr(err)
 	}
@@ -71,13 +71,13 @@ func (r *RepositoryConfigRepo) GetConfig(ctx context.Context, registryID, name s
 
 // ListConfigs возвращает overlay-строки реестра (created_at, name) ASC. Use-case
 // объединяет их с projection (zot) в overlay ⊔ projection union (A20).
-func (r *RepositoryConfigRepo) ListConfigs(ctx context.Context, registryID string) ([]*domain.RepositoryConfig, error) {
+func (r *RepositoryConfigRepo) ListConfigs(ctx context.Context, namespaceID string) ([]*domain.RepositoryConfig, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
-	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs WHERE registry_id = $1
+	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs WHERE namespace_id = $1
 		ORDER BY created_at ASC, name ASC`, configColumns, schema)
-	rows, err := r.pool.Query(ctx, q, registryID)
+	rows, err := r.pool.Query(ctx, q, namespaceID)
 	if err != nil {
 		return nil, mapConfigErr(err)
 	}
@@ -99,7 +99,7 @@ func (r *RepositoryConfigRepo) ListConfigs(ctx context.Context, registryID strin
 
 // InsertConfig вставляет overlay-строку под ACTIVE-guard + эмитит intents одной tx
 // (Create durable; adopt-additive поверх проекции — overlay ⟂ projection; ephemeral
-// rename auto-promote A23). PRIMARY KEY(registry_id,name)-конфликт → 23505 →
+// rename auto-promote A23). PRIMARY KEY(namespace_id,name)-конфликт → 23505 →
 // ErrAlreadyExists ("repository already exists"). Реестр DELETING → FailedPrecondition
 // (A24); отсутствует → FailedPrecondition "registry not found" (guard-parity с FK 23503).
 func (r *RepositoryConfigRepo) InsertConfig(ctx context.Context, cfg *domain.RepositoryConfig, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
@@ -110,13 +110,13 @@ func (r *RepositoryConfigRepo) InsertConfig(ctx context.Context, cfg *domain.Rep
 	if err != nil {
 		return nil, regerrors.ErrInternal
 	}
-	return runConfigTx(ctx, r.pool, cfg.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	return runConfigTx(ctx, r.pool, cfg.NamespaceID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
-			INSERT INTO %s.repository_configs (registry_id, name, description, labels, visibility)
+			INSERT INTO %s.repository_configs (namespace_id, name, description, labels, visibility)
 			VALUES ($1, $2, $3, $4::jsonb, $5)
 			RETURNING %s`, schema, configColumns)
 		return scanConfig(tx.QueryRow(ctx, q,
-			cfg.RegistryID, cfg.Name, cfg.Description, labels, cfg.Visibility.String()))
+			cfg.NamespaceID, cfg.Name, cfg.Description, labels, cfg.Visibility.String()))
 	})
 }
 
@@ -129,7 +129,7 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 		return nil, err
 	}
 	sets := []string{}
-	args := []any{spec.RegistryID, spec.Name}
+	args := []any{spec.NamespaceID, spec.Name}
 	idx := 3
 	if spec.ApplyDescription {
 		sets = append(sets, fmt.Sprintf("description = $%d", idx))
@@ -150,15 +150,15 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 		args = append(args, spec.Visibility.String())
 	}
 
-	return runConfigTx(ctx, r.pool, spec.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	return runConfigTx(ctx, r.pool, spec.NamespaceID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		if len(sets) == 0 {
 			q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs
-				WHERE registry_id = $1 AND name = $2 FOR UPDATE`, configColumns, schema)
-			return scanConfig(tx.QueryRow(ctx, q, spec.RegistryID, spec.Name))
+				WHERE namespace_id = $1 AND name = $2 FOR UPDATE`, configColumns, schema)
+			return scanConfig(tx.QueryRow(ctx, q, spec.NamespaceID, spec.Name))
 		}
 		q := fmt.Sprintf(`
 			UPDATE %s.repository_configs SET %s
-			WHERE registry_id = $1 AND name = $2
+			WHERE namespace_id = $1 AND name = $2
 			RETURNING %s`, schema, strings.Join(sets, ", "), configColumns)
 		return scanConfig(tx.QueryRow(ctx, q, args...))
 	})
@@ -169,34 +169,34 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 // 23505 → ErrAlreadyExists (A16/A17/A18); исходной строки нет → 0 rows → ErrNotFound.
 // Ephemeral auto-promote (нет overlay-строки) — НЕ этот путь: он через InsertConfig под
 // new_name (D-5/A23).
-func (r *RepositoryConfigRepo) RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
+func (r *RepositoryConfigRepo) RekeyConfig(ctx context.Context, namespaceID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
-	return runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	return runConfigTx(ctx, r.pool, namespaceID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
 			UPDATE %s.repository_configs SET name = $3
-			WHERE registry_id = $1 AND name = $2
+			WHERE namespace_id = $1 AND name = $2
 			RETURNING %s`, schema, configColumns)
-		return scanConfig(tx.QueryRow(ctx, q, registryID, oldName, newName))
+		return scanConfig(tx.QueryRow(ctx, q, namespaceID, oldName, newName))
 	})
 }
 
 // DeleteConfig снимает overlay-строку (DELETE ... RETURNING name) под ACTIVE-guard +
 // intents одной tx. 0 rows (строки нет / уже снята) → ErrNotFound — конкурентный/
 // повторный Delete не даёт дубля.
-func (r *RepositoryConfigRepo) DeleteConfig(ctx context.Context, registryID, name string, intents ...registry.OutboxIntent) error {
+func (r *RepositoryConfigRepo) DeleteConfig(ctx context.Context, namespaceID, name string, intents ...registry.OutboxIntent) error {
 	if err := r.ready(); err != nil {
 		return err
 	}
-	_, err := runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	_, err := runConfigTx(ctx, r.pool, namespaceID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		var deleted string
 		q := fmt.Sprintf(`DELETE FROM %s.repository_configs
-			WHERE registry_id = $1 AND name = $2 RETURNING name`, schema)
-		if serr := tx.QueryRow(ctx, q, registryID, name).Scan(&deleted); serr != nil {
+			WHERE namespace_id = $1 AND name = $2 RETURNING name`, schema)
+		if serr := tx.QueryRow(ctx, q, namespaceID, name).Scan(&deleted); serr != nil {
 			return nil, serr
 		}
-		return &domain.RepositoryConfig{RegistryID: registryID, Name: deleted}, nil
+		return &domain.RepositoryConfig{NamespaceID: namespaceID, Name: deleted}, nil
 	})
 	return err
 }
@@ -207,14 +207,14 @@ func (r *RepositoryConfigRepo) DeleteConfig(ctx context.Context, registryID, nam
 // (single-statement INSERT/UPDATE/DELETE ... RETURNING), эмитит FGA intent'ы в
 // registry_outbox В ТОЙ ЖЕ tx и коммитит. DML/guard/scan-ошибка маппится mapConfigErr;
 // осиротевший rollback — defer. Пустой набор intent'ов → чистый guard+DML.
-func runConfigTx(ctx context.Context, pool *pgxpool.Pool, registryID string, intents []registry.OutboxIntent, dml func(pgx.Tx) (*domain.RepositoryConfig, error)) (*domain.RepositoryConfig, error) {
+func runConfigTx(ctx context.Context, pool *pgxpool.Pool, namespaceID string, intents []registry.OutboxIntent, dml func(pgx.Tx) (*domain.RepositoryConfig, error)) (*domain.RepositoryConfig, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return nil, mapConfigErr(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if gerr := guardRegistryActive(ctx, tx, registryID); gerr != nil {
+	if gerr := guardRegistryActive(ctx, tx, namespaceID); gerr != nil {
 		return nil, gerr
 	}
 	out, derr := dml(tx)
@@ -234,20 +234,20 @@ func runConfigTx(ctx context.Context, pool *pgxpool.Pool, registryID string, int
 
 // guardRegistryActive — ACTIVE-guard overlay-мутации (A24): SELECT registries.status FOR
 // UPDATE в текущей tx. Реестр отсутствует → FailedPrecondition "registry not found"
-// (guard-parity с FK 23503); DELETING → FailedPrecondition "registry is being deleted"
+// (guard-parity с FK 23503); DELETING → FailedPrecondition "namespace is being deleted"
 // (терминальный реестр не принимает новую repo-конфигурацию). FOR UPDATE берёт row-lock
 // реестра → сериализуется с Registry MarkDeleting (гонка «мутируем overlay в DELETING»).
-func guardRegistryActive(ctx context.Context, tx pgx.Tx, registryID string) error {
+func guardRegistryActive(ctx context.Context, tx pgx.Tx, namespaceID string) error {
 	var status string
 	q := fmt.Sprintf(`SELECT status FROM %s.registries WHERE id = $1 FOR UPDATE`, schema)
-	if err := tx.QueryRow(ctx, q, registryID).Scan(&status); err != nil {
+	if err := tx.QueryRow(ctx, q, namespaceID).Scan(&status); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: registry not found", regerrors.ErrFailedPrecondition)
 		}
 		return mapConfigErr(err)
 	}
 	if status == "DELETING" {
-		return fmt.Errorf("%w: registry is being deleted", regerrors.ErrFailedPrecondition)
+		return fmt.Errorf("%w: namespace is being deleted", regerrors.ErrFailedPrecondition)
 	}
 	return nil
 }
@@ -261,7 +261,7 @@ func scanConfig(row pgx.Row) (*domain.RepositoryConfig, error) {
 		labelsRaw []byte
 		visRaw    string
 	)
-	if err := row.Scan(&cfg.RegistryID, &cfg.Name, &cfg.Description, &labelsRaw, &visRaw, &cfg.CreatedAt); err != nil {
+	if err := row.Scan(&cfg.NamespaceID, &cfg.Name, &cfg.Description, &labelsRaw, &visRaw, &cfg.CreatedAt); err != nil {
 		return nil, err
 	}
 	labels, err := unmarshalLabels(labelsRaw)
@@ -297,9 +297,9 @@ func mapConfigErr(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
-		case "23505": // unique_violation — PRIMARY KEY(registry_id, name)
+		case "23505": // unique_violation — PRIMARY KEY(namespace_id, name)
 			return fmt.Errorf("%w: repository already exists", regerrors.ErrAlreadyExists)
-		case "23503": // foreign_key_violation — registry_id → registries(id)
+		case "23503": // foreign_key_violation — namespace_id → registries(id)
 			return fmt.Errorf("%w: registry not found", regerrors.ErrFailedPrecondition)
 		case "23514": // check_violation — visibility / labels-object
 			return fmt.Errorf("%w: invalid repository config", regerrors.ErrInvalidArg)

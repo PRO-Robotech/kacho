@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // repository_usecase_test.go — unit-тесты config-overlay Repository use-case (RG-1)
-// через mock-порты (RepositoryConfigRepo/ZotClient/RegistryReader). LRO дожидаются
+// через mock-порты (RepositoryConfigRepo/ZotClient/NamespaceReader). LRO дожидаются
 // детерминированно (awaitOpDone). Имена трассируются к acceptance-сценариям RG-1-<G><NN>.
 package registry_test
 
@@ -29,8 +29,8 @@ const regID = "regTEST00000000000000"
 // ucWithRegistry — UseCase, где reader.Get отдаёт ACTIVE-реестр с заданным
 // default_visibility (inheritance-путь Create/Update/Rename).
 func ucWithRegistry(cfg *mockRepoConfig, zot *mockZot, ops *memOps, defVis domain.Visibility) *registry.UseCase {
-	repo := &mockRepo{getFn: func(_ context.Context, id string) (*domain.Registry, error) {
-		return &domain.Registry{ID: id, ProjectID: "prj-P", Status: domain.RegistryStatusActive, DefaultVisibility: defVis}, nil
+	repo := &mockRepo{getFn: func(_ context.Context, id string) (*domain.Namespace, error) {
+		return &domain.Namespace{ID: id, ProjectID: "prj-P", Status: domain.NamespaceStatusActive, DefaultVisibility: defVis}, nil
 	}}
 	return newUCWithCfg(repo, cfg, zot, &mockIAM{}, ops)
 }
@@ -63,7 +63,7 @@ func TestRepository_RG1A01_CreateEmptyDurable(t *testing.T) {
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
 	op, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{
-		RegistryID: regID, Repository: "backend/api",
+		NamespaceID: regID, Repository: "backend/api",
 		Description: "api service images", Labels: map[string]string{"team": "core"},
 	})
 	require.NoError(t, err)
@@ -89,10 +89,10 @@ func TestRepository_RG1A01_CreateEmptyDurable(t *testing.T) {
 // RG-1-A02 — дубликат overlay → sync ALREADY_EXISTS "repository already exists".
 func TestRepository_RG1A02_CreateDuplicate(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
-	cfg.byName["backend/api"] = &domain.RepositoryConfig{RegistryID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
+	cfg.byName["backend/api"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "backend/api"})
+	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "backend/api"})
 	st := status.Convert(err)
 	require.Equal(t, codes.AlreadyExists, st.Code())
 	require.Equal(t, "repository already exists", st.Message())
@@ -102,12 +102,12 @@ func TestRepository_RG1A02_CreateDuplicate(t *testing.T) {
 func TestRepository_RG1A03_CreateAdoptProjection(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
 	zot := &mockZot{projByName: map[string]*domain.Repository{
-		"legacy/app": {RegistryID: regID, Name: "legacy/app", TagCount: 3},
+		"legacy/app": {NamespaceID: regID, Name: "legacy/app", TagCount: 3},
 	}}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
 	op, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{
-		RegistryID: regID, Repository: "legacy/app", Labels: map[string]string{"owner": "billing"},
+		NamespaceID: regID, Repository: "legacy/app", Labels: map[string]string{"owner": "billing"},
 	})
 	require.NoError(t, err)
 	done := awaitOpDone(t, ops, op.ID)
@@ -121,11 +121,11 @@ func TestRepository_RG1A05_CreateBadName(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: ""})
+	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: ""})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "repository is required")
 
-	_, err = uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "Bad Name!"})
+	_, err = uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "Bad Name!"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "invalid repository name 'Bad Name!'")
 }
@@ -134,9 +134,9 @@ func TestRepository_RG1A05_CreateBadName(t *testing.T) {
 func TestRepository_RG1A06_BadRegistryID(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
-	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: "not-a-reg-id", Repository: "a/b"})
+	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: "not-a-reg-id", Repository: "a/b"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "invalid registry id 'not-a-reg-id'")
+	require.Contains(t, status.Convert(err).Message(), "invalid namespace id 'not-a-reg-id'")
 }
 
 // RG-1-A22 — payload-границы: labels 65 / key-64 / value-64, description 257-rune,
@@ -149,19 +149,19 @@ func TestRepository_RG1A22_PayloadBounds(t *testing.T) {
 	for i := 0; i < 65; i++ {
 		tooMany["k"+string(rune('a'+i%26))+strings.Repeat("x", i)] = "v"
 	}
-	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "a/b", Labels: tooMany})
+	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "a/b", Labels: tooMany})
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "65 labels → InvalidArgument")
 
-	_, err = uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "a/b", Description: strings.Repeat("x", 257)})
+	_, err = uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "a/b", Description: strings.Repeat("x", 257)})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, statusText(err), "description length exceeds 256 chars", "corelib parity (field-violation detail)")
 
-	_, err = uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "a/b", Description: "bad\x00ctl"})
+	_, err = uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "a/b", Description: "bad\x00ctl"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "control-char → InvalidArgument")
 
 	// Валидный multibyte-unicode ≤256 rune → OK, round-trip байт-в-байт.
 	unicode := "службы платформы 平台 🚀"
-	op, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "u/svc", Description: unicode})
+	op, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "u/svc", Description: unicode})
 	require.NoError(t, err)
 	done := awaitOpDone(t, ops, op.ID)
 	require.Nil(t, done.Error)
@@ -174,7 +174,7 @@ func TestRepository_RG1B12_InheritPublicOnCreate(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPublic)
 
-	op, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "open/inherited"})
+	op, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "open/inherited"})
 	require.NoError(t, err)
 	done := awaitOpDone(t, ops, op.ID)
 	require.Nil(t, done.Error)
@@ -201,7 +201,7 @@ func hasPublicGrant(cfg *mockRepoConfig, event string) bool {
 // "repository not found" (existence-hiding).
 func TestRepository_RG1A07A08_GetRepository(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
-	cfg.byName["backend/api"] = &domain.RepositoryConfig{RegistryID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
+	cfg.byName["backend/api"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
 	repo, err := uc.GetRepository(aliceCtx(), regID, "backend/api")
@@ -218,13 +218,13 @@ func TestRepository_RG1A07A08_GetRepository(t *testing.T) {
 // → каноничный immutable-текст.
 func TestRepository_RG1A10A11_UpdateMaskDiscipline(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
-	cfg.byName["backend/api"] = &domain.RepositoryConfig{RegistryID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
+	cfg.byName["backend/api"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	_, err := uc.UpdateRepository(aliceCtx(), registry.UpdateRepositorySpec{RegistryID: regID, Repository: "backend/api", Mask: []string{"descriptionx"}})
+	_, err := uc.UpdateRepository(aliceCtx(), registry.UpdateRepositorySpec{NamespaceID: regID, Repository: "backend/api", Mask: []string{"descriptionx"}})
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "unknown mask-field (A10)")
 
-	_, err = uc.UpdateRepository(aliceCtx(), registry.UpdateRepositorySpec{RegistryID: regID, Repository: "backend/api", Mask: []string{"name"}})
+	_, err = uc.UpdateRepository(aliceCtx(), registry.UpdateRepositorySpec{NamespaceID: regID, Repository: "backend/api", Mask: []string{"name"}})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Equal(t, "name is immutable after Repository.Create", status.Convert(err).Message(), "A11")
 }
@@ -232,11 +232,11 @@ func TestRepository_RG1A10A11_UpdateMaskDiscipline(t *testing.T) {
 // RG-1-A12 — UpdateRepository ephemeral (нет overlay) → auto-promote INSERT (durable).
 func TestRepository_RG1A12_UpdatePromoteEphemeral(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
-	zot := &mockZot{projByName: map[string]*domain.Repository{"legacy/tool": {RegistryID: regID, Name: "legacy/tool", TagCount: 2}}}
+	zot := &mockZot{projByName: map[string]*domain.Repository{"legacy/tool": {NamespaceID: regID, Name: "legacy/tool", TagCount: 2}}}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
 	op, err := uc.UpdateRepository(aliceCtx(), registry.UpdateRepositorySpec{
-		RegistryID: regID, Repository: "legacy/tool", Labels: map[string]string{"archived": "true"}, Mask: []string{"labels"},
+		NamespaceID: regID, Repository: "legacy/tool", Labels: map[string]string{"archived": "true"}, Mask: []string{"labels"},
 	})
 	require.NoError(t, err)
 	done := awaitOpDone(t, ops, op.ID)
@@ -248,22 +248,22 @@ func TestRepository_RG1A12_UpdatePromoteEphemeral(t *testing.T) {
 // RG-1-B01/B06 — visibility flip PUBLIC → public-grant register; PRIVATE → unregister.
 func TestRepository_RG1B01B06_VisibilityFlipGovernance(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
-	cfg.byName["public/img"] = &domain.RepositoryConfig{RegistryID: regID, Name: "public/img", Visibility: domain.VisibilityPrivate}
+	cfg.byName["public/img"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "public/img", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
 	op, err := uc.UpdateRepository(aliceCtx(), registry.UpdateRepositorySpec{
-		RegistryID: regID, Repository: "public/img", Visibility: domain.VisibilityPublic, Mask: []string{"visibility"},
+		NamespaceID: regID, Repository: "public/img", Visibility: domain.VisibilityPublic, Mask: []string{"visibility"},
 	})
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops, op.ID).Error)
 	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "flip→PUBLIC эмитит user:* register (B01)")
 
 	cfg2 := newMockCfg()
-	cfg2.byName["public/img"] = &domain.RepositoryConfig{RegistryID: regID, Name: "public/img", Visibility: domain.VisibilityPublic}
+	cfg2.byName["public/img"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "public/img", Visibility: domain.VisibilityPublic}
 	ops2 := newMemOps()
 	uc2 := ucWithRegistry(cfg2, zot, ops2, domain.VisibilityPrivate)
 	op2, err := uc2.UpdateRepository(aliceCtx(), registry.UpdateRepositorySpec{
-		RegistryID: regID, Repository: "public/img", Visibility: domain.VisibilityPrivate, Mask: []string{"visibility"},
+		NamespaceID: regID, Repository: "public/img", Visibility: domain.VisibilityPrivate, Mask: []string{"visibility"},
 	})
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops2, op2.ID).Error)
@@ -275,7 +275,7 @@ func TestRepository_RG1B01B06_VisibilityFlipGovernance(t *testing.T) {
 func TestRepository_RG1A13A14_Delete(t *testing.T) {
 	// A13 пустой durable → OK.
 	cfg, ops := newMockCfg(), newMemOps()
-	cfg.byName["backend/api"] = &domain.RepositoryConfig{RegistryID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
+	cfg.byName["backend/api"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
 	zot := &mockZot{empty: true}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 	op, err := uc.DeleteRepository(aliceCtx(), regID, "backend/api")
@@ -285,7 +285,7 @@ func TestRepository_RG1A13A14_Delete(t *testing.T) {
 
 	// A14 непустой → FAILED_PRECONDITION.
 	cfg2, ops2 := newMockCfg(), newMemOps()
-	cfg2.byName["busy/svc"] = &domain.RepositoryConfig{RegistryID: regID, Name: "busy/svc", Visibility: domain.VisibilityPrivate}
+	cfg2.byName["busy/svc"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "busy/svc", Visibility: domain.VisibilityPrivate}
 	uc2 := ucWithRegistry(cfg2, &mockZot{empty: false}, ops2, domain.VisibilityPrivate)
 	op2, err := uc2.DeleteRepository(aliceCtx(), regID, "busy/svc")
 	require.NoError(t, err)
@@ -297,7 +297,7 @@ func TestRepository_RG1A13A14_Delete(t *testing.T) {
 
 	// A14-note engine-down → UNAVAILABLE fail-closed.
 	cfg3, ops3 := newMockCfg(), newMemOps()
-	cfg3.byName["down/svc"] = &domain.RepositoryConfig{RegistryID: regID, Name: "down/svc", Visibility: domain.VisibilityPrivate}
+	cfg3.byName["down/svc"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "down/svc", Visibility: domain.VisibilityPrivate}
 	uc3 := ucWithRegistry(cfg3, &mockZot{emptyErr: regerrors.ErrUnavailable}, ops3, domain.VisibilityPrivate)
 	op3, err := uc3.DeleteRepository(aliceCtx(), regID, "down/svc")
 	require.NoError(t, err)
@@ -308,7 +308,7 @@ func TestRepository_RG1A13A14_Delete(t *testing.T) {
 // RG-1-A16 — RenameRepository durable → rekey; Get(new) OK, Get(old) NOT_FOUND.
 func TestRepository_RG1A16_RenameDurable(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
-	cfg.byName["old/name"] = &domain.RepositoryConfig{RegistryID: regID, Name: "old/name", Visibility: domain.VisibilityPrivate, Labels: map[string]string{"k": "v"}}
+	cfg.byName["old/name"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "old/name", Visibility: domain.VisibilityPrivate, Labels: map[string]string{"k": "v"}}
 	zot := &mockZot{}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
@@ -324,7 +324,7 @@ func TestRepository_RG1A16_RenameDurable(t *testing.T) {
 // RG-1-A23 — RenameRepository ephemeral (нет overlay) → auto-promote INSERT под new_name.
 func TestRepository_RG1A23_RenameEphemeralPromote(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
-	zot := &mockZot{projByName: map[string]*domain.Repository{"push/old": {RegistryID: regID, Name: "push/old", TagCount: 2}}}
+	zot := &mockZot{projByName: map[string]*domain.Repository{"push/old": {NamespaceID: regID, Name: "push/old", TagCount: 2}}}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
 	op, err := uc.RenameRepository(aliceCtx(), regID, "push/old", "push/new")
@@ -338,7 +338,7 @@ func TestRepository_RG1A23_RenameEphemeralPromote(t *testing.T) {
 // fail-closed; overlay-имя НЕ меняется (old резолвится).
 func TestRepository_RG1A21_RenameEngineUnavailable(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
-	cfg.byName["move/src"] = &domain.RepositoryConfig{RegistryID: regID, Name: "move/src", Visibility: domain.VisibilityPrivate}
+	cfg.byName["move/src"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "move/src", Visibility: domain.VisibilityPrivate}
 	zot := &mockZot{renameErr: regerrors.ErrUnavailable}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
@@ -352,8 +352,8 @@ func TestRepository_RG1A21_RenameEngineUnavailable(t *testing.T) {
 // RG-1-A17 — RenameRepository целевое имя занято (overlay) → ALREADY_EXISTS.
 func TestRepository_RG1A17_RenameCollision(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
-	cfg.byName["src/a"] = &domain.RepositoryConfig{RegistryID: regID, Name: "src/a", Visibility: domain.VisibilityPrivate}
-	cfg.byName["dst/b"] = &domain.RepositoryConfig{RegistryID: regID, Name: "dst/b", Visibility: domain.VisibilityPrivate}
+	cfg.byName["src/a"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "src/a", Visibility: domain.VisibilityPrivate}
+	cfg.byName["dst/b"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "dst/b", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, &mockZot{}, ops, domain.VisibilityPrivate)
 
 	op, err := uc.RenameRepository(aliceCtx(), regID, "src/a", "dst/b")
@@ -367,7 +367,7 @@ func TestRepository_RG1A17_RenameCollision(t *testing.T) {
 // RG-1-A19 — RenameRepository malformed newName / no-op → INVALID_ARGUMENT sync-first.
 func TestRepository_RG1A19_RenameBadNewName(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
-	cfg.byName["app/x"] = &domain.RepositoryConfig{RegistryID: regID, Name: "app/x", Visibility: domain.VisibilityPrivate}
+	cfg.byName["app/x"] = &domain.RepositoryConfig{NamespaceID: regID, Name: "app/x", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, &mockZot{}, ops, domain.VisibilityPrivate)
 
 	_, err := uc.RenameRepository(aliceCtx(), regID, "app/x", "Bad Name!")
@@ -383,22 +383,22 @@ func TestRepository_RG1A19_RenameBadNewName(t *testing.T) {
 func TestRepository_RG1C_ListReferrers(t *testing.T) {
 	cfg, ops := newMockCfg(), newMemOps()
 	zot := &mockZot{referrers: []*domain.Referrer{
-		{RegistryID: regID, Repository: "img/app", SubjectDigest: "sha256:" + strings.Repeat("d", 64), Digest: "sha256:" + strings.Repeat("a", 64), ArtifactType: "application/vnd.dev.cosign.simplesigning.v1+json"},
+		{NamespaceID: regID, Repository: "img/app", SubjectDigest: "sha256:" + strings.Repeat("d", 64), Digest: "sha256:" + strings.Repeat("a", 64), ArtifactType: "application/vnd.dev.cosign.simplesigning.v1+json"},
 	}}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	refs, err := uc.ListReferrers(aliceCtx(), registry.ReferrersQuery{RegistryID: regID, Repository: "img/app", SubjectDigest: "sha256:" + strings.Repeat("d", 64)})
+	refs, err := uc.ListReferrers(aliceCtx(), registry.ReferrersQuery{NamespaceID: regID, Repository: "img/app", SubjectDigest: "sha256:" + strings.Repeat("d", 64)})
 	require.NoError(t, err)
 	require.Len(t, refs, 1, "C01 referrer-проекция")
 
 	// C03 пусто → [].
 	uc2 := ucWithRegistry(newMockCfg(), &mockZot{referrers: []*domain.Referrer{}}, newMemOps(), domain.VisibilityPrivate)
-	empty, err := uc2.ListReferrers(aliceCtx(), registry.ReferrersQuery{RegistryID: regID, Repository: "img/app", SubjectDigest: "sha256:" + strings.Repeat("e", 64)})
+	empty, err := uc2.ListReferrers(aliceCtx(), registry.ReferrersQuery{NamespaceID: regID, Repository: "img/app", SubjectDigest: "sha256:" + strings.Repeat("e", 64)})
 	require.NoError(t, err)
 	require.Empty(t, empty, "C03 нет referrer'ов → [] (не 404)")
 
 	// C04 malformed digest → InvalidArgument.
-	_, err = uc.ListReferrers(aliceCtx(), registry.ReferrersQuery{RegistryID: regID, Repository: "img/app", SubjectDigest: "not-a-digest"})
+	_, err = uc.ListReferrers(aliceCtx(), registry.ReferrersQuery{NamespaceID: regID, Repository: "img/app", SubjectDigest: "not-a-digest"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "invalid subject digest 'not-a-digest'")
 }
@@ -414,7 +414,7 @@ func TestRepository_RG1X02_InternalNoLeak(t *testing.T) {
 	}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{RegistryID: regID, Repository: "x/y"})
+	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{NamespaceID: regID, Repository: "x/y"})
 	st := status.Convert(err)
 	require.Equal(t, codes.Internal, st.Code())
 	require.Equal(t, "internal database error", st.Message(), "фикс. INTERNAL-текст")

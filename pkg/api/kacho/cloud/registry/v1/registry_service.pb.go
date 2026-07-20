@@ -30,27 +30,27 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type GetRegistryRequest struct {
+type GetNamespaceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetRegistryRequest) Reset() {
-	*x = GetRegistryRequest{}
+func (x *GetNamespaceRequest) Reset() {
+	*x = GetNamespaceRequest{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetRegistryRequest) String() string {
+func (x *GetNamespaceRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetRegistryRequest) ProtoMessage() {}
+func (*GetNamespaceRequest) ProtoMessage() {}
 
-func (x *GetRegistryRequest) ProtoReflect() protoreflect.Message {
+func (x *GetNamespaceRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -62,19 +62,19 @@ func (x *GetRegistryRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetRegistryRequest.ProtoReflect.Descriptor instead.
-func (*GetRegistryRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetNamespaceRequest.ProtoReflect.Descriptor instead.
+func (*GetNamespaceRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *GetRegistryRequest) GetRegistryId() string {
+func (x *GetNamespaceRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
-type ListRegistriesRequest struct {
+type ListNamespacesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
@@ -84,20 +84,20 @@ type ListRegistriesRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListRegistriesRequest) Reset() {
-	*x = ListRegistriesRequest{}
+func (x *ListNamespacesRequest) Reset() {
+	*x = ListNamespacesRequest{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListRegistriesRequest) String() string {
+func (x *ListNamespacesRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListRegistriesRequest) ProtoMessage() {}
+func (*ListNamespacesRequest) ProtoMessage() {}
 
-func (x *ListRegistriesRequest) ProtoReflect() protoreflect.Message {
+func (x *ListNamespacesRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -109,61 +109,61 @@ func (x *ListRegistriesRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListRegistriesRequest.ProtoReflect.Descriptor instead.
-func (*ListRegistriesRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListNamespacesRequest.ProtoReflect.Descriptor instead.
+func (*ListNamespacesRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ListRegistriesRequest) GetProjectId() string {
+func (x *ListNamespacesRequest) GetProjectId() string {
 	if x != nil {
 		return x.ProjectId
 	}
 	return ""
 }
 
-func (x *ListRegistriesRequest) GetPageSize() int32 {
+func (x *ListNamespacesRequest) GetPageSize() int32 {
 	if x != nil {
 		return x.PageSize
 	}
 	return 0
 }
 
-func (x *ListRegistriesRequest) GetPageToken() string {
+func (x *ListNamespacesRequest) GetPageToken() string {
 	if x != nil {
 		return x.PageToken
 	}
 	return ""
 }
 
-func (x *ListRegistriesRequest) GetFilter() string {
+func (x *ListNamespacesRequest) GetFilter() string {
 	if x != nil {
 		return x.Filter
 	}
 	return ""
 }
 
-type ListRegistriesResponse struct {
+type ListNamespacesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Registries    []*Registry            `protobuf:"bytes,1,rep,name=registries,proto3" json:"registries,omitempty"`
+	Namespaces    []*Namespace           `protobuf:"bytes,1,rep,name=namespaces,proto3" json:"namespaces,omitempty"`
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListRegistriesResponse) Reset() {
-	*x = ListRegistriesResponse{}
+func (x *ListNamespacesResponse) Reset() {
+	*x = ListNamespacesResponse{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListRegistriesResponse) String() string {
+func (x *ListNamespacesResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListRegistriesResponse) ProtoMessage() {}
+func (*ListNamespacesResponse) ProtoMessage() {}
 
-func (x *ListRegistriesResponse) ProtoReflect() protoreflect.Message {
+func (x *ListNamespacesResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -175,26 +175,26 @@ func (x *ListRegistriesResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListRegistriesResponse.ProtoReflect.Descriptor instead.
-func (*ListRegistriesResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListNamespacesResponse.ProtoReflect.Descriptor instead.
+func (*ListNamespacesResponse) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ListRegistriesResponse) GetRegistries() []*Registry {
+func (x *ListNamespacesResponse) GetNamespaces() []*Namespace {
 	if x != nil {
-		return x.Registries
+		return x.Namespaces
 	}
 	return nil
 }
 
-func (x *ListRegistriesResponse) GetNextPageToken() string {
+func (x *ListNamespacesResponse) GetNextPageToken() string {
 	if x != nil {
 		return x.NextPageToken
 	}
 	return ""
 }
 
-type CreateRegistryRequest struct {
+type CreateNamespaceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
@@ -204,20 +204,20 @@ type CreateRegistryRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateRegistryRequest) Reset() {
-	*x = CreateRegistryRequest{}
+func (x *CreateNamespaceRequest) Reset() {
+	*x = CreateNamespaceRequest{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateRegistryRequest) String() string {
+func (x *CreateNamespaceRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateRegistryRequest) ProtoMessage() {}
+func (*CreateNamespaceRequest) ProtoMessage() {}
 
-func (x *CreateRegistryRequest) ProtoReflect() protoreflect.Message {
+func (x *CreateNamespaceRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -229,60 +229,60 @@ func (x *CreateRegistryRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateRegistryRequest.ProtoReflect.Descriptor instead.
-func (*CreateRegistryRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CreateNamespaceRequest.ProtoReflect.Descriptor instead.
+func (*CreateNamespaceRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *CreateRegistryRequest) GetProjectId() string {
+func (x *CreateNamespaceRequest) GetProjectId() string {
 	if x != nil {
 		return x.ProjectId
 	}
 	return ""
 }
 
-func (x *CreateRegistryRequest) GetName() string {
+func (x *CreateNamespaceRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *CreateRegistryRequest) GetDescription() string {
+func (x *CreateNamespaceRequest) GetDescription() string {
 	if x != nil {
 		return x.Description
 	}
 	return ""
 }
 
-func (x *CreateRegistryRequest) GetLabels() map[string]string {
+func (x *CreateNamespaceRequest) GetLabels() map[string]string {
 	if x != nil {
 		return x.Labels
 	}
 	return nil
 }
 
-type CreateRegistryMetadata struct {
+type CreateNamespaceMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateRegistryMetadata) Reset() {
-	*x = CreateRegistryMetadata{}
+func (x *CreateNamespaceMetadata) Reset() {
+	*x = CreateNamespaceMetadata{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateRegistryMetadata) String() string {
+func (x *CreateNamespaceMetadata) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateRegistryMetadata) ProtoMessage() {}
+func (*CreateNamespaceMetadata) ProtoMessage() {}
 
-func (x *CreateRegistryMetadata) ProtoReflect() protoreflect.Message {
+func (x *CreateNamespaceMetadata) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -294,21 +294,21 @@ func (x *CreateRegistryMetadata) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateRegistryMetadata.ProtoReflect.Descriptor instead.
-func (*CreateRegistryMetadata) Descriptor() ([]byte, []int) {
+// Deprecated: Use CreateNamespaceMetadata.ProtoReflect.Descriptor instead.
+func (*CreateNamespaceMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *CreateRegistryMetadata) GetRegistryId() string {
+func (x *CreateNamespaceMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
-type UpdateRegistryRequest struct {
+type UpdateNamespaceRequest struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId  string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Description string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	Labels      map[string]string      `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	UpdateMask  *fieldmaskpb.FieldMask `protobuf:"bytes,4,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
@@ -318,25 +318,25 @@ type UpdateRegistryRequest struct {
 	// Дефолтная публичность для НОВЫХ repo (сид Repository.visibility на create).
 	// Присутствие в update_mask с переходом →PUBLIC требует registry admin (D-6,
 	// B10/B11). Существующие repo не перекрашиваются.
-	DefaultVisibility Visibility `protobuf:"varint,6,opt,name=default_visibility,json=defaultVisibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"default_visibility,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	DefaultRepositoryVisibility Visibility `protobuf:"varint,6,opt,name=default_repository_visibility,json=defaultRepositoryVisibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"default_repository_visibility,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
-func (x *UpdateRegistryRequest) Reset() {
-	*x = UpdateRegistryRequest{}
+func (x *UpdateNamespaceRequest) Reset() {
+	*x = UpdateNamespaceRequest{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UpdateRegistryRequest) String() string {
+func (x *UpdateNamespaceRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UpdateRegistryRequest) ProtoMessage() {}
+func (*UpdateNamespaceRequest) ProtoMessage() {}
 
-func (x *UpdateRegistryRequest) ProtoReflect() protoreflect.Message {
+func (x *UpdateNamespaceRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -348,74 +348,74 @@ func (x *UpdateRegistryRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use UpdateRegistryRequest.ProtoReflect.Descriptor instead.
-func (*UpdateRegistryRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use UpdateNamespaceRequest.ProtoReflect.Descriptor instead.
+func (*UpdateNamespaceRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *UpdateRegistryRequest) GetRegistryId() string {
+func (x *UpdateNamespaceRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
-func (x *UpdateRegistryRequest) GetDescription() string {
+func (x *UpdateNamespaceRequest) GetDescription() string {
 	if x != nil {
 		return x.Description
 	}
 	return ""
 }
 
-func (x *UpdateRegistryRequest) GetLabels() map[string]string {
+func (x *UpdateNamespaceRequest) GetLabels() map[string]string {
 	if x != nil {
 		return x.Labels
 	}
 	return nil
 }
 
-func (x *UpdateRegistryRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+func (x *UpdateNamespaceRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
 	if x != nil {
 		return x.UpdateMask
 	}
 	return nil
 }
 
-func (x *UpdateRegistryRequest) GetName() string {
+func (x *UpdateNamespaceRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *UpdateRegistryRequest) GetDefaultVisibility() Visibility {
+func (x *UpdateNamespaceRequest) GetDefaultRepositoryVisibility() Visibility {
 	if x != nil {
-		return x.DefaultVisibility
+		return x.DefaultRepositoryVisibility
 	}
 	return Visibility_VISIBILITY_UNSPECIFIED
 }
 
-type UpdateRegistryMetadata struct {
+type UpdateNamespaceMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *UpdateRegistryMetadata) Reset() {
-	*x = UpdateRegistryMetadata{}
+func (x *UpdateNamespaceMetadata) Reset() {
+	*x = UpdateNamespaceMetadata{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UpdateRegistryMetadata) String() string {
+func (x *UpdateNamespaceMetadata) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UpdateRegistryMetadata) ProtoMessage() {}
+func (*UpdateNamespaceMetadata) ProtoMessage() {}
 
-func (x *UpdateRegistryMetadata) ProtoReflect() protoreflect.Message {
+func (x *UpdateNamespaceMetadata) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -427,39 +427,39 @@ func (x *UpdateRegistryMetadata) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use UpdateRegistryMetadata.ProtoReflect.Descriptor instead.
-func (*UpdateRegistryMetadata) Descriptor() ([]byte, []int) {
+// Deprecated: Use UpdateNamespaceMetadata.ProtoReflect.Descriptor instead.
+func (*UpdateNamespaceMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *UpdateRegistryMetadata) GetRegistryId() string {
+func (x *UpdateNamespaceMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
-type DeleteRegistryRequest struct {
+type DeleteNamespaceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeleteRegistryRequest) Reset() {
-	*x = DeleteRegistryRequest{}
+func (x *DeleteNamespaceRequest) Reset() {
+	*x = DeleteNamespaceRequest{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeleteRegistryRequest) String() string {
+func (x *DeleteNamespaceRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeleteRegistryRequest) ProtoMessage() {}
+func (*DeleteNamespaceRequest) ProtoMessage() {}
 
-func (x *DeleteRegistryRequest) ProtoReflect() protoreflect.Message {
+func (x *DeleteNamespaceRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -471,39 +471,39 @@ func (x *DeleteRegistryRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeleteRegistryRequest.ProtoReflect.Descriptor instead.
-func (*DeleteRegistryRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use DeleteNamespaceRequest.ProtoReflect.Descriptor instead.
+func (*DeleteNamespaceRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *DeleteRegistryRequest) GetRegistryId() string {
+func (x *DeleteNamespaceRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
-type DeleteRegistryMetadata struct {
+type DeleteNamespaceMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeleteRegistryMetadata) Reset() {
-	*x = DeleteRegistryMetadata{}
+func (x *DeleteNamespaceMetadata) Reset() {
+	*x = DeleteNamespaceMetadata{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeleteRegistryMetadata) String() string {
+func (x *DeleteNamespaceMetadata) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeleteRegistryMetadata) ProtoMessage() {}
+func (*DeleteNamespaceMetadata) ProtoMessage() {}
 
-func (x *DeleteRegistryMetadata) ProtoReflect() protoreflect.Message {
+func (x *DeleteNamespaceMetadata) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -515,21 +515,21 @@ func (x *DeleteRegistryMetadata) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeleteRegistryMetadata.ProtoReflect.Descriptor instead.
-func (*DeleteRegistryMetadata) Descriptor() ([]byte, []int) {
+// Deprecated: Use DeleteNamespaceMetadata.ProtoReflect.Descriptor instead.
+func (*DeleteNamespaceMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *DeleteRegistryMetadata) GetRegistryId() string {
+func (x *DeleteNamespaceMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
 type ListRepositoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -566,9 +566,9 @@ func (*ListRepositoriesRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *ListRepositoriesRequest) GetRegistryId() string {
+func (x *ListRepositoriesRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -641,7 +641,7 @@ func (x *ListRepositoriesResponse) GetNextPageToken() string {
 
 type ListTagsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
@@ -679,9 +679,9 @@ func (*ListTagsRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *ListTagsRequest) GetRegistryId() string {
+func (x *ListTagsRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -761,7 +761,7 @@ func (x *ListTagsResponse) GetNextPageToken() string {
 
 type DeleteTagRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	Tag           string                 `protobuf:"bytes,3,opt,name=tag,proto3" json:"tag,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -798,9 +798,9 @@ func (*DeleteTagRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *DeleteTagRequest) GetRegistryId() string {
+func (x *DeleteTagRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -821,7 +821,7 @@ func (x *DeleteTagRequest) GetTag() string {
 
 type DeleteTagMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	Tag           string                 `protobuf:"bytes,3,opt,name=tag,proto3" json:"tag,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -858,9 +858,9 @@ func (*DeleteTagMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{14}
 }
 
-func (x *DeleteTagMetadata) GetRegistryId() string {
+func (x *DeleteTagMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -879,29 +879,29 @@ func (x *DeleteTagMetadata) GetTag() string {
 	return ""
 }
 
-type ListRegistryOperationsRequest struct {
+type ListNamespaceOperationsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListRegistryOperationsRequest) Reset() {
-	*x = ListRegistryOperationsRequest{}
+func (x *ListNamespaceOperationsRequest) Reset() {
+	*x = ListNamespaceOperationsRequest{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListRegistryOperationsRequest) String() string {
+func (x *ListNamespaceOperationsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListRegistryOperationsRequest) ProtoMessage() {}
+func (*ListNamespaceOperationsRequest) ProtoMessage() {}
 
-func (x *ListRegistryOperationsRequest) ProtoReflect() protoreflect.Message {
+func (x *ListNamespaceOperationsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -913,33 +913,33 @@ func (x *ListRegistryOperationsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListRegistryOperationsRequest.ProtoReflect.Descriptor instead.
-func (*ListRegistryOperationsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListNamespaceOperationsRequest.ProtoReflect.Descriptor instead.
+func (*ListNamespaceOperationsRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *ListRegistryOperationsRequest) GetRegistryId() string {
+func (x *ListNamespaceOperationsRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
 
-func (x *ListRegistryOperationsRequest) GetPageSize() int32 {
+func (x *ListNamespaceOperationsRequest) GetPageSize() int32 {
 	if x != nil {
 		return x.PageSize
 	}
 	return 0
 }
 
-func (x *ListRegistryOperationsRequest) GetPageToken() string {
+func (x *ListNamespaceOperationsRequest) GetPageToken() string {
 	if x != nil {
 		return x.PageToken
 	}
 	return ""
 }
 
-type ListRegistryOperationsResponse struct {
+type ListNamespaceOperationsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Operations    []*operation.Operation `protobuf:"bytes,1,rep,name=operations,proto3" json:"operations,omitempty"`
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
@@ -947,20 +947,20 @@ type ListRegistryOperationsResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListRegistryOperationsResponse) Reset() {
-	*x = ListRegistryOperationsResponse{}
+func (x *ListNamespaceOperationsResponse) Reset() {
+	*x = ListNamespaceOperationsResponse{}
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListRegistryOperationsResponse) String() string {
+func (x *ListNamespaceOperationsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListRegistryOperationsResponse) ProtoMessage() {}
+func (*ListNamespaceOperationsResponse) ProtoMessage() {}
 
-func (x *ListRegistryOperationsResponse) ProtoReflect() protoreflect.Message {
+func (x *ListNamespaceOperationsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -972,19 +972,19 @@ func (x *ListRegistryOperationsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListRegistryOperationsResponse.ProtoReflect.Descriptor instead.
-func (*ListRegistryOperationsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListNamespaceOperationsResponse.ProtoReflect.Descriptor instead.
+func (*ListNamespaceOperationsResponse) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *ListRegistryOperationsResponse) GetOperations() []*operation.Operation {
+func (x *ListNamespaceOperationsResponse) GetOperations() []*operation.Operation {
 	if x != nil {
 		return x.Operations
 	}
 	return nil
 }
 
-func (x *ListRegistryOperationsResponse) GetNextPageToken() string {
+func (x *ListNamespaceOperationsResponse) GetNextPageToken() string {
 	if x != nil {
 		return x.NextPageToken
 	}
@@ -993,7 +993,7 @@ func (x *ListRegistryOperationsResponse) GetNextPageToken() string {
 
 type GetRepositoryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1029,9 +1029,9 @@ func (*GetRepositoryRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{17}
 }
 
-func (x *GetRepositoryRequest) GetRegistryId() string {
+func (x *GetRepositoryRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1045,12 +1045,12 @@ func (x *GetRepositoryRequest) GetRepository() string {
 
 type CreateRepositoryRequest struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId  string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository  string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	Labels      map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Явная публичность. Не задано (UNSPECIFIED) → наследует
-	// Registry.default_visibility. Явный PUBLIC требует registry admin (D-6, B08).
+	// Namespace.default_repository_visibility. Явный PUBLIC требует registry admin (D-6, B08).
 	Visibility    Visibility `protobuf:"varint,5,opt,name=visibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"visibility,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1086,9 +1086,9 @@ func (*CreateRepositoryRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{18}
 }
 
-func (x *CreateRepositoryRequest) GetRegistryId() string {
+func (x *CreateRepositoryRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1123,7 +1123,7 @@ func (x *CreateRepositoryRequest) GetVisibility() Visibility {
 
 type CreateRepositoryMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1159,9 +1159,9 @@ func (*CreateRepositoryMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *CreateRepositoryMetadata) GetRegistryId() string {
+func (x *CreateRepositoryMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1175,7 +1175,7 @@ func (x *CreateRepositoryMetadata) GetRepository() string {
 
 type UpdateRepositoryRequest struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId  string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository  string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	Labels      map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -1216,9 +1216,9 @@ func (*UpdateRepositoryRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{20}
 }
 
-func (x *UpdateRepositoryRequest) GetRegistryId() string {
+func (x *UpdateRepositoryRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1260,7 +1260,7 @@ func (x *UpdateRepositoryRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
 
 type UpdateRepositoryMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1296,9 +1296,9 @@ func (*UpdateRepositoryMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{21}
 }
 
-func (x *UpdateRepositoryMetadata) GetRegistryId() string {
+func (x *UpdateRepositoryMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1312,7 +1312,7 @@ func (x *UpdateRepositoryMetadata) GetRepository() string {
 
 type DeleteRepositoryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1348,9 +1348,9 @@ func (*DeleteRepositoryRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{22}
 }
 
-func (x *DeleteRepositoryRequest) GetRegistryId() string {
+func (x *DeleteRepositoryRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1364,7 +1364,7 @@ func (x *DeleteRepositoryRequest) GetRepository() string {
 
 type DeleteRepositoryMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1400,9 +1400,9 @@ func (*DeleteRepositoryMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{23}
 }
 
-func (x *DeleteRepositoryMetadata) GetRegistryId() string {
+func (x *DeleteRepositoryMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1415,10 +1415,10 @@ func (x *DeleteRepositoryMetadata) GetRepository() string {
 }
 
 type RenameRepositoryRequest struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
-	Repository string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
-	// Голое repo-имя внутри ТОГО ЖЕ registry_id (поля целевого реестра НЕТ —
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	NamespaceId string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
+	Repository  string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
+	// Голое repo-имя внутри ТОГО ЖЕ namespace_id (поля целевого реестра НЕТ —
 	// cross-registry rename структурно невыразим, D-5). malformed ИЛИ == repository
 	// (no-op) → INVALID_ARGUMENT.
 	NewName       string `protobuf:"bytes,3,opt,name=new_name,json=newName,proto3" json:"new_name,omitempty"`
@@ -1456,9 +1456,9 @@ func (*RenameRepositoryRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{24}
 }
 
-func (x *RenameRepositoryRequest) GetRegistryId() string {
+func (x *RenameRepositoryRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1479,7 +1479,7 @@ func (x *RenameRepositoryRequest) GetNewName() string {
 
 type RenameRepositoryMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId    string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Repository    string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	NewName       string                 `protobuf:"bytes,3,opt,name=new_name,json=newName,proto3" json:"new_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1516,9 +1516,9 @@ func (*RenameRepositoryMetadata) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{25}
 }
 
-func (x *RenameRepositoryMetadata) GetRegistryId() string {
+func (x *RenameRepositoryMetadata) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1538,9 +1538,9 @@ func (x *RenameRepositoryMetadata) GetNewName() string {
 }
 
 type ListReferrersRequest struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	RegistryId string                 `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
-	Repository string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	NamespaceId string                 `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
+	Repository  string                 `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	// Digest subject-манифеста, referrer'ы которого перечисляются (OCI digest,
 	// напр. "sha256:<64-hex>"). malformed → INVALID_ARGUMENT.
 	SubjectDigest string `protobuf:"bytes,3,opt,name=subject_digest,json=subjectDigest,proto3" json:"subject_digest,omitempty"`
@@ -1580,9 +1580,9 @@ func (*ListReferrersRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP(), []int{26}
 }
 
-func (x *ListReferrersRequest) GetRegistryId() string {
+func (x *ListReferrersRequest) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -1658,69 +1658,61 @@ var File_kacho_cloud_registry_v1_registry_service_proto protoreflect.FileDescrip
 
 const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/registry/v1/registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/cloud/registry/v1/registry.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"5\n" +
-	"\x12GetRegistryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"\x96\x01\n" +
-	"\x15ListRegistriesRequest\x12\x1d\n" +
+	".kacho/cloud/registry/v1/registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/cloud/registry/v1/registry.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"8\n" +
+	"\x13GetNamespaceRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\"\x96\x01\n" +
+	"\x15ListNamespacesRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12'\n" +
 	"\tpage_size\x18\x02 \x01(\x05B\n" +
 	"\xfa\xc71\x060-1000R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
-	"\x06filter\x18\x04 \x01(\tR\x06filter\"\x83\x01\n" +
-	"\x16ListRegistriesResponse\x12A\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\"\x84\x01\n" +
+	"\x16ListNamespacesResponse\x12B\n" +
 	"\n" +
-	"registries\x18\x01 \x03(\v2!.kacho.cloud.registry.v1.RegistryR\n" +
-	"registries\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfb\x01\n" +
-	"\x15CreateRegistryRequest\x12\x1d\n" +
+	"namespaces\x18\x01 \x03(\v2\".kacho.cloud.registry.v1.NamespaceR\n" +
+	"namespaces\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfd\x01\n" +
+	"\x16CreateNamespaceRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\x12R\n" +
-	"\x06labels\x18\x04 \x03(\v2:.kacho.cloud.registry.v1.CreateRegistryRequest.LabelsEntryR\x06labels\x1a9\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12S\n" +
+	"\x06labels\x18\x04 \x03(\v2;.kacho.cloud.registry.v1.CreateNamespaceRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"9\n" +
-	"\x16CreateRegistryMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"\x8e\x03\n" +
-	"\x15UpdateRegistryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\x12R\n" +
-	"\x06labels\x18\x03 \x03(\v2:.kacho.cloud.registry.v1.UpdateRegistryRequest.LabelsEntryR\x06labels\x12;\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"<\n" +
+	"\x17CreateNamespaceMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\"\xa7\x03\n" +
+	"\x16UpdateNamespaceRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12S\n" +
+	"\x06labels\x18\x03 \x03(\v2;.kacho.cloud.registry.v1.UpdateNamespaceRequest.LabelsEntryR\x06labels\x12;\n" +
 	"\vupdate_mask\x18\x04 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\x12\x12\n" +
-	"\x04name\x18\x05 \x01(\tR\x04name\x12R\n" +
-	"\x12default_visibility\x18\x06 \x01(\x0e2#.kacho.cloud.registry.v1.VisibilityR\x11defaultVisibility\x1a9\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\x12g\n" +
+	"\x1ddefault_repository_visibility\x18\x06 \x01(\x0e2#.kacho.cloud.registry.v1.VisibilityR\x1bdefaultRepositoryVisibility\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"9\n" +
-	"\x16UpdateRegistryMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"8\n" +
-	"\x15DeleteRegistryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"9\n" +
-	"\x16DeleteRegistryMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\"\x82\x01\n" +
-	"\x17ListRepositoriesRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12'\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"<\n" +
+	"\x17UpdateNamespaceMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\";\n" +
+	"\x16DeleteNamespaceRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\"<\n" +
+	"\x17DeleteNamespaceMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\"\x84\x01\n" +
+	"\x17ListRepositoriesRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12'\n" +
 	"\tpage_size\x18\x02 \x01(\x05B\n" +
 	"\xfa\xc71\x060-1000R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8b\x01\n" +
 	"\x18ListRepositoriesResponse\x12G\n" +
 	"\frepositories\x18\x01 \x03(\v2#.kacho.cloud.registry.v1.RepositoryR\frepositories\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9a\x01\n" +
-	"\x0fListTagsRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9c\x01\n" +
+	"\x0fListTagsRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12'\n" +
@@ -1730,42 +1722,37 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\"l\n" +
 	"\x10ListTagsResponse\x120\n" +
 	"\x04tags\x18\x01 \x03(\v2\x1c.kacho.cloud.registry.v1.TagR\x04tags\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"e\n" +
-	"\x10DeleteTagRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"g\n" +
+	"\x10DeleteTagRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12\x10\n" +
-	"\x03tag\x18\x03 \x01(\tR\x03tag\"f\n" +
-	"\x11DeleteTagMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x03tag\x18\x03 \x01(\tR\x03tag\"h\n" +
+	"\x11DeleteTagMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12\x10\n" +
-	"\x03tag\x18\x03 \x01(\tR\x03tag\"\x88\x01\n" +
-	"\x1dListRegistryOperationsRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12'\n" +
+	"\x03tag\x18\x03 \x01(\tR\x03tag\"\x8b\x01\n" +
+	"\x1eListNamespaceOperationsRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12'\n" +
 	"\tpage_size\x18\x02 \x01(\x05B\n" +
 	"\xfa\xc71\x060-1000R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
-	"\x1eListRegistryOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8b\x01\n" +
+	"\x1fListNamespaceOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"W\n" +
-	"\x14GetRepositoryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"Y\n" +
+	"\x14GetRepositoryRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
-	"repository\"\xd2\x02\n" +
-	"\x17CreateRepositoryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"repository\"\xd4\x02\n" +
+	"\x17CreateRepositoryRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12 \n" +
@@ -1776,16 +1763,14 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"visibility\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"[\n" +
-	"\x18CreateRepositoryMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +
+	"\x18CreateRepositoryMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
-	"repository\"\x8f\x03\n" +
-	"\x17UpdateRepositoryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"repository\"\x91\x03\n" +
+	"\x17UpdateRepositoryRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12 \n" +
@@ -1798,82 +1783,76 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"updateMask\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"[\n" +
-	"\x18UpdateRepositoryMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +
+	"\x18UpdateRepositoryMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
-	"repository\"Z\n" +
-	"\x17DeleteRepositoryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"repository\"\\\n" +
+	"\x17DeleteRepositoryRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
-	"repository\"[\n" +
-	"\x18DeleteRepositoryMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"repository\"]\n" +
+	"\x18DeleteRepositoryMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
-	"repository\"u\n" +
-	"\x17RenameRepositoryRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"repository\"w\n" +
+	"\x17RenameRepositoryRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12\x19\n" +
-	"\bnew_name\x18\x03 \x01(\tR\anewName\"v\n" +
-	"\x18RenameRepositoryMetadata\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\bnew_name\x18\x03 \x01(\tR\anewName\"x\n" +
+	"\x18RenameRepositoryMetadata\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12\x19\n" +
-	"\bnew_name\x18\x03 \x01(\tR\anewName\"\xa3\x01\n" +
-	"\x14ListReferrersRequest\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\bnew_name\x18\x03 \x01(\tR\anewName\"\xa5\x01\n" +
+	"\x14ListReferrersRequest\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12%\n" +
 	"\x0esubject_digest\x18\x03 \x01(\tR\rsubjectDigest\x12#\n" +
 	"\rartifact_type\x18\x04 \x01(\tR\fartifactType\"X\n" +
 	"\x15ListReferrersResponse\x12?\n" +
-	"\treferrers\x18\x01 \x03(\v2!.kacho.cloud.registry.v1.ReferrerR\treferrers2\xd1\x1a\n" +
-	"\x0fRegistryService\x12\xd1\x01\n" +
-	"\x03Get\x12+.kacho.cloud.registry.v1.GetRegistryRequest\x1a!.kacho.cloud.registry.v1.Registry\"z\x8a\xb5\x18\x17registry.registries.get\x92\xb5\x18\x05v_get\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02'\x12%/registry/v1/registries/{registry_id}\x12\x94\x01\n" +
-	"\x04List\x12..kacho.cloud.registry.v1.ListRegistriesRequest\x1a/.kacho.cloud.registry.v1.ListRegistriesResponse\"+\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x19\x12\x17/registry/v1/registries\x12\xeb\x01\n" +
-	"\x06Create\x12..kacho.cloud.registry.v1.CreateRegistryRequest\x1a .kacho.cloud.operation.Operation\"\x8e\x01\x8a\xb5\x18\x1aregistry.registries.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\treferrers\x18\x01 \x03(\v2!.kacho.cloud.registry.v1.ReferrerR\treferrers2\x9c\x1b\n" +
+	"\x0fRegistryService\x12\xde\x01\n" +
+	"\fGetNamespace\x12,.kacho.cloud.registry.v1.GetNamespaceRequest\x1a\".kacho.cloud.registry.v1.Namespace\"|\x8a\xb5\x18\x17registry.registries.get\x92\xb5\x18\x05v_get\x9a\xb5\x18!\n" +
+	"\x11registry_registry\x12\fnamespace_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02(\x12&/registry/v1/namespaces/{namespace_id}\x12\x9e\x01\n" +
+	"\x0eListNamespaces\x12..kacho.cloud.registry.v1.ListNamespacesRequest\x1a/.kacho.cloud.registry.v1.ListNamespacesResponse\"+\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x19\x12\x17/registry/v1/namespaces\x12\xf7\x01\n" +
+	"\x0fCreateNamespace\x12/.kacho.cloud.registry.v1.CreateNamespaceRequest\x1a .kacho.cloud.operation.Operation\"\x90\x01\x8a\xb5\x18\x1aregistry.registries.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
-	"\x16CreateRegistryMetadata\x12\bRegistry\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/registry/v1/registries\x12\x86\x02\n" +
-	"\x06Update\x12..kacho.cloud.registry.v1.UpdateRegistryRequest\x1a .kacho.cloud.operation.Operation\"\xa9\x01\x8a\xb5\x18\x1aregistry.registries.update\x92\xb5\x18\bv_update\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
-	"\x16UpdateRegistryMetadata\x12\bRegistry\x82\xd3\xe4\x93\x02*:\x01*2%/registry/v1/registries/{registry_id}\x12\x90\x02\n" +
-	"\x06Delete\x12..kacho.cloud.registry.v1.DeleteRegistryRequest\x1a .kacho.cloud.operation.Operation\"\xb3\x01\x8a\xb5\x18\x1aregistry.registries.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x012\xb2\xd2*/\n" +
-	"\x16DeleteRegistryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02'*%/registry/v1/registries/{registry_id}\x12\xbf\x01\n" +
-	"\x10ListRepositories\x120.kacho.cloud.registry.v1.ListRepositoriesRequest\x1a1.kacho.cloud.registry.v1.ListRepositoriesResponse\"F\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x024\x122/registry/v1/registries/{registry_id}/repositories\x12\x95\x02\n" +
-	"\x0eListOperations\x126.kacho.cloud.registry.v1.ListRegistryOperationsRequest\x1a7.kacho.cloud.registry.v1.ListRegistryOperationsResponse\"\x91\x01\x8a\xb5\x18\"registry.registries.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x022\x120/registry/v1/registries/{registry_id}/operations\x12\xbb\x01\n" +
-	"\rGetRepository\x12-.kacho.cloud.registry.v1.GetRepositoryRequest\x1a#.kacho.cloud.registry.v1.Repository\"V\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02D\x12B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xdb\x01\n" +
-	"\x10CreateRepository\x120.kacho.cloud.registry.v1.CreateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"s\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
+	"project_id\xa2\xb5\x18\x012\xb2\xd2*$\n" +
+	"\x17CreateNamespaceMetadata\x12\tNamespace\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/registry/v1/namespaces\x12\x94\x02\n" +
+	"\x0fUpdateNamespace\x12/.kacho.cloud.registry.v1.UpdateNamespaceRequest\x1a .kacho.cloud.operation.Operation\"\xad\x01\x8a\xb5\x18\x1aregistry.registries.update\x92\xb5\x18\bv_update\x9a\xb5\x18!\n" +
+	"\x11registry_registry\x12\fnamespace_id\xa2\xb5\x18\x012\xb2\xd2*$\n" +
+	"\x17UpdateNamespaceMetadata\x12\tNamespace\x82\xd3\xe4\x93\x02+:\x01*2&/registry/v1/namespaces/{namespace_id}\x12\x9d\x02\n" +
+	"\x0fDeleteNamespace\x12/.kacho.cloud.registry.v1.DeleteNamespaceRequest\x1a .kacho.cloud.operation.Operation\"\xb6\x01\x8a\xb5\x18\x1aregistry.registries.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18!\n" +
+	"\x11registry_registry\x12\fnamespace_id\xa2\xb5\x18\x012\xb2\xd2*0\n" +
+	"\x17DeleteNamespaceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02(*&/registry/v1/namespaces/{namespace_id}\x12\xc0\x01\n" +
+	"\x10ListRepositories\x120.kacho.cloud.registry.v1.ListRepositoriesRequest\x1a1.kacho.cloud.registry.v1.ListRepositoriesResponse\"G\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x025\x123/registry/v1/namespaces/{namespace_id}/repositories\x12\x99\x02\n" +
+	"\x0eListOperations\x127.kacho.cloud.registry.v1.ListNamespaceOperationsRequest\x1a8.kacho.cloud.registry.v1.ListNamespaceOperationsResponse\"\x93\x01\x8a\xb5\x18\"registry.registries.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18!\n" +
+	"\x11registry_registry\x12\fnamespace_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x023\x121/registry/v1/namespaces/{namespace_id}/operations\x12\xbc\x01\n" +
+	"\rGetRepository\x12-.kacho.cloud.registry.v1.GetRepositoryRequest\x1a#.kacho.cloud.registry.v1.Repository\"W\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02E\x12C/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}\x12\xdc\x01\n" +
+	"\x10CreateRepository\x120.kacho.cloud.registry.v1.CreateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"t\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
 	"\x18CreateRepositoryMetadata\x12\n" +
-	"Repository\x82\xd3\xe4\x93\x027:\x01*\"2/registry/v1/registries/{registry_id}/repositories\x12\xec\x01\n" +
-	"\x10UpdateRepository\x120.kacho.cloud.registry.v1.UpdateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x83\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
+	"Repository\x82\xd3\xe4\x93\x028:\x01*\"3/registry/v1/namespaces/{namespace_id}/repositories\x12\xed\x01\n" +
+	"\x10UpdateRepository\x120.kacho.cloud.registry.v1.UpdateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x84\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
 	"\x18UpdateRepositoryMetadata\x12\n" +
-	"Repository\x82\xd3\xe4\x93\x02G:\x01*2B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xf4\x01\n" +
-	"\x10DeleteRepository\x120.kacho.cloud.registry.v1.DeleteRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x8b\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*1\n" +
-	"\x18DeleteRepositoryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02D*B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xb9\x01\n" +
-	"\bListTags\x12(.kacho.cloud.registry.v1.ListTagsRequest\x1a).kacho.cloud.registry.v1.ListTagsResponse\"X\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02F\x12D/registry/v1/registries/{registry_id}/repositories/{repository}/tags\x12\xe7\x01\n" +
-	"\tDeleteTag\x12).kacho.cloud.registry.v1.DeleteTagRequest\x1a .kacho.cloud.operation.Operation\"\x8c\x01\x8a\xb5\x18\b<exempt>\xb2\xd2**\n" +
-	"\x11DeleteTagMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02L*J/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}\x12\xf3\x01\n" +
-	"\x10RenameRepository\x120.kacho.cloud.registry.v1.RenameRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
+	"Repository\x82\xd3\xe4\x93\x02H:\x01*2C/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}\x12\xf5\x01\n" +
+	"\x10DeleteRepository\x120.kacho.cloud.registry.v1.DeleteRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x8c\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*1\n" +
+	"\x18DeleteRepositoryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02E*C/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}\x12\xba\x01\n" +
+	"\bListTags\x12(.kacho.cloud.registry.v1.ListTagsRequest\x1a).kacho.cloud.registry.v1.ListTagsResponse\"Y\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02G\x12E/registry/v1/namespaces/{namespace_id}/repositories/{repository}/tags\x12\xe8\x01\n" +
+	"\tDeleteTag\x12).kacho.cloud.registry.v1.DeleteTagRequest\x1a .kacho.cloud.operation.Operation\"\x8d\x01\x8a\xb5\x18\b<exempt>\xb2\xd2**\n" +
+	"\x11DeleteTagMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02M*K/registry/v1/namespaces/{namespace_id}/repositories/{repository}/tags/{tag}\x12\xf4\x01\n" +
+	"\x10RenameRepository\x120.kacho.cloud.registry.v1.RenameRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x8b\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
 	"\x18RenameRepositoryMetadata\x12\n" +
-	"Repository\x82\xd3\xe4\x93\x02N:\x01*\"I/registry/v1/registries/{registry_id}/repositories/{repository=**}:rename\x12\xd0\x01\n" +
-	"\rListReferrers\x12-.kacho.cloud.registry.v1.ListReferrersRequest\x1a..kacho.cloud.registry.v1.ListReferrersResponse\"`\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02N\x12L/registry/v1/registries/{registry_id}/repositories/{repository=**}/referrersBJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
+	"Repository\x82\xd3\xe4\x93\x02O:\x01*\"J/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}:rename\x12\xd1\x01\n" +
+	"\rListReferrers\x12-.kacho.cloud.registry.v1.ListReferrersRequest\x1a..kacho.cloud.registry.v1.ListReferrersResponse\"a\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02O\x12M/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}/referrersBJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
 
 var (
 	file_kacho_cloud_registry_v1_registry_service_proto_rawDescOnce sync.Once
@@ -1889,68 +1868,68 @@ func file_kacho_cloud_registry_v1_registry_service_proto_rawDescGZIP() []byte {
 
 var file_kacho_cloud_registry_v1_registry_service_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_kacho_cloud_registry_v1_registry_service_proto_goTypes = []any{
-	(*GetRegistryRequest)(nil),             // 0: kacho.cloud.registry.v1.GetRegistryRequest
-	(*ListRegistriesRequest)(nil),          // 1: kacho.cloud.registry.v1.ListRegistriesRequest
-	(*ListRegistriesResponse)(nil),         // 2: kacho.cloud.registry.v1.ListRegistriesResponse
-	(*CreateRegistryRequest)(nil),          // 3: kacho.cloud.registry.v1.CreateRegistryRequest
-	(*CreateRegistryMetadata)(nil),         // 4: kacho.cloud.registry.v1.CreateRegistryMetadata
-	(*UpdateRegistryRequest)(nil),          // 5: kacho.cloud.registry.v1.UpdateRegistryRequest
-	(*UpdateRegistryMetadata)(nil),         // 6: kacho.cloud.registry.v1.UpdateRegistryMetadata
-	(*DeleteRegistryRequest)(nil),          // 7: kacho.cloud.registry.v1.DeleteRegistryRequest
-	(*DeleteRegistryMetadata)(nil),         // 8: kacho.cloud.registry.v1.DeleteRegistryMetadata
-	(*ListRepositoriesRequest)(nil),        // 9: kacho.cloud.registry.v1.ListRepositoriesRequest
-	(*ListRepositoriesResponse)(nil),       // 10: kacho.cloud.registry.v1.ListRepositoriesResponse
-	(*ListTagsRequest)(nil),                // 11: kacho.cloud.registry.v1.ListTagsRequest
-	(*ListTagsResponse)(nil),               // 12: kacho.cloud.registry.v1.ListTagsResponse
-	(*DeleteTagRequest)(nil),               // 13: kacho.cloud.registry.v1.DeleteTagRequest
-	(*DeleteTagMetadata)(nil),              // 14: kacho.cloud.registry.v1.DeleteTagMetadata
-	(*ListRegistryOperationsRequest)(nil),  // 15: kacho.cloud.registry.v1.ListRegistryOperationsRequest
-	(*ListRegistryOperationsResponse)(nil), // 16: kacho.cloud.registry.v1.ListRegistryOperationsResponse
-	(*GetRepositoryRequest)(nil),           // 17: kacho.cloud.registry.v1.GetRepositoryRequest
-	(*CreateRepositoryRequest)(nil),        // 18: kacho.cloud.registry.v1.CreateRepositoryRequest
-	(*CreateRepositoryMetadata)(nil),       // 19: kacho.cloud.registry.v1.CreateRepositoryMetadata
-	(*UpdateRepositoryRequest)(nil),        // 20: kacho.cloud.registry.v1.UpdateRepositoryRequest
-	(*UpdateRepositoryMetadata)(nil),       // 21: kacho.cloud.registry.v1.UpdateRepositoryMetadata
-	(*DeleteRepositoryRequest)(nil),        // 22: kacho.cloud.registry.v1.DeleteRepositoryRequest
-	(*DeleteRepositoryMetadata)(nil),       // 23: kacho.cloud.registry.v1.DeleteRepositoryMetadata
-	(*RenameRepositoryRequest)(nil),        // 24: kacho.cloud.registry.v1.RenameRepositoryRequest
-	(*RenameRepositoryMetadata)(nil),       // 25: kacho.cloud.registry.v1.RenameRepositoryMetadata
-	(*ListReferrersRequest)(nil),           // 26: kacho.cloud.registry.v1.ListReferrersRequest
-	(*ListReferrersResponse)(nil),          // 27: kacho.cloud.registry.v1.ListReferrersResponse
-	nil,                                    // 28: kacho.cloud.registry.v1.CreateRegistryRequest.LabelsEntry
-	nil,                                    // 29: kacho.cloud.registry.v1.UpdateRegistryRequest.LabelsEntry
-	nil,                                    // 30: kacho.cloud.registry.v1.CreateRepositoryRequest.LabelsEntry
-	nil,                                    // 31: kacho.cloud.registry.v1.UpdateRepositoryRequest.LabelsEntry
-	(*Registry)(nil),                       // 32: kacho.cloud.registry.v1.Registry
-	(*fieldmaskpb.FieldMask)(nil),          // 33: google.protobuf.FieldMask
-	(Visibility)(0),                        // 34: kacho.cloud.registry.v1.Visibility
-	(*Repository)(nil),                     // 35: kacho.cloud.registry.v1.Repository
-	(*Tag)(nil),                            // 36: kacho.cloud.registry.v1.Tag
-	(*operation.Operation)(nil),            // 37: kacho.cloud.operation.Operation
-	(*Referrer)(nil),                       // 38: kacho.cloud.registry.v1.Referrer
+	(*GetNamespaceRequest)(nil),             // 0: kacho.cloud.registry.v1.GetNamespaceRequest
+	(*ListNamespacesRequest)(nil),           // 1: kacho.cloud.registry.v1.ListNamespacesRequest
+	(*ListNamespacesResponse)(nil),          // 2: kacho.cloud.registry.v1.ListNamespacesResponse
+	(*CreateNamespaceRequest)(nil),          // 3: kacho.cloud.registry.v1.CreateNamespaceRequest
+	(*CreateNamespaceMetadata)(nil),         // 4: kacho.cloud.registry.v1.CreateNamespaceMetadata
+	(*UpdateNamespaceRequest)(nil),          // 5: kacho.cloud.registry.v1.UpdateNamespaceRequest
+	(*UpdateNamespaceMetadata)(nil),         // 6: kacho.cloud.registry.v1.UpdateNamespaceMetadata
+	(*DeleteNamespaceRequest)(nil),          // 7: kacho.cloud.registry.v1.DeleteNamespaceRequest
+	(*DeleteNamespaceMetadata)(nil),         // 8: kacho.cloud.registry.v1.DeleteNamespaceMetadata
+	(*ListRepositoriesRequest)(nil),         // 9: kacho.cloud.registry.v1.ListRepositoriesRequest
+	(*ListRepositoriesResponse)(nil),        // 10: kacho.cloud.registry.v1.ListRepositoriesResponse
+	(*ListTagsRequest)(nil),                 // 11: kacho.cloud.registry.v1.ListTagsRequest
+	(*ListTagsResponse)(nil),                // 12: kacho.cloud.registry.v1.ListTagsResponse
+	(*DeleteTagRequest)(nil),                // 13: kacho.cloud.registry.v1.DeleteTagRequest
+	(*DeleteTagMetadata)(nil),               // 14: kacho.cloud.registry.v1.DeleteTagMetadata
+	(*ListNamespaceOperationsRequest)(nil),  // 15: kacho.cloud.registry.v1.ListNamespaceOperationsRequest
+	(*ListNamespaceOperationsResponse)(nil), // 16: kacho.cloud.registry.v1.ListNamespaceOperationsResponse
+	(*GetRepositoryRequest)(nil),            // 17: kacho.cloud.registry.v1.GetRepositoryRequest
+	(*CreateRepositoryRequest)(nil),         // 18: kacho.cloud.registry.v1.CreateRepositoryRequest
+	(*CreateRepositoryMetadata)(nil),        // 19: kacho.cloud.registry.v1.CreateRepositoryMetadata
+	(*UpdateRepositoryRequest)(nil),         // 20: kacho.cloud.registry.v1.UpdateRepositoryRequest
+	(*UpdateRepositoryMetadata)(nil),        // 21: kacho.cloud.registry.v1.UpdateRepositoryMetadata
+	(*DeleteRepositoryRequest)(nil),         // 22: kacho.cloud.registry.v1.DeleteRepositoryRequest
+	(*DeleteRepositoryMetadata)(nil),        // 23: kacho.cloud.registry.v1.DeleteRepositoryMetadata
+	(*RenameRepositoryRequest)(nil),         // 24: kacho.cloud.registry.v1.RenameRepositoryRequest
+	(*RenameRepositoryMetadata)(nil),        // 25: kacho.cloud.registry.v1.RenameRepositoryMetadata
+	(*ListReferrersRequest)(nil),            // 26: kacho.cloud.registry.v1.ListReferrersRequest
+	(*ListReferrersResponse)(nil),           // 27: kacho.cloud.registry.v1.ListReferrersResponse
+	nil,                                     // 28: kacho.cloud.registry.v1.CreateNamespaceRequest.LabelsEntry
+	nil,                                     // 29: kacho.cloud.registry.v1.UpdateNamespaceRequest.LabelsEntry
+	nil,                                     // 30: kacho.cloud.registry.v1.CreateRepositoryRequest.LabelsEntry
+	nil,                                     // 31: kacho.cloud.registry.v1.UpdateRepositoryRequest.LabelsEntry
+	(*Namespace)(nil),                       // 32: kacho.cloud.registry.v1.Namespace
+	(*fieldmaskpb.FieldMask)(nil),           // 33: google.protobuf.FieldMask
+	(Visibility)(0),                         // 34: kacho.cloud.registry.v1.Visibility
+	(*Repository)(nil),                      // 35: kacho.cloud.registry.v1.Repository
+	(*Tag)(nil),                             // 36: kacho.cloud.registry.v1.Tag
+	(*operation.Operation)(nil),             // 37: kacho.cloud.operation.Operation
+	(*Referrer)(nil),                        // 38: kacho.cloud.registry.v1.Referrer
 }
 var file_kacho_cloud_registry_v1_registry_service_proto_depIdxs = []int32{
-	32, // 0: kacho.cloud.registry.v1.ListRegistriesResponse.registries:type_name -> kacho.cloud.registry.v1.Registry
-	28, // 1: kacho.cloud.registry.v1.CreateRegistryRequest.labels:type_name -> kacho.cloud.registry.v1.CreateRegistryRequest.LabelsEntry
-	29, // 2: kacho.cloud.registry.v1.UpdateRegistryRequest.labels:type_name -> kacho.cloud.registry.v1.UpdateRegistryRequest.LabelsEntry
-	33, // 3: kacho.cloud.registry.v1.UpdateRegistryRequest.update_mask:type_name -> google.protobuf.FieldMask
-	34, // 4: kacho.cloud.registry.v1.UpdateRegistryRequest.default_visibility:type_name -> kacho.cloud.registry.v1.Visibility
+	32, // 0: kacho.cloud.registry.v1.ListNamespacesResponse.namespaces:type_name -> kacho.cloud.registry.v1.Namespace
+	28, // 1: kacho.cloud.registry.v1.CreateNamespaceRequest.labels:type_name -> kacho.cloud.registry.v1.CreateNamespaceRequest.LabelsEntry
+	29, // 2: kacho.cloud.registry.v1.UpdateNamespaceRequest.labels:type_name -> kacho.cloud.registry.v1.UpdateNamespaceRequest.LabelsEntry
+	33, // 3: kacho.cloud.registry.v1.UpdateNamespaceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	34, // 4: kacho.cloud.registry.v1.UpdateNamespaceRequest.default_repository_visibility:type_name -> kacho.cloud.registry.v1.Visibility
 	35, // 5: kacho.cloud.registry.v1.ListRepositoriesResponse.repositories:type_name -> kacho.cloud.registry.v1.Repository
 	36, // 6: kacho.cloud.registry.v1.ListTagsResponse.tags:type_name -> kacho.cloud.registry.v1.Tag
-	37, // 7: kacho.cloud.registry.v1.ListRegistryOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	37, // 7: kacho.cloud.registry.v1.ListNamespaceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	30, // 8: kacho.cloud.registry.v1.CreateRepositoryRequest.labels:type_name -> kacho.cloud.registry.v1.CreateRepositoryRequest.LabelsEntry
 	34, // 9: kacho.cloud.registry.v1.CreateRepositoryRequest.visibility:type_name -> kacho.cloud.registry.v1.Visibility
 	31, // 10: kacho.cloud.registry.v1.UpdateRepositoryRequest.labels:type_name -> kacho.cloud.registry.v1.UpdateRepositoryRequest.LabelsEntry
 	34, // 11: kacho.cloud.registry.v1.UpdateRepositoryRequest.visibility:type_name -> kacho.cloud.registry.v1.Visibility
 	33, // 12: kacho.cloud.registry.v1.UpdateRepositoryRequest.update_mask:type_name -> google.protobuf.FieldMask
 	38, // 13: kacho.cloud.registry.v1.ListReferrersResponse.referrers:type_name -> kacho.cloud.registry.v1.Referrer
-	0,  // 14: kacho.cloud.registry.v1.RegistryService.Get:input_type -> kacho.cloud.registry.v1.GetRegistryRequest
-	1,  // 15: kacho.cloud.registry.v1.RegistryService.List:input_type -> kacho.cloud.registry.v1.ListRegistriesRequest
-	3,  // 16: kacho.cloud.registry.v1.RegistryService.Create:input_type -> kacho.cloud.registry.v1.CreateRegistryRequest
-	5,  // 17: kacho.cloud.registry.v1.RegistryService.Update:input_type -> kacho.cloud.registry.v1.UpdateRegistryRequest
-	7,  // 18: kacho.cloud.registry.v1.RegistryService.Delete:input_type -> kacho.cloud.registry.v1.DeleteRegistryRequest
+	0,  // 14: kacho.cloud.registry.v1.RegistryService.GetNamespace:input_type -> kacho.cloud.registry.v1.GetNamespaceRequest
+	1,  // 15: kacho.cloud.registry.v1.RegistryService.ListNamespaces:input_type -> kacho.cloud.registry.v1.ListNamespacesRequest
+	3,  // 16: kacho.cloud.registry.v1.RegistryService.CreateNamespace:input_type -> kacho.cloud.registry.v1.CreateNamespaceRequest
+	5,  // 17: kacho.cloud.registry.v1.RegistryService.UpdateNamespace:input_type -> kacho.cloud.registry.v1.UpdateNamespaceRequest
+	7,  // 18: kacho.cloud.registry.v1.RegistryService.DeleteNamespace:input_type -> kacho.cloud.registry.v1.DeleteNamespaceRequest
 	9,  // 19: kacho.cloud.registry.v1.RegistryService.ListRepositories:input_type -> kacho.cloud.registry.v1.ListRepositoriesRequest
-	15, // 20: kacho.cloud.registry.v1.RegistryService.ListOperations:input_type -> kacho.cloud.registry.v1.ListRegistryOperationsRequest
+	15, // 20: kacho.cloud.registry.v1.RegistryService.ListOperations:input_type -> kacho.cloud.registry.v1.ListNamespaceOperationsRequest
 	17, // 21: kacho.cloud.registry.v1.RegistryService.GetRepository:input_type -> kacho.cloud.registry.v1.GetRepositoryRequest
 	18, // 22: kacho.cloud.registry.v1.RegistryService.CreateRepository:input_type -> kacho.cloud.registry.v1.CreateRepositoryRequest
 	20, // 23: kacho.cloud.registry.v1.RegistryService.UpdateRepository:input_type -> kacho.cloud.registry.v1.UpdateRepositoryRequest
@@ -1959,13 +1938,13 @@ var file_kacho_cloud_registry_v1_registry_service_proto_depIdxs = []int32{
 	13, // 26: kacho.cloud.registry.v1.RegistryService.DeleteTag:input_type -> kacho.cloud.registry.v1.DeleteTagRequest
 	24, // 27: kacho.cloud.registry.v1.RegistryService.RenameRepository:input_type -> kacho.cloud.registry.v1.RenameRepositoryRequest
 	26, // 28: kacho.cloud.registry.v1.RegistryService.ListReferrers:input_type -> kacho.cloud.registry.v1.ListReferrersRequest
-	32, // 29: kacho.cloud.registry.v1.RegistryService.Get:output_type -> kacho.cloud.registry.v1.Registry
-	2,  // 30: kacho.cloud.registry.v1.RegistryService.List:output_type -> kacho.cloud.registry.v1.ListRegistriesResponse
-	37, // 31: kacho.cloud.registry.v1.RegistryService.Create:output_type -> kacho.cloud.operation.Operation
-	37, // 32: kacho.cloud.registry.v1.RegistryService.Update:output_type -> kacho.cloud.operation.Operation
-	37, // 33: kacho.cloud.registry.v1.RegistryService.Delete:output_type -> kacho.cloud.operation.Operation
+	32, // 29: kacho.cloud.registry.v1.RegistryService.GetNamespace:output_type -> kacho.cloud.registry.v1.Namespace
+	2,  // 30: kacho.cloud.registry.v1.RegistryService.ListNamespaces:output_type -> kacho.cloud.registry.v1.ListNamespacesResponse
+	37, // 31: kacho.cloud.registry.v1.RegistryService.CreateNamespace:output_type -> kacho.cloud.operation.Operation
+	37, // 32: kacho.cloud.registry.v1.RegistryService.UpdateNamespace:output_type -> kacho.cloud.operation.Operation
+	37, // 33: kacho.cloud.registry.v1.RegistryService.DeleteNamespace:output_type -> kacho.cloud.operation.Operation
 	10, // 34: kacho.cloud.registry.v1.RegistryService.ListRepositories:output_type -> kacho.cloud.registry.v1.ListRepositoriesResponse
-	16, // 35: kacho.cloud.registry.v1.RegistryService.ListOperations:output_type -> kacho.cloud.registry.v1.ListRegistryOperationsResponse
+	16, // 35: kacho.cloud.registry.v1.RegistryService.ListOperations:output_type -> kacho.cloud.registry.v1.ListNamespaceOperationsResponse
 	35, // 36: kacho.cloud.registry.v1.RegistryService.GetRepository:output_type -> kacho.cloud.registry.v1.Repository
 	37, // 37: kacho.cloud.registry.v1.RegistryService.CreateRepository:output_type -> kacho.cloud.operation.Operation
 	37, // 38: kacho.cloud.registry.v1.RegistryService.UpdateRepository:output_type -> kacho.cloud.operation.Operation

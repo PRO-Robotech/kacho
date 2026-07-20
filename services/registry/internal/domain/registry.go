@@ -1,10 +1,10 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package domain — сущности kacho-registry (Registry-namespace + read-only
+// Package domain — сущности kacho-registry (Namespace-namespace + read-only
 // проекции Repository / Tag из zot).
 //
-// Domain-слой чистой архитектуры: чистый Go (только stdlib). Registry — плоский
+// Domain-слой чистой архитектуры: чистый Go (только stdlib). Namespace — плоский
 // tenant-namespace над общим zot-бэкендом; блобы/манифесты в БД kacho-registry
 // НЕ хранятся (source of truth = zot), тут живут только метаданные namespace.
 // Repository/Tag — output-only зеркало zot, вычитываемое на request-path.
@@ -17,7 +17,7 @@ import (
 	"unicode/utf8"
 )
 
-// maxNameLen — верхняя граница длины имени Registry. Имя используется как
+// maxNameLen — верхняя граница длины имени Namespace. Имя используется как
 // DNS-safe сегмент OCI-namespace, поэтому валидируется и по длине, и по charset.
 const maxNameLen = 255
 
@@ -27,22 +27,22 @@ const maxNameLen = 255
 // недопустимы.
 var dnsName = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
 
-// RegistryStatus — состояние жизненного цикла namespace. Ширина int32 совпадает
-// с registryv1.RegistryStatus, поэтому конверсии domain↔proto точны.
-type RegistryStatus int32
+// NamespaceStatus — состояние жизненного цикла namespace. Ширина int32 совпадает
+// с registryv1.NamespaceStatus, поэтому конверсии domain↔proto точны.
+type NamespaceStatus int32
 
-// Значения RegistryStatus (parity с proto-enum registry.v1:
+// Значения NamespaceStatus (parity с proto-enum registry.v1:
 // UNSPECIFIED=0, ACTIVE=1, DELETING=2).
 const (
-	RegistryStatusUnspecified RegistryStatus = iota
-	RegistryStatusActive
-	RegistryStatusDeleting
+	NamespaceStatusUnspecified NamespaceStatus = iota
+	NamespaceStatusActive
+	NamespaceStatusDeleting
 )
 
 // Validate проверяет, что статус — известное значение.
-func (s RegistryStatus) Validate() error {
+func (s NamespaceStatus) Validate() error {
 	switch s {
-	case RegistryStatusUnspecified, RegistryStatusActive, RegistryStatusDeleting:
+	case NamespaceStatusUnspecified, NamespaceStatusActive, NamespaceStatusDeleting:
 		return nil
 	default:
 		return fmt.Errorf("registry status %d is out of range", int32(s))
@@ -64,16 +64,16 @@ func ValidateName(field, value string) error {
 	return nil
 }
 
-// Registry — tenant-namespace реестра образов. id (prefix "reg") — immutable PK;
+// Namespace — tenant-namespace реестра образов. id (prefix "reg") — immutable PK;
 // project_id — cross-domain ref на iam (TEXT, без FK); name — UNIQUE в рамках
 // project среди живых реестров. Метки участвуют в authz label-scoping.
-type Registry struct {
+type Namespace struct {
 	ID          string
 	ProjectID   string
 	Name        string
 	Description string
 	Labels      map[string]string
-	Status      RegistryStatus
+	Status      NamespaceStatus
 	CreatedAt   time.Time
 	// DefaultVisibility — сид visibility для НОВЫХ repo реестра (RG-1, D-6). Mutable
 	// через UpdateRegistry; переход →PUBLIC подчинён any-path-to-PUBLIC admin-gate
@@ -82,10 +82,10 @@ type Registry struct {
 	DefaultVisibility Visibility
 }
 
-// Validate проверяет domain-инварианты Registry перед созданием/сохранением:
+// Validate проверяет domain-инварианты Namespace перед созданием/сохранением:
 // project_id обязателен (cross-domain owner), name — DNS-safe в пределах длины,
 // status — известное значение enum.
-func (r Registry) Validate() error {
+func (r Namespace) Validate() error {
 	if r.ProjectID == "" {
 		return fmt.Errorf("registry project_id is required")
 	}
@@ -104,8 +104,8 @@ func (r Registry) Validate() error {
 // config-overlay из repository_configs (durable-repo); пусты у ephemeral-repo
 // (проекция без overlay-строки). Get/List отдают LEFT JOIN overlay + projection.
 type Repository struct {
-	RegistryID string
-	Name       string
+	NamespaceID string
+	Name        string
 	// Description — overlay-поле (durable). Пусто у ephemeral.
 	Description string
 	// Labels — overlay-поле (durable). Пусто у ephemeral.
@@ -134,13 +134,13 @@ type Repository struct {
 
 // Tag — output-only проекция тега/манифеста из zot (source of truth = zot).
 type Tag struct {
-	RegistryID string
-	Repository string
-	Tag        string
-	Digest     string
-	SizeBytes  int64
-	MediaType  string
-	CreatedAt  time.Time
+	NamespaceID string
+	Repository  string
+	Tag         string
+	Digest      string
+	SizeBytes   int64
+	MediaType   string
+	CreatedAt   time.Time
 	// Architecture — платформа образа "<os>/<arch>" (из image-config), "multi-arch"
 	// для index-манифеста, либо пусто (helm-чарт / config без platform).
 	Architecture string
@@ -155,7 +155,7 @@ type Tag struct {
 // RegistryStats — инфра-проекция namespace (repo/tag count, суммарный размер,
 // число уникальных блобов). Раскрывается ТОЛЬКО через Internal-API (:9091).
 type RegistryStats struct {
-	RegistryID      string
+	NamespaceID     string
 	RepositoryCount int32
 	TagCount        int32
 	TotalSizeBytes  int64

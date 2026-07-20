@@ -25,55 +25,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// RegistryStatus — терминальность DELETING обязательна (forward-only delete):
+// NamespaceStatus — терминальность DELETING обязательна (forward-only delete):
 // revert DELETING→ACTIVE запрещён, иначе partial-UNIQUE(project,name) конфликтует
 // с re-Create нового ACTIVE того же (project,name).
-type RegistryStatus int32
+type NamespaceStatus int32
 
 const (
-	RegistryStatus_REGISTRY_STATUS_UNSPECIFIED RegistryStatus = 0
-	RegistryStatus_REGISTRY_STATUS_ACTIVE      RegistryStatus = 1
-	RegistryStatus_REGISTRY_STATUS_DELETING    RegistryStatus = 2
+	NamespaceStatus_NAMESPACE_STATUS_UNSPECIFIED NamespaceStatus = 0
+	NamespaceStatus_NAMESPACE_STATUS_ACTIVE      NamespaceStatus = 1
+	NamespaceStatus_NAMESPACE_STATUS_DELETING    NamespaceStatus = 2
 )
 
-// Enum value maps for RegistryStatus.
+// Enum value maps for NamespaceStatus.
 var (
-	RegistryStatus_name = map[int32]string{
-		0: "REGISTRY_STATUS_UNSPECIFIED",
-		1: "REGISTRY_STATUS_ACTIVE",
-		2: "REGISTRY_STATUS_DELETING",
+	NamespaceStatus_name = map[int32]string{
+		0: "NAMESPACE_STATUS_UNSPECIFIED",
+		1: "NAMESPACE_STATUS_ACTIVE",
+		2: "NAMESPACE_STATUS_DELETING",
 	}
-	RegistryStatus_value = map[string]int32{
-		"REGISTRY_STATUS_UNSPECIFIED": 0,
-		"REGISTRY_STATUS_ACTIVE":      1,
-		"REGISTRY_STATUS_DELETING":    2,
+	NamespaceStatus_value = map[string]int32{
+		"NAMESPACE_STATUS_UNSPECIFIED": 0,
+		"NAMESPACE_STATUS_ACTIVE":      1,
+		"NAMESPACE_STATUS_DELETING":    2,
 	}
 )
 
-func (x RegistryStatus) Enum() *RegistryStatus {
-	p := new(RegistryStatus)
+func (x NamespaceStatus) Enum() *NamespaceStatus {
+	p := new(NamespaceStatus)
 	*p = x
 	return p
 }
 
-func (x RegistryStatus) String() string {
+func (x NamespaceStatus) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (RegistryStatus) Descriptor() protoreflect.EnumDescriptor {
+func (NamespaceStatus) Descriptor() protoreflect.EnumDescriptor {
 	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[0].Descriptor()
 }
 
-func (RegistryStatus) Type() protoreflect.EnumType {
+func (NamespaceStatus) Type() protoreflect.EnumType {
 	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[0]
 }
 
-func (x RegistryStatus) Number() protoreflect.EnumNumber {
+func (x NamespaceStatus) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use RegistryStatus.Descriptor instead.
-func (RegistryStatus) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use NamespaceStatus.Descriptor instead.
+func (NamespaceStatus) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{0}
 }
 
@@ -134,16 +134,16 @@ func (ArtifactType) EnumDescriptor() ([]byte, []int) {
 }
 
 // Visibility — публичность репозитория (overlay-authoritative на Repository;
-// сид-дефолт на Registry.default_visibility). Дефолт PRIVATE (fail-safe).
+// сид-дефолт на Namespace.default_repository_visibility). Дефолт PRIVATE (fail-safe).
 // PUBLIC ⟺ FGA-tuple `user:* v_get registry_repository:<reg>/<repo>` (anonymous
 // pull через data-plane). ЛЮБОЙ путь, где принципал сам приводит ресурс к PUBLIC
-// (per-repo flip, create-with-PUBLIC, default_visibility→PUBLIC), требует registry
+// (per-repo flip, create-with-PUBLIC, default_repository_visibility→PUBLIC), требует registry
 // admin (D-6). Аноним к PRIVATE|absent-repo → uniform 404 (public-ность НЕ
 // existence-oracle).
 type Visibility int32
 
 const (
-	Visibility_VISIBILITY_UNSPECIFIED Visibility = 0 // не задано → наследует Registry.default_visibility
+	Visibility_VISIBILITY_UNSPECIFIED Visibility = 0 // не задано → наследует Namespace.default_repository_visibility
 	Visibility_PRIVATE                Visibility = 1 // приватный (дефолт) — только авторизованный v_get
 	Visibility_PUBLIC                 Visibility = 2 // публичный — анонимный pull разрешён (user:* v_get tuple)
 )
@@ -189,9 +189,9 @@ func (Visibility) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{2}
 }
 
-// Registry — тенант-namespace OCI/Docker-реестра Kachō.
+// Namespace — тенант-namespace OCI/Docker-реестра Kachō.
 //
-// Плоский ресурс (без K8s-envelope). Registry — НЕ отдельный инстанс движка, а
+// Плоский ресурс (без K8s-envelope). Namespace — НЕ отдельный инстанс движка, а
 // namespace над общим zot-бэкендом: клиент адресует образ как
 // `registry.kacho.local/<registry-id>/<repo>:tag`. Метаданные namespace хранит
 // kacho-registry; сами блобы/манифесты — в zot (S3-backed). Образы/теги в БД не
@@ -200,7 +200,7 @@ func (Visibility) EnumDescriptor() ([]byte, []int) {
 // project_id — cross-domain ссылка на iam.Project (TEXT, без FK, валидируется
 // через iam.ProjectService.Get на Create). Owner-иерархия в FGA пишется через
 // fga-proxy (RegisterResource), object-type `registry_registry`.
-type Registry struct {
+type Namespace struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID реестра. Prefix "reg" (kacho-corelib/ids.NewID). Immutable PK.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -220,31 +220,31 @@ type Registry struct {
 	// Output-only: число repositories в namespace (проекция из zot, не источник истины).
 	RepositoryCount int32 `protobuf:"varint,8,opt,name=repository_count,json=repositoryCount,proto3" json:"repository_count,omitempty"`
 	// Состояние жизненного цикла.
-	Status RegistryStatus `protobuf:"varint,10,opt,name=status,proto3,enum=kacho.cloud.registry.v1.RegistryStatus" json:"status,omitempty"`
+	Status NamespaceStatus `protobuf:"varint,10,opt,name=status,proto3,enum=kacho.cloud.registry.v1.NamespaceStatus" json:"status,omitempty"`
 	// Дефолтная публичность для НОВЫХ repo в namespace — сид Repository.visibility
 	// на CreateRepository, когда явное visibility не задано (mutable через Update,
-	// дефолт PRIVATE / fail-safe). Переход default_visibility→PUBLIC требует registry
+	// дефолт PRIVATE / fail-safe). Переход default_repository_visibility→PUBLIC требует registry
 	// admin (D-6: любой путь к PUBLIC — admin-gated). Смена НЕ перекрашивает
 	// существующие repo (per-repo Repository.visibility остаётся authoritative).
-	DefaultVisibility Visibility `protobuf:"varint,9,opt,name=default_visibility,json=defaultVisibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"default_visibility,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	DefaultRepositoryVisibility Visibility `protobuf:"varint,9,opt,name=default_repository_visibility,json=defaultRepositoryVisibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"default_repository_visibility,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
-func (x *Registry) Reset() {
-	*x = Registry{}
+func (x *Namespace) Reset() {
+	*x = Namespace{}
 	mi := &file_kacho_cloud_registry_v1_registry_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Registry) String() string {
+func (x *Namespace) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Registry) ProtoMessage() {}
+func (*Namespace) ProtoMessage() {}
 
-func (x *Registry) ProtoReflect() protoreflect.Message {
+func (x *Namespace) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_registry_v1_registry_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -256,83 +256,83 @@ func (x *Registry) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Registry.ProtoReflect.Descriptor instead.
-func (*Registry) Descriptor() ([]byte, []int) {
+// Deprecated: Use Namespace.ProtoReflect.Descriptor instead.
+func (*Namespace) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Registry) GetId() string {
+func (x *Namespace) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *Registry) GetProjectId() string {
+func (x *Namespace) GetProjectId() string {
 	if x != nil {
 		return x.ProjectId
 	}
 	return ""
 }
 
-func (x *Registry) GetCreatedAt() *timestamppb.Timestamp {
+func (x *Namespace) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *Registry) GetName() string {
+func (x *Namespace) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *Registry) GetDescription() string {
+func (x *Namespace) GetDescription() string {
 	if x != nil {
 		return x.Description
 	}
 	return ""
 }
 
-func (x *Registry) GetLabels() map[string]string {
+func (x *Namespace) GetLabels() map[string]string {
 	if x != nil {
 		return x.Labels
 	}
 	return nil
 }
 
-func (x *Registry) GetEndpoint() string {
+func (x *Namespace) GetEndpoint() string {
 	if x != nil {
 		return x.Endpoint
 	}
 	return ""
 }
 
-func (x *Registry) GetRepositoryCount() int32 {
+func (x *Namespace) GetRepositoryCount() int32 {
 	if x != nil {
 		return x.RepositoryCount
 	}
 	return 0
 }
 
-func (x *Registry) GetStatus() RegistryStatus {
+func (x *Namespace) GetStatus() NamespaceStatus {
 	if x != nil {
 		return x.Status
 	}
-	return RegistryStatus_REGISTRY_STATUS_UNSPECIFIED
+	return NamespaceStatus_NAMESPACE_STATUS_UNSPECIFIED
 }
 
-func (x *Registry) GetDefaultVisibility() Visibility {
+func (x *Namespace) GetDefaultRepositoryVisibility() Visibility {
 	if x != nil {
-		return x.DefaultVisibility
+		return x.DefaultRepositoryVisibility
 	}
 	return Visibility_VISIBILITY_UNSPECIFIED
 }
 
 // Repository — OCI-репозиторий (образ) внутри namespace. Два ортогональных слоя
-// над натуральным ключом `(registry_id, name)` (D-1): (a) config-overlay —
+// над натуральным ключом `(namespace_id, name)` (D-1): (a) config-overlay —
 // DB-owned строка `repository_configs` в kacho-registry, несёт tenant-intent
 // (description/labels/visibility/created_at), переживает пустой repo (durable);
 // (b) проекция из zot (source of truth = zot) — счётчики/размеры/типы/timestamps
@@ -346,9 +346,9 @@ func (x *Registry) GetDefaultVisibility() Visibility {
 type Repository struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID реестра-владельца.
-	RegistryId string `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId string `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	// Имя репозитория внутри namespace (напр. "backend/api"). Immutable — смена
-	// только через RenameRepository (не Update). Натуральный ключ (registry_id, name).
+	// только через RenameRepository (не Update). Натуральный ключ (namespace_id, name).
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Число тегов.
 	TagCount int32 `protobuf:"varint,3,opt,name=tag_count,json=tagCount,proto3" json:"tag_count,omitempty"`
@@ -374,7 +374,7 @@ type Repository struct {
 	// Метки репозитория (overlay, mutable через UpdateRepository). Пусто у ephemeral.
 	Labels map[string]string `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Публичность (overlay-authoritative, дефолт PRIVATE — наследуется из
-	// Registry.default_visibility на create; admin-gate на →PUBLIC, D-6). Ephemeral
+	// Namespace.default_repository_visibility на create; admin-gate на →PUBLIC, D-6). Ephemeral
 	// repo несёт PRIVATE by default.
 	Visibility Visibility `protobuf:"varint,9,opt,name=visibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"visibility,omitempty"`
 	// Output-only: момент создания overlay-строки (durable-repo), truncate до секунд.
@@ -414,9 +414,9 @@ func (*Repository) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *Repository) GetRegistryId() string {
+func (x *Repository) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -509,7 +509,7 @@ func (x *Repository) GetCreatedAt() *timestamppb.Timestamp {
 type Tag struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID реестра-владельца.
-	RegistryId string `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId string `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	// Имя репозитория.
 	Repository string `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	// Тег (напр. "v1.2.0", "latest").
@@ -567,9 +567,9 @@ func (*Tag) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *Tag) GetRegistryId() string {
+func (x *Tag) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -656,7 +656,7 @@ func (x *Tag) GetDownloadCount() int64 {
 type Referrer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID реестра-владельца.
-	RegistryId string `protobuf:"bytes,1,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	NamespaceId string `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	// Имя репозитория, к которому привязан referrer.
 	Repository string `protobuf:"bytes,2,opt,name=repository,proto3" json:"repository,omitempty"`
 	// Digest subject-манифеста, на который ссылается referrer (напр. "sha256:...").
@@ -706,9 +706,9 @@ func (*Referrer) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *Referrer) GetRegistryId() string {
+func (x *Referrer) GetNamespaceId() string {
 	if x != nil {
-		return x.RegistryId
+		return x.NamespaceId
 	}
 	return ""
 }
@@ -766,28 +766,27 @@ var File_kacho_cloud_registry_v1_registry_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"\n" +
-	"&kacho/cloud/registry/v1/registry.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x04\n" +
-	"\bRegistry\x12\x0e\n" +
+	"&kacho/cloud/registry/v1/registry.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x04\n" +
+	"\tNamespace\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x129\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x05 \x01(\tR\vdescription\x12E\n" +
-	"\x06labels\x18\x06 \x03(\v2-.kacho.cloud.registry.v1.Registry.LabelsEntryR\x06labels\x12\x1a\n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\x12F\n" +
+	"\x06labels\x18\x06 \x03(\v2..kacho.cloud.registry.v1.Namespace.LabelsEntryR\x06labels\x12\x1a\n" +
 	"\bendpoint\x18\a \x01(\tR\bendpoint\x12)\n" +
-	"\x10repository_count\x18\b \x01(\x05R\x0frepositoryCount\x12?\n" +
+	"\x10repository_count\x18\b \x01(\x05R\x0frepositoryCount\x12@\n" +
 	"\x06status\x18\n" +
-	" \x01(\x0e2'.kacho.cloud.registry.v1.RegistryStatusR\x06status\x12R\n" +
-	"\x12default_visibility\x18\t \x01(\x0e2#.kacho.cloud.registry.v1.VisibilityR\x11defaultVisibility\x1a9\n" +
+	" \x01(\x0e2(.kacho.cloud.registry.v1.NamespaceStatusR\x06status\x12g\n" +
+	"\x1ddefault_repository_visibility\x18\t \x01(\x0e2#.kacho.cloud.registry.v1.VisibilityR\x1bdefaultRepositoryVisibility\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe1\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe3\x05\n" +
 	"\n" +
-	"Repository\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x12\n" +
+	"Repository\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
 	"\ttag_count\x18\x03 \x01(\x05R\btagCount\x12\x1d\n" +
 	"\n" +
@@ -808,10 +807,9 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x93\x03\n" +
-	"\x03Tag\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x95\x03\n" +
+	"\x03Tag\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12\x10\n" +
@@ -827,10 +825,9 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"\x0elast_pulled_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\flastPulledAt\x12\x1b\n" +
 	"\tpushed_by\x18\n" +
 	" \x01(\tR\bpushedBy\x12%\n" +
-	"\x0edownload_count\x18\v \x01(\x03R\rdownloadCount\"\x9f\x03\n" +
-	"\bReferrer\x12\x1f\n" +
-	"\vregistry_id\x18\x01 \x01(\tR\n" +
-	"registryId\x12\x1e\n" +
+	"\x0edownload_count\x18\v \x01(\x03R\rdownloadCount\"\xa1\x03\n" +
+	"\bReferrer\x12!\n" +
+	"\fnamespace_id\x18\x01 \x01(\tR\vnamespaceId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12%\n" +
@@ -844,11 +841,11 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*k\n" +
-	"\x0eRegistryStatus\x12\x1f\n" +
-	"\x1bREGISTRY_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
-	"\x16REGISTRY_STATUS_ACTIVE\x10\x01\x12\x1c\n" +
-	"\x18REGISTRY_STATUS_DELETING\x10\x02*\x87\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*o\n" +
+	"\x0fNamespaceStatus\x12 \n" +
+	"\x1cNAMESPACE_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17NAMESPACE_STATUS_ACTIVE\x10\x01\x12\x1d\n" +
+	"\x19NAMESPACE_STATUS_DELETING\x10\x02*\x87\x01\n" +
 	"\fArtifactType\x12\x1d\n" +
 	"\x19ARTIFACT_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dARTIFACT_TYPE_CONTAINER_IMAGE\x10\x01\x12\x1c\n" +
@@ -876,23 +873,23 @@ func file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP() []byte {
 var file_kacho_cloud_registry_v1_registry_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_kacho_cloud_registry_v1_registry_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kacho_cloud_registry_v1_registry_proto_goTypes = []any{
-	(RegistryStatus)(0),           // 0: kacho.cloud.registry.v1.RegistryStatus
+	(NamespaceStatus)(0),          // 0: kacho.cloud.registry.v1.NamespaceStatus
 	(ArtifactType)(0),             // 1: kacho.cloud.registry.v1.ArtifactType
 	(Visibility)(0),               // 2: kacho.cloud.registry.v1.Visibility
-	(*Registry)(nil),              // 3: kacho.cloud.registry.v1.Registry
+	(*Namespace)(nil),             // 3: kacho.cloud.registry.v1.Namespace
 	(*Repository)(nil),            // 4: kacho.cloud.registry.v1.Repository
 	(*Tag)(nil),                   // 5: kacho.cloud.registry.v1.Tag
 	(*Referrer)(nil),              // 6: kacho.cloud.registry.v1.Referrer
-	nil,                           // 7: kacho.cloud.registry.v1.Registry.LabelsEntry
+	nil,                           // 7: kacho.cloud.registry.v1.Namespace.LabelsEntry
 	nil,                           // 8: kacho.cloud.registry.v1.Repository.LabelsEntry
 	nil,                           // 9: kacho.cloud.registry.v1.Referrer.AnnotationsEntry
 	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_kacho_cloud_registry_v1_registry_proto_depIdxs = []int32{
-	10, // 0: kacho.cloud.registry.v1.Registry.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 1: kacho.cloud.registry.v1.Registry.labels:type_name -> kacho.cloud.registry.v1.Registry.LabelsEntry
-	0,  // 2: kacho.cloud.registry.v1.Registry.status:type_name -> kacho.cloud.registry.v1.RegistryStatus
-	2,  // 3: kacho.cloud.registry.v1.Registry.default_visibility:type_name -> kacho.cloud.registry.v1.Visibility
+	10, // 0: kacho.cloud.registry.v1.Namespace.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 1: kacho.cloud.registry.v1.Namespace.labels:type_name -> kacho.cloud.registry.v1.Namespace.LabelsEntry
+	0,  // 2: kacho.cloud.registry.v1.Namespace.status:type_name -> kacho.cloud.registry.v1.NamespaceStatus
+	2,  // 3: kacho.cloud.registry.v1.Namespace.default_repository_visibility:type_name -> kacho.cloud.registry.v1.Visibility
 	10, // 4: kacho.cloud.registry.v1.Repository.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 5: kacho.cloud.registry.v1.Repository.artifact_type:type_name -> kacho.cloud.registry.v1.ArtifactType
 	1,  // 6: kacho.cloud.registry.v1.Repository.artifact_types:type_name -> kacho.cloud.registry.v1.ArtifactType

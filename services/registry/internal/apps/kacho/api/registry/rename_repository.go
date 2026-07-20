@@ -31,11 +31,11 @@ import (
 // (4) durable → RekeyConfig (re-key UPDATE, A16) | ephemeral → InsertConfig под new_name
 // (auto-promote → durable, A23) — одностейтментная запись под PK-backstop (A18); FGA
 // re-register new / unregister old + public-grant governance в той же tx.
-func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, newName string) (*operations.Operation, error) {
+func (u *UseCase) RenameRepository(ctx context.Context, namespaceID, repository, newName string) (*operations.Operation, error) {
 	if err := u.assertRepoWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(registryID); err != nil {
+	if err := ValidateNamespaceID(namespaceID); err != nil {
 		return nil, err
 	}
 	if err := domain.ValidateRepositoryName("repository", repository); err != nil {
@@ -51,8 +51,8 @@ func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, 
 	principal := operations.PrincipalFromContext(ctx)
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Rename Repository %s/%s → %s", registryID, repository, newName),
-		&registryv1.RenameRepositoryMetadata{RegistryId: registryID, Repository: repository, NewName: newName},
+		fmt.Sprintf("Rename Repository %s/%s → %s", namespaceID, repository, newName),
+		&registryv1.RenameRepositoryMetadata{NamespaceId: namespaceID, Repository: repository, NewName: newName},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -63,7 +63,7 @@ func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, 
 
 	operations.Run(ctx, u.ops, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		wctx := operations.WithPrincipal(workerCtx, principal)
-		renamed, rerr := u.doRename(wctx, registryID, repository, newName, principal)
+		renamed, rerr := u.doRename(wctx, namespaceID, repository, newName, principal)
 		if rerr != nil {
 			return nil, rerr
 		}
@@ -75,8 +75,8 @@ func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, 
 
 // doRename исполняет rename в worker'е: класс источника, collision-precheck, engine
 // re-home (fail-closed A21), overlay re-key/promote под PK-backstop, projection-merge.
-func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName string, principal operations.Principal) (*domain.Repository, error) {
-	overlay, oerr := u.cfg.GetConfig(ctx, registryID, repository)
+func (u *UseCase) doRename(ctx context.Context, namespaceID, repository, newName string, principal operations.Principal) (*domain.Repository, error) {
+	overlay, oerr := u.cfg.GetConfig(ctx, namespaceID, repository)
 	durable := true
 	if oerr != nil {
 		if !errors.Is(oerr, regerrors.ErrNotFound) {
@@ -85,17 +85,17 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 		durable = false // ephemeral (проекция без overlay) → auto-promote (A23)
 	}
 
-	if cerr := u.assertTargetFree(ctx, registryID, newName); cerr != nil {
+	if cerr := u.assertTargetFree(ctx, namespaceID, newName); cerr != nil {
 		return nil, cerr
 	}
 
 	// Engine re-home old→new (многошаговая НЕ-атомарная OCI-операция). Движок недоступен
 	// → UNAVAILABLE fail-closed: overlay-имя НЕ меняем, старое имя резолвится (A21).
-	if merr := u.zot.RenameRepository(ctx, registryID, repository, newName); merr != nil {
+	if merr := u.zot.RenameRepository(ctx, namespaceID, repository, newName); merr != nil {
 		return nil, mapRepoErr(merr)
 	}
 
-	reg, gerr := u.reader.Get(ctx, registryID)
+	reg, gerr := u.reader.Get(ctx, namespaceID)
 	if gerr != nil {
 		return nil, mapRepoErr(gerr)
 	}
@@ -105,19 +105,19 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 		visibility = overlay.Visibility
 	}
 	visibility = resolveVisibility(visibility, reg.DefaultVisibility)
-	intents := renameIntents(registryID, repository, newName, reg.ProjectID, principal, visibility)
+	intents := renameIntents(namespaceID, repository, newName, reg.ProjectID, principal, visibility)
 
 	var (
 		written *domain.RepositoryConfig
 		werr    error
 	)
 	if durable {
-		written, werr = u.cfg.RekeyConfig(ctx, registryID, repository, newName, intents...)
+		written, werr = u.cfg.RekeyConfig(ctx, namespaceID, repository, newName, intents...)
 	} else {
 		promoted := &domain.RepositoryConfig{
-			RegistryID: registryID,
-			Name:       newName,
-			Visibility: visibility,
+			NamespaceID: namespaceID,
+			Name:        newName,
+			Visibility:  visibility,
 		}
 		written, werr = u.cfg.InsertConfig(ctx, promoted, intents...)
 	}
@@ -128,11 +128,11 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 		return nil, mapRepoErr(werr)
 	}
 
-	proj, perr := u.zot.RepositoryProjection(ctx, registryID, newName)
+	proj, perr := u.zot.RepositoryProjection(ctx, namespaceID, newName)
 	if perr != nil {
 		return nil, mapRepoErr(perr)
 	}
-	return mergeRepository(registryID, newName, written, proj), nil
+	return mergeRepository(namespaceID, newName, written, proj), nil
 }
 
 // assertTargetFree — целевое имя свободно (ни overlay-строки, ни проекции с тегами),
@@ -140,13 +140,13 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 // занято либо durable-overlay, либо pushed-контентом. DB PK-backstop (RekeyConfig/
 // InsertConfig) — авторитетный арбитр под concurrency (A18); эта проверка — ранний
 // reject до engine-remap (не re-home'им в занятое имя).
-func (u *UseCase) assertTargetFree(ctx context.Context, registryID, newName string) error {
-	if _, err := u.cfg.GetConfig(ctx, registryID, newName); err == nil {
+func (u *UseCase) assertTargetFree(ctx context.Context, namespaceID, newName string) error {
+	if _, err := u.cfg.GetConfig(ctx, namespaceID, newName); err == nil {
 		return failAlreadyExists("repository already exists")
 	} else if !errors.Is(err, regerrors.ErrNotFound) {
 		return mapRepoErr(err)
 	}
-	proj, perr := u.zot.RepositoryProjection(ctx, registryID, newName)
+	proj, perr := u.zot.RepositoryProjection(ctx, namespaceID, newName)
 	if perr != nil {
 		return mapRepoErr(perr)
 	}
@@ -160,16 +160,16 @@ func (u *UseCase) assertTargetFree(ctx context.Context, registryID, newName stri
 // (parent+owner создателя), unregister old repo, + public-grant governance по итоговому
 // visibility (PUBLIC → register(new)/unregister(old); PRIVATE → unregister(old) на всякий
 // случай, no-op в iam если tuple отсутствовал).
-func renameIntents(registryID, oldName, newName, projectID string, principal operations.Principal, visibility domain.Visibility) []OutboxIntent {
+func renameIntents(namespaceID, oldName, newName, projectID string, principal operations.Principal, visibility domain.Visibility) []OutboxIntent {
 	subject := domain.FGASubjectFromPrincipal(principal.Type, principal.ID)
 	intents := []OutboxIntent{
-		{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPush(registryID, newName, projectID, subject)},
-		{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepo(registryID, oldName)},
-		{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepoPublicGrant(registryID, oldName)},
+		{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPush(namespaceID, newName, projectID, subject)},
+		{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepo(namespaceID, oldName)},
+		{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepoPublicGrant(namespaceID, oldName)},
 	}
 	if visibility == domain.VisibilityPublic {
 		intents = append(intents,
-			OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(registryID, newName)})
+			OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(namespaceID, newName)})
 	}
 	return intents
 }

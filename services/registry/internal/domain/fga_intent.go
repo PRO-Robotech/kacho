@@ -25,7 +25,7 @@ import (
 const FGAObjectTypeRegistry = "registry_registry"
 
 // FGAObjectTypeRepository — FGA object-type конкретного репозитория (parent =
-// registry_registry). object-id — "<registryID>/<repo>". Per-repo verb-relations
+// registry_registry). object-id — "<namespaceID>/<repo>". Per-repo verb-relations
 // развязаны от namespace-tier: доступ к repo требует отдельного
 // verb-tuple, namespace-viewer НЕ видит все repos автоматически.
 const FGAObjectTypeRepository = "registry_repository"
@@ -119,7 +119,7 @@ func (t FGATuple) Valid() bool {
 // единица apply. Несёт labels + parent-project для output-only resource_mirror в
 // iam (питает label-selectable authz-scope; source of truth = kacho-registry).
 type RegisterIntent struct {
-	// Kind — вид ресурса для observability ("Registry"). Не участвует в apply.
+	// Kind — вид ресурса для observability ("Namespace"). Не участвует в apply.
 	Kind string `json:"kind"`
 	// ResourceID — id ресурса для observability/tracing. Не участвует в apply.
 	ResourceID string `json:"resource_id"`
@@ -157,24 +157,24 @@ func FGAObjectRef(objectType, objectID string) string {
 }
 
 // FGAProjectTuple — project-hierarchy tuple
-// "project:<projectID> #project @registry_registry:<registryID>".
-func FGAProjectTuple(registryID, projectID string) FGATuple {
+// "project:<projectID> #project @registry_registry:<namespaceID>".
+func FGAProjectTuple(namespaceID, projectID string) FGATuple {
 	return FGATuple{
 		SubjectID: FGAObjectRef(FGAObjectTypeProject, projectID),
 		Relation:  FGARelationProject,
-		Object:    FGAObjectRef(FGAObjectTypeRegistry, registryID),
+		Object:    FGAObjectRef(FGAObjectTypeRegistry, namespaceID),
 	}
 }
 
 // FGAOwnerTuple — creator owner-tuple
-// "<subject> #owner @registry_registry:<registryID>". subject — FGA subject-строка
+// "<subject> #owner @registry_registry:<namespaceID>". subject — FGA subject-строка
 // (напр. "user:usr…") аутентифицированного principal. Пустой subject → неполный
 // tuple; caller пропускает его (system-инициированный ресурс без human-owner).
-func FGAOwnerTuple(subject, registryID string) FGATuple {
+func FGAOwnerTuple(subject, namespaceID string) FGATuple {
 	return FGATuple{
 		SubjectID: subject,
 		Relation:  FGARelationOwner,
-		Object:    FGAObjectRef(FGAObjectTypeRegistry, registryID),
+		Object:    FGAObjectRef(FGAObjectTypeRegistry, namespaceID),
 	}
 }
 
@@ -236,13 +236,13 @@ func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 // RegisterIntentForCreate — intent на Create реестра: project-tuple ПЕРВЫМ, затем
 // (при аутентифицированном principal) owner-tuple. Несёт labels + parent-project
 // для label-selectable authz-scope в iam-mirror.
-func RegisterIntentForCreate(r *Registry, principalType, principalID string) RegisterIntent {
+func RegisterIntentForCreate(r *Namespace, principalType, principalID string) RegisterIntent {
 	tuples := []FGATuple{FGAProjectTuple(r.ID, r.ProjectID)}
 	if subject := FGASubjectFromPrincipal(principalType, principalID); subject != "" {
 		tuples = append(tuples, FGAOwnerTuple(subject, r.ID))
 	}
 	return RegisterIntent{
-		Kind:            "Registry",
+		Kind:            "Namespace",
 		ResourceID:      r.ID,
 		Tuples:          tuples,
 		Labels:          copyLabels(r.Labels),
@@ -253,9 +253,9 @@ func RegisterIntentForCreate(r *Registry, principalType, principalID string) Reg
 // RegisterIntentForUpdate — mirror-feed re-register на Update: project-tuple с
 // ОБНОВЛЁННЫМИ labels (без creator-tuple). Снятая из labels метка реально отзывает
 // label-scoped доступ в iam-mirror (security-инвариант против label-clear no-op).
-func RegisterIntentForUpdate(r *Registry) RegisterIntent {
+func RegisterIntentForUpdate(r *Namespace) RegisterIntent {
 	return RegisterIntent{
-		Kind:            "Registry",
+		Kind:            "Namespace",
 		ResourceID:      r.ID,
 		Tuples:          []FGATuple{FGAProjectTuple(r.ID, r.ProjectID)},
 		Labels:          copyLabels(r.Labels),
@@ -265,36 +265,36 @@ func RegisterIntentForUpdate(r *Registry) RegisterIntent {
 
 // UnregisterIntentForDelete — unregister-intent на Delete: снимает project-tuple
 // (owner-tuple снимается iam-side GC при unregister project-hierarchy).
-func UnregisterIntentForDelete(registryID, projectID string) RegisterIntent {
+func UnregisterIntentForDelete(namespaceID, projectID string) RegisterIntent {
 	return RegisterIntent{
-		Kind:       "Registry",
-		ResourceID: registryID,
-		Tuples:     []FGATuple{FGAProjectTuple(registryID, projectID)},
+		Kind:       "Namespace",
+		ResourceID: namespaceID,
+		Tuples:     []FGATuple{FGAProjectTuple(namespaceID, projectID)},
 	}
 }
 
-// repoObjectID — FGA object-id репозитория "<registryID>/<repo>".
-func repoObjectID(registryID, repo string) string { return registryID + "/" + repo }
+// repoObjectID — FGA object-id репозитория "<namespaceID>/<repo>".
+func repoObjectID(namespaceID, repo string) string { return namespaceID + "/" + repo }
 
 // FGARepoParentTuple — parent-hierarchy tuple репозитория
 // "registry_registry:<reg> #parent @registry_repository:<reg>/<repo>". Линкует repo
 // к namespace-реестру (наследование tier'ов project→registry→repository).
-func FGARepoParentTuple(registryID, repo string) FGATuple {
+func FGARepoParentTuple(namespaceID, repo string) FGATuple {
 	return FGATuple{
-		SubjectID: FGAObjectRef(FGAObjectTypeRegistry, registryID),
+		SubjectID: FGAObjectRef(FGAObjectTypeRegistry, namespaceID),
 		Relation:  FGARelationParent,
-		Object:    FGAObjectRef(FGAObjectTypeRepository, repoObjectID(registryID, repo)),
+		Object:    FGAObjectRef(FGAObjectTypeRepository, repoObjectID(namespaceID, repo)),
 	}
 }
 
 // FGARepoOwnerTuple — creator owner-tuple репозитория
 // "<subject> #owner @registry_repository:<reg>/<repo>". subject — FGA subject-строка
 // толкающего principal ("service_account:sva…"); пустой subject → tuple пропускается.
-func FGARepoOwnerTuple(registryID, repo, subject string) FGATuple {
+func FGARepoOwnerTuple(namespaceID, repo, subject string) FGATuple {
 	return FGATuple{
 		SubjectID: subject,
 		Relation:  FGARelationOwner,
-		Object:    FGAObjectRef(FGAObjectTypeRepository, repoObjectID(registryID, repo)),
+		Object:    FGAObjectRef(FGAObjectTypeRepository, repoObjectID(namespaceID, repo)),
 	}
 }
 
@@ -306,14 +306,14 @@ func FGARepoOwnerTuple(registryID, repo, subject string) FGATuple {
 // материализовал per-object v_* (без него репо невидим/непуллим даже владельцу).
 // Labels репо не несёт (у type нет own-table labels — label-scope неприменим).
 // subject — FGA subject толкающего.
-func RegisterIntentForRepoPush(registryID, repo, projectID, subject string) RegisterIntent {
-	tuples := []FGATuple{FGARepoParentTuple(registryID, repo)}
+func RegisterIntentForRepoPush(namespaceID, repo, projectID, subject string) RegisterIntent {
+	tuples := []FGATuple{FGARepoParentTuple(namespaceID, repo)}
 	if subject != "" {
-		tuples = append(tuples, FGARepoOwnerTuple(registryID, repo, subject))
+		tuples = append(tuples, FGARepoOwnerTuple(namespaceID, repo, subject))
 	}
 	return RegisterIntent{
 		Kind:            "Repository",
-		ResourceID:      repoObjectID(registryID, repo),
+		ResourceID:      repoObjectID(namespaceID, repo),
 		Tuples:          tuples,
 		ParentProjectID: projectID,
 	}
@@ -322,22 +322,22 @@ func RegisterIntentForRepoPush(registryID, repo, projectID, subject string) Regi
 // UnregisterIntentForRepo — unregister-intent на удаление последнего тега repo:
 // снимает parent-tuple registry_repository:<reg>/<repo> (owner-tuple снимается
 // iam-side GC при unregister parent-hierarchy) — не оставляем висячий authz-объект.
-func UnregisterIntentForRepo(registryID, repo string) RegisterIntent {
+func UnregisterIntentForRepo(namespaceID, repo string) RegisterIntent {
 	return RegisterIntent{
 		Kind:       "Repository",
-		ResourceID: repoObjectID(registryID, repo),
-		Tuples:     []FGATuple{FGARepoParentTuple(registryID, repo)},
+		ResourceID: repoObjectID(namespaceID, repo),
+		Tuples:     []FGATuple{FGARepoParentTuple(namespaceID, repo)},
 	}
 }
 
 // FGARepoPublicGetTuple — public-read wildcard tuple репозитория
 // "user:* #v_get @registry_repository:<reg>/<repo>". Существование этого tuple ⟺
 // visibility=PUBLIC (D-7): анонимный (`user:*`) data-plane read проходит Check.
-func FGARepoPublicGetTuple(registryID, repo string) FGATuple {
+func FGARepoPublicGetTuple(namespaceID, repo string) FGATuple {
 	return FGATuple{
 		SubjectID: FGASubjectPublicWildcard,
 		Relation:  FGARelationVGet,
-		Object:    FGAObjectRef(FGAObjectTypeRepository, repoObjectID(registryID, repo)),
+		Object:    FGAObjectRef(FGAObjectTypeRepository, repoObjectID(namespaceID, repo)),
 	}
 }
 
@@ -345,22 +345,22 @@ func FGARepoPublicGetTuple(registryID, repo string) FGATuple {
 // материализует "user:* v_get" на repo (visibility стал PUBLIC — per-repo flip B01,
 // create-with-PUBLIC B08, inherited-default B12). Идемпотентно at-least-once через
 // outbox: повторный register того же wildcard дедуплицируется iam-side.
-func RegisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
+func RegisterIntentForRepoPublicGrant(namespaceID, repo string) RegisterIntent {
 	return RegisterIntent{
 		Kind:       "RepositoryPublicGrant",
-		ResourceID: repoObjectID(registryID, repo),
-		Tuples:     []FGATuple{FGARepoPublicGetTuple(registryID, repo)},
+		ResourceID: repoObjectID(namespaceID, repo),
+		Tuples:     []FGATuple{FGARepoPublicGetTuple(namespaceID, repo)},
 	}
 }
 
 // UnregisterIntentForRepoPublicGrant — unregister-intent public-read wildcard tuple:
 // снимает "user:* v_get" (visibility стал PRIVATE — flip B06 — либо repo удалён/
 // переименован). anon pull снова fail-closed 404. Per-subject grants не трогаются.
-func UnregisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
+func UnregisterIntentForRepoPublicGrant(namespaceID, repo string) RegisterIntent {
 	return RegisterIntent{
 		Kind:       "RepositoryPublicGrant",
-		ResourceID: repoObjectID(registryID, repo),
-		Tuples:     []FGATuple{FGARepoPublicGetTuple(registryID, repo)},
+		ResourceID: repoObjectID(namespaceID, repo),
+		Tuples:     []FGATuple{FGARepoPublicGetTuple(namespaceID, repo)},
 	}
 }
 

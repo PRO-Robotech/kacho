@@ -81,11 +81,11 @@ func ValidateRepositoryName(field, value string) error {
 }
 
 // RepositoryConfig — DB-owned config-overlay OCI-репозитория (RG-1). Натуральный
-// ключ (RegistryID, Name). Overlay ⟂ projection: строка «переживает пустоту»
+// ключ (NamespaceID, Name). Overlay ⟂ projection: строка «переживает пустоту»
 // (durable-repo виден с tagCount=0), не источник контента (source of truth = zot).
 // visibility authoritative на overlay (D-6); description/labels — tenant-intent.
 type RepositoryConfig struct {
-	RegistryID  string
+	NamespaceID string
 	Name        string
 	Description string
 	Labels      map[string]string
@@ -97,7 +97,7 @@ type RepositoryConfig struct {
 // обязателен (owner-namespace), name — валидное OCI repo-имя, visibility —
 // конкретное PRIVATE|PUBLIC (UNSPECIFIED резолвится в default ДО Validate).
 func (c RepositoryConfig) Validate() error {
-	if c.RegistryID == "" {
+	if c.NamespaceID == "" {
 		return fmt.Errorf("registry_id is required")
 	}
 	if err := ValidateRepositoryName("repository", c.Name); err != nil {

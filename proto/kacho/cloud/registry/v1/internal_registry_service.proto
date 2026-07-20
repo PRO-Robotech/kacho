@@ -31,7 +31,7 @@ service InternalRegistryService {
     option (kacho.iam.authz.v1.required_relation) = "admin";
     option (kacho.iam.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
-      from_request_field: "registry_id"
+      from_request_field: "namespace_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
@@ -55,26 +55,26 @@ service InternalRegistryService {
 }
 
 message TriggerGarbageCollectionRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
 }
 
 message TriggerGarbageCollectionMetadata {
-  string registry_id = 1;
+  string namespace_id = 1;
 }
 
 message GarbageCollectionResult {
-  string registry_id = 1;
+  string namespace_id = 1;
   int64 blobs_removed = 2;
   int64 bytes_reclaimed = 3;
 }
 
 message GetRegistryStatsRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
 }
 
 // RegistryStats — инфра-проекция namespace (только :9091, security.md).
 message RegistryStats {
-  string registry_id = 1;
+  string namespace_id = 1;
   int32 repository_count = 2;
   int32 tag_count = 3;
   int64 total_size_bytes = 4;

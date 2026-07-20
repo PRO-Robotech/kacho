@@ -72,7 +72,7 @@ func (f *scriptedRegisterClient) registerObjects() []string {
 // ErrAlreadyApplied сразу после project-tuple → owner-tuple терялся навсегда.
 func TestRegisterApplier_PartialApplyRetry_OwnerTupleNotDropped(t *testing.T) {
 	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
+		&domain.Namespace{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
 	require.Len(t, intent.Tuples, 2, "intent must carry project-tuple + owner-tuple")
 
 	fake := &scriptedRegisterClient{
@@ -129,7 +129,7 @@ func TestUnregisterApplier_PartialApplyRetry_AllTuplesAttempted(t *testing.T) {
 // точной. Все tuple при этом всё равно должны быть опрошены.
 func TestRegisterApplier_AllTuplesAlreadyApplied_ReturnsAlreadyApplied(t *testing.T) {
 	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-2", ProjectID: "prj-2"}, "user", "usr-x")
+		&domain.Namespace{ID: "reg-2", ProjectID: "prj-2"}, "user", "usr-x")
 	require.Len(t, intent.Tuples, 2)
 
 	fake := &scriptedRegisterClient{
@@ -152,7 +152,7 @@ func TestRegisterApplier_AllTuplesAlreadyApplied_ReturnsAlreadyApplied(t *testin
 // permanent (poison), даже если предыдущие tuple прошли.
 func TestRegisterApplier_PermanentOnLaterTuple_StopsAndPoisons(t *testing.T) {
 	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-3", ProjectID: "prj-3"}, "user", "usr-y")
+		&domain.Namespace{ID: "reg-3", ProjectID: "prj-3"}, "user", "usr-y")
 	require.Len(t, intent.Tuples, 2)
 
 	fake := &scriptedRegisterClient{
@@ -173,7 +173,7 @@ func TestRegisterApplier_PermanentOnLaterTuple_StopsAndPoisons(t *testing.T) {
 // tuple всплывает сырым (drainer → transient retry) после предыдущих OK.
 func TestRegisterApplier_TransientOnLaterTuple_Retries(t *testing.T) {
 	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-4", ProjectID: "prj-4"}, "user", "usr-w")
+		&domain.Namespace{ID: "reg-4", ProjectID: "prj-4"}, "user", "usr-w")
 	require.Len(t, intent.Tuples, 2)
 
 	fake := &scriptedRegisterClient{
@@ -193,7 +193,7 @@ func TestRegisterApplier_TransientOnLaterTuple_Retries(t *testing.T) {
 // TestRegisterApplier_HappyPath_AllApplied — все tuple применяются, возвращается nil.
 func TestRegisterApplier_HappyPath_AllApplied(t *testing.T) {
 	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-5", ProjectID: "prj-5"}, "user", "usr-v")
+		&domain.Namespace{ID: "reg-5", ProjectID: "prj-5"}, "user", "usr-v")
 	fake := &scriptedRegisterClient{}
 	applier := NewRegisterApplier(fake)
 
@@ -262,7 +262,7 @@ func TestClassifyRegisterErr(t *testing.T) {
 func TestDecodeRegisterIntent(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		in := domain.RegisterIntentForCreate(
-			&domain.Registry{ID: "reg-d", ProjectID: "prj-d"}, "user", "usr-d")
+			&domain.Namespace{ID: "reg-d", ProjectID: "prj-d"}, "user", "usr-d")
 		b, err := in.Marshal()
 		require.NoError(t, err)
 		got, err := DecodeRegisterIntent(b)

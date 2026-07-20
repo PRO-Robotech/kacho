@@ -32,7 +32,7 @@ func TestZot_ArtifactType_DockerImage(t *testing.T) {
 	fz.addGqlTag("reg-A/app", containerTag("v1", "sha256:app1", 100, "linux", "amd64"))
 	srv := fz.server(t)
 
-	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 	r := repoByName(t, repos, "app")
 	require.Equal(t, domain.ArtifactTypeContainerImage, r.ArtifactType)
@@ -45,7 +45,7 @@ func TestZot_ArtifactType_HelmChart(t *testing.T) {
 	fz.addGqlTag("reg-A/chart", helmTag("1.0.0", "sha256:chart1", 40))
 	srv := fz.server(t)
 
-	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 	r := repoByName(t, repos, "chart")
 	require.Equal(t, domain.ArtifactTypeHelmChart, r.ArtifactType)
@@ -62,7 +62,7 @@ func TestZot_ArtifactType_MultiArchIndex(t *testing.T) {
 	})
 	srv := fz.server(t)
 
-	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 	r := repoByName(t, repos, "multi")
 	require.Equal(t, domain.ArtifactTypeContainerImage, r.ArtifactType)
@@ -79,7 +79,7 @@ func TestZot_ArtifactType_Unclassifiable_Unspecified(t *testing.T) {
 	})
 	srv := fz.server(t)
 
-	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err, "неклассифицируемый тег не роняет ListRepositories")
 	require.Len(t, repos, 1, "репо всё равно в проекции")
 	r := repoByName(t, repos, "app")
@@ -95,7 +95,7 @@ func TestZot_ArtifactType_SetDedup(t *testing.T) {
 	fz.addGqlTag("reg-A/app", containerTag("v2", "sha256:app2", 120, "linux", "arm64"))
 	srv := fz.server(t)
 
-	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := zotclient.New(srv.URL).ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 	r := repoByName(t, repos, "app")
 	require.Equal(t, []domain.ArtifactType{domain.ArtifactTypeContainerImage}, r.ArtifactTypes, "dedup: один элемент")

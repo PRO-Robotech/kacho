@@ -85,8 +85,8 @@ func TestRepoAuthz_REG22_FilterRepos_PerRepo(t *testing.T) {
 	}}
 	ra := newRepoAuthz(az)
 	repos := []*domain.Repository{
-		{RegistryID: "reg-A", Name: "app", TagCount: 2},
-		{RegistryID: "reg-A", Name: "web", TagCount: 1},
+		{NamespaceID: "reg-A", Name: "app", TagCount: 2},
+		{NamespaceID: "reg-A", Name: "web", TagCount: 1},
 	}
 	got, err := ra.filterRepos(carolCtx(), "reg-A", repos)
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestRepoAuthz_FailClosed_IAMError(t *testing.T) {
 	az := &recordingAuthorizer{err: regerrors.ErrUnavailable}
 	ra := newRepoAuthz(az)
 	require.Equal(t, codes.Unavailable, codeOf(t, ra.namespaceGate(carolCtx(), "reg-A")))
-	_, ferr := ra.filterRepos(carolCtx(), "reg-A", []*domain.Repository{{RegistryID: "reg-A", Name: "app"}})
+	_, ferr := ra.filterRepos(carolCtx(), "reg-A", []*domain.Repository{{NamespaceID: "reg-A", Name: "app"}})
 	require.Equal(t, codes.Unavailable, codeOf(t, ferr))
 	require.Equal(t, codes.Unavailable, codeOf(t, ra.checkRepo(carolCtx(), "reg-A", "app", relationVList)))
 }
@@ -141,7 +141,7 @@ func TestRepoAuthz_Breakglass_NilAuthorizer_Bypass(t *testing.T) {
 	ra := newRepoAuthz(nil)
 	require.NoError(t, ra.namespaceGate(carolCtx(), "reg-A"))
 	require.NoError(t, ra.checkRepo(carolCtx(), "reg-A", "app", relationVDelete))
-	repos := []*domain.Repository{{RegistryID: "reg-A", Name: "app"}, {RegistryID: "reg-A", Name: "web"}}
+	repos := []*domain.Repository{{NamespaceID: "reg-A", Name: "app"}, {NamespaceID: "reg-A", Name: "web"}}
 	got, err := ra.filterRepos(carolCtx(), "reg-A", repos)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
@@ -153,8 +153,8 @@ func TestRepoAuthz_Breakglass_NilAuthorizer_Bypass(t *testing.T) {
 // ответ содержит ТОЛЬКО разрешённые repos (crit-1: call-gate + row-filter в handler).
 func TestHandler_REG22_ListRepositories_RowFiltered(t *testing.T) {
 	zot := &fakeZotH{repos: []*domain.Repository{
-		{RegistryID: validReg, Name: "app", TagCount: 2},
-		{RegistryID: validReg, Name: "web", TagCount: 1},
+		{NamespaceID: validReg, Name: "app", TagCount: 2},
+		{NamespaceID: validReg, Name: "web", TagCount: 1},
 	}}
 	az := &recordingAuthorizer{allow: map[string]bool{
 		registryObjectRef(validReg):          true,
@@ -162,7 +162,7 @@ func TestHandler_REG22_ListRepositories_RowFiltered(t *testing.T) {
 	}}
 	h := newTestHandler(zot, az)
 
-	resp, err := h.ListRepositories(carolCtx(), &registryv1.ListRepositoriesRequest{RegistryId: validReg})
+	resp, err := h.ListRepositories(carolCtx(), &registryv1.ListRepositoriesRequest{NamespaceId: validReg})
 	require.NoError(t, err)
 	require.Len(t, resp.GetRepositories(), 1)
 	require.Equal(t, "app", resp.GetRepositories()[0].GetName())
@@ -171,10 +171,10 @@ func TestHandler_REG22_ListRepositories_RowFiltered(t *testing.T) {
 // REG-22 — ListRepositories namespace-deny → NOT_FOUND (existence-hiding); zot не
 // раскрывается.
 func TestHandler_REG22_ListRepositories_NamespaceDeny_NotFound(t *testing.T) {
-	zot := &fakeZotH{repos: []*domain.Repository{{RegistryID: validReg, Name: "app"}}}
+	zot := &fakeZotH{repos: []*domain.Repository{{NamespaceID: validReg, Name: "app"}}}
 	az := &recordingAuthorizer{allow: map[string]bool{}}
 	h := newTestHandler(zot, az)
-	_, err := h.ListRepositories(carolCtx(), &registryv1.ListRepositoriesRequest{RegistryId: validReg})
+	_, err := h.ListRepositories(carolCtx(), &registryv1.ListRepositoriesRequest{NamespaceId: validReg})
 	require.Equal(t, codes.NotFound, codeOf(t, err))
 }
 
@@ -188,14 +188,14 @@ func TestHandler_ListRepositories_BoundsCheckFanoutToPage(t *testing.T) {
 	allow := map[string]bool{registryObjectRef(validReg): true}
 	for i := range repos {
 		name := fmt.Sprintf("repo-%04d", i)
-		repos[i] = &domain.Repository{RegistryID: validReg, Name: name}
+		repos[i] = &domain.Repository{NamespaceID: validReg, Name: name}
 		allow[repositoryObjectRef(validReg, name)] = true
 	}
 	az := &recordingAuthorizer{allow: allow}
 	h := newTestHandler(&fakeZotH{repos: repos}, az)
 
 	resp, err := h.ListRepositories(carolCtx(),
-		&registryv1.ListRepositoriesRequest{RegistryId: validReg, PageSize: 5})
+		&registryv1.ListRepositoriesRequest{NamespaceId: validReg, PageSize: 5})
 	require.NoError(t, err)
 	require.Len(t, resp.GetRepositories(), 5, "страница ограничена page_size")
 	require.NotEmpty(t, resp.GetNextPageToken(), "есть ещё репо → next-token")
@@ -214,7 +214,7 @@ func TestHandler_ListRepositories_PaginateWindowBeforeFilter_AllAllowedReachable
 	wantAllowed := map[string]bool{}
 	for i := range repos {
 		name := fmt.Sprintf("r%02d", i)
-		repos[i] = &domain.Repository{RegistryID: validReg, Name: name}
+		repos[i] = &domain.Repository{NamespaceID: validReg, Name: name}
 		if i%3 == 0 { // только каждый третий разрешён
 			allow[repositoryObjectRef(validReg, name)] = true
 			wantAllowed[name] = true
@@ -226,7 +226,7 @@ func TestHandler_ListRepositories_PaginateWindowBeforeFilter_AllAllowedReachable
 	token := ""
 	for i := 0; i < 100; i++ { // guard против бесконечного цикла
 		resp, err := h.ListRepositories(carolCtx(),
-			&registryv1.ListRepositoriesRequest{RegistryId: validReg, PageSize: 2, PageToken: token})
+			&registryv1.ListRepositoriesRequest{NamespaceId: validReg, PageSize: 2, PageToken: token})
 		require.NoError(t, err)
 		for _, r := range resp.GetRepositories() {
 			got[r.GetName()] = true
@@ -241,18 +241,18 @@ func TestHandler_ListRepositories_PaginateWindowBeforeFilter_AllAllowedReachable
 
 // REG-24 — ListTags per-repo allow → теги; deny → NOT_FOUND.
 func TestHandler_REG24_ListTags_PerRepoCheck(t *testing.T) {
-	zot := &fakeZotH{tags: []*domain.Tag{{RegistryID: validReg, Repository: "app", Tag: "v1", Digest: "sha256:x"}}}
+	zot := &fakeZotH{tags: []*domain.Tag{{NamespaceID: validReg, Repository: "app", Tag: "v1", Digest: "sha256:x"}}}
 	t.Run("allow", func(t *testing.T) {
 		az := &recordingAuthorizer{allow: map[string]bool{repositoryObjectRef(validReg, "app"): true}}
 		h := newTestHandler(zot, az)
-		resp, err := h.ListTags(carolCtx(), &registryv1.ListTagsRequest{RegistryId: validReg, Repository: "app"})
+		resp, err := h.ListTags(carolCtx(), &registryv1.ListTagsRequest{NamespaceId: validReg, Repository: "app"})
 		require.NoError(t, err)
 		require.Len(t, resp.GetTags(), 1)
 	})
 	t.Run("deny_not_found", func(t *testing.T) {
 		az := &recordingAuthorizer{allow: map[string]bool{}}
 		h := newTestHandler(zot, az)
-		_, err := h.ListTags(carolCtx(), &registryv1.ListTagsRequest{RegistryId: validReg, Repository: "web"})
+		_, err := h.ListTags(carolCtx(), &registryv1.ListTagsRequest{NamespaceId: validReg, Repository: "web"})
 		require.Equal(t, codes.NotFound, codeOf(t, err))
 	})
 }
@@ -264,7 +264,7 @@ func TestHandler_REG25_DeleteTag_AuthzGate(t *testing.T) {
 		zot := &fakeZotH{}
 		az := &recordingAuthorizer{allow: map[string]bool{}}
 		h := newTestHandler(zot, az)
-		_, err := h.DeleteTag(carolCtx(), &registryv1.DeleteTagRequest{RegistryId: validReg, Repository: "app", Tag: "v1"})
+		_, err := h.DeleteTag(carolCtx(), &registryv1.DeleteTagRequest{NamespaceId: validReg, Repository: "app", Tag: "v1"})
 		require.Equal(t, codes.NotFound, codeOf(t, err))
 		require.Zero(t, zot.deleteTagCalls, "deny → worker not started, zot untouched")
 	})
@@ -272,7 +272,7 @@ func TestHandler_REG25_DeleteTag_AuthzGate(t *testing.T) {
 		zot := &fakeZotH{}
 		az := &recordingAuthorizer{allow: map[string]bool{repositoryObjectRef(validReg, "app"): true}}
 		h := newTestHandler(zot, az)
-		op, err := h.DeleteTag(carolCtx(), &registryv1.DeleteTagRequest{RegistryId: validReg, Repository: "app", Tag: "v1"})
+		op, err := h.DeleteTag(carolCtx(), &registryv1.DeleteTagRequest{NamespaceId: validReg, Repository: "app", Tag: "v1"})
 		require.NoError(t, err)
 		require.NotNil(t, op)
 		require.False(t, op.GetDone())
@@ -289,21 +289,21 @@ func TestHandler_REG25_DeleteTag_AuthzGate(t *testing.T) {
 // что filterRepos.
 
 // deleteTagOpH — repo-scoped операция (DeleteTagMetadata несёт repository/tag).
-func deleteTagOpH(t *testing.T, id, registryID, repo, tag string) operations.Operation {
+func deleteTagOpH(t *testing.T, id, namespaceID, repo, tag string) operations.Operation {
 	t.Helper()
-	md, err := anypb.New(&registryv1.DeleteTagMetadata{RegistryId: registryID, Repository: repo, Tag: tag})
+	md, err := anypb.New(&registryv1.DeleteTagMetadata{NamespaceId: namespaceID, Repository: repo, Tag: tag})
 	require.NoError(t, err)
 	return operations.Operation{
 		ID:          id,
-		Description: fmt.Sprintf("Delete tag %s of %s/%s", tag, registryID, repo),
+		Description: fmt.Sprintf("Delete tag %s of %s/%s", tag, namespaceID, repo),
 		Metadata:    md,
 	}
 }
 
 // registryLevelOpH — registry-level операция (CreateRegistryMetadata; no repository).
-func registryLevelOpH(t *testing.T, id, registryID, desc string) operations.Operation {
+func registryLevelOpH(t *testing.T, id, namespaceID, desc string) operations.Operation {
 	t.Helper()
-	md, err := anypb.New(&registryv1.CreateRegistryMetadata{RegistryId: registryID})
+	md, err := anypb.New(&registryv1.CreateNamespaceMetadata{NamespaceId: namespaceID})
 	require.NoError(t, err)
 	return operations.Operation{ID: id, Description: desc, Metadata: md}
 }
@@ -325,7 +325,7 @@ func TestHandler_ListOperations_DropsRepoScopedOp_WithoutPerRepoVList(t *testing
 	az := &recordingAuthorizer{allow: map[string]bool{registryObjectRef(validReg): true}}
 	h := newTestHandlerOps(ops, az)
 
-	resp, err := h.ListOperations(carolCtx(), &registryv1.ListRegistryOperationsRequest{RegistryId: validReg})
+	resp, err := h.ListOperations(carolCtx(), &registryv1.ListNamespaceOperationsRequest{NamespaceId: validReg})
 	require.NoError(t, err)
 	require.Len(t, resp.GetOperations(), 1, "repo-scoped op без per-repo v_list должна выпасть")
 	require.Equal(t, "rop-create", resp.GetOperations()[0].GetId())
@@ -347,7 +347,7 @@ func TestHandler_ListOperations_KeepsRepoScopedOp_WithPerRepoVList(t *testing.T)
 	}}
 	h := newTestHandlerOps(ops, az)
 
-	resp, err := h.ListOperations(carolCtx(), &registryv1.ListRegistryOperationsRequest{RegistryId: validReg})
+	resp, err := h.ListOperations(carolCtx(), &registryv1.ListNamespaceOperationsRequest{NamespaceId: validReg})
 	require.NoError(t, err)
 	require.Len(t, resp.GetOperations(), 2, "с per-repo v_list видны обе op")
 }
@@ -360,7 +360,7 @@ func TestHandler_ListOperations_RegistryLevelOpAlwaysVisible(t *testing.T) {
 	az := &recordingAuthorizer{allow: map[string]bool{}} // всё per-repo deny
 	h := newTestHandlerOps(ops, az)
 
-	resp, err := h.ListOperations(carolCtx(), &registryv1.ListRegistryOperationsRequest{RegistryId: validReg})
+	resp, err := h.ListOperations(carolCtx(), &registryv1.ListNamespaceOperationsRequest{NamespaceId: validReg})
 	require.NoError(t, err)
 	require.Len(t, resp.GetOperations(), 1)
 	require.Equal(t, "rop-create", resp.GetOperations()[0].GetId())
@@ -375,7 +375,7 @@ func TestHandler_ListOperations_FailClosed_IAMError(t *testing.T) {
 	az := &recordingAuthorizer{err: regerrors.ErrUnavailable}
 	h := newTestHandlerOps(ops, az)
 
-	_, err := h.ListOperations(carolCtx(), &registryv1.ListRegistryOperationsRequest{RegistryId: validReg})
+	_, err := h.ListOperations(carolCtx(), &registryv1.ListNamespaceOperationsRequest{NamespaceId: validReg})
 	require.Equal(t, codes.Unavailable, codeOf(t, err))
 }
 
@@ -387,7 +387,7 @@ func TestHandler_ListOperations_Breakglass_NilAuthorizer_AllVisible(t *testing.T
 	ops.put(deleteTagOpH(t, "rop-deltag", validReg, "app-b", "v1"))
 	h := newTestHandlerOps(ops, nil)
 
-	resp, err := h.ListOperations(carolCtx(), &registryv1.ListRegistryOperationsRequest{RegistryId: validReg})
+	resp, err := h.ListOperations(carolCtx(), &registryv1.ListNamespaceOperationsRequest{NamespaceId: validReg})
 	require.NoError(t, err)
 	require.Len(t, resp.GetOperations(), 2)
 }
@@ -401,19 +401,19 @@ func newTestHandler(zot registry.ZotClient, az Authorizer) *RegistryHandler {
 
 type stubRepo struct{}
 
-func (stubRepo) Get(context.Context, string) (*domain.Registry, error) {
+func (stubRepo) Get(context.Context, string) (*domain.Namespace, error) {
 	return nil, regerrors.ErrNotFound
 }
-func (stubRepo) List(context.Context, registry.ListQuery) ([]*domain.Registry, string, error) {
+func (stubRepo) List(context.Context, registry.ListQuery) ([]*domain.Namespace, string, error) {
 	return nil, "", nil
 }
-func (stubRepo) Insert(context.Context, *domain.Registry, domain.RegisterIntent) (*domain.Registry, error) {
+func (stubRepo) Insert(context.Context, *domain.Namespace, domain.RegisterIntent) (*domain.Namespace, error) {
 	return nil, nil
 }
-func (stubRepo) Update(context.Context, registry.UpdateSpec, func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error) {
+func (stubRepo) Update(context.Context, registry.UpdateSpec, func(*domain.Namespace) domain.RegisterIntent) (*domain.Namespace, error) {
 	return nil, nil
 }
-func (stubRepo) MarkDeleting(context.Context, string) (*domain.Registry, error)    { return nil, nil }
+func (stubRepo) MarkDeleting(context.Context, string) (*domain.Namespace, error)   { return nil, nil }
 func (stubRepo) Delete(context.Context, string, domain.RegisterIntent) error       { return nil }
 func (stubRepo) RegisterRepository(context.Context, domain.RegisterIntent) error   { return nil }
 func (stubRepo) UnregisterRepository(context.Context, domain.RegisterIntent) error { return nil }

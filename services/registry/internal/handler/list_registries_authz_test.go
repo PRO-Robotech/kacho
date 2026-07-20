@@ -53,12 +53,12 @@ func (b *barrierAuthorizer) Check(_ context.Context, _, _, _ string) (bool, erro
 func TestRepoAuthz_REG06_FilterRegistries_Concurrent(t *testing.T) {
 	az := newBarrierAuthorizer(2)
 	ra := newRepoAuthz(az)
-	regs := []*domain.Registry{
-		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive},
-		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.RegistryStatusActive},
+	regs := []*domain.Namespace{
+		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.NamespaceStatusActive},
+		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.NamespaceStatusActive},
 	}
 	done := make(chan struct{})
-	var got []*domain.Registry
+	var got []*domain.Namespace
 	var ferr error
 	go func() {
 		got, ferr = ra.filterRegistries(carolCtx(), regs)
@@ -80,9 +80,9 @@ func TestRepoAuthz_REG06_FilterRegistries_PreservesOrder(t *testing.T) {
 		registryObjectRef(regA): true,
 		registryObjectRef(regB): true,
 	}}
-	regs := []*domain.Registry{
-		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive},
-		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.RegistryStatusActive},
+	regs := []*domain.Namespace{
+		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.NamespaceStatusActive},
+		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.NamespaceStatusActive},
 	}
 	got, err := newRepoAuthz(az).filterRegistries(carolCtx(), regs)
 	require.NoError(t, err)
@@ -91,21 +91,21 @@ func TestRepoAuthz_REG06_FilterRegistries_PreservesOrder(t *testing.T) {
 	require.Equal(t, regB, got[1].ID)
 }
 
-// listReader — фейк RegistryReader, возвращающий заранее заданный набор реестров
+// listReader — фейк NamespaceReader, возвращающий заранее заданный набор реестров
 // (сервер-side курсор эмулируется полем next).
 type listReader struct {
-	regs []*domain.Registry
+	regs []*domain.Namespace
 	next string
 }
 
-func (r listReader) Get(context.Context, string) (*domain.Registry, error) {
+func (r listReader) Get(context.Context, string) (*domain.Namespace, error) {
 	return nil, regerrors.ErrNotFound
 }
-func (r listReader) List(context.Context, registry.ListQuery) ([]*domain.Registry, string, error) {
+func (r listReader) List(context.Context, registry.ListQuery) ([]*domain.Namespace, string, error) {
 	return r.regs, r.next, nil
 }
 
-func newListHandler(reader registry.RegistryReader, az Authorizer) *RegistryHandler {
+func newListHandler(reader registry.NamespaceReader, az Authorizer) *RegistryHandler {
 	uc := registry.New(reader, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
 	return NewRegistryHandler(uc, az)
 }
@@ -118,72 +118,72 @@ const (
 // REG-06 — List row-filter: subject с v_list на registry_registry:regA но НЕ regB →
 // ответ содержит ТОЛЬКО regA (namespace-viewer НЕ видит чужие реестры).
 func TestHandler_REG06_List_RowFiltered(t *testing.T) {
-	reader := listReader{regs: []*domain.Registry{
-		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive},
-		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.RegistryStatusActive},
+	reader := listReader{regs: []*domain.Namespace{
+		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.NamespaceStatusActive},
+		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.NamespaceStatusActive},
 	}}
 	az := &recordingAuthorizer{allow: map[string]bool{
 		registryObjectRef(regA): true, // v_list на regA, regB — нет
 	}}
 	h := newListHandler(reader, az)
 
-	resp, err := h.List(carolCtx(), &registryv1.ListRegistriesRequest{ProjectId: "prj-P"})
+	resp, err := h.ListNamespaces(carolCtx(), &registryv1.ListNamespacesRequest{ProjectId: "prj-P"})
 	require.NoError(t, err)
-	require.Len(t, resp.GetRegistries(), 1)
-	require.Equal(t, regA, resp.GetRegistries()[0].GetId())
+	require.Len(t, resp.GetNamespaces(), 1)
+	require.Equal(t, regA, resp.GetNamespaces()[0].GetId())
 }
 
 // REG-06 — non-member (нет v_list ни на один реестр) → 200 + пустой список (НЕ 403,
 // exempt-parity: List не гейтится per-object Check).
 func TestHandler_REG06_List_NonMember_EmptyNot403(t *testing.T) {
-	reader := listReader{regs: []*domain.Registry{
-		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive},
+	reader := listReader{regs: []*domain.Namespace{
+		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.NamespaceStatusActive},
 	}}
 	az := &recordingAuthorizer{allow: map[string]bool{}} // ничего не разрешено
 	h := newListHandler(reader, az)
 
-	resp, err := h.List(carolCtx(), &registryv1.ListRegistriesRequest{ProjectId: "prj-P"})
+	resp, err := h.ListNamespaces(carolCtx(), &registryv1.ListNamespacesRequest{ProjectId: "prj-P"})
 	require.NoError(t, err, "non-member List → 200, не 403")
-	require.Empty(t, resp.GetRegistries())
+	require.Empty(t, resp.GetNamespaces())
 }
 
 // REG-06 — iam.Check недоступен → fail-closed UNAVAILABLE (НЕ отдаём
 // нефильтрованный список).
 func TestHandler_REG06_List_IAMError_Unavailable(t *testing.T) {
-	reader := listReader{regs: []*domain.Registry{
-		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive},
+	reader := listReader{regs: []*domain.Namespace{
+		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.NamespaceStatusActive},
 	}}
 	az := &recordingAuthorizer{err: regerrors.ErrUnavailable}
 	h := newListHandler(reader, az)
 
-	_, err := h.List(carolCtx(), &registryv1.ListRegistriesRequest{ProjectId: "prj-P"})
+	_, err := h.ListNamespaces(carolCtx(), &registryv1.ListNamespacesRequest{ProjectId: "prj-P"})
 	require.Equal(t, codes.Unavailable, codeOf(t, err))
 }
 
 // REG-06 — breakglass (nil Authorizer) → row-filter пропускается, все реестры видны.
 func TestHandler_REG06_List_Breakglass_All(t *testing.T) {
-	reader := listReader{regs: []*domain.Registry{
-		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive},
-		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.RegistryStatusActive},
+	reader := listReader{regs: []*domain.Namespace{
+		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.NamespaceStatusActive},
+		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.NamespaceStatusActive},
 	}}
 	h := newListHandler(reader, nil)
 
-	resp, err := h.List(carolCtx(), &registryv1.ListRegistriesRequest{ProjectId: "prj-P"})
+	resp, err := h.ListNamespaces(carolCtx(), &registryv1.ListNamespacesRequest{ProjectId: "prj-P"})
 	require.NoError(t, err)
-	require.Len(t, resp.GetRegistries(), 2)
+	require.Len(t, resp.GetNamespaces(), 2)
 }
 
 // REG-06 — next-page-token сохраняется после row-filter (курсор сервера не теряется,
 // клиент продолжает пагинацию даже если страница «схлопнулась» фильтром).
 func TestHandler_REG06_List_PreservesNextToken(t *testing.T) {
 	reader := listReader{
-		regs: []*domain.Registry{{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive}},
+		regs: []*domain.Namespace{{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.NamespaceStatusActive}},
 		next: "cursor-token",
 	}
 	az := &recordingAuthorizer{allow: map[string]bool{registryObjectRef(regA): true}}
 	h := newListHandler(reader, az)
 
-	resp, err := h.List(carolCtx(), &registryv1.ListRegistriesRequest{ProjectId: "prj-P"})
+	resp, err := h.ListNamespaces(carolCtx(), &registryv1.ListNamespacesRequest{ProjectId: "prj-P"})
 	require.NoError(t, err)
 	require.Equal(t, "cursor-token", resp.GetNextPageToken())
 }

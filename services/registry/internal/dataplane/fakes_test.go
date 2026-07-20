@@ -122,18 +122,18 @@ type fakeBackend struct {
 	catalogErr error
 }
 
-func (b *fakeBackend) RepoExists(ctx context.Context, registryID, repo string) (bool, error) {
+func (b *fakeBackend) RepoExists(ctx context.Context, namespaceID, repo string) (bool, error) {
 	if b.existsErr != nil {
 		return false, b.existsErr
 	}
-	return b.exists[registryID+"/"+repo], nil
+	return b.exists[namespaceID+"/"+repo], nil
 }
 
-func (b *fakeBackend) BlobInRepo(ctx context.Context, registryID, repo, digest string) (bool, error) {
+func (b *fakeBackend) BlobInRepo(ctx context.Context, namespaceID, repo, digest string) (bool, error) {
 	if b.blobErr != nil {
 		return false, b.blobErr
 	}
-	return b.blobs[registryID+"/"+repo+"|"+digest], nil
+	return b.blobs[namespaceID+"/"+repo+"|"+digest], nil
 }
 
 func (b *fakeBackend) CatalogRepoNames(ctx context.Context) ([]string, error) {
@@ -233,20 +233,20 @@ type fakeRegistryLookup struct {
 	calls             int
 }
 
-func (l *fakeRegistryLookup) RegistryProjectID(ctx context.Context, registryID string) (string, error) {
+func (l *fakeRegistryLookup) NamespaceProjectID(ctx context.Context, namespaceID string) (string, error) {
 	l.mu.Lock()
 	l.calls++
 	l.mu.Unlock()
 	if l.err != nil {
 		return "", l.err
 	}
-	return l.projectByRegistry[registryID], nil
+	return l.projectByRegistry[namespaceID], nil
 }
 
 // ---- fake UploadRecorder (per-repo blob-upload tracking, REG-33 Defect A) --
 
-// uploadKey — записанный (registryID, repo, digest) факт аплоада.
-type uploadKey struct{ registryID, repo, digest string }
+// uploadKey — записанный (namespaceID, repo, digest) факт аплоада.
+type uploadKey struct{ namespaceID, repo, digest string }
 
 type fakeUploadRecorder struct {
 	mu        sync.Mutex
@@ -257,32 +257,32 @@ type fakeUploadRecorder struct {
 	recCtxErr error           // ctx.Err() в момент RecordUploadedBlob (detach-регресс)
 }
 
-func uploadCacheKey(registryID, repo, digest string) string {
-	return registryID + "|" + repo + "|" + digest
+func uploadCacheKey(namespaceID, repo, digest string) string {
+	return namespaceID + "|" + repo + "|" + digest
 }
 
-func (u *fakeUploadRecorder) RecordUploadedBlob(ctx context.Context, registryID, repo, digest string) error {
+func (u *fakeUploadRecorder) RecordUploadedBlob(ctx context.Context, namespaceID, repo, digest string) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.recCtxErr = ctx.Err()
 	if u.recErr != nil {
 		return u.recErr
 	}
-	u.recorded = append(u.recorded, uploadKey{registryID, repo, digest})
+	u.recorded = append(u.recorded, uploadKey{namespaceID, repo, digest})
 	if u.uploaded == nil {
 		u.uploaded = map[string]bool{}
 	}
-	u.uploaded[uploadCacheKey(registryID, repo, digest)] = true
+	u.uploaded[uploadCacheKey(namespaceID, repo, digest)] = true
 	return nil
 }
 
-func (u *fakeUploadRecorder) BlobUploaded(ctx context.Context, registryID, repo, digest string) (bool, error) {
+func (u *fakeUploadRecorder) BlobUploaded(ctx context.Context, namespaceID, repo, digest string) (bool, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.getErr != nil {
 		return false, u.getErr
 	}
-	return u.uploaded[uploadCacheKey(registryID, repo, digest)], nil
+	return u.uploaded[uploadCacheKey(namespaceID, repo, digest)], nil
 }
 
 func (u *fakeUploadRecorder) recordedKeys() []uploadKey {
@@ -303,8 +303,8 @@ func (u *fakeUploadRecorder) observedRecCtxErr() error {
 
 // ---- fake PushGrantRecorder (per-subject push-ownership, REG-33 immediate-pull) ----
 
-// pushGrantKey — записанный (registryID, repo, subject) факт push-ownership.
-type pushGrantKey struct{ registryID, repo, subject string }
+// pushGrantKey — записанный (namespaceID, repo, subject) факт push-ownership.
+type pushGrantKey struct{ namespaceID, repo, subject string }
 
 type fakePushGrantRecorder struct {
 	mu        sync.Mutex
@@ -320,40 +320,40 @@ type fakePushGrantRecorder struct {
 	getCalls  int               // число вызовов PushGranted (проверка «fallback не трогается»)
 }
 
-func pushGrantCacheKey(registryID, repo, subject string) string {
-	return registryID + "|" + repo + "|" + subject
+func pushGrantCacheKey(namespaceID, repo, subject string) string {
+	return namespaceID + "|" + repo + "|" + subject
 }
 
-func (g *fakePushGrantRecorder) RecordPushGrant(ctx context.Context, registryID, repo, subject string) error {
+func (g *fakePushGrantRecorder) RecordPushGrant(ctx context.Context, namespaceID, repo, subject string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.recCtxErr = ctx.Err()
 	if g.recErr != nil {
 		return g.recErr
 	}
-	g.recorded = append(g.recorded, pushGrantKey{registryID, repo, subject})
+	g.recorded = append(g.recorded, pushGrantKey{namespaceID, repo, subject})
 	if g.granted == nil {
 		g.granted = map[string]bool{}
 	}
-	g.granted[pushGrantCacheKey(registryID, repo, subject)] = true
+	g.granted[pushGrantCacheKey(namespaceID, repo, subject)] = true
 	return nil
 }
 
-func (g *fakePushGrantRecorder) PushGranted(ctx context.Context, registryID, repo, subject string) (bool, error) {
+func (g *fakePushGrantRecorder) PushGranted(ctx context.Context, namespaceID, repo, subject string) (bool, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.getCalls++
 	if g.getErr != nil {
 		return false, g.getErr
 	}
-	return g.granted[pushGrantCacheKey(registryID, repo, subject)], nil
+	return g.granted[pushGrantCacheKey(namespaceID, repo, subject)], nil
 }
 
 // DeletePushGrant фиксирует вызов, убирает ключ из granted (симулирует «мост снят» — так
 // последующий PushGranted вернёт false, как после реального DELETE) и, если задан delCh,
 // неблокирующе сигналит тесту (для детерминированного ожидания async-delete из goroutine
 // хендлера). Ctx.Err() снимается для проверки detach (delete идёт на WithoutCancel-ctx).
-func (g *fakePushGrantRecorder) DeletePushGrant(ctx context.Context, registryID, repo, subject string) error {
+func (g *fakePushGrantRecorder) DeletePushGrant(ctx context.Context, namespaceID, repo, subject string) error {
 	g.mu.Lock()
 	g.delCtxErr = ctx.Err()
 	if g.delErr != nil {
@@ -361,10 +361,10 @@ func (g *fakePushGrantRecorder) DeletePushGrant(ctx context.Context, registryID,
 		g.mu.Unlock()
 		return err
 	}
-	key := pushGrantKey{registryID, repo, subject}
+	key := pushGrantKey{namespaceID, repo, subject}
 	g.deleted = append(g.deleted, key)
 	if g.granted != nil {
-		delete(g.granted, pushGrantCacheKey(registryID, repo, subject))
+		delete(g.granted, pushGrantCacheKey(namespaceID, repo, subject))
 	}
 	ch := g.delCh
 	g.mu.Unlock()

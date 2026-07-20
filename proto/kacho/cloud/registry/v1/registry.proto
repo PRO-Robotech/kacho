@@ -9,9 +9,9 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1";
 
-// Registry — тенант-namespace OCI/Docker-реестра Kachō.
+// Namespace — тенант-namespace OCI/Docker-реестра Kachō.
 //
-// Плоский ресурс (без K8s-envelope). Registry — НЕ отдельный инстанс движка, а
+// Плоский ресурс (без K8s-envelope). Namespace — НЕ отдельный инстанс движка, а
 // namespace над общим zot-бэкендом: клиент адресует образ как
 // `registry.kacho.local/<registry-id>/<repo>:tag`. Метаданные namespace хранит
 // kacho-registry; сами блобы/манифесты — в zot (S3-backed). Образы/теги в БД не
@@ -20,7 +20,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/
 // project_id — cross-domain ссылка на iam.Project (TEXT, без FK, валидируется
 // через iam.ProjectService.Get на Create). Owner-иерархия в FGA пишется через
 // fga-proxy (RegisterResource), object-type `registry_registry`.
-message Registry {
+message Namespace {
   // ID реестра. Prefix "reg" (kacho-corelib/ids.NewID). Immutable PK.
   string id = 1;
 
@@ -47,23 +47,23 @@ message Registry {
   int32 repository_count = 8;
 
   // Состояние жизненного цикла.
-  RegistryStatus status = 10;
+  NamespaceStatus status = 10;
 
   // Дефолтная публичность для НОВЫХ repo в namespace — сид Repository.visibility
   // на CreateRepository, когда явное visibility не задано (mutable через Update,
-  // дефолт PRIVATE / fail-safe). Переход default_visibility→PUBLIC требует registry
+  // дефолт PRIVATE / fail-safe). Переход default_repository_visibility→PUBLIC требует registry
   // admin (D-6: любой путь к PUBLIC — admin-gated). Смена НЕ перекрашивает
   // существующие repo (per-repo Repository.visibility остаётся authoritative).
-  Visibility default_visibility = 9;
+  Visibility default_repository_visibility = 9;
 }
 
-// RegistryStatus — терминальность DELETING обязательна (forward-only delete):
+// NamespaceStatus — терминальность DELETING обязательна (forward-only delete):
 // revert DELETING→ACTIVE запрещён, иначе partial-UNIQUE(project,name) конфликтует
 // с re-Create нового ACTIVE того же (project,name).
-enum RegistryStatus {
-  REGISTRY_STATUS_UNSPECIFIED = 0;
-  REGISTRY_STATUS_ACTIVE = 1;
-  REGISTRY_STATUS_DELETING = 2;
+enum NamespaceStatus {
+  NAMESPACE_STATUS_UNSPECIFIED = 0;
+  NAMESPACE_STATUS_ACTIVE = 1;
+  NAMESPACE_STATUS_DELETING = 2;
 }
 
 // ArtifactType — тип OCI-артефакта образа, классифицированный по config.mediaType
@@ -78,20 +78,20 @@ enum ArtifactType {
 }
 
 // Visibility — публичность репозитория (overlay-authoritative на Repository;
-// сид-дефолт на Registry.default_visibility). Дефолт PRIVATE (fail-safe).
+// сид-дефолт на Namespace.default_repository_visibility). Дефолт PRIVATE (fail-safe).
 // PUBLIC ⟺ FGA-tuple `user:* v_get registry_repository:<reg>/<repo>` (anonymous
 // pull через data-plane). ЛЮБОЙ путь, где принципал сам приводит ресурс к PUBLIC
-// (per-repo flip, create-with-PUBLIC, default_visibility→PUBLIC), требует registry
+// (per-repo flip, create-with-PUBLIC, default_repository_visibility→PUBLIC), требует registry
 // admin (D-6). Аноним к PRIVATE|absent-repo → uniform 404 (public-ность НЕ
 // existence-oracle).
 enum Visibility {
-  VISIBILITY_UNSPECIFIED = 0;  // не задано → наследует Registry.default_visibility
+  VISIBILITY_UNSPECIFIED = 0;  // не задано → наследует Namespace.default_repository_visibility
   PRIVATE = 1;  // приватный (дефолт) — только авторизованный v_get
   PUBLIC = 2;  // публичный — анонимный pull разрешён (user:* v_get tuple)
 }
 
 // Repository — OCI-репозиторий (образ) внутри namespace. Два ортогональных слоя
-// над натуральным ключом `(registry_id, name)` (D-1): (a) config-overlay —
+// над натуральным ключом `(namespace_id, name)` (D-1): (a) config-overlay —
 // DB-owned строка `repository_configs` в kacho-registry, несёт tenant-intent
 // (description/labels/visibility/created_at), переживает пустой repo (durable);
 // (b) проекция из zot (source of truth = zot) — счётчики/размеры/типы/timestamps
@@ -104,10 +104,10 @@ enum Visibility {
 // Per-repo authz object-type `registry_repository` (parent registry_registry).
 message Repository {
   // ID реестра-владельца.
-  string registry_id = 1;
+  string namespace_id = 1;
 
   // Имя репозитория внутри namespace (напр. "backend/api"). Immutable — смена
-  // только через RenameRepository (не Update). Натуральный ключ (registry_id, name).
+  // только через RenameRepository (не Update). Натуральный ключ (namespace_id, name).
   string name = 2;
 
   // Число тегов.
@@ -145,7 +145,7 @@ message Repository {
   map<string, string> labels = 8;
 
   // Публичность (overlay-authoritative, дефолт PRIVATE — наследуется из
-  // Registry.default_visibility на create; admin-gate на →PUBLIC, D-6). Ephemeral
+  // Namespace.default_repository_visibility на create; admin-gate на →PUBLIC, D-6). Ephemeral
   // repo несёт PRIVATE by default.
   Visibility visibility = 9;
 
@@ -157,7 +157,7 @@ message Repository {
 // Tag — тегированный образ (манифест) в репозитории. Read-only проекция из zot.
 message Tag {
   // ID реестра-владельца.
-  string registry_id = 1;
+  string namespace_id = 1;
 
   // Имя репозитория.
   string repository = 2;
@@ -204,7 +204,7 @@ message Tag {
 // Per-repo existence-hiding: unauthorized|absent repo → NOT_FOUND (как Repository).
 message Referrer {
   // ID реестра-владельца.
-  string registry_id = 1;
+  string namespace_id = 1;
 
   // Имя репозитория, к которому привязан referrer.
   string repository = 2;

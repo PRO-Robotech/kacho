@@ -56,7 +56,7 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 	if err := c.ready(); err != nil {
 		return nil, "", err
 	}
-	prefix := q.RegistryID + "/"
+	prefix := q.NamespaceID + "/"
 	var gs gqlGlobalSearchData
 	if err := c.gqlQuery(ctx, globalSearchQuery(prefix), &gs); err != nil {
 		return nil, "", err
@@ -94,7 +94,7 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 			if len(results) == 0 {
 				return nil // ghost: пустой repo — скрываем (nil остаётся, компактится ниже)
 			}
-			repos[i] = repositoryFromSummaries(q.RegistryID, strings.TrimPrefix(rs.Name, prefix), rs, results)
+			repos[i] = repositoryFromSummaries(q.NamespaceID, strings.TrimPrefix(rs.Name, prefix), rs, results)
 			return nil
 		})
 	}
@@ -116,9 +116,9 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 // UNSPECIFIED; artifact_type (primary) — первый из набора. last_pulled_at — max
 // LastPullTimestamp по тегам. Size / updated_at / download_count берутся из GlobalSearch;
 // fallback (агрегат пуст) — сумма/максимум по тегам.
-func repositoryFromSummaries(registryID, name string, rs gqlRepoSummary, results []gqlImageSummary) *domain.Repository {
+func repositoryFromSummaries(namespaceID, name string, rs gqlRepoSummary, results []gqlImageSummary) *domain.Repository {
 	repo := &domain.Repository{
-		RegistryID:    registryID,
+		NamespaceID:   namespaceID,
 		Name:          name,
 		TagCount:      int32(len(results)), // #nosec G115 -- tag count of one registry, bounded well below int32 max
 		SizeBytes:     parseInt64(rs.Size),
@@ -188,7 +188,7 @@ func (c *Client) ListTags(ctx context.Context, q registry.TagListQuery) ([]*doma
 	if err := c.ready(); err != nil {
 		return nil, "", err
 	}
-	fullRepo := q.RegistryID + "/" + q.Repository
+	fullRepo := q.NamespaceID + "/" + q.Repository
 	var data gqlImageListData
 	if err := c.gqlQuery(ctx, imageListQuery(fullRepo), &data); err != nil {
 		return nil, "", err
@@ -202,7 +202,7 @@ func (c *Client) ListTags(ctx context.Context, q registry.TagListQuery) ([]*doma
 	}
 	out := make([]*domain.Tag, 0, len(window))
 	for _, r := range window {
-		out = append(out, tagFromSummary(q.RegistryID, q.Repository, r))
+		out = append(out, tagFromSummary(q.NamespaceID, q.Repository, r))
 	}
 	return out, next, nil
 }
@@ -210,9 +210,9 @@ func (c *Client) ListTags(ctx context.Context, q registry.TagListQuery) ([]*doma
 // tagFromSummary строит проекцию одного тега из ImageList-элемента. Размер — Size
 // (string int64) из zot; платформа — "multi-arch" для index (>1 манифест), иначе
 // "<os>/<arch>" единственного манифеста.
-func tagFromSummary(registryID, repository string, s gqlImageSummary) *domain.Tag {
+func tagFromSummary(namespaceID, repository string, s gqlImageSummary) *domain.Tag {
 	t := &domain.Tag{
-		RegistryID:    registryID,
+		NamespaceID:   namespaceID,
 		Repository:    repository,
 		Tag:           s.Tag,
 		Digest:        s.Digest,
@@ -299,14 +299,14 @@ type gqlGlobalSearchData struct {
 	} `json:"GlobalSearch"`
 }
 
-// imageListQuery строит ImageList-запрос по full-repo (<registryID>/<repo>).
+// imageListQuery строит ImageList-запрос по full-repo (<namespaceID>/<repo>).
 func imageListQuery(fullRepo string) string {
 	return `{ImageList(repo:` + strconv.Quote(fullRepo) +
 		`){Results{Tag Digest MediaType Size DownloadCount PushTimestamp LastPullTimestamp PushedBy ` +
 		`Manifests{ArtifactType Platform{Os Arch}}}}}`
 }
 
-// globalSearchQuery строит GlobalSearch-запрос по namespace-префиксу (<registryID>/).
+// globalSearchQuery строит GlobalSearch-запрос по namespace-префиксу (<namespaceID>/).
 func globalSearchQuery(query string) string {
 	return `{GlobalSearch(query:` + strconv.Quote(query) +
 		`){Repos{Name Size LastUpdated DownloadCount}}}`

@@ -13,9 +13,9 @@ import (
 // async-операций, отфильтрованная по resource_id=registry_id. Cursor-пагинация
 // как у прочих List (page_size/page_token опаковый).
 type ListOperationsQuery struct {
-	RegistryID string
-	PageSize   int64
-	PageToken  string
+	NamespaceID string
+	PageSize    int64
+	PageToken   string
 }
 
 // ListOperations возвращает историю async-операций реестра (Create/Update/Delete/
@@ -28,14 +28,14 @@ func (u *UseCase) ListOperations(ctx context.Context, q ListOperationsQuery) ([]
 	if err := u.assertWired(); err != nil {
 		return nil, "", err
 	}
-	if q.RegistryID == "" {
+	if q.NamespaceID == "" {
 		return nil, "", failInvalidArg("registry_id is required")
 	}
-	if err := ValidateRegistryID(q.RegistryID); err != nil {
+	if err := ValidateNamespaceID(q.NamespaceID); err != nil {
 		return nil, "", err
 	}
 	ops, next, err := u.ops.List(ctx, operations.ListFilter{
-		ResourceID: q.RegistryID,
+		ResourceID: q.NamespaceID,
 		PageSize:   q.PageSize,
 		PageToken:  q.PageToken,
 	})

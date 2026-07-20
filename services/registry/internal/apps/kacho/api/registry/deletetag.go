@@ -23,11 +23,11 @@ import (
 // Per-repo authz (v_delete, existence-hiding deny→NOT_FOUND) — В ХЕНДЛЕРЕ ДО вызова
 // use-case: handler синхронно Check'ает и НЕ создаёт Operation на deny (иначе async-
 // Operation с error раскрыл бы факт существования repo/тега).
-func (u *UseCase) DeleteTag(ctx context.Context, registryID, repository, tag string) (*operations.Operation, error) {
+func (u *UseCase) DeleteTag(ctx context.Context, namespaceID, repository, tag string) (*operations.Operation, error) {
 	if err := u.assertWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(registryID); err != nil {
+	if err := ValidateNamespaceID(namespaceID); err != nil {
 		return nil, err
 	}
 	if repository == "" {
@@ -39,8 +39,8 @@ func (u *UseCase) DeleteTag(ctx context.Context, registryID, repository, tag str
 
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Delete tag %s of %s/%s", tag, registryID, repository),
-		&registryv1.DeleteTagMetadata{RegistryId: registryID, Repository: repository, Tag: tag},
+		fmt.Sprintf("Delete tag %s of %s/%s", tag, namespaceID, repository),
+		&registryv1.DeleteTagMetadata{NamespaceId: namespaceID, Repository: repository, Tag: tag},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -54,10 +54,10 @@ func (u *UseCase) DeleteTag(ctx context.Context, registryID, repository, tag str
 		// Worker-ctx детачнут — восстанавливаем principal (иначе downstream/peer-
 		// вызовы уходят анонимно, authz_no_principal).
 		wctx := operations.WithPrincipal(workerCtx, principal)
-		if derr := u.zot.DeleteTag(wctx, registryID, repository, tag); derr != nil {
+		if derr := u.zot.DeleteTag(wctx, namespaceID, repository, tag); derr != nil {
 			return nil, mapRepoErr(derr)
 		}
-		if uerr := u.unregisterRepoIfEmpty(wctx, registryID, repository); uerr != nil {
+		if uerr := u.unregisterRepoIfEmpty(wctx, namespaceID, repository); uerr != nil {
 			return nil, uerr
 		}
 		return emptyAny()
@@ -71,18 +71,18 @@ func (u *UseCase) DeleteTag(ctx context.Context, registryID, repository, tag str
 // остаток тегов из zot; ошибка чтения → проброс (worker ретраит идемпотентно:
 // zot.DeleteTag no-op на уже-удалённый тег, повторный unregister-intent идемпотентен
 // в iam). repoReg==nil (breakglass) → no-op.
-func (u *UseCase) unregisterRepoIfEmpty(ctx context.Context, registryID, repository string) error {
+func (u *UseCase) unregisterRepoIfEmpty(ctx context.Context, namespaceID, repository string) error {
 	if u.repoReg == nil {
 		return nil
 	}
-	tags, _, err := u.zot.ListTags(ctx, TagListQuery{RegistryID: registryID, Repository: repository})
+	tags, _, err := u.zot.ListTags(ctx, TagListQuery{NamespaceID: namespaceID, Repository: repository})
 	if err != nil {
 		return mapRepoErr(err)
 	}
 	if len(tags) > 0 {
 		return nil // repo ещё непуст — authz-объект жив
 	}
-	intent := domain.UnregisterIntentForRepo(registryID, repository)
+	intent := domain.UnregisterIntentForRepo(namespaceID, repository)
 	if uerr := u.repoReg.UnregisterRepository(ctx, intent); uerr != nil {
 		return mapRepoErr(uerr)
 	}
@@ -93,18 +93,18 @@ func (u *UseCase) unregisterRepoIfEmpty(ctx context.Context, registryID, reposit
 // Sync-часть: id-формат. Async worker (с principal) форсирует GC; реальная
 // рекламация — native-scheduler zot, повторный вызов идемпотентен. Authz (admin-tier)
 // энфорсит per-RPC interceptor на internal-листенере (internal НЕ освобождён).
-func (u *UseCase) TriggerGC(ctx context.Context, registryID string) (*operations.Operation, error) {
+func (u *UseCase) TriggerGC(ctx context.Context, namespaceID string) (*operations.Operation, error) {
 	if err := u.assertWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(registryID); err != nil {
+	if err := ValidateNamespaceID(namespaceID); err != nil {
 		return nil, err
 	}
 
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Garbage-collect Registry %s", registryID),
-		&registryv1.TriggerGarbageCollectionMetadata{RegistryId: registryID},
+		fmt.Sprintf("Garbage-collect Namespace %s", namespaceID),
+		&registryv1.TriggerGarbageCollectionMetadata{NamespaceId: namespaceID},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -116,7 +116,7 @@ func (u *UseCase) TriggerGC(ctx context.Context, registryID string) (*operations
 
 	operations.Run(ctx, u.ops, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		wctx := operations.WithPrincipal(workerCtx, principal)
-		if gerr := u.zot.TriggerGC(wctx, registryID); gerr != nil {
+		if gerr := u.zot.TriggerGC(wctx, namespaceID); gerr != nil {
 			return nil, mapRepoErr(gerr)
 		}
 		return emptyAny()

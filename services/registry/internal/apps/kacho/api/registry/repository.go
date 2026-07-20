@@ -27,27 +27,27 @@ import (
 // другого → ErrNotFound "repository not found" (uniform existence-hiding; per-repo
 // v_get Check + deny→NOT_FOUND — в handler ДО вызова). malformed registry_id / имя —
 // провалидированы ПЕРВЫМ стейтментом (A05/A06). zot недоступен → Unavailable.
-func (u *UseCase) GetRepository(ctx context.Context, registryID, repository string) (*domain.Repository, error) {
+func (u *UseCase) GetRepository(ctx context.Context, namespaceID, repository string) (*domain.Repository, error) {
 	if err := u.assertRepoWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(registryID); err != nil {
+	if err := ValidateNamespaceID(namespaceID); err != nil {
 		return nil, err
 	}
 	if err := domain.ValidateRepositoryName("repository", repository); err != nil {
 		return nil, failInvalidArg("%s", err.Error())
 	}
 
-	overlay, oerr := u.cfg.GetConfig(ctx, registryID, repository)
+	overlay, oerr := u.cfg.GetConfig(ctx, namespaceID, repository)
 	if oerr != nil && !errors.Is(oerr, regerrors.ErrNotFound) {
 		return nil, mapRepoErr(oerr)
 	}
-	proj, perr := u.zot.RepositoryProjection(ctx, registryID, repository)
+	proj, perr := u.zot.RepositoryProjection(ctx, namespaceID, repository)
 	if perr != nil {
 		return nil, mapRepoErr(perr)
 	}
 
-	repo := mergeRepository(registryID, repository, overlay, proj)
+	repo := mergeRepository(namespaceID, repository, overlay, proj)
 	if repo == nil {
 		// Ни overlay-строки, ни проекции с тегами → tenant-невидим (existence-hiding).
 		return nil, failNotFound("repository not found")
@@ -62,11 +62,11 @@ func (u *UseCase) GetRepository(ctx context.Context, registryID, repository stri
 //   - overlay нет, проекция несёт теги → ephemeral: projection-поля из proj, overlay
 //     пусты (visibility=PRIVATE by default);
 //   - ни того, ни другого → nil (tenant-невидим).
-func mergeRepository(registryID, name string, overlay *domain.RepositoryConfig, proj *domain.Repository) *domain.Repository {
+func mergeRepository(namespaceID, name string, overlay *domain.RepositoryConfig, proj *domain.Repository) *domain.Repository {
 	switch {
 	case overlay != nil:
 		repo := &domain.Repository{
-			RegistryID:  registryID,
+			NamespaceID: namespaceID,
 			Name:        name,
 			Description: overlay.Description,
 			Labels:      overlay.Labels,
@@ -86,7 +86,7 @@ func mergeRepository(registryID, name string, overlay *domain.RepositoryConfig, 
 	case proj != nil && proj.TagCount > 0:
 		// Ephemeral: проекция без overlay — visibility=PRIVATE by default, overlay-поля
 		// пусты, created_at нулевой (своей строки нет).
-		proj.RegistryID = registryID
+		proj.NamespaceID = namespaceID
 		proj.Name = name
 		proj.Visibility = domain.VisibilityPrivate
 		return proj
@@ -111,7 +111,7 @@ func (u *UseCase) ProtoRepository(r *domain.Repository) *registryv1.Repository {
 		}
 	}
 	return &registryv1.Repository{
-		RegistryId:    r.RegistryID,
+		NamespaceId:   r.NamespaceID,
 		Name:          r.Name,
 		Description:   r.Description,
 		Labels:        r.Labels,

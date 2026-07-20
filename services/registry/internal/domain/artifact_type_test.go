@@ -59,7 +59,7 @@ func TestClassifyArtifact(t *testing.T) {
 	}
 }
 
-// TestArtifactType_Validate — enum-parity guard (как RegistryStatus.Validate).
+// TestArtifactType_Validate — enum-parity guard (как NamespaceStatus.Validate).
 func TestArtifactType_Validate(t *testing.T) {
 	valid := []domain.ArtifactType{
 		domain.ArtifactTypeUnspecified,

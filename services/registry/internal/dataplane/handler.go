@@ -188,7 +188,7 @@ func (h *Handler) serveBlob(w http.ResponseWriter, r *http.Request, p parsed, su
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.checkAllowed(ctx, subject, relVGet, repositoryObject(p.registryID, p.repo))
+	allowed, err := h.checkAllowed(ctx, subject, relVGet, repositoryObject(p.namespaceID, p.repo))
 	if err != nil {
 		h.failClosed(w, "authorization check failed", err)
 		return
@@ -242,13 +242,13 @@ func (h *Handler) serveBlob(w http.ResponseWriter, r *http.Request, p parsed, su
 // поэтому push-grant раскрывает repo, но НЕ произвольный глобальный блоб.
 func (h *Handler) serveBlobScoped(w http.ResponseWriter, r *http.Request, p parsed) {
 	ctx := r.Context()
-	in, err := h.backend.BlobInRepo(ctx, p.registryID, p.repo, p.reference)
+	in, err := h.backend.BlobInRepo(ctx, p.namespaceID, p.repo, p.reference)
 	if err != nil {
 		h.failClosed(w, "blob scope check failed", err)
 		return
 	}
 	if !in {
-		uploaded, uerr := h.blobUploadedToRepo(ctx, p.registryID, p.repo, p.reference)
+		uploaded, uerr := h.blobUploadedToRepo(ctx, p.namespaceID, p.repo, p.reference)
 		if uerr != nil {
 			h.failClosed(w, "pending blob check failed", uerr)
 			return
@@ -284,31 +284,31 @@ func (h *Handler) serveBlobScoped(w http.ResponseWriter, r *http.Request, p pars
 // дешёвый RepoExists (established → выход без Check), затем v_create-Check (cross-tenant →
 // выход без pending-запроса), затем pending-record.
 func (h *Handler) pushContextRevealsBlob(ctx context.Context, p parsed, subject string) (bool, error) {
-	exists, err := h.backend.RepoExists(ctx, p.registryID, p.repo)
+	exists, err := h.backend.RepoExists(ctx, p.namespaceID, p.repo)
 	if err != nil {
 		return false, err
 	}
 	if exists {
 		return false, nil // established repo — v_get-deny легитимен (не first-push дедлок)
 	}
-	allowed, err := h.checkAllowed(ctx, subject, relVCreate, registryObject(p.registryID))
+	allowed, err := h.checkAllowed(ctx, subject, relVCreate, registryObject(p.namespaceID))
 	if err != nil {
 		return false, err
 	}
 	if !allowed {
 		return false, nil // caller не может пушить в этот registry — cross-tenant → 404
 	}
-	return h.blobUploadedToRepo(ctx, p.registryID, p.repo, p.reference)
+	return h.blobUploadedToRepo(ctx, p.namespaceID, p.repo, p.reference)
 }
 
 // blobUploadedToRepo — консультируется с durable pending-blob record (REG-33): был ли
-// <digest> загружен в <registryID>/<repo> в пределах TTL. uploads==nil (upload-tracking
+// <digest> загружен в <namespaceID>/<repo> в пределах TTL. uploads==nil (upload-tracking
 // выключен) → false (не раскрываем без подтверждённого аплоада).
-func (h *Handler) blobUploadedToRepo(ctx context.Context, registryID, repo, digest string) (bool, error) {
+func (h *Handler) blobUploadedToRepo(ctx context.Context, namespaceID, repo, digest string) (bool, error) {
 	if h.uploads == nil {
 		return false, nil
 	}
-	return h.uploads.BlobUploaded(ctx, registryID, repo, digest)
+	return h.uploads.BlobUploaded(ctx, namespaceID, repo, digest)
 }
 
 // servePullOnly — read-путь (manifest GET/HEAD, tags/list, referrers): single Check
@@ -322,7 +322,7 @@ func (h *Handler) servePullOnly(w http.ResponseWriter, r *http.Request, p parsed
 		return
 	}
 	ctx := r.Context()
-	allowed, err := h.checkAllowed(ctx, subject, relation, repositoryObject(p.registryID, p.repo))
+	allowed, err := h.checkAllowed(ctx, subject, relation, repositoryObject(p.namespaceID, p.repo))
 	if err != nil {
 		h.failClosed(w, "authorization check failed", err)
 		return
@@ -362,7 +362,7 @@ func (h *Handler) pushOwnerRevealsRepo(ctx context.Context, p parsed, subject st
 	if h.pushGrants == nil {
 		return false, nil
 	}
-	return h.pushGrants.PushGranted(ctx, p.registryID, p.repo, subject)
+	return h.pushGrants.PushGranted(ctx, p.namespaceID, p.repo, subject)
 }
 
 // deletePushGrantTimeout — дедлайн detached-контекста delete-on-materialized. Работа —
@@ -370,7 +370,7 @@ func (h *Handler) pushOwnerRevealsRepo(ctx context.Context, p parsed, subject st
 // соединение сразу за pull), собственный дедлайн ограничивает хвост при недоступной БД.
 const deletePushGrantTimeout = 10 * time.Second
 
-// dropPushGrantMaterialized снимает push-grant-мост (registry_push_grant) для (registryID,
+// dropPushGrantMaterialized снимает push-grant-мост (registry_push_grant) для (namespaceID,
 // repo, subject) ПОСЛЕ того, как реальный per-repo v_get/v_list Check на pull ALLOW'нул — т.е.
 // per-repo authz материализовался в FGA и мост больше не нужен. КРИТИЧНО для revoke-safety:
 // без снятия push-grant (в пределах TTL) продолжал бы раскрывать repo и ПОСЛЕ последующего
@@ -392,9 +392,9 @@ func (h *Handler) dropPushGrantMaterialized(ctx context.Context, p parsed, subje
 	go func() {
 		dctx, cancel := context.WithTimeout(bgCtx, deletePushGrantTimeout)
 		defer cancel()
-		if err := h.pushGrants.DeletePushGrant(dctx, p.registryID, p.repo, subject); err != nil {
+		if err := h.pushGrants.DeletePushGrant(dctx, p.namespaceID, p.repo, subject); err != nil {
 			h.logger.Error("push-grant delete-on-materialized failed",
-				"repo", p.registryID+"/"+p.repo, "err", err)
+				"repo", p.namespaceID+"/"+p.repo, "err", err)
 		}
 	}()
 }
@@ -420,7 +420,7 @@ func (h *Handler) servePush(w http.ResponseWriter, r *http.Request, p parsed, su
 		}
 	}
 
-	exists, err := h.backend.RepoExists(ctx, p.registryID, p.repo)
+	exists, err := h.backend.RepoExists(ctx, p.namespaceID, p.repo)
 	if err != nil {
 		h.failClosed(w, "repo existence check failed", err)
 		return
@@ -428,16 +428,16 @@ func (h *Handler) servePush(w http.ResponseWriter, r *http.Request, p parsed, su
 
 	var relation, object string
 	if exists {
-		relation, object = relVUpdate, repositoryObject(p.registryID, p.repo)
+		relation, object = relVUpdate, repositoryObject(p.namespaceID, p.repo)
 	} else {
-		relation, object = relVCreate, registryObject(p.registryID)
+		relation, object = relVCreate, registryObject(p.namespaceID)
 	}
 	if !h.check(w, r, subject, relation, object) {
 		return
 	}
 
 	// REG-33 Defect A: blob PUT/POST-finalize (routeUpload с ?digest=<d>) обязан durable-
-	// записать (registryID, repo, digest) ДО релея 2xx клиенту — иначе docker HEAD сразу
+	// записать (namespaceID, repo, digest) ДО релея 2xx клиенту — иначе docker HEAD сразу
 	// за 201 упрётся в 404 (блоб ещё не в манифесте). Буферизуем (пустой) ответ zot,
 	// на 2xx пишем строку, затем релеим. Прочие push-запросы (POST upload-init, PATCH
 	// chunk, manifest PUT) идут прежним стриминговым Forward.
@@ -468,21 +468,21 @@ func (h *Handler) servePush(w http.ResponseWriter, r *http.Request, p parsed, su
 		// клиенту уже отданный 2xx; худший исход — немедленный pull разок упрётся в pre-fix
 		// окно материализации (не новая регрессия). НЕ fail-closed на завершённый push.
 		if h.pushGrants != nil {
-			if gerr := h.pushGrants.RecordPushGrant(bgCtx, p.registryID, p.repo, subject); gerr != nil {
+			if gerr := h.pushGrants.RecordPushGrant(bgCtx, p.namespaceID, p.repo, subject); gerr != nil {
 				h.logger.Error("push-grant record failed",
-					"repo", p.registryID+"/"+p.repo, "err", gerr)
+					"repo", p.namespaceID+"/"+p.repo, "err", gerr)
 			}
 		}
 
 		if !exists {
-			projectID := h.resolveRegistryProject(bgCtx, p.registryID)
-			intent := domain.RegisterIntentForRepoPush(p.registryID, p.repo, projectID, subject)
+			projectID := h.resolveRegistryProject(bgCtx, p.namespaceID)
+			intent := domain.RegisterIntentForRepoPush(p.namespaceID, p.repo, projectID, subject)
 			if h.repoReg != nil {
 				if rerr := h.repoReg.RegisterRepository(bgCtx, intent); rerr != nil {
 					// Push успешен; register-intent durable-emit провалился (редкий DB-сбой).
 					// Не рвём клиенту уже отданный ответ — логируем.
 					h.logger.Error("register-on-first-push emit failed",
-						"repo", p.registryID+"/"+p.repo, "err", rerr)
+						"repo", p.namespaceID+"/"+p.repo, "err", rerr)
 				}
 			}
 		}
@@ -504,7 +504,7 @@ func isBlobFinalize(p parsed, r *http.Request) bool {
 }
 
 // forwardBlobFinalize проксирует blob-finalize БУФЕРИЗОВАННО (ForwardCapture) и на
-// успех (2xx) синхронно durable-записывает (registryID, repo, digest) ДО релея ответа
+// успех (2xx) синхронно durable-записывает (namespaceID, repo, digest) ДО релея ответа
 // клиенту — чтобы немедленный HEAD за 201 гарантированно нашёл строку (REG-33 Defect A).
 // Запись идёт на detached-контексте (WithoutCancel): даже если клиент отвалится, ожидая
 // ответ, строка докоммитится (не-detached write отменился бы → retry-HEAD снова 404).
@@ -518,7 +518,7 @@ func (h *Handler) forwardBlobFinalize(w http.ResponseWriter, r *http.Request, p 
 	twoXX := captured.Status >= 200 && captured.Status < 300
 	if twoXX && h.uploads != nil {
 		recCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), recordUploadTimeout)
-		rerr := h.uploads.RecordUploadedBlob(recCtx, p.registryID, p.repo, digest)
+		rerr := h.uploads.RecordUploadedBlob(recCtx, p.namespaceID, p.repo, digest)
 		cancel()
 		if rerr != nil {
 			// Блоб в zot есть (2xx), но pending-строку записать не удалось. Отдать 201
@@ -534,14 +534,14 @@ func (h *Handler) forwardBlobFinalize(w http.ResponseWriter, r *http.Request, p 
 // register-intent. regLookup==nil → "" (best-effort, интент без project). Ошибка
 // lookup'а на этом post-response пути логируется; интент всё равно эмитится (хотя бы
 // структурный parent-tuple), не регрессируя ниже прежнего поведения.
-func (h *Handler) resolveRegistryProject(ctx context.Context, registryID string) string {
+func (h *Handler) resolveRegistryProject(ctx context.Context, namespaceID string) string {
 	if h.regLookup == nil {
 		return ""
 	}
-	projectID, err := h.regLookup.RegistryProjectID(ctx, registryID)
+	projectID, err := h.regLookup.NamespaceProjectID(ctx, namespaceID)
 	if err != nil {
 		h.logger.Error("register-on-first-push project lookup failed",
-			"registry", registryID, "err", err)
+			"registry", namespaceID, "err", err)
 		return ""
 	}
 	return projectID
@@ -569,14 +569,14 @@ func (h *Handler) serveMount(w http.ResponseWriter, r *http.Request, p parsed, s
 	// Хардкод v_create@registry_repository расходился бы с push-путём (verb-mismatch):
 	// namespace-creator не прошёл бы mount в новый repo, а v_create-only принципал писал
 	// бы в существующий repo мимо v_update.
-	dstExists, err := h.backend.RepoExists(ctx, p.registryID, p.repo)
+	dstExists, err := h.backend.RepoExists(ctx, p.namespaceID, p.repo)
 	if err != nil {
 		h.failClosed(w, "mount dst existence check failed", err)
 		return
 	}
-	dstRelation, dstObject := relVCreate, registryObject(p.registryID)
+	dstRelation, dstObject := relVCreate, registryObject(p.namespaceID)
 	if dstExists {
-		dstRelation, dstObject = relVUpdate, repositoryObject(p.registryID, p.repo)
+		dstRelation, dstObject = relVUpdate, repositoryObject(p.namespaceID, p.repo)
 	}
 	allowedDst, err := h.checkAllowed(ctx, subject, dstRelation, dstObject)
 	if err != nil {

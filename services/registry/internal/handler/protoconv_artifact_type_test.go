@@ -32,15 +32,15 @@ func TestArtifactType_ProtoParity(t *testing.T) {
 }
 
 // TestArtifactType_RegistryStatusParity — та же parity-гарантия для RegistryStatus
-// (тоже int32-каст domain↔proto в use-case ProtoRegistry).
+// (тоже int32-каст domain↔proto в use-case ProtoNamespace).
 func TestArtifactType_RegistryStatusParity(t *testing.T) {
 	pairs := []struct {
-		d domain.RegistryStatus
-		p registryv1.RegistryStatus
+		d domain.NamespaceStatus
+		p registryv1.NamespaceStatus
 	}{
-		{domain.RegistryStatusUnspecified, registryv1.RegistryStatus_REGISTRY_STATUS_UNSPECIFIED},
-		{domain.RegistryStatusActive, registryv1.RegistryStatus_REGISTRY_STATUS_ACTIVE},
-		{domain.RegistryStatusDeleting, registryv1.RegistryStatus_REGISTRY_STATUS_DELETING},
+		{domain.NamespaceStatusUnspecified, registryv1.NamespaceStatus_NAMESPACE_STATUS_UNSPECIFIED},
+		{domain.NamespaceStatusActive, registryv1.NamespaceStatus_NAMESPACE_STATUS_ACTIVE},
+		{domain.NamespaceStatusDeleting, registryv1.NamespaceStatus_NAMESPACE_STATUS_DELETING},
 	}
 	for _, pr := range pairs {
 		if int32(pr.d) != int32(pr.p) {
@@ -62,7 +62,7 @@ func TestToProtoRepository_MapsArtifactType(t *testing.T) {
 		{domain.ArtifactTypeUnspecified, registryv1.ArtifactType_ARTIFACT_TYPE_UNSPECIFIED},
 	}
 	for _, tc := range cases {
-		got := toProtoRepository(&domain.Repository{RegistryID: "reg-x", Name: "app", ArtifactType: tc.in})
+		got := toProtoRepository(&domain.Repository{NamespaceID: "reg-x", Name: "app", ArtifactType: tc.in})
 		if got.GetArtifactType() != tc.want {
 			t.Errorf("toProtoRepository ArtifactType = %s, want %s", got.GetArtifactType(), tc.want)
 		}

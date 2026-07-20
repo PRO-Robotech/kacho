@@ -20,12 +20,12 @@ import (
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
-// REG-38 — Stats happy: use-case Stats(registryID) отдаёт domain.RegistryStats из
+// REG-38 — Stats happy: use-case Stats(namespaceID) отдаёт domain.RegistryStats из
 // zot-бэкенда без изменения (все поля проброшены), без error; бэкенд получил ровно
-// наш registryID.
+// наш namespaceID.
 func TestRegistry_REG38_Stats_HappyPath(t *testing.T) {
 	want := &domain.RegistryStats{
-		RegistryID:      validRegID,
+		NamespaceID:     validRegID,
 		RepositoryCount: 3,
 		TagCount:        7,
 		TotalSizeBytes:  4096,
@@ -37,12 +37,12 @@ func TestRegistry_REG38_Stats_HappyPath(t *testing.T) {
 	got, err := uc.Stats(aliceCtx(), validRegID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, want.RegistryID, got.RegistryID)
+	require.Equal(t, want.NamespaceID, got.NamespaceID)
 	require.Equal(t, int32(3), got.RepositoryCount)
 	require.Equal(t, int32(7), got.TagCount)
 	require.Equal(t, int64(4096), got.TotalSizeBytes)
 	require.Equal(t, int64(11), got.BlobCount)
-	require.Equal(t, []string{validRegID}, zot.statsCalls, "zot-бэкенд получил ровно наш registryID")
+	require.Equal(t, []string{validRegID}, zot.statsCalls, "zot-бэкенд получил ровно наш namespaceID")
 }
 
 // REG-38 — Stats malformed id → синхронный INVALID_ARGUMENT (zot не трогается);

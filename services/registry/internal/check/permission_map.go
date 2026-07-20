@@ -42,20 +42,20 @@ func registryObject() authz.ObjectExtractor {
 	return func(req any) (string, string, error) {
 		var id string
 		switch r := req.(type) {
-		case *registryv1.GetRegistryRequest:
-			id = r.GetRegistryId()
-		case *registryv1.UpdateRegistryRequest:
-			id = r.GetRegistryId()
-		case *registryv1.DeleteRegistryRequest:
-			id = r.GetRegistryId()
+		case *registryv1.GetNamespaceRequest:
+			id = r.GetNamespaceId()
+		case *registryv1.UpdateNamespaceRequest:
+			id = r.GetNamespaceId()
+		case *registryv1.DeleteNamespaceRequest:
+			id = r.GetNamespaceId()
 		case *registryv1.ListRepositoriesRequest:
-			id = r.GetRegistryId()
-		case *registryv1.ListRegistryOperationsRequest:
-			id = r.GetRegistryId()
+			id = r.GetNamespaceId()
+		case *registryv1.ListNamespaceOperationsRequest:
+			id = r.GetNamespaceId()
 		case *registryv1.TriggerGarbageCollectionRequest:
-			id = r.GetRegistryId()
+			id = r.GetNamespaceId()
 		case *registryv1.GetRegistryStatsRequest:
-			id = r.GetRegistryId()
+			id = r.GetNamespaceId()
 		default:
 			return "", "", fmt.Errorf("registry object extractor: unexpected request %T", req)
 		}
@@ -69,9 +69,9 @@ func projectObject() authz.ObjectExtractor {
 	return func(req any) (string, string, error) {
 		var pid string
 		switch r := req.(type) {
-		case *registryv1.CreateRegistryRequest:
+		case *registryv1.CreateNamespaceRequest:
 			pid = r.GetProjectId()
-		case *registryv1.ListRegistriesRequest:
+		case *registryv1.ListNamespacesRequest:
 			pid = r.GetProjectId()
 		default:
 			return "", "", fmt.Errorf("project object extractor: unexpected request %T", req)
@@ -87,9 +87,9 @@ func repositoryObject() authz.ObjectExtractor {
 		var id, repo string
 		switch r := req.(type) {
 		case *registryv1.ListTagsRequest:
-			id, repo = r.GetRegistryId(), r.GetRepository()
+			id, repo = r.GetNamespaceId(), r.GetRepository()
 		case *registryv1.DeleteTagRequest:
-			id, repo = r.GetRegistryId(), r.GetRepository()
+			id, repo = r.GetNamespaceId(), r.GetRepository()
 		default:
 			return "", "", fmt.Errorf("repository object extractor: unexpected request %T", req)
 		}
@@ -103,7 +103,7 @@ func repositoryObject() authz.ObjectExtractor {
 func PermissionMap() authz.RPCMap {
 	return authz.RPCMap{
 		// ---- control-plane RegistryService (public :9090) ----
-		"/kacho.cloud.registry.v1.RegistryService/Get": {
+		"/kacho.cloud.registry.v1.RegistryService/GetNamespace": {
 			Relation:   relVGet,
 			Extract:    registryObject(),
 			Permission: "registry.registries.get",
@@ -114,23 +114,23 @@ func PermissionMap() authz.RPCMap {
 		// неверен — collection не несёт single object (extract вернул бы пустой
 		// object-id коллекции → "empty object id" → 403 на всю выборку). non-member →
 		// 200+empty (exempt-parity). Relation/Extract сохранены как catalog-doc.
-		"/kacho.cloud.registry.v1.RegistryService/List": {
+		"/kacho.cloud.registry.v1.RegistryService/ListNamespaces": {
 			Relation:      relVList,
 			Extract:       projectObject(),
 			Permission:    "registry.registries.list",
 			ScopeFiltered: true,
 		},
-		"/kacho.cloud.registry.v1.RegistryService/Create": {
+		"/kacho.cloud.registry.v1.RegistryService/CreateNamespace": {
 			Relation:   relVCreate,
 			Extract:    projectObject(),
 			Permission: "registry.registries.create",
 		},
-		"/kacho.cloud.registry.v1.RegistryService/Update": {
+		"/kacho.cloud.registry.v1.RegistryService/UpdateNamespace": {
 			Relation:   relVUpdate,
 			Extract:    registryObject(),
 			Permission: "registry.registries.update",
 		},
-		"/kacho.cloud.registry.v1.RegistryService/Delete": {
+		"/kacho.cloud.registry.v1.RegistryService/DeleteNamespace": {
 			Relation:   relVDelete,
 			Extract:    registryObject(),
 			Permission: "registry.registries.delete",

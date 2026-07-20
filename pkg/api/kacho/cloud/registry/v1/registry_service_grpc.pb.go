@@ -23,11 +23,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RegistryService_Get_FullMethodName              = "/kacho.cloud.registry.v1.RegistryService/Get"
-	RegistryService_List_FullMethodName             = "/kacho.cloud.registry.v1.RegistryService/List"
-	RegistryService_Create_FullMethodName           = "/kacho.cloud.registry.v1.RegistryService/Create"
-	RegistryService_Update_FullMethodName           = "/kacho.cloud.registry.v1.RegistryService/Update"
-	RegistryService_Delete_FullMethodName           = "/kacho.cloud.registry.v1.RegistryService/Delete"
+	RegistryService_GetNamespace_FullMethodName     = "/kacho.cloud.registry.v1.RegistryService/GetNamespace"
+	RegistryService_ListNamespaces_FullMethodName   = "/kacho.cloud.registry.v1.RegistryService/ListNamespaces"
+	RegistryService_CreateNamespace_FullMethodName  = "/kacho.cloud.registry.v1.RegistryService/CreateNamespace"
+	RegistryService_UpdateNamespace_FullMethodName  = "/kacho.cloud.registry.v1.RegistryService/UpdateNamespace"
+	RegistryService_DeleteNamespace_FullMethodName  = "/kacho.cloud.registry.v1.RegistryService/DeleteNamespace"
 	RegistryService_ListRepositories_FullMethodName = "/kacho.cloud.registry.v1.RegistryService/ListRepositories"
 	RegistryService_ListOperations_FullMethodName   = "/kacho.cloud.registry.v1.RegistryService/ListOperations"
 	RegistryService_GetRepository_FullMethodName    = "/kacho.cloud.registry.v1.RegistryService/GetRepository"
@@ -50,32 +50,32 @@ const (
 // НЕ здесь. Каждый RPC проходит per-RPC InternalIAMService.Check (security.md).
 type RegistryServiceClient interface {
 	// Get — sync-чтение одного реестра. v_get на registry_registry.
-	Get(ctx context.Context, in *GetRegistryRequest, opts ...grpc.CallOption) (*Registry, error)
+	GetNamespace(ctx context.Context, in *GetNamespaceRequest, opts ...grpc.CallOption) (*Namespace, error)
 	// List — sync-список реестров project'а. Scope-filtered (handler фильтрует
 	// через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
-	List(ctx context.Context, in *ListRegistriesRequest, opts ...grpc.CallOption) (*ListRegistriesResponse, error)
+	ListNamespaces(ctx context.Context, in *ListNamespacesRequest, opts ...grpc.CallOption) (*ListNamespacesResponse, error)
 	// Create — async. create-child = editor-tier на parent-project (Check на
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
-	Create(ctx context.Context, in *CreateRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	CreateNamespace(ctx context.Context, in *CreateNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Update — async, mutable labels/description (name/project immutable). v_update.
-	Update(ctx context.Context, in *UpdateRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	UpdateNamespace(ctx context.Context, in *UpdateNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
 	// zot-namespace + UnregisterResource owner/repo-tuple.
-	Delete(ctx context.Context, in *DeleteRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	DeleteNamespace(ctx context.Context, in *DeleteNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
 	// → gateway <exempt>, authz полностью в handler'е.
 	ListRepositories(ctx context.Context, in *ListRepositoriesRequest, opts ...grpc.CallOption) (*ListRepositoriesResponse, error)
 	// ListOperations — sync-история async-операций реестра (per-resource, фильтр по
-	// resource_id=registry_id). Interceptor-gated per-RPC Check v_list на
+	// resource_id=namespace_id). Interceptor-gated per-RPC Check v_list на
 	// registry_registry (как Get) → в allowlist как публичный gRPC-путь.
-	ListOperations(ctx context.Context, in *ListRegistryOperationsRequest, opts ...grpc.CallOption) (*ListRegistryOperationsResponse, error)
+	ListOperations(ctx context.Context, in *ListNamespaceOperationsRequest, opts ...grpc.CallOption) (*ListNamespaceOperationsResponse, error)
 	// GetRepository — sync-чтение repo (overlay LEFT JOIN projection; durable
 	// survives-empty). Handler: per-repo v_get Check; unauthorized|absent → NOT_FOUND.
 	// Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
 	GetRepository(ctx context.Context, in *GetRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
 	// CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
-	// uniqueness (registry_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
+	// uniqueness (namespace_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
 	// Handler: namespace call-gate (невидимый реестр → NOT_FOUND, X04) + v_create;
 	// явный visibility=PUBLIC требует registry admin (B08 → PERMISSION_DENIED).
 	CreateRepository(ctx context.Context, in *CreateRepositoryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
@@ -127,50 +127,50 @@ func NewRegistryServiceClient(cc grpc.ClientConnInterface) RegistryServiceClient
 	return &registryServiceClient{cc}
 }
 
-func (c *registryServiceClient) Get(ctx context.Context, in *GetRegistryRequest, opts ...grpc.CallOption) (*Registry, error) {
+func (c *registryServiceClient) GetNamespace(ctx context.Context, in *GetNamespaceRequest, opts ...grpc.CallOption) (*Namespace, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Registry)
-	err := c.cc.Invoke(ctx, RegistryService_Get_FullMethodName, in, out, cOpts...)
+	out := new(Namespace)
+	err := c.cc.Invoke(ctx, RegistryService_GetNamespace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *registryServiceClient) List(ctx context.Context, in *ListRegistriesRequest, opts ...grpc.CallOption) (*ListRegistriesResponse, error) {
+func (c *registryServiceClient) ListNamespaces(ctx context.Context, in *ListNamespacesRequest, opts ...grpc.CallOption) (*ListNamespacesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListRegistriesResponse)
-	err := c.cc.Invoke(ctx, RegistryService_List_FullMethodName, in, out, cOpts...)
+	out := new(ListNamespacesResponse)
+	err := c.cc.Invoke(ctx, RegistryService_ListNamespaces_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *registryServiceClient) Create(ctx context.Context, in *CreateRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+func (c *registryServiceClient) CreateNamespace(ctx context.Context, in *CreateNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, RegistryService_Create_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RegistryService_CreateNamespace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *registryServiceClient) Update(ctx context.Context, in *UpdateRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+func (c *registryServiceClient) UpdateNamespace(ctx context.Context, in *UpdateNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, RegistryService_Update_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RegistryService_UpdateNamespace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *registryServiceClient) Delete(ctx context.Context, in *DeleteRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+func (c *registryServiceClient) DeleteNamespace(ctx context.Context, in *DeleteNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, RegistryService_Delete_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RegistryService_DeleteNamespace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -187,9 +187,9 @@ func (c *registryServiceClient) ListRepositories(ctx context.Context, in *ListRe
 	return out, nil
 }
 
-func (c *registryServiceClient) ListOperations(ctx context.Context, in *ListRegistryOperationsRequest, opts ...grpc.CallOption) (*ListRegistryOperationsResponse, error) {
+func (c *registryServiceClient) ListOperations(ctx context.Context, in *ListNamespaceOperationsRequest, opts ...grpc.CallOption) (*ListNamespaceOperationsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListRegistryOperationsResponse)
+	out := new(ListNamespaceOperationsResponse)
 	err := c.cc.Invoke(ctx, RegistryService_ListOperations_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -287,32 +287,32 @@ func (c *registryServiceClient) ListReferrers(ctx context.Context, in *ListRefer
 // НЕ здесь. Каждый RPC проходит per-RPC InternalIAMService.Check (security.md).
 type RegistryServiceServer interface {
 	// Get — sync-чтение одного реестра. v_get на registry_registry.
-	Get(context.Context, *GetRegistryRequest) (*Registry, error)
+	GetNamespace(context.Context, *GetNamespaceRequest) (*Namespace, error)
 	// List — sync-список реестров project'а. Scope-filtered (handler фильтрует
 	// через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
-	List(context.Context, *ListRegistriesRequest) (*ListRegistriesResponse, error)
+	ListNamespaces(context.Context, *ListNamespacesRequest) (*ListNamespacesResponse, error)
 	// Create — async. create-child = editor-tier на parent-project (Check на
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
-	Create(context.Context, *CreateRegistryRequest) (*operation.Operation, error)
+	CreateNamespace(context.Context, *CreateNamespaceRequest) (*operation.Operation, error)
 	// Update — async, mutable labels/description (name/project immutable). v_update.
-	Update(context.Context, *UpdateRegistryRequest) (*operation.Operation, error)
+	UpdateNamespace(context.Context, *UpdateNamespaceRequest) (*operation.Operation, error)
 	// Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
 	// zot-namespace + UnregisterResource owner/repo-tuple.
-	Delete(context.Context, *DeleteRegistryRequest) (*operation.Operation, error)
+	DeleteNamespace(context.Context, *DeleteNamespaceRequest) (*operation.Operation, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
 	// → gateway <exempt>, authz полностью в handler'е.
 	ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error)
 	// ListOperations — sync-история async-операций реестра (per-resource, фильтр по
-	// resource_id=registry_id). Interceptor-gated per-RPC Check v_list на
+	// resource_id=namespace_id). Interceptor-gated per-RPC Check v_list на
 	// registry_registry (как Get) → в allowlist как публичный gRPC-путь.
-	ListOperations(context.Context, *ListRegistryOperationsRequest) (*ListRegistryOperationsResponse, error)
+	ListOperations(context.Context, *ListNamespaceOperationsRequest) (*ListNamespaceOperationsResponse, error)
 	// GetRepository — sync-чтение repo (overlay LEFT JOIN projection; durable
 	// survives-empty). Handler: per-repo v_get Check; unauthorized|absent → NOT_FOUND.
 	// Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
 	GetRepository(context.Context, *GetRepositoryRequest) (*Repository, error)
 	// CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
-	// uniqueness (registry_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
+	// uniqueness (namespace_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
 	// Handler: namespace call-gate (невидимый реестр → NOT_FOUND, X04) + v_create;
 	// явный visibility=PUBLIC требует registry admin (B08 → PERMISSION_DENIED).
 	CreateRepository(context.Context, *CreateRepositoryRequest) (*operation.Operation, error)
@@ -364,25 +364,25 @@ type RegistryServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRegistryServiceServer struct{}
 
-func (UnimplementedRegistryServiceServer) Get(context.Context, *GetRegistryRequest) (*Registry, error) {
-	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
+func (UnimplementedRegistryServiceServer) GetNamespace(context.Context, *GetNamespaceRequest) (*Namespace, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNamespace not implemented")
 }
-func (UnimplementedRegistryServiceServer) List(context.Context, *ListRegistriesRequest) (*ListRegistriesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+func (UnimplementedRegistryServiceServer) ListNamespaces(context.Context, *ListNamespacesRequest) (*ListNamespacesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNamespaces not implemented")
 }
-func (UnimplementedRegistryServiceServer) Create(context.Context, *CreateRegistryRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method Create not implemented")
+func (UnimplementedRegistryServiceServer) CreateNamespace(context.Context, *CreateNamespaceRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateNamespace not implemented")
 }
-func (UnimplementedRegistryServiceServer) Update(context.Context, *UpdateRegistryRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method Update not implemented")
+func (UnimplementedRegistryServiceServer) UpdateNamespace(context.Context, *UpdateNamespaceRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateNamespace not implemented")
 }
-func (UnimplementedRegistryServiceServer) Delete(context.Context, *DeleteRegistryRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+func (UnimplementedRegistryServiceServer) DeleteNamespace(context.Context, *DeleteNamespaceRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteNamespace not implemented")
 }
 func (UnimplementedRegistryServiceServer) ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRepositories not implemented")
 }
-func (UnimplementedRegistryServiceServer) ListOperations(context.Context, *ListRegistryOperationsRequest) (*ListRegistryOperationsResponse, error) {
+func (UnimplementedRegistryServiceServer) ListOperations(context.Context, *ListNamespaceOperationsRequest) (*ListNamespaceOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
 }
 func (UnimplementedRegistryServiceServer) GetRepository(context.Context, *GetRepositoryRequest) (*Repository, error) {
@@ -430,92 +430,92 @@ func RegisterRegistryServiceServer(s grpc.ServiceRegistrar, srv RegistryServiceS
 	s.RegisterService(&RegistryService_ServiceDesc, srv)
 }
 
-func _RegistryService_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetRegistryRequest)
+func _RegistryService_GetNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNamespaceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RegistryServiceServer).Get(ctx, in)
+		return srv.(RegistryServiceServer).GetNamespace(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RegistryService_Get_FullMethodName,
+		FullMethod: RegistryService_GetNamespace_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistryServiceServer).Get(ctx, req.(*GetRegistryRequest))
+		return srv.(RegistryServiceServer).GetNamespace(ctx, req.(*GetNamespaceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RegistryService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListRegistriesRequest)
+func _RegistryService_ListNamespaces_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNamespacesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RegistryServiceServer).List(ctx, in)
+		return srv.(RegistryServiceServer).ListNamespaces(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RegistryService_List_FullMethodName,
+		FullMethod: RegistryService_ListNamespaces_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistryServiceServer).List(ctx, req.(*ListRegistriesRequest))
+		return srv.(RegistryServiceServer).ListNamespaces(ctx, req.(*ListNamespacesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RegistryService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateRegistryRequest)
+func _RegistryService_CreateNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNamespaceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RegistryServiceServer).Create(ctx, in)
+		return srv.(RegistryServiceServer).CreateNamespace(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RegistryService_Create_FullMethodName,
+		FullMethod: RegistryService_CreateNamespace_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistryServiceServer).Create(ctx, req.(*CreateRegistryRequest))
+		return srv.(RegistryServiceServer).CreateNamespace(ctx, req.(*CreateNamespaceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RegistryService_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRegistryRequest)
+func _RegistryService_UpdateNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNamespaceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RegistryServiceServer).Update(ctx, in)
+		return srv.(RegistryServiceServer).UpdateNamespace(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RegistryService_Update_FullMethodName,
+		FullMethod: RegistryService_UpdateNamespace_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistryServiceServer).Update(ctx, req.(*UpdateRegistryRequest))
+		return srv.(RegistryServiceServer).UpdateNamespace(ctx, req.(*UpdateNamespaceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RegistryService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteRegistryRequest)
+func _RegistryService_DeleteNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNamespaceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RegistryServiceServer).Delete(ctx, in)
+		return srv.(RegistryServiceServer).DeleteNamespace(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RegistryService_Delete_FullMethodName,
+		FullMethod: RegistryService_DeleteNamespace_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistryServiceServer).Delete(ctx, req.(*DeleteRegistryRequest))
+		return srv.(RegistryServiceServer).DeleteNamespace(ctx, req.(*DeleteNamespaceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -539,7 +539,7 @@ func _RegistryService_ListRepositories_Handler(srv interface{}, ctx context.Cont
 }
 
 func _RegistryService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListRegistryOperationsRequest)
+	in := new(ListNamespaceOperationsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -551,7 +551,7 @@ func _RegistryService_ListOperations_Handler(srv interface{}, ctx context.Contex
 		FullMethod: RegistryService_ListOperations_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistryServiceServer).ListOperations(ctx, req.(*ListRegistryOperationsRequest))
+		return srv.(RegistryServiceServer).ListOperations(ctx, req.(*ListNamespaceOperationsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -708,24 +708,24 @@ var RegistryService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*RegistryServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Get",
-			Handler:    _RegistryService_Get_Handler,
+			MethodName: "GetNamespace",
+			Handler:    _RegistryService_GetNamespace_Handler,
 		},
 		{
-			MethodName: "List",
-			Handler:    _RegistryService_List_Handler,
+			MethodName: "ListNamespaces",
+			Handler:    _RegistryService_ListNamespaces_Handler,
 		},
 		{
-			MethodName: "Create",
-			Handler:    _RegistryService_Create_Handler,
+			MethodName: "CreateNamespace",
+			Handler:    _RegistryService_CreateNamespace_Handler,
 		},
 		{
-			MethodName: "Update",
-			Handler:    _RegistryService_Update_Handler,
+			MethodName: "UpdateNamespace",
+			Handler:    _RegistryService_UpdateNamespace_Handler,
 		},
 		{
-			MethodName: "Delete",
-			Handler:    _RegistryService_Delete_Handler,
+			MethodName: "DeleteNamespace",
+			Handler:    _RegistryService_DeleteNamespace_Handler,
 		},
 		{
 			MethodName: "ListRepositories",

@@ -25,17 +25,17 @@ import (
 // registry_id → InvalidArgument ПЕРВЫМ (A06). per-repo v_get Check В ХЕНДЛЕРЕ: unauthorized|
 // absent → NOT_FOUND "repository not found" (existence-hiding, A08).
 func (h *RegistryHandler) GetRepository(ctx context.Context, req *registryv1.GetRepositoryRequest) (*registryv1.Repository, error) {
-	registryID, repository := req.GetRegistryId(), req.GetRepository()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID, repository := req.GetNamespaceId(), req.GetRepository()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
 	}
-	if err := h.authz.checkRepository(ctx, registryID, repository, relationVGet); err != nil {
+	if err := h.authz.checkRepository(ctx, namespaceID, repository, relationVGet); err != nil {
 		return nil, err
 	}
-	repo, err := h.uc.GetRepository(ctx, registryID, repository)
+	repo, err := h.uc.GetRepository(ctx, namespaceID, repository)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -47,20 +47,20 @@ func (h *RegistryHandler) GetRepository(ctx context.Context, req *registryv1.Get
 // реестр → NOT_FOUND, X04). Явный visibility=PUBLIC требует registry admin (B08 →
 // PERMISSION_DENIED). Дубликат/DELETING/payload — sync reject в use-case.
 func (h *RegistryHandler) CreateRepository(ctx context.Context, req *registryv1.CreateRepositoryRequest) (*operationProto, error) {
-	registryID := req.GetRegistryId()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID := req.GetNamespaceId()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
-	if err := h.authz.registryGate(ctx, registryID, relationVCreate); err != nil {
+	if err := h.authz.registryGate(ctx, namespaceID, relationVCreate); err != nil {
 		return nil, err
 	}
 	if req.GetVisibility() == registryv1.Visibility_PUBLIC {
-		if err := h.authz.requireRegistryAdmin(ctx, registryID, "creating a public repository requires registry admin"); err != nil {
+		if err := h.authz.requireRegistryAdmin(ctx, namespaceID, "creating a public repository requires registry admin"); err != nil {
 			return nil, err
 		}
 	}
 	op, err := h.uc.CreateRepository(ctx, registry.CreateRepositorySpec{
-		RegistryID:  registryID,
+		NamespaceID: namespaceID,
 		Repository:  req.GetRepository(),
 		Description: req.GetDescription(),
 		Labels:      req.GetLabels(),
@@ -77,23 +77,23 @@ func (h *RegistryHandler) CreateRepository(ctx context.Context, req *registryv1.
 // (deny|absent → NOT_FOUND). visibility→PUBLIC в mask требует registry admin (B02 →
 // PERMISSION_DENIED). immutable/unknown mask + payload-границы — sync reject в use-case.
 func (h *RegistryHandler) UpdateRepository(ctx context.Context, req *registryv1.UpdateRepositoryRequest) (*operationProto, error) {
-	registryID, repository := req.GetRegistryId(), req.GetRepository()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID, repository := req.GetNamespaceId(), req.GetRepository()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
 	}
-	if err := h.authz.checkRepository(ctx, registryID, repository, relationVUpdate); err != nil {
+	if err := h.authz.checkRepository(ctx, namespaceID, repository, relationVUpdate); err != nil {
 		return nil, err
 	}
 	if maskContains(req.GetUpdateMask().GetPaths(), "visibility") && req.GetVisibility() == registryv1.Visibility_PUBLIC {
-		if err := h.authz.requireRegistryAdmin(ctx, registryID, "changing repository visibility requires registry admin"); err != nil {
+		if err := h.authz.requireRegistryAdmin(ctx, namespaceID, "changing repository visibility requires registry admin"); err != nil {
 			return nil, err
 		}
 	}
 	op, err := h.uc.UpdateRepository(ctx, registry.UpdateRepositorySpec{
-		RegistryID:  registryID,
+		NamespaceID: namespaceID,
 		Repository:  repository,
 		Description: req.GetDescription(),
 		Labels:      req.GetLabels(),
@@ -111,17 +111,17 @@ func (h *RegistryHandler) UpdateRepository(ctx context.Context, req *registryv1.
 // ДО создания Operation: deny|absent → NOT_FOUND, Operation НЕ создаётся (existence-hiding,
 // A15 — как DeleteTag). reject-if-tags/engine-down → Operation error в worker'е.
 func (h *RegistryHandler) DeleteRepository(ctx context.Context, req *registryv1.DeleteRepositoryRequest) (*operationProto, error) {
-	registryID, repository := req.GetRegistryId(), req.GetRepository()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID, repository := req.GetNamespaceId(), req.GetRepository()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
 	}
-	if err := h.authz.checkRepository(ctx, registryID, repository, relationVDelete); err != nil {
+	if err := h.authz.checkRepository(ctx, namespaceID, repository, relationVDelete); err != nil {
 		return nil, err
 	}
-	op, err := h.uc.DeleteRepository(ctx, registryID, repository)
+	op, err := h.uc.DeleteRepository(ctx, namespaceID, repository)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -133,20 +133,20 @@ func (h *RegistryHandler) DeleteRepository(ctx context.Context, req *registryv1.
 // Check (deny|absent → NOT_FOUND). malformed/no-op new_name → InvalidArgument sync-first
 // в use-case (A19). engine-down mid-remap → Operation error UNAVAILABLE (A21).
 func (h *RegistryHandler) RenameRepository(ctx context.Context, req *registryv1.RenameRepositoryRequest) (*operationProto, error) {
-	registryID, repository := req.GetRegistryId(), req.GetRepository()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID, repository := req.GetNamespaceId(), req.GetRepository()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
 	}
-	if err := h.authz.checkRepository(ctx, registryID, repository, relationVUpdate); err != nil {
+	if err := h.authz.checkRepository(ctx, namespaceID, repository, relationVUpdate); err != nil {
 		return nil, err
 	}
-	if err := h.authz.registryGate(ctx, registryID, relationVCreate); err != nil {
+	if err := h.authz.registryGate(ctx, namespaceID, relationVCreate); err != nil {
 		return nil, err
 	}
-	op, err := h.uc.RenameRepository(ctx, registryID, repository, req.GetNewName())
+	op, err := h.uc.RenameRepository(ctx, namespaceID, repository, req.GetNewName())
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -158,18 +158,18 @@ func (h *RegistryHandler) RenameRepository(ctx context.Context, req *registryv1.
 // absent → NOT_FOUND, C02). malformed subject_digest → InvalidArgument sync-first (C04).
 // subject без referrer'ов → пустой список (C03). Инфра-полей НЕ несёт (X01).
 func (h *RegistryHandler) ListReferrers(ctx context.Context, req *registryv1.ListReferrersRequest) (*registryv1.ListReferrersResponse, error) {
-	registryID, repository := req.GetRegistryId(), req.GetRepository()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID, repository := req.GetNamespaceId(), req.GetRepository()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
 	}
-	if err := h.authz.checkRepository(ctx, registryID, repository, relationVGet); err != nil {
+	if err := h.authz.checkRepository(ctx, namespaceID, repository, relationVGet); err != nil {
 		return nil, err
 	}
 	referrers, err := h.uc.ListReferrers(ctx, registry.ReferrersQuery{
-		RegistryID:    registryID,
+		NamespaceID:   namespaceID,
 		Repository:    repository,
 		SubjectDigest: req.GetSubjectDigest(),
 		ArtifactType:  req.GetArtifactType(),
@@ -191,7 +191,7 @@ func toProtoReferrer(r *domain.Referrer) *registryv1.Referrer {
 		return nil
 	}
 	return &registryv1.Referrer{
-		RegistryId:    r.RegistryID,
+		NamespaceId:   r.NamespaceID,
 		Repository:    r.Repository,
 		SubjectDigest: r.SubjectDigest,
 		Digest:        r.Digest,

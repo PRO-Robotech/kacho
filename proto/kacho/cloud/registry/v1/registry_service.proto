@@ -21,34 +21,34 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/
 // НЕ здесь. Каждый RPC проходит per-RPC InternalIAMService.Check (security.md).
 service RegistryService {
   // Get — sync-чтение одного реестра. v_get на registry_registry.
-  rpc Get(GetRegistryRequest) returns (Registry) {
-    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}"};
+  rpc GetNamespace(GetNamespaceRequest) returns (Namespace) {
+    option (google.api.http) = {get: "/registry/v1/namespaces/{namespace_id}"};
     option (kacho.iam.authz.v1.permission) = "registry.registries.get";
     option (kacho.iam.authz.v1.required_relation) = "v_get";
     option (kacho.iam.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
-      from_request_field: "registry_id"
+      from_request_field: "namespace_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
 
   // List — sync-список реестров project'а. Scope-filtered (handler фильтрует
   // через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
-  rpc List(ListRegistriesRequest) returns (ListRegistriesResponse) {
-    option (google.api.http) = {get: "/registry/v1/registries"};
+  rpc ListNamespaces(ListNamespacesRequest) returns (ListNamespacesResponse) {
+    option (google.api.http) = {get: "/registry/v1/namespaces"};
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
   // Create — async. create-child = editor-tier на parent-project (Check на
   // iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
-  rpc Create(CreateRegistryRequest) returns (operation.Operation) {
+  rpc CreateNamespace(CreateNamespaceRequest) returns (operation.Operation) {
     option (google.api.http) = {
-      post: "/registry/v1/registries"
+      post: "/registry/v1/namespaces"
       body: "*"
     };
     option (kacho.cloud.api.operation) = {
-      metadata: "CreateRegistryMetadata"
-      response: "Registry"
+      metadata: "CreateNamespaceMetadata"
+      response: "Namespace"
     };
     option (kacho.iam.authz.v1.permission) = "registry.registries.create";
     option (kacho.iam.authz.v1.required_relation) = "editor";
@@ -60,37 +60,37 @@ service RegistryService {
   }
 
   // Update — async, mutable labels/description (name/project immutable). v_update.
-  rpc Update(UpdateRegistryRequest) returns (operation.Operation) {
+  rpc UpdateNamespace(UpdateNamespaceRequest) returns (operation.Operation) {
     option (google.api.http) = {
-      patch: "/registry/v1/registries/{registry_id}"
+      patch: "/registry/v1/namespaces/{namespace_id}"
       body: "*"
     };
     option (kacho.cloud.api.operation) = {
-      metadata: "UpdateRegistryMetadata"
-      response: "Registry"
+      metadata: "UpdateNamespaceMetadata"
+      response: "Namespace"
     };
     option (kacho.iam.authz.v1.permission) = "registry.registries.update";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
-      from_request_field: "registry_id"
+      from_request_field: "namespace_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
 
   // Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
   // zot-namespace + UnregisterResource owner/repo-tuple.
-  rpc Delete(DeleteRegistryRequest) returns (operation.Operation) {
-    option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}"};
+  rpc DeleteNamespace(DeleteNamespaceRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/registry/v1/namespaces/{namespace_id}"};
     option (kacho.cloud.api.operation) = {
-      metadata: "DeleteRegistryMetadata"
+      metadata: "DeleteNamespaceMetadata"
       response: "google.protobuf.Empty"
     };
     option (kacho.iam.authz.v1.permission) = "registry.registries.delete";
     option (kacho.iam.authz.v1.required_relation) = "v_delete";
     option (kacho.iam.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
-      from_request_field: "registry_id"
+      from_request_field: "namespace_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
@@ -99,20 +99,20 @@ service RegistryService {
   // = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
   // → gateway <exempt>, authz полностью в handler'е.
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse) {
-    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories"};
+    option (google.api.http) = {get: "/registry/v1/namespaces/{namespace_id}/repositories"};
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
   // ListOperations — sync-история async-операций реестра (per-resource, фильтр по
-  // resource_id=registry_id). Interceptor-gated per-RPC Check v_list на
+  // resource_id=namespace_id). Interceptor-gated per-RPC Check v_list на
   // registry_registry (как Get) → в allowlist как публичный gRPC-путь.
-  rpc ListOperations(ListRegistryOperationsRequest) returns (ListRegistryOperationsResponse) {
-    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/operations"};
+  rpc ListOperations(ListNamespaceOperationsRequest) returns (ListNamespaceOperationsResponse) {
+    option (google.api.http) = {get: "/registry/v1/namespaces/{namespace_id}/operations"};
     option (kacho.iam.authz.v1.permission) = "registry.registries.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
-      from_request_field: "registry_id"
+      from_request_field: "namespace_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
@@ -131,7 +131,7 @@ service RegistryService {
   //
   // Repository config-overlay (RG-1): durable per-repo config (description/
   // labels/visibility) поверх read-only zot-проекции; overlay ⟂ projection над
-  // натуральным ключом (registry_id,name). Read — sync; мутации — async→Operation
+  // натуральным ключом (namespace_id,name). Read — sync; мутации — async→Operation
   // (ban #9). Per-repo authz на COMPOSITE-объекте `registry_repository:<reg>/<repo>`
   // НЕ выразим gateway scope_extractor'ом (тот берёт одно top-level поле) → все
   // repository-scoped RPC gateway `<exempt>`, а per-repo Check + existence-hiding
@@ -145,17 +145,17 @@ service RegistryService {
   // survives-empty). Handler: per-repo v_get Check; unauthorized|absent → NOT_FOUND.
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
   rpc GetRepository(GetRepositoryRequest) returns (Repository) {
-    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
+    option (google.api.http) = {get: "/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}"};
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
   // CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
-  // uniqueness (registry_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
+  // uniqueness (namespace_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
   // Handler: namespace call-gate (невидимый реестр → NOT_FOUND, X04) + v_create;
   // явный visibility=PUBLIC требует registry admin (B08 → PERMISSION_DENIED).
   rpc CreateRepository(CreateRepositoryRequest) returns (operation.Operation) {
     option (google.api.http) = {
-      post: "/registry/v1/registries/{registry_id}/repositories"
+      post: "/registry/v1/namespaces/{namespace_id}/repositories"
       body: "*"
     };
     option (kacho.cloud.api.operation) = {
@@ -172,7 +172,7 @@ service RegistryService {
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
   rpc UpdateRepository(UpdateRepositoryRequest) returns (operation.Operation) {
     option (google.api.http) = {
-      patch: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"
+      patch: "/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}"
       body: "*"
     };
     option (kacho.cloud.api.operation) = {
@@ -189,7 +189,7 @@ service RegistryService {
   // NOT_FOUND, Operation НЕ создаётся (A15 — как DeleteTag).
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
   rpc DeleteRepository(DeleteRepositoryRequest) returns (operation.Operation) {
-    option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
+    option (google.api.http) = {delete: "/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}"};
     option (kacho.cloud.api.operation) = {
       metadata: "DeleteRepositoryMetadata"
       response: "google.protobuf.Empty"
@@ -202,7 +202,7 @@ service RegistryService {
   // объявлен ПОСЛЕ GetRepository catch-all'а → пробуется РАНЬШЕ, не затеняется
   // (см. блок-заголовок «ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ»).
   rpc ListTags(ListTagsRequest) returns (ListTagsResponse) {
-    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags"};
+    option (google.api.http) = {get: "/registry/v1/namespaces/{namespace_id}/repositories/{repository}/tags"};
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
@@ -211,7 +211,7 @@ service RegistryService {
   // создания Operation → gateway <exempt>. Sub-resource `…/tags/{tag}` — объявлен
   // ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
   rpc DeleteTag(DeleteTagRequest) returns (operation.Operation) {
-    option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}"};
+    option (google.api.http) = {delete: "/registry/v1/namespaces/{namespace_id}/repositories/{repository}/tags/{tag}"};
     option (kacho.cloud.api.operation) = {
       metadata: "DeleteTagMetadata"
       response: "google.protobuf.Empty"
@@ -229,7 +229,7 @@ service RegistryService {
   // `:rename` — объявлен ПОСЛЕ catch-all'ов → пробуется РАНЬШЕ (precedence).
   rpc RenameRepository(RenameRepositoryRequest) returns (operation.Operation) {
     option (google.api.http) = {
-      post: "/registry/v1/registries/{registry_id}/repositories/{repository=**}:rename"
+      post: "/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}:rename"
       body: "*"
     };
     option (kacho.cloud.api.operation) = {
@@ -245,40 +245,40 @@ service RegistryService {
   // unauthorized|absent repo → NOT_FOUND; subject без referrer'ов → пустой список (не 404).
   // Sub-resource `…/referrers` — объявлен ПОСЛЕ catch-all'ов → пробуется РАНЬШЕ.
   rpc ListReferrers(ListReferrersRequest) returns (ListReferrersResponse) {
-    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}/referrers"};
+    option (google.api.http) = {get: "/registry/v1/namespaces/{namespace_id}/repositories/{repository=**}/referrers"};
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 }
 
-message GetRegistryRequest {
-  string registry_id = 1;
+message GetNamespaceRequest {
+  string namespace_id = 1;
 }
 
-message ListRegistriesRequest {
+message ListNamespacesRequest {
   string project_id = 1;
   int32 page_size = 2 [(value) = "0-1000"];
   string page_token = 3;
   string filter = 4;
 }
 
-message ListRegistriesResponse {
-  repeated Registry registries = 1;
+message ListNamespacesResponse {
+  repeated Namespace namespaces = 1;
   string next_page_token = 2;
 }
 
-message CreateRegistryRequest {
+message CreateNamespaceRequest {
   string project_id = 1;
   string name = 2;
   string description = 3;
   map<string, string> labels = 4;
 }
 
-message CreateRegistryMetadata {
-  string registry_id = 1;
+message CreateNamespaceMetadata {
+  string namespace_id = 1;
 }
 
-message UpdateRegistryRequest {
-  string registry_id = 1;
+message UpdateNamespaceRequest {
+  string namespace_id = 1;
   string description = 2;
   map<string, string> labels = 3;
   google.protobuf.FieldMask update_mask = 4;
@@ -288,23 +288,23 @@ message UpdateRegistryRequest {
   // Дефолтная публичность для НОВЫХ repo (сид Repository.visibility на create).
   // Присутствие в update_mask с переходом →PUBLIC требует registry admin (D-6,
   // B10/B11). Существующие repo не перекрашиваются.
-  Visibility default_visibility = 6;
+  Visibility default_repository_visibility = 6;
 }
 
-message UpdateRegistryMetadata {
-  string registry_id = 1;
+message UpdateNamespaceMetadata {
+  string namespace_id = 1;
 }
 
-message DeleteRegistryRequest {
-  string registry_id = 1;
+message DeleteNamespaceRequest {
+  string namespace_id = 1;
 }
 
-message DeleteRegistryMetadata {
-  string registry_id = 1;
+message DeleteNamespaceMetadata {
+  string namespace_id = 1;
 }
 
 message ListRepositoriesRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   int32 page_size = 2 [(value) = "0-1000"];
   string page_token = 3;
 }
@@ -315,7 +315,7 @@ message ListRepositoriesResponse {
 }
 
 message ListTagsRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
   int32 page_size = 3 [(value) = "0-1000"];
   string page_token = 4;
@@ -327,24 +327,24 @@ message ListTagsResponse {
 }
 
 message DeleteTagRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
   string tag = 3;
 }
 
 message DeleteTagMetadata {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
   string tag = 3;
 }
 
-message ListRegistryOperationsRequest {
-  string registry_id = 1;
+message ListNamespaceOperationsRequest {
+  string namespace_id = 1;
   int32 page_size = 2 [(value) = "0-1000"];
   string page_token = 3;
 }
 
-message ListRegistryOperationsResponse {
+message ListNamespaceOperationsResponse {
   repeated operation.Operation operations = 1;
   string next_page_token = 2;
 }
@@ -352,27 +352,27 @@ message ListRegistryOperationsResponse {
 // === Repository config-overlay (RG-1) request/response/metadata =============
 
 message GetRepositoryRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
 }
 
 message CreateRepositoryRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
   string description = 3;
   map<string, string> labels = 4;
   // Явная публичность. Не задано (UNSPECIFIED) → наследует
-  // Registry.default_visibility. Явный PUBLIC требует registry admin (D-6, B08).
+  // Namespace.default_repository_visibility. Явный PUBLIC требует registry admin (D-6, B08).
   Visibility visibility = 5;
 }
 
 message CreateRepositoryMetadata {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
 }
 
 message UpdateRepositoryRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
   string description = 3;
   map<string, string> labels = 4;
@@ -382,37 +382,37 @@ message UpdateRepositoryRequest {
 }
 
 message UpdateRepositoryMetadata {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
 }
 
 message DeleteRepositoryRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
 }
 
 message DeleteRepositoryMetadata {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
 }
 
 message RenameRepositoryRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
-  // Голое repo-имя внутри ТОГО ЖЕ registry_id (поля целевого реестра НЕТ —
+  // Голое repo-имя внутри ТОГО ЖЕ namespace_id (поля целевого реестра НЕТ —
   // cross-registry rename структурно невыразим, D-5). malformed ИЛИ == repository
   // (no-op) → INVALID_ARGUMENT.
   string new_name = 3;
 }
 
 message RenameRepositoryMetadata {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
   string new_name = 3;
 }
 
 message ListReferrersRequest {
-  string registry_id = 1;
+  string namespace_id = 1;
   string repository = 2;
   // Digest subject-манифеста, referrer'ы которого перечисляются (OCI digest,
   // напр. "sha256:<64-hex>"). malformed → INVALID_ARGUMENT.

@@ -13,7 +13,7 @@ import (
 // без page_token/page_size — зеркалит OCI single-index /referrers/<digest>). ArtifactType
 // — опциональный server-side facet-фильтр (media-type подписи/SBOM/аттестации, C01).
 type ReferrersQuery struct {
-	RegistryID    string
+	NamespaceID   string
 	Repository    string
 	SubjectDigest string
 	ArtifactType  string
@@ -29,7 +29,7 @@ func (u *UseCase) ListReferrers(ctx context.Context, q ReferrersQuery) ([]*domai
 	if err := u.assertRepoWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(q.RegistryID); err != nil {
+	if err := ValidateNamespaceID(q.NamespaceID); err != nil {
 		return nil, err
 	}
 	if err := domain.ValidateRepositoryName("repository", q.Repository); err != nil {
@@ -39,7 +39,7 @@ func (u *UseCase) ListReferrers(ctx context.Context, q ReferrersQuery) ([]*domai
 		return nil, failInvalidArg("%s", err.Error())
 	}
 
-	referrers, err := u.zot.ListReferrers(ctx, q.RegistryID, q.Repository, q.SubjectDigest, q.ArtifactType)
+	referrers, err := u.zot.ListReferrers(ctx, q.NamespaceID, q.Repository, q.SubjectDigest, q.ArtifactType)
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}

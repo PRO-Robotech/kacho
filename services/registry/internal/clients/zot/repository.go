@@ -25,11 +25,11 @@ import (
 // типы/timestamps) через search-ext GraphQL ImageList. Нет тегов (durable-empty / repo
 // ещё не пушился) → (nil, nil) — overlay-слой durable пережил пустоту, ephemeral без
 // проекции невидим (existence-hiding в use-case/handler). zot недоступен → ErrUnavailable.
-func (c *Client) RepositoryProjection(ctx context.Context, registryID, repository string) (*domain.Repository, error) {
+func (c *Client) RepositoryProjection(ctx context.Context, namespaceID, repository string) (*domain.Repository, error) {
 	if err := c.ready(); err != nil {
 		return nil, err
 	}
-	fullRepo := registryID + "/" + repository
+	fullRepo := namespaceID + "/" + repository
 	var data gqlImageListData
 	if err := c.gqlQuery(ctx, imageListQuery(fullRepo), &data); err != nil {
 		return nil, err
@@ -40,17 +40,17 @@ func (c *Client) RepositoryProjection(ctx context.Context, registryID, repositor
 	}
 	// Пустой GlobalSearch-агрегат (rs) → repositoryFromSummaries fallback'ит size/
 	// updated_at/download_count из суммы/максимума по тегам.
-	return repositoryFromSummaries(registryID, repository, gqlRepoSummary{}, results), nil
+	return repositoryFromSummaries(namespaceID, repository, gqlRepoSummary{}, results), nil
 }
 
 // RepositoryEmpty сообщает, есть ли у repo ≥1 тег (DeleteRepository reject-if-tags, D-4).
 // Читает GET /v2/<full-repo>/tags/list (404 → пустой → true). zot недоступен →
 // ErrUnavailable (fail-closed: overlay не сносим, пока не подтвердили пустоту, A14).
-func (c *Client) RepositoryEmpty(ctx context.Context, registryID, repository string) (bool, error) {
+func (c *Client) RepositoryEmpty(ctx context.Context, namespaceID, repository string) (bool, error) {
 	if err := c.ready(); err != nil {
 		return false, err
 	}
-	tags, err := c.repoTags(ctx, registryID+"/"+repository)
+	tags, err := c.repoTags(ctx, namespaceID+"/"+repository)
 	if err != nil {
 		return false, err
 	}
@@ -63,11 +63,11 @@ func (c *Client) RepositoryEmpty(ctx context.Context, registryID, repository str
 // применяется server-side (query-param) И client-side (defense-in-depth, если движок не
 // отфильтровал). Нет referrer'ов / нет index (404) → пустой список (C03, не ошибка).
 // Инфра-полей НЕ несёт (X01). zot недоступен → ErrUnavailable.
-func (c *Client) ListReferrers(ctx context.Context, registryID, repository, subjectDigest, artifactType string) ([]*domain.Referrer, error) {
+func (c *Client) ListReferrers(ctx context.Context, namespaceID, repository, subjectDigest, artifactType string) ([]*domain.Referrer, error) {
 	if err := c.ready(); err != nil {
 		return nil, err
 	}
-	fullRepo := registryID + "/" + repository
+	fullRepo := namespaceID + "/" + repository
 	path := "/v2/" + repoPath(fullRepo) + "/referrers/" + url.PathEscape(subjectDigest)
 	if artifactType != "" {
 		path += "?artifactType=" + url.QueryEscape(artifactType)
@@ -85,7 +85,7 @@ func (c *Client) ListReferrers(ctx context.Context, registryID, repository, subj
 			continue // client-side facet (движок мог не отфильтровать)
 		}
 		out = append(out, &domain.Referrer{
-			RegistryID:    registryID,
+			NamespaceID:   namespaceID,
 			Repository:    repository,
 			SubjectDigest: subjectDigest,
 			Digest:        m.Digest,
@@ -105,16 +105,16 @@ func (c *Client) ListReferrers(ctx context.Context, registryID, repository, subj
 // — на любом сбое движка возвращаем ErrUnavailable fail-closed, а старое имя по-прежнему
 // резолвится (A21: НЕ бывает состояния «не адресуем ни под старым, ни под новым»).
 // Целевое имя занято на уровне overlay/проекции — арбитрит use-case pre-check + DB PK.
-func (c *Client) RenameRepository(ctx context.Context, registryID, oldName, newName string) error {
+func (c *Client) RenameRepository(ctx context.Context, namespaceID, oldName, newName string) error {
 	if err := c.ready(); err != nil {
 		return err
 	}
-	oldRepo := registryID + "/" + oldName
+	oldRepo := namespaceID + "/" + oldName
 	tags, err := c.repoTags(ctx, oldRepo)
 	if err != nil {
 		return err
 	}
-	newRepo := registryID + "/" + newName
+	newRepo := namespaceID + "/" + newName
 	// Фаза 1: копируем все теги old→new (оба адресуемы во время копирования).
 	for _, tag := range tags {
 		raw, contentType, gerr := c.rawManifest(ctx, oldRepo, tag)
@@ -127,7 +127,7 @@ func (c *Client) RenameRepository(ctx context.Context, registryID, oldName, newN
 	}
 	// Фаза 2: снимаем old (последним) — теперь new полностью населён, old→404.
 	for _, tag := range tags {
-		if derr := c.DeleteTag(ctx, registryID, oldName, tag); derr != nil {
+		if derr := c.DeleteTag(ctx, namespaceID, oldName, tag); derr != nil {
 			return derr
 		}
 	}

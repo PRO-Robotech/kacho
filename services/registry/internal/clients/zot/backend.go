@@ -23,11 +23,11 @@ import (
 // RepoExists сообщает, зарегистрирован ли repo (несёт ≥1 тег) — data-plane
 // verb-map push-new (v_create@namespace) vs push-existing (v_update@repo). zot
 // недоступен → ErrUnavailable (fail-closed: не решаем new/existing вслепую).
-func (c *Client) RepoExists(ctx context.Context, registryID, repo string) (bool, error) {
+func (c *Client) RepoExists(ctx context.Context, namespaceID, repo string) (bool, error) {
 	if err := c.ready(); err != nil {
 		return false, err
 	}
-	tags, err := c.repoTags(ctx, registryID+"/"+repo)
+	tags, err := c.repoTags(ctx, namespaceID+"/"+repo)
 	if err != nil {
 		return false, err
 	}
@@ -102,19 +102,19 @@ func blobScopeVerdict(found bool, werr error, scannedAll bool) (in bool, err err
 // коротким TTL-кэшем (blob_scope_cache.go) — повторный blob-GET того же слоя не
 // пере-сканирует теги. Блоб НЕ найден и zot недоступен → ErrUnavailable (fail-closed:
 // ответ действительно неизвестен).
-func (c *Client) BlobInRepo(ctx context.Context, registryID, repo, digest string) (bool, error) {
+func (c *Client) BlobInRepo(ctx context.Context, namespaceID, repo, digest string) (bool, error) {
 	if err := c.ready(); err != nil {
 		return false, err
 	}
 	// Мемоизация: повторный blob-GET того же слоя (горячий docker-pull) не
 	// пере-сканирует все теги repo. Короткий TTL (blobCacheTTL) держит staleness в узде.
-	key := blobCacheKey(registryID, repo, digest)
+	key := blobCacheKey(namespaceID, repo, digest)
 	if c.blobCache != nil {
 		if in, ok := c.blobCache.get(key); ok {
 			return in, nil
 		}
 	}
-	fullRepo := registryID + "/" + repo
+	fullRepo := namespaceID + "/" + repo
 	tags, err := c.repoTags(ctx, fullRepo)
 	if err != nil {
 		return false, err

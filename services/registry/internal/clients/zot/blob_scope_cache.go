@@ -20,7 +20,7 @@ const blobCacheTTL = time.Minute
 const blobCacheMaxEntries = 8192
 
 // membershipCache — потокобезопасный TTL-кэш решения BlobInRepo, ключ
-// "<registryID>/<repo>|<digest>" → (in-repo, срок). Кэшируются и позитивные, и
+// "<namespaceID>/<repo>|<digest>" → (in-repo, срок). Кэшируются и позитивные, и
 // негативные вердикты: повторный pull легитимного слоя И повторный запрос чужого
 // digest'а одинаково не пере-сканируют теги repo.
 type membershipCache struct {
@@ -83,8 +83,8 @@ func (c *membershipCache) set(key string, inRepo bool) {
 	c.entries[key] = membershipEntry{inRepo: inRepo, expires: now.Add(c.ttl)}
 }
 
-// blobCacheKey строит ключ кэша принадлежности. Включает registryID+repo (одинаковый
+// blobCacheKey строит ключ кэша принадлежности. Включает namespaceID+repo (одинаковый
 // content-addressable digest в разных repo — разные ключи, без коллизии).
-func blobCacheKey(registryID, repo, digest string) string {
-	return registryID + "/" + repo + "|" + digest
+func blobCacheKey(namespaceID, repo, digest string) string {
+	return namespaceID + "/" + repo + "|" + digest
 }

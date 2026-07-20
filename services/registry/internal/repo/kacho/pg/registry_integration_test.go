@@ -78,14 +78,14 @@ func withSearchPath(dsn string) string {
 	return dsn + sep + opt
 }
 
-// newReg строит domain.Registry с сгенерированным id (prefix reg).
-func newReg(projectID, name string, labels map[string]string) *domain.Registry {
-	return &domain.Registry{
+// newReg строит domain.Namespace с сгенерированным id (prefix reg).
+func newReg(projectID, name string, labels map[string]string) *domain.Namespace {
+	return &domain.Namespace{
 		ID:        ids.NewID(ids.PrefixRegistry),
 		ProjectID: projectID,
 		Name:      name,
 		Labels:    labels,
-		Status:    domain.RegistryStatusActive,
+		Status:    domain.NamespaceStatusActive,
 	}
 }
 
@@ -104,7 +104,7 @@ func countOutbox(t *testing.T, pool *pgxpool.Pool, resourceID, eventType string)
 // round-trip полей; outbox несёт fga.register.
 func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	reg := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -112,7 +112,7 @@ func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 	created, err := repo.Insert(ctx, reg, intent)
 	require.NoError(t, err)
 	require.Equal(t, reg.ID, created.ID)
-	require.Equal(t, domain.RegistryStatusActive, created.Status)
+	require.Equal(t, domain.NamespaceStatusActive, created.Status)
 	require.False(t, created.CreatedAt.IsZero())
 
 	got, err := repo.Get(ctx, reg.ID)
@@ -130,7 +130,7 @@ func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 // outbox-intent НЕ появляются (rollback).
 func TestRepo_REG04_DuplicateName_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r1 := newReg("prj-P", "team-images", nil)
@@ -152,7 +152,7 @@ func TestRepo_REG04_DuplicateName_AlreadyExists(t *testing.T) {
 // повторного Create (partial-предикат исключает DELETING из индекса).
 func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r1 := newReg("prj-P", "team-images", nil)
@@ -176,7 +176,7 @@ func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 // REG-06 — List: project-scope + cursor-пагинация (created_at,id) ASC + name-filter.
 func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	// created_at выставляется явными возрастающими значениями (НЕ wall-clock sleep):
@@ -228,7 +228,7 @@ func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 // Delete физически убирает строку + unregister-intent; Update на DELETING → NotFound.
 func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", nil)
@@ -237,17 +237,17 @@ func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 
 	marked, err := repo.MarkDeleting(ctx, r.ID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RegistryStatusDeleting, marked.Status)
+	require.Equal(t, domain.NamespaceStatusDeleting, marked.Status)
 
 	// forward-only: Update на DELETING-реестре не находит ACTIVE-строку → NotFound.
-	_, err = repo.Update(ctx, registry.UpdateSpec{RegistryID: r.ID, ApplyDescription: true, Description: "x"},
-		func(rr *domain.Registry) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
+	_, err = repo.Update(ctx, registry.UpdateSpec{NamespaceID: r.ID, ApplyDescription: true, Description: "x"},
+		func(rr *domain.Namespace) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
 	require.ErrorIs(t, err, regerrors.ErrNotFound)
 
 	// idempotent forward-only: повторный MarkDeleting на DELETING возвращает строку.
 	again, err := repo.MarkDeleting(ctx, r.ID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RegistryStatusDeleting, again.Status)
+	require.Equal(t, domain.NamespaceStatusDeleting, again.Status)
 
 	unreg := domain.UnregisterIntentForDelete(r.ID, r.ProjectID)
 	require.NoError(t, repo.Delete(ctx, r.ID, unreg))
@@ -261,7 +261,7 @@ func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 // ловят 23505 → ErrAlreadyExists (partial UNIQUE race, не ловится unit-тестом).
 func TestRepo_REG31_ConcurrentInsert_UniqueRace(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	const n = 8
@@ -300,7 +300,7 @@ func TestRepo_REG31_ConcurrentInsert_UniqueRace(t *testing.T) {
 // destructive unregister-дубля).
 func TestRepo_REG09_ConcurrentDelete_ExactlyOnce(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", nil)
@@ -340,7 +340,7 @@ func TestRepo_REG09_ConcurrentDelete_ExactlyOnce(t *testing.T) {
 // labels; label-clear реально очищает метки в персисте.
 func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -349,9 +349,9 @@ func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 
 	// Смена labels + description.
 	updated, err := repo.Update(ctx, registry.UpdateSpec{
-		RegistryID: r.ID, ApplyLabels: true, Labels: map[string]string{"env": "staging", "team": "core"},
+		NamespaceID: r.ID, ApplyLabels: true, Labels: map[string]string{"env": "staging", "team": "core"},
 		ApplyDescription: true, Description: "staging CI",
-	}, func(rr *domain.Registry) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
+	}, func(rr *domain.Namespace) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
 	require.NoError(t, err)
 	require.Equal(t, "staging CI", updated.Description)
 	require.Equal(t, map[string]string{"env": "staging", "team": "core"}, updated.Labels)
@@ -362,8 +362,8 @@ func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 
 	// label-clear: пустая карта реально очищает метки (не no-op).
 	cleared, err := repo.Update(ctx, registry.UpdateSpec{
-		RegistryID: r.ID, ApplyLabels: true, Labels: map[string]string{},
-	}, func(rr *domain.Registry) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
+		NamespaceID: r.ID, ApplyLabels: true, Labels: map[string]string{},
+	}, func(rr *domain.Namespace) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
 	require.NoError(t, err)
 	require.Empty(t, cleared.Labels, "label-clear actually clears (security invariant)")
 
@@ -378,7 +378,7 @@ func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 // проверяем только durable-emit в registry_outbox.
 func TestRepo_REG14_RepoTupleIntent_Emit(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	regID := "regREPOTUPLE000000000"

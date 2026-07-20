@@ -20,7 +20,7 @@ import (
 )
 
 // REG-25/REG-27 — DeleteTag happy: async Operation → worker (с проброшенным
-// principal) зовёт zot.DeleteTag(registryID, repository, tag); полл до done без error.
+// principal) зовёт zot.DeleteTag(namespaceID, repository, tag); полл до done без error.
 func TestRegistry_REG25_DeleteTag_HappyPath(t *testing.T) {
 	zot := &mockZot{}
 	ops := newMemOps()
@@ -36,7 +36,7 @@ func TestRegistry_REG25_DeleteTag_HappyPath(t *testing.T) {
 
 	require.Len(t, zot.deleteTagCall, 1)
 	call := zot.deleteTagCall[0]
-	require.Equal(t, validRegID, call.registryID)
+	require.Equal(t, validRegID, call.namespaceID)
 	require.Equal(t, "app", call.repository)
 	require.Equal(t, "v1", call.tag)
 	// REG-27: worker не уходит анонимно — principal проброшен в worker-ctx.
@@ -116,10 +116,10 @@ func TestRegistry_REG25_DeleteTag_ListTagsError_NoUnregister(t *testing.T) {
 // INVALID_ARGUMENT (Operation НЕ создаётся, zot не трогается).
 func TestRegistry_REG25_DeleteTag_SyncValidation(t *testing.T) {
 	cases := []struct {
-		name       string
-		registryID string
-		repo       string
-		tag        string
+		name        string
+		namespaceID string
+		repo        string
+		tag         string
 	}{
 		{"malformed_id", "not-an-id", "app", "v1"},
 		{"empty_repo", validRegID, "", "v1"},
@@ -129,7 +129,7 @@ func TestRegistry_REG25_DeleteTag_SyncValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			zot := &mockZot{}
 			uc := newUC(&mockRepo{}, zot, &mockIAM{}, newMemOps())
-			_, err := uc.DeleteTag(aliceCtx(), tc.registryID, tc.repo, tc.tag)
+			_, err := uc.DeleteTag(aliceCtx(), tc.namespaceID, tc.repo, tc.tag)
 			require.Equal(t, codes.InvalidArgument, codeOf(t, err))
 			require.Empty(t, zot.deleteTagCall, "zot not touched on sync-reject")
 		})
@@ -150,7 +150,7 @@ func TestRegistry_REG25_DeleteTag_WorkerZotError(t *testing.T) {
 }
 
 // REG-38 — TriggerGC happy: async Operation → worker (с principal) зовёт
-// zot.TriggerGC(registryID); полл до done. Идемпотентен (повторный вызов безопасен).
+// zot.TriggerGC(namespaceID); полл до done. Идемпотентен (повторный вызов безопасен).
 func TestRegistry_REG38_TriggerGC_HappyPath(t *testing.T) {
 	zot := &mockZot{}
 	ops := newMemOps()
@@ -192,7 +192,7 @@ func TestRegistry_REG38_TriggerGC_WorkerZotError(t *testing.T) {
 }
 
 // REG-08 — Delete непустого namespace: sync-precondition читает zot.NamespaceEmpty;
-// НЕ пусто → FAILED_PRECONDITION "registry is not empty"; Operation НЕ создаётся,
+// НЕ пусто → FAILED_PRECONDITION "namespace is not empty"; Operation НЕ создаётся,
 // namespace/строка не трогаются (status остаётся ACTIVE, worker не запускается).
 func TestRegistry_REG08_Delete_NonEmpty_FailedPrecondition(t *testing.T) {
 	zot := &mockZot{namespaceEmpty: false} // namespace НЕ пуст
@@ -201,7 +201,7 @@ func TestRegistry_REG08_Delete_NonEmpty_FailedPrecondition(t *testing.T) {
 
 	_, err := uc.Delete(aliceCtx(), validRegID)
 	require.Equal(t, codes.FailedPrecondition, codeOf(t, err))
-	require.Equal(t, "registry is not empty", status.Convert(err).Message())
+	require.Equal(t, "namespace is not empty", status.Convert(err).Message())
 	require.Empty(t, zot.removedNS, "namespace not touched")
 }
 

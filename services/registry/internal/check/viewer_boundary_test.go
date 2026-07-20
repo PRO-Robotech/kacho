@@ -66,22 +66,22 @@ func TestViewerBoundary_GetAllowed_UpdateDeleteHidden(t *testing.T) {
 	okHandler := func(context.Context, any) (any, error) { ran = true; return "ok", nil }
 
 	// Get — viewer имеет v_get → handler выполняется.
-	_, err := inter(ctx, &registryv1.GetRegistryRequest{RegistryId: regID},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/Get"}, okHandler)
+	_, err := inter(ctx, &registryv1.GetNamespaceRequest{NamespaceId: regID},
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/GetNamespace"}, okHandler)
 	require.NoError(t, err, "viewer with v_get may Get")
 	require.True(t, ran, "Get handler executed")
 
 	// Update — нет v_update → NOT_FOUND (existence-hiding), handler НЕ вызван.
 	ran = false
-	_, err = inter(ctx, &registryv1.UpdateRegistryRequest{RegistryId: regID},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/Update"}, okHandler)
+	_, err = inter(ctx, &registryv1.UpdateNamespaceRequest{NamespaceId: regID},
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/UpdateNamespace"}, okHandler)
 	require.Equal(t, codes.NotFound, status.Code(err), "viewer denied Update → NOT_FOUND (existence-hidden)")
 	require.False(t, ran, "Update handler NOT executed on deny")
 
 	// Delete — нет v_delete → NOT_FOUND, handler НЕ вызван.
 	ran = false
-	_, err = inter(ctx, &registryv1.DeleteRegistryRequest{RegistryId: regID},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/Delete"}, okHandler)
+	_, err = inter(ctx, &registryv1.DeleteNamespaceRequest{NamespaceId: regID},
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/DeleteNamespace"}, okHandler)
 	require.Equal(t, codes.NotFound, status.Code(err), "viewer denied Delete → NOT_FOUND (existence-hidden)")
 	require.False(t, ran, "Delete handler NOT executed on deny")
 }

@@ -16,9 +16,9 @@ import (
 // gRPC-стабы RegistryService мутаций (совпадает с corelib operation proto).
 type operationProto = operationpb.Operation
 
-// Проекция domain.Registry → registryv1.Registry (с output-only endpoint) —
-// единый источник в use-case (UseCase.ProtoRegistry), т.к. endpoint зависит от
-// конфигурируемой base. Handler зовёт h.uc.ProtoRegistry, отдельного конвертера
+// Проекция domain.Namespace → registryv1.Namespace (с output-only endpoint) —
+// единый источник в use-case (UseCase.ProtoNamespace), т.к. endpoint зависит от
+// конфигурируемой base. Handler зовёт h.uc.ProtoNamespace, отдельного конвертера
 // Registry в transport-слое нет.
 
 // toProtoRepository конвертирует domain.Repository → registryv1.Repository.
@@ -34,7 +34,7 @@ func toProtoRepository(r *domain.Repository) *registryv1.Repository {
 		}
 	}
 	return &registryv1.Repository{
-		RegistryId:    r.RegistryID,
+		NamespaceId:   r.NamespaceID,
 		Name:          r.Name,
 		Description:   r.Description,                       // overlay (durable); пусто у ephemeral
 		Labels:        r.Labels,                            // overlay (durable); пусто у ephemeral
@@ -56,7 +56,7 @@ func toProtoTag(t *domain.Tag) *registryv1.Tag {
 		return nil
 	}
 	return &registryv1.Tag{
-		RegistryId:    t.RegistryID,
+		NamespaceId:   t.NamespaceID,
 		Repository:    t.Repository,
 		Tag:           t.Tag,
 		Digest:        t.Digest,
@@ -79,7 +79,7 @@ func toProtoStats(s *domain.RegistryStats) *registryv1.RegistryStats {
 		return nil
 	}
 	return &registryv1.RegistryStats{
-		RegistryId:      s.RegistryID,
+		NamespaceId:     s.NamespaceID,
 		RepositoryCount: s.RepositoryCount,
 		TagCount:        s.TagCount,
 		TotalSizeBytes:  s.TotalSizeBytes,

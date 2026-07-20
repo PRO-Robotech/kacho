@@ -100,12 +100,12 @@ func TestRegistry_RepositoryRoutes_DispatchToOwnHandler(t *testing.T) {
 	cases := []struct {
 		name, method, path, want string
 	}{
-		{"GetRepository", "GET", "/registry/v1/registries/reg-1/repositories/backend/api", "GetRepository:backend/api"},
-		{"ListReferrers", "GET", "/registry/v1/registries/reg-1/repositories/backend/api/referrers", "ListReferrers:backend/api"},
-		{"CreateRepository", "POST", "/registry/v1/registries/reg-1/repositories", "CreateRepository:"},
-		{"UpdateRepository", "PATCH", "/registry/v1/registries/reg-1/repositories/backend/api", "UpdateRepository:backend/api"},
-		{"DeleteRepository", "DELETE", "/registry/v1/registries/reg-1/repositories/backend/api", "DeleteRepository:backend/api"},
-		{"RenameRepository", "POST", "/registry/v1/registries/reg-1/repositories/backend/api:rename", "RenameRepository:backend/api"},
+		{"GetRepository", "GET", "/registry/v1/namespaces/ns-1/repositories/backend/api", "GetRepository:backend/api"},
+		{"ListReferrers", "GET", "/registry/v1/namespaces/ns-1/repositories/backend/api/referrers", "ListReferrers:backend/api"},
+		{"CreateRepository", "POST", "/registry/v1/namespaces/ns-1/repositories", "CreateRepository:"},
+		{"UpdateRepository", "PATCH", "/registry/v1/namespaces/ns-1/repositories/backend/api", "UpdateRepository:backend/api"},
+		{"DeleteRepository", "DELETE", "/registry/v1/namespaces/ns-1/repositories/backend/api", "DeleteRepository:backend/api"},
+		{"RenameRepository", "POST", "/registry/v1/namespaces/ns-1/repositories/backend/api:rename", "RenameRepository:backend/api"},
 	}
 	for _, tc := range cases {
 

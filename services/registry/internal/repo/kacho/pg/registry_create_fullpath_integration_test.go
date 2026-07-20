@@ -83,7 +83,7 @@ func awaitOpDoneFP(t *testing.T, ops operations.Repo, id string) *operations.Ope
 // live-only «internal database error» на operations-INSERT).
 func TestUseCase_REG01_FullCreatePath_OperationsInsert(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ops := operations.NewRepo(pool, "kacho_registry")
 	uc := registry.New(repo, repo, kachopg.NewRepositoryConfigRepo(pool), stubZotFP{}, stubIAMFP{}, repo, ops, "registry.kacho.local")
 
@@ -119,7 +119,7 @@ func TestUseCase_REG01_FullCreatePath_OperationsInsert(t *testing.T) {
 	// Get round-trip через repo.
 	got, err := repo.Get(context.Background(), createdID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RegistryStatusActive, got.Status)
+	require.Equal(t, domain.NamespaceStatusActive, got.Status)
 	require.Equal(t, map[string]string{"env": "prod"}, got.Labels)
 
 	// Sanity: несуществующий id → ErrNotFound (repo-путь не сломан).

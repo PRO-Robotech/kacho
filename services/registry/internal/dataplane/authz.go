@@ -21,13 +21,13 @@ const (
 
 // registryObject — FGA object namespace-реестра "registry_registry:<id>"
 // (call-gate push-new: право создавать repo в namespace).
-func registryObject(registryID string) string {
-	return domain.FGAObjectRef(domain.FGAObjectTypeRegistry, registryID)
+func registryObject(namespaceID string) string {
+	return domain.FGAObjectRef(domain.FGAObjectTypeRegistry, namespaceID)
 }
 
 // repositoryObject — FGA object репозитория "registry_repository:<reg>/<repo>".
-func repositoryObject(registryID, repo string) string {
-	return domain.FGAObjectRef(domain.FGAObjectTypeRepository, registryID+"/"+repo)
+func repositoryObject(namespaceID, repo string) string {
+	return domain.FGAObjectRef(domain.FGAObjectTypeRepository, namespaceID+"/"+repo)
 }
 
 // repositoryObjectFull — FGA object репозитория по полному имени "<reg>/<repo>"

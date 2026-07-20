@@ -151,7 +151,7 @@ func TestRepoConfig_RG1B09_ConcurrentVisibilityFlip_CAS(t *testing.T) {
 			defer wg.Done()
 			<-start
 			got, e := repo.UpdateConfig(ctx, registry.RepositoryConfigUpdate{
-				RegistryID: regID, Name: "race/img",
+				NamespaceID: regID, Name: "race/img",
 				Visibility: targets[i], ApplyVisibility: true,
 			})
 			errs[i] = e
@@ -170,7 +170,7 @@ func TestRepoConfig_RG1B09_ConcurrentVisibilityFlip_CAS(t *testing.T) {
 	// RETURNING одного из writer'ов (нет torn/split state).
 	var finalRaw string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT visibility FROM kacho_registry.repository_configs WHERE registry_id=$1 AND name=$2`,
+		`SELECT visibility FROM kacho_registry.repository_configs WHERE namespace_id=$1 AND name=$2`,
 		regID, "race/img").Scan(&finalRaw))
 	require.Contains(t, []string{"PRIVATE", "PUBLIC"}, finalRaw, "терминал — чистый CHECK-домен")
 	final := domain.VisibilityFromString(finalRaw)

@@ -21,7 +21,7 @@ import (
 
 // UpdateRepositorySpec — вход UpdateRepository (тело + update_mask, распарсенное handler'ом).
 type UpdateRepositorySpec struct {
-	RegistryID  string
+	NamespaceID string
 	Repository  string
 	Description string
 	Labels      map[string]string
@@ -40,7 +40,7 @@ func (u *UseCase) UpdateRepository(ctx context.Context, spec UpdateRepositorySpe
 	if err := u.assertRepoWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(spec.RegistryID); err != nil {
+	if err := ValidateNamespaceID(spec.NamespaceID); err != nil {
 		return nil, err
 	}
 	if err := domain.ValidateRepositoryName("repository", spec.Repository); err != nil {
@@ -48,7 +48,7 @@ func (u *UseCase) UpdateRepository(ctx context.Context, spec UpdateRepositorySpe
 	}
 
 	cfgSpec := RepositoryConfigUpdate{
-		RegistryID:  spec.RegistryID,
+		NamespaceID: spec.NamespaceID,
 		Name:        spec.Repository,
 		Description: spec.Description,
 		Labels:      spec.Labels,
@@ -77,8 +77,8 @@ func (u *UseCase) UpdateRepository(ctx context.Context, spec UpdateRepositorySpe
 	principal := operations.PrincipalFromContext(ctx)
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Update Repository %s/%s", spec.RegistryID, spec.Repository),
-		&registryv1.UpdateRepositoryMetadata{RegistryId: spec.RegistryID, Repository: spec.Repository},
+		fmt.Sprintf("Update Repository %s/%s", spec.NamespaceID, spec.Repository),
+		&registryv1.UpdateRepositoryMetadata{NamespaceId: spec.NamespaceID, Repository: spec.Repository},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -93,11 +93,11 @@ func (u *UseCase) UpdateRepository(ctx context.Context, spec UpdateRepositorySpe
 		if uerr != nil {
 			return nil, uerr
 		}
-		proj, perr := u.zot.RepositoryProjection(wctx, spec.RegistryID, spec.Repository)
+		proj, perr := u.zot.RepositoryProjection(wctx, spec.NamespaceID, spec.Repository)
 		if perr != nil {
 			return nil, mapRepoErr(perr)
 		}
-		return u.repositoryAny(mergeRepository(spec.RegistryID, spec.Repository, updated, proj))
+		return u.repositoryAny(mergeRepository(spec.NamespaceID, spec.Repository, updated, proj))
 	})
 
 	return &op, nil
@@ -118,7 +118,7 @@ func (u *UseCase) applyRepoUpdate(ctx context.Context, spec RepositoryConfigUpda
 	}
 
 	// Ephemeral → promote: строим overlay из применённых полей + default_visibility.
-	reg, gerr := u.reader.Get(ctx, spec.RegistryID)
+	reg, gerr := u.reader.Get(ctx, spec.NamespaceID)
 	if gerr != nil {
 		return nil, mapRepoErr(gerr)
 	}
@@ -128,7 +128,7 @@ func (u *UseCase) applyRepoUpdate(ctx context.Context, spec RepositoryConfigUpda
 	}
 	visibility = resolveVisibility(visibility, reg.DefaultVisibility)
 	promoted := &domain.RepositoryConfig{
-		RegistryID:  spec.RegistryID,
+		NamespaceID: spec.NamespaceID,
 		Name:        spec.Name,
 		Description: spec.Description,
 		Labels:      spec.Labels,
@@ -137,7 +137,7 @@ func (u *UseCase) applyRepoUpdate(ctx context.Context, spec RepositoryConfigUpda
 	promoteIntents := []OutboxIntent{}
 	if visibility == domain.VisibilityPublic {
 		promoteIntents = append(promoteIntents,
-			OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(spec.RegistryID, spec.Name)})
+			OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(spec.NamespaceID, spec.Name)})
 	}
 	inserted, ierr := u.cfg.InsertConfig(ctx, promoted, promoteIntents...)
 	if ierr == nil {
@@ -163,7 +163,7 @@ func updateGovernanceIntents(spec RepositoryConfigUpdate) []OutboxIntent {
 		return nil
 	}
 	if spec.Visibility == domain.VisibilityPublic {
-		return []OutboxIntent{{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(spec.RegistryID, spec.Name)}}
+		return []OutboxIntent{{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(spec.NamespaceID, spec.Name)}}
 	}
-	return []OutboxIntent{{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepoPublicGrant(spec.RegistryID, spec.Name)}}
+	return []OutboxIntent{{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepoPublicGrant(spec.NamespaceID, spec.Name)}}
 }

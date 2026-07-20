@@ -36,7 +36,7 @@ import (
 //   - финально строки нет (Update не может её воскресить — UPDATE не INSERT).
 func TestRepo_REG40_ConcurrentUpdateVsDelete_ContestedRow(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", nil)
@@ -47,7 +47,7 @@ func TestRepo_REG40_ConcurrentUpdateVsDelete_ContestedRow(t *testing.T) {
 	var wg sync.WaitGroup
 	var deleteSuccess int64
 	updErrs := make([]error, n)
-	updRows := make([]*domain.Registry, n)
+	updRows := make([]*domain.Namespace, n)
 	start := make(chan struct{})
 	unreg := domain.UnregisterIntentForDelete(r.ID, r.ProjectID)
 
@@ -59,7 +59,7 @@ func TestRepo_REG40_ConcurrentUpdateVsDelete_ContestedRow(t *testing.T) {
 			if i%2 == 0 {
 				// Update mutable labels — guarded WHERE status='ACTIVE'.
 				updRows[i], updErrs[i] = repo.Update(ctx,
-					registry.UpdateSpec{RegistryID: r.ID, ApplyLabels: true, Labels: map[string]string{"env": "prod"}},
+					registry.UpdateSpec{NamespaceID: r.ID, ApplyLabels: true, Labels: map[string]string{"env": "prod"}},
 					mirrorUpdate)
 			} else {
 				_, _ = repo.MarkDeleting(ctx, r.ID) // idempotent forward-only CAS
@@ -77,7 +77,7 @@ func TestRepo_REG40_ConcurrentUpdateVsDelete_ContestedRow(t *testing.T) {
 		switch {
 		case updErrs[i] == nil:
 			require.NotNil(t, updRows[i], "successful Update must return a row")
-			require.Equal(t, domain.RegistryStatusActive, updRows[i].Status,
+			require.Equal(t, domain.NamespaceStatusActive, updRows[i].Status,
 				"a committed Update must have observed an ACTIVE row — never a DELETING one (no resurrect/lost-update)")
 		case errors.Is(updErrs[i], regerrors.ErrNotFound):
 			// строка уже DELETING/удалена — корректный 0-rows исход.

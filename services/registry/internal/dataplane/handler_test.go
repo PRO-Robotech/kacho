@@ -265,7 +265,7 @@ func TestDataplane_REG14_PushNewRepo_CarriesRegistryProject(t *testing.T) {
 	require.Equal(t, 1, lk.calls, "project resolved exactly once on register-on-first-push")
 }
 
-// REG-14d — register-on-first-push, но RegistryProjectID-lookup упал (iam/registry
+// REG-14d — register-on-first-push, но NamespaceProjectID-lookup упал (iam/registry
 // транзиентно недоступен на post-response пути). Контракт resolveRegistryProject
 // (handler.go:230): best-effort — интент ВСЁ РАВНО эмитится (хотя бы структурный
 // parent-tuple, не регрессируя ниже прежнего поведения), но с ПУСТЫМ ParentProjectID
@@ -874,7 +874,7 @@ func TestDataplane_REG33A_BlobHead_UploadedToOtherRepo_Still404(t *testing.T) {
 }
 
 // REG-33A — blob PUT-finalize (routeUpload, PUT, ?digest=<d>) с 2xx от zot ОБЯЗАН
-// синхронно записать (registryID, repo, digest) ДО релея 201 клиенту (docker может
+// синхронно записать (namespaceID, repo, digest) ДО релея 201 клиенту (docker может
 // сделать HEAD сразу за 201 — строка должна закоммититься первой). Запись идёт на
 // detached-контексте (переживает отмену запроса). RED до фикса: finalize идёт
 // стриминговым Forward, RecordUploadedBlob не зовётся → recordedKeys пуст.
@@ -1132,7 +1132,7 @@ func TestDataplane_REG33B_BlobHead_FallbackPendingError_FailClosed(t *testing.T)
 // REG-33 immediate-pull (#33): push-ownership fallback — собственный `docker pull`
 // толкавшего сразу за push НЕ должен возвращать 404, пока async register-on-first-push
 // не материализовал per-repo v_get в FGA (~10-15s на проде). На успешном manifest-PUT
-// пишется push-grant (registryID, repo, subject); pull-path раскрывает repo ИМЕННО
+// пишется push-grant (namespaceID, repo, subject); pull-path раскрывает repo ИМЕННО
 // толкавшему, пока FGA не догнал. Ключ по subject → чужой subject/тенант → 404 (REG-37).
 // ============================================================================
 

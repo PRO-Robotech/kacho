@@ -19,21 +19,21 @@ import (
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
-// ---- mock RegistryReader / RegistryWriter (CQRS-порты) --------------------
+// ---- mock NamespaceReader / NamespaceWriter (CQRS-порты) --------------------
 
 type mockRepo struct {
 	mu sync.Mutex
 
-	getFn    func(ctx context.Context, id string) (*domain.Registry, error)
-	listFn   func(ctx context.Context, q registry.ListQuery) ([]*domain.Registry, string, error)
-	insertFn func(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, error)
-	updateFn func(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error)
-	markFn   func(ctx context.Context, id string) (*domain.Registry, error)
+	getFn    func(ctx context.Context, id string) (*domain.Namespace, error)
+	listFn   func(ctx context.Context, q registry.ListQuery) ([]*domain.Namespace, string, error)
+	insertFn func(ctx context.Context, r *domain.Namespace, intent domain.RegisterIntent) (*domain.Namespace, error)
+	updateFn func(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Namespace) domain.RegisterIntent) (*domain.Namespace, error)
+	markFn   func(ctx context.Context, id string) (*domain.Namespace, error)
 	deleteFn func(ctx context.Context, id string, intent domain.RegisterIntent) error
 
 	// Записанные вызовы для ассертов.
 	insertIntent domain.RegisterIntent
-	insertReg    *domain.Registry
+	insertReg    *domain.Namespace
 	updateSpec   registry.UpdateSpec
 	deleteIntent domain.RegisterIntent
 	// updatePrincipal — principal, извлечённый из ctx worker'а на вызове Update
@@ -41,21 +41,21 @@ type mockRepo struct {
 	updatePrincipal operations.Principal
 }
 
-func (m *mockRepo) Get(ctx context.Context, id string) (*domain.Registry, error) {
+func (m *mockRepo) Get(ctx context.Context, id string) (*domain.Namespace, error) {
 	if m.getFn != nil {
 		return m.getFn(ctx, id)
 	}
 	return nil, regerrors.ErrNotFound
 }
 
-func (m *mockRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Registry, string, error) {
+func (m *mockRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Namespace, string, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, q)
 	}
 	return nil, "", nil
 }
 
-func (m *mockRepo) Insert(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, error) {
+func (m *mockRepo) Insert(ctx context.Context, r *domain.Namespace, intent domain.RegisterIntent) (*domain.Namespace, error) {
 	m.mu.Lock()
 	m.insertReg = r
 	m.insertIntent = intent
@@ -66,7 +66,7 @@ func (m *mockRepo) Insert(ctx context.Context, r *domain.Registry, intent domain
 	return r, nil
 }
 
-func (m *mockRepo) Update(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error) {
+func (m *mockRepo) Update(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Namespace) domain.RegisterIntent) (*domain.Namespace, error) {
 	m.mu.Lock()
 	m.updateSpec = spec
 	m.updatePrincipal = operations.PrincipalFromContext(ctx)
@@ -74,14 +74,14 @@ func (m *mockRepo) Update(ctx context.Context, spec registry.UpdateSpec, mirror 
 	if m.updateFn != nil {
 		return m.updateFn(ctx, spec, mirror)
 	}
-	return &domain.Registry{ID: spec.RegistryID, Status: domain.RegistryStatusActive}, nil
+	return &domain.Namespace{ID: spec.NamespaceID, Status: domain.NamespaceStatusActive}, nil
 }
 
-func (m *mockRepo) MarkDeleting(ctx context.Context, id string) (*domain.Registry, error) {
+func (m *mockRepo) MarkDeleting(ctx context.Context, id string) (*domain.Namespace, error) {
 	if m.markFn != nil {
 		return m.markFn(ctx, id)
 	}
-	return &domain.Registry{ID: id, ProjectID: "prj-P", Status: domain.RegistryStatusDeleting}, nil
+	return &domain.Namespace{ID: id, ProjectID: "prj-P", Status: domain.NamespaceStatusDeleting}, nil
 }
 
 func (m *mockRepo) Delete(ctx context.Context, id string, intent domain.RegisterIntent) error {
@@ -99,15 +99,15 @@ func (m *mockRepo) Delete(ctx context.Context, id string, intent domain.Register
 // deleteTagCall — записанный вызов DeleteTag с principal из worker-ctx (проверка
 // проброса principal, REG-27).
 type deleteTagCall struct {
-	registryID string
-	repository string
-	tag        string
-	principal  operations.Principal
+	namespaceID string
+	repository  string
+	tag         string
+	principal   operations.Principal
 }
 
 type mockZot struct {
 	mu       sync.Mutex
-	removeFn func(ctx context.Context, registryID string) error
+	removeFn func(ctx context.Context, namespaceID string) error
 
 	removedNS []string
 	// namespaceEmpty — значение, возвращаемое NamespaceEmpty (default false = НЕ пуст);
@@ -132,7 +132,7 @@ type mockZot struct {
 	triggerGCCalls []string
 
 	// statsResult / statsErr — управляемый ответ Stats; statsCalls — записанные
-	// registryID (проверка проброса domain.RegistryStats из zot-бэкенда наружу
+	// namespaceID (проверка проброса domain.RegistryStats из zot-бэкенда наружу
 	// без изменения и что sync-reject не трогает бэкенд).
 	statsResult *domain.RegistryStats
 	statsErr    error
@@ -140,7 +140,7 @@ type mockZot struct {
 
 	// RG-1 config-overlay Repository projection/engine-порты.
 	projByName   map[string]*domain.Repository
-	projFn       func(registryID, repository string) (*domain.Repository, error)
+	projFn       func(namespaceID, repository string) (*domain.Repository, error)
 	projErr      error
 	empty        bool
 	emptyErr     error
@@ -158,16 +158,16 @@ func (z *mockZot) ListTags(ctx context.Context, q registry.TagListQuery) ([]*dom
 	defer z.mu.Unlock()
 	return z.listTagsResult, "", z.listTagsErr
 }
-func (z *mockZot) DeleteTag(ctx context.Context, registryID, repository, tag string) error {
+func (z *mockZot) DeleteTag(ctx context.Context, namespaceID, repository, tag string) error {
 	z.mu.Lock()
 	z.deleteTagCall = append(z.deleteTagCall, deleteTagCall{
-		registryID: registryID, repository: repository, tag: tag,
+		namespaceID: namespaceID, repository: repository, tag: tag,
 		principal: operations.PrincipalFromContext(ctx),
 	})
 	z.mu.Unlock()
 	return z.deleteTagErr
 }
-func (z *mockZot) NamespaceEmpty(ctx context.Context, registryID string) (bool, error) {
+func (z *mockZot) NamespaceEmpty(ctx context.Context, namespaceID string) (bool, error) {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	if z.namespaceEmptyErr != nil {
@@ -180,24 +180,24 @@ func (z *mockZot) NamespaceEmpty(ctx context.Context, registryID string) (bool, 
 	}
 	return z.namespaceEmpty, nil
 }
-func (z *mockZot) RemoveNamespace(ctx context.Context, registryID string) error {
+func (z *mockZot) RemoveNamespace(ctx context.Context, namespaceID string) error {
 	z.mu.Lock()
-	z.removedNS = append(z.removedNS, registryID)
+	z.removedNS = append(z.removedNS, namespaceID)
 	z.mu.Unlock()
 	if z.removeFn != nil {
-		return z.removeFn(ctx, registryID)
+		return z.removeFn(ctx, namespaceID)
 	}
 	return nil
 }
-func (z *mockZot) TriggerGC(ctx context.Context, registryID string) error {
+func (z *mockZot) TriggerGC(ctx context.Context, namespaceID string) error {
 	z.mu.Lock()
-	z.triggerGCCalls = append(z.triggerGCCalls, registryID)
+	z.triggerGCCalls = append(z.triggerGCCalls, namespaceID)
 	z.mu.Unlock()
 	return z.triggerGCErr
 }
-func (z *mockZot) Stats(ctx context.Context, registryID string) (*domain.RegistryStats, error) {
+func (z *mockZot) Stats(ctx context.Context, namespaceID string) (*domain.RegistryStats, error) {
 	z.mu.Lock()
-	z.statsCalls = append(z.statsCalls, registryID)
+	z.statsCalls = append(z.statsCalls, namespaceID)
 	z.mu.Unlock()
 	if z.statsErr != nil {
 		return nil, z.statsErr
@@ -205,19 +205,19 @@ func (z *mockZot) Stats(ctx context.Context, registryID string) (*domain.Registr
 	if z.statsResult != nil {
 		return z.statsResult, nil
 	}
-	return &domain.RegistryStats{RegistryID: registryID}, nil
+	return &domain.RegistryStats{NamespaceID: namespaceID}, nil
 }
 
 // RepositoryProjection — управляемая проекция одного repo (GetRepository / merge). projFn
 // даёт per-key ответ (durable-empty → nil); projErr — инъекция сбоя (fail-closed).
-func (z *mockZot) RepositoryProjection(ctx context.Context, registryID, repository string) (*domain.Repository, error) {
+func (z *mockZot) RepositoryProjection(ctx context.Context, namespaceID, repository string) (*domain.Repository, error) {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	if z.projErr != nil {
 		return nil, z.projErr
 	}
 	if z.projFn != nil {
-		return z.projFn(registryID, repository)
+		return z.projFn(namespaceID, repository)
 	}
 	if p, ok := z.projByName[repository]; ok {
 		return p, nil
@@ -226,7 +226,7 @@ func (z *mockZot) RepositoryProjection(ctx context.Context, registryID, reposito
 }
 
 // RepositoryEmpty — управляемая emptiness одного repo (DeleteRepository reject-if-tags).
-func (z *mockZot) RepositoryEmpty(ctx context.Context, registryID, repository string) (bool, error) {
+func (z *mockZot) RepositoryEmpty(ctx context.Context, namespaceID, repository string) (bool, error) {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	if z.emptyErr != nil {
@@ -236,15 +236,15 @@ func (z *mockZot) RepositoryEmpty(ctx context.Context, registryID, repository st
 }
 
 // RenameRepository — записывает engine-remap вызов; renameErr — инъекция сбоя (A21).
-func (z *mockZot) RenameRepository(ctx context.Context, registryID, oldName, newName string) error {
+func (z *mockZot) RenameRepository(ctx context.Context, namespaceID, oldName, newName string) error {
 	z.mu.Lock()
-	z.renameCalls = append(z.renameCalls, [3]string{registryID, oldName, newName})
+	z.renameCalls = append(z.renameCalls, [3]string{namespaceID, oldName, newName})
 	z.mu.Unlock()
 	return z.renameErr
 }
 
 // ListReferrers — управляемый referrer-набор; referrersErr — инъекция сбоя.
-func (z *mockZot) ListReferrers(ctx context.Context, registryID, repository, subjectDigest, artifactType string) ([]*domain.Referrer, error) {
+func (z *mockZot) ListReferrers(ctx context.Context, namespaceID, repository, subjectDigest, artifactType string) ([]*domain.Referrer, error) {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	if z.referrersErr != nil {
@@ -423,11 +423,11 @@ type mockRepoConfig struct {
 
 	byName map[string]*domain.RepositoryConfig
 
-	getFn    func(registryID, name string) (*domain.RepositoryConfig, error)
+	getFn    func(namespaceID, name string) (*domain.RepositoryConfig, error)
 	insertFn func(cfg *domain.RepositoryConfig) (*domain.RepositoryConfig, error)
 	updateFn func(spec registry.RepositoryConfigUpdate) (*domain.RepositoryConfig, error)
-	rekeyFn  func(registryID, oldName, newName string) (*domain.RepositoryConfig, error)
-	deleteFn func(registryID, name string) error
+	rekeyFn  func(namespaceID, oldName, newName string) (*domain.RepositoryConfig, error)
+	deleteFn func(namespaceID, name string) error
 
 	calls []cfgOutboxCall
 }
@@ -436,11 +436,11 @@ func newMockCfg() *mockRepoConfig {
 	return &mockRepoConfig{byName: map[string]*domain.RepositoryConfig{}}
 }
 
-func (m *mockRepoConfig) GetConfig(ctx context.Context, registryID, name string) (*domain.RepositoryConfig, error) {
+func (m *mockRepoConfig) GetConfig(ctx context.Context, namespaceID, name string) (*domain.RepositoryConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.getFn != nil {
-		return m.getFn(registryID, name)
+		return m.getFn(namespaceID, name)
 	}
 	if c, ok := m.byName[name]; ok {
 		return c, nil
@@ -448,7 +448,7 @@ func (m *mockRepoConfig) GetConfig(ctx context.Context, registryID, name string)
 	return nil, regerrors.ErrNotFound
 }
 
-func (m *mockRepoConfig) ListConfigs(ctx context.Context, registryID string) ([]*domain.RepositoryConfig, error) {
+func (m *mockRepoConfig) ListConfigs(ctx context.Context, namespaceID string) ([]*domain.RepositoryConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]*domain.RepositoryConfig, 0, len(m.byName))
@@ -501,12 +501,12 @@ func (m *mockRepoConfig) UpdateConfig(ctx context.Context, spec registry.Reposit
 	return c, nil
 }
 
-func (m *mockRepoConfig) RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
+func (m *mockRepoConfig) RekeyConfig(ctx context.Context, namespaceID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, cfgOutboxCall{op: "rekey", name: oldName, newName: newName, intents: intents})
 	m.mu.Unlock()
 	if m.rekeyFn != nil {
-		return m.rekeyFn(registryID, oldName, newName)
+		return m.rekeyFn(namespaceID, oldName, newName)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -524,13 +524,13 @@ func (m *mockRepoConfig) RekeyConfig(ctx context.Context, registryID, oldName, n
 	return &cp, nil
 }
 
-func (m *mockRepoConfig) DeleteConfig(ctx context.Context, registryID, name string, intents ...registry.OutboxIntent) error {
+func (m *mockRepoConfig) DeleteConfig(ctx context.Context, namespaceID, name string, intents ...registry.OutboxIntent) error {
 	m.mu.Lock()
 	m.calls = append(m.calls, cfgOutboxCall{op: "delete", name: name, intents: intents})
 	if m.deleteFn != nil {
 		fn := m.deleteFn
 		m.mu.Unlock()
-		return fn(registryID, name)
+		return fn(namespaceID, name)
 	}
 	defer m.mu.Unlock()
 	if _, ok := m.byName[name]; !ok {

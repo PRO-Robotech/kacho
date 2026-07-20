@@ -22,7 +22,7 @@ import (
 // CreateRepositorySpec — вход CreateRepository (тело CreateRepositoryRequest, распарсенное
 // тонким handler'ом). Visibility — запрошенная (UNSPECIFIED → наследует default).
 type CreateRepositorySpec struct {
-	RegistryID  string
+	NamespaceID string
 	Repository  string
 	Description string
 	Labels      map[string]string
@@ -43,7 +43,7 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 	if err := u.assertRepoWired(); err != nil {
 		return nil, err
 	}
-	if err := ValidateRegistryID(spec.RegistryID); err != nil {
+	if err := ValidateNamespaceID(spec.NamespaceID); err != nil {
 		return nil, err
 	}
 	if err := domain.ValidateRepositoryName("repository", spec.Repository); err != nil {
@@ -59,14 +59,14 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 	// Read registry для default_visibility (inheritance, B12) — same-DB read. Absent/
 	// invisible реестр отсекается handler namespace call-gate (X04) ДО вызова; здесь
 	// well-formed-но-нет → NOT_FOUND (не течёт факт).
-	reg, err := u.reader.Get(ctx, spec.RegistryID)
+	reg, err := u.reader.Get(ctx, spec.NamespaceID)
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
 	visibility := resolveVisibility(spec.Visibility, reg.DefaultVisibility)
 
 	cfg := &domain.RepositoryConfig{
-		RegistryID:  spec.RegistryID,
+		NamespaceID: spec.NamespaceID,
 		Name:        spec.Repository,
 		Description: spec.Description,
 		Labels:      spec.Labels,
@@ -76,8 +76,8 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 	principal := operations.PrincipalFromContext(ctx)
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Create Repository %s/%s", spec.RegistryID, spec.Repository),
-		&registryv1.CreateRepositoryMetadata{RegistryId: spec.RegistryID, Repository: spec.Repository},
+		fmt.Sprintf("Create Repository %s/%s", spec.NamespaceID, spec.Repository),
+		&registryv1.CreateRepositoryMetadata{NamespaceId: spec.NamespaceID, Repository: spec.Repository},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -90,7 +90,7 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 	// [public-grant intent если PUBLIC] в ОДНОЙ writer-tx). Дубликат/DELETING → sync
 	// reject (sync-семантика REG-04 parity). Осиротевший pending-Operation финализируется
 	// как failed. Intents эмитятся ТОЛЬКО при успешном INSERT (та же tx).
-	intents := createRepoIntents(spec.RegistryID, spec.Repository, reg.ProjectID, principal, visibility)
+	intents := createRepoIntents(spec.NamespaceID, spec.Repository, reg.ProjectID, principal, visibility)
 	created, ierr := u.cfg.InsertConfig(ctx, cfg, intents...)
 	if ierr != nil {
 		syncErr := mapRepoErr(ierr)
@@ -108,11 +108,11 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 		// Overlay уже вставлен (created несёт DB-assigned created_at) + intents эмитированы
 		// синхронно; worker читает projection (adopt существующего контента → tagCount, A03)
 		// и мёржит в публичный Repository.
-		proj, perr := u.zot.RepositoryProjection(wctx, spec.RegistryID, spec.Repository)
+		proj, perr := u.zot.RepositoryProjection(wctx, spec.NamespaceID, spec.Repository)
 		if perr != nil {
 			return nil, mapRepoErr(perr)
 		}
-		repo := mergeRepository(spec.RegistryID, spec.Repository, created, proj)
+		repo := mergeRepository(spec.NamespaceID, spec.Repository, created, proj)
 		return u.repositoryAny(repo)
 	})
 
@@ -126,13 +126,13 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 //     исходного пушера при adopt пред-существующей проекции, A03 — iam дедуплицирует);
 //   - public-grant (register RepoPublicGrant): при итоговом visibility=PUBLIC
 //     (включая inherited-default B12) — "user:* v_get" для анонимного pull (D-7).
-func createRepoIntents(registryID, repository, projectID string, principal operations.Principal, visibility domain.Visibility) []OutboxIntent {
+func createRepoIntents(namespaceID, repository, projectID string, principal operations.Principal, visibility domain.Visibility) []OutboxIntent {
 	subject := domain.FGASubjectFromPrincipal(principal.Type, principal.ID)
 	intents := []OutboxIntent{
-		{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPush(registryID, repository, projectID, subject)},
+		{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPush(namespaceID, repository, projectID, subject)},
 	}
 	if visibility == domain.VisibilityPublic {
-		intents = append(intents, OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(registryID, repository)})
+		intents = append(intents, OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(namespaceID, repository)})
 	}
 	return intents
 }

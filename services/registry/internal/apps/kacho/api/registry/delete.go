@@ -26,32 +26,32 @@ import (
 // строки + unregister-intent в ОДНОЙ writer-tx. `DELETING` — терминальный: revert в
 // ACTIVE невозможен; повторный/конкурентный Delete завершается идемпотентно (ровно
 // одна транзакция физически удаляет строку и эмитит ровно один unregister-intent).
-func (u *UseCase) Delete(ctx context.Context, registryID string) (*operations.Operation, error) {
+func (u *UseCase) Delete(ctx context.Context, namespaceID string) (*operations.Operation, error) {
 	if err := u.assertWired(); err != nil {
 		return nil, err
 	}
-	if registryID == "" {
+	if namespaceID == "" {
 		return nil, failInvalidArg("registryId is required")
 	}
-	if err := ValidateRegistryID(registryID); err != nil {
+	if err := ValidateNamespaceID(namespaceID); err != nil {
 		return nil, err
 	}
 
 	// REG-08 precondition (secure-by-default, НЕ cascade): непустой namespace нельзя
 	// молча стереть. Проверка читает zot синхронно ДО перехода в DELETING; zot
 	// недоступен → Unavailable (fail-closed — НЕ «считаем пустым и удаляем»).
-	empty, err := u.zot.NamespaceEmpty(ctx, registryID)
+	empty, err := u.zot.NamespaceEmpty(ctx, namespaceID)
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
 	if !empty {
-		return nil, failFailedPrecondition("registry is not empty")
+		return nil, failFailedPrecondition("namespace is not empty")
 	}
 
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Delete Registry %s", registryID),
-		&registryv1.DeleteRegistryMetadata{RegistryId: registryID},
+		fmt.Sprintf("Delete Namespace %s", namespaceID),
+		&registryv1.DeleteNamespaceMetadata{NamespaceId: namespaceID},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -62,7 +62,7 @@ func (u *UseCase) Delete(ctx context.Context, registryID string) (*operations.Op
 	}
 
 	operations.Run(ctx, u.ops, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
-		return u.doDelete(operations.WithPrincipal(workerCtx, principal), registryID)
+		return u.doDelete(operations.WithPrincipal(workerCtx, principal), namespaceID)
 	})
 
 	return &op, nil
@@ -72,8 +72,8 @@ func (u *UseCase) Delete(ctx context.Context, registryID string) (*operations.Op
 // lazy) → DELETE + unregister-intent. Идемпотентно: строка уже удалена → done без
 // повторного destructive-эффекта; ровно один unregister-intent (эмитится только
 // той tx, что физически удалила строку).
-func (u *UseCase) doDelete(ctx context.Context, registryID string) (*anypb.Any, error) {
-	marked, err := u.writer.MarkDeleting(ctx, registryID)
+func (u *UseCase) doDelete(ctx context.Context, namespaceID string) (*anypb.Any, error) {
+	marked, err := u.writer.MarkDeleting(ctx, namespaceID)
 	if err != nil {
 		if errors.Is(err, regerrors.ErrNotFound) {
 			// Строка уже удалена (конкурентный/повторный Delete) — идемпотентный done.
@@ -89,12 +89,12 @@ func (u *UseCase) doDelete(ctx context.Context, registryID string) (*anypb.Any, 
 	// authz-tuple'ы при живом zot-контенте (осиротили бы образы). zot недоступен →
 	// Unavailable (fail-closed, retriable). Delete forward-only: строка остаётся
 	// DELETING, повторный Delete-RPC довершит удаление, когда контент уйдёт.
-	empty, err := u.zot.NamespaceEmpty(ctx, registryID)
+	empty, err := u.zot.NamespaceEmpty(ctx, namespaceID)
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
 	if !empty {
-		return nil, failFailedPrecondition("registry is not empty")
+		return nil, failFailedPrecondition("namespace is not empty")
 	}
 
 	// zot-namespace снятие: data-plane wired (cmd/kacho-registry/serve.go
@@ -105,13 +105,13 @@ func (u *UseCase) doDelete(ctx context.Context, registryID string) (*anypb.Any, 
 	// поэтому RemoveNamespace физически снимать нечего — он лишь идемпотентно
 	// подтверждает пустоту. Best-effort: недоступность zot не блокирует forward-only
 	// удаление namespace-метаданных.
-	if rerr := u.zot.RemoveNamespace(ctx, registryID); rerr != nil {
+	if rerr := u.zot.RemoveNamespace(ctx, namespaceID); rerr != nil {
 		slog.Default().Warn("registry delete: zot namespace removal best-effort failed",
-			"registry_id", registryID, "err", rerr)
+			"registry_id", namespaceID, "err", rerr)
 	}
 
-	intent := domain.UnregisterIntentForDelete(registryID, marked.ProjectID)
-	if derr := u.writer.Delete(ctx, registryID, intent); derr != nil {
+	intent := domain.UnregisterIntentForDelete(namespaceID, marked.ProjectID)
+	if derr := u.writer.Delete(ctx, namespaceID, intent); derr != nil {
 		if errors.Is(derr, regerrors.ErrNotFound) {
 			// Конкурентная транзакция физически удалила строку первой — идемпотентно.
 			return emptyAny()

@@ -16,7 +16,7 @@ import (
 // PushGrantRepo — Postgres-adapter durable per-subject учёта push-ownership репозитория
 // (registry_push_grant, REG-33 immediate-pull). Реализует порт dataplane.PushGrantRecorder
 // (структурно; compile-check даёт composition root): успешный manifest-PUT пишет строку
-// (registryID, repo, subject), а pull-path консультируется с ней как fallback, чтобы
+// (namespaceID, repo, subject), а pull-path консультируется с ней как fallback, чтобы
 // раскрыть репо ИМЕННО толкавшему, пока async register-on-first-push не материализовал
 // per-repo v_get в FGA — не пере-открывая cross-tenant leak (ключ по subject; см.
 // миграцию 0004).
@@ -42,10 +42,10 @@ func (r *PushGrantRepo) ready() error {
 }
 
 // RecordPushGrant идемпотентно (upsert) фиксирует, что <subject> запушил
-// <registryID>/<repo>. ON CONFLICT DO UPDATE освежает granted_at на повторном push того же
+// <namespaceID>/<repo>. ON CONFLICT DO UPDATE освежает granted_at на повторном push того же
 // субъекта в тот же repo (re-push держит запись свежей всё push-окно). Одиночный
 // INSERT-стейтмент атомарен на DB-уровне — software check-then-act не нужен.
-func (r *PushGrantRepo) RecordPushGrant(ctx context.Context, registryID, repo, subject string) error {
+func (r *PushGrantRepo) RecordPushGrant(ctx context.Context, namespaceID, repo, subject string) error {
 	if err := r.ready(); err != nil {
 		return err
 	}
@@ -53,16 +53,16 @@ func (r *PushGrantRepo) RecordPushGrant(ctx context.Context, registryID, repo, s
 		INSERT INTO %s.registry_push_grant (registry_id, repo, subject)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (registry_id, repo, subject) DO UPDATE SET granted_at = now()`, schema)
-	if _, err := r.pool.Exec(ctx, q, registryID, repo, subject); err != nil {
-		return wrapPgErr(err, "registry_push_grant", registryID+"/"+repo)
+	if _, err := r.pool.Exec(ctx, q, namespaceID, repo, subject); err != nil {
+		return wrapPgErr(err, "registry_push_grant", namespaceID+"/"+repo)
 	}
 	return nil
 }
 
-// PushGranted сообщает, держит ли <subject> свежий push-grant на <registryID>/<repo> в
+// PushGranted сообщает, держит ли <subject> свежий push-grant на <namespaceID>/<repo> в
 // пределах ttl. cutoff = now-ttl вычисляется в Go и передаётся параметром (без
 // interval-строки в SQL).
-func (r *PushGrantRepo) PushGranted(ctx context.Context, registryID, repo, subject string) (bool, error) {
+func (r *PushGrantRepo) PushGranted(ctx context.Context, namespaceID, repo, subject string) (bool, error) {
 	if err := r.ready(); err != nil {
 		return false, err
 	}
@@ -73,26 +73,26 @@ func (r *PushGrantRepo) PushGranted(ctx context.Context, registryID, repo, subje
 			 WHERE registry_id = $1 AND repo = $2 AND subject = $3 AND granted_at > $4
 		)`, schema)
 	var exists bool
-	if err := r.pool.QueryRow(ctx, q, registryID, repo, subject, cutoff).Scan(&exists); err != nil {
-		return false, wrapPgErr(err, "registry_push_grant", registryID+"/"+repo)
+	if err := r.pool.QueryRow(ctx, q, namespaceID, repo, subject, cutoff).Scan(&exists); err != nil {
+		return false, wrapPgErr(err, "registry_push_grant", namespaceID+"/"+repo)
 	}
 	return exists, nil
 }
 
-// DeletePushGrant удаляет push-grant-строку (registryID, repo, subject) — вызывается на
+// DeletePushGrant удаляет push-grant-строку (namespaceID, repo, subject) — вызывается на
 // pull-path delete-on-materialized, как только реальный per-repo v_get/v_list ALLOW'нул
 // (мост больше не нужен и обязан перестать раскрывать repo, иначе после revoke он в пределах
 // TTL продолжал бы отдавать доступ). Одиночный индексный DELETE по PK атомарен; удаление
 // несуществующей строки — дешёвый no-op (0 rows, безопасно звать безусловно на allow-ветке).
-func (r *PushGrantRepo) DeletePushGrant(ctx context.Context, registryID, repo, subject string) error {
+func (r *PushGrantRepo) DeletePushGrant(ctx context.Context, namespaceID, repo, subject string) error {
 	if err := r.ready(); err != nil {
 		return err
 	}
 	q := fmt.Sprintf(`
 		DELETE FROM %s.registry_push_grant
 		 WHERE registry_id = $1 AND repo = $2 AND subject = $3`, schema)
-	if _, err := r.pool.Exec(ctx, q, registryID, repo, subject); err != nil {
-		return wrapPgErr(err, "registry_push_grant", registryID+"/"+repo)
+	if _, err := r.pool.Exec(ctx, q, namespaceID, repo, subject); err != nil {
+		return wrapPgErr(err, "registry_push_grant", namespaceID+"/"+repo)
 	}
 	return nil
 }

@@ -11,24 +11,24 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 
-// ProtoRegistry конвертирует domain.Registry → registryv1.Registry. Единый
+// ProtoNamespace конвертирует domain.Namespace → registryv1.Namespace. Единый
 // источник tenant-facing проекции: используется worker'ом (Operation.response) и
 // тонким handler'ом (Get/List). created_at усекается до секунд; endpoint —
 // output-only ("<base>/<id>"); repository_count — проекция из zot (0 до data-plane).
-func (u *UseCase) ProtoRegistry(r *domain.Registry) *registryv1.Registry {
+func (u *UseCase) ProtoNamespace(r *domain.Namespace) *registryv1.Namespace {
 	if r == nil {
 		return nil
 	}
-	return &registryv1.Registry{
-		Id:                r.ID,
-		ProjectId:         r.ProjectID,
-		CreatedAt:         prototime.Truncate(r.CreatedAt),
-		Name:              r.Name,
-		Description:       r.Description,
-		Labels:            r.Labels,
-		Endpoint:          u.EndpointFor(r.ID),
-		Status:            registryv1.RegistryStatus(r.Status),
-		DefaultVisibility: registryv1.Visibility(r.DefaultVisibility),
+	return &registryv1.Namespace{
+		Id:                          r.ID,
+		ProjectId:                   r.ProjectID,
+		CreatedAt:                   prototime.Truncate(r.CreatedAt),
+		Name:                        r.Name,
+		Description:                 r.Description,
+		Labels:                      r.Labels,
+		Endpoint:                    u.EndpointFor(r.ID),
+		Status:                      registryv1.NamespaceStatus(r.Status),
+		DefaultRepositoryVisibility: registryv1.Visibility(r.DefaultVisibility),
 	}
 }
 

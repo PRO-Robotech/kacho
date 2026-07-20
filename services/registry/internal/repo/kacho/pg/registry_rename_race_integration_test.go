@@ -22,10 +22,10 @@ import (
 )
 
 func renameSpec(id, name string) registry.UpdateSpec {
-	return registry.UpdateSpec{RegistryID: id, ApplyName: true, Name: name}
+	return registry.UpdateSpec{NamespaceID: id, ApplyName: true, Name: name}
 }
 
-func mirrorUpdate(rr *domain.Registry) domain.RegisterIntent {
+func mirrorUpdate(rr *domain.Namespace) domain.RegisterIntent {
 	return domain.RegisterIntentForUpdate(rr)
 }
 
@@ -33,7 +33,7 @@ func mirrorUpdate(rr *domain.Registry) domain.RegisterIntent {
 // того же project'а) даёт ErrAlreadyExists; B остаётся неизменным (rollback UPDATE).
 func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	a := newReg("prj-P", "alpha", nil)
@@ -63,7 +63,7 @@ func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 // ErrAlreadyExists (partial UNIQUE race на UPDATE-пути, не ловится unit-тестом).
 func TestRepo_ConcurrentRenameToSameName_ExactlyOne(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	const n = 8

@@ -74,15 +74,15 @@ func TestVisibility_RG1D6_RoundTripFailSafe(t *testing.T) {
 // visibility — конкретное PRIVATE|PUBLIC.
 func TestRepositoryConfig_Validate(t *testing.T) {
 	t.Parallel()
-	ok := domain.RepositoryConfig{RegistryID: "reg1", Name: "backend/api", Visibility: domain.VisibilityPrivate}
+	ok := domain.RepositoryConfig{NamespaceID: "reg1", Name: "backend/api", Visibility: domain.VisibilityPrivate}
 	require.NoError(t, ok.Validate())
 
 	noReg := domain.RepositoryConfig{Name: "backend/api", Visibility: domain.VisibilityPrivate}
 	require.EqualError(t, noReg.Validate(), "registry_id is required")
 
-	badName := domain.RepositoryConfig{RegistryID: "reg1", Name: "Bad Name!", Visibility: domain.VisibilityPrivate}
+	badName := domain.RepositoryConfig{NamespaceID: "reg1", Name: "Bad Name!", Visibility: domain.VisibilityPrivate}
 	require.EqualError(t, badName.Validate(), "invalid repository name 'Bad Name!'")
 
-	badVis := domain.RepositoryConfig{RegistryID: "reg1", Name: "backend/api", Visibility: domain.VisibilityUnspecified}
+	badVis := domain.RepositoryConfig{NamespaceID: "reg1", Name: "backend/api", Visibility: domain.VisibilityUnspecified}
 	require.Error(t, badVis.Validate())
 }

@@ -362,7 +362,7 @@ func helmTag(tag, digest string, size int64) gqlTag {
 }
 
 // REG-22 — ListRepositories возвращает repos ТОЛЬКО своего namespace (prefix
-// <registryID>/), без namespace-prefix в имени, с tag_count из ImageList; чужой
+// <namespaceID>/), без namespace-prefix в имени, с tag_count из ImageList; чужой
 // namespace не течёт (GlobalSearch namespace-scoped).
 func TestZot_REG22_ListRepositories_NamespaceScoped(t *testing.T) {
 	fz := newFakeZot()
@@ -373,12 +373,12 @@ func TestZot_REG22_ListRepositories_NamespaceScoped(t *testing.T) {
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 
 	byName := map[string]int32{}
 	for _, r := range repos {
-		require.Equal(t, "reg-A", r.RegistryID)
+		require.Equal(t, "reg-A", r.NamespaceID)
 		require.NotContains(t, r.Name, "reg-A/", "namespace-prefix stripped from repo name")
 		byName[r.Name] = r.TagCount
 	}
@@ -405,7 +405,7 @@ func TestZot_ListRepositories_PaginatedBoundsImageListFanout(t *testing.T) {
 	cli := zotclient.New(srv.URL)
 
 	repos, next, err := cli.ListRepositories(t.Context(),
-		registry.RepoListQuery{RegistryID: "reg-A", PageSize: 5})
+		registry.RepoListQuery{NamespaceID: "reg-A", PageSize: 5})
 	require.NoError(t, err)
 	require.Len(t, repos, 5, "страница ограничена page_size")
 	require.NotEmpty(t, next, "есть ещё репо → next-token")
@@ -415,7 +415,7 @@ func TestZot_ListRepositories_PaginatedBoundsImageListFanout(t *testing.T) {
 	// Курсор доводит до всех репо: следующая страница продолжает без пропусков.
 	fz.imageListCalls.Store(0)
 	repos2, _, err := cli.ListRepositories(t.Context(),
-		registry.RepoListQuery{RegistryID: "reg-A", PageSize: 5, PageToken: next})
+		registry.RepoListQuery{NamespaceID: "reg-A", PageSize: 5, PageToken: next})
 	require.NoError(t, err)
 	require.Len(t, repos2, 5)
 	require.Equal(t, int64(5), fz.imageListCalls.Load(), "вторая страница — тоже только окно")
@@ -435,7 +435,7 @@ func TestZot_REG22_ListRepositories_NextTokenIsOpaqueOffset(t *testing.T) {
 	cli := zotclient.New(srv.URL)
 
 	repos, next, err := cli.ListRepositories(t.Context(),
-		registry.RepoListQuery{RegistryID: "reg-A", PageSize: 1})
+		registry.RepoListQuery{NamespaceID: "reg-A", PageSize: 1})
 	require.NoError(t, err)
 	require.Len(t, repos, 1)
 	require.NotEmpty(t, next, "есть ещё репо → next-token")
@@ -463,7 +463,7 @@ func TestZot_REG22_ListRepositories_AggregatesAndMixedArtifactTypes(t *testing.T
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 	require.Len(t, repos, 1, "ghost repo (0 тегов) скрыт")
 
@@ -494,7 +494,7 @@ func TestZot_REG22_ListRepositories_AggregateFallback(t *testing.T) {
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 	require.Len(t, repos, 1)
 	r := repos[0]
@@ -512,7 +512,7 @@ func TestZot_ListRepositories_HidesEmptyRepo(t *testing.T) {
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.NoError(t, err)
 	require.Len(t, repos, 1, "ghost repo (0 тегов) скрыт")
 	require.Equal(t, "live", repos[0].Name)
@@ -527,13 +527,13 @@ func TestZot_REG24_ListTags_DigestAndSize(t *testing.T) {
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "app"})
+	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "app"})
 	require.NoError(t, err)
 	require.Len(t, tags, 2)
 
 	byTag := map[string]*domain.Tag{}
 	for _, tg := range tags {
-		require.Equal(t, "reg-A", tg.RegistryID)
+		require.Equal(t, "reg-A", tg.NamespaceID)
 		require.Equal(t, "app", tg.Repository)
 		require.NotEmpty(t, tg.Digest, "digest из ImageList")
 		byTag[tg.Tag] = tg
@@ -559,7 +559,7 @@ func TestZot_ListTags_ProjectsGraphQLFields(t *testing.T) {
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "img"})
+	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "img"})
 	require.NoError(t, err)
 	require.Len(t, tags, 1)
 	got := tags[0]
@@ -580,7 +580,7 @@ func TestZot_ListTags_NeverPulled_ZeroTime(t *testing.T) {
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "app"})
+	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "app"})
 	require.NoError(t, err)
 	require.Len(t, tags, 1)
 	require.True(t, tags[0].LastPulledAt.IsZero(), "1970-эпоха zot = никогда → zero time")
@@ -597,7 +597,7 @@ func TestZot_ListTags_MultiArch(t *testing.T) {
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
-	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "multi"})
+	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "multi"})
 	require.NoError(t, err)
 	require.Len(t, tags, 1)
 	require.Equal(t, "multi-arch", tags[0].Architecture)
@@ -618,7 +618,7 @@ func TestZot_ListTags_PaginatedWindowByName(t *testing.T) {
 
 	// Первая страница (size=2) — первые два имени ASC (v1, v2) + next-token.
 	page1, next, err := cli.ListTags(t.Context(),
-		registry.TagListQuery{RegistryID: "reg-A", Repository: "app", PageSize: 2})
+		registry.TagListQuery{NamespaceID: "reg-A", Repository: "app", PageSize: 2})
 	require.NoError(t, err)
 	require.Len(t, page1, 2, "окно size=2, а не весь набор тегов")
 	require.Equal(t, "v1", page1[0].Tag)
@@ -627,7 +627,7 @@ func TestZot_ListTags_PaginatedWindowByName(t *testing.T) {
 
 	// Вторая страница (по next-token) — остаток (v3), next пуст.
 	page2, next2, err := cli.ListTags(t.Context(),
-		registry.TagListQuery{RegistryID: "reg-A", Repository: "app", PageSize: 2, PageToken: next})
+		registry.TagListQuery{NamespaceID: "reg-A", Repository: "app", PageSize: 2, PageToken: next})
 	require.NoError(t, err)
 	require.Len(t, page2, 1)
 	require.Equal(t, "v3", page2[0].Tag)
@@ -640,7 +640,7 @@ func TestZot_REG24_ListTags_MissingRepo_Empty(t *testing.T) {
 	fz := newFakeZot()
 	srv := fz.server(t)
 	cli := zotclient.New(srv.URL)
-	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "ghost"})
+	tags, _, err := cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "ghost"})
 	require.NoError(t, err)
 	require.Empty(t, tags)
 }
@@ -653,9 +653,9 @@ func TestZot_GraphQL_Errors_FailClosed(t *testing.T) {
 	srv := fz.server(t)
 	cli := zotclient.New(srv.URL)
 
-	_, _, err := cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "app"})
+	_, _, err := cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "app"})
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)
-	_, _, err = cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	_, _, err = cli.ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)
 }
 
@@ -666,9 +666,9 @@ func TestZot_GraphQL_Transport_FailClosed(t *testing.T) {
 	srv := fz.server(t)
 	cli := zotclient.New(srv.URL)
 
-	_, _, err := cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "app"})
+	_, _, err := cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "app"})
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)
-	_, _, err = cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	_, _, err = cli.ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)
 }
 
@@ -692,7 +692,7 @@ func TestZot_REG25_DeleteTag_Idempotent(t *testing.T) {
 	require.NoError(t, cli.DeleteTag(t.Context(), "reg-A", "app", "nope"))
 }
 
-// REG-08 — NamespaceEmpty: true когда ни один repo не начинается с <registryID>/;
+// REG-08 — NamespaceEmpty: true когда ни один repo не начинается с <namespaceID>/;
 // false когда есть хоть один (Distribution-API _catalog).
 func TestZot_REG08_NamespaceEmpty(t *testing.T) {
 	fz := newFakeZot()
@@ -720,7 +720,7 @@ func TestZot_REG38_Stats_Aggregates(t *testing.T) {
 	cli := zotclient.New(srv.URL)
 	stats, err := cli.Stats(t.Context(), "reg-A")
 	require.NoError(t, err)
-	require.Equal(t, "reg-A", stats.RegistryID)
+	require.Equal(t, "reg-A", stats.NamespaceID)
 	require.Equal(t, int32(2), stats.RepositoryCount)
 	require.Equal(t, int32(2), stats.TagCount)
 	require.Greater(t, stats.TotalSizeBytes, int64(0))
@@ -740,9 +740,9 @@ func TestZot_REG38_TriggerGC(t *testing.T) {
 // проверки fail-closed Unavailable (не отдают stale-фикцию, не «считаем пустым»).
 func TestZot_FailClosed_Unavailable(t *testing.T) {
 	cli := zotclient.New("") // endpoint не подан → Unavailable
-	_, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
+	_, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{NamespaceID: "reg-A"})
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)
-	_, _, err = cli.ListTags(t.Context(), registry.TagListQuery{RegistryID: "reg-A", Repository: "app"})
+	_, _, err = cli.ListTags(t.Context(), registry.TagListQuery{NamespaceID: "reg-A", Repository: "app"})
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)
 	_, err = cli.NamespaceEmpty(t.Context(), "reg-A")
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)

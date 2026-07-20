@@ -37,12 +37,12 @@ func NewRegistryHandler(uc *registry.UseCase, authz Authorizer) *RegistryHandler
 }
 
 // Get возвращает Registry по id (sync).
-func (h *RegistryHandler) Get(ctx context.Context, req *registryv1.GetRegistryRequest) (*registryv1.Registry, error) {
-	r, err := h.uc.Get(ctx, req.GetRegistryId())
+func (h *RegistryHandler) GetNamespace(ctx context.Context, req *registryv1.GetNamespaceRequest) (*registryv1.Namespace, error) {
+	r, err := h.uc.Get(ctx, req.GetNamespaceId())
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return h.uc.ProtoRegistry(r), nil
+	return h.uc.ProtoNamespace(r), nil
 }
 
 // List возвращает реестры project'а (sync, cursor-пагинация). Authz — listauthz
@@ -51,7 +51,7 @@ func (h *RegistryHandler) Get(ctx context.Context, req *registryv1.GetRegistryRe
 // non-member → 200+empty (exempt-parity, НЕ 403); iam недоступен → UNAVAILABLE
 // (fail-closed). next-token сервера сохраняется (клиент продолжает пагинацию даже
 // если страница схлопнута фильтром).
-func (h *RegistryHandler) List(ctx context.Context, req *registryv1.ListRegistriesRequest) (*registryv1.ListRegistriesResponse, error) {
+func (h *RegistryHandler) ListNamespaces(ctx context.Context, req *registryv1.ListNamespacesRequest) (*registryv1.ListNamespacesResponse, error) {
 	items, next, err := h.uc.List(ctx, registry.ListQuery{
 		ProjectID: req.GetProjectId(),
 		PageSize:  int64(req.GetPageSize()),
@@ -65,15 +65,15 @@ func (h *RegistryHandler) List(ctx context.Context, req *registryv1.ListRegistri
 	if err != nil {
 		return nil, err
 	}
-	resp := &registryv1.ListRegistriesResponse{NextPageToken: next}
+	resp := &registryv1.ListNamespacesResponse{NextPageToken: next}
 	for _, r := range filtered {
-		resp.Registries = append(resp.Registries, h.uc.ProtoRegistry(r))
+		resp.Namespaces = append(resp.Namespaces, h.uc.ProtoNamespace(r))
 	}
 	return resp, nil
 }
 
 // Create запускает async-создание реестра и возвращает Operation (done=false).
-func (h *RegistryHandler) Create(ctx context.Context, req *registryv1.CreateRegistryRequest) (*operationProto, error) {
+func (h *RegistryHandler) CreateNamespace(ctx context.Context, req *registryv1.CreateNamespaceRequest) (*operationProto, error) {
 	op, err := h.uc.Create(ctx, registry.CreateSpec{
 		ProjectID:   req.GetProjectId(),
 		Name:        req.GetName(),
@@ -90,22 +90,22 @@ func (h *RegistryHandler) Create(ctx context.Context, req *registryv1.CreateRegi
 // возвращает Operation. Переход default_visibility→PUBLIC требует registry admin (D-6
 // any-path-to-PUBLIC gate, B10/B11): admin-Check В ХЕНДЛЕРЕ при "default_visibility" в
 // mask И target=PUBLIC → не-admin → PERMISSION_DENIED (не ломает editor description-путь).
-func (h *RegistryHandler) Update(ctx context.Context, req *registryv1.UpdateRegistryRequest) (*operationProto, error) {
-	if maskContains(req.GetUpdateMask().GetPaths(), "default_visibility") && req.GetDefaultVisibility() == registryv1.Visibility_PUBLIC {
-		if err := registry.ValidateRegistryID(req.GetRegistryId()); err != nil {
+func (h *RegistryHandler) UpdateNamespace(ctx context.Context, req *registryv1.UpdateNamespaceRequest) (*operationProto, error) {
+	if maskContains(req.GetUpdateMask().GetPaths(), "default_repository_visibility") && req.GetDefaultRepositoryVisibility() == registryv1.Visibility_PUBLIC {
+		if err := registry.ValidateNamespaceID(req.GetNamespaceId()); err != nil {
 			return nil, mapErr(err)
 		}
-		if err := h.authz.requireRegistryAdmin(ctx, req.GetRegistryId(), "changing default visibility to public requires registry admin"); err != nil {
+		if err := h.authz.requireRegistryAdmin(ctx, req.GetNamespaceId(), "changing default visibility to public requires registry admin"); err != nil {
 			return nil, err
 		}
 	}
 	op, err := h.uc.Update(ctx, registry.UpdateSpec{
-		RegistryID:        req.GetRegistryId(),
+		NamespaceID:       req.GetNamespaceId(),
 		Name:              req.GetName(),
 		Description:       req.GetDescription(),
 		Labels:            req.GetLabels(),
 		Mask:              req.GetUpdateMask().GetPaths(),
-		DefaultVisibility: domain.Visibility(req.GetDefaultVisibility()),
+		DefaultVisibility: domain.Visibility(req.GetDefaultRepositoryVisibility()),
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -114,8 +114,8 @@ func (h *RegistryHandler) Update(ctx context.Context, req *registryv1.UpdateRegi
 }
 
 // Delete запускает async-удаление реестра и возвращает Operation.
-func (h *RegistryHandler) Delete(ctx context.Context, req *registryv1.DeleteRegistryRequest) (*operationProto, error) {
-	op, err := h.uc.Delete(ctx, req.GetRegistryId())
+func (h *RegistryHandler) DeleteNamespace(ctx context.Context, req *registryv1.DeleteNamespaceRequest) (*operationProto, error) {
+	op, err := h.uc.Delete(ctx, req.GetNamespaceId())
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -139,22 +139,22 @@ func (h *RegistryHandler) Delete(ctx context.Context, req *registryv1.DeleteRegi
 // сохраняется verbatim, поэтому все разрешённые репо достижимы пагинацией, даже если
 // ghost-скрытие/фильтр схлопнули отдельную страницу.
 func (h *RegistryHandler) ListRepositories(ctx context.Context, req *registryv1.ListRepositoriesRequest) (*registryv1.ListRepositoriesResponse, error) {
-	registryID := req.GetRegistryId()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID := req.GetNamespaceId()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
-	if err := h.authz.namespaceGate(ctx, registryID); err != nil {
+	if err := h.authz.namespaceGate(ctx, namespaceID); err != nil {
 		return nil, err
 	}
 	window, next, err := h.uc.ListRepositories(ctx, registry.RepoListQuery{
-		RegistryID: registryID,
-		PageSize:   int64(req.GetPageSize()),
-		PageToken:  req.GetPageToken(),
+		NamespaceID: namespaceID,
+		PageSize:    int64(req.GetPageSize()),
+		PageToken:   req.GetPageToken(),
 	})
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	filtered, err := h.authz.filterRepos(ctx, registryID, window)
+	filtered, err := h.authz.filterRepos(ctx, namespaceID, window)
 	if err != nil {
 		return nil, err
 	}
@@ -169,24 +169,24 @@ func (h *RegistryHandler) ListRepositories(ctx context.Context, req *registryv1.
 // Check v_list на registry_repository:<reg>/<repo> (deny→NOT_FOUND, existence-hiding —
 // теги чужого repo не раскрываются). Пагинация — по имени тега.
 func (h *RegistryHandler) ListTags(ctx context.Context, req *registryv1.ListTagsRequest) (*registryv1.ListTagsResponse, error) {
-	registryID, repository := req.GetRegistryId(), req.GetRepository()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID, repository := req.GetNamespaceId(), req.GetRepository()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
 	}
-	if err := h.authz.checkRepo(ctx, registryID, repository, relationVList); err != nil {
+	if err := h.authz.checkRepo(ctx, namespaceID, repository, relationVList); err != nil {
 		return nil, err
 	}
 	// Пагинация — В АДАПТЕРЕ У ИСТОЧНИКА (zot ListTags режет окно по имени тега ДО
 	// проекции в domain.Tag — bound материализации, CWE-770; паритет с ListRepositories).
 	// Handler лишь форматирует окно + пробрасывает next-token.
 	page, next, err := h.uc.ListTags(ctx, registry.TagListQuery{
-		RegistryID: registryID,
-		Repository: repository,
-		PageSize:   int64(req.GetPageSize()),
-		PageToken:  req.GetPageToken(),
+		NamespaceID: namespaceID,
+		Repository:  repository,
+		PageSize:    int64(req.GetPageSize()),
+		PageToken:   req.GetPageToken(),
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -203,8 +203,8 @@ func (h *RegistryHandler) ListTags(ctx context.Context, req *registryv1.ListTags
 // создания Operation: deny → NOT_FOUND (existence-hiding), Operation НЕ создаётся,
 // worker НЕ запускается (async-Operation с error раскрыл бы факт приёма мутации).
 func (h *RegistryHandler) DeleteTag(ctx context.Context, req *registryv1.DeleteTagRequest) (*operationProto, error) {
-	registryID, repository, tag := req.GetRegistryId(), req.GetRepository(), req.GetTag()
-	if err := registry.ValidateRegistryID(registryID); err != nil {
+	namespaceID, repository, tag := req.GetNamespaceId(), req.GetRepository(), req.GetTag()
+	if err := registry.ValidateNamespaceID(namespaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	if repository == "" {
@@ -213,10 +213,10 @@ func (h *RegistryHandler) DeleteTag(ctx context.Context, req *registryv1.DeleteT
 	if tag == "" {
 		return nil, status.Error(codes.InvalidArgument, "tag is required")
 	}
-	if err := h.authz.checkRepo(ctx, registryID, repository, relationVDelete); err != nil {
+	if err := h.authz.checkRepo(ctx, namespaceID, repository, relationVDelete); err != nil {
 		return nil, err
 	}
-	op, err := h.uc.DeleteTag(ctx, registryID, repository, tag)
+	op, err := h.uc.DeleteTag(ctx, namespaceID, repository, tag)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -235,21 +235,21 @@ func (h *RegistryHandler) DeleteTag(ctx context.Context, req *registryv1.DeleteT
 // registry_id уже провалидирован use-case'ом (empty/malformed → InvalidArgument до
 // фильтра). next-token сервера сохраняется (клиент продолжает пагинацию, даже если
 // страница схлопнута фильтром). operationToProto маппит строку в proto (oneof при done).
-func (h *RegistryHandler) ListOperations(ctx context.Context, req *registryv1.ListRegistryOperationsRequest) (*registryv1.ListRegistryOperationsResponse, error) {
-	registryID := req.GetRegistryId()
+func (h *RegistryHandler) ListOperations(ctx context.Context, req *registryv1.ListNamespaceOperationsRequest) (*registryv1.ListNamespaceOperationsResponse, error) {
+	namespaceID := req.GetNamespaceId()
 	ops, next, err := h.uc.ListOperations(ctx, registry.ListOperationsQuery{
-		RegistryID: registryID,
-		PageSize:   int64(req.GetPageSize()),
-		PageToken:  req.GetPageToken(),
+		NamespaceID: namespaceID,
+		PageSize:    int64(req.GetPageSize()),
+		PageToken:   req.GetPageToken(),
 	})
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	filtered, err := h.authz.filterOperations(ctx, registryID, ops)
+	filtered, err := h.authz.filterOperations(ctx, namespaceID, ops)
 	if err != nil {
 		return nil, err
 	}
-	resp := &registryv1.ListRegistryOperationsResponse{NextPageToken: next}
+	resp := &registryv1.ListNamespaceOperationsResponse{NextPageToken: next}
 	for i := range filtered {
 		resp.Operations = append(resp.Operations, operationToProto(&filtered[i]))
 	}

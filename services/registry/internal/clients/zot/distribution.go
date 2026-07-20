@@ -33,13 +33,13 @@ type tagsResponse struct {
 }
 
 // namespaceRepos читает GET /v2/_catalog и возвращает full-repo-имена (с namespace-
-// префиксом) реестра registryID. Любой HTTP-сбой → ErrUnavailable (fail-closed).
-func (c *Client) namespaceRepos(ctx context.Context, registryID string) ([]string, error) {
+// префиксом) реестра namespaceID. Любой HTTP-сбой → ErrUnavailable (fail-closed).
+func (c *Client) namespaceRepos(ctx context.Context, namespaceID string) ([]string, error) {
 	var cat catalogResponse
 	if err := c.getJSON(ctx, "/v2/_catalog", &cat); err != nil {
 		return nil, err
 	}
-	prefix := registryID + "/"
+	prefix := namespaceID + "/"
 	var out []string
 	for _, name := range cat.Repositories {
 		if strings.HasPrefix(name, prefix) {
@@ -68,11 +68,11 @@ func (c *Client) repoTags(ctx context.Context, fullRepo string) ([]string, error
 // DeleteTag удаляет тег/манифест: сначала резолвит digest тега (HEAD), затем
 // DELETE /manifests/<digest>. Отсутствующий тег/манифест → идемпотентный success
 // (async-retry worker'а не залипает). zot недоступен → ErrUnavailable.
-func (c *Client) DeleteTag(ctx context.Context, registryID, repository, tag string) error {
+func (c *Client) DeleteTag(ctx context.Context, namespaceID, repository, tag string) error {
 	if err := c.ready(); err != nil {
 		return err
 	}
-	fullRepo := registryID + "/" + repository
+	fullRepo := namespaceID + "/" + repository
 	digest, err := c.headManifest(ctx, fullRepo, tag)
 	if err != nil {
 		if errors.Is(err, errNotFound) {
@@ -88,13 +88,13 @@ func (c *Client) DeleteTag(ctx context.Context, registryID, repository, tag stri
 }
 
 // NamespaceEmpty сообщает, пуст ли namespace реестра (нет ни одного repo с префиксом
-// <registryID>/). zot недоступен → ErrUnavailable (fail-closed: Delete-precondition
+// <namespaceID>/). zot недоступен → ErrUnavailable (fail-closed: Delete-precondition
 // НЕ трактует ошибку как «пусто»).
-func (c *Client) NamespaceEmpty(ctx context.Context, registryID string) (bool, error) {
+func (c *Client) NamespaceEmpty(ctx context.Context, namespaceID string) (bool, error) {
 	if err := c.ready(); err != nil {
 		return false, err
 	}
-	repos, err := c.namespaceRepos(ctx, registryID)
+	repos, err := c.namespaceRepos(ctx, namespaceID)
 	if err != nil {
 		return false, err
 	}
@@ -105,12 +105,12 @@ func (c *Client) NamespaceEmpty(ctx context.Context, registryID string) (bool, e
 // нет (репо адресуются полным путём), а Delete допускается только для ПУСТОГО
 // namespace (precondition REG-08) — снимать нечего. Проверяет пустоту и завершается;
 // zot недоступен → ErrUnavailable.
-func (c *Client) RemoveNamespace(ctx context.Context, registryID string) error {
+func (c *Client) RemoveNamespace(ctx context.Context, namespaceID string) error {
 	if err := c.ready(); err != nil {
 		return err
 	}
 	// Delete прошёл precondition пустого namespace; физически удалять нечего.
-	empty, err := c.NamespaceEmpty(ctx, registryID)
+	empty, err := c.NamespaceEmpty(ctx, namespaceID)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (c *Client) RemoveNamespace(ctx context.Context, registryID string) error {
 // блобов исполняется native-scheduler'ом zot по расписанию; ad-hoc HTTP-триггера у zot
 // нет, поэтому trigger проверяет достижимость zot (/v2/ handshake) и подтверждает
 // (идемпотентно). zot недоступен → ErrUnavailable (fail-closed).
-func (c *Client) TriggerGC(ctx context.Context, registryID string) error {
+func (c *Client) TriggerGC(ctx context.Context, namespaceID string) error {
 	if err := c.ready(); err != nil {
 		return err
 	}
@@ -135,15 +135,15 @@ func (c *Client) TriggerGC(ctx context.Context, registryID string) error {
 // число уникальных блобов) — только для Internal-API (:9091). Размер/блобы считаются
 // из манифестов (config.size + layers[].size, уникальные digest'ы). Манифест, который
 // не удалось прочитать, пропускается (best-effort). zot недоступен → ErrUnavailable.
-func (c *Client) Stats(ctx context.Context, registryID string) (*domain.RegistryStats, error) {
+func (c *Client) Stats(ctx context.Context, namespaceID string) (*domain.RegistryStats, error) {
 	if err := c.ready(); err != nil {
 		return nil, err
 	}
-	fullNames, err := c.namespaceRepos(ctx, registryID)
+	fullNames, err := c.namespaceRepos(ctx, namespaceID)
 	if err != nil {
 		return nil, err
 	}
-	stats := &domain.RegistryStats{RegistryID: registryID, RepositoryCount: int32(len(fullNames))} // #nosec G115 -- repo count of one registry, bounded well below int32 max
+	stats := &domain.RegistryStats{NamespaceID: namespaceID, RepositoryCount: int32(len(fullNames))} // #nosec G115 -- repo count of one registry, bounded well below int32 max
 
 	// Собираем (full-repo, tag) пары; И per-repo tags, И манифесты читаем bounded-
 	// concurrency fan-out'ом (cap blobScopeConcurrency) — namespace с тысячами repo/тегов

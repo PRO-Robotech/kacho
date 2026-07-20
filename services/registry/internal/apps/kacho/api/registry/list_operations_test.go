@@ -34,7 +34,7 @@ func TestListOperations_MalformedRegistryID(t *testing.T) {
 	t.Parallel()
 	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, newMemOps())
 	_, _, err := uc.ListOperations(context.Background(),
-		registry.ListOperationsQuery{RegistryID: "not-a-registry-id"})
+		registry.ListOperationsQuery{NamespaceID: "not-a-registry-id"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
@@ -49,7 +49,7 @@ func TestListOperations_HappyPath(t *testing.T) {
 
 	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
 	list, _, err := uc.ListOperations(context.Background(),
-		registry.ListOperationsQuery{RegistryID: regID})
+		registry.ListOperationsQuery{NamespaceID: regID})
 	require.NoError(t, err)
 	require.NotEmpty(t, list)
 }
@@ -64,7 +64,7 @@ func TestListOperations_RepoError_NoLeak(t *testing.T) {
 
 	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
 	_, _, err := uc.ListOperations(context.Background(),
-		registry.ListOperationsQuery{RegistryID: ids.NewID(ids.PrefixRegistry)})
+		registry.ListOperationsQuery{NamespaceID: ids.NewID(ids.PrefixRegistry)})
 	require.Error(t, err)
 	require.Equal(t, codes.Internal, status.Code(err))
 	require.NotContains(t, err.Error(), "relation", "raw pgx/SQL text must not leak")

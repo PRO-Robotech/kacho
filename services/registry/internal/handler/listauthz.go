@@ -57,13 +57,13 @@ const (
 )
 
 // registryObjectRef — FGA object namespace-реестра "registry_registry:<id>".
-func registryObjectRef(registryID string) string {
-	return domain.FGAObjectRef(domain.FGAObjectTypeRegistry, registryID)
+func registryObjectRef(namespaceID string) string {
+	return domain.FGAObjectRef(domain.FGAObjectTypeRegistry, namespaceID)
 }
 
 // repositoryObjectRef — FGA object репозитория "registry_repository:<id>/<repo>".
-func repositoryObjectRef(registryID, repository string) string {
-	return domain.FGAObjectRef(domain.FGAObjectTypeRepository, registryID+"/"+repository)
+func repositoryObjectRef(namespaceID, repository string) string {
+	return domain.FGAObjectRef(domain.FGAObjectTypeRepository, namespaceID+"/"+repository)
 }
 
 // repoAuthz — handler-level per-repo authz. Пустой az (breakglass) → bypass.
@@ -88,8 +88,8 @@ func (a repoAuthz) check(ctx context.Context, relation, object string) (bool, er
 
 // namespaceGate — call-gate: subject обязан иметь v_list на registry_registry:<reg>.
 // deny → NOT_FOUND (existence-hiding); az-error → UNAVAILABLE (fail-closed).
-func (a repoAuthz) namespaceGate(ctx context.Context, registryID string) error {
-	allowed, err := a.check(ctx, relationVList, registryObjectRef(registryID))
+func (a repoAuthz) namespaceGate(ctx context.Context, namespaceID string) error {
+	allowed, err := a.check(ctx, relationVList, registryObjectRef(namespaceID))
 	if err != nil {
 		return errAuthzUnavailable()
 	}
@@ -102,8 +102,8 @@ func (a repoAuthz) namespaceGate(ctx context.Context, registryID string) error {
 // checkRepo — per-repo verb-Check (ListTags v_list / DeleteTag v_delete). deny →
 // NOT_FOUND (existence-hiding — не раскрывать существование чужого repo); az-error →
 // UNAVAILABLE.
-func (a repoAuthz) checkRepo(ctx context.Context, registryID, repository, relation string) error {
-	allowed, err := a.check(ctx, relation, repositoryObjectRef(registryID, repository))
+func (a repoAuthz) checkRepo(ctx context.Context, namespaceID, repository, relation string) error {
+	allowed, err := a.check(ctx, relation, repositoryObjectRef(namespaceID, repository))
 	if err != nil {
 		return errAuthzUnavailable()
 	}
@@ -118,8 +118,8 @@ func (a repoAuthz) checkRepo(ctx context.Context, registryID, repository, relati
 // v_update / ListReferrers v_get). deny|az-absent → NOT_FOUND "repository not found"
 // (existence-hiding, БАЙТ-В-БАЙТ с use-case failNotFound — unauthorized неотличимо от
 // absent, A08/C02/A15); az-error → UNAVAILABLE (fail-closed).
-func (a repoAuthz) checkRepository(ctx context.Context, registryID, repository, relation string) error {
-	allowed, err := a.check(ctx, relation, repositoryObjectRef(registryID, repository))
+func (a repoAuthz) checkRepository(ctx context.Context, namespaceID, repository, relation string) error {
+	allowed, err := a.check(ctx, relation, repositoryObjectRef(namespaceID, repository))
 	if err != nil {
 		return errAuthzUnavailable()
 	}
@@ -132,8 +132,8 @@ func (a repoAuthz) checkRepository(ctx context.Context, registryID, repository, 
 // registryGate — namespace call-gate по заданному verb-relation на registry_registry:
 // <reg> (CreateRepository v_create — невидимый реестр existence-hidden, X04). deny →
 // NOT_FOUND (existence-hiding); az-error → UNAVAILABLE (fail-closed).
-func (a repoAuthz) registryGate(ctx context.Context, registryID, relation string) error {
-	allowed, err := a.check(ctx, relation, registryObjectRef(registryID))
+func (a repoAuthz) registryGate(ctx context.Context, namespaceID, relation string) error {
+	allowed, err := a.check(ctx, relation, registryObjectRef(namespaceID))
 	if err != nil {
 		return errAuthzUnavailable()
 	}
@@ -148,8 +148,8 @@ func (a repoAuthz) registryGate(ctx context.Context, registryID, relation string
 // видимому ресурсу (v_create/v_update прошёл ДО этого гейта), поэтому deny честен коду —
 // PERMISSION_DENIED с contract-текстом msg (B02/B08/B10); az-error → UNAVAILABLE.
 // breakglass (nil az) → allow.
-func (a repoAuthz) requireRegistryAdmin(ctx context.Context, registryID, msg string) error {
-	allowed, err := a.check(ctx, relationAdmin, registryObjectRef(registryID))
+func (a repoAuthz) requireRegistryAdmin(ctx context.Context, namespaceID, msg string) error {
+	allowed, err := a.check(ctx, relationAdmin, registryObjectRef(namespaceID))
 	if err != nil {
 		return errAuthzUnavailable()
 	}
@@ -168,7 +168,7 @@ func (a repoAuthz) requireRegistryAdmin(ctx context.Context, registryID, msg str
 // — паритет с filterRepos/filterOperations (List latency не масштабируется линейно по
 // числу реестров страницы). Результат детерминирован (indexed slice сохраняет входной
 // порядок).
-func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry) ([]*domain.Registry, error) {
+func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Namespace) ([]*domain.Namespace, error) {
 	if a.az == nil {
 		return regs, nil
 	}
@@ -189,7 +189,7 @@ func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry
 	if err := g.Wait(); err != nil {
 		return nil, errAuthzUnavailable()
 	}
-	out := make([]*domain.Registry, 0, len(regs))
+	out := make([]*domain.Namespace, 0, len(regs))
 	for i, r := range regs {
 		if allowed[i] {
 			out = append(out, r)
@@ -206,7 +206,7 @@ func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry
 // (bounded число Check per RPC — anti-DoS, CWE-770), (2) сами Check выполняются
 // bounded-concurrency (repoAuthzConcurrency) — паритет с data-plane serveCatalog.
 // Результат детерминирован (indexed slice сохраняет входной порядок имён ASC).
-func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*domain.Repository) ([]*domain.Repository, error) {
+func (a repoAuthz) filterRepos(ctx context.Context, namespaceID string, repos []*domain.Repository) ([]*domain.Repository, error) {
 	if a.az == nil {
 		return repos, nil
 	}
@@ -216,7 +216,7 @@ func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*
 	g.SetLimit(repoAuthzConcurrency)
 	for i, r := range repos {
 		g.Go(func() error {
-			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(registryID, r.Name))
+			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(namespaceID, r.Name))
 			if err != nil {
 				return err
 			}
@@ -247,12 +247,12 @@ func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*
 // Registry-level операции (no repository в metadata) остаются видны — namespace v_list
 // (interceptor) достаточно.
 //
-// registryID берётся из ЗАПРОСА (не из metadata) — операции уже отфильтрованы
-// use-case'ом по resource_id=registryID, а доверять registry_id из metadata для
+// namespaceID берётся из ЗАПРОСА (не из metadata) — операции уже отфильтрованы
+// use-case'ом по resource_id=namespaceID, а доверять registry_id из metadata для
 // построения authz-объекта незачем. breakglass → все; az-error → UNAVAILABLE
 // (fail-closed, не отдаём частичный список — паритет с filterRepos/filterRegistries).
 // Fan-out bounded-concurrency (repoAuthzConcurrency), детерминированный порядок.
-func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops []operations.Operation) ([]operations.Operation, error) {
+func (a repoAuthz) filterOperations(ctx context.Context, namespaceID string, ops []operations.Operation) ([]operations.Operation, error) {
 	if a.az == nil {
 		return ops, nil
 	}
@@ -268,7 +268,7 @@ func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops 
 		}
 
 		g.Go(func() error {
-			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(registryID, repository))
+			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(namespaceID, repository))
 			if err != nil {
 				return err
 			}

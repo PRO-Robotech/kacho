@@ -26,11 +26,11 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
 
-// seedRegistry вставляет parent-реестр (FK target repository_configs.registry_id) и
+// seedRegistry вставляет parent-реестр (FK target repository_configs.namespace_id) и
 // возвращает его id.
 func seedRegistry(t *testing.T, pool *pgxpool.Pool, project, name string) string {
 	t.Helper()
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	reg := newReg(project, name, nil)
 	created, err := repo.Insert(context.Background(), reg,
 		domain.RegisterIntentForCreate(reg, "user", "usr-seed"))
@@ -40,7 +40,7 @@ func seedRegistry(t *testing.T, pool *pgxpool.Pool, project, name string) string
 
 func newCfg(regID, name string, vis domain.Visibility, labels map[string]string) *domain.RepositoryConfig {
 	return &domain.RepositoryConfig{
-		RegistryID:  regID,
+		NamespaceID: regID,
 		Name:        name,
 		Description: "",
 		Labels:      labels,
@@ -57,7 +57,7 @@ func TestRepoConfig_RG1A01_InsertGetRoundTrip(t *testing.T) {
 
 	regID := seedRegistry(t, pool, "prj-P", "reg-a01")
 	cfg := &domain.RepositoryConfig{
-		RegistryID:  regID,
+		NamespaceID: regID,
 		Name:        "backend/api",
 		Description: "api service images",
 		Labels:      map[string]string{"team": "core"},
@@ -66,7 +66,7 @@ func TestRepoConfig_RG1A01_InsertGetRoundTrip(t *testing.T) {
 	before := time.Now().Add(-time.Second)
 	got, err := repo.InsertConfig(ctx, cfg)
 	require.NoError(t, err)
-	require.Equal(t, regID, got.RegistryID)
+	require.Equal(t, regID, got.NamespaceID)
 	require.Equal(t, "backend/api", got.Name)
 	require.Equal(t, "api service images", got.Description)
 	require.Equal(t, map[string]string{"team": "core"}, got.Labels)
@@ -140,7 +140,7 @@ func TestRepoConfig_RG1D6_VisibilityCheckDomain(t *testing.T) {
 
 	// DB CHECK: прямой INSERT недопустимого visibility → 23514 (миграция-инвариант).
 	_, rawErr := pool.Exec(ctx,
-		`INSERT INTO kacho_registry.repository_configs (registry_id, name, visibility) VALUES ($1,$2,$3)`,
+		`INSERT INTO kacho_registry.repository_configs (namespace_id, name, visibility) VALUES ($1,$2,$3)`,
 		regID, "bad/vis", "WORLD-READABLE")
 	require.Error(t, rawErr, "visibility CHECK отвергает значение вне {PRIVATE,PUBLIC}")
 	require.Contains(t, rawErr.Error(), "23514", "check_violation")
@@ -217,14 +217,14 @@ func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 	regID := seedRegistry(t, pool, "prj-P", "reg-upd")
 
 	_, err := repo.InsertConfig(ctx, &domain.RepositoryConfig{
-		RegistryID: regID, Name: "backend/api", Description: "v1",
+		NamespaceID: regID, Name: "backend/api", Description: "v1",
 		Labels: map[string]string{"team": "core"}, Visibility: domain.VisibilityPrivate,
 	})
 	require.NoError(t, err)
 
 	// description+labels (без visibility) — visibility не тронут.
 	upd, err := repo.UpdateConfig(ctx, registry.RepositoryConfigUpdate{
-		RegistryID: regID, Name: "backend/api",
+		NamespaceID: regID, Name: "backend/api",
 		Description: "api images v2", ApplyDescription: true,
 		Labels: map[string]string{"team": "core", "tier": "gold"}, ApplyLabels: true,
 	})
@@ -235,7 +235,7 @@ func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 
 	// только visibility → PUBLIC (single-statement CAS), description/labels сохранены.
 	flip, err := repo.UpdateConfig(ctx, registry.RepositoryConfigUpdate{
-		RegistryID: regID, Name: "backend/api",
+		NamespaceID: regID, Name: "backend/api",
 		Visibility: domain.VisibilityPublic, ApplyVisibility: true,
 	})
 	require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 
 	// UpdateConfig несуществующего repo → NotFound.
 	_, err = repo.UpdateConfig(ctx, registry.RepositoryConfigUpdate{
-		RegistryID: regID, Name: "ghost/x", Description: "x", ApplyDescription: true,
+		NamespaceID: regID, Name: "ghost/x", Description: "x", ApplyDescription: true,
 	})
 	require.ErrorIs(t, err, regerrors.ErrNotFound)
 }
@@ -282,7 +282,7 @@ func TestRepoConfig_FKCascadeOnRegistryDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Физически удаляем реестр (registry Delete) — overlay-строки должны cascade-исчезнуть.
-	regRepo := kachopg.NewRegistryRepo(pool)
+	regRepo := kachopg.NewNamespaceRepo(pool)
 	require.NoError(t, regRepo.Delete(ctx, regID, domain.RegisterIntent{}))
 
 	require.Equal(t, 0, countConfigs(t, pool, regID, "a/b"), "overlay cascade-снят с реестром")
@@ -317,12 +317,12 @@ func TestRepoConfig_RG1A20_ListConfigs(t *testing.T) {
 	require.Empty(t, empty)
 }
 
-// countConfigs считает строки repository_configs по (registry_id, name).
+// countConfigs считает строки repository_configs по (namespace_id, name).
 func countConfigs(t *testing.T, pool *pgxpool.Pool, regID, name string) int {
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM kacho_registry.repository_configs WHERE registry_id=$1 AND name=$2`,
+		`SELECT count(*) FROM kacho_registry.repository_configs WHERE namespace_id=$1 AND name=$2`,
 		regID, name).Scan(&n))
 	return n
 }

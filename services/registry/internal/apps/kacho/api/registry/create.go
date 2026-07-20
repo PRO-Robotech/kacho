@@ -39,13 +39,13 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 		return nil, err
 	}
 
-	reg := &domain.Registry{
-		ID:          ids.NewID(ids.PrefixRegistry),
+	reg := &domain.Namespace{
+		ID:          ids.NewHyphenID(ids.PrefixNamespace),
 		ProjectID:   spec.ProjectID,
 		Name:        spec.Name,
 		Description: spec.Description,
 		Labels:      spec.Labels,
-		Status:      domain.RegistryStatusActive,
+		Status:      domain.NamespaceStatusActive,
 	}
 	// Self-validating domain: name DNS-safe (OCI-namespace segment), status,
 	// project_id. Ошибка → InvalidArgument (каноничный "Illegal argument"-класс).
@@ -71,8 +71,8 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	// известны (id сгенерирован выше) — метадату можно построить до INSERT.
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Create Registry %s", reg.Name),
-		&registryv1.CreateRegistryMetadata{RegistryId: reg.ID},
+		fmt.Sprintf("Create Namespace %s", reg.Name),
+		&registryv1.CreateNamespaceMetadata{NamespaceId: reg.ID},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -92,7 +92,7 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	if err != nil {
 		syncErr := mapRepoErr(err)
 		if errors.Is(err, regerrors.ErrAlreadyExists) {
-			syncErr = failAlreadyExists("registry %s already exists", reg.Name)
+			syncErr = failAlreadyExists("namespace %s already exists", reg.Name)
 		}
 		// Финализируем осиротевший pending-Operation тем же статусом (worker переведёт
 		// его в done=true+error). Клиент всё равно получает sync-ошибку ниже.
@@ -110,15 +110,15 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 		// Operation созданным ресурсом: downstream/peer-вызовов нет, principal в
 		// worker-ctx не требуется (в отличие от update/delete/deletetag/gc, где он
 		// принудительно пробрасывается перед downstream-вызовом).
-		return u.registryAny(created)
+		return u.namespaceAny(created)
 	})
 
 	return &op, nil
 }
 
-// registryAny упаковывает Registry в Operation.response (google.protobuf.Any).
-func (u *UseCase) registryAny(r *domain.Registry) (*anypb.Any, error) {
-	out, err := anypb.New(u.ProtoRegistry(r))
+// namespaceAny упаковывает Registry в Operation.response (google.protobuf.Any).
+func (u *UseCase) namespaceAny(r *domain.Namespace) (*anypb.Any, error) {
+	out, err := anypb.New(u.ProtoNamespace(r))
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}

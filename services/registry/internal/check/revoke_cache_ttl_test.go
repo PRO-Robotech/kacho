@@ -32,7 +32,7 @@ import (
 const (
 	testSubject   = "user:usr-grantee"
 	testRegistry  = "regREVOKECACHE000000"
-	testGetMethod = "/kacho.cloud.registry.v1.RegistryService/Get"
+	testGetMethod = "/kacho.cloud.registry.v1.RegistryService/GetNamespace"
 )
 
 // ---- pure cache-semantics (helper authzCache, на котором строится фабрика) ----
@@ -150,7 +150,7 @@ func TestNewInterceptor_RevokedSubjectDeniedAfterCacheTTL(t *testing.T) {
 
 	ctx := grantedCtx()
 	info := &grpc.UnaryServerInfo{FullMethod: testGetMethod}
-	req := &registryv1.GetRegistryRequest{RegistryId: testRegistry}
+	req := &registryv1.GetNamespaceRequest{NamespaceId: testRegistry}
 	ran := 0
 	h := func(context.Context, any) (any, error) { ran++; return "ok", nil }
 
@@ -189,7 +189,7 @@ func TestNewInterceptor_ZeroCacheTTL_RevokeEnforcedImmediately(t *testing.T) {
 
 	ctx := grantedCtx()
 	info := &grpc.UnaryServerInfo{FullMethod: testGetMethod}
-	req := &registryv1.GetRegistryRequest{RegistryId: testRegistry}
+	req := &registryv1.GetNamespaceRequest{NamespaceId: testRegistry}
 	ran := 0
 	h := func(context.Context, any) (any, error) { ran++; return "ok", nil }
 

@@ -26,10 +26,10 @@ func (u *UseCase) Update(ctx context.Context, spec UpdateSpec) (*operations.Oper
 	if err := u.assertWired(); err != nil {
 		return nil, err
 	}
-	if spec.RegistryID == "" {
+	if spec.NamespaceID == "" {
 		return nil, failInvalidArg("registryId is required")
 	}
-	if err := ValidateRegistryID(spec.RegistryID); err != nil {
+	if err := ValidateNamespaceID(spec.NamespaceID); err != nil {
 		return nil, err
 	}
 
@@ -62,8 +62,8 @@ func (u *UseCase) Update(ctx context.Context, spec UpdateSpec) (*operations.Oper
 
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,
-		fmt.Sprintf("Update Registry %s", spec.RegistryID),
-		&registryv1.UpdateRegistryMetadata{RegistryId: spec.RegistryID},
+		fmt.Sprintf("Update Namespace %s", spec.NamespaceID),
+		&registryv1.UpdateNamespaceMetadata{NamespaceId: spec.NamespaceID},
 	)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -81,7 +81,7 @@ func (u *UseCase) Update(ctx context.Context, spec UpdateSpec) (*operations.Oper
 		if uerr != nil {
 			return nil, mapRepoErr(uerr)
 		}
-		return u.registryAny(updated)
+		return u.namespaceAny(updated)
 	})
 
 	return &op, nil
@@ -90,6 +90,6 @@ func (u *UseCase) Update(ctx context.Context, spec UpdateSpec) (*operations.Oper
 // mirrorIntent строит mirror register-intent из обновлённой строки: project-tuple
 // с новыми labels (без creator-tuple). Callback вызывается репозиторием под
 // RETURNING обновлённой строки — labels/project берутся из реального персиста.
-func mirrorIntent(r *domain.Registry) domain.RegisterIntent {
+func mirrorIntent(r *domain.Namespace) domain.RegisterIntent {
 	return domain.RegisterIntentForUpdate(r)
 }

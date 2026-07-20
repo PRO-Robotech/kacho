@@ -23,7 +23,7 @@ import (
 // UPDATE ... RETURNING по ним (visibility-flip сериализуется row-lock'ом — B09).
 // Пустая карта Labels при ApplyLabels=true реально очищает метки (full-object PATCH).
 type RepositoryConfigUpdate struct {
-	RegistryID       string
+	NamespaceID      string
 	Name             string
 	Description      string
 	Labels           map[string]string
@@ -46,10 +46,10 @@ type OutboxIntent struct {
 type RepositoryConfigReader interface {
 	// GetConfig возвращает overlay-строку по натуральному ключу (registry_id, name).
 	// Строки нет (ephemeral/absent) → ErrNotFound (existence-hiding — в handler).
-	GetConfig(ctx context.Context, registryID, name string) (*domain.RepositoryConfig, error)
+	GetConfig(ctx context.Context, namespaceID, name string) (*domain.RepositoryConfig, error)
 	// ListConfigs возвращает overlay-строки реестра (created_at, name) ASC. Use-case
 	// объединяет их с projection (zot) в overlay ⊔ projection union (A20).
-	ListConfigs(ctx context.Context, registryID string) ([]*domain.RepositoryConfig, error)
+	ListConfigs(ctx context.Context, namespaceID string) ([]*domain.RepositoryConfig, error)
 }
 
 // RepositoryConfigWriter — write-порт overlay-таблицы. Мутации атомарны на DB-уровне
@@ -76,10 +76,10 @@ type RepositoryConfigWriter interface {
 	// Занятое целевое имя (overlay) → 23505 → ErrAlreadyExists (A16/A17/A18);
 	// исходной строки нет → ErrNotFound. intents (re-register new / unregister old /
 	// public-grant governance) — в той же tx.
-	RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...OutboxIntent) (*domain.RepositoryConfig, error)
+	RekeyConfig(ctx context.Context, namespaceID, oldName, newName string, intents ...OutboxIntent) (*domain.RepositoryConfig, error)
 	// DeleteConfig снимает overlay-строку (DELETE ... RETURNING). 0 rows → ErrNotFound.
 	// intents (unregister repo-tuples + public-grant) — в той же tx.
-	DeleteConfig(ctx context.Context, registryID, name string, intents ...OutboxIntent) error
+	DeleteConfig(ctx context.Context, namespaceID, name string, intents ...OutboxIntent) error
 }
 
 // RepositoryConfigRepo — композитный CQRS-порт (read+write) для composition root.

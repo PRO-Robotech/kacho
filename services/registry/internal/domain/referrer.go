@@ -15,7 +15,7 @@ import (
 // читается на request-path. Инфра-полей НЕ несёт (scanner-engine id / blob-layout /
 // host — те Internal-only, security.md §Инфра-чувствительные данные, X01).
 type Referrer struct {
-	RegistryID    string
+	NamespaceID   string
 	Repository    string
 	SubjectDigest string
 	// Digest — digest самого referrer-артефакта ("sha256:<hex>").

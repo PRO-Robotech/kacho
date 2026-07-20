@@ -24,7 +24,7 @@ import (
 // пока строка реестра залочена конкурентной tx (FOR UPDATE), и завершается после release.
 func TestRepo_UpdateEmptySet_LocksMirroredRow(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
@@ -44,8 +44,8 @@ func TestRepo_UpdateEmptySet_LocksMirroredRow(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		_, uerr := repo.Update(ctx,
-			registry.UpdateSpec{RegistryID: r.ID}, // все Apply* == false → empty-set ветка
-			func(rr *domain.Registry) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
+			registry.UpdateSpec{NamespaceID: r.ID}, // все Apply* == false → empty-set ветка
+			func(rr *domain.Namespace) domain.RegisterIntent { return domain.RegisterIntentForUpdate(rr) })
 		done <- uerr
 	}()
 	select {

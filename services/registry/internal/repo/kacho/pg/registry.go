@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package pg — Postgres-adapter (handwritten pgx) для таблицы registries
-// kacho-registry. Реализует CQRS-порты registry.RegistryReader/RegistryWriter.
+// kacho-registry. Реализует CQRS-порты registry.NamespaceReader/NamespaceWriter.
 //
 // Мутации атомарны на DB-уровне (INSERT/UPDATE ... RETURNING, CAS-переход
 // ACTIVE→DELETING через UPDATE ... WHERE, DELETE ... RETURNING) и пишут owner-tuple
@@ -29,19 +29,19 @@ import (
 // schema — квалификатор таблиц kacho-registry (не полагаемся на search_path).
 const schema = "kacho_registry"
 
-// registryColumns — канонический порядок SELECT/RETURNING строки реестра.
-const registryColumns = `id, project_id, name, description, labels, status, created_at, default_visibility`
+// namespaceColumns — канонический порядок SELECT/RETURNING строки реестра.
+const namespaceColumns = `id, project_id, name, description, labels, status, created_at, default_visibility`
 
-// RegistryRepo — реализация registry.RegistryRepo поверх pgxpool.
-type RegistryRepo struct {
+// NamespaceRepo — реализация registry.NamespaceRepo поверх pgxpool.
+type NamespaceRepo struct {
 	pool *pgxpool.Pool
 }
 
-// NewRegistryRepo создаёт RegistryRepo поверх pgxpool.
-func NewRegistryRepo(pool *pgxpool.Pool) *RegistryRepo { return &RegistryRepo{pool: pool} }
+// NewNamespaceRepo создаёт NamespaceRepo поверх pgxpool.
+func NewNamespaceRepo(pool *pgxpool.Pool) *NamespaceRepo { return &NamespaceRepo{pool: pool} }
 
 // ready — pool обязан быть подан composition root'ом (иначе Unavailable, не паника).
-func (r *RegistryRepo) ready() error {
+func (r *NamespaceRepo) ready() error {
 	if r.pool == nil {
 		return regerrors.ErrUnavailable
 	}
@@ -49,29 +49,29 @@ func (r *RegistryRepo) ready() error {
 }
 
 // Get возвращает реестр по id. pgx.ErrNoRows → ErrNotFound через wrapPgErr.
-func (r *RegistryRepo) Get(ctx context.Context, id string) (*domain.Registry, error) {
+func (r *NamespaceRepo) Get(ctx context.Context, id string) (*domain.Namespace, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
-	q := fmt.Sprintf(`SELECT %s FROM %s.registries WHERE id = $1`, registryColumns, schema)
-	reg, err := scanRegistry(r.pool.QueryRow(ctx, q, id))
+	q := fmt.Sprintf(`SELECT %s FROM %s.registries WHERE id = $1`, namespaceColumns, schema)
+	reg, err := scanNamespace(r.pool.QueryRow(ctx, q, id))
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", id)
+		return nil, wrapPgErr(err, "Namespace", id)
 	}
 	return reg, nil
 }
 
-// RegistryProjectID — узкий lookup owning-project реестра по id (data-plane
+// NamespaceProjectID — узкий lookup owning-project реестра по id (data-plane
 // register-on-first-push: интент репо должен нести ParentProjectID для containment
 // scope в iam-mirror). pgx.ErrNoRows → ErrNotFound через wrapPgErr.
-func (r *RegistryRepo) RegistryProjectID(ctx context.Context, id string) (string, error) {
+func (r *NamespaceRepo) NamespaceProjectID(ctx context.Context, id string) (string, error) {
 	if err := r.ready(); err != nil {
 		return "", err
 	}
 	var projectID string
 	q := fmt.Sprintf(`SELECT project_id FROM %s.registries WHERE id = $1`, schema)
 	if err := r.pool.QueryRow(ctx, q, id).Scan(&projectID); err != nil {
-		return "", wrapPgErr(err, "Registry", id)
+		return "", wrapPgErr(err, "Namespace", id)
 	}
 	return projectID, nil
 }
@@ -79,7 +79,7 @@ func (r *RegistryRepo) RegistryProjectID(ctx context.Context, id string) (string
 // List возвращает реестры project'а cursor-пагинацией (created_at,id) ASC.
 // filter — whitelist `name=` (corelib filter.Parse; garbage → InvalidArgument);
 // garbage page_token → InvalidArgument. Запрашивает pageSize+1 для next-cursor.
-func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Registry, string, error) {
+func (r *NamespaceRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Namespace, string, error) {
 	if err := r.ready(); err != nil {
 		return nil, "", err
 	}
@@ -123,26 +123,26 @@ func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domai
 	}
 	sql := fmt.Sprintf(
 		`SELECT %s FROM %s.registries %s ORDER BY created_at ASC, id ASC LIMIT $%d`,
-		registryColumns, schema, where, idx,
+		namespaceColumns, schema, where, idx,
 	)
 	args = append(args, pageSize+1)
 
 	rows, err := r.pool.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, "", wrapPgErr(err, "Registry", "")
+		return nil, "", wrapPgErr(err, "Namespace", "")
 	}
 	defer rows.Close()
 
-	var out []*domain.Registry
+	var out []*domain.Namespace
 	for rows.Next() {
-		reg, serr := scanRegistry(rows)
+		reg, serr := scanNamespace(rows)
 		if serr != nil {
-			return nil, "", wrapPgErr(serr, "Registry", "")
+			return nil, "", wrapPgErr(serr, "Namespace", "")
 		}
 		out = append(out, reg)
 	}
 	if rerr := rows.Err(); rerr != nil {
-		return nil, "", wrapPgErr(rerr, "Registry", "")
+		return nil, "", wrapPgErr(rerr, "Namespace", "")
 	}
 
 	var next string
@@ -156,7 +156,7 @@ func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domai
 
 // Insert создаёт реестр + register-intent в registry_outbox ОДНОЙ writer-tx.
 // partial UNIQUE(project_id,name)WHERE status<>'DELETING' → 23505 → ErrAlreadyExists.
-func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, error) {
+func (r *NamespaceRepo) Insert(ctx context.Context, reg *domain.Namespace, intent domain.RegisterIntent) (*domain.Namespace, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
@@ -167,25 +167,25 @@ func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent 
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", reg.ID)
+		return nil, wrapPgErr(err, "Namespace", reg.ID)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := fmt.Sprintf(`
 		INSERT INTO %s.registries (id, project_id, name, description, labels, status)
 		VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-		RETURNING %s`, schema, registryColumns)
-	created, err := scanRegistry(tx.QueryRow(ctx, q,
+		RETURNING %s`, schema, namespaceColumns)
+	created, err := scanNamespace(tx.QueryRow(ctx, q,
 		reg.ID, reg.ProjectID, reg.Name, reg.Description, labels, statusString(reg.Status)))
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", reg.ID)
+		return nil, wrapPgErr(err, "Namespace", reg.ID)
 	}
 
 	if err := emitFGAIntent(ctx, tx, domain.FGAEventRegister, intent); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, wrapPgErr(err, "Registry", reg.ID)
+		return nil, wrapPgErr(err, "Namespace", reg.ID)
 	}
 	return created, nil
 }
@@ -193,13 +193,13 @@ func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent 
 // Update применяет mutable-поля по Apply*-флагам одним UPDATE ... RETURNING;
 // mirror register-intent (обновлённые labels) строится callback'ом из RETURNING
 // строки и эмитится в той же tx. 0 rows (нет ACTIVE-реестра) → ErrNotFound.
-func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error) {
+func (r *NamespaceRepo) Update(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Namespace) domain.RegisterIntent) (*domain.Namespace, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
 
 	sets := []string{}
-	args := []any{spec.RegistryID}
+	args := []any{spec.NamespaceID}
 	idx := 2
 	if spec.ApplyName {
 		// Смена имени: partial-UNIQUE(project_id,name) WHERE status<>'DELETING' →
@@ -230,11 +230,11 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", spec.RegistryID)
+		return nil, wrapPgErr(err, "Namespace", spec.NamespaceID)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var updated *domain.Registry
+	var updated *domain.Namespace
 	if len(sets) == 0 {
 		// Пустой набор применяемых полей (mask без mutable-полей) — возвращаем
 		// текущую ACTIVE-строку; mirror по-прежнему re-register'ит labels. FOR UPDATE
@@ -246,24 +246,24 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 		// stale labels). Ветка ныне недостижима через use-case, но FOR UPDATE закрывает
 		// её как foot-gun для любого прямого/будущего caller'а с пустым Apply-набором.
 		q := fmt.Sprintf(`SELECT %s FROM %s.registries WHERE id = $1 AND status = 'ACTIVE' FOR UPDATE`,
-			registryColumns, schema)
-		updated, err = scanRegistry(tx.QueryRow(ctx, q, spec.RegistryID))
+			namespaceColumns, schema)
+		updated, err = scanNamespace(tx.QueryRow(ctx, q, spec.NamespaceID))
 	} else {
 		q := fmt.Sprintf(`
 			UPDATE %s.registries SET %s
 			WHERE id = $1 AND status = 'ACTIVE'
-			RETURNING %s`, schema, strings.Join(sets, ", "), registryColumns)
-		updated, err = scanRegistry(tx.QueryRow(ctx, q, args...))
+			RETURNING %s`, schema, strings.Join(sets, ", "), namespaceColumns)
+		updated, err = scanNamespace(tx.QueryRow(ctx, q, args...))
 	}
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", spec.RegistryID)
+		return nil, wrapPgErr(err, "Namespace", spec.NamespaceID)
 	}
 
 	if err := emitFGAIntent(ctx, tx, domain.FGAEventRegister, mirror(updated)); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, wrapPgErr(err, "Registry", spec.RegistryID)
+		return nil, wrapPgErr(err, "Namespace", spec.NamespaceID)
 	}
 	return updated, nil
 }
@@ -272,17 +272,17 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 // идемпотентно DELETING→DELETING, чтобы retry/крэш-рекавери довели удаление до
 // конца). 0 rows только когда строки нет (уже удалена) → ErrNotFound. revert в
 // ACTIVE невозможен (нет пути DELETING→ACTIVE).
-func (r *RegistryRepo) MarkDeleting(ctx context.Context, id string) (*domain.Registry, error) {
+func (r *NamespaceRepo) MarkDeleting(ctx context.Context, id string) (*domain.Namespace, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
 	q := fmt.Sprintf(`
 		UPDATE %s.registries SET status = 'DELETING'
 		WHERE id = $1 AND status IN ('ACTIVE', 'DELETING')
-		RETURNING %s`, schema, registryColumns)
-	reg, err := scanRegistry(r.pool.QueryRow(ctx, q, id))
+		RETURNING %s`, schema, namespaceColumns)
+	reg, err := scanNamespace(r.pool.QueryRow(ctx, q, id))
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", id)
+		return nil, wrapPgErr(err, "Namespace", id)
 	}
 	return reg, nil
 }
@@ -291,27 +291,27 @@ func (r *RegistryRepo) MarkDeleting(ctx context.Context, id string) (*domain.Reg
 // unregister-intent эмитится ТОЛЬКО когда строка реально удалена (DELETE RETURNING
 // 1 row) — конкурентный/повторный Delete видит 0 rows → ErrNotFound без второго
 // destructive unregister-дубля.
-func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.RegisterIntent) error {
+func (r *NamespaceRepo) Delete(ctx context.Context, id string, intent domain.RegisterIntent) error {
 	if err := r.ready(); err != nil {
 		return err
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return wrapPgErr(err, "Registry", id)
+		return wrapPgErr(err, "Namespace", id)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var deletedID string
 	q := fmt.Sprintf(`DELETE FROM %s.registries WHERE id = $1 RETURNING id`, schema)
 	if err := tx.QueryRow(ctx, q, id).Scan(&deletedID); err != nil {
-		return wrapPgErr(err, "Registry", id)
+		return wrapPgErr(err, "Namespace", id)
 	}
 
 	if err := emitFGAIntent(ctx, tx, domain.FGAEventUnregister, intent); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return wrapPgErr(err, "Registry", id)
+		return wrapPgErr(err, "Namespace", id)
 	}
 	return nil
 }
@@ -321,13 +321,13 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 // zot) — outbox-строка durable сама по себе, поэтому пишется одиночной tx. Register-
 // drainer применяет её через fga-proxy идемпотентно (повторный push того же repo даёт
 // дубль-intent, iam дедуплицирует → AlreadyApplied).
-func (r *RegistryRepo) RegisterRepository(ctx context.Context, intent domain.RegisterIntent) error {
+func (r *NamespaceRepo) RegisterRepository(ctx context.Context, intent domain.RegisterIntent) error {
 	return r.emitRepoIntent(ctx, domain.FGAEventRegister, intent)
 }
 
 // UnregisterRepository эмитит unregister-intent repo (снятие parent-tuple) в
 // registry_outbox — снятие висячего authz-объекта на удалении последнего тега.
-func (r *RegistryRepo) UnregisterRepository(ctx context.Context, intent domain.RegisterIntent) error {
+func (r *NamespaceRepo) UnregisterRepository(ctx context.Context, intent domain.RegisterIntent) error {
 	return r.emitRepoIntent(ctx, domain.FGAEventUnregister, intent)
 }
 
@@ -345,7 +345,7 @@ func (r *RegistryRepo) UnregisterRepository(ctx context.Context, intent domain.R
 // intent'ы одного repo-объекта сериализуются (второй ждёт commit первого → получает
 // больший id), а разные repo-объекты друг друга не блокируют. Lock — xact-scoped,
 // снимается на commit/rollback.
-func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, intent domain.RegisterIntent) error {
+func (r *NamespaceRepo) emitRepoIntent(ctx context.Context, eventType string, intent domain.RegisterIntent) error {
 	if err := r.ready(); err != nil {
 		return err
 	}
@@ -371,10 +371,10 @@ func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, int
 
 // ---- helpers ----
 
-// scanRegistry читает строку реестра из pgx.Row/pgx.Rows в domain.Registry.
-func scanRegistry(row pgx.Row) (*domain.Registry, error) {
+// scanNamespace читает строку реестра из pgx.Row/pgx.Rows в domain.Namespace.
+func scanNamespace(row pgx.Row) (*domain.Namespace, error) {
 	var (
-		reg           domain.Registry
+		reg           domain.Namespace
 		labelsRaw     []byte
 		statusRaw     string
 		defaultVisRaw string
@@ -443,18 +443,18 @@ func unmarshalLabels(raw []byte) (map[string]string, error) {
 }
 
 // statusString / statusFromString — маппинг domain-enum ↔ TEXT-колонка status.
-func statusString(s domain.RegistryStatus) string {
-	if s == domain.RegistryStatusDeleting {
+func statusString(s domain.NamespaceStatus) string {
+	if s == domain.NamespaceStatusDeleting {
 		return "DELETING"
 	}
 	return "ACTIVE"
 }
 
-func statusFromString(s string) domain.RegistryStatus {
+func statusFromString(s string) domain.NamespaceStatus {
 	if s == "DELETING" {
-		return domain.RegistryStatusDeleting
+		return domain.NamespaceStatusDeleting
 	}
-	return domain.RegistryStatusActive
+	return domain.NamespaceStatusActive
 }
 
 // invalidFilterErr оборачивает ошибку парсинга filter в domain-sentinel
@@ -465,5 +465,5 @@ func invalidFilterErr(err error) error {
 	return fmt.Errorf("%w: invalid filter: %v", regerrors.ErrInvalidArg, err)
 }
 
-var _ registry.RegistryRepo = (*RegistryRepo)(nil)
-var _ registry.RepoRegistrar = (*RegistryRepo)(nil)
+var _ registry.NamespaceRepo = (*NamespaceRepo)(nil)
+var _ registry.RepoRegistrar = (*NamespaceRepo)(nil)

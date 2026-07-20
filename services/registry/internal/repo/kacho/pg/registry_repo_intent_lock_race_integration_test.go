@@ -29,7 +29,7 @@ import (
 // проходит без блокировки; после release внешней tx заблокированный вызов завершается.
 func TestRepo_RepoIntent_SerializesOnPerRepoAdvisoryLock(t *testing.T) {
 	pool := setupTestDB(t)
-	repo := kachopg.NewRegistryRepo(pool)
+	repo := kachopg.NewNamespaceRepo(pool)
 	ctx := context.Background()
 
 	const regID = "regX000000000000000"
