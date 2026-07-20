@@ -33,7 +33,7 @@ type GetTargetStatesUseCase struct {
 }
 
 // NewGetTargetStatesUseCase — конструктор. checkClient авторизует caller'а на
-// caller-supplied target_group_id (`viewer on lb_target_group:<tg>`); nil →
+// caller-supplied target_group_id (`viewer on nlb_target_group:<tg>`); nil →
 // TG-authz пропускается (dev/unwired; breakglass также обходит source-check
 // interceptor'а). `now` для тестов (можно подменить).
 func NewGetTargetStatesUseCase(repo Repo, checkClient CheckClient) *GetTargetStatesUseCase {

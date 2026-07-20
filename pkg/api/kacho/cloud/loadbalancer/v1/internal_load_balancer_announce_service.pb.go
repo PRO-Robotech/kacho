@@ -367,12 +367,12 @@ const file_kacho_cloud_loadbalancer_v1_internal_load_balancer_announce_service_p
 	"&ReportLoadBalancerAnnounceStateRequest\x127\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x12D\n" +
 	"\x05zones\x18\x02 \x03(\v2..kacho.cloud.loadbalancer.v1.AnnounceZoneStateR\x05zones\")\n" +
-	"'ReportLoadBalancerAnnounceStateResponse2\xc1\x04\n" +
+	"'ReportLoadBalancerAnnounceStateResponse2\xc2\x04\n" +
 	"#InternalLoadBalancerAnnounceService\x12\xea\x01\n" +
 	"\x10GetAnnounceState\x12@.kacho.cloud.loadbalancer.v1.GetLoadBalancerAnnounceStateRequest\x1a6.kacho.cloud.loadbalancer.v1.LoadBalancerAnnounceState\"\\\x8a\xb5\x182loadbalancer.networkLoadBalancers.getAnnounceState\x92\xb5\x18\rsystem_viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x12\xac\x02\n" +
-	"\x13ReportAnnounceState\x12C.kacho.cloud.loadbalancer.v1.ReportLoadBalancerAnnounceStateRequest\x1aD.kacho.cloud.loadbalancer.v1.ReportLoadBalancerAnnounceStateResponse\"\x89\x01\x8a\xb5\x185loadbalancer.networkLoadBalancers.reportAnnounceState\x92\xb5\x18\x0fannounce_writer\x9a\xb5\x184\n" +
-	"\x18lb_network_load_balancer\x12\x18network_load_balancer_id\xa2\xb5\x18\x012BRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x012\x12\xad\x02\n" +
+	"\x13ReportAnnounceState\x12C.kacho.cloud.loadbalancer.v1.ReportLoadBalancerAnnounceStateRequest\x1aD.kacho.cloud.loadbalancer.v1.ReportLoadBalancerAnnounceStateResponse\"\x8a\x01\x8a\xb5\x185loadbalancer.networkLoadBalancers.reportAnnounceState\x92\xb5\x18\x0fannounce_writer\x9a\xb5\x185\n" +
+	"\x19nlb_network_load_balancer\x12\x18network_load_balancer_id\xa2\xb5\x18\x012BRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 
 var (
 	file_kacho_cloud_loadbalancer_v1_internal_load_balancer_announce_service_proto_rawDescOnce sync.Once

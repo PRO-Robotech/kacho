@@ -115,7 +115,7 @@ func TestGetTargetStates_DeniesUnauthorizedSameProjectTargetGroup(t *testing.T) 
 	require.Equal(t, 1, chk.calls)
 	require.Equal(t, "user:usr_attacker", chk.gotSubject)
 	require.Equal(t, domain.FGARelationViewer, chk.gotRelation)
-	require.Equal(t, "lb_target_group:"+tgID, chk.gotObject)
+	require.Equal(t, "nlb_target_group:"+tgID, chk.gotObject)
 }
 
 // TestGetTargetStates_AllowsAuthorizedTargetGroup — a same-project caller

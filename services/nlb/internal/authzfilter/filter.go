@@ -4,7 +4,7 @@
 // Package authzfilter — per-object filtered List для kacho-nlb (RBAC).
 //
 // Каждый публичный List<Resource> handler/use-case прогоняет id-set ресурса
-// через iam.AuthorizeService.ListObjects(subject, action, "lb_*") и отдаёт
+// через iam.AuthorizeService.ListObjects(subject, action, "nlb_*") и отдаёт
 // ПЕРЕСЕЧЕНИЕ (только доступные объекты). read==enforce: та же FGA relation
 // (viewer), что и per-RPC Check для Get; fail-closed: iam недоступен → Unavailable
 // (НЕ нефильтрованный список — no-leak, security.md).
@@ -63,7 +63,7 @@ func (d Decision) IDs() []string { return d.AllowedIDs }
 // как bypass (use-case проверяет filter == nil).
 type Filter interface {
 	// ListAllowedIDs возвращает Decision для (subject, resourceType, action).
-	// resourceType — FGA object type ("lb_network_load_balancer",...).
+	// resourceType — FGA object type ("nlb_network_load_balancer",...).
 	// action — semantic permission ("loadbalancer.networkLoadBalancers.list",...) —
 	// iam-сервер мапит на FGA relation (viewer). subject — FGA subject
 	// ("user:usr_..." / "service_account:sa_...").

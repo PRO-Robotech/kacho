@@ -34,7 +34,7 @@ func TestNotFoundMessage_ContractTone(t *testing.T) {
 		{"vpc gateway", "vpc_gateway", id, "Gateway " + id + " not found"},
 		{"vpc network_interface", "vpc_network_interface", id, "Network interface " + id + " not found"},
 		// nlb — must equal services/nlb/internal/repo/kacho/pg/load_balancer_repo.go.
-		{"nlb load balancer", "lb_network_load_balancer", id, "NetworkLoadBalancer " + id + " not found"},
+		{"nlb load balancer", "nlb_network_load_balancer", id, "NetworkLoadBalancer " + id + " not found"},
 
 		// Non-vpc/nlb object types are NOT remapped — the fallback stays the bare
 		// "<type> not found" so other services' contracts are unaffected (e.g.

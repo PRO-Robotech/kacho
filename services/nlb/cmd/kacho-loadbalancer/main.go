@@ -637,7 +637,7 @@ func dialPeers(
 
 	// RBAC (issue): per-object filtered List. Каждый публичный
 	// List<Resource> прогоняет id-set через iam.AuthorizeService.ListObjects(subject,
-	// action, "lb_*") и отдаёт пересечение (только доступные объекты), read==enforce
+	// action, "nlb_*") и отдаёт пересечение (только доступные объекты), read==enforce
 	// (relation viewer — та же, что per-RPC Check на Get), fail-closed. nil →
 	// use-case'ы получают unfiltered passthrough (disabled / нет iam conn).
 	// AuthorizeService.ListObjects теперь зарегистрирован и на iam INTERNAL listener

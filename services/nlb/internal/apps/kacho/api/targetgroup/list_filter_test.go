@@ -63,7 +63,7 @@ func TestListTargetGroupsFilter_OnlyAccessible(t *testing.T) {
 	repo.seedTG(c)
 
 	flt := &fakeListFilter{allowed: map[string][]string{
-		"lb_target_group": {string(a.ID), string(b.ID)},
+		"nlb_target_group": {string(a.ID), string(b.ID)},
 	}}
 	uc := NewListTargetGroupsUseCase(repo, flt)
 
@@ -81,7 +81,7 @@ func TestListTargetGroupsFilter_OnlyAccessible(t *testing.T) {
 
 	// read==enforce: правильный тип + list-action (viewer relation server-side).
 	assert.Equal(t, "user:usr_alice", flt.gotSubj)
-	assert.Equal(t, "lb_target_group", flt.gotType)
+	assert.Equal(t, "nlb_target_group", flt.gotType)
 	assert.Equal(t, "loadbalancer.targetGroups.list", flt.gotAct)
 }
 

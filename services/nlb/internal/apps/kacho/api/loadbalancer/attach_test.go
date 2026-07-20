@@ -138,7 +138,7 @@ func TestAttach_DeniesUnauthorizedTargetGroup(t *testing.T) {
 	require.Equal(t, 1, chk.calls)
 	require.Equal(t, "user:usr_attacker", chk.gotSubject)
 	require.Equal(t, domain.FGARelationViewer, chk.gotRelation)
-	require.Equal(t, "lb_target_group:"+tgID, chk.gotObject)
+	require.Equal(t, "nlb_target_group:"+tgID, chk.gotObject)
 }
 
 // TestAttach_CrossProjectUnauthorized_NoProjectOracle — object-scoped authz
