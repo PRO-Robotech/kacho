@@ -28,6 +28,7 @@ const (
 	RegistryService_CreateNamespace_FullMethodName  = "/kacho.cloud.registry.v1.RegistryService/CreateNamespace"
 	RegistryService_UpdateNamespace_FullMethodName  = "/kacho.cloud.registry.v1.RegistryService/UpdateNamespace"
 	RegistryService_DeleteNamespace_FullMethodName  = "/kacho.cloud.registry.v1.RegistryService/DeleteNamespace"
+	RegistryService_RenameNamespace_FullMethodName  = "/kacho.cloud.registry.v1.RegistryService/RenameNamespace"
 	RegistryService_ListRepositories_FullMethodName = "/kacho.cloud.registry.v1.RegistryService/ListRepositories"
 	RegistryService_ListOperations_FullMethodName   = "/kacho.cloud.registry.v1.RegistryService/ListOperations"
 	RegistryService_GetRepository_FullMethodName    = "/kacho.cloud.registry.v1.RegistryService/GetRepository"
@@ -62,6 +63,13 @@ type RegistryServiceClient interface {
 	// Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
 	// zot-namespace + UnregisterResource owner/repo-tuple.
 	DeleteNamespace(ctx context.Context, in *DeleteNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// RenameNamespace — async смена immutable name (F2 :rename-verb). name immutable
+	// через UpdateNamespace; смена — ТОЛЬКО здесь. Collision (UNIQUE(project,name)
+	// среди живых) → ALREADY_EXISTS; no-op (newName == текущее) / malformed newName →
+	// синхронный INVALID_ARGUMENT (verb-guard первым стейтментом). id — стабильный
+	// якорь (не меняется); default-derived globalSlug пересчитывается (opt-in
+	// bare-global — не трогается).
+	RenameNamespace(ctx context.Context, in *RenameNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
 	// → gateway <exempt>, authz полностью в handler'е.
@@ -171,6 +179,16 @@ func (c *registryServiceClient) DeleteNamespace(ctx context.Context, in *DeleteN
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
 	err := c.cc.Invoke(ctx, RegistryService_DeleteNamespace_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *registryServiceClient) RenameNamespace(ctx context.Context, in *RenameNamespaceRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, RegistryService_RenameNamespace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +317,13 @@ type RegistryServiceServer interface {
 	// Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
 	// zot-namespace + UnregisterResource owner/repo-tuple.
 	DeleteNamespace(context.Context, *DeleteNamespaceRequest) (*operation.Operation, error)
+	// RenameNamespace — async смена immutable name (F2 :rename-verb). name immutable
+	// через UpdateNamespace; смена — ТОЛЬКО здесь. Collision (UNIQUE(project,name)
+	// среди живых) → ALREADY_EXISTS; no-op (newName == текущее) / malformed newName →
+	// синхронный INVALID_ARGUMENT (verb-guard первым стейтментом). id — стабильный
+	// якорь (не меняется); default-derived globalSlug пересчитывается (opt-in
+	// bare-global — не трогается).
+	RenameNamespace(context.Context, *RenameNamespaceRequest) (*operation.Operation, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
 	// → gateway <exempt>, authz полностью в handler'е.
@@ -378,6 +403,9 @@ func (UnimplementedRegistryServiceServer) UpdateNamespace(context.Context, *Upda
 }
 func (UnimplementedRegistryServiceServer) DeleteNamespace(context.Context, *DeleteNamespaceRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteNamespace not implemented")
+}
+func (UnimplementedRegistryServiceServer) RenameNamespace(context.Context, *RenameNamespaceRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenameNamespace not implemented")
 }
 func (UnimplementedRegistryServiceServer) ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRepositories not implemented")
@@ -516,6 +544,24 @@ func _RegistryService_DeleteNamespace_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RegistryServiceServer).DeleteNamespace(ctx, req.(*DeleteNamespaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RegistryService_RenameNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameNamespaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistryServiceServer).RenameNamespace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistryService_RenameNamespace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistryServiceServer).RenameNamespace(ctx, req.(*RenameNamespaceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -726,6 +772,10 @@ var RegistryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteNamespace",
 			Handler:    _RegistryService_DeleteNamespace_Handler,
+		},
+		{
+			MethodName: "RenameNamespace",
+			Handler:    _RegistryService_RenameNamespace_Handler,
 		},
 		{
 			MethodName: "ListRepositories",

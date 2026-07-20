@@ -48,6 +48,8 @@ func registryObject() authz.ObjectExtractor {
 			id = r.GetNamespaceId()
 		case *registryv1.DeleteNamespaceRequest:
 			id = r.GetNamespaceId()
+		case *registryv1.RenameNamespaceRequest:
+			id = r.GetNamespaceId()
 		case *registryv1.ListRepositoriesRequest:
 			id = r.GetNamespaceId()
 		case *registryv1.ListNamespaceOperationsRequest:
@@ -134,6 +136,12 @@ func PermissionMap() authz.RPCMap {
 			Relation:   relVDelete,
 			Extract:    registryObject(),
 			Permission: "registry.registries.delete",
+		},
+		// RenameNamespace (F2 :rename) — v_update на registry_registry:<id> (как Update).
+		"/kacho.cloud.registry.v1.RegistryService/RenameNamespace": {
+			Relation:   relVUpdate,
+			Extract:    registryObject(),
+			Permission: "registry.registries.rename",
 		},
 		// ListOperations — per-resource история операций реестра. Interceptor-gated
 		// single-object Check v_list на registry_registry:<id> (namespace call-gate,

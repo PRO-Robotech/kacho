@@ -124,6 +124,16 @@ func (h *RegistryHandler) DeleteNamespace(ctx context.Context, req *registryv1.D
 	return operationToProto(op), nil
 }
 
+// RenameNamespace запускает async-смену immutable name (F2 :rename-verb) и возвращает
+// Operation. Verb-guard (malformed/no-op newName → sync InvalidArgument) — в use-case.
+func (h *RegistryHandler) RenameNamespace(ctx context.Context, req *registryv1.RenameNamespaceRequest) (*operationProto, error) {
+	op, err := h.uc.RenameNamespace(ctx, req.GetNamespaceId(), req.GetNewName())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return operationToProto(op), nil
+}
+
 // ListRepositories возвращает проекцию repos namespace из zot (sync). Authz — два
 // уровня В ХЕНДЛЕРЕ (RPC ScopeFiltered, interceptor пропускает): (1) namespace
 // call-gate v_list на registry_registry:<reg> (deny→NOT_FOUND, existence-hiding);

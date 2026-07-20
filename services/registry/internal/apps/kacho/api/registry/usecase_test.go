@@ -34,8 +34,8 @@ func codeOf(t *testing.T, err error) codes.Code {
 	return st.Code()
 }
 
-// REG-01 — Create happy: Operation(done=false) → poll до done → Registry с prefix
-// reg, projectId, status ACTIVE, endpoint "registry.kacho.local/<id>".
+// REG-01 — Create happy: Operation(done=false) → poll до done → Namespace с hyphen-
+// prefix ns-, projectId, status ACTIVE, endpoint "registry.kacho.local/<id>".
 func TestRegistry_REG01_Create_HappyPath(t *testing.T) {
 	repo := &mockRepo{}
 	iam := &mockIAM{}
@@ -266,38 +266,29 @@ func TestRegistry_REG36_Update_MutableFields(t *testing.T) {
 		require.True(t, repo.updateSpec.ApplyLabels)
 		require.Empty(t, repo.updateSpec.Labels)
 	})
-	t.Run("name_mutable", func(t *testing.T) {
-		// mask=[name] с валидным DNS-safe именем → ApplyName, репозиторий SET name.
+	t.Run("name_immutable_REG_1_05", func(t *testing.T) {
+		// F2: name immutable через Update — mask=[name] → синхронный InvalidArgument
+		// с каноничным immutable-текстом (смена — только RenameNamespace).
 		repo := &mockRepo{}
-		ops := newMemOps()
-		uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
-		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{
+		uc := newUC(repo, &mockZot{}, &mockIAM{}, newMemOps())
+		_, err := uc.Update(aliceCtx(), registry.UpdateSpec{
 			NamespaceID: validRegID, Mask: []string{"name"}, Name: "renamed-registry",
 		})
-		require.NoError(t, err)
-		awaitOpDone(t, ops, op.ID)
-		require.True(t, repo.updateSpec.ApplyName)
-		require.Equal(t, "renamed-registry", repo.updateSpec.Name)
-		require.False(t, repo.updateSpec.ApplyDescription, "mask=[name] не трогает description")
-	})
-	t.Run("name_invalid_dns", func(t *testing.T) {
-		// невалидное имя (uppercase/underscore) → InvalidArgument (те же правила, что Create).
-		uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, newMemOps())
-		_, err := uc.Update(aliceCtx(), registry.UpdateSpec{
-			NamespaceID: validRegID, Mask: []string{"name"}, Name: "Bad_Name",
-		})
 		require.Equal(t, codes.InvalidArgument, codeOf(t, err))
+		require.Equal(t, "name is immutable after Namespace.Create", status.Convert(err).Message())
+		require.Empty(t, repo.updateSpec.NamespaceID, "namespace НЕ обновлён (sync reject до repo)")
 	})
-	t.Run("empty_mask_applies_name_when_provided", func(t *testing.T) {
-		// full-object PATCH с непустым именем → ApplyName; без имени — не трогает name.
+	t.Run("empty_mask_ignores_name_REG_1_33", func(t *testing.T) {
+		// full-object PATCH: name immutable → silently игнорируется (НЕ применяется),
+		// mutable-поля применяются.
 		repo := &mockRepo{}
 		ops := newMemOps()
 		uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
-		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{NamespaceID: validRegID, Name: "patched-name"})
+		op, err := uc.Update(aliceCtx(), registry.UpdateSpec{NamespaceID: validRegID, Name: "HACK", Description: "new"})
 		require.NoError(t, err)
 		awaitOpDone(t, ops, op.ID)
-		require.True(t, repo.updateSpec.ApplyName)
-		require.Equal(t, "patched-name", repo.updateSpec.Name)
+		require.False(t, repo.updateSpec.ApplyName, "name из тела пустого mask silently игнорируется (immutable)")
+		require.True(t, repo.updateSpec.ApplyDescription)
 	})
 }
 

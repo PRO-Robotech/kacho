@@ -95,6 +95,30 @@ service RegistryService {
     option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
 
+  // RenameNamespace — async смена immutable name (F2 :rename-verb). name immutable
+  // через UpdateNamespace; смена — ТОЛЬКО здесь. Collision (UNIQUE(project,name)
+  // среди живых) → ALREADY_EXISTS; no-op (newName == текущее) / malformed newName →
+  // синхронный INVALID_ARGUMENT (verb-guard первым стейтментом). id — стабильный
+  // якорь (не меняется); default-derived globalSlug пересчитывается (opt-in
+  // bare-global — не трогается).
+  rpc RenameNamespace(RenameNamespaceRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/registry/v1/namespaces/{namespace_id}:rename"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "RenameNamespaceMetadata"
+      response: "Namespace"
+    };
+    option (kacho.iam.authz.v1.permission) = "registry.registries.rename";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "registry_registry"
+      from_request_field: "namespace_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
+  }
+
   // ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
   // = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
   // → gateway <exempt>, authz полностью в handler'е.
@@ -308,6 +332,18 @@ message DeleteNamespaceRequest {
 
 message DeleteNamespaceMetadata {
   string namespace_id = 1;
+}
+
+message RenameNamespaceRequest {
+  string namespace_id = 1;
+  // Новое имя namespace (DNS-safe, UNIQUE(project,name) среди живых). malformed ИЛИ
+  // == текущее имя (no-op) → INVALID_ARGUMENT (verb-guard первым стейтментом).
+  string new_name = 2;
+}
+
+message RenameNamespaceMetadata {
+  string namespace_id = 1;
+  string new_name = 2;
 }
 
 message ListRepositoriesRequest {

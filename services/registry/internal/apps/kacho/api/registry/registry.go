@@ -77,6 +77,11 @@ type UpdateSpec struct {
 	// выставляется mask-discipline при "default_visibility" в update_mask.
 	DefaultVisibility      domain.Visibility
 	ApplyDefaultVisibility bool
+	// GlobalSlug/ApplyGlobalSlug — re-derive default globalSlug на RenameNamespace (F2).
+	// НЕ выставляется через UpdateNamespace mask (globalSlug immutable там) — только
+	// use-case RenameNamespace при смене default-derived slug.
+	GlobalSlug      string
+	ApplyGlobalSlug bool
 }
 
 // ---- Порты (АНКЕРЫ для rpc-implementer; CQRS-разделение read/write) ----------

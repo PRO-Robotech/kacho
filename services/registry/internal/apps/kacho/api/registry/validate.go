@@ -53,6 +53,8 @@ var knownUpdateFields = map[string]struct{}{
 // (перенос сломал бы storage-locality, REG-1-18); global_slug immutable через
 // Update (re-derive только RenameNamespace, REG-1-13).
 var immutableUpdateFields = map[string]string{
+	// name — immutable через Update (REG-1 F2/REG-1-05); смена — только RenameNamespace.
+	"name":           "name is immutable after Namespace.Create",
 	"project_id":     "projectId is immutable after Namespace.Create",
 	"projectId":      "projectId is immutable after Namespace.Create",
 	"region_id":      "regionId is immutable after Namespace.Create",
@@ -136,10 +138,8 @@ func resolveUpdateMask(spec UpdateSpec) (UpdateSpec, error) {
 		}
 	}
 	if len(spec.Mask) == 0 {
-		// full-object PATCH: применяются все mutable-поля. name применяем только
-		// если он реально передан (непустой) — иначе PATCH без имени (обновляющий
-		// лишь description/labels) не должен пытаться выставить пустое имя.
-		spec.ApplyName = spec.Name != ""
+		// full-object PATCH: применяются все mutable-поля. name immutable (F2) —
+		// из тела пустого mask silently игнорируется (REG-1-33), НЕ применяется.
 		spec.ApplyDescription = true
 		spec.ApplyLabels = true
 		// default_visibility в full-PATCH применяем ТОЛЬКО если задано конкретное
@@ -150,8 +150,6 @@ func resolveUpdateMask(spec UpdateSpec) (UpdateSpec, error) {
 	}
 	for _, p := range spec.Mask {
 		switch p {
-		case "name":
-			spec.ApplyName = true
 		case "description":
 			spec.ApplyDescription = true
 		case "labels":

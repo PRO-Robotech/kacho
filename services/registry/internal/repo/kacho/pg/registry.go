@@ -208,6 +208,13 @@ func (r *NamespaceRepo) Update(ctx context.Context, spec registry.UpdateSpec, mi
 		args = append(args, spec.Name)
 		idx++
 	}
+	if spec.ApplyGlobalSlug {
+		// Re-derive default globalSlug на RenameNamespace: partial-UNIQUE(global_slug)
+		// WHERE status<>'DELETING' → конфликт (23505) → ErrAlreadyExists.
+		sets = append(sets, fmt.Sprintf("global_slug = $%d", idx))
+		args = append(args, spec.GlobalSlug)
+		idx++
+	}
 	if spec.ApplyDescription {
 		sets = append(sets, fmt.Sprintf("description = $%d", idx))
 		args = append(args, spec.Description)
