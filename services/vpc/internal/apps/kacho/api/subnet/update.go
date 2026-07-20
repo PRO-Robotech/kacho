@@ -61,10 +61,19 @@ func (u *UpdateSubnetUseCase) Execute(ctx context.Context, in UpdateInput) (*ope
 	if in.SubnetID == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
+	// Immutable-switch ДО corevalidate.UpdateMask (api-conventions): known-set маски
+	// НЕ содержит immutable-полей, поэтому без этого switch они отверглись бы generic
+	// "unknown field" вместо конвенционного immutable/derived-текста.
+	// network_id/zone_id/region_id — hard-immutable (VRF-scoping + placement-coherence
+	// всех размещённых ресурсов). placement_type — server-derived (F6): даже в mask
+	// это не «immutable value», а «нельзя писать» → derive-reject текст.
 	for _, field := range in.UpdateMask {
 		switch field {
-		case "network_id", "zone_id":
+		case "network_id", "zone_id", "region_id":
 			return nil, serviceerr.InvalidArg(field, field+" is immutable after Subnet.Create")
+		case "placement_type":
+			return nil, status.Error(codes.InvalidArgument,
+				"placement_type is server-derived; set zone_id or region_id instead")
 		}
 	}
 	if err := serviceerr.FromValidation(validateSubnetUpdate(in)); err != nil {

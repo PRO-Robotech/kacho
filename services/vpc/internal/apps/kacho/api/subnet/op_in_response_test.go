@@ -31,12 +31,11 @@ func TestSubnet_VPC_1_40_OpInResponse(t *testing.T) {
 		repomock.NewZoneRegistry(testZone), repomock.NewRegionRegistry(testRegion), or)
 
 	op, err := uc.Execute(context.Background(), domain.Subnet{
-		ProjectID:     "f1",
-		NetworkID:     netID,
-		Name:          domain.RcNameVPC("app-tier-a"),
-		PlacementType: domain.PlacementZonal,
-		ZoneID:        testZone,
-		V4CidrBlocks:  []string{"10.20.0.0/24"},
+		ProjectID:    "f1",
+		NetworkID:    netID,
+		Name:         domain.RcNameVPC("app-tier-a"),
+		ZoneID:       testZone,
+		V4CidrBlocks: []string{"10.20.0.0/24"},
 	})
 	require.NoError(t, err)
 	require.True(t, op.Done, "Create must return an already-completed Operation (op-in-response)")
@@ -68,7 +67,7 @@ func TestSubnet_OpInResponse_AddCidr(t *testing.T) {
 
 	cOp, err := create.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: netID, Name: domain.RcNameVPC("s1"),
-		PlacementType: domain.PlacementZonal, ZoneID: testZone,
+		ZoneID:       testZone,
 		V4CidrBlocks: []string{"10.20.0.0/24"},
 	})
 	require.NoError(t, err)

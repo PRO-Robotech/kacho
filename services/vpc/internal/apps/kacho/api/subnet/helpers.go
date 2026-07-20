@@ -283,26 +283,37 @@ func validateRegionID(ctx context.Context, rr RegionRegistry, field, regionID st
 	return serviceerr.MapRepoErr(err)
 }
 
-// validatePlacement — дискриминатор размещения подсети + согласованность пары
-// zone_id/region_id. placement_type обязателен (UNSPECIFIED → InvalidArgument).
+// resolvePlacement выводит placementType° подсети (F6, redesign VPC-1): дискриминатор
+// **server-derived, unwritable** из непустого zoneId XOR regionId. Возвращает выведенный
+// дискриминатор (для записи в placement_type-колонку) либо sync-InvalidArgument.
 //
-//   - ZONAL    — zone_id required + existence (geo); region_id должен быть пуст.
-//   - REGIONAL — region_id required + existence (geo); zone_id должен быть пуст.
+//   - placementType задан клиентом (не UNSPECIFIED) → explicit reject (server-derived,
+//     не silent-ignore — даже если значение «совпало бы» с выводимым);
+//   - ровно один из zoneId/regionId непуст → derive ZONAL(zone)/REGIONAL(region) +
+//     existence-валидация у owner-домена Geography (kacho-geo, fail-closed);
+//   - оба заданы ИЛИ ни одного → InvalidArgument "exactly one of zone_id, region_id must be set".
 //
-// Та же форма дублируется DB-CHECK subnets_placement_payload_chk (backstop).
-func validatePlacement(ctx context.Context, zr ZoneRegistry, rr RegionRegistry, s domain.Subnet) error {
-	switch s.PlacementType {
-	case domain.PlacementZonal:
-		if s.RegionID != "" {
-			return serviceerr.InvalidArg("region_id", "region_id must be empty for ZONAL placement")
-		}
-		return validateZoneID(ctx, zr, "zone_id", s.ZoneID)
-	case domain.PlacementRegional:
-		if s.ZoneID != "" {
-			return serviceerr.InvalidArg("zone_id", "zone_id must be empty for REGIONAL placement")
-		}
-		return validateRegionID(ctx, rr, "region_id", s.RegionID)
-	default:
-		return serviceerr.InvalidArg("placement_type", "placement_type is required (ZONAL or REGIONAL)")
+// Та же биусловная форма закреплена DB-CHECK subnets_placement_payload_chk (backstop).
+// Тексты — часть контракта (api-conventions §Error-format): field-refs в snake_case,
+// как во всём vpc-сервисе (nlb/addresspool/routetable) — см. VPC-1 acceptance NB.
+func resolvePlacement(ctx context.Context, zr ZoneRegistry, rr RegionRegistry, s domain.Subnet) (domain.SubnetPlacementType, error) {
+	if s.PlacementType != domain.PlacementUnspecified {
+		return "", status.Error(codes.InvalidArgument,
+			"placement_type is server-derived; set zone_id or region_id instead")
 	}
+	hasZone := s.ZoneID != ""
+	hasRegion := s.RegionID != ""
+	if hasZone == hasRegion { // оба заданы ИЛИ ни одного
+		return "", status.Error(codes.InvalidArgument, "exactly one of zone_id, region_id must be set")
+	}
+	if hasZone {
+		if err := validateZoneID(ctx, zr, "zone_id", s.ZoneID); err != nil {
+			return "", err
+		}
+		return domain.PlacementZonal, nil
+	}
+	if err := validateRegionID(ctx, rr, "region_id", s.RegionID); err != nil {
+		return "", err
+	}
+	return domain.PlacementRegional, nil
 }

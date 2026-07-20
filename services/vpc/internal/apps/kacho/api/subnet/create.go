@@ -83,13 +83,15 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	if s.NetworkID == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	// Placement: дискриминатор обязателен (UNSPECIFIED → InvalidArgument). ZONAL —
-	// zone_id required + existence (geo), region_id запрещен; REGIONAL — region_id
-	// required + existence (geo), zone_id запрещен. Существование валидируется у
-	// owner-домена Geography (kacho-geo), без hardcoded whitelist.
-	if err := validatePlacement(ctx, u.zoneReg, u.regionReg, s); err != nil {
+	// Placement (F6): placementType° **server-derived, unwritable** из zoneId XOR
+	// regionId. placementType в теле → explicit reject; оба/ни одного → reject;
+	// иначе выводим дискриминатор и записываем его в domain (Insert → placement_type-
+	// колонка). Существование zone/region валидируется у owner-домена geo (fail-closed).
+	placement, err := resolvePlacement(ctx, u.zoneReg, u.regionReg, s)
+	if err != nil {
 		return nil, err
 	}
+	s.PlacementType = placement
 	// Proto contract: v4_cidr_blocks НЕ required — подсеть может быть создана без
 	// IPv4-диапазона. Пустой список легален; переданные CIDR'ы все равно
 	// валидируются (host-bits=0, /16../28).

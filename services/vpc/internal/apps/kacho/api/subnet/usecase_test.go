@@ -188,7 +188,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 
 	// zone_id required под ZONAL.
 	_, err = uc.Execute(context.Background(), domain.Subnet{
-		ProjectID: "f1", NetworkID: netID, PlacementType: domain.PlacementZonal, ZoneID: "",
+		ProjectID: "f1", NetworkID: netID, ZoneID: "",
 	})
 	require.Error(t, err)
 	st, _ = status.FromError(err)
@@ -196,7 +196,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 
 	// unknown zone под ZONAL.
 	_, err = uc.Execute(context.Background(), domain.Subnet{
-		ProjectID: "f1", NetworkID: netID, PlacementType: domain.PlacementZonal, ZoneID: "zone-z",
+		ProjectID: "f1", NetworkID: netID, ZoneID: "zone-z",
 	})
 	require.Error(t, err)
 	st, _ = status.FromError(err)
@@ -204,7 +204,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 
 	// host-bits != 0 → InvalidArgument.
 	_, err = uc.Execute(context.Background(), domain.Subnet{
-		ProjectID: "f1", NetworkID: netID, PlacementType: domain.PlacementZonal, ZoneID: testZone,
+		ProjectID: "f1", NetworkID: netID, ZoneID: testZone,
 		V4CidrBlocks: []string{"10.0.0.5/24"},
 	})
 	require.Error(t, err)
@@ -213,7 +213,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 
 	// /29 → InvalidArgument "Illegal argument Invalid network prefix /29".
 	_, err = uc.Execute(context.Background(), domain.Subnet{
-		ProjectID: "f1", NetworkID: netID, PlacementType: domain.PlacementZonal, ZoneID: testZone,
+		ProjectID: "f1", NetworkID: netID, ZoneID: testZone,
 		V4CidrBlocks: []string{"10.0.0.0/29"},
 	})
 	require.Error(t, err)
@@ -235,7 +235,7 @@ func TestCreateUseCase_ProjectNotFound(t *testing.T) {
 	seedNetwork(t, kr, "f1", netID)
 
 	op, err := uc.Execute(context.Background(), domain.Subnet{
-		ProjectID: "f1", NetworkID: netID, PlacementType: domain.PlacementZonal, ZoneID: testZone,
+		ProjectID: "f1", NetworkID: netID, ZoneID: testZone,
 		Name: domain.RcNameVPC("sub1"),
 	})
 	require.NoError(t, err)
@@ -257,7 +257,7 @@ func TestCreateUseCase_NetworkNotFound(t *testing.T) {
 
 	_, err := uc.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: ids.NewID(ids.PrefixNetwork),
-		PlacementType: domain.PlacementZonal, ZoneID: testZone,
+		ZoneID: testZone,
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -282,7 +282,7 @@ func TestCreateUseCase_CrossProjectNetwork_Denied(t *testing.T) {
 
 	_, err := uc.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: foreignNet,
-		PlacementType: domain.PlacementZonal, ZoneID: testZone,
+		ZoneID:       testZone,
 		Name:         domain.RcNameVPC("sub-bola"),
 		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
@@ -299,12 +299,11 @@ func TestCreateUseCase_OK(t *testing.T) {
 	h, or, kr, netID := minimalHandler(t, true)
 
 	op, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
-		ProjectId:     "f1",
-		NetworkId:     netID,
-		Name:          "sub1",
-		PlacementType: vpcv1.SubnetPlacementType_ZONAL,
-		ZoneId:        testZone,
-		V4CidrBlocks:  []string{"10.0.0.0/24"},
+		ProjectId:    "f1",
+		NetworkId:    netID,
+		Name:         "sub1",
+		ZoneId:       testZone,
+		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, op.Id)
@@ -336,7 +335,7 @@ func TestCreateUseCase_DuplicateName(t *testing.T) {
 	// Первый Create — OK.
 	op1, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "dup",
-		PlacementType: vpcv1.SubnetPlacementType_ZONAL, ZoneId: testZone,
+		ZoneId:       testZone,
 		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.NoError(t, err)
@@ -345,7 +344,7 @@ func TestCreateUseCase_DuplicateName(t *testing.T) {
 	// Второй Create с тем же name — sync AlreadyExists.
 	_, err = h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "dup",
-		PlacementType: vpcv1.SubnetPlacementType_ZONAL, ZoneId: testZone,
+		ZoneId:       testZone,
 		V4CidrBlocks: []string{"10.0.1.0/24"},
 	})
 	require.Error(t, err)
@@ -353,43 +352,60 @@ func TestCreateUseCase_DuplicateName(t *testing.T) {
 	assert.Equal(t, codes.AlreadyExists, st.Code())
 }
 
-// ---- use-case-level (Create — placement discriminator) ----
+// ---- use-case-level (Create — placement° derive, F6 handler-wiring) ----
+// Форма контракта (derive/both/neither/placementType-in-body) закреплена в
+// placement_contract_test.go на use-case-уровне; здесь — та же дисциплина через
+// vpcv1-handler (proto→domain wiring): placementType° server-derived из zoneId XOR regionId.
 
-// TestCreateUseCase_PlacementUnspecified_Rejected — placement_type обязателен;
-// отсутствие выбора (UNSPECIFIED) отвергается sync, без дефолта в ZONAL.
-func TestCreateUseCase_PlacementUnspecified_Rejected(t *testing.T) {
+// TestCreateUseCase_NeitherZoneRegion_Rejected — F6: ни zoneId ни regionId → reject.
+func TestCreateUseCase_NeitherZoneRegion_Rejected(t *testing.T) {
 	h, _, _, netID := minimalHandler(t, true)
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
-		ProjectId: "f1", NetworkId: netID, Name: "no-placement", ZoneId: testZone,
+		ProjectId: "f1", NetworkId: netID, Name: "no-placement",
 		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "placement_type is required")
+	assert.Equal(t, "exactly one of zone_id, region_id must be set", st.Message())
 }
 
-// TestCreateUseCase_ZonalWithRegionID_Rejected — ZONAL запрещает region_id.
-func TestCreateUseCase_ZonalWithRegionID_Rejected(t *testing.T) {
+// TestCreateUseCase_BothZoneAndRegion_Rejected — F6: оба zoneId+regionId → reject.
+func TestCreateUseCase_BothZoneAndRegion_Rejected(t *testing.T) {
 	h, _, _, netID := minimalHandler(t, true)
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
-		ProjectId: "f1", NetworkId: netID, Name: "zonal-bad",
-		PlacementType: vpcv1.SubnetPlacementType_ZONAL, ZoneId: testZone, RegionId: testRegion,
+		ProjectId: "f1", NetworkId: netID, Name: "both-bad",
+		ZoneId: testZone, RegionId: testRegion,
 		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "region_id must be empty")
+	assert.Equal(t, "exactly one of zone_id, region_id must be set", st.Message())
+}
+
+// TestCreateUseCase_PlacementTypeInBody_Rejected — F6/VPC-1-27: placementType в теле
+// write (через vpcv1-запрос) → explicit reject даже при валидном zoneId (не silent).
+func TestCreateUseCase_PlacementTypeInBody_Rejected(t *testing.T) {
+	h, _, _, netID := minimalHandler(t, true)
+	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
+		ProjectId: "f1", NetworkId: netID, Name: "with-pt",
+		PlacementType: vpcv1.SubnetPlacementType_ZONAL, ZoneId: testZone,
+		V4CidrBlocks: []string{"10.0.0.0/24"},
+	})
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Equal(t, "placement_type is server-derived; set zone_id or region_id instead", st.Message())
 }
 
 // TestCreateUseCase_Regional_OK — REGIONAL-подсеть из «серого» CIDR коммитится;
-// placement_type=REGIONAL, region_id задан, zone_id пуст.
+// placementType° derived REGIONAL из regionId (без placementType в теле), zone_id пуст.
 func TestCreateUseCase_Regional_OK(t *testing.T) {
 	h, or, kr, netID := minimalHandler(t, true)
 	op, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "reg1",
-		PlacementType: vpcv1.SubnetPlacementType_REGIONAL, RegionId: testRegion,
+		RegionId:     testRegion,
 		V4CidrBlocks: []string{"192.168.0.0/24"},
 	})
 	require.NoError(t, err)
@@ -404,41 +420,13 @@ func TestCreateUseCase_Regional_OK(t *testing.T) {
 	assert.Empty(t, subs[0].ZoneID)
 }
 
-// TestCreateUseCase_RegionalWithZoneID_Rejected — REGIONAL запрещает zone_id.
-func TestCreateUseCase_RegionalWithZoneID_Rejected(t *testing.T) {
-	h, _, _, netID := minimalHandler(t, true)
-	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
-		ProjectId: "f1", NetworkId: netID, Name: "reg-bad",
-		PlacementType: vpcv1.SubnetPlacementType_REGIONAL, RegionId: testRegion, ZoneId: testZone,
-		V4CidrBlocks: []string{"192.168.0.0/24"},
-	})
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "zone_id must be empty")
-}
-
-// TestCreateUseCase_RegionalMissingRegion_Rejected — REGIONAL требует region_id.
-func TestCreateUseCase_RegionalMissingRegion_Rejected(t *testing.T) {
-	h, _, _, netID := minimalHandler(t, true)
-	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
-		ProjectId: "f1", NetworkId: netID, Name: "reg-nomatch",
-		PlacementType: vpcv1.SubnetPlacementType_REGIONAL,
-		V4CidrBlocks:  []string{"192.168.0.0/24"},
-	})
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "region_id is required")
-}
-
 // TestCreateUseCase_RegionalUnknownRegion_Rejected — несуществующий region_id
 // (geo NotFound) → InvalidArgument.
 func TestCreateUseCase_RegionalUnknownRegion_Rejected(t *testing.T) {
 	h, _, _, netID := minimalHandler(t, true)
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "reg-unknown",
-		PlacementType: vpcv1.SubnetPlacementType_REGIONAL, RegionId: "region-z",
+		RegionId:     "region-z",
 		V4CidrBlocks: []string{"192.168.0.0/24"},
 	})
 	require.Error(t, err)
@@ -555,7 +543,7 @@ func TestHandler_FullFlow(t *testing.T) {
 	// Create
 	createOp, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "sub1",
-		PlacementType: vpcv1.SubnetPlacementType_ZONAL, ZoneId: testZone,
+		ZoneId:       testZone,
 		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.NoError(t, err)
@@ -621,7 +609,7 @@ func TestHandler_Delete_ResponseIsEmpty(t *testing.T) {
 
 	createOp, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "del-resp-test",
-		PlacementType: vpcv1.SubnetPlacementType_ZONAL, ZoneId: testZone,
+		ZoneId:       testZone,
 		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.NoError(t, err)
