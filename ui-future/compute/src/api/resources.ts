@@ -9,9 +9,10 @@
 // в generic-конвейере. Все действия async → { operation }.
 
 import { api } from "./client";
-import type { Operation, InstanceList } from "./types";
+import type { Operation, InstanceList, MachineTypeList } from "./types";
 
 const INSTANCES = "/compute/v1/instances";
+const MACHINE_TYPES = "/compute/v1/machineTypes";
 
 // buildAttachDiskPayload — тело :attachDisk. Request несёт ВЛОЖЕННЫЙ
 // attached_disk_spec (AttachedDiskSpec, oneof disk → volume_id).
@@ -58,4 +59,13 @@ export const instancesApi = {
     api.action(`${INSTANCES}/${id}:attachNetworkInterface`, buildAttachNicPayload(nicId) ?? {}),
   detachNetworkInterface: (id: string, nicId: string): Promise<{ operation: Operation }> =>
     api.action(`${INSTANCES}/${id}:detachNetworkInterface`, { nic_id: nicId }),
+};
+
+// MachineType — read-only sync-каталог sizing'а (COMP-1 F2). Public Get/List
+// (ambient cluster-scoped read); каталог используется формой Create инстанса как
+// ref-цель machineTypeId. Admin-CRUD над каталогом — InternalMachineTypeService
+// (:9091, ban #6), не выведен на tenant-facing UI.
+export const machineTypesApi = {
+  list: (q?: Record<string, string>) => api.list<MachineTypeList>(MACHINE_TYPES, q),
+  get: (id: string) => api.get<Record<string, unknown>>(`${MACHINE_TYPES}/${id}`),
 };
