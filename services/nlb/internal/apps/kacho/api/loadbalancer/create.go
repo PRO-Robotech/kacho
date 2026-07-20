@@ -146,6 +146,21 @@ func (u *CreateLoadBalancerUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 	lb.SessionAffinity = sa
+	// NLB-1b EXPAND (additive): admin_state — default ENABLED via builder;
+	// explicit input overrides. LIVE-mutable (Update), not yet status-authoritative.
+	if as := adminStateFromPb(req.GetAdminState()); as != "" {
+		lb.AdminState = as
+	}
+	// NLB-1b EXPAND (additive): merged placement — persisted derived-consistent with
+	// the legacy (type, placement_type). If the client supplies placement it must
+	// match the derived value (in EXPAND type/placement_type stay authoritative);
+	// authority switch (placement drives, legacy inputs rejected) is NLB-1c/MIGRATE.
+	derivedPlacement := domain.PlacementFromTypeAndPlacementType(lbType, placement)
+	if in := placementModeFromPb(req.GetPlacement()); in != "" && in != derivedPlacement {
+		return nil, errInvalidArg("placement",
+			"placement is inconsistent with type/placement_type (placement is derived from type/placement_type in NLB-1b)")
+	}
+	lb.Placement = derivedPlacement
 	// ip_families — заявленные семейства VIP (проставляются ДО Insert-handle:
 	// family-guard CHECK требует семейство в ip_families прежде чем persist-VIP
 	// запишет непустой address).

@@ -312,6 +312,7 @@ func (q *fakeLBWriter) Update(ctx context.Context, lb *domain.LoadBalancer, expe
 	cur.DeletionProtection = lb.DeletionProtection
 	cur.SessionAffinity = lb.SessionAffinity
 	cur.DisabledAnnounceZones = lb.DisabledAnnounceZones
+	cur.AdminState = lb.AdminState // NLB-1b EXPAND: mirror pg repo Update SET
 	c := *cur
 	q.w.pendingLBs = append(q.w.pendingLBs, &c)
 	return &c, nil

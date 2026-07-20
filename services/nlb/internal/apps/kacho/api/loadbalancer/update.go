@@ -47,11 +47,15 @@ var knownUpdateFields = map[string]bool{
 	"deletion_protection":     true,
 	"session_affinity":        true,
 	"disabled_announce_zones": true,
+	// NLB-1b EXPAND (additive): admin_state is LIVE-mutable.
+	"admin_state": true,
 }
 
 // immutableUpdateFields — hard-immutable; в mask → InvalidArgument.
 var immutableUpdateFields = map[string]string{
-	"type":           "type is immutable after NetworkLoadBalancer.Create",
+	"type": "type is immutable after NetworkLoadBalancer.Create",
+	// NLB-1b EXPAND (additive): merged placement is immutable, like type/placement_type.
+	"placement":      "placement is immutable after NetworkLoadBalancer.Create",
 	"placement_type": "placement_type is immutable after NetworkLoadBalancer.Create",
 	"region_id":      "region_id is immutable after NetworkLoadBalancer.Create",
 	"project_id":     "project_id is immutable; use NetworkLoadBalancerService.Move",
@@ -229,6 +233,15 @@ func applyUpdateMask(
 	}
 	if apply("disabled_announce_zones") {
 		out.DisabledAnnounceZones = normalizeZones(req.GetDisabledAnnounceZones())
+	}
+	// NLB-1b EXPAND (additive): admin_state LIVE-mutable. Only overwrite when an
+	// explicit ENABLED/DISABLED is supplied — UNSPECIFIED (incl. an empty-mask
+	// full-PATCH that omits admin_state) preserves the current state, so Update
+	// never auto-flips admin_state (NLB-1-14).
+	if apply("admin_state") {
+		if as := adminStateFromPb(req.GetAdminState()); as != "" {
+			out.AdminState = as
+		}
 	}
 	return out
 }
