@@ -23,7 +23,8 @@ const loadBalancerCols = `
     name, description, labels, type, status, session_affinity,
     deletion_protection, placement_type, disabled_announce_zones,
     ip_families, address_v4, address_v6, address_id_v4, address_id_v6,
-    vip_origin_v4, vip_origin_v6, admin_state, placement, cross_zone_enabled, xmin::text`
+    vip_origin_v4, vip_origin_v6, admin_state, placement, cross_zone_enabled,
+    security_group_ids, xmin::text`
 
 // adminStateParam — NLB-1b EXPAND: empty AdminState (thin builders / legacy)
 // normalised to ENABLED so the load_balancers_admin_state_check CHECK holds
@@ -65,19 +66,21 @@ func scanLB(row pgx.Row) (*kacho.LoadBalancerRecord, error) {
 		adminStateStr string
 		placementMode string
 		crossZone     bool
+		sgIDs         []string
 	)
 	if err := row.Scan(
 		&idStr, &projectIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
 		&nameStr, &descStr, &labelsRaw, &typeStr, &statusStr, &affinStr,
 		&rec.DeletionProtection, &placementStr, &disabledZones,
 		&ipFamilies, &addrV4, &addrV6, &addrIDV4, &addrIDV6,
-		&vipOriginV4, &vipOriginV6, &adminStateStr, &placementMode, &crossZone, &rec.Xmin,
+		&vipOriginV4, &vipOriginV6, &adminStateStr, &placementMode, &crossZone, &sgIDs, &rec.Xmin,
 	); err != nil {
 		return nil, err
 	}
 	rec.AdminState = domain.AdminState(adminStateStr)
 	rec.Placement = domain.Placement(placementMode)
 	rec.CrossZoneEnabled = crossZone
+	rec.SecurityGroupIDs = securityGroupsFromDB(sgIDs)
 	rec.ID = domain.ResourceID(idStr)
 	rec.ProjectID = domain.ProjectID(projectIDs)
 	rec.RegionID = domain.RegionID(regionIDs)
@@ -119,6 +122,23 @@ func disabledZonesParam(zones []string) []string {
 		return []string{}
 	}
 	return zones
+}
+
+// securityGroupsFromDB — text[] → []string, nil для пустого набора (паритет
+// с proto-семантикой «отсутствие = поле не задано»). NLB-1b MIGRATE (revival).
+func securityGroupsFromDB(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	return append([]string(nil), raw...)
+}
+
+// securityGroupsParam — []string → NOT NULL text[] (nil → пустой non-nil slice).
+func securityGroupsParam(sgs []string) []string {
+	if sgs == nil {
+		return []string{}
+	}
+	return sgs
 }
 
 // Get — по конвенции Kachō: well-formed-but-absent → ErrNotFound "NetworkLoadBalancer <id> not found".
@@ -256,9 +276,10 @@ func (w *loadBalancerWriter) Insert(ctx context.Context, lb *domain.LoadBalancer
              type, status, session_affinity, deletion_protection,
              placement_type, disabled_announce_zones, ip_families,
              address_v4, address_v6, address_id_v4, address_id_v6,
-             vip_origin_v4, vip_origin_v6, admin_state, placement, cross_zone_enabled)
+             vip_origin_v4, vip_origin_v6, admin_state, placement, cross_zone_enabled,
+             security_group_ids)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
         RETURNING %s`, loadBalancerCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(lb.ID), string(lb.ProjectID), string(lb.RegionID),
@@ -268,7 +289,7 @@ func (w *loadBalancerWriter) Insert(ctx context.Context, lb *domain.LoadBalancer
 		string(lb.PlacementType), disabledZonesParam(lb.DisabledAnnounceZones), ipFamiliesParam(lb.IPFamilies),
 		string(lb.AddressV4), string(lb.AddressV6), string(lb.AddressIDV4), string(lb.AddressIDV6),
 		string(lb.VipOriginV4), string(lb.VipOriginV6), adminStateParam(lb.AdminState), string(lb.Placement),
-		lb.CrossZoneEnabled,
+		lb.CrossZoneEnabled, securityGroupsParam(lb.SecurityGroupIDs),
 	)
 	rec, err := scanLB(row)
 	if err != nil {
@@ -386,6 +407,7 @@ func (w *loadBalancerWriter) Update(ctx context.Context, lb *domain.LoadBalancer
                disabled_announce_zones = $7,
                admin_state = $9,
                cross_zone_enabled = $10,
+               security_group_ids = $11,
                updated_at = now()
          WHERE id = $1 AND xmin::text = $8
         RETURNING %s`, loadBalancerCols)
@@ -396,7 +418,7 @@ func (w *loadBalancerWriter) Update(ctx context.Context, lb *domain.LoadBalancer
 		disabledZonesParam(lb.DisabledAnnounceZones),
 		expectedXmin,
 		adminStateParam(lb.AdminState),
-		lb.CrossZoneEnabled,
+		lb.CrossZoneEnabled, securityGroupsParam(lb.SecurityGroupIDs),
 	)
 	rec, err := scanLB(row)
 	if err != nil {

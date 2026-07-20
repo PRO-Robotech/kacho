@@ -34,7 +34,7 @@ message NetworkLoadBalancer {
   reserved 8, 12, 15, 16, 17, 18;
   reserved 19, 20, 21, 22, 23, 26;
   reserved "listeners", "allow_zonal_shift", "disable_zone_statuses";
-  reserved "network_id", "security_group_ids";
+  reserved "network_id";
   reserved "address_v4", "address_v6", "ip_families";
   reserved 30 to 39;
 
@@ -151,6 +151,14 @@ message NetworkLoadBalancer {
   // LIVE-mutable for REGIONAL. REGIONAL/anycast is excluded from the zonal check by
   // construction.
   bool cross_zone_enabled = 42;
+
+  // security_group_ids — NLB-1b MIGRATE (revival, output + Create/Update input).
+  // vpc SecurityGroup refs firewalling the LB VIP (frontend access control), TEXT
+  // ids without FK; same-project existence is peer-validated via
+  // vpc.SecurityGroupService.Get (fail-closed UNAVAILABLE). LIVE-mutable (the set is
+  // replaced whole). Valid only for INTERNAL placement (SGs are network-scoped).
+  // No region-coherence check (SGs carry no zone/region).
+  repeated string security_group_ids = 43;
 }
 
 // PublicVip — parameterless marker платформенного public-источника VIP

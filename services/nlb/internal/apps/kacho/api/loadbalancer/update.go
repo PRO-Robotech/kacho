@@ -28,7 +28,10 @@ type UpdateLoadBalancerUseCase struct {
 	repo       Repo
 	opsRepo    operations.Repo
 	zoneClient ZoneClient
-	logger     *slog.Logger
+	// sgClient — NLB-1b MIGRATE peer-validate of security_group_ids on Update. nil →
+	// SG validation skipped (DB CHECK backstop). См. WithSecurityGroupClient.
+	sgClient SecurityGroupClient
+	logger   *slog.Logger
 }
 
 // NewUpdateLoadBalancerUseCase конструктор.
@@ -37,6 +40,14 @@ func NewUpdateLoadBalancerUseCase(repo Repo, opsRepo operations.Repo, zc ZoneCli
 		logger = slog.Default()
 	}
 	return &UpdateLoadBalancerUseCase{repo: repo, opsRepo: opsRepo, zoneClient: zc, logger: logger}
+}
+
+// WithSecurityGroupClient wires the vpc SecurityGroup peer-client for Update-time
+// security_group_ids peer-validate (same-project existence, fail-closed). nil →
+// validation skipped (DB CHECK backstop). Returns self for chaining.
+func (u *UpdateLoadBalancerUseCase) WithSecurityGroupClient(c SecurityGroupClient) *UpdateLoadBalancerUseCase {
+	u.sgClient = c
+	return u
 }
 
 // knownUpdateFields — whitelist для update_mask. Поле вне списка → InvalidArgument.
@@ -51,6 +62,8 @@ var knownUpdateFields = map[string]bool{
 	"admin_state": true,
 	// NLB-1b MIGRATE (revival): cross_zone_enabled is LIVE-mutable (REGIONAL-only).
 	"cross_zone_enabled": true,
+	// NLB-1b MIGRATE (revival): security_group_ids is LIVE-mutable (replace-whole).
+	"security_group_ids": true,
 }
 
 // immutableUpdateFields — hard-immutable; в mask → InvalidArgument.
@@ -111,6 +124,14 @@ func (u *UpdateLoadBalancerUseCase) Execute(
 		return nil, status.Error(codes.InvalidArgument, crossZoneZonalMsg)
 	}
 
+	// NLB-1b MIGRATE (F2/NLB-1-51/52): peer-validate security_group_ids when the mask
+	// touches them (INTERNAL-only + same-project existence via vpc; fail-closed).
+	if securityGroupsInMask(mask) {
+		if err := validateSecurityGroups(ctx, u.sgClient, updated.Type, string(updated.ProjectID), updated.SecurityGroupIDs); err != nil {
+			return nil, err
+		}
+	}
+
 	// disabled_announce_zones — перевалидируется только когда mask её трогает
 	// (REGIONAL-only + зоны ∈ регион + не все зоны, теми же правилами, что Create).
 	if disabledAnnounceZonesInMask(mask) {
@@ -149,6 +170,20 @@ func labelsInMask(mask []string) bool {
 	}
 	for _, p := range mask {
 		if p == "labels" {
+			return true
+		}
+	}
+	return false
+}
+
+// securityGroupsInMask — Update трогает security_group_ids: явный путь в mask либо
+// пустой mask (full-object PATCH переприменяет все mutable-поля).
+func securityGroupsInMask(mask []string) bool {
+	if len(mask) == 0 {
+		return true
+	}
+	for _, p := range mask {
+		if p == "security_group_ids" {
 			return true
 		}
 	}
@@ -256,6 +291,11 @@ func applyUpdateMask(
 	// ZONAL-guard runs in Execute after the merge).
 	if apply("cross_zone_enabled") {
 		out.CrossZoneEnabled = req.GetCrossZoneEnabled()
+	}
+	// NLB-1b MIGRATE (revival): security_group_ids LIVE-mutable (replace-whole; the
+	// peer-validate runs in Execute when the mask touches it).
+	if apply("security_group_ids") {
+		out.SecurityGroupIDs = req.GetSecurityGroupIds()
 	}
 	return out
 }

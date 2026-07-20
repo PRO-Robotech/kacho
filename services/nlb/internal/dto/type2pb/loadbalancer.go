@@ -64,6 +64,8 @@ func (networkLoadBalancer) toPb(rec kachorepo.LoadBalancerRecord) (*lbv1.Network
 		AdminState: lbAdminStateToPb(rec.AdminState),
 		// NLB-1b MIGRATE (revival): REGIONAL-only cross-zone toggle.
 		CrossZoneEnabled: rec.CrossZoneEnabled,
+		// NLB-1b MIGRATE (revival): vpc SecurityGroup refs firewalling the VIP.
+		SecurityGroupIds: append([]string(nil), rec.SecurityGroupIDs...),
 	}, nil
 }
 
