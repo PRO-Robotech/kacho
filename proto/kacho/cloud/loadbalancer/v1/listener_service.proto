@@ -171,6 +171,11 @@ message CreateListenerRequest {
   // Default target group ID — soft reference to a TG attached to the parent
   // LB. Optional; can be set later via Update.
   string default_target_group_id = 11 [(length) = "<=50"];
+
+  // target_group_id — NLB-1b EXPAND (additive, optional): the target group the
+  // listener wires to. When set it takes precedence over default_target_group_id
+  // (both coexist in EXPAND). resolved_backend_port°/substatus° echo the wired TG.
+  string target_group_id = 12 [(length) = "<=50"];
 }
 
 message CreateListenerMetadata {
@@ -201,6 +206,11 @@ message UpdateListenerRequest {
 
   bool proxy_protocol_v2 = 6;
   string default_target_group_id = 7 [(length) = "<=50"];
+
+  // target_group_id — NLB-1b EXPAND (additive, LIVE-mutable): repoint the
+  // listener to another target group. When present in update_mask it takes
+  // precedence over default_target_group_id.
+  string target_group_id = 8 [(length) = "<=50"];
 }
 
 message UpdateListenerMetadata {

@@ -134,6 +134,59 @@ func (Listener_Protocol) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_loadbalancer_v1_listener_proto_rawDescGZIP(), []int{0, 1}
 }
 
+// Substatus — NLB-1b EXPAND (additive, output-only, derived): whether the
+// listener resolves a target group. OK when target_group_id resolves to an
+// existing TargetGroup; MISCONFIGURED when it does not (no/dangling TG). A
+// pure server/client-derived value (not persisted).
+type Listener_Substatus int32
+
+const (
+	Listener_SUBSTATUS_UNSPECIFIED Listener_Substatus = 0
+	Listener_OK                    Listener_Substatus = 1
+	Listener_MISCONFIGURED         Listener_Substatus = 2
+)
+
+// Enum value maps for Listener_Substatus.
+var (
+	Listener_Substatus_name = map[int32]string{
+		0: "SUBSTATUS_UNSPECIFIED",
+		1: "OK",
+		2: "MISCONFIGURED",
+	}
+	Listener_Substatus_value = map[string]int32{
+		"SUBSTATUS_UNSPECIFIED": 0,
+		"OK":                    1,
+		"MISCONFIGURED":         2,
+	}
+)
+
+func (x Listener_Substatus) Enum() *Listener_Substatus {
+	p := new(Listener_Substatus)
+	*p = x
+	return p
+}
+
+func (x Listener_Substatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Listener_Substatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_loadbalancer_v1_listener_proto_enumTypes[2].Descriptor()
+}
+
+func (Listener_Substatus) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_loadbalancer_v1_listener_proto_enumTypes[2]
+}
+
+func (x Listener_Substatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Listener_Substatus.Descriptor instead.
+func (Listener_Substatus) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_loadbalancer_v1_listener_proto_rawDescGZIP(), []int{0, 2}
+}
+
 // Listener is a standalone first-class resource in kacho-nlb (divergence from
 // upstream YC where Listener was an inline child of NetworkLoadBalancer).
 // Reasons: independent FGA object type `nlb_listener`, independent VIP
@@ -169,7 +222,20 @@ type Listener struct {
 	// rule matches. Soft reference to a target group attached to the parent LB.
 	DefaultTargetGroupId string `protobuf:"bytes,17,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
 	// Current lifecycle status.
-	Status        Listener_Status `protobuf:"varint,18,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Status" json:"status,omitempty"`
+	Status Listener_Status `protobuf:"varint,18,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Status" json:"status,omitempty"`
+	// target_group_id — NLB-1b EXPAND (additive, output + Create/Update input).
+	// The single (soon authoritative) target group the listener wires to. In
+	// EXPAND it maps to the same underlying reference as default_target_group_id
+	// (both coexist); the M:N pivot + FK-RESTRICT authority switch land in
+	// NLB-1c/MIGRATE. LIVE-mutable (repoint).
+	TargetGroupId string `protobuf:"bytes,19,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	// resolved_backend_port — NLB-1b EXPAND (additive, output-only, derived).
+	// Echo of the wired TargetGroup.port (NLB-1-19); 0 when no TG resolves. Not
+	// the frontend `port`.
+	ResolvedBackendPort int64 `protobuf:"varint,20,opt,name=resolved_backend_port,json=resolvedBackendPort,proto3" json:"resolved_backend_port,omitempty"`
+	// substatus — NLB-1b EXPAND (additive, output-only, derived). OK when the
+	// wired target group resolves, MISCONFIGURED otherwise.
+	Substatus     Listener_Substatus `protobuf:"varint,21,opt,name=substatus,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Substatus" json:"substatus,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -295,11 +361,32 @@ func (x *Listener) GetStatus() Listener_Status {
 	return Listener_STATUS_UNSPECIFIED
 }
 
+func (x *Listener) GetTargetGroupId() string {
+	if x != nil {
+		return x.TargetGroupId
+	}
+	return ""
+}
+
+func (x *Listener) GetResolvedBackendPort() int64 {
+	if x != nil {
+		return x.ResolvedBackendPort
+	}
+	return 0
+}
+
+func (x *Listener) GetSubstatus() Listener_Substatus {
+	if x != nil {
+		return x.Substatus
+	}
+	return Listener_SUBSTATUS_UNSPECIFIED
+}
+
 var File_kacho_cloud_loadbalancer_v1_listener_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/loadbalancer/v1/listener.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf9\x06\n" +
+	"*kacho/cloud/loadbalancer/v1/listener.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe7\b\n" +
 	"\bListener\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -317,7 +404,10 @@ const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"targetPort\x12*\n" +
 	"\x11proxy_protocol_v2\x18\x10 \x01(\bR\x0fproxyProtocolV2\x125\n" +
 	"\x17default_target_group_id\x18\x11 \x01(\tR\x14defaultTargetGroupId\x12D\n" +
-	"\x06status\x18\x12 \x01(\x0e2,.kacho.cloud.loadbalancer.v1.Listener.StatusR\x06status\x1a9\n" +
+	"\x06status\x18\x12 \x01(\x0e2,.kacho.cloud.loadbalancer.v1.Listener.StatusR\x06status\x12&\n" +
+	"\x0ftarget_group_id\x18\x13 \x01(\tR\rtargetGroupId\x122\n" +
+	"\x15resolved_backend_port\x18\x14 \x01(\x03R\x13resolvedBackendPort\x12M\n" +
+	"\tsubstatus\x18\x15 \x01(\x0e2/.kacho.cloud.loadbalancer.v1.Listener.SubstatusR\tsubstatus\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"V\n" +
@@ -331,7 +421,11 @@ const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"\bProtocol\x12\x18\n" +
 	"\x14PROTOCOL_UNSPECIFIED\x10\x00\x12\a\n" +
 	"\x03TCP\x10\x01\x12\a\n" +
-	"\x03UDP\x10\x02J\x04\b\x04\x10\x05J\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b2\x10<R\tregion_idR\n" +
+	"\x03UDP\x10\x02\"A\n" +
+	"\tSubstatus\x12\x19\n" +
+	"\x15SUBSTATUS_UNSPECIFIED\x10\x00\x12\x06\n" +
+	"\x02OK\x10\x01\x12\x11\n" +
+	"\rMISCONFIGURED\x10\x02J\x04\b\x04\x10\x05J\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b2\x10<R\tregion_idR\n" +
 	"ip_versionR\n" +
 	"address_idR\x11allocated_addressR\tsubnet_idBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 
@@ -347,25 +441,27 @@ func file_kacho_cloud_loadbalancer_v1_listener_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_loadbalancer_v1_listener_proto_rawDescData
 }
 
-var file_kacho_cloud_loadbalancer_v1_listener_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_kacho_cloud_loadbalancer_v1_listener_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_kacho_cloud_loadbalancer_v1_listener_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_kacho_cloud_loadbalancer_v1_listener_proto_goTypes = []any{
 	(Listener_Status)(0),          // 0: kacho.cloud.loadbalancer.v1.Listener.Status
 	(Listener_Protocol)(0),        // 1: kacho.cloud.loadbalancer.v1.Listener.Protocol
-	(*Listener)(nil),              // 2: kacho.cloud.loadbalancer.v1.Listener
-	nil,                           // 3: kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(Listener_Substatus)(0),       // 2: kacho.cloud.loadbalancer.v1.Listener.Substatus
+	(*Listener)(nil),              // 3: kacho.cloud.loadbalancer.v1.Listener
+	nil,                           // 4: kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_kacho_cloud_loadbalancer_v1_listener_proto_depIdxs = []int32{
-	4, // 0: kacho.cloud.loadbalancer.v1.Listener.created_at:type_name -> google.protobuf.Timestamp
-	3, // 1: kacho.cloud.loadbalancer.v1.Listener.labels:type_name -> kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
+	5, // 0: kacho.cloud.loadbalancer.v1.Listener.created_at:type_name -> google.protobuf.Timestamp
+	4, // 1: kacho.cloud.loadbalancer.v1.Listener.labels:type_name -> kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
 	1, // 2: kacho.cloud.loadbalancer.v1.Listener.protocol:type_name -> kacho.cloud.loadbalancer.v1.Listener.Protocol
 	0, // 3: kacho.cloud.loadbalancer.v1.Listener.status:type_name -> kacho.cloud.loadbalancer.v1.Listener.Status
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	2, // 4: kacho.cloud.loadbalancer.v1.Listener.substatus:type_name -> kacho.cloud.loadbalancer.v1.Listener.Substatus
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_listener_proto_init() }
@@ -378,7 +474,7 @@ func file_kacho_cloud_loadbalancer_v1_listener_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc), len(file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      3,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,

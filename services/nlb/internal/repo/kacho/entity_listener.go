@@ -16,6 +16,11 @@ type ListenerRecord struct {
 	UpdatedAt time.Time
 	// Xmin — `xmin::text` OCC snapshot; see LoadBalancerRecord.Xmin.
 	Xmin string
+	// ResolvedBackendPort — NLB-1b EXPAND (additive, derived, read-only): the
+	// wired TargetGroup.port echoed by Listener.resolved_backend_port°. nil when no
+	// target group resolves (empty/dangling ref) → substatus° MISCONFIGURED. Computed
+	// by a scalar subquery in the repo read path; not a persisted column.
+	ResolvedBackendPort *int32
 }
 
 // ListenerFilter — фильтр для List listeners.

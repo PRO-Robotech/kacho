@@ -56,6 +56,44 @@ func TestListener_Transfer(t *testing.T) {
 	assert.Equal(t, lbv1.Listener_ACTIVE, pb.Status)
 }
 
+// NLB-1b EXPAND (additive): target_group_id echoes the same ref as
+// default_target_group_id; resolved_backend_port°/substatus° derive from the wired
+// TargetGroup.port (ListenerRecord.ResolvedBackendPort, computed by the repo read).
+func TestListener_NLB_1b_TargetGroupProjection(t *testing.T) {
+	mk := func(mut func(*kachorepo.ListenerRecord)) *lbv1.Listener {
+		rec := kachorepo.ListenerRecord{
+			Listener: domain.Listener{
+				ID: "lst01ABCDEF1234567xx", ProjectID: "p1", LoadBalancerID: "nlb1",
+				Name: "l1", Protocol: domain.ProtoTCP, Port: 443,
+				Status: domain.ListenerStatusActive,
+			},
+			CreatedAt: time.Now(),
+		}
+		mut(&rec)
+		var pb *lbv1.Listener
+		require.NoError(t, dto.Transfer(dto.FromTo(rec, &pb)))
+		return pb
+	}
+
+	// wired TG resolves → target_group_id echoed, resolved_backend_port° = TG.port,
+	// substatus° OK.
+	port := int32(8080)
+	wired := mk(func(rec *kachorepo.ListenerRecord) {
+		rec.DefaultTargetGroupID = option.MustNewOption(domain.ResourceID("tgr-wired00000000001"))
+		rec.ResolvedBackendPort = &port
+	})
+	assert.Equal(t, "tgr-wired00000000001", wired.GetTargetGroupId())
+	assert.Equal(t, "tgr-wired00000000001", wired.GetDefaultTargetGroupId())
+	assert.Equal(t, int64(8080), wired.GetResolvedBackendPort())
+	assert.Equal(t, lbv1.Listener_OK, wired.GetSubstatus())
+
+	// no resolvable TG → resolved_backend_port° 0, substatus° MISCONFIGURED.
+	unwired := mk(func(*kachorepo.ListenerRecord) {})
+	assert.Equal(t, "", unwired.GetTargetGroupId())
+	assert.Equal(t, int64(0), unwired.GetResolvedBackendPort())
+	assert.Equal(t, lbv1.Listener_MISCONFIGURED, unwired.GetSubstatus())
+}
+
 func TestListener_StatusMapping(t *testing.T) {
 	tests := []struct {
 		domain domain.ListenerStatus
