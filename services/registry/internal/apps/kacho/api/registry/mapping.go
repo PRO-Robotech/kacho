@@ -26,9 +26,9 @@ func (u *UseCase) ProtoRegistry(r *domain.Registry) *registryv1.Registry {
 		Name:              r.Name,
 		Description:       r.Description,
 		Labels:            r.Labels,
-		Endpoint:          u.EndpointFor(r.ID),
-		Status:            registryv1.RegistryStatus(r.Status),
-		DefaultVisibility: registryv1.Visibility(r.DefaultVisibility),
+		Endpoint:                    u.EndpointFor(r.ID),
+		Status:                      registryv1.RegistryStatus(r.Status),
+		DefaultRepositoryVisibility: registryv1.Visibility(r.DefaultVisibility),
 	}
 }
 

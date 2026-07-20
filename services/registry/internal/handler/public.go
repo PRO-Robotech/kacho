@@ -86,12 +86,14 @@ func (h *RegistryHandler) Create(ctx context.Context, req *registryv1.CreateRegi
 	return operationToProto(op), nil
 }
 
-// Update запускает async-смену mutable-полей (labels/description/default_visibility) и
-// возвращает Operation. Переход default_visibility→PUBLIC требует registry admin (D-6
-// any-path-to-PUBLIC gate, B10/B11): admin-Check В ХЕНДЛЕРЕ при "default_visibility" в
-// mask И target=PUBLIC → не-admin → PERMISSION_DENIED (не ломает editor description-путь).
+// Update запускает async-смену mutable-полей (labels/description/defaultRepositoryVisibility)
+// и возвращает Operation. Переход defaultRepositoryVisibility→PUBLIC требует registry admin
+// (D-6 any-path-to-PUBLIC gate, B10/B11): admin-Check В ХЕНДЛЕРЕ при "defaultRepositoryVisibility"
+// в mask И target=PUBLIC → не-admin → PERMISSION_DENIED (не ломает editor description-путь).
 func (h *RegistryHandler) Update(ctx context.Context, req *registryv1.UpdateRegistryRequest) (*operationProto, error) {
-	if maskContains(req.GetUpdateMask().GetPaths(), "default_visibility") && req.GetDefaultVisibility() == registryv1.Visibility_PUBLIC {
+	paths := req.GetUpdateMask().GetPaths()
+	if (maskContains(paths, "default_repository_visibility") || maskContains(paths, "defaultRepositoryVisibility")) &&
+		req.GetDefaultRepositoryVisibility() == registryv1.Visibility_PUBLIC {
 		if err := registry.ValidateRegistryID(req.GetRegistryId()); err != nil {
 			return nil, mapErr(err)
 		}
@@ -105,7 +107,7 @@ func (h *RegistryHandler) Update(ctx context.Context, req *registryv1.UpdateRegi
 		Description:       req.GetDescription(),
 		Labels:            req.GetLabels(),
 		Mask:              req.GetUpdateMask().GetPaths(),
-		DefaultVisibility: domain.Visibility(req.GetDefaultVisibility()),
+		DefaultVisibility: domain.Visibility(req.GetDefaultRepositoryVisibility()),
 	})
 	if err != nil {
 		return nil, mapErr(err)

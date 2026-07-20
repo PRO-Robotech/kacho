@@ -25,25 +25,38 @@ func validatePageSize(size int64) (int64, error) {
 	return corevalidate.PageSize("page_size", size)
 }
 
-// knownUpdateFields — whitelist update_mask Registry. name/project_id входят как
-// известные, но hard-immutable (см. immutableUpdateFields) — их наличие в mask
-// даёт InvalidArgument с каноничным immutable-текстом, а не unknown-field.
+// knownUpdateFields — whitelist update_mask Registry. name/project_id/id/region_id/
+// placement_type входят как известные, но hard-immutable (см. immutableUpdateFields) —
+// их наличие в mask даёт InvalidArgument с каноничным immutable-текстом, а не
+// unknown-field. defaultRepositoryVisibility (REG-1 F5 rename) — mutable admin-gated.
 var knownUpdateFields = map[string]struct{}{
-	"name":               {},
-	"project_id":         {},
-	"projectId":          {},
-	"description":        {},
-	"labels":             {},
-	"default_visibility": {},
-	"defaultVisibility":  {},
+	"name":                          {},
+	"project_id":                    {},
+	"projectId":                     {},
+	"id":                            {},
+	"description":                   {},
+	"labels":                        {},
+	"default_repository_visibility": {},
+	"defaultRepositoryVisibility":   {},
+	"region_id":                     {},
+	"regionId":                      {},
+	"placement_type":                {},
+	"placementType":                 {},
 }
 
-// immutableUpdateFields → каноничный immutable-текст (update_mask
-// discipline): поле в mask, но менять нельзя после Create. name — mutable
-// (смена не трогает endpoint/zot по id), поэтому здесь только project_id.
+// immutableUpdateFields → каноничный immutable-текст (update_mask discipline): поле в
+// mask, но менять нельзя после Create. name — mutable (смена не трогает endpoint/zot по
+// id, F2). id — единственная идентичность/адресация (F1, REG-1-04); project_id — owner;
+// region_id/placement_type — placement-якорь immutable (F4, REG-1-14; перенос региона
+// сломал бы storage-locality блобов).
 var immutableUpdateFields = map[string]string{
-	"project_id": "projectId is immutable after Registry.Create",
-	"projectId":  "projectId is immutable after Registry.Create",
+	"id":             "id is immutable after Registry.Create",
+	"project_id":     "projectId is immutable after Registry.Create",
+	"projectId":      "projectId is immutable after Registry.Create",
+	"region_id":      "regionId is immutable after Registry.Create",
+	"regionId":       "regionId is immutable after Registry.Create",
+	"placement_type": "placementType is immutable after Registry.Create",
+	"placementType":  "placementType is immutable after Registry.Create",
 }
 
 // knownRepoUpdateFields — whitelist update_mask config-overlay Repository (RG-1).
@@ -139,7 +152,7 @@ func resolveUpdateMask(spec UpdateSpec) (UpdateSpec, error) {
 			spec.ApplyDescription = true
 		case "labels":
 			spec.ApplyLabels = true
-		case "default_visibility", "defaultVisibility":
+		case "default_repository_visibility", "defaultRepositoryVisibility":
 			spec.ApplyDefaultVisibility = true
 		}
 	}
