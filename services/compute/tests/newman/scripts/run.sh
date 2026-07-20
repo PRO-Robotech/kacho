@@ -70,7 +70,7 @@ if [[ -n "$SERVICE" ]]; then
 else
   # ВСЕ 9 коллекций — иначе assert-suites-green.sh (грейдит collections/*.json
   # глобом) видит authz-deny/sec-d без отчёта → "(no-report)" → phantom FAIL.
-  for res in disk image snapshot instance disk-type operation list-filter authz-deny sec-d; do
+  for res in disk image snapshot instance instance-redesign machine-type disk-type operation list-filter authz-deny sec-d; do
     run_one "$res"
   done
 fi
