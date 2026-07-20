@@ -67,12 +67,14 @@ func TestListener_UniquePortProto(t *testing.T) {
 	assert.True(t, errors.Is(err, kacho.ErrAlreadyExists), "got %v", err)
 }
 
-// NOTE: the listener-level partial UNIQUE listeners_region_vip_uniq
-// (region_id, allocated_address, port, protocol) from baseline 0001 was
-// DELIBERATELY dropped in migration 0009 — VIP uniqueness moved to the
-// LoadBalancer level (load_balancers_region_v4_uniq / _v6_uniq), race-tested in
-// load_balancer_vip_concurrent_integration_test.go. There is no listener-level
-// region-VIP invariant to test; see docs/architecture/known-divergences.md.
+// NOTE: baseline 0001's listener-level partial UNIQUE listeners_region_vip_uniq
+// (region_id, allocated_address, port, protocol) was dropped in migration 0009 when
+// the VIP was consolidated on the LoadBalancer (anycast). NLB-1b MIGRATE F5 relocates
+// the VIP anchor back to the Listener and RE-CREATES that index (migration 0021); its
+// per-region uniqueness / concurrent-race / recycle-on-delete contract is locked in
+// listener_vip_uniq_integration_test.go (NLB-1-30/31/55). The LoadBalancer-level VIP
+// uniqueness (load_balancers_region_v4_uniq / _v6_uniq) stays present as a fallback
+// until the CONTRACT pass removes VIP-on-LB.
 
 // TestListener_PortOutOfRange — CHECK port BETWEEN 1 AND 65535.
 func TestListener_PortOutOfRange(t *testing.T) {

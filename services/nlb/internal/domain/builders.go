@@ -41,6 +41,10 @@ func NewLoadBalancer(
 		Status:             LBStatusCreating,
 		SessionAffinity:    SessionAffinity5Tuple,
 		DeletionProtection: false,
+		// NLB-1b EXPAND (additive): default administrative state is ENABLED.
+		// Placement is set by the caller after the builder (derived from
+		// type/placement_type) — same rationale as placement_type.
+		AdminState: AdminStateEnabled,
 	}
 }
 

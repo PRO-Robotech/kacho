@@ -15,11 +15,20 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg/dto"
 )
 
+// listenerCols — SELECT/RETURNING column list (order matches scanListener).
+// resolved_backend_port is a derived read-only column (NLB-1b EXPAND): a scalar
+// subquery echoing the wired TargetGroup.port. It correlates on the listener row's
+// default_target_group_id, so it works uniformly in plain SELECT and in
+// INSERT/UPDATE ... RETURNING (the affected `listeners` row). NULL when the ref is
+// empty or dangling → substatus° MISCONFIGURED.
 const listenerCols = `
     id, load_balancer_id, project_id, region_id, created_at, updated_at,
     name, description, labels, protocol, port, target_port, ip_version,
     address_id, allocated_address, subnet_id, proxy_protocol_v2,
-    default_target_group_id, status, vip_origin, xmin::text`
+    default_target_group_id, status, vip_origin,
+    (SELECT tg.port FROM kacho_nlb.target_groups tg
+      WHERE tg.id = listeners.default_target_group_id) AS resolved_backend_port,
+    xmin::text`
 
 type listenerReader struct {
 	tx pgx.Tx
@@ -45,15 +54,17 @@ func scanListener(row pgx.Row) (*kacho.ListenerRecord, error) {
 		dfltTGStr  string
 		statusStr  string
 		vipOrigin  string
+		resolvedBP *int32
 	)
 	if err := row.Scan(
 		&idStr, &lbIDStr, &projectIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
 		&nameStr, &descStr, &labelsRaw, &protoStr, &port, &tgtPort, &ipVerStr,
 		&addrIDStr, &allocAddr, &subnetIDs, &rec.ProxyProtocolV2,
-		&dfltTGStr, &statusStr, &vipOrigin, &rec.Xmin,
+		&dfltTGStr, &statusStr, &vipOrigin, &resolvedBP, &rec.Xmin,
 	); err != nil {
 		return nil, err
 	}
+	rec.ResolvedBackendPort = resolvedBP
 	rec.ID = domain.ResourceID(idStr)
 	rec.LoadBalancerID = domain.ResourceID(lbIDStr)
 	rec.ProjectID = domain.ProjectID(projectIDs)

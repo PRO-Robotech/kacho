@@ -33,6 +33,16 @@ func (listener) toPb(rec kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 	if v, ok := rec.DefaultTargetGroupID.Maybe(); ok {
 		defaultTGID = string(v)
 	}
+	// NLB-1b EXPAND (additive): target_group_id echoes the same underlying reference
+	// as default_target_group_id (both coexist). resolved_backend_port° + substatus°
+	// are derived from whether the wired TargetGroup resolves (rec.ResolvedBackendPort,
+	// computed by the repo read subquery): OK when it resolves, MISCONFIGURED otherwise.
+	substatus := lbv1.Listener_MISCONFIGURED
+	var resolvedBackendPort int64
+	if rec.ResolvedBackendPort != nil {
+		resolvedBackendPort = int64(*rec.ResolvedBackendPort)
+		substatus = lbv1.Listener_OK
+	}
 	// VIP консолидирован на LoadBalancer: листенер = «порт на VIP LB» и собственных
 	// address-полей больше не несёт (region_id/ip_version/address_id/allocated_address/
 	// subnet_id сняты с proto). VIP сервиса берётся с родительского LB.address_v4/v6.
@@ -50,6 +60,9 @@ func (listener) toPb(rec kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 		ProxyProtocolV2:      rec.ProxyProtocolV2,
 		DefaultTargetGroupId: defaultTGID,
 		Status:               statusPb,
+		TargetGroupId:        defaultTGID,
+		ResolvedBackendPort:  resolvedBackendPort,
+		Substatus:            substatus,
 	}, nil
 }
 

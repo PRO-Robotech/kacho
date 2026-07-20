@@ -68,6 +68,8 @@ var listenerMutableMaskPaths = map[string]struct{}{
 	"labels":                  {},
 	"default_target_group_id": {},
 	"proxy_protocol_v2":       {},
+	// NLB-1b EXPAND (additive): repoint the wired target group (LIVE-mutable).
+	"target_group_id": {},
 }
 
 // Immutable update_mask paths (in mask → InvalidArgument with фиксированный текст).
@@ -151,8 +153,20 @@ func (u *UpdateUseCase) Run(ctx context.Context, req *lbv1.UpdateListenerRequest
 		}
 		next.Labels = lbls
 	}
-	if apply("default_target_group_id") {
-		tg := req.GetDefaultTargetGroupId()
+	// NLB-1b EXPAND (additive): target_group_id and the legacy default_target_group_id
+	// both map to the listener's TG reference. Only a field present in the mask is
+	// applied; target_group_id takes precedence when both are applied and non-empty.
+	// An applied field with an empty value clears the reference.
+	applyTG := apply("target_group_id")
+	applyDTG := apply("default_target_group_id")
+	if applyTG || applyDTG {
+		tg := ""
+		switch {
+		case applyTG && req.GetTargetGroupId() != "":
+			tg = req.GetTargetGroupId()
+		case applyDTG && req.GetDefaultTargetGroupId() != "":
+			tg = req.GetDefaultTargetGroupId()
+		}
 		if tg == "" {
 			next.DefaultTargetGroupID = option.ValueOf[domain.ResourceID]{}
 		} else {

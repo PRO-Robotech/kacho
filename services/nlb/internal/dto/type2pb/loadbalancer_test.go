@@ -130,6 +130,46 @@ func TestNetworkLoadBalancer_PlacementProjected(t *testing.T) {
 	assert.Empty(t, pbE.GetDisabledAnnounceZones())
 }
 
+// NLB-1b EXPAND (additive): admin_state echoed; placement° derived from the legacy
+// type/placement_type when the placement column is empty (compat), and taken from
+// the stored placement column when set.
+func TestNetworkLoadBalancer_AdminStateAndPlacementProjected(t *testing.T) {
+	mk := func(mut func(*domain.LoadBalancer)) *lbv1.NetworkLoadBalancer {
+		lb := domain.LoadBalancer{
+			ID: "nlb1", ProjectID: "p1", RegionID: "r1",
+			Type: domain.LBTypeInternal, PlacementType: domain.PlacementRegional,
+			Status: domain.LBStatusInactive, SessionAffinity: domain.SessionAffinity5Tuple,
+			AdminState: domain.AdminStateEnabled,
+		}
+		mut(&lb)
+		rec := kachorepo.LoadBalancerRecord{LoadBalancer: lb, CreatedAt: time.Now()}
+		var pb *lbv1.NetworkLoadBalancer
+		require.NoError(t, dto.Transfer(dto.FromTo(rec, &pb)))
+		return pb
+	}
+
+	// admin_state echo.
+	assert.Equal(t, lbv1.NetworkLoadBalancer_ADMIN_STATE_ENABLED, mk(func(*domain.LoadBalancer) {}).GetAdminState())
+	assert.Equal(t, lbv1.NetworkLoadBalancer_ADMIN_STATE_DISABLED,
+		mk(func(lb *domain.LoadBalancer) { lb.AdminState = domain.AdminStateDisabled }).GetAdminState())
+	// empty admin_state normalises to ENABLED on read.
+	assert.Equal(t, lbv1.NetworkLoadBalancer_ADMIN_STATE_ENABLED,
+		mk(func(lb *domain.LoadBalancer) { lb.AdminState = "" }).GetAdminState())
+
+	// placement° derived from legacy type/placement_type (placement column empty).
+	assert.Equal(t, lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL, mk(func(*domain.LoadBalancer) {}).GetPlacement())
+	assert.Equal(t, lbv1.NetworkLoadBalancer_INTERNAL_ZONAL,
+		mk(func(lb *domain.LoadBalancer) { lb.PlacementType = domain.PlacementZonal }).GetPlacement())
+	assert.Equal(t, lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL,
+		mk(func(lb *domain.LoadBalancer) {
+			lb.Type = domain.LBTypeExternal
+			lb.PlacementType = domain.PlacementUnspecified
+		}).GetPlacement())
+	// stored placement column takes precedence over derivation.
+	assert.Equal(t, lbv1.NetworkLoadBalancer_INTERNAL_ZONAL,
+		mk(func(lb *domain.LoadBalancer) { lb.Placement = domain.PlacementInternalZonal }).GetPlacement())
+}
+
 func TestNetworkLoadBalancer_StatusMapping(t *testing.T) {
 	tests := []struct {
 		domain domain.LBStatus

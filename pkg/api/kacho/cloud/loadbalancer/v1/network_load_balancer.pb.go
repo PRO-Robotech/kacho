@@ -296,6 +296,117 @@ func (NetworkLoadBalancer_SessionAffinity) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{0, 3}
 }
 
+// AdminState — NLB-1b EXPAND (additive): desired administrative state, the
+// redesign replacement for the :start/:stop power-verbs. LIVE-mutable. In
+// EXPAND it is stored + echoed but does not yet gate status recompute (that
+// arrives with the 0013 status-trigger rewrite in NLB-1c). Legacy Start/Stop
+// RPCs are NOT removed in EXPAND.
+type NetworkLoadBalancer_AdminState int32
+
+const (
+	NetworkLoadBalancer_ADMIN_STATE_UNSPECIFIED NetworkLoadBalancer_AdminState = 0
+	NetworkLoadBalancer_ADMIN_STATE_ENABLED     NetworkLoadBalancer_AdminState = 1
+	NetworkLoadBalancer_ADMIN_STATE_DISABLED    NetworkLoadBalancer_AdminState = 2
+)
+
+// Enum value maps for NetworkLoadBalancer_AdminState.
+var (
+	NetworkLoadBalancer_AdminState_name = map[int32]string{
+		0: "ADMIN_STATE_UNSPECIFIED",
+		1: "ADMIN_STATE_ENABLED",
+		2: "ADMIN_STATE_DISABLED",
+	}
+	NetworkLoadBalancer_AdminState_value = map[string]int32{
+		"ADMIN_STATE_UNSPECIFIED": 0,
+		"ADMIN_STATE_ENABLED":     1,
+		"ADMIN_STATE_DISABLED":    2,
+	}
+)
+
+func (x NetworkLoadBalancer_AdminState) Enum() *NetworkLoadBalancer_AdminState {
+	p := new(NetworkLoadBalancer_AdminState)
+	*p = x
+	return p
+}
+
+func (x NetworkLoadBalancer_AdminState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NetworkLoadBalancer_AdminState) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[5].Descriptor()
+}
+
+func (NetworkLoadBalancer_AdminState) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[5]
+}
+
+func (x NetworkLoadBalancer_AdminState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NetworkLoadBalancer_AdminState.Descriptor instead.
+func (NetworkLoadBalancer_AdminState) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{0, 4}
+}
+
+// Placement — NLB-1b EXPAND (additive): merged placement discriminator that
+// fuses type + placement_type into one value. "external+zonal" is
+// inexpressible by construction. In EXPAND it is derived-consistent with the
+// legacy type/placement_type (which remain the authoritative inputs); the
+// authority switch + write-reject of type/placement_type land in NLB-1c.
+type NetworkLoadBalancer_Placement int32
+
+const (
+	NetworkLoadBalancer_PLACEMENT_UNSPECIFIED NetworkLoadBalancer_Placement = 0
+	NetworkLoadBalancer_EXTERNAL_REGIONAL     NetworkLoadBalancer_Placement = 1
+	NetworkLoadBalancer_INTERNAL_REGIONAL     NetworkLoadBalancer_Placement = 2
+	NetworkLoadBalancer_INTERNAL_ZONAL        NetworkLoadBalancer_Placement = 3
+)
+
+// Enum value maps for NetworkLoadBalancer_Placement.
+var (
+	NetworkLoadBalancer_Placement_name = map[int32]string{
+		0: "PLACEMENT_UNSPECIFIED",
+		1: "EXTERNAL_REGIONAL",
+		2: "INTERNAL_REGIONAL",
+		3: "INTERNAL_ZONAL",
+	}
+	NetworkLoadBalancer_Placement_value = map[string]int32{
+		"PLACEMENT_UNSPECIFIED": 0,
+		"EXTERNAL_REGIONAL":     1,
+		"INTERNAL_REGIONAL":     2,
+		"INTERNAL_ZONAL":        3,
+	}
+)
+
+func (x NetworkLoadBalancer_Placement) Enum() *NetworkLoadBalancer_Placement {
+	p := new(NetworkLoadBalancer_Placement)
+	*p = x
+	return p
+}
+
+func (x NetworkLoadBalancer_Placement) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NetworkLoadBalancer_Placement) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[6].Descriptor()
+}
+
+func (NetworkLoadBalancer_Placement) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[6]
+}
+
+func (x NetworkLoadBalancer_Placement) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NetworkLoadBalancer_Placement.Descriptor instead.
+func (NetworkLoadBalancer_Placement) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{0, 5}
+}
+
 type TargetState_Status int32
 
 const (
@@ -338,11 +449,11 @@ func (x TargetState_Status) String() string {
 }
 
 func (TargetState_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[5].Descriptor()
+	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[7].Descriptor()
 }
 
 func (TargetState_Status) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[5]
+	return &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes[7]
 }
 
 func (x TargetState_Status) Number() protoreflect.EnumNumber {
@@ -392,8 +503,27 @@ type NetworkLoadBalancer struct {
 	// которых anycast-VIP НЕ анонсируется (drain). Пусто = анонс из всех здоровых зон.
 	// Реальный withdraw — data plane; здесь только intent.
 	DisabledAnnounceZones []string `protobuf:"bytes,28,rep,name=disabled_announce_zones,json=disabledAnnounceZones,proto3" json:"disabled_announce_zones,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// placement — NLB-1b EXPAND (additive, output + Create input). Merged
+	// placement discriminator; derived-consistent with type/placement_type.
+	Placement NetworkLoadBalancer_Placement `protobuf:"varint,40,opt,name=placement,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Placement" json:"placement,omitempty"`
+	// admin_state — NLB-1b EXPAND (additive, output + Create/Update input).
+	// LIVE-mutable desired administrative state (ENABLED|DISABLED).
+	AdminState NetworkLoadBalancer_AdminState `protobuf:"varint,41,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
+	// cross_zone_enabled — NLB-1b MIGRATE (revival, output + Create/Update input).
+	// REGIONAL-only cross-zone load-balancing toggle; inapplicable to ZONAL placement
+	// (a ZONAL LB serves a single zone) — setting it true on ZONAL → InvalidArgument.
+	// LIVE-mutable for REGIONAL. REGIONAL/anycast is excluded from the zonal check by
+	// construction.
+	CrossZoneEnabled bool `protobuf:"varint,42,opt,name=cross_zone_enabled,json=crossZoneEnabled,proto3" json:"cross_zone_enabled,omitempty"`
+	// security_group_ids — NLB-1b MIGRATE (revival, output + Create/Update input).
+	// vpc SecurityGroup refs firewalling the LB VIP (frontend access control), TEXT
+	// ids without FK; same-project existence is peer-validated via
+	// vpc.SecurityGroupService.Get (fail-closed UNAVAILABLE). LIVE-mutable (the set is
+	// replaced whole). Valid only for INTERNAL placement (SGs are network-scoped).
+	// No region-coherence check (SGs carry no zone/region).
+	SecurityGroupIds []string `protobuf:"bytes,43,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *NetworkLoadBalancer) Reset() {
@@ -535,6 +665,34 @@ func (x *NetworkLoadBalancer) GetPlacementType() NetworkLoadBalancer_PlacementTy
 func (x *NetworkLoadBalancer) GetDisabledAnnounceZones() []string {
 	if x != nil {
 		return x.DisabledAnnounceZones
+	}
+	return nil
+}
+
+func (x *NetworkLoadBalancer) GetPlacement() NetworkLoadBalancer_Placement {
+	if x != nil {
+		return x.Placement
+	}
+	return NetworkLoadBalancer_PLACEMENT_UNSPECIFIED
+}
+
+func (x *NetworkLoadBalancer) GetAdminState() NetworkLoadBalancer_AdminState {
+	if x != nil {
+		return x.AdminState
+	}
+	return NetworkLoadBalancer_ADMIN_STATE_UNSPECIFIED
+}
+
+func (x *NetworkLoadBalancer) GetCrossZoneEnabled() bool {
+	if x != nil {
+		return x.CrossZoneEnabled
+	}
+	return false
+}
+
+func (x *NetworkLoadBalancer) GetSecurityGroupIds() []string {
+	if x != nil {
+		return x.SecurityGroupIds
 	}
 	return nil
 }
@@ -813,7 +971,7 @@ var File_kacho_cloud_loadbalancer_v1_network_load_balancer_proto protoreflect.Fi
 
 const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xaa\f\n" +
+	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xde\x0f\n" +
 	"\x13NetworkLoadBalancer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -833,7 +991,12 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\rv4_address_id\x18\x18 \x01(\tR\vv4AddressId\x12\"\n" +
 	"\rv6_address_id\x18\x19 \x01(\tR\vv6AddressId\x12e\n" +
 	"\x0eplacement_type\x18\x1b \x01(\x0e2>.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementTypeR\rplacementType\x126\n" +
-	"\x17disabled_announce_zones\x18\x1c \x03(\tR\x15disabledAnnounceZones\x1a9\n" +
+	"\x17disabled_announce_zones\x18\x1c \x03(\tR\x15disabledAnnounceZones\x12X\n" +
+	"\tplacement\x18( \x01(\x0e2:.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementR\tplacement\x12\\\n" +
+	"\vadmin_state\x18) \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
+	"adminState\x12,\n" +
+	"\x12cross_zone_enabled\x18* \x01(\bR\x10crossZoneEnabled\x12,\n" +
+	"\x12security_group_ids\x18+ \x03(\tR\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x7f\n" +
@@ -859,8 +1022,18 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\x1cSESSION_AFFINITY_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
 	"FIVE_TUPLE\x10\x01\x12\x12\n" +
-	"\x0eCLIENT_IP_ONLY\x10\x02J\x04\b\b\x10\tJ\x04\b\f\x10\rJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b\x1e\x10(R\tlistenersR\x11allow_zonal_shiftR\x15disable_zone_statusesR\x12cross_zone_enabledR\n" +
-	"network_idR\x12security_group_idsR\n" +
+	"\x0eCLIENT_IP_ONLY\x10\x02\"\\\n" +
+	"\n" +
+	"AdminState\x12\x1b\n" +
+	"\x17ADMIN_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13ADMIN_STATE_ENABLED\x10\x01\x12\x18\n" +
+	"\x14ADMIN_STATE_DISABLED\x10\x02\"h\n" +
+	"\tPlacement\x12\x19\n" +
+	"\x15PLACEMENT_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11EXTERNAL_REGIONAL\x10\x01\x12\x15\n" +
+	"\x11INTERNAL_REGIONAL\x10\x02\x12\x12\n" +
+	"\x0eINTERNAL_ZONAL\x10\x03J\x04\b\b\x10\tJ\x04\b\f\x10\rJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b\x1e\x10(R\tlistenersR\x11allow_zonal_shiftR\x15disable_zone_statusesR\n" +
+	"network_idR\n" +
 	"address_v4R\n" +
 	"address_v6R\vip_families\"\v\n" +
 	"\tPublicVip\"\x97\x01\n" +
@@ -902,7 +1075,7 @@ func file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP() 
 	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescData
 }
 
-var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_goTypes = []any{
 	(IpVersion)(0),                           // 0: kacho.cloud.loadbalancer.v1.IpVersion
@@ -910,32 +1083,36 @@ var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_goTypes = []any
 	(NetworkLoadBalancer_Type)(0),            // 2: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Type
 	(NetworkLoadBalancer_PlacementType)(0),   // 3: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementType
 	(NetworkLoadBalancer_SessionAffinity)(0), // 4: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinity
-	(TargetState_Status)(0),                  // 5: kacho.cloud.loadbalancer.v1.TargetState.Status
-	(*NetworkLoadBalancer)(nil),              // 6: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer
-	(*PublicVip)(nil),                        // 7: kacho.cloud.loadbalancer.v1.PublicVip
-	(*VipSource)(nil),                        // 8: kacho.cloud.loadbalancer.v1.VipSource
-	(*AttachedTargetGroup)(nil),              // 9: kacho.cloud.loadbalancer.v1.AttachedTargetGroup
-	(*TargetState)(nil),                      // 10: kacho.cloud.loadbalancer.v1.TargetState
-	nil,                                      // 11: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
-	(*timestamppb.Timestamp)(nil),            // 12: google.protobuf.Timestamp
-	(*HealthCheck)(nil),                      // 13: kacho.cloud.loadbalancer.v1.HealthCheck
+	(NetworkLoadBalancer_AdminState)(0),      // 5: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
+	(NetworkLoadBalancer_Placement)(0),       // 6: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Placement
+	(TargetState_Status)(0),                  // 7: kacho.cloud.loadbalancer.v1.TargetState.Status
+	(*NetworkLoadBalancer)(nil),              // 8: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer
+	(*PublicVip)(nil),                        // 9: kacho.cloud.loadbalancer.v1.PublicVip
+	(*VipSource)(nil),                        // 10: kacho.cloud.loadbalancer.v1.VipSource
+	(*AttachedTargetGroup)(nil),              // 11: kacho.cloud.loadbalancer.v1.AttachedTargetGroup
+	(*TargetState)(nil),                      // 12: kacho.cloud.loadbalancer.v1.TargetState
+	nil,                                      // 13: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
+	(*timestamppb.Timestamp)(nil),            // 14: google.protobuf.Timestamp
+	(*HealthCheck)(nil),                      // 15: kacho.cloud.loadbalancer.v1.HealthCheck
 }
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_depIdxs = []int32{
-	12, // 0: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.created_at:type_name -> google.protobuf.Timestamp
-	11, // 1: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.labels:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
+	14, // 0: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.created_at:type_name -> google.protobuf.Timestamp
+	13, // 1: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.labels:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
 	1,  // 2: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.status:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Status
 	2,  // 3: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.type:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Type
 	4,  // 4: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.session_affinity:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinity
-	9,  // 5: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.attached_target_groups:type_name -> kacho.cloud.loadbalancer.v1.AttachedTargetGroup
+	11, // 5: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.attached_target_groups:type_name -> kacho.cloud.loadbalancer.v1.AttachedTargetGroup
 	3,  // 6: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.placement_type:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementType
-	7,  // 7: kacho.cloud.loadbalancer.v1.VipSource.public:type_name -> kacho.cloud.loadbalancer.v1.PublicVip
-	13, // 8: kacho.cloud.loadbalancer.v1.AttachedTargetGroup.health_checks:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
-	5,  // 9: kacho.cloud.loadbalancer.v1.TargetState.status:type_name -> kacho.cloud.loadbalancer.v1.TargetState.Status
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	6,  // 7: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.placement:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Placement
+	5,  // 8: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.admin_state:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
+	9,  // 9: kacho.cloud.loadbalancer.v1.VipSource.public:type_name -> kacho.cloud.loadbalancer.v1.PublicVip
+	15, // 10: kacho.cloud.loadbalancer.v1.AttachedTargetGroup.health_checks:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
+	7,  // 11: kacho.cloud.loadbalancer.v1.TargetState.status:type_name -> kacho.cloud.loadbalancer.v1.TargetState.Status
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_init() }
@@ -954,7 +1131,7 @@ func file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc), len(file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc)),
-			NumEnums:      6,
+			NumEnums:      8,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,

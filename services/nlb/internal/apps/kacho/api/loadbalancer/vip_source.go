@@ -40,6 +40,63 @@ type familyVIPSpec struct {
 	zoneID string
 }
 
+// crossZoneZonalMsg — verbatim contract text (NLB-1-16) when cross_zone_enabled is
+// set true on a ZONAL placement. Part of the API contract (stable tone).
+const crossZoneZonalMsg = "crossZoneEnabled is not applicable to ZONAL placement"
+
+// resolvePlacementAuthoritative — NLB-1b MIGRATE (F2): resolve the (type,
+// placement_type, merged placement) triple with `placement` as the AUTHORITATIVE
+// input. When placement is set it drives the legacy (type, placement_type) pair;
+// co-supplied legacy inputs are a bridge and must be consistent (else reject). When
+// placement is unset the legacy type/placement_type drive (back-compat) and the
+// merged placement is derived + persisted for read.
+func resolvePlacementAuthoritative(
+	req *lbv1.CreateNetworkLoadBalancerRequest,
+) (domain.LBType, domain.PlacementType, domain.Placement, error) {
+	mode := placementModeFromPb(req.GetPlacement())
+	if mode == "" {
+		// Bridge (placement unset): legacy type/placement_type authoritative.
+		lbType, err := lbTypeFromPb(req.GetType())
+		if err != nil {
+			return "", "", "", err
+		}
+		pt, err := resolvePlacement(lbType, req.GetPlacementType())
+		if err != nil {
+			return "", "", "", err
+		}
+		return lbType, pt, domain.PlacementFromTypeAndPlacementType(lbType, pt), nil
+	}
+	// Authoritative: placement drives the legacy (type, placement_type) pair.
+	lbType, pt := domain.TypeAndPlacementTypeFromPlacement(mode)
+	// Bridge consistency: any co-supplied legacy input must match the derived pair.
+	if req.GetType() != lbv1.NetworkLoadBalancer_TYPE_UNSPECIFIED {
+		lt, err := lbTypeFromPb(req.GetType())
+		if err != nil {
+			return "", "", "", err
+		}
+		if lt != lbType {
+			return "", "", "", placementInconsistentErr()
+		}
+	}
+	if req.GetPlacementType() != lbv1.NetworkLoadBalancer_PLACEMENT_TYPE_UNSPECIFIED {
+		legacyPt, err := resolvePlacement(lbType, req.GetPlacementType())
+		if err != nil {
+			return "", "", "", err
+		}
+		if legacyPt != pt {
+			return "", "", "", placementInconsistentErr()
+		}
+	}
+	return lbType, pt, mode, nil
+}
+
+// placementInconsistentErr — canonical reject when a co-supplied legacy
+// type/placement_type contradicts the authoritative placement input.
+func placementInconsistentErr() error {
+	return errInvalidArg("placement",
+		"placement is inconsistent with type/placement_type (placement is the authoritative input in NLB-1b)")
+}
+
 // resolvePlacement — placement_type ↔ type coupling. INTERNAL требует явный
 // ZONAL|REGIONAL; EXTERNAL запрещает placement.
 func resolvePlacement(lbType domain.LBType, pb lbv1.NetworkLoadBalancer_PlacementType) (domain.PlacementType, error) {

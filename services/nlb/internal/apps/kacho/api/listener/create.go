@@ -5,6 +5,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -95,6 +96,19 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 		return nil, err
 	}
 
+	// NLB-1b MIGRATE (F4/NLB-1-23): the listener wires to a TargetGroup DIRECTLY
+	// (single authoritative targetGroupId). Sync-precheck existence +
+	// region-coherence with the parent LB — a missing TG yields actionable guidance;
+	// the direct FK (0018) is the atomic race backstop. target_group_id takes
+	// precedence over the legacy default_target_group_id (both coexist until CONTRACT).
+	tgID := req.GetTargetGroupId()
+	if tgID == "" {
+		tgID = req.GetDefaultTargetGroupId()
+	}
+	if err := u.prevalidateTargetGroup(ctx, tgID, string(lb.RegionID)); err != nil {
+		return nil, err
+	}
+
 	name, err := buildDomainName(req.GetName())
 	if err != nil {
 		return nil, err
@@ -121,7 +135,8 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	listener.Description = domain.LbDescription(req.GetDescription())
 	listener.Labels = domain.LabelsFromMap(req.GetLabels())
 	listener.ProxyProtocolV2 = req.GetProxyProtocolV2()
-	if tgID := req.GetDefaultTargetGroupId(); tgID != "" {
+	// NLB-1b MIGRATE: wire the (already prechecked) authoritative targetGroupId.
+	if tgID != "" {
 		listener.DefaultTargetGroupID = option.MustNewOption(domain.ResourceID(tgID))
 	}
 	// VIP-only LB-консолидация: листенер не аллоцирует адрес, поэтому терминальное
@@ -187,6 +202,36 @@ func (u *CreateUseCase) fetchParentLB(ctx context.Context, lbID string) (*parent
 			"NetworkLoadBalancer %s is being deleted", lbID)
 	}
 	return &parentLB{LoadBalancer: rec.LoadBalancer}, nil
+}
+
+// prevalidateTargetGroup — NLB-1b MIGRATE (F4/NLB-1-23): sync precheck that the
+// wired targetGroupId references an EXISTING TargetGroup region-coherent with the
+// parent LB. Missing → actionable FAILED_PRECONDITION (guides the client to create
+// the TG first or use the one-shot LB.Create); region mismatch → region-coherence
+// FAILED_PRECONDITION. The direct FK (0018) is the atomic backstop for races.
+func (u *CreateUseCase) prevalidateTargetGroup(ctx context.Context, tgID, lbRegion string) error {
+	if tgID == "" {
+		return nil
+	}
+	rd, err := u.repo.Reader(ctx)
+	if err != nil {
+		return mapDomainErr(err)
+	}
+	defer func() { _ = rd.Close() }()
+	tg, err := rd.TargetGroups().Get(ctx, tgID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return status.Error(codes.FailedPrecondition,
+				"listener requires an existing targetGroupId; create the TargetGroup first "+
+					"(POST /nlb/v1/targetGroups) or use one-shot NetworkLoadBalancer.Create")
+		}
+		return mapDomainErr(err)
+	}
+	if string(tg.RegionID) != lbRegion {
+		return status.Errorf(codes.FailedPrecondition,
+			"target group region %s does not match listener region %s", tg.RegionID, lbRegion)
+	}
+	return nil
 }
 
 // buildDomainName — обёртка над domain.LbName с верхним sync-маппингом proto

@@ -215,10 +215,25 @@ type CreateNetworkLoadBalancerRequest struct {
 	// v4_source / v6_source — per-family источник VIP. Хотя бы одно семейство
 	// обязательно. subnet_id ⟹ INTERNAL auto; address_id ⟹ link по kind;
 	// public ⟹ EXTERNAL auto.
-	V4Source      *VipSource `protobuf:"bytes,19,opt,name=v4_source,json=v4Source,proto3" json:"v4_source,omitempty"`
-	V6Source      *VipSource `protobuf:"bytes,20,opt,name=v6_source,json=v6Source,proto3" json:"v6_source,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	V4Source *VipSource `protobuf:"bytes,19,opt,name=v4_source,json=v4Source,proto3" json:"v4_source,omitempty"`
+	V6Source *VipSource `protobuf:"bytes,20,opt,name=v6_source,json=v6Source,proto3" json:"v6_source,omitempty"`
+	// placement — NLB-1b EXPAND (additive, optional): merged placement value.
+	// If set it must be consistent with type/placement_type (which stay the
+	// authoritative inputs in EXPAND); inconsistent → InvalidArgument. If unset,
+	// placement is derived from type/placement_type and persisted for read.
+	Placement NetworkLoadBalancer_Placement `protobuf:"varint,21,opt,name=placement,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Placement" json:"placement,omitempty"`
+	// admin_state — NLB-1b EXPAND (additive, optional). Desired administrative
+	// state; UNSPECIFIED is persisted as ENABLED.
+	AdminState NetworkLoadBalancer_AdminState `protobuf:"varint,22,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
+	// cross_zone_enabled — NLB-1b MIGRATE (revival, optional): REGIONAL-only
+	// cross-zone toggle. true on a ZONAL placement → InvalidArgument.
+	CrossZoneEnabled bool `protobuf:"varint,23,opt,name=cross_zone_enabled,json=crossZoneEnabled,proto3" json:"cross_zone_enabled,omitempty"`
+	// security_group_ids — NLB-1b MIGRATE (revival, optional): vpc SecurityGroup refs
+	// firewalling the VIP. Same-project existence peer-validated via vpc (fail-closed
+	// UNAVAILABLE). INTERNAL-only.
+	SecurityGroupIds []string `protobuf:"bytes,24,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateNetworkLoadBalancerRequest) Reset() {
@@ -335,6 +350,34 @@ func (x *CreateNetworkLoadBalancerRequest) GetV6Source() *VipSource {
 	return nil
 }
 
+func (x *CreateNetworkLoadBalancerRequest) GetPlacement() NetworkLoadBalancer_Placement {
+	if x != nil {
+		return x.Placement
+	}
+	return NetworkLoadBalancer_PLACEMENT_UNSPECIFIED
+}
+
+func (x *CreateNetworkLoadBalancerRequest) GetAdminState() NetworkLoadBalancer_AdminState {
+	if x != nil {
+		return x.AdminState
+	}
+	return NetworkLoadBalancer_ADMIN_STATE_UNSPECIFIED
+}
+
+func (x *CreateNetworkLoadBalancerRequest) GetCrossZoneEnabled() bool {
+	if x != nil {
+		return x.CrossZoneEnabled
+	}
+	return false
+}
+
+func (x *CreateNetworkLoadBalancerRequest) GetSecurityGroupIds() []string {
+	if x != nil {
+		return x.SecurityGroupIds
+	}
+	return nil
+}
+
 type CreateNetworkLoadBalancerMetadata struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
@@ -393,8 +436,19 @@ type UpdateNetworkLoadBalancerRequest struct {
 	// disabled_announce_zones — mutable (REGIONAL only): drain / re-enable зон.
 	// Валидируется по тем же правилам, что Create (зоны ∈ регион, не все зоны).
 	DisabledAnnounceZones []string `protobuf:"bytes,17,rep,name=disabled_announce_zones,json=disabledAnnounceZones,proto3" json:"disabled_announce_zones,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// admin_state — NLB-1b EXPAND (additive): LIVE-mutable administrative state.
+	// Applied only when present in update_mask (Update never auto-ENABLE/DISABLE).
+	// placement / type / placement_type stay immutable (rejected by mask path).
+	AdminState NetworkLoadBalancer_AdminState `protobuf:"varint,18,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
+	// cross_zone_enabled — NLB-1b MIGRATE (revival): REGIONAL-only cross-zone toggle,
+	// LIVE-mutable. Applied only when present in update_mask; true on a ZONAL LB →
+	// InvalidArgument.
+	CrossZoneEnabled bool `protobuf:"varint,19,opt,name=cross_zone_enabled,json=crossZoneEnabled,proto3" json:"cross_zone_enabled,omitempty"`
+	// security_group_ids — NLB-1b MIGRATE (revival): LIVE-mutable vpc SecurityGroup
+	// refs (replace-whole). Same-project existence peer-validated via vpc.
+	SecurityGroupIds []string `protobuf:"bytes,20,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UpdateNetworkLoadBalancerRequest) Reset() {
@@ -479,6 +533,27 @@ func (x *UpdateNetworkLoadBalancerRequest) GetSessionAffinity() NetworkLoadBalan
 func (x *UpdateNetworkLoadBalancerRequest) GetDisabledAnnounceZones() []string {
 	if x != nil {
 		return x.DisabledAnnounceZones
+	}
+	return nil
+}
+
+func (x *UpdateNetworkLoadBalancerRequest) GetAdminState() NetworkLoadBalancer_AdminState {
+	if x != nil {
+		return x.AdminState
+	}
+	return NetworkLoadBalancer_ADMIN_STATE_UNSPECIFIED
+}
+
+func (x *UpdateNetworkLoadBalancerRequest) GetCrossZoneEnabled() bool {
+	if x != nil {
+		return x.CrossZoneEnabled
+	}
+	return false
+}
+
+func (x *UpdateNetworkLoadBalancerRequest) GetSecurityGroupIds() []string {
+	if x != nil {
+		return x.SecurityGroupIds
 	}
 	return nil
 }
@@ -1330,7 +1405,7 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	"\x8a\xc81\x06<=1000R\x06filter\"\xb2\x01\n" +
 	" ListNetworkLoadBalancersResponse\x12f\n" +
 	"\x16network_load_balancers\x18\x01 \x03(\v20.kacho.cloud.loadbalancer.v1.NetworkLoadBalancerR\x14networkLoadBalancers\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x92\t\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x88\v\n" +
 	" CreateNetworkLoadBalancerRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x125\n" +
@@ -1344,14 +1419,19 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	"\x0eplacement_type\x18\x11 \x01(\x0e2>.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementTypeR\rplacementType\x12@\n" +
 	"\x17disabled_announce_zones\x18\x12 \x03(\tB\b\x8a\xc81\x04<=50R\x15disabledAnnounceZones\x12C\n" +
 	"\tv4_source\x18\x13 \x01(\v2&.kacho.cloud.loadbalancer.v1.VipSourceR\bv4Source\x12C\n" +
-	"\tv6_source\x18\x14 \x01(\v2&.kacho.cloud.loadbalancer.v1.VipSourceR\bv6Source\x1a9\n" +
+	"\tv6_source\x18\x14 \x01(\v2&.kacho.cloud.loadbalancer.v1.VipSourceR\bv6Source\x12X\n" +
+	"\tplacement\x18\x15 \x01(\x0e2:.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementR\tplacement\x12\\\n" +
+	"\vadmin_state\x18\x16 \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
+	"adminState\x12,\n" +
+	"\x12cross_zone_enabled\x18\x17 \x01(\bR\x10crossZoneEnabled\x126\n" +
+	"\x12security_group_ids\x18\x18 \x03(\tB\b\x8a\xc81\x04<=50R\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\n" +
-	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\x12cross_zone_enabledR\n" +
-	"network_idR\x12security_group_idsR\faddress_specR\vip_families\"\\\n" +
+	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\n" +
+	"network_idR\faddress_specR\vip_families\"\\\n" +
 	"!CreateNetworkLoadBalancerMetadata\x127\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\x96\a\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\xb2\b\n" +
 	" UpdateNetworkLoadBalancerRequest\x12E\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x15networkLoadBalancerId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -1362,12 +1442,16 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	"\x13deletion_protection\x18\b \x01(\bR\x12deletionProtection\x12k\n" +
 	"\x10session_affinity\x18\n" +
 	" \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x12@\n" +
-	"\x17disabled_announce_zones\x18\x11 \x03(\tB\b\x8a\xc81\x04<=50R\x15disabledAnnounceZones\x1a9\n" +
+	"\x17disabled_announce_zones\x18\x11 \x03(\tB\b\x8a\xc81\x04<=50R\x15disabledAnnounceZones\x12\\\n" +
+	"\vadmin_state\x18\x12 \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
+	"adminState\x12,\n" +
+	"\x12cross_zone_enabled\x18\x13 \x01(\bR\x10crossZoneEnabled\x126\n" +
+	"\x12security_group_ids\x18\x14 \x03(\tB\b\x8a\xc81\x04<=50R\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\t\x10\n" +
-	"J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\x12cross_zone_enabledR\n" +
-	"network_idR\x12security_group_idsR\raddress_id_v4R\raddress_id_v6R\vip_families\"\\\n" +
+	"J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\n" +
+	"network_idR\raddress_id_v4R\raddress_id_v6R\vip_families\"\\\n" +
 	"!UpdateNetworkLoadBalancerMetadata\x127\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"i\n" +
 	" DeleteNetworkLoadBalancerRequest\x12E\n" +
@@ -1494,10 +1578,12 @@ var file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_goTypes
 	(NetworkLoadBalancer_SessionAffinity)(0),             // 27: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinity
 	(NetworkLoadBalancer_PlacementType)(0),               // 28: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementType
 	(*VipSource)(nil),                                    // 29: kacho.cloud.loadbalancer.v1.VipSource
-	(*fieldmaskpb.FieldMask)(nil),                        // 30: google.protobuf.FieldMask
-	(*AttachedTargetGroup)(nil),                          // 31: kacho.cloud.loadbalancer.v1.AttachedTargetGroup
-	(*operation.Operation)(nil),                          // 32: kacho.cloud.operation.Operation
-	(*TargetState)(nil),                                  // 33: kacho.cloud.loadbalancer.v1.TargetState
+	(NetworkLoadBalancer_Placement)(0),                   // 30: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Placement
+	(NetworkLoadBalancer_AdminState)(0),                  // 31: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
+	(*fieldmaskpb.FieldMask)(nil),                        // 32: google.protobuf.FieldMask
+	(*AttachedTargetGroup)(nil),                          // 33: kacho.cloud.loadbalancer.v1.AttachedTargetGroup
+	(*operation.Operation)(nil),                          // 34: kacho.cloud.operation.Operation
+	(*TargetState)(nil),                                  // 35: kacho.cloud.loadbalancer.v1.TargetState
 }
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_depIdxs = []int32{
 	25, // 0: kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersResponse.network_load_balancers:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer
@@ -1507,41 +1593,44 @@ var file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_depIdxs
 	28, // 4: kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.placement_type:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementType
 	29, // 5: kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.v4_source:type_name -> kacho.cloud.loadbalancer.v1.VipSource
 	29, // 6: kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.v6_source:type_name -> kacho.cloud.loadbalancer.v1.VipSource
-	30, // 7: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.update_mask:type_name -> google.protobuf.FieldMask
-	24, // 8: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.labels:type_name -> kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.LabelsEntry
-	27, // 9: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.session_affinity:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinity
-	31, // 10: kacho.cloud.loadbalancer.v1.AttachNetworkLoadBalancerTargetGroupRequest.attached_target_group:type_name -> kacho.cloud.loadbalancer.v1.AttachedTargetGroup
-	32, // 11: kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	33, // 12: kacho.cloud.loadbalancer.v1.GetTargetStatesResponse.target_states:type_name -> kacho.cloud.loadbalancer.v1.TargetState
-	0,  // 13: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Get:input_type -> kacho.cloud.loadbalancer.v1.GetNetworkLoadBalancerRequest
-	1,  // 14: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.List:input_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersRequest
-	3,  // 15: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Create:input_type -> kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest
-	5,  // 16: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Update:input_type -> kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest
-	7,  // 17: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Delete:input_type -> kacho.cloud.loadbalancer.v1.DeleteNetworkLoadBalancerRequest
-	9,  // 18: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Start:input_type -> kacho.cloud.loadbalancer.v1.StartNetworkLoadBalancerRequest
-	11, // 19: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Stop:input_type -> kacho.cloud.loadbalancer.v1.StopNetworkLoadBalancerRequest
-	13, // 20: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Move:input_type -> kacho.cloud.loadbalancer.v1.MoveNetworkLoadBalancerRequest
-	15, // 21: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.AttachTargetGroup:input_type -> kacho.cloud.loadbalancer.v1.AttachNetworkLoadBalancerTargetGroupRequest
-	17, // 22: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.DetachTargetGroup:input_type -> kacho.cloud.loadbalancer.v1.DetachNetworkLoadBalancerTargetGroupRequest
-	21, // 23: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.GetTargetStates:input_type -> kacho.cloud.loadbalancer.v1.GetTargetStatesRequest
-	19, // 24: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.ListOperations:input_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsRequest
-	25, // 25: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Get:output_type -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer
-	2,  // 26: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.List:output_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersResponse
-	32, // 27: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Create:output_type -> kacho.cloud.operation.Operation
-	32, // 28: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Update:output_type -> kacho.cloud.operation.Operation
-	32, // 29: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Delete:output_type -> kacho.cloud.operation.Operation
-	32, // 30: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Start:output_type -> kacho.cloud.operation.Operation
-	32, // 31: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Stop:output_type -> kacho.cloud.operation.Operation
-	32, // 32: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Move:output_type -> kacho.cloud.operation.Operation
-	32, // 33: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.AttachTargetGroup:output_type -> kacho.cloud.operation.Operation
-	32, // 34: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.DetachTargetGroup:output_type -> kacho.cloud.operation.Operation
-	22, // 35: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.GetTargetStates:output_type -> kacho.cloud.loadbalancer.v1.GetTargetStatesResponse
-	20, // 36: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.ListOperations:output_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsResponse
-	25, // [25:37] is the sub-list for method output_type
-	13, // [13:25] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	30, // 7: kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.placement:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Placement
+	31, // 8: kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.admin_state:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
+	32, // 9: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.update_mask:type_name -> google.protobuf.FieldMask
+	24, // 10: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.labels:type_name -> kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.LabelsEntry
+	27, // 11: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.session_affinity:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinity
+	31, // 12: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.admin_state:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
+	33, // 13: kacho.cloud.loadbalancer.v1.AttachNetworkLoadBalancerTargetGroupRequest.attached_target_group:type_name -> kacho.cloud.loadbalancer.v1.AttachedTargetGroup
+	34, // 14: kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	35, // 15: kacho.cloud.loadbalancer.v1.GetTargetStatesResponse.target_states:type_name -> kacho.cloud.loadbalancer.v1.TargetState
+	0,  // 16: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Get:input_type -> kacho.cloud.loadbalancer.v1.GetNetworkLoadBalancerRequest
+	1,  // 17: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.List:input_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersRequest
+	3,  // 18: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Create:input_type -> kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest
+	5,  // 19: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Update:input_type -> kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest
+	7,  // 20: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Delete:input_type -> kacho.cloud.loadbalancer.v1.DeleteNetworkLoadBalancerRequest
+	9,  // 21: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Start:input_type -> kacho.cloud.loadbalancer.v1.StartNetworkLoadBalancerRequest
+	11, // 22: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Stop:input_type -> kacho.cloud.loadbalancer.v1.StopNetworkLoadBalancerRequest
+	13, // 23: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Move:input_type -> kacho.cloud.loadbalancer.v1.MoveNetworkLoadBalancerRequest
+	15, // 24: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.AttachTargetGroup:input_type -> kacho.cloud.loadbalancer.v1.AttachNetworkLoadBalancerTargetGroupRequest
+	17, // 25: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.DetachTargetGroup:input_type -> kacho.cloud.loadbalancer.v1.DetachNetworkLoadBalancerTargetGroupRequest
+	21, // 26: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.GetTargetStates:input_type -> kacho.cloud.loadbalancer.v1.GetTargetStatesRequest
+	19, // 27: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.ListOperations:input_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsRequest
+	25, // 28: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Get:output_type -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer
+	2,  // 29: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.List:output_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersResponse
+	34, // 30: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Create:output_type -> kacho.cloud.operation.Operation
+	34, // 31: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Update:output_type -> kacho.cloud.operation.Operation
+	34, // 32: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Delete:output_type -> kacho.cloud.operation.Operation
+	34, // 33: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Start:output_type -> kacho.cloud.operation.Operation
+	34, // 34: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Stop:output_type -> kacho.cloud.operation.Operation
+	34, // 35: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Move:output_type -> kacho.cloud.operation.Operation
+	34, // 36: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.AttachTargetGroup:output_type -> kacho.cloud.operation.Operation
+	34, // 37: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.DetachTargetGroup:output_type -> kacho.cloud.operation.Operation
+	22, // 38: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.GetTargetStates:output_type -> kacho.cloud.loadbalancer.v1.GetTargetStatesResponse
+	20, // 39: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.ListOperations:output_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsResponse
+	28, // [28:40] is the sub-list for method output_type
+	16, // [16:28] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_init() }

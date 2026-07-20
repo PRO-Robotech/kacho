@@ -60,7 +60,10 @@ func mapPgErr(err error, kind, id string) error {
 			case "listeners_lb_port_proto_uniq":
 				return fmt.Errorf("%w: listener with this port and protocol already exists on the load balancer", kacho.ErrAlreadyExists)
 			case "listeners_region_vip_uniq":
-				return fmt.Errorf("%w: listener address/port/protocol already in use in this region", kacho.ErrAlreadyExists)
+				// NLB-1b MIGRATE F5 (NLB-1-30/31): per-region Listener VIP
+				// (region_id, allocated_address, port, protocol) collision. Contract
+				// tone «address already in use» (api-conventions error-format; stable).
+				return fmt.Errorf("%w: address already in use", kacho.ErrAlreadyExists)
 			case "targets_instance_id_uniq", "targets_nic_id_uniq",
 				"targets_ip_ref_uniq", "targets_external_ip_uniq":
 				return fmt.Errorf("%w: target with this identity already exists in the target group", kacho.ErrAlreadyExists)
@@ -69,11 +72,20 @@ func mapPgErr(err error, kind, id string) error {
 			// and any other unmapped unique index → generic name message.
 			return fmt.Errorf("%w: %s with name already exists", kacho.ErrAlreadyExists, kind)
 		case "23503":
-			// Композитный FK listeners_default_tg_attached_fk: default_target_group_id
-			// должен ссылаться на TG, приаттаченный к тому же LB. Имя констрейнта
-			// маппится в стабильный contract-текст (set-default на неприаттаченный TG
-			// либо detach default-TG под RESTRICT). См. 0004_listener_default_tg_attached_fk.sql.
-			if pgErr.ConstraintName == "listeners_default_tg_attached_fk" {
+			switch pgErr.ConstraintName {
+			case "listeners_target_group_fk":
+				// NLB-1b MIGRATE direct FK listeners.default_target_group_id →
+				// target_groups(id) ON DELETE RESTRICT (0018). Fires in two
+				// directions, disambiguated by the operating table (kind):
+				//   * TargetGroup delete while referenced by a listener → RESTRICT.
+				//   * listener wiring a non-existent TargetGroup → missing referent.
+				// Both → stable contract tone (no pgx leak). See grind-note #3.
+				if kind == "TargetGroup" {
+					return fmt.Errorf("%w: target group is referenced by one or more listeners", kacho.ErrFailedPrecondition)
+				}
+				return fmt.Errorf("%w: listener requires an existing target group", kacho.ErrFailedPrecondition)
+			case "listeners_default_tg_attached_fk":
+				// Legacy pivot-composite FK (pre-MIGRATE; retained for Down-compat).
 				return fmt.Errorf("%w: default target group is not attached to this load balancer", kacho.ErrFailedPrecondition)
 			}
 			return fmt.Errorf("%w: %s has dependent resources", kacho.ErrFailedPrecondition, kind)

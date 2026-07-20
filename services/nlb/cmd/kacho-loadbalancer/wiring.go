@@ -128,7 +128,7 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 		w.peers.Subnet, w.peers.Address, w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(syncRegistrar)
+	).WithRegistrar(syncRegistrar).WithSecurityGroupClient(w.peers.SecurityGroup)
 	lbv1.RegisterNetworkLoadBalancerServiceServer(publicSrv, lbHandler)
 
 	// ListenerService (public only). InternalAddress нужен только для release

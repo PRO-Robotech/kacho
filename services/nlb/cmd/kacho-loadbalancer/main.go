@@ -79,6 +79,8 @@ type peerClients struct {
 	NetworkInterface vpcclient.NetworkInterfaceClient
 	Address          vpcclient.AddressClient
 	InternalAddress  vpcclient.InternalAddressClient
+	// SecurityGroup — NLB-1b MIGRATE peer-validate of LB security_group_ids.
+	SecurityGroup vpcclient.SecurityGroupClient
 	// ListFilter — per-object filtered List (RBAC; iam
 	// AuthorizeService.ListObjects). nil → use-case'ы делают unfiltered passthrough.
 	ListFilter authzfilter.Filter
@@ -674,6 +676,7 @@ func dialPeers(
 		peers.Subnet = vpcclient.NewSubnetClientWithZoneRegion(vpcPublicConn, zoneRegion)
 		peers.NetworkInterface = vpcclient.NewNetworkInterfaceClient(vpcPublicConn)
 		peers.Address = vpcclient.NewAddressClient(vpcPublicConn)
+		peers.SecurityGroup = vpcclient.NewSecurityGroupClient(vpcPublicConn)
 	}
 	if vpcPublicConn != nil && vpcInternalConn != nil {
 		peers.InternalAddress = vpcclient.NewInternalAddressClient(vpcPublicConn, vpcInternalConn)

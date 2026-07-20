@@ -27,6 +27,7 @@ func seedLB(t *testing.T, repo *fakeRepo, projectID, name string) string {
 			RegionID: "ru-central1", Name: domain.LbName(name),
 			Type: domain.LBTypeExternal, Status: domain.LBStatusInactive,
 			SessionAffinity: domain.SessionAffinity5Tuple,
+			AdminState:      domain.AdminStateEnabled, // NLB-1b EXPAND: seed mirrors builder default
 		},
 	}
 	return id
