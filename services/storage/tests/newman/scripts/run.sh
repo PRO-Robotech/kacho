@@ -60,7 +60,7 @@ mkdir -p out
 if [[ -n "$SERVICE" ]]; then
   run_one "$SERVICE"
 else
-  for res in volume snapshot disk-type operation internal-volume authz; do
+  for res in volume image snapshot disk-type operation internal-volume authz; do
     run_one "$res"
   done
 fi

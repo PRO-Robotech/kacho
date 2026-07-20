@@ -9,6 +9,10 @@ Sub-phase acceptance: `docs/specs/sub-phase-CS-1-storage-network-disk-acceptance
 (эпик kacho-workspace#132). Каждый кейс несёт `# verifies CS1-Sx-yy`-аннотацию.
 Error-тексты §0.2 assert'ятся **behaviour-level** (код И точное сообщение).
 
+**Redesign STOR-1** (`docs/specs/sub-phase-STOR-1-volume-image-acceptance.md`) —
+NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materialize
+(`source_image_id`). Кейсы `IMG-*` несут `# verifies STOR-1-NN` (F9..F14).
+
 ## Уникальные паттерны / helper'ы (в scripts/gen.py)
 
 | Хелпер | Что делает | Применён к |
@@ -74,6 +78,50 @@ Error-тексты §0.2 assert'ятся **behaviour-level** (код И точн
 | SNP-UPD-CRUD-NAME-LABELS-OK | CS1-S3-05 | happy |
 | SNP-DEL-CRUD-OK | CS1-S3-06 | happy |
 | SNP-DEL-NEG-NOTFOUND | CS1-S3-06 | negative (op-error) |
+
+## Image (`cases/image.py`) — redesign STOR-1 (NET-NEW ресурс `img-`)
+
+| case-id | STOR-1 | класс |
+|---|---|---|
+| IMG-CR-CRUD-OK | STOR-1-20/24 | happy (source=volume) |
+| IMG-CR-CRUD-FROM-SNAPSHOT-OK | STOR-1-24 | happy (source=snapshot) |
+| IMG-CR-VAL-SOURCE-BOTH | STOR-1-24 | negative (sync; decision-table) |
+| IMG-CR-VAL-SOURCE-NONE | STOR-1-24 | negative (sync; blank DEFER) |
+| IMG-CR-NEG-SNAPSHOT-NOTFOUND | STOR-1-24 | negative (op-error FK) |
+| IMG-CR-NEG-VOLUME-NOTFOUND | STOR-1-24 | negative (op-error FK) |
+| IMG-CR-NEG-DUP-NAME | STOR-1-21 | negative (op-error UNIQUE) |
+| IMG-GET-NEG-MALFORMED-ID | STOR-1-21 | negative (sync) |
+| IMG-GET-NEG-NOTFOUND | STOR-1-21 | negative |
+| IMG-CR-VAL-PROJECT-REQUIRED | STOR-1-20 | negative (sync) |
+| IMG-CR-VAL-REGION-REQUIRED | STOR-1-20 | negative (sync) |
+| IMG-CR-NEG-REGION-UNKNOWN | STOR-1-20 | negative (peer geo sync) |
+| IMG-CR-NEG-PROJECT-NOTFOUND | STOR-1-29 | negative (peer iam; authz-first tolerant) |
+| IMG-CR-VAL-NAME-UPPERCASE | STOR-1-30 | negative (sync) |
+| IMG-CR-VAL-NAME-UNICODE | STOR-1-30 | negative (sync) |
+| IMG-CR-BVA-NAME-OVER-64 | STOR-1-30 | negative (BVA) |
+| IMG-CR-BVA-DESC-OVER-257 | STOR-1-30 | negative (BVA) |
+| IMG-CR-BVA-LABELS-OVER-65 | STOR-1-30 | negative (BVA) |
+| IMG-UPD-CRUD-NAME-DESC-LABELS-OK | STOR-1-22 | happy |
+| IMG-UPD-MASK-IMMUTABLE-REGION | STOR-1-22 | negative (sync) |
+| IMG-UPD-MASK-IMMUTABLE-SOURCE-SNAPSHOT | STOR-1-22 | negative (sync) |
+| IMG-UPD-MASK-IMMUTABLE-FORMAT | STOR-1-22 | negative (sync) |
+| IMG-UPD-MASK-UNKNOWN-FIELD | STOR-1-22 | negative (sync) |
+| IMG-LST-CRUD-OK | STOR-1-31 | happy |
+| IMG-LST-VAL-PROJECT-REQUIRED | STOR-1-31 | negative |
+| IMG-LST-BVA-PAGESIZE-OVER-MAX | STOR-1-32 | negative (BVA; validate-before-authz) |
+| IMG-LST-PAGE-TOKEN-GARBAGE | STOR-1-32 | negative (validate-before-authz) |
+| IMG-LST-FILTER-NAME-MATCH | STOR-1-33 | happy (filter) |
+| IMG-LST-FILTER-NAME-NONE | STOR-1-33 | edge (empty) |
+| IMG-LST-PAGE-CURSOR | STOR-1-33 | edge (cursor) |
+| IMG-GET-CONF-LEAN-PROJECTION | STOR-1-25 | conformance (two-projection INV-1) |
+| IMG-DEL-CRUD-OK | STOR-1-20 | happy |
+| IMG-DEL-NEG-NOTFOUND | STOR-1-21 | negative (op-error) |
+| IMG-VOL-CR-SOURCE-IMAGE-OK | STOR-1-18 | happy (boot-Volume materialize) |
+| IMG-VOL-CR-SOURCE-XOR | STOR-1-19 | negative (sync mutual-exclusion) |
+| IMG-VOL-CR-SOURCE-IMAGE-NOTFOUND | STOR-1-19 | negative (op-error FK) |
+| IMG-DEL-SETNULL-VOLUME-INTACT | STOR-1-28 | edge (FK SET NULL, том цел) |
+| IMG-LOP-CRUD-OK | STOR-1-20 | happy |
+| IMG-LOP-NEG-MALFORMED-ID | STOR-1-21 | negative (sync) |
 
 ## DiskType (`cases/disk-type.py`) — stage S2
 
