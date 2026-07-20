@@ -103,8 +103,9 @@ func TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject(t *testing.T) {
 		require.NoError(t, err)
 		_, err = w.Listeners().Insert(ctx, l)
 		require.NoError(t, err)
-		// default_target_group_id обязан ссылаться на приаттаченный TG
-		// (композитный FK listeners_default_tg_attached_fk).
+		// NLB-1b MIGRATE: default_target_group_id references target_groups(id)
+		// directly (0018 direct FK); the pivot Attach is no longer required for
+		// wiring but remains exercised here for pivot-repo coverage.
 		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 100)
 		require.NoError(t, err)
 	})

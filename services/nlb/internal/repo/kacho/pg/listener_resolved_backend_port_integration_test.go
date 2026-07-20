@@ -41,10 +41,10 @@ func TestListener_NLB_1_19_ResolvedBackendPort(t *testing.T) {
 		assert.Nil(t, rec.ResolvedBackendPort, "no wired TG → resolved_backend_port nil on INSERT RETURNING")
 	})
 
-	// Attach the TG (composite FK on default_target_group_id requires attachment),
-	// then INSERT a listener wired at creation → INSERT ... RETURNING computes the
+	// NLB-1b MIGRATE: the direct FK (listeners.default_target_group_id →
+	// target_groups(id), migration 0018) requires only that the TG exist — no pivot
+	// attach. INSERT a listener wired at creation → INSERT ... RETURNING computes the
 	// subquery over the freshly inserted row's default_target_group_id.
-	attach(t, repo, string(lb.ID), string(tg.ID))
 	wired := newListener(lb.ID, projectID, "wired", 8443)
 	wired.DefaultTargetGroupID = option.MustNewOption(tg.ID)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
