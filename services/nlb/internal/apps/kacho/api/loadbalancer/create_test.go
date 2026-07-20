@@ -335,14 +335,6 @@ func TestCreate_SyncNegatives(t *testing.T) {
 			},
 			msg: "Illegal argument addressId",
 		},
-		{ // 8.1-19 no source
-			name: "no source",
-			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
-			},
-			msg: "load balancer must declare a vip source for at least one ip family",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -356,6 +348,36 @@ func TestCreate_SyncNegatives(t *testing.T) {
 			require.Empty(t, repo.lbs) // Operation не создаётся, LB не появляется
 		})
 	}
+}
+
+// NLB-1b MIGRATE (F5, optional-first): LB VipSource is OPTIONAL. When omitted the
+// LB is created with NO VIP allocated (the VIP anchor moves to the Listener) — the
+// worker performs no vpc alloc/link and no family fan-out. VipSource remains present
+// and functional when supplied (this is NOT the CONTRACT removal of the field).
+func TestCreate_NLB_1b_NoVipSource_Optional(t *testing.T) {
+	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
+	addr := &fakeAddressClient{}
+	uc := newCreateUC(repo, opsRepo, createDeps{addr: addr})
+	req := baseCreateReq()
+	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
+	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	// No V4Source / V6Source.
+
+	op, err := uc.Execute(context.Background(), req)
+	require.NoError(t, err)
+	require.Nil(t, awaitOpDone(t, opsRepo, op.ID).Error)
+
+	rec := lbByName(t, repo, "lb-1")
+	require.Equal(t, domain.PlacementZonal, rec.PlacementType)
+	require.Equal(t, domain.LBStatusInactive, rec.Status)
+	// No VIP: empty per-family address/id and no ip_families declared.
+	require.Empty(t, string(rec.AddressIDV4))
+	require.Empty(t, string(rec.AddressIDV6))
+	require.Empty(t, rec.IPFamilies)
+	// Worker never touched the vpc address client (no alloc/link fan-out).
+	require.Empty(t, addr.allocReqs)
+	require.Empty(t, addr.extReqs)
+	require.Empty(t, addr.byoReqs)
 }
 
 // 8.1-18: dualstack INTERNAL, subnets of different networks → reject.

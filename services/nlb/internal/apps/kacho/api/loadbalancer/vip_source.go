@@ -118,8 +118,11 @@ func resolvePlacement(lbType domain.LBType, pb lbv1.NetworkLoadBalancer_Placemen
 	return domain.PlacementUnspecified, nil
 }
 
-// resolveVipSources — VipSource v4/v6 → упорядоченный набор familyVIPSpec. ≥1
-// семейство обязательно; malformed subnet_id/address_id ловится синхронно.
+// resolveVipSources — VipSource v4/v6 → упорядоченный набор familyVIPSpec.
+// NLB-1b MIGRATE (F5, optional-first): VipSource — ОПЦИОНАЛЕН. Отсутствие обоих
+// семейств → пустой набор (VIP-анкер переезжает на Listener, LB создаётся без
+// VIP — worker fan-out пуст). Когда источник задан — поведение прежнее (present,
+// optional; НЕ CONTRACT-удаление). malformed subnet_id/address_id ловится синхронно.
 func resolveVipSources(v4, v6 *lbv1.VipSource) ([]familyVIPSpec, error) {
 	var out []familyVIPSpec
 	add := func(family domain.IPVersion, src *lbv1.VipSource) error {
@@ -155,10 +158,9 @@ func resolveVipSources(v4, v6 *lbv1.VipSource) ([]familyVIPSpec, error) {
 	if err := add(domain.IPVersionV6, v6); err != nil {
 		return nil, err
 	}
-	if len(out) == 0 {
-		return nil, status.Error(codes.InvalidArgument,
-			"load balancer must declare a vip source for at least one ip family")
-	}
+	// NLB-1b MIGRATE (F5, optional-first): empty is valid — no LB-VIP, anchor on
+	// the Listener. Prior contract required ≥1 family; that mandatory requirement
+	// is lifted (the field itself is NOT removed — CONTRACT pass).
 	return out, nil
 }
 
