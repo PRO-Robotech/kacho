@@ -42,13 +42,17 @@ func NewHandler(
 	repo RepoFactory,
 	opsRepo OperationsRepo,
 	internalAddrs InternalAddressClient,
+	subnetClient SubnetClient,
 	listFilter authzfilter.Filter,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
+		// NLB-1b F5: Create wires the VIP alloc-saga clients (internalAddrs +
+		// subnetClient) — VIP-анкер вернулся на Listener (acquire/link + placement/
+		// zone-coherence peer-validate). Delete reuses internalAddrs for release.
 		get:            NewGetUseCase(repo),
 		list:           NewListUseCase(repo, listFilter),
-		create:         NewCreateUseCase(repo, opsRepo, logger),
+		create:         NewCreateUseCase(repo, opsRepo, logger).WithVIP(internalAddrs, subnetClient),
 		update:         NewUpdateUseCase(repo, opsRepo, logger),
 		deleteUC:       NewDeleteUseCase(repo, opsRepo, internalAddrs, logger),
 		listOperations: NewListOperationsUseCase(opsRepo),

@@ -49,7 +49,14 @@ type CreateUseCase struct {
 	// вызывается BEST-EFFORT после durable commit листенера. nil → только async
 	// register-drainer. См. WithRegistrar.
 	registrar Registrar
-	logger    *slog.Logger
+	// internalAddrs — NLB-1b F5 VIP acquire/release (AllocateInternalIP[v6] для auto
+	// subnet_id; AttachExisting для BYO address_id; FreeIP/ClearReference на откате).
+	// nil → VIP-анкер не поддерживается (Create с address_id/subnet_id → Unavailable).
+	internalAddrs InternalAddressClient
+	// subnetClient — NLB-1b F5 placement/zone-coherence peer-validate (NLB-1-32/33).
+	// nil → coherence-precheck пропускается (минимальный existence через acquire).
+	subnetClient SubnetClient
+	logger       *slog.Logger
 }
 
 // NewCreateUseCase — конструктор. Зависимости — port-интерфейсы (composition
@@ -64,6 +71,16 @@ func NewCreateUseCase(
 		opsRepo: opsRepo,
 		logger:  logger,
 	}
+}
+
+// WithVIP подключает vpc-клиенты для VIP-анкера листенера (NLB-1b F5): аллокация/
+// линк VIP на Create и placement/zone-coherence peer-validate. Без них Create с
+// address_id/subnet_id fail-closed'ит (`Unavailable`); Create без анкера (legacy
+// VIP-on-LB fallback) работает и без клиентов. Возвращает self для chaining.
+func (u *CreateUseCase) WithVIP(internalAddrs InternalAddressClient, subnetClient SubnetClient) *CreateUseCase {
+	u.internalAddrs = internalAddrs
+	u.subnetClient = subnetClient
+	return u
 }
 
 // WithRegistrar подключает sync-primary owner-tuple registrar. После durable
@@ -109,6 +126,15 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 		return nil, err
 	}
 
+	// NLB-1b F5 (MIGRATE): VIP-анкер листенера — address_id (BYO) ⊕ subnet_id (auto),
+	// взаимоисключающие immutable-инпуты. Отсутствие обоих → без собственного VIP
+	// (optional-first: fallback на VIP LB). foreign vpc id → existence/placement
+	// peer-validate, НЕ nlb-prefix-check (B4).
+	vipAnchor, err := u.resolveVIPAnchor(ctx, req, lb.LoadBalancer)
+	if err != nil {
+		return nil, err
+	}
+
 	name, err := buildDomainName(req.GetName())
 	if err != nil {
 		return nil, err
@@ -139,8 +165,14 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	if tgID != "" {
 		listener.DefaultTargetGroupID = option.MustNewOption(domain.ResourceID(tgID))
 	}
-	// VIP-only LB-консолидация: листенер не аллоцирует адрес, поэтому терминальное
-	// состояние Create — сразу ACTIVE (durable-handle/CREATING-фаза не нужна).
+	// NLB-1b F5: persist the VIP-anchor discriminator (vip_origin + subnet_id).
+	// address_id/allocated_address are filled by the worker after the VIP is
+	// resolved (acquire → INSERT-with-VIP). Терминальное состояние — ACTIVE (VIP,
+	// если есть, аллоцируется ДО durable INSERT, поэтому CREATING-фаза не нужна).
+	listener.VipOrigin = vipAnchor.origin
+	if vipAnchor.subnetID != "" {
+		listener.SubnetID = option.MustNewOption(domain.SubnetID(vipAnchor.subnetID))
+	}
 	listener.Status = domain.ListenerStatusActive
 
 	if err := listener.Validate(); err != nil {
@@ -168,7 +200,8 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 		lb:       lb,
 		// Acting subject FGA-id inline (parity с loadbalancer/targetgroup):
 		// `<type>:<id>` либо "" для anonymous/system (creator-tuple пропускается).
-		fgaOwner: domain.FGASubjectFromPrincipal(principal.Type, principal.ID),
+		fgaOwner:  domain.FGASubjectFromPrincipal(principal.Type, principal.ID),
+		vipAnchor: vipAnchor,
 	}
 	// Durable commit → op done сразу. Owner-tuple Listener материализуется
 	// eventually-consistent (writer-TX fga_register_outbox intent → register-
@@ -259,16 +292,45 @@ func listenerIPVersion(lb domain.LoadBalancer) domain.IPVersion {
 
 // createInput — snapshot входов для async worker.
 type createInput struct {
-	listener domain.Listener
-	lb       *parentLB
-	fgaOwner string
+	listener  domain.Listener
+	lb        *parentLB
+	fgaOwner  string
+	vipAnchor vipAnchor
 }
 
-// doCreate — worker: одна writer-TX (внешнего side-effect нет). INSERT листенера
-// (status='ACTIVE') + outbox CREATED + LB UPDATED + FGA-register-intent (creator +
-// parent-link). Триггер lb_status_recompute сам переводит LB INACTIVE→ACTIVE при
-// has_listener AND has_attached. Возвращает anypb.Any(Listener) при успехе.
+// doCreate — worker. Без VIP-анкера: одна writer-TX (INSERT ACTIVE + outbox +
+// FGA-intent). С VIP-анкером (NLB-1b F5): acquire VIP externally (SetReference
+// owner=nlb_listener:<id>) ДО durable INSERT, затем та же INSERT-TX с уже
+// заполненными address_id/allocated_address (partial-UNIQUE `(region,ip,port,proto)`
+// — атомарный backstop → 23505 → ALREADY_EXISTS). На любом pre-commit сбое —
+// best-effort worker-компенсация releaseVIP (auto→FreeIP, byo→ClearReference),
+// зеркалит recycle-on-delete. Триггер lb_status_recompute сам переводит LB
+// INACTIVE→ACTIVE при has_listener AND has_attached.
 func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.Any, error) {
+	if !in.vipAnchor.present() {
+		return u.doInsert(ctx, in)
+	}
+	// NLB-1b F5: acquire the VIP anchor externally BEFORE the durable INSERT.
+	alloc, err := u.acquireVIP(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	in.listener.AddressID = option.MustNewOption(domain.AddressID(alloc.addressID))
+	in.listener.AllocatedAddress = domain.IPAddress(alloc.address)
+	any, err := u.doInsert(ctx, in)
+	if err != nil {
+		// Best-effort worker compensation: release the acquired VIP so a failed
+		// Create (dup port, VIP conflict, commit failure) does not leak the lease.
+		u.compensateVIP(ctx, alloc.addressID, in.vipAnchor.origin == domain.VipOriginBYO)
+		return nil, err
+	}
+	return any, nil
+}
+
+// doInsert — durable INSERT-TX: INSERT листенера (status='ACTIVE') + outbox CREATED
+// + LB UPDATED + FGA-register-intent (creator + parent-link) атомарно. Возвращает
+// anypb.Any(Listener) при успехе; ошибка означает pre-commit failure (компенсируемо).
+func (u *CreateUseCase) doInsert(ctx context.Context, in createInput) (*anypb.Any, error) {
 	w, err := u.repo.Writer(ctx)
 	if err != nil {
 		return nil, mapDomainErr(err)

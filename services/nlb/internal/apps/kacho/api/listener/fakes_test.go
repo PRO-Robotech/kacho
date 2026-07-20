@@ -859,6 +859,37 @@ func (c *fakeInternalAddressClient) AttachExisting(_ context.Context, req vpccli
 	return &vpcclient.AllocateResponse{AddressID: req.AddressID, Value: c.nextAllocValue}, nil
 }
 
+// fakeSubnetClient — in-memory `vpcclient.SubnetClient` for VIP placement/zone
+// coherence peer-validate (NLB-1-32/33). Returns a configurable Subnet; getErr
+// overrides. getFunc, when set, wins (per-id control).
+type fakeSubnetClient struct {
+	mu        sync.Mutex
+	placement string // "ZONAL" | "REGIONAL"
+	zoneID    string
+	regionID  string
+	getErr    error
+	getFunc   func(ctx context.Context, id string) (*vpcclient.Subnet, error)
+	getCalls  []string
+}
+
+func (c *fakeSubnetClient) Get(ctx context.Context, id string) (*vpcclient.Subnet, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getCalls = append(c.getCalls, id)
+	if c.getFunc != nil {
+		return c.getFunc(ctx, id)
+	}
+	if c.getErr != nil {
+		return nil, c.getErr
+	}
+	return &vpcclient.Subnet{
+		ID:            id,
+		PlacementType: c.placement,
+		ZoneID:        c.zoneID,
+		RegionID:      c.regionID,
+	}, nil
+}
+
 // fakeFGARegisterOutbox records FGARegisterOutbox.Emit into the writer's
 // pending buffer (flushed to fakeRepo.fga on Commit, dropped on Abort).
 type fakeFGARegisterOutbox struct{ w *fakeWriter }

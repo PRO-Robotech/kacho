@@ -131,12 +131,14 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	).WithRegistrar(syncRegistrar).WithSecurityGroupClient(w.peers.SecurityGroup)
 	lbv1.RegisterNetworkLoadBalancerServiceServer(publicSrv, lbHandler)
 
-	// ListenerService (public only). InternalAddress нужен только для release
-	// legacy-VIP в Delete (nil → Unavailable).
+	// ListenerService (public only). NLB-1b F5: InternalAddress + Subnet wire the
+	// VIP alloc-saga (acquire/link VIP on Create + placement/zone-coherence
+	// peer-validate) и release-ветку Delete (nil → Unavailable для VIP-путей).
 	listenerHandler := listener.NewHandler(
 		w.repo,
 		w.opsRepo,
 		w.peers.InternalAddress,
+		w.peers.Subnet,
 		w.peers.ListFilter,
 		w.logger,
 	).WithRegistrar(syncRegistrar)

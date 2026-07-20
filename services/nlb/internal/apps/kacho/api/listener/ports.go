@@ -25,10 +25,26 @@ type RepoFactory = kachorepo.Repository
 type OperationsRepo = operations.Repo
 
 // InternalAddressClient — write-side vpc.InternalAddressService consumer.
-// VIP консолидирован на LoadBalancer, поэтому листенер сам адрес не аллоцирует;
-// клиент остаётся только для release legacy-VIP в Delete (FreeIP / ClearReference)
-// — pre-cut листенеры до hard-cut могли нести собственный address_id.
+// NLB-1b F5 (MIGRATE): VIP-анкер вернулся на Listener → клиент снова аллоцирует/
+// линкует VIP на Create (AllocateInternalIP[v6] для auto subnet_id, AttachExisting
+// для BYO address_id) и освобождает на Delete (FreeIP / ClearReference).
 type InternalAddressClient = vpcclient.InternalAddressClient
+
+// SubnetClient — read-side vpc.SubnetService consumer для VIP placement/zone-
+// coherence peer-validate (NLB-1-32/33): subnet.placement_type обязан совпасть с
+// placement родительского LB, зона ZONAL-VIP — с зоной LB. subnet_id — foreign vpc
+// id (общий prefix) → existence-only peer-validate, НЕ nlb-prefix-check (B4).
+type SubnetClient = vpcclient.SubnetClient
+
+// listenerAddressOwnerKind — Reference.type (vpc used_by) для VIP листенера.
+// Совпадает с owner-строкой acceptance F5 (`nlb_listener:<id>`): SetReference/
+// AttachExisting записывают used_by=nlb_listener:<listener_id> на vpc.Address.
+const listenerAddressOwnerKind = "nlb_listener"
+
+// listenerAddressOwner — AddressOwner для VIP-референса листенера в vpc.Address.
+func listenerAddressOwner(listenerID, name string) vpcclient.AddressOwner {
+	return vpcclient.AddressOwner{Kind: listenerAddressOwnerKind, ID: listenerID, Name: name}
+}
 
 // Registrar — sync-primary owner-tuple registrar (kacho-iam
 // InternalIAMService.RegisterResource). Create после durable commit листенера +
