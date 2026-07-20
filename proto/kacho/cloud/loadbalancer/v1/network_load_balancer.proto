@@ -76,6 +76,29 @@ message NetworkLoadBalancer {
     CLIENT_IP_ONLY = 2;
   }
 
+  // AdminState — NLB-1b EXPAND (additive): desired administrative state, the
+  // redesign replacement for the :start/:stop power-verbs. LIVE-mutable. In
+  // EXPAND it is stored + echoed but does not yet gate status recompute (that
+  // arrives with the 0013 status-trigger rewrite in NLB-1c). Legacy Start/Stop
+  // RPCs are NOT removed in EXPAND.
+  enum AdminState {
+    ADMIN_STATE_UNSPECIFIED = 0;
+    ADMIN_STATE_ENABLED = 1;
+    ADMIN_STATE_DISABLED = 2;
+  }
+
+  // Placement — NLB-1b EXPAND (additive): merged placement discriminator that
+  // fuses type + placement_type into one value. "external+zonal" is
+  // inexpressible by construction. In EXPAND it is derived-consistent with the
+  // legacy type/placement_type (which remain the authoritative inputs); the
+  // authority switch + write-reject of type/placement_type land in NLB-1c.
+  enum Placement {
+    PLACEMENT_UNSPECIFIED = 0;
+    EXTERNAL_REGIONAL = 1;
+    INTERNAL_REGIONAL = 2;
+    INTERNAL_ZONAL = 3;
+  }
+
   string id = 1;
 
   // ID of the project the NLB belongs to.
@@ -113,6 +136,14 @@ message NetworkLoadBalancer {
   // которых anycast-VIP НЕ анонсируется (drain). Пусто = анонс из всех здоровых зон.
   // Реальный withdraw — data plane; здесь только intent.
   repeated string disabled_announce_zones = 28;
+
+  // placement — NLB-1b EXPAND (additive, output + Create input). Merged
+  // placement discriminator; derived-consistent with type/placement_type.
+  Placement placement = 40;
+
+  // admin_state — NLB-1b EXPAND (additive, output + Create/Update input).
+  // LIVE-mutable desired administrative state (ENABLED|DISABLED).
+  AdminState admin_state = 41;
 }
 
 // PublicVip — parameterless marker платформенного public-источника VIP

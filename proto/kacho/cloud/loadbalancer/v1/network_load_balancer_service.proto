@@ -265,6 +265,16 @@ message CreateNetworkLoadBalancerRequest {
   // public ⟹ EXTERNAL auto.
   VipSource v4_source = 19;
   VipSource v6_source = 20;
+
+  // placement — NLB-1b EXPAND (additive, optional): merged placement value.
+  // If set it must be consistent with type/placement_type (which stay the
+  // authoritative inputs in EXPAND); inconsistent → InvalidArgument. If unset,
+  // placement is derived from type/placement_type and persisted for read.
+  NetworkLoadBalancer.Placement placement = 21;
+
+  // admin_state — NLB-1b EXPAND (additive, optional). Desired administrative
+  // state; UNSPECIFIED is persisted as ENABLED.
+  NetworkLoadBalancer.AdminState admin_state = 22;
 }
 
 message CreateNetworkLoadBalancerMetadata {
@@ -304,6 +314,11 @@ message UpdateNetworkLoadBalancerRequest {
   // disabled_announce_zones — mutable (REGIONAL only): drain / re-enable зон.
   // Валидируется по тем же правилам, что Create (зоны ∈ регион, не все зоны).
   repeated string disabled_announce_zones = 17 [(length) = "<=50"];
+
+  // admin_state — NLB-1b EXPAND (additive): LIVE-mutable administrative state.
+  // Applied only when present in update_mask (Update never auto-ENABLE/DISABLE).
+  // placement / type / placement_type stay immutable (rejected by mask path).
+  NetworkLoadBalancer.AdminState admin_state = 18;
 }
 
 message UpdateNetworkLoadBalancerMetadata {

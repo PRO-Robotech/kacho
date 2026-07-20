@@ -39,3 +39,31 @@ func lbSessionAffinityFromPb(a lbv1.NetworkLoadBalancer_SessionAffinity) (domain
 	}
 	return sa, nil
 }
+
+// placementModeFromPb — proto enum → domain.Placement (merged). UNSPECIFIED → ""
+// (unset); the Create use-case derives the canonical value from type/placement_type
+// and, when a non-empty input is supplied, validates it for consistency.
+func placementModeFromPb(p lbv1.NetworkLoadBalancer_Placement) domain.Placement {
+	switch p {
+	case lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL:
+		return domain.PlacementExternalRegional
+	case lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL:
+		return domain.PlacementInternalRegional
+	case lbv1.NetworkLoadBalancer_INTERNAL_ZONAL:
+		return domain.PlacementInternalZonal
+	}
+	return ""
+}
+
+// adminStateFromPb — proto enum → domain.AdminState. UNSPECIFIED → "" (unset);
+// caller keeps the builder default (ENABLED) on Create / current value on Update
+// (NLB-1b EXPAND — Update never auto-ENABLE/DISABLE without an explicit value).
+func adminStateFromPb(a lbv1.NetworkLoadBalancer_AdminState) domain.AdminState {
+	switch a {
+	case lbv1.NetworkLoadBalancer_ADMIN_STATE_DISABLED:
+		return domain.AdminStateDisabled
+	case lbv1.NetworkLoadBalancer_ADMIN_STATE_ENABLED:
+		return domain.AdminStateEnabled
+	}
+	return ""
+}

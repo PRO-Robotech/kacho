@@ -49,6 +49,14 @@ type LoadBalancer struct {
 	Status             LBStatus
 	SessionAffinity    SessionAffinity
 	DeletionProtection bool
+	// AdminState — NLB-1b EXPAND (additive): desired administrative state
+	// (ENABLED|DISABLED), LIVE-mutable. Persisted + echoed; does NOT yet gate
+	// status recompute (MIGRATE). Empty → normalised to ENABLED at persist.
+	AdminState AdminState
+	// Placement — NLB-1b EXPAND (additive): merged placement discriminator,
+	// derived-consistent with Type/PlacementType. Persisted + echoed; not yet
+	// authoritative (legacy type/placement_type still drive behaviour — MIGRATE).
+	Placement Placement
 }
 
 // Validate проверяет семантически-нагруженные поля LoadBalancer. multierr.Combine
@@ -64,6 +72,8 @@ func (lb LoadBalancer) Validate() error {
 		lb.Status.Validate(),
 		lb.SessionAffinity.Validate(),
 		lb.PlacementType.Validate(),
+		lb.AdminState.Validate(),
+		lb.Placement.Validate(),
 	)
 }
 
@@ -88,7 +98,9 @@ func (lb LoadBalancer) Equal(other LoadBalancer) bool {
 		lb.Type == other.Type &&
 		lb.Status == other.Status &&
 		lb.SessionAffinity == other.SessionAffinity &&
-		lb.DeletionProtection == other.DeletionProtection
+		lb.DeletionProtection == other.DeletionProtection &&
+		lb.AdminState == other.AdminState &&
+		lb.Placement == other.Placement
 }
 
 // ipVersionsEqual — order-insensitive equality двух наборов IPVersion (семейства
