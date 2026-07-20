@@ -23,6 +23,8 @@ import (
 // RemoveCidrBlocksUseCase — атомарное удаление CIDR-блоков из подсети.
 //
 // Правила:
+//   - удаление primary-anchor (blocks[0] = ipv4CidrPrimary/ipv6CidrPrimary,
+//     immutable после Create) → InvalidArgument (нельзя сменить placement-якорь).
 //   - CIDR не присутствует в подсети → FailedPrecondition.
 //   - удаление последнего CIDR → FailedPrecondition (subnet не может быть пустой).
 //   - проверки занятости CIDR Address'ами сейчас нет (потребовала бы отдельного
@@ -74,6 +76,24 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 		sub, gerr := w.Subnets().GetForUpdate(ctx, id)
 		if gerr != nil {
 			return nil, serviceerr.MapRepoErr(gerr)
+		}
+		// F7 (immutable anchor): blocks[0] каждого семейства — это placement-anchor
+		// ipv4CidrPrimary / ipv6CidrPrimary, immutable после Create. Удаление primary
+		// молча промотировало бы следующий блок в anchor (смена placement-якоря) →
+		// reject конвенционным immutable-тоном (паритет с Subnet.Update immutable-switch).
+		if len(sub.V4CidrBlocks) > 0 {
+			for _, c := range v4 {
+				if c == sub.V4CidrBlocks[0] {
+					return nil, serviceerr.InvalidArg("ipv4_cidr_primary", "ipv4_cidr_primary is immutable after Subnet.Create")
+				}
+			}
+		}
+		if len(sub.V6CidrBlocks) > 0 {
+			for _, c := range v6 {
+				if c == sub.V6CidrBlocks[0] {
+					return nil, serviceerr.InvalidArg("ipv6_cidr_primary", "ipv6_cidr_primary is immutable after Subnet.Create")
+				}
+			}
 		}
 		remainingV4, removedV4 := subtractCIDRs(sub.V4CidrBlocks, v4)
 		remainingV6, removedV6 := subtractCIDRs(sub.V6CidrBlocks, v6)
