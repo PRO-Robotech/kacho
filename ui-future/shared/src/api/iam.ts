@@ -229,7 +229,8 @@ export type RuleArm = "ARM_ANCHOR" | "ARM_NAMES" | "ARM_LABELS";
 /** Выводит арм правила из его формы (наличие resource_names XOR match_labels). */
 export function ruleArm(rule: Rule): RuleArm {
   if (rule.resource_names && rule.resource_names.length > 0) return "ARM_NAMES";
-  if (rule.match_labels && Object.keys(rule.match_labels).length > 0) return "ARM_LABELS";
+  if (rule.match_labels && Object.keys(rule.match_labels).length > 0)
+    return "ARM_LABELS";
   return "ARM_ANCHOR";
 }
 
@@ -277,7 +278,12 @@ export interface Role {
 
 /** isSystem° — derived: роль системная ⟺ definitionTier.tierType == iam.cluster.
  *  Fallback на хранимый is_system/isSystem (AS-IS до redesign-миграции). */
-export function roleIsSystem(role: Pick<Role, "is_system" | "isSystem" | "definition_tier" | "definitionTier">): boolean {
+export function roleIsSystem(
+  role: Pick<
+    Role,
+    "is_system" | "isSystem" | "definition_tier" | "definitionTier"
+  >,
+): boolean {
   const dt = role.definition_tier ?? role.definitionTier;
   const tt = dt?.tier_type ?? dt?.tierType;
   if (tt) return tt === "iam.cluster";
@@ -285,13 +291,20 @@ export function roleIsSystem(role: Pick<Role, "is_system" | "isSystem" | "defini
 }
 
 /** definitionTier роли, независимо от camel/snake. */
-export function roleDefinitionTier(role: Pick<Role, "definition_tier" | "definitionTier">): DefinitionTier | undefined {
+export function roleDefinitionTier(
+  role: Pick<Role, "definition_tier" | "definitionTier">,
+): DefinitionTier | undefined {
   return role.definition_tier ?? role.definitionTier;
 }
 
 /** Канонический порядок system-ролей (viewer→editor→admin→owner) — для группировки
  *  каталога, когда сервер не гарантировал first-in-order. IAM-1 F6. */
-export const SYSTEM_ROLE_CANON_ORDER = ["viewer", "editor", "admin", "owner"] as const;
+export const SYSTEM_ROLE_CANON_ORDER = [
+  "viewer",
+  "editor",
+  "admin",
+  "owner",
+] as const;
 export interface RoleList {
   roles: Role[];
   next_page_token?: string;
@@ -372,10 +385,13 @@ export interface AccessBindingTarget {
 }
 
 /** Дискриминатор target'а из его формы (allInScope vs resources[]). */
-export function targetKind(t: AccessBindingTarget | undefined): TargetKind | undefined {
+export function targetKind(
+  t: AccessBindingTarget | undefined,
+): TargetKind | undefined {
   if (!t) return undefined;
   if (t.resources && t.resources.length > 0) return "resources";
-  if (t.all_in_scope !== undefined || t.allInScope !== undefined) return "allInScope";
+  if (t.all_in_scope !== undefined || t.allInScope !== undefined)
+    return "allInScope";
   return undefined;
 }
 
@@ -422,7 +438,8 @@ export interface AccessBindingList {
 // РОВНО по этому полю, без клиентской scope-логики. `permissions` НЕ возвращаются
 // (picker ≠ role-detail). Wire — camelCase; api.list прогоняет ответ через
 // camelToSnake → в UI ключи snake_case (role_id/scope_group/…).
-export type ScopeGroup = "SYSTEM" | "ACCOUNT" | "PROJECT" | "SCOPE_GROUP_UNSPECIFIED";
+export type ScopeGroup =
+  "SYSTEM" | "ACCOUNT" | "PROJECT" | "SCOPE_GROUP_UNSPECIFIED";
 
 export interface AssignableRole {
   role_id: string;
@@ -505,21 +522,28 @@ export const IAM = {
 // ====== List helpers (без auth) ======
 export const iamApi = {
   // Accounts
-  listAccounts: (q?: Record<string, string>) => api.list<AccountList>(IAM.accounts, q),
+  listAccounts: (q?: Record<string, string>) =>
+    api.list<AccountList>(IAM.accounts, q),
   // Projects — account_id обязателен по proto, но handler допускает list-all.
-  listProjects: (q?: Record<string, string>) => api.list<ProjectList>(IAM.projects, q),
+  listProjects: (q?: Record<string, string>) =>
+    api.list<ProjectList>(IAM.projects, q),
   // Users
   // KAC-125: Invite user by email (admin OR editor permission on account).
   inviteUser: (req: InviteUserRequest) =>
     api.post<{
       id?: string;
-      metadata?: { user_id?: string; account_id?: string; magic_link_url?: string };
+      metadata?: {
+        user_id?: string;
+        account_id?: string;
+        magic_link_url?: string;
+      };
       response?: User;
       error?: { code: number; message: string };
     }>(`${IAM.users}:invite`, req),
   listUsers: (q?: Record<string, string>) => api.list<UserList>(IAM.users, q),
   // SAs
-  listServiceAccounts: (q?: Record<string, string>) => api.list<ServiceAccountList>(IAM.serviceAccounts, q),
+  listServiceAccounts: (q?: Record<string, string>) =>
+    api.list<ServiceAccountList>(IAM.serviceAccounts, q),
   // SA OAuth keys (SAKeyService.List) — метаданные ключей без секрета.
   listSaKeys: (serviceAccountId: string, q?: Record<string, string>) =>
     api.list<ListSAKeysResponse>(saKeysPath(serviceAccountId), q),
@@ -527,22 +551,32 @@ export const iamApi = {
   listUserTokens: (userId: string, q?: Record<string, string>) =>
     api.list<ListUserTokensResponse>(userTokensPath(userId), q),
   // Groups
-  listGroups: (q?: Record<string, string>) => api.list<GroupList>(IAM.groups, q),
+  listGroups: (q?: Record<string, string>) =>
+    api.list<GroupList>(IAM.groups, q),
   // Group members — custom GET endpoint /iam/v1/groups/{group_id}:listMembers
   listGroupMembers: (groupId: string, q?: Record<string, string>) =>
     api.list<GroupMemberList>(`${IAM.groups}/${groupId}:listMembers`, q),
   // Roles
   listRoles: (q?: Record<string, string>) => api.list<RoleList>(IAM.roles, q),
   // Permission-каталог (RBAC rules-model) — grantable-таксономия для RulesEditor.
-  fetchPermissionCatalog: () => api.get<PermissionCatalog>(PERMISSION_CATALOG_PATH),
+  fetchPermissionCatalog: () =>
+    api.get<PermissionCatalog>(PERMISSION_CATALOG_PATH),
   // AccessBindings: list-by-resource + list-by-subject (custom verbs)
-  listAccessBindingsByResource: (resource_type: string, resource_id: string, q?: Record<string, string>) =>
+  listAccessBindingsByResource: (
+    resource_type: string,
+    resource_id: string,
+    q?: Record<string, string>,
+  ) =>
     api.list<AccessBindingList>(`${IAM.accessBindings}:listByResource`, {
       resource_type,
       resource_id,
       ...(q ?? {}),
     }),
-  listAccessBindingsBySubject: (subject_type: string, subject_id: string, q?: Record<string, string>) =>
+  listAccessBindingsBySubject: (
+    subject_type: string,
+    subject_id: string,
+    q?: Record<string, string>,
+  ) =>
     api.list<AccessBindingList>(`${IAM.accessBindings}:listBySubject`, {
       subject_type,
       subject_id,
@@ -555,7 +589,11 @@ export const iamApi = {
    * scope_group (SYSTEM/ACCOUNT/PROJECT). Grant-форма рендерит РОВНО этот набор,
    * сгруппированный по scope_group — без клиентской scope-логики. Read sync.
    */
-  listAssignableRoles: (resource_type: string, resource_id: string, pageSize = "1000") =>
+  listAssignableRoles: (
+    resource_type: string,
+    resource_id: string,
+    pageSize = "1000",
+  ) =>
     api.list<AssignableRolesList>(`${IAM.accessBindings}:listAssignableRoles`, {
       resource_type,
       resource_id,
@@ -567,18 +605,28 @@ export const iamApi = {
    * {"user","service_account","group"}. Cursor-pagination через page_size /
    * page_token. Read sync.
    */
-  listSubjectPrivileges: (subject_type: string, subject_id: string, q?: Record<string, string>) =>
-    api.list<SubjectPrivilegeList>(`${IAM.accessBindings}:listSubjectPrivileges`, {
-      subject_type,
-      subject_id,
-      ...(q ?? {}),
-    }),
+  listSubjectPrivileges: (
+    subject_type: string,
+    subject_id: string,
+    q?: Record<string, string>,
+  ) =>
+    api.list<SubjectPrivilegeList>(
+      `${IAM.accessBindings}:listSubjectPrivileges`,
+      {
+        subject_type,
+        subject_id,
+        ...(q ?? {}),
+      },
+    ),
   /**
    * PATCH /iam/v1/accessBindings/{id} — снять/поставить `deletion_protection`
    * (единственное mutable-поле). Используется, чтобы СНЯТЬ защиту с protected
    * (owner-auto) binding перед удалением. Async через Operation.
    */
-  updateAccessBindingDeletionProtection: (id: string, deletionProtection: boolean) =>
+  updateAccessBindingDeletionProtection: (
+    id: string,
+    deletionProtection: boolean,
+  ) =>
     api.update(`${IAM.accessBindings}/${encodeURIComponent(id)}`, {
       deletion_protection: deletionProtection,
       update_mask: "deletion_protection",
@@ -590,7 +638,10 @@ export const iamApi = {
    * emitted-ledger). Re-grant после revoke — новая ACTIVE-строка.
    */
   revokeAccessBinding: (id: string) =>
-    api.post<Record<string, unknown>>(`${IAM.accessBindings}/${encodeURIComponent(id)}:revoke`, {}),
+    api.post<Record<string, unknown>>(
+      `${IAM.accessBindings}/${encodeURIComponent(id)}:revoke`,
+      {},
+    ),
   /**
    * KAC item #1: GET /iam/v1/accounts/{account_id}/accessBindings — все
    * AccessBinding'и видимые админу в account'е (включает project-scoped + account-scoped).
@@ -611,8 +662,13 @@ export const iamApi = {
     const query: Record<string, string> = {};
     if (q?.page_size !== undefined) query.page_size = String(q.page_size);
     if (q?.page_token) query.page_token = q.page_token;
-    if (q?.include_revoked !== undefined) query.include_revoked = q.include_revoked ? "true" : "false";
-    if (q?.subject_type_filter) query.subject_type_filter = q.subject_type_filter;
-    return api.list<AccessBindingList>(`${IAM.accounts}/${encodeURIComponent(accountId)}/accessBindings`, query);
+    if (q?.include_revoked !== undefined)
+      query.include_revoked = q.include_revoked ? "true" : "false";
+    if (q?.subject_type_filter)
+      query.subject_type_filter = q.subject_type_filter;
+    return api.list<AccessBindingList>(
+      `${IAM.accounts}/${encodeURIComponent(accountId)}/accessBindings`,
+      query,
+    );
   },
 };
