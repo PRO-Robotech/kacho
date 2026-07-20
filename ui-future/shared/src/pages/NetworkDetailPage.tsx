@@ -15,6 +15,8 @@ import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailP
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { RowActionsMenu } from "@shared/components/molecules/RowActionsMenu";
 import { ResourceFormModal } from "@shared/components/organisms/ResourceFormModal";
+import { NetworkCidrManager } from "@shared/components/organisms/NetworkCidrManager";
+import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { api } from "@shared/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
@@ -123,18 +125,32 @@ export function NetworkDetailPage() {
   const rtColumns = useChildColumns(rtSpec, projectId, nestedBase("route-tables"));
   const sgColumns = useChildColumns(sgSpec, projectId, nestedBase("security-groups"));
 
+  // VPC-1: Обзор сети показывает менеджер супернета (declared IPv4/IPv6 CIDR,
+  // мутируется :add/:remove-cidr-blocks) + таблицу подсетей.
   const overviewExtras = useCallback(
-    () => (
-      <ChildSection
-        title="Подсети"
-        rows={networkSubnets}
-        columns={subnetColumns}
-        emptyText="В сети нет подсетей."
-        onClick={(id) =>
-          projectId && networkId && navigate(`/projects/${projectId}/vpc/networks/${networkId}/subnets/${id}`)
-        }
-      />
-    ),
+    (data: Record<string, unknown>) => {
+      const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
+      const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+      return (
+        <Space direction="vertical" size={24} style={{ width: "100%" }}>
+          {networkId && (
+            <div style={{ maxWidth: 760 }}>
+              <SectionHeader eyebrow="Адресное пространство" title="Супернет" />
+              <NetworkCidrManager networkId={networkId} v4Blocks={v4} v6Blocks={v6} />
+            </div>
+          )}
+          <ChildSection
+            title="Подсети"
+            rows={networkSubnets}
+            columns={subnetColumns}
+            emptyText="В сети нет подсетей."
+            onClick={(id) =>
+              projectId && networkId && navigate(`/projects/${projectId}/vpc/networks/${networkId}/subnets/${id}`)
+            }
+          />
+        </Space>
+      );
+    },
     [networkSubnets, subnetColumns, projectId, networkId, navigate],
   );
 

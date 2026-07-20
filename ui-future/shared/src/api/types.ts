@@ -57,6 +57,12 @@ export interface ProjectSummaryList {
 
 // ====== vpc ======
 
+// VPC-1 redesign: Network carries a declared supernet (ipv4/ipv6_cidr_blocks)
+// and both system-provisioned default handles (SG + RT). The supernet is
+// immutable through Update — grown/shrunk only via :add-cidr-blocks /
+// :remove-cidr-blocks verbs. `default_*_id` are output-only, echoed in the
+// op-in-response body of Create. Public projection carries no vrfId/underlay
+// (two-projection — infra fields live only on InternalNetworkService).
 export interface Network {
   id: string;
   project_id?: string;
@@ -64,7 +70,10 @@ export interface Network {
   name: string;
   description?: string;
   labels?: Record<string, string>;
+  ipv4_cidr_blocks?: string[];
+  ipv6_cidr_blocks?: string[];
   default_security_group_id?: string;
+  default_route_table_id?: string;
 }
 
 export interface NetworkList {
@@ -72,6 +81,13 @@ export interface NetworkList {
   next_page_token?: string;
 }
 
+// VPC-1 redesign: Subnet is the single placement-anchor. `placement_type` is a
+// server-derived discriminator (bare token ZONAL | REGIONAL), unwritable — the
+// client sends exactly one of zone_id / region_id. `ipv4_cidr_primary` /
+// `ipv6_cidr_primary` are the immutable placement anchor (⊆ one network supernet
+// block; at least one required). Additional ranges (ipv4/ipv6_cidr_blocks) are
+// grown via :add-cidr-blocks / :remove-cidr-blocks (primary is never removable).
+// DhcpOptions retired by design.
 export interface Subnet {
   id: string;
   project_id?: string;
@@ -80,9 +96,13 @@ export interface Subnet {
   description?: string;
   labels?: Record<string, string>;
   network_id?: string;
+  placement_type?: "ZONAL" | "REGIONAL" | string;
   zone_id?: string;
-  v4_cidr_blocks?: string[];
-  v6_cidr_blocks?: string[];
+  region_id?: string;
+  ipv4_cidr_primary?: string;
+  ipv6_cidr_primary?: string;
+  ipv4_cidr_blocks?: string[];
+  ipv6_cidr_blocks?: string[];
   route_table_id?: string;
 }
 

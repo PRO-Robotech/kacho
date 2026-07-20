@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { snakeToCamelPath } from "@shared/lib/update-mask";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Collapse, Form, Input, Select, Space, Tooltip, Typography } from "antd";
+import { Form, Input, Select, Space, Tooltip, Typography } from "antd";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { LockOutlined } from "@ant-design/icons";
@@ -18,7 +18,12 @@ import { extractOperationId } from "@shared/components/molecules/OperationDialog
 import { REGISTRY, getByPath } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
-import { LabelsEditor, labelsToEntries, labelsFromEntries, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
+import {
+  LabelsEditor,
+  labelsToEntries,
+  labelsFromEntries,
+  type LabelEntry,
+} from "@shared/components/organisms/LabelsEditor";
 
 interface Props {
   projectId: string;
@@ -27,7 +32,9 @@ interface Props {
   onSuccess?: () => void;
 }
 
-const MUTABLE_FIELDS = ["name", "description", "labels", "route_table_id", "dhcp_options"] as const;
+// VPC-1: DhcpOptions retired; CIDR/placement/network immutable (managed via
+// verbs / fixed after Create). Only these fields are mutable through Update.
+const MUTABLE_FIELDS = ["name", "description", "labels", "route_table_id"] as const;
 
 export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess }: Props) {
   const invalidate = useInvalidateResourceList();
@@ -43,14 +50,14 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
 
   const networkId = (subnet?.network_id as string | undefined) ?? "";
   const zoneId = (subnet?.zone_id as string | undefined) ?? "";
+  const regionId = (subnet?.region_id as string | undefined) ?? "";
+  const placementType = (subnet?.placement_type as string | undefined) ?? "";
+  const isRegional = placementType === "REGIONAL" || (!zoneId && !!regionId);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [labels, setLabels] = useState<LabelEntry[]>([]);
   const [routeTableId, setRouteTableId] = useState<string | undefined>(undefined);
-  const [dhcpDomainName, setDhcpDomainName] = useState("");
-  const [dhcpDns, setDhcpDns] = useState<string[]>([]);
-  const [dhcpNtp, setDhcpNtp] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate state из subnet один раз после первого fetch.
@@ -60,16 +67,6 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
     setDescription((subnet.description as string) ?? "");
     setLabels(labelsToEntries(subnet.labels as Record<string, string> | undefined));
     setRouteTableId((subnet.route_table_id as string | undefined) || undefined);
-    const dhcp = subnet.dhcp_options as
-      | {
-          domain_name?: string;
-          domain_name_servers?: string[];
-          ntp_servers?: string[];
-        }
-      | undefined;
-    setDhcpDomainName(dhcp?.domain_name ?? "");
-    setDhcpDns(dhcp?.domain_name_servers ?? []);
-    setDhcpNtp(dhcp?.ntp_servers ?? []);
     setHydrated(true);
   }, [subnet, hydrated]);
 
@@ -132,21 +129,12 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
     if (!subnet) return;
 
     const labelMap = labelsFromEntries(labels);
-    const dhcp =
-      dhcpDomainName || dhcpDns.length > 0 || dhcpNtp.length > 0
-        ? {
-            domain_name: dhcpDomainName || undefined,
-            domain_name_servers: dhcpDns.length > 0 ? dhcpDns : undefined,
-            ntp_servers: dhcpNtp.length > 0 ? dhcpNtp : undefined,
-          }
-        : undefined;
 
     const next = {
       name,
       description: description || "",
       labels: labelMap,
       route_table_id: routeTableId || "",
-      dhcp_options: dhcp,
     };
 
     // Diff против текущего объекта — определяем актуальные изменения.
@@ -158,9 +146,6 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
     if (origLabels !== newLabels) mask.push("labels");
     const origRt = (subnet.route_table_id as string) ?? "";
     if (origRt !== (routeTableId ?? "")) mask.push("route_table_id");
-    const origDhcp = JSON.stringify(subnet.dhcp_options ?? null);
-    const newDhcp = JSON.stringify(dhcp ?? null);
-    if (origDhcp !== newDhcp) mask.push("dhcp_options");
 
     if (mask.length === 0) {
       onCancel();
@@ -206,14 +191,14 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
         <Form.Item
           label={
             <Space size={4}>
-              Зона доступности
-              <Tooltip title="Иммутабельно после Subnet.Create">
+              {isRegional ? "Регион" : "Зона доступности"}
+              <Tooltip title="Размещение (placementType°) неизменяемо после Subnet.Create">
                 <LockOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
             </Space>
           }
         >
-          <Input value={zoneId} disabled />
+          <Input value={isRegional ? regionId : zoneId} disabled />
         </Form.Item>
 
         <Form.Item label="Таблица маршрутизации">
@@ -226,34 +211,11 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
           />
         </Form.Item>
 
-        {/* CIDR-блоки (IPv4/IPv6) НЕ в форме редактирования — они мутируются
-            отдельными RPC (:add/:remove-cidr-blocks), а не PATCH-ом подсети.
-            Управление — отдельной панелью SubnetCidrPanel в блоке «Обзор». */}
+        {/* VPC-1: CIDR (основной + доп.) и placement НЕ редактируются здесь —
+            основной иммутабелен, доп. диапазоны мутируются отдельными RPC
+            (:add/:remove-cidr-blocks) в панели SubnetCidrPanel блока «Обзор».
+            DhcpOptions сняты by design. */}
 
-        <div style={{ margin: "16px 0" }}>
-          <Collapse
-            ghost
-            items={[
-              {
-                key: "dhcp",
-                label: <Typography.Text strong>Настройки DHCP</Typography.Text>,
-                children: (
-                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                    <Form.Item label="Domain name" style={{ marginBottom: 0 }}>
-                      <Input value={dhcpDomainName} onChange={(e) => setDhcpDomainName(e.target.value)} />
-                    </Form.Item>
-                    <Form.Item label="DNS servers" style={{ marginBottom: 0 }}>
-                      <Select mode="tags" value={dhcpDns} onChange={setDhcpDns} tokenSeparators={[",", " "]} />
-                    </Form.Item>
-                    <Form.Item label="NTP servers" style={{ marginBottom: 0 }}>
-                      <Select mode="tags" value={dhcpNtp} onChange={setDhcpNtp} tokenSeparators={[",", " "]} />
-                    </Form.Item>
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        </div>
         <FormFooter
           submitLabel="Сохранить"
           submitting={mutation.isPending || pendingOpId !== null}

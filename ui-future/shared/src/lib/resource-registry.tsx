@@ -186,6 +186,59 @@ const FIELD_LABELS: FormField = {
   type: "labels",
 };
 
+// VPC-1 Subnet cell: immutable primary CIDR anchor + "+N" additional-ranges
+// hint (additional ranges managed via :add/:remove-cidr-blocks, not shown inline).
+function CidrPrimaryCell({ primary, extra }: { primary: unknown; extra: unknown }): ReactNode {
+  const p = typeof primary === "string" ? primary : "";
+  const more = Array.isArray(extra) ? extra.length : 0;
+  if (!p) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="font-mono text-xs">
+      {p}
+      {more > 0 && <span className="text-muted-foreground"> +{more}</span>}
+    </span>
+  );
+}
+
+// VPC-1 Network cell: declared supernet blocks (IPv4 first, then IPv6), each on
+// its own line; "+N" collapses long lists. Empty → dash.
+function SupernetCell({ v4, v6 }: { v4: unknown; v6: unknown }): ReactNode {
+  const list = [
+    ...(Array.isArray(v4) ? (v4 as unknown[]) : []),
+    ...(Array.isArray(v6) ? (v6 as unknown[]) : []),
+  ].filter((x): x is string => typeof x === "string" && x !== "");
+  if (list.length === 0) return <span className="text-muted-foreground">—</span>;
+  const head = list.slice(0, 2);
+  const more = list.length - head.length;
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
+      {head.map((c) => (
+        <span key={c} className="font-mono text-xs">
+          {c}
+        </span>
+      ))}
+      {more > 0 && <span className="text-muted-foreground text-xs">+{more}</span>}
+    </span>
+  );
+}
+
+// VPC-1 Subnet cell: server-derived placement — ZONAL(zone) | REGIONAL(region,
+// anycast). Discriminated by placement_type° with zone_id/region_id fallback.
+function PlacementCell({ row }: { row: Record<string, unknown> }): ReactNode {
+  const pt = String(row.placement_type ?? "");
+  const zone = String(row.zone_id ?? "");
+  const region = String(row.region_id ?? "");
+  const anchor = region || zone;
+  if (!pt && !anchor) return <span className="text-muted-foreground">—</span>;
+  const isRegional = pt === "REGIONAL" || (!zone && !!region);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
+      {anchor && <span className="font-mono text-xs">{anchor}</span>}
+    </span>
+  );
+}
+
 export const REGISTRY: Record<string, ResourceSpec> = {
   // ====== iam ======
   // proto: kacho.cloud.iam.v1.AccountService / ProjectService.
@@ -514,10 +567,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             subjType === "user"
               ? "users"
               : subjType === "group"
-              ? "groups"
-              : subjType === "service_account"
-              ? "service-accounts"
-              : undefined;
+                ? "groups"
+                : subjType === "service_account"
+                  ? "service-accounts"
+                  : undefined;
           const subjId = (row.subject_id as string) ?? "";
           return subjSpec ? (
             <IamRefLink specId={subjSpec} refId={subjId} nameField={subjType === "user" ? "email" : "name"} />
@@ -659,6 +712,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         format: "text",
       },
       {
+        // VPC-1: declared supernet (immutable via Update; grown/shrunk via
+        // :add/:remove-cidr-blocks). Compact IPv4-first view.
+        header: "Супернет",
+        path: "ipv4_cidr_blocks",
+        render: (row) => <SupernetCell v4={row.ipv4_cidr_blocks} v6={row.ipv6_cidr_blocks} />,
+      },
+      {
         header: "Группа безопасности по умолчанию",
         path: "default_security_group_id",
         render: (row) => (
@@ -667,6 +727,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             refId={row.default_security_group_id as string | undefined}
             maxChars={42}
           />
+        ),
+      },
+      {
+        // VPC-1: system-provisioned default RT (output-only), echoed on create.
+        header: "Таблица маршрутизации по умолчанию",
+        path: "default_route_table_id",
+        render: (row) => (
+          <RefNameLink specId="route-tables" refId={row.default_route_table_id as string | undefined} maxChars={42} />
         ),
       },
       {
@@ -680,22 +748,76 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
+    // VPC-1: declared supernet ipv4/ipv6_cidr_blocks[] is required at Create and
+    // immutable through Update — grown/shrunk only via :add/:remove-cidr-blocks
+    // on the detail page (editHidden). default-SG + default-RT are provisioned
+    // unconditionally by the server (no opt-out flag).
     fields: [
       FIELD_NAME_VPC,
+      {
+        name: "ipv4_cidr_blocks",
+        label: "Супернет IPv4",
+        type: "array",
+        itemLabel: "CIDR",
+        description:
+          "Объявленное адресное пространство сети (IPv4). Из него нарезаются CIDR подсетей. Неизменяемо через Update — расширяется/сужается verb-действиями на странице сети.",
+        immutable: true,
+        editHidden: true,
+        newItem: () => ({ value: "" }),
+        itemFields: [{ name: "value", label: "CIDR", type: "string", required: true, placeholder: "10.20.0.0/16" }],
+      },
+      {
+        name: "ipv6_cidr_blocks",
+        label: "Супернет IPv6",
+        type: "array",
+        itemLabel: "CIDR",
+        description: "Опционально. Объявленное адресное пространство сети (IPv6).",
+        immutable: true,
+        editHidden: true,
+        newItem: () => ({ value: "" }),
+        itemFields: [{ name: "value", label: "CIDR", type: "string", required: true, placeholder: "fd00:20::/48" }],
+      },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       FIELD_PROJECT_ID,
-      // KAC-246: default-SG обязательна — вариативности (opt-out чекбокса KAC-239)
-      // на UI больше нет. Сеть всегда создаётся с группой безопасности по умолчанию
-      // (template ниже всегда шлёт create_default_security_group: true).
     ],
     template: ({ projectId }) => ({
       project_id: projectId ?? "",
       name: "",
       description: "",
       labels: {},
-      create_default_security_group: true,
+      // VPC-1: supernet declared at create; default-SG + default-RT provisioned
+      // unconditionally server-side (create_default_security_group flag retired).
+      ipv4_cidr_blocks: [{ value: "" }],
+      ipv6_cidr_blocks: [],
     }),
+    // {value:"…"} form-objects ↔ wire string[] for the supernet array fields.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      for (const key of ["ipv4_cidr_blocks", "ipv6_cidr_blocks"]) {
+        const raw = out[key];
+        if (Array.isArray(raw)) {
+          out[key] = raw
+            .map((item) =>
+              typeof item === "object" && item !== null && "value" in (item as object)
+                ? (item as Record<string, unknown>)["value"]
+                : item,
+            )
+            .filter((v) => typeof v === "string" && v);
+        }
+      }
+      return out;
+    },
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      for (const key of ["ipv4_cidr_blocks", "ipv6_cidr_blocks"]) {
+        const raw = out[key];
+        if (Array.isArray(raw)) {
+          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
+        }
+      }
+      return out;
+    },
   },
 
   // proto: GET /vpc/v1/subnets
@@ -754,19 +876,23 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         format: "text",
       },
       {
+        // VPC-1: primary CIDR anchor (immutable) + count of additional ranges
+        // (managed via :add/:remove-cidr-blocks). v4_cidr_blocks[] retired.
         header: "IPv4 CIDR",
-        path: "v4_cidr_blocks",
-        format: "list",
+        path: "ipv4_cidr_primary",
+        render: (row) => <CidrPrimaryCell primary={row.ipv4_cidr_primary} extra={row.ipv4_cidr_blocks} />,
       },
       {
         header: "IPv6 CIDR",
-        path: "v6_cidr_blocks",
-        format: "list",
+        path: "ipv6_cidr_primary",
+        render: (row) => <CidrPrimaryCell primary={row.ipv6_cidr_primary} extra={row.ipv6_cidr_blocks} />,
       },
       {
-        header: "Зона доступности",
-        path: "zone_id",
-        format: "text",
+        // VPC-1: placement_type° server-derived — ZONAL shows zone, REGIONAL
+        // shows region (anycast). Single column reflects the anchor either way.
+        header: "Размещение",
+        path: "placement_type",
+        render: (row) => <PlacementCell row={row} />,
       },
       {
         header: "Метки",
@@ -779,6 +905,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <RefNameLink specId="route-tables" refId={row.route_table_id as string | undefined} />,
       },
     ],
+    // VPC-1: placement is a server-derived discriminator — the form channel
+    // `_placement` (ZONAL|REGIONAL) gates zone_id XOR region_id via visibleWhen;
+    // sanitize drops the discriminator + inactive channel and NEVER sends
+    // placement_type (server rejects it). ipv4/ipv6_cidr_primary are the
+    // immutable placement anchor (one required); additional ranges live on the
+    // detail page (verbs :add/:remove-cidr-blocks), not in this form.
     fields: [
       FIELD_NAME_VPC,
       {
@@ -788,59 +920,56 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "networks",
         refProjectScoped: true,
         required: true,
-        immutable: true, // backend: applySubnetMask immutable check
+        immutable: true, // within-service FK, VRF-scoping — immutable after Create
+      },
+      {
+        name: "_placement",
+        label: "Размещение",
+        type: "enum",
+        required: true,
+        default: "ZONAL",
+        description:
+          "Тип размещения подсети. ZONAL — привязана к одной зоне доступности; REGIONAL — anycast во всём регионе. Определяет placementType° на сервере (неизменяемо после создания).",
+        options: [
+          { value: "ZONAL", label: "ZONAL — в одной зоне доступности" },
+          { value: "REGIONAL", label: "REGIONAL — во всём регионе (anycast)" },
+        ],
+        editHidden: true,
       },
       {
         name: "zone_id",
-        label: "Zone",
+        label: "Зона доступности",
         type: "ref",
         refResource: "zones",
         required: true,
         immutable: true,
+        visibleWhen: { field: "_placement", equals: "ZONAL" },
       },
       {
-        name: "v4_cidr_blocks",
-        label: "IPv4 CIDR Blocks",
-        type: "array",
-        itemLabel: "CIDR",
-        description: "Массив IPv4 CIDR-блоков (RFC 1918).",
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
         immutable: true,
-        // В Edit поле не показывается — после Create управляется через
-        // SubnetCidrManager на DetailPage (verbs :add-cidr-blocks /
-        // :remove-cidr-blocks). См. Kachō Subnet docs.
-        editHidden: true,
-        newItem: () => ({ value: "" }),
-        itemFields: [
-          {
-            name: "value",
-            label: "CIDR",
-            type: "string",
-            required: true,
-            placeholder: "<ip>/<prefix>",
-          },
-        ],
+        visibleWhen: { field: "_placement", equals: "REGIONAL" },
       },
       {
-        name: "v6_cidr_blocks",
-        label: "IPv6 CIDR Blocks",
-        type: "array",
-        itemLabel: "CIDR",
-        description: "Опционально. IPv6 CIDR-блоки подсети (только при создании).",
-        // В Edit поле не показывается — UpdateSubnet.v6_cidr_blocks no-op на
-        // бэкенде, плюс это дублировало бы SubnetCidrManager. После Create
-        // управляется через verbs :add-cidr-blocks / :remove-cidr-blocks на
-        // DetailPage (как v4_cidr_blocks; см. editHidden там же).
-        editHidden: true,
-        newItem: () => ({ value: "" }),
-        itemFields: [
-          {
-            name: "value",
-            label: "CIDR",
-            type: "string",
-            required: true,
-            placeholder: "<ipv6>/<prefix>",
-          },
-        ],
+        name: "ipv4_cidr_primary",
+        label: "Основной IPv4 CIDR",
+        type: "string",
+        placeholder: "10.20.0.0/24",
+        description:
+          "Неизменяемый основной CIDR-блок подсети (⊆ одного супернет-блока сети). Хотя бы один из IPv4/IPv6 обязателен. Доп. диапазоны добавляются на странице подсети.",
+        immutable: true,
+      },
+      {
+        name: "ipv6_cidr_primary",
+        label: "Основной IPv6 CIDR",
+        type: "string",
+        placeholder: "fd00:20::/64",
+        description: "Опционально. Неизменяемый основной IPv6 CIDR-блок подсети (⊆ IPv6-супернета сети).",
+        immutable: true,
       },
       {
         name: "route_table_id",
@@ -848,8 +977,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "ref",
         refResource: "route-tables",
         refProjectScoped: true,
-        placeholder: "— без таблицы —",
-        description: "Опционально. Если задано, маршрутизация подсети идёт через этот RT.",
+        placeholder: "— авто: default сети —",
+        description:
+          "Опционально. Если не задано — авто-ассоциируется таблица маршрутизации по умолчанию сети (network.defaultRouteTableId°).",
       },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
@@ -859,42 +989,39 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       project_id: projectId ?? "",
       name: "",
       network_id: "",
+      _placement: "ZONAL",
       zone_id: "",
-      // v4_cidr_blocks больше не обязателен при создании (kacho-proto снял
-      // (required) с CreateSubnetRequest.v4_cidr_blocks; kacho-vpc допускает
-      // подсеть без IPv4 CIDR — добавляется позже через :add-cidr-blocks).
-      v4_cidr_blocks: [],
-      v6_cidr_blocks: [],
+      region_id: "",
+      // VPC-1: explicit immutable primary anchor (одного из v4/v6 достаточно;
+      // доп. диапазоны — через :add-cidr-blocks на detail). placement_type НЕ
+      // отправляется — сервер выводит его из zone_id XOR region_id.
+      ipv4_cidr_primary: "",
+      ipv6_cidr_primary: "",
       description: "",
     }),
-    // Конвертирует [{value: "10.0.0.0/24"}, ...] → ["10.0.0.0/24", ...] для wire
-    // format (для v4_cidr_blocks и v6_cidr_blocks). Пустой список передаётся как
-    // [] — оба поля опциональны и на create, и на update (soft-immutable).
+    // Strip the form-only `_placement` discriminator + the inactive placement
+    // channel, and drop empty primary/route fields. placement_type is never in
+    // the payload (server-derived; explicit reject).
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["v4_cidr_blocks", "v6_cidr_blocks"]) {
-        const raw = out[key];
-        if (Array.isArray(raw)) {
-          out[key] = raw
-            .map((item) =>
-              typeof item === "object" && item !== null && "value" in (item as object)
-                ? (item as Record<string, unknown>)["value"]
-                : item,
-            )
-            .filter((v) => typeof v === "string" && v);
-        }
+      const placement = out["_placement"];
+      delete out["_placement"];
+      delete out["placement_type"];
+      if (placement === "REGIONAL") delete out["zone_id"];
+      else delete out["region_id"];
+      for (const key of ["zone_id", "region_id", "ipv4_cidr_primary", "ipv6_cidr_primary", "route_table_id"]) {
+        if (out[key] === "" || out[key] == null) delete out[key];
       }
       return out;
     },
-    // Inverse sanitize: wire-strings → form-objects {value:"..."} для array-полей.
+    // wire → form: derive the `_placement` channel from region_id/placement_type
+    // so an edit view opens on the correct branch (edit is bespoke, kept for
+    // generic-form parity / RefSelect).
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["v4_cidr_blocks", "v6_cidr_blocks"]) {
-        const raw = out[key];
-        if (Array.isArray(raw)) {
-          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
-        }
-      }
+      const region = typeof out["region_id"] === "string" ? (out["region_id"] as string) : "";
+      const pt = typeof out["placement_type"] === "string" ? (out["placement_type"] as string) : "";
+      out["_placement"] = pt === "REGIONAL" || (!out["zone_id"] && region) ? "REGIONAL" : "ZONAL";
       return out;
     },
   },

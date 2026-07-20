@@ -11,8 +11,8 @@
 // PATCH (immutable after Subnet.Create) — только эти verb'ы; возвращают Operation.
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Space, Spin, Typography } from "antd";
-import { DeleteOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";
+import { Button, Input, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import { DeleteOutlined, LoadingOutlined, LockOutlined, PlusOutlined } from "@ant-design/icons";
 import { ApiError, api } from "@shared/api/client";
 import { OperationToastWatcher } from "@shared/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
@@ -21,9 +21,12 @@ import { toast } from "@shared/lib/toast";
 
 type CidrKind = "v4" | "v6";
 
-const FIELD_BY_KIND: Record<CidrKind, "v4_cidr_blocks" | "v6_cidr_blocks"> = {
-  v4: "v4_cidr_blocks",
-  v6: "v6_cidr_blocks",
+// VPC-1: additional-range verbs key the family via ipv4_cidr_blocks /
+// ipv6_cidr_blocks (v4_/v6_ retired). The primary anchor is immutable and never
+// flows through these verbs.
+const FIELD_BY_KIND: Record<CidrKind, "ipv4_cidr_blocks" | "ipv6_cidr_blocks"> = {
+  v4: "ipv4_cidr_blocks",
+  v6: "ipv6_cidr_blocks",
 };
 
 const SUBNETS_API = "/vpc/v1/subnets";
@@ -45,12 +48,16 @@ const familyTile = (text: string) => (
 interface SectionProps {
   subnetId: string;
   kind: CidrKind;
+  /** Additional CIDR ranges (mutable via :add/:remove-cidr-blocks). */
   blocks: string[];
+  /** VPC-1: immutable primary anchor for this family — rendered locked (never
+   *  removable, never flows through the verbs). Empty for v6-only / v4-only. */
+  primary?: string;
   /** Не используется (operation invalidate по query-key), оставлен для совместимости. */
   projectId?: string | null;
 }
 
-export function CidrSection({ subnetId, kind, blocks }: SectionProps) {
+export function CidrSection({ subnetId, kind, blocks, primary }: SectionProps) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
   const [opId, setOpId] = useState<string | null>(null);
@@ -118,7 +125,7 @@ export function CidrSection({ subnetId, kind, blocks }: SectionProps) {
         eyebrow="Список"
         title={
           <span>
-            CIDR <Typography.Text type="secondary">({blocks.length})</Typography.Text>
+            CIDR <Typography.Text type="secondary">({(primary ? 1 : 0) + blocks.length})</Typography.Text>
           </span>
         }
       />
@@ -154,7 +161,7 @@ export function CidrSection({ subnetId, kind, blocks }: SectionProps) {
             </tr>
           </thead>
           <tbody>
-            {blocks.length === 0 && (
+            {!primary && blocks.length === 0 && (
               <tr style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}>
                 <td
                   colSpan={2}
@@ -166,6 +173,21 @@ export function CidrSection({ subnetId, kind, blocks }: SectionProps) {
                   }}
                 >
                   CIDR-блоков нет
+                </td>
+              </tr>
+            )}
+            {primary && (
+              <tr className="kc-kv-row" style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}>
+                <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
+                  {primary}{" "}
+                  <Tag color="default" style={{ marginLeft: 6, fontFamily: MONO_FONT }}>
+                    основной
+                  </Tag>
+                </td>
+                <td className="px-1 text-center" style={{ verticalAlign: "middle" }}>
+                  <Tooltip title="Основной CIDR неизменяем после создания подсети">
+                    <LockOutlined style={{ color: "var(--kc-text-tertiary)", fontSize: 12 }} />
+                  </Tooltip>
                 </td>
               </tr>
             )}
