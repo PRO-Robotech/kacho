@@ -51,6 +51,13 @@ export const DASHBOARD_NAVIGATION: RemoteNavSection[] = [
         path: "compute/instances",
         requiresProject: true,
       },
+      {
+        key: "compute-machine-types",
+        icon: "layers",
+        label: "Типы машин",
+        path: "compute/machine-types",
+        requiresProject: true,
+      },
     ],
   },
   {
@@ -63,6 +70,7 @@ export const DASHBOARD_NAVIGATION: RemoteNavSection[] = [
     items: [
       { key: "storage-volumes", icon: "hard-drive", label: "Тома", path: "storage/volumes", requiresProject: true },
       { key: "storage-snapshots", icon: "camera", label: "Снимки", path: "storage/snapshots", requiresProject: true },
+      { key: "storage-images", icon: "layers", label: "Образы", path: "storage/images", requiresProject: true },
       {
         key: "storage-disk-types",
         icon: "layers",
