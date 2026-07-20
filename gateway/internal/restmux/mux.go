@@ -418,6 +418,12 @@ func NewMux(
 		if err := computepb.RegisterDiskTypeServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
 			return nil, fmt.Errorf("register compute DiskTypeService: %w", err)
 		}
+		// MachineTypeService — public read-only sizing catalog (GET /compute/v1/machineTypes[/{id}]);
+		// cluster-viewer, parity с geo Region/Zone. Admin CRUD — InternalMachineTypeService
+		// (internal-port block ниже; НЕ на external, ban #6).
+		if err := computepb.RegisterMachineTypeServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+			return nil, fmt.Errorf("register compute MachineTypeService: %w", err)
+		}
 
 		// --- compute admin (InternalDiskType) — kacho-only, internal-port (9091) ---
 		// CRUD справочника DiskType (POST/PATCH/DELETE на /compute/v1/diskTypes).
@@ -428,6 +434,14 @@ func NewMux(
 		if computeInternalAddr != "" {
 			if err := computepb.RegisterInternalDiskTypeServiceHandlerFromEndpoint(ctx, mux, computeInternalAddr, optsFor("computeInternal")); err != nil {
 				return nil, fmt.Errorf("register compute InternalDiskTypeService: %w", err)
+			}
+			// InternalMachineTypeService — admin CRUD над каталогом MachineType
+			// (POST/PATCH/DELETE на /compute/v1/internal/machineTypes; async Operation,
+			// system_admin). Путь несет сегмент `/internal/` → isInternalPath 404-ит его
+			// на external TLS listener, а gRPC-роутер блокирует Internal* через
+			// HasInternalSuffix. Cluster-internal only (ban #6, parity с geo InternalRegion/Zone).
+			if err := computepb.RegisterInternalMachineTypeServiceHandlerFromEndpoint(ctx, mux, computeInternalAddr, optsFor("computeInternal")); err != nil {
+				return nil, fmt.Errorf("register compute InternalMachineTypeService: %w", err)
 			}
 		}
 
@@ -444,6 +458,13 @@ func NewMux(
 			}
 			if err := storagepb.RegisterDiskTypeServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
 				return nil, fmt.Errorf("register storage DiskTypeService: %w", err)
+			}
+			// ImageService — public boot-image CRUD (POST/GET/PATCH/DELETE на
+			// /storage/v1/images + GET .../operations; async Operation). StorageImage
+			// `img`, выделен из compute Image. InternalImageService (infra-проекция) —
+			// internal-port block ниже.
+			if err := storagepb.RegisterImageServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
+				return nil, fmt.Errorf("register storage ImageService: %w", err)
 			}
 		}
 
@@ -466,6 +487,15 @@ func NewMux(
 			}
 			if err := storagepb.RegisterInternalDiskTypeServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
 				return nil, fmt.Errorf("register storage InternalDiskTypeService: %w", err)
+			}
+			// InternalImageService.GetInternal — full (infra) projection of an Image.
+			// Без google.api.http-аннотаций → grpc-gateway создает default unbound-route
+			// POST /kacho.cloud.storage.v1.InternalImageService/GetInternal (аналог
+			// InternalVolumeService). Несет инфра-чувствительные поля (security.md) →
+			// доступно ТОЛЬКО через cluster-internal REST listener: dispatcher
+			// (isInternalPath → HasInternalSuffix) 404-ит его на external TLS listener.
+			if err := storagepb.RegisterInternalImageServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+				return nil, fmt.Errorf("register storage InternalImageService: %w", err)
 			}
 		}
 
