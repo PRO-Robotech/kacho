@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+// Catalog-root anchor for the permission-catalog / rest-route-table generators.
+//
+// api-gateway импортирует proto-stubs всех доменов Kachō, поэтому именно он —
+// единственное место, откуда виден полный набор RPC платформы. Генераторы
+// permission_catalog.json (cmd/protoc-gen-kacho-permissions) и
+// rest_route_table_gen.go (cmd/protoc-gen-kacho-rest-routes) собираются и
+// запускаются здесь.
+//
+// Этот файл — «primary file» плагинов: плагин эмитит вывод только когда его имя
+// (`kacho/iam/authz/catalog/v1/permissions_catalog_root.proto`) присутствует в
+// CodeGeneratorRequest.FileToGenerate. Сам по себе он не несёт messages/services/
+// extensions — это чистый anchor и НЕ входит в основное proto-дерево `proto/`
+// (живёт под gateway/proto/, вне buf-модуля домена — build-tool-only артефакт,
+// его не компилирует основной `buf generate` и он не эмитит Go-stubs).
+//
+// Полнота вывода обеспечивается НЕ списком import'ов этого файла, а сборочными
+// скриптами scripts/gen-permission-catalog.sh / gen-rest-route-table.sh: они
+// копируют внутрирепозиторное proto-дерево всех доменов (монорепо: единый
+// proto/ в корне) в единый временный buf-модуль, после чего `buf generate` с
+// опцией `strategy: all` подаёт плагину ВЕСЬ образ одним вызовом. Плагин
+// обходит каждый service/method образа и читает аннотации
+// `(kacho.iam.authz.v1.*)` / `(google.api.http)`. Поэтому перечислять домены
+// import'ами тут не нужно (и не нужно поддерживать их вручную при росте
+// доменных API).
+package kacho.iam.authz.catalog.v1;
+
+option go_package = "github.com/PRO-Robotech/kacho/gateway/internal/middleware/permissioncatalog;permissioncatalogv1";
