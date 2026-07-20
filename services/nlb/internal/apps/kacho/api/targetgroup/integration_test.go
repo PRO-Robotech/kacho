@@ -128,6 +128,7 @@ func TestIntegration_CreateTargetGroup_EndToEnd(t *testing.T) {
 		RegionId:  "ru-central1",
 		Name:      "tg-int-1",
 		Labels:    map[string]string{"env": "prod"},
+		Port:      8080,
 		HealthCheck: &lbv1.HealthCheck{
 			Name:               "hc-http",
 			Interval:           durationpb.New(2 * time.Second),
@@ -181,10 +182,10 @@ func TestIntegration_DeleteTG_BlocksOnAttached(t *testing.T) {
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.target_groups (id, project_id, region_id, name, description, labels,
-			health_check, deregistration_delay_seconds, slow_start_seconds, status)
+			health_check, deregistration_delay_seconds, slow_start_seconds, status, port)
 		VALUES ($1, 'prj-x', 'ru-central1', 'tg-int', '', '{}',
 		        '{"name":"hc","interval":"2s","timeout":"1s","unhealthy_threshold":2,"healthy_threshold":2,"tcp":{"port":80}}'::jsonb,
-		        300, 0, 'ACTIVE')`, tgID,
+		        300, 0, 'ACTIVE', 8080)`, tgID,
 	)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
@@ -211,7 +212,7 @@ func TestIntegration_AddRemoveTargets_Lifecycle(t *testing.T) {
 
 	// 1. Create TG.
 	createOp, err := h.Create(ctx, &lbv1.CreateTargetGroupRequest{
-		ProjectId: "prj-life", RegionId: "ru-central1", Name: "life-tg",
+		ProjectId: "prj-life", RegionId: "ru-central1", Name: "life-tg", Port: 8080,
 		HealthCheck: &lbv1.HealthCheck{
 			Name: "hc-tcp", Interval: durationpb.New(2 * time.Second),
 			Timeout: durationpb.New(1 * time.Second), UnhealthyThreshold: 2, HealthyThreshold: 2,
@@ -308,10 +309,10 @@ func TestIntegration_DrainPhaseB_DeletesExpired(t *testing.T) {
 	tgID := ids.NewID(ids.PrefixTargetGroup)
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.target_groups (id, project_id, region_id, name, description, labels,
-			health_check, deregistration_delay_seconds, slow_start_seconds, status)
+			health_check, deregistration_delay_seconds, slow_start_seconds, status, port)
 		VALUES ($1, 'prj-d', 'ru-central1', 'drain-tg', '', '{}',
 		        '{"name":"hc","interval":"2s","timeout":"1s","unhealthy_threshold":2,"healthy_threshold":2,"tcp":{"port":80}}'::jsonb,
-		        60, 0, 'ACTIVE')`, tgID,
+		        60, 0, 'ACTIVE', 8080)`, tgID,
 	)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `

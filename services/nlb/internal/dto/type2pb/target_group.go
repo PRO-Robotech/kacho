@@ -58,6 +58,7 @@ func (targetGroup) toPb(rec kachorepo.TargetGroupRecord) (*lbv1.TargetGroup, err
 		DeregistrationDelaySeconds: rec.DeregistrationDelaySeconds,
 		SlowStartSeconds:           rec.SlowStartSeconds,
 		Status:                     statusPb,
+		Port:                       int32(rec.Port),
 	}, nil
 }
 

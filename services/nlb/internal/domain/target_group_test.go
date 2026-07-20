@@ -22,6 +22,36 @@ func validTG() domain.TargetGroup {
 		DeregistrationDelaySeconds: 300,
 		SlowStartSeconds:           0,
 		Status:                     domain.TargetGroupStatusActive,
+		Port:                       8080,
+	}
+}
+
+// TestTargetGroup_Validate_Port — NLB-1-35 (F6-co-req): TargetGroup.port is a
+// required backend port, range 1..65535. 0 (unset) and >65535 are rejected.
+func TestTargetGroup_Validate_Port(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		value   domain.LbPort
+		wantErr bool
+	}{
+		{"1 OK (lower bound)", 1, false},
+		{"8080 OK", 8080, false},
+		{"65535 OK (upper bound)", 65535, false},
+		{"0 rejected (required/unset)", 0, true},
+		{"-1 rejected", -1, true},
+		{"65536 rejected (over max)", 65536, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tg := validTG()
+			tg.Port = tc.value
+			err := tg.Validate()
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("Port=%d: err=%v wantErr=%v", tc.value, err, tc.wantErr)
+			}
+		})
 	}
 }
 

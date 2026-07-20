@@ -109,6 +109,7 @@ func (u *CreateTargetGroupUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 	tg.HealthCheck = hc
+	tg.Port = domain.LbPort(req.GetPort())
 	tg.Targets = targetsFromPb(req.GetTargets())
 	// Defaults via builder уже выставлены — override только если caller прислал
 	// non-zero значение (proto numeric zero === «не задано»).
