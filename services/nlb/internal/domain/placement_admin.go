@@ -80,3 +80,24 @@ func PlacementFromTypeAndPlacementType(t LBType, pt PlacementType) Placement {
 	}
 	return ""
 }
+
+// TypeAndPlacementTypeFromPlacement — inverse of PlacementFromTypeAndPlacementType
+// used by the MIGRATE Create/Update flow where `placement` is the AUTHORITATIVE
+// input and the legacy (type, placement_type) columns are derived FROM it (not the
+// reverse). EXTERNAL is always regional/anycast, so its placement_type is empty.
+//
+//   - EXTERNAL_REGIONAL → (EXTERNAL, unspecified).
+//   - INTERNAL_REGIONAL → (INTERNAL, REGIONAL).
+//   - INTERNAL_ZONAL    → (INTERNAL, ZONAL).
+//   - "" (unset)        → ("", "").
+func TypeAndPlacementTypeFromPlacement(p Placement) (LBType, PlacementType) {
+	switch p {
+	case PlacementExternalRegional:
+		return LBTypeExternal, PlacementUnspecified
+	case PlacementInternalRegional:
+		return LBTypeInternal, PlacementRegional
+	case PlacementInternalZonal:
+		return LBTypeInternal, PlacementZonal
+	}
+	return "", ""
+}

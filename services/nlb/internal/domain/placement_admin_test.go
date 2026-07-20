@@ -60,6 +60,35 @@ func TestPlacement_Validate(t *testing.T) {
 	}
 }
 
+// NLB-1b MIGRATE (F2): TypeAndPlacementTypeFromPlacement — inverse derivation.
+// placement is the AUTHORITATIVE input; the legacy (type, placement_type) pair is
+// derived FROM it (not the reverse). EXTERNAL is always regional/anycast, so its
+// placement_type column is empty.
+func TestTypeAndPlacementTypeFromPlacement(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		in      domain.Placement
+		wantTyp domain.LBType
+		wantPt  domain.PlacementType
+	}{
+		{"EXTERNAL_REGIONAL → (EXTERNAL, unspecified)", domain.PlacementExternalRegional, domain.LBTypeExternal, domain.PlacementUnspecified},
+		{"INTERNAL_REGIONAL → (INTERNAL, REGIONAL)", domain.PlacementInternalRegional, domain.LBTypeInternal, domain.PlacementRegional},
+		{"INTERNAL_ZONAL → (INTERNAL, ZONAL)", domain.PlacementInternalZonal, domain.LBTypeInternal, domain.PlacementZonal},
+		{"empty → ('', '')", "", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			gotTyp, gotPt := domain.TypeAndPlacementTypeFromPlacement(tc.in)
+			if gotTyp != tc.wantTyp || gotPt != tc.wantPt {
+				t.Fatalf("TypeAndPlacementTypeFromPlacement(%q)=(%q,%q) want (%q,%q)",
+					tc.in, gotTyp, gotPt, tc.wantTyp, tc.wantPt)
+			}
+		})
+	}
+}
+
 // PlacementFromTypeAndPlacementType — canonical derivation used by both the Create
 // use-case (persist a consistent placement) and type2pb (echo placement° from the
 // legacy columns when the placement column is empty — compat).
