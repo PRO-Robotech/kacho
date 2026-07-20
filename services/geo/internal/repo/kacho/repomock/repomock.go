@@ -23,16 +23,22 @@ import (
 
 // RegionRepo — мок region.Repo на функциях-полях.
 type RegionRepo struct {
-	GetFunc    func(ctx context.Context, id string) (*domain.Region, error)
-	ListFunc   func(ctx context.Context, p region.Pagination) ([]*domain.Region, string, error)
-	InsertFunc func(ctx context.Context, r *domain.Region) (*domain.Region, error)
-	UpdateFunc func(ctx context.Context, id string, name *string) (*domain.Region, error)
-	DeleteFunc func(ctx context.Context, id string) error
+	GetFunc         func(ctx context.Context, id string) (*domain.Region, error)
+	GetInternalFunc func(ctx context.Context, id string) (*domain.Region, error)
+	ListFunc        func(ctx context.Context, p region.Pagination) ([]*domain.Region, string, error)
+	InsertFunc      func(ctx context.Context, r *domain.Region) (*domain.Region, error)
+	UpdateFunc      func(ctx context.Context, id string, p region.UpdateParams) (*domain.Region, error)
+	DeleteFunc      func(ctx context.Context, id string) error
 }
 
 // Get реализует region.Repo.
 func (m *RegionRepo) Get(ctx context.Context, id string) (*domain.Region, error) {
 	return m.GetFunc(ctx, id)
+}
+
+// GetInternal реализует region.Repo.
+func (m *RegionRepo) GetInternal(ctx context.Context, id string) (*domain.Region, error) {
+	return m.GetInternalFunc(ctx, id)
 }
 
 // List реализует region.Repo.
@@ -46,8 +52,8 @@ func (m *RegionRepo) Insert(ctx context.Context, r *domain.Region) (*domain.Regi
 }
 
 // Update реализует region.Repo.
-func (m *RegionRepo) Update(ctx context.Context, id string, name *string) (*domain.Region, error) {
-	return m.UpdateFunc(ctx, id, name)
+func (m *RegionRepo) Update(ctx context.Context, id string, p region.UpdateParams) (*domain.Region, error) {
+	return m.UpdateFunc(ctx, id, p)
 }
 
 // Delete реализует region.Repo.
@@ -59,16 +65,22 @@ var _ region.Repo = (*RegionRepo)(nil)
 
 // ZoneRepo — мок zone.Repo на функциях-полях.
 type ZoneRepo struct {
-	GetFunc    func(ctx context.Context, id string) (*domain.Zone, error)
-	ListFunc   func(ctx context.Context, p zone.Pagination) ([]*domain.Zone, string, error)
-	InsertFunc func(ctx context.Context, z *domain.Zone) (*domain.Zone, error)
-	UpdateFunc func(ctx context.Context, id string, p zone.UpdateParams) (*domain.Zone, error)
-	DeleteFunc func(ctx context.Context, id string) error
+	GetFunc         func(ctx context.Context, id string) (*domain.Zone, error)
+	GetInternalFunc func(ctx context.Context, id string) (*domain.Zone, error)
+	ListFunc        func(ctx context.Context, p zone.Pagination) ([]*domain.Zone, string, error)
+	InsertFunc      func(ctx context.Context, z *domain.Zone) (*domain.Zone, error)
+	UpdateFunc      func(ctx context.Context, id string, p zone.UpdateParams) (*domain.Zone, error)
+	DeleteFunc      func(ctx context.Context, id string) error
 }
 
 // Get реализует zone.Repo.
 func (m *ZoneRepo) Get(ctx context.Context, id string) (*domain.Zone, error) {
 	return m.GetFunc(ctx, id)
+}
+
+// GetInternal реализует zone.Repo.
+func (m *ZoneRepo) GetInternal(ctx context.Context, id string) (*domain.Zone, error) {
+	return m.GetInternalFunc(ctx, id)
 }
 
 // List реализует zone.Repo.

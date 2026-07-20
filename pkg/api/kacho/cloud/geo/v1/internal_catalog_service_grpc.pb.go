@@ -23,9 +23,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InternalRegionService_Create_FullMethodName = "/kacho.cloud.geo.v1.InternalRegionService/Create"
-	InternalRegionService_Update_FullMethodName = "/kacho.cloud.geo.v1.InternalRegionService/Update"
-	InternalRegionService_Delete_FullMethodName = "/kacho.cloud.geo.v1.InternalRegionService/Delete"
+	InternalRegionService_Create_FullMethodName      = "/kacho.cloud.geo.v1.InternalRegionService/Create"
+	InternalRegionService_Update_FullMethodName      = "/kacho.cloud.geo.v1.InternalRegionService/Update"
+	InternalRegionService_Delete_FullMethodName      = "/kacho.cloud.geo.v1.InternalRegionService/Delete"
+	InternalRegionService_GetInternal_FullMethodName = "/kacho.cloud.geo.v1.InternalRegionService/GetInternal"
 )
 
 // InternalRegionServiceClient is the client API for InternalRegionService service.
@@ -35,6 +36,8 @@ type InternalRegionServiceClient interface {
 	Create(ctx context.Context, in *CreateRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	Update(ctx context.Context, in *UpdateRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	Delete(ctx context.Context, in *DeleteRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// GetInternal returns the FULL Internal projection (raw status + infra°).
+	GetInternal(ctx context.Context, in *GetInternalRegionRequest, opts ...grpc.CallOption) (*InternalRegion, error)
 }
 
 type internalRegionServiceClient struct {
@@ -75,6 +78,16 @@ func (c *internalRegionServiceClient) Delete(ctx context.Context, in *DeleteRegi
 	return out, nil
 }
 
+func (c *internalRegionServiceClient) GetInternal(ctx context.Context, in *GetInternalRegionRequest, opts ...grpc.CallOption) (*InternalRegion, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InternalRegion)
+	err := c.cc.Invoke(ctx, InternalRegionService_GetInternal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InternalRegionServiceServer is the server API for InternalRegionService service.
 // All implementations must embed UnimplementedInternalRegionServiceServer
 // for forward compatibility.
@@ -82,6 +95,8 @@ type InternalRegionServiceServer interface {
 	Create(context.Context, *CreateRegionRequest) (*operation.Operation, error)
 	Update(context.Context, *UpdateRegionRequest) (*operation.Operation, error)
 	Delete(context.Context, *DeleteRegionRequest) (*operation.Operation, error)
+	// GetInternal returns the FULL Internal projection (raw status + infra°).
+	GetInternal(context.Context, *GetInternalRegionRequest) (*InternalRegion, error)
 	mustEmbedUnimplementedInternalRegionServiceServer()
 }
 
@@ -100,6 +115,9 @@ func (UnimplementedInternalRegionServiceServer) Update(context.Context, *UpdateR
 }
 func (UnimplementedInternalRegionServiceServer) Delete(context.Context, *DeleteRegionRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedInternalRegionServiceServer) GetInternal(context.Context, *GetInternalRegionRequest) (*InternalRegion, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetInternal not implemented")
 }
 func (UnimplementedInternalRegionServiceServer) mustEmbedUnimplementedInternalRegionServiceServer() {}
 func (UnimplementedInternalRegionServiceServer) testEmbeddedByValue()                               {}
@@ -176,6 +194,24 @@ func _InternalRegionService_Delete_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalRegionService_GetInternal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInternalRegionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalRegionServiceServer).GetInternal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalRegionService_GetInternal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalRegionServiceServer).GetInternal(ctx, req.(*GetInternalRegionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalRegionService_ServiceDesc is the grpc.ServiceDesc for InternalRegionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -195,15 +231,20 @@ var InternalRegionService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "Delete",
 			Handler:    _InternalRegionService_Delete_Handler,
 		},
+		{
+			MethodName: "GetInternal",
+			Handler:    _InternalRegionService_GetInternal_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "kacho/cloud/geo/v1/internal_catalog_service.proto",
 }
 
 const (
-	InternalZoneService_Create_FullMethodName = "/kacho.cloud.geo.v1.InternalZoneService/Create"
-	InternalZoneService_Update_FullMethodName = "/kacho.cloud.geo.v1.InternalZoneService/Update"
-	InternalZoneService_Delete_FullMethodName = "/kacho.cloud.geo.v1.InternalZoneService/Delete"
+	InternalZoneService_Create_FullMethodName      = "/kacho.cloud.geo.v1.InternalZoneService/Create"
+	InternalZoneService_Update_FullMethodName      = "/kacho.cloud.geo.v1.InternalZoneService/Update"
+	InternalZoneService_Delete_FullMethodName      = "/kacho.cloud.geo.v1.InternalZoneService/Delete"
+	InternalZoneService_GetInternal_FullMethodName = "/kacho.cloud.geo.v1.InternalZoneService/GetInternal"
 )
 
 // InternalZoneServiceClient is the client API for InternalZoneService service.
@@ -213,6 +254,8 @@ type InternalZoneServiceClient interface {
 	Create(ctx context.Context, in *CreateZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	Update(ctx context.Context, in *UpdateZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	Delete(ctx context.Context, in *DeleteZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// GetInternal returns the FULL Internal projection (raw status + infra°).
+	GetInternal(ctx context.Context, in *GetInternalZoneRequest, opts ...grpc.CallOption) (*InternalZone, error)
 }
 
 type internalZoneServiceClient struct {
@@ -253,6 +296,16 @@ func (c *internalZoneServiceClient) Delete(ctx context.Context, in *DeleteZoneRe
 	return out, nil
 }
 
+func (c *internalZoneServiceClient) GetInternal(ctx context.Context, in *GetInternalZoneRequest, opts ...grpc.CallOption) (*InternalZone, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InternalZone)
+	err := c.cc.Invoke(ctx, InternalZoneService_GetInternal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InternalZoneServiceServer is the server API for InternalZoneService service.
 // All implementations must embed UnimplementedInternalZoneServiceServer
 // for forward compatibility.
@@ -260,6 +313,8 @@ type InternalZoneServiceServer interface {
 	Create(context.Context, *CreateZoneRequest) (*operation.Operation, error)
 	Update(context.Context, *UpdateZoneRequest) (*operation.Operation, error)
 	Delete(context.Context, *DeleteZoneRequest) (*operation.Operation, error)
+	// GetInternal returns the FULL Internal projection (raw status + infra°).
+	GetInternal(context.Context, *GetInternalZoneRequest) (*InternalZone, error)
 	mustEmbedUnimplementedInternalZoneServiceServer()
 }
 
@@ -278,6 +333,9 @@ func (UnimplementedInternalZoneServiceServer) Update(context.Context, *UpdateZon
 }
 func (UnimplementedInternalZoneServiceServer) Delete(context.Context, *DeleteZoneRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedInternalZoneServiceServer) GetInternal(context.Context, *GetInternalZoneRequest) (*InternalZone, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetInternal not implemented")
 }
 func (UnimplementedInternalZoneServiceServer) mustEmbedUnimplementedInternalZoneServiceServer() {}
 func (UnimplementedInternalZoneServiceServer) testEmbeddedByValue()                             {}
@@ -354,6 +412,24 @@ func _InternalZoneService_Delete_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalZoneService_GetInternal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInternalZoneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalZoneServiceServer).GetInternal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalZoneService_GetInternal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalZoneServiceServer).GetInternal(ctx, req.(*GetInternalZoneRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalZoneService_ServiceDesc is the grpc.ServiceDesc for InternalZoneService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -372,6 +448,10 @@ var InternalZoneService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _InternalZoneService_Delete_Handler,
+		},
+		{
+			MethodName: "GetInternal",
+			Handler:    _InternalZoneService_GetInternal_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

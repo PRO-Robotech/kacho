@@ -36,9 +36,15 @@ type ListZonesRequest struct {
 	PageSize int64 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Page token. To get the next page of results, set [page_token] to the
 	// [ListZonesResponse.next_page_token] returned by a previous list request.
-	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PageToken string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// If non-empty, return only zones belonging to this region.
+	RegionId string `protobuf:"bytes,3,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// If true, return only zones that are open for placement (derived
+	// open_for_placement°=true, i.e. zone.status==UP && region.status==UP). This
+	// is the ONLY placement filter — there is no raw ?status=UP on public.
+	OpenForPlacement bool `protobuf:"varint,4,opt,name=open_for_placement,json=openForPlacement,proto3" json:"open_for_placement,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ListZonesRequest) Reset() {
@@ -83,6 +89,20 @@ func (x *ListZonesRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListZonesRequest) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *ListZonesRequest) GetOpenForPlacement() bool {
+	if x != nil {
+		return x.OpenForPlacement
+	}
+	return false
 }
 
 type ListZonesResponse struct {
@@ -190,22 +210,22 @@ var File_kacho_cloud_geo_v1_zone_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_zone_service_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"e\n" +
+	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xb0\x01\n" +
 	"\x10ListZonesRequest\x12'\n" +
 	"\tpage_size\x18\x01 \x01(\x03B\n" +
 	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"k\n" +
+	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\x1b\n" +
+	"\tregion_id\x18\x03 \x01(\tR\bregionId\x12,\n" +
+	"\x12open_for_placement\x18\x04 \x01(\bR\x10openForPlacement\"k\n" +
 	"\x11ListZonesResponse\x12.\n" +
 	"\x05zones\x18\x01 \x03(\v2\x18.kacho.cloud.geo.v1.ZoneR\x05zones\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"7\n" +
 	"\x0eGetZoneRequest\x12%\n" +
-	"\azone_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId2\xc2\x02\n" +
-	"\vZoneService\x12\x94\x01\n" +
-	"\x03Get\x12\".kacho.cloud.geo.v1.GetZoneRequest\x1a\x18.kacho.cloud.geo.v1.Zone\"O\x8a\xb5\x18\rgeo.zones.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x19\x12\x17/geo/v1/zones/{zone_id}\x12\x9b\x01\n" +
-	"\x04List\x12$.kacho.cloud.geo.v1.ListZonesRequest\x1a%.kacho.cloud.geo.v1.ListZonesResponse\"F\x8a\xb5\x18\x0egeo.zones.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x0f\x12\r/geo/v1/zonesB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"\azone_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId2\xf7\x01\n" +
+	"\vZoneService\x12p\n" +
+	"\x03Get\x12\".kacho.cloud.geo.v1.GetZoneRequest\x1a\x18.kacho.cloud.geo.v1.Zone\"+\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x19\x12\x17/geo/v1/zones/{zone_id}\x12v\n" +
+	"\x04List\x12$.kacho.cloud.geo.v1.ListZonesRequest\x1a%.kacho.cloud.geo.v1.ListZonesResponse\"!\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x0f\x12\r/geo/v1/zonesB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_zone_service_proto_rawDescOnce sync.Once

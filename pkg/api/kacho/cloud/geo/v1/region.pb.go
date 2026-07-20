@@ -25,23 +25,40 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Region — global platform-topology resource.
+// Region — public, tenant-facing placement-axis coordinate (REGIONAL/anycast).
 //
 // Geography (Region/Zone) is owned by kacho-geo, the leaf platform-topology
-// service (depends on nothing else in Kachō). Not bound to Project/Account —
-// it is global cluster-scoped topology. Other services reference a region by
-// id (string) and validate it via RegionService.Get (cross-domain ref by id,
-// no cross-service FK). See data-integrity.md §«Cross-domain ссылки».
+// service. This is the LEAN public projection: it carries only tenant-facing
+// "intent + result". The raw admin `status` (GeoStatus) and the whole infra°
+// block live ONLY on InternalRegion (two-projection, security.md). The
+// placement axis (REGIONAL) is NOT emitted as a field — a consumer infers it
+// from the service it called (module-geo rule 1).
 type Region struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the region (e.g. "ru-central1"). Admin-assigned, immutable PK.
+	// ID of the region (e.g. "ru-central1"). Admin-assigned immutable slug PK —
+	// THE ONE carve-out from the 3-char-prefix+crockford-base32 id convention
+	// (it IS a coordinate, written by hand into every placement Create).
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Human-readable name of the region.
+	// Human-readable label; LIVE-mutable via InternalRegionService.Update.
+	// Globally UNIQUE, required.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	// Creation timestamp.
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Creation timestamp (truncated to seconds on the wire).
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// ISO-3166 alpha-2 country code (output-only descriptor, non-sensitive → on
+	// public). LIVE-mutable via InternalRegionService.Update.
+	CountryCode string `protobuf:"bytes,4,opt,name=country_code,json=countryCode,proto3" json:"country_code,omitempty"`
+	// Derived: the SINGLE actionable placement signal. = status==UP. This is
+	// ADMINISTRATIVE availability, NOT a capacity/health guarantee — Create may
+	// still fail on capacity at schedule time. Region: when false, the cause is
+	// always REGION_DOWN by construction (hence no placement_blocked_reason here).
+	OpenForPlacement bool `protobuf:"varint,5,opt,name=open_for_placement,json=openForPlacement,proto3" json:"open_for_placement,omitempty"`
+	// Advisory read-time COUNT rollup of zones with openForPlacement°=true (NOT a
+	// persisted denormalized column). Authoritative source =
+	// ZoneService.List?openForPlacement=true — divergence is possible, do not
+	// build an invariant on this hint.
+	OpenZoneCountHint int64 `protobuf:"varint,6,opt,name=open_zone_count_hint,json=openZoneCountHint,proto3" json:"open_zone_count_hint,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Region) Reset() {
@@ -95,16 +112,198 @@ func (x *Region) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Region) GetCountryCode() string {
+	if x != nil {
+		return x.CountryCode
+	}
+	return ""
+}
+
+func (x *Region) GetOpenForPlacement() bool {
+	if x != nil {
+		return x.OpenForPlacement
+	}
+	return false
+}
+
+func (x *Region) GetOpenZoneCountHint() int64 {
+	if x != nil {
+		return x.OpenZoneCountHint
+	}
+	return 0
+}
+
+// RegionInfra — infra-sensitive projection of a Region. Accepted on
+// InternalRegionService.Create (numeric_infra_id°) and readable via GetInternal.
+// NEVER on the public surface (security.md two-projection).
+type RegionInfra struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Numeric infra identifier of the region; IMMUTABLE after create.
+	NumericInfraId int64 `protobuf:"varint,1,opt,name=numeric_infra_id,json=numericInfraId,proto3" json:"numeric_infra_id,omitempty"`
+	// Read-time rollup of zone-infra capacity_hint° (NOT persisted, not settable);
+	// scheduler signal, never on public.
+	CapacityHint  string `protobuf:"bytes,2,opt,name=capacity_hint,json=capacityHint,proto3" json:"capacity_hint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegionInfra) Reset() {
+	*x = RegionInfra{}
+	mi := &file_kacho_cloud_geo_v1_region_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegionInfra) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegionInfra) ProtoMessage() {}
+
+func (x *RegionInfra) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_region_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegionInfra.ProtoReflect.Descriptor instead.
+func (*RegionInfra) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_region_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RegionInfra) GetNumericInfraId() int64 {
+	if x != nil {
+		return x.NumericInfraId
+	}
+	return 0
+}
+
+func (x *RegionInfra) GetCapacityHint() string {
+	if x != nil {
+		return x.CapacityHint
+	}
+	return ""
+}
+
+// InternalRegion — full admin-plane projection (InternalRegionService.GetInternal,
+// :9091 only). Carries the raw admin `status` and the infra° block; NEVER routed
+// to the external TLS endpoint (ban #6).
+type InternalRegion struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CountryCode string                 `protobuf:"bytes,4,opt,name=country_code,json=countryCode,proto3" json:"country_code,omitempty"`
+	// Raw admin maintenance flag (UP/DOWN). LIVE-mutable via Internal Update.
+	Status GeoStatus `protobuf:"varint,5,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
+	// Infra-sensitive projection — Internal-only.
+	Infra         *RegionInfra `protobuf:"bytes,6,opt,name=infra,proto3" json:"infra,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InternalRegion) Reset() {
+	*x = InternalRegion{}
+	mi := &file_kacho_cloud_geo_v1_region_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InternalRegion) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InternalRegion) ProtoMessage() {}
+
+func (x *InternalRegion) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_geo_v1_region_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InternalRegion.ProtoReflect.Descriptor instead.
+func (*InternalRegion) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_geo_v1_region_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *InternalRegion) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *InternalRegion) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *InternalRegion) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *InternalRegion) GetCountryCode() string {
+	if x != nil {
+		return x.CountryCode
+	}
+	return ""
+}
+
+func (x *InternalRegion) GetStatus() GeoStatus {
+	if x != nil {
+		return x.Status
+	}
+	return GeoStatus_GEO_STATUS_UNSPECIFIED
+}
+
+func (x *InternalRegion) GetInfra() *RegionInfra {
+	if x != nil {
+		return x.Infra
+	}
+	return nil
+}
+
 var File_kacho_cloud_geo_v1_region_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_region_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkacho/cloud/geo/v1/region.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"g\n" +
+	"\x1fkacho/cloud/geo/v1/region.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\"\xe9\x01\n" +
 	"\x06Region\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12!\n" +
+	"\fcountry_code\x18\x04 \x01(\tR\vcountryCode\x12,\n" +
+	"\x12open_for_placement\x18\x05 \x01(\bR\x10openForPlacement\x12/\n" +
+	"\x14open_zone_count_hint\x18\x06 \x01(\x03R\x11openZoneCountHint\"\\\n" +
+	"\vRegionInfra\x12(\n" +
+	"\x10numeric_infra_id\x18\x01 \x01(\x03R\x0enumericInfraId\x12#\n" +
+	"\rcapacity_hint\x18\x02 \x01(\tR\fcapacityHint\"\x80\x02\n" +
+	"\x0eInternalRegion\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12!\n" +
+	"\fcountry_code\x18\x04 \x01(\tR\vcountryCode\x125\n" +
+	"\x06status\x18\x05 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x125\n" +
+	"\x05infra\x18\x06 \x01(\v2\x1f.kacho.cloud.geo.v1.RegionInfraR\x05infraB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_region_proto_rawDescOnce sync.Once
@@ -118,18 +317,24 @@ func file_kacho_cloud_geo_v1_region_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_geo_v1_region_proto_rawDescData
 }
 
-var file_kacho_cloud_geo_v1_region_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_kacho_cloud_geo_v1_region_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_kacho_cloud_geo_v1_region_proto_goTypes = []any{
 	(*Region)(nil),                // 0: kacho.cloud.geo.v1.Region
-	(*timestamppb.Timestamp)(nil), // 1: google.protobuf.Timestamp
+	(*RegionInfra)(nil),           // 1: kacho.cloud.geo.v1.RegionInfra
+	(*InternalRegion)(nil),        // 2: kacho.cloud.geo.v1.InternalRegion
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(GeoStatus)(0),                // 4: kacho.cloud.geo.v1.GeoStatus
 }
 var file_kacho_cloud_geo_v1_region_proto_depIdxs = []int32{
-	1, // 0: kacho.cloud.geo.v1.Region.created_at:type_name -> google.protobuf.Timestamp
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 0: kacho.cloud.geo.v1.Region.created_at:type_name -> google.protobuf.Timestamp
+	3, // 1: kacho.cloud.geo.v1.InternalRegion.created_at:type_name -> google.protobuf.Timestamp
+	4, // 2: kacho.cloud.geo.v1.InternalRegion.status:type_name -> kacho.cloud.geo.v1.GeoStatus
+	1, // 3: kacho.cloud.geo.v1.InternalRegion.infra:type_name -> kacho.cloud.geo.v1.RegionInfra
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_geo_v1_region_proto_init() }
@@ -137,13 +342,14 @@ func file_kacho_cloud_geo_v1_region_proto_init() {
 	if File_kacho_cloud_geo_v1_region_proto != nil {
 		return
 	}
+	file_kacho_cloud_geo_v1_geo_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_geo_v1_region_proto_rawDesc), len(file_kacho_cloud_geo_v1_region_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

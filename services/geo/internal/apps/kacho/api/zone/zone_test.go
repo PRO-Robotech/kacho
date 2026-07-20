@@ -6,11 +6,13 @@ package zone_test
 import (
 	"context"
 	stderrors "errors"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/serviceerr"
@@ -19,268 +21,196 @@ import (
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/repomock"
 )
 
-func TestGet_emptyID_invalidArg(t *testing.T) {
-	uc := zone.New(&repomock.ZoneRepo{}, &repomock.ZoneRepo{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	_, err := uc.Get(context.Background(), "")
-	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Get('') err = %v, want ErrInvalidArg", err)
-	}
+// openInsert эмулирует repo.Insert: echo зоны + status родит-региона (JOIN) = UP.
+func openInsert(_ context.Context, z *domain.Zone) (*domain.Zone, error) {
+	z.RegionStatus = domain.GeoStatusUp
+	return z, nil
 }
 
-// TestGet_malformedID_invalidArg — не-slug id отвергается СИНХРОННО
-// InvalidArgument первым стейтментом, без round-trip в reader.Get.
-func TestGet_malformedID_invalidArg(t *testing.T) {
-	mock := &repomock.ZoneRepo{
-		GetFunc: func(_ context.Context, _ string) (*domain.Zone, error) {
-			t.Fatal("reader.Get must not be called for a malformed id")
-			return nil, nil
-		},
-	}
-	uc := zone.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	if _, err := uc.Get(context.Background(), "Zone!!"); !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Get('Zone!!') err = %v, want ErrInvalidArg", err)
-	}
-}
-
-func TestGet_happy(t *testing.T) {
-	mock := &repomock.ZoneRepo{
-		GetFunc: func(_ context.Context, id string) (*domain.Zone, error) {
-			return &domain.Zone{ID: id, RegionID: "region-1", Status: domain.ZoneStatusUp}, nil
-		},
-	}
-	uc := zone.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	z, err := uc.Get(context.Background(), "region-1-a")
-	if err != nil {
-		t.Fatalf("Get err = %v", err)
-	}
-	if z.ID != "region-1-a" || z.RegionID != "region-1" || z.Status != domain.ZoneStatusUp {
-		t.Fatalf("Get = %+v", z)
-	}
-}
-
-// TestCreate_emptyRegionID_invalidArg — пустой region_id отвергается синхронно.
-func TestCreate_emptyRegionID_invalidArg(t *testing.T) {
-	uc := zone.New(&repomock.ZoneRepo{}, &repomock.ZoneRepo{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	_, err := uc.Create(context.Background(), "region-1-a", "", "x", domain.ZoneStatusUp)
-	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Create(region_id='') err = %v, want ErrInvalidArg", err)
-	}
-}
-
-// TestCreate_happy — валидный вход → Operation → worker → response=Zone.
-func TestCreate_happy(t *testing.T) {
+func newUC(mock *repomock.ZoneRepo) (*zone.UseCase, *repomock.OpsRepo) {
 	ops := repomock.NewOpsRepo()
-	mock := &repomock.ZoneRepo{
-		InsertFunc: func(_ context.Context, z *domain.Zone) (*domain.Zone, error) { return z, nil },
+	return zone.New(mock, mock, ops, serviceerr.ToStatus), ops
+}
+
+// TestCreate_couplingViolation_invalidArg — GEO-1-29: zone.id не префиксован своим
+// regionId → синхронный InvalidArgument первым стейтментом (Insert не вызывается).
+func TestCreate_couplingViolation_invalidArg(t *testing.T) {
+	mock := &repomock.ZoneRepo{InsertFunc: func(context.Context, *domain.Zone) (*domain.Zone, error) {
+		t.Fatal("Insert must not run on a coupling violation")
+		return nil, nil
+	}}
+	uc, _ := newUC(mock)
+	_, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-a", RegionID: "eu-west1", Name: "Zone A"})
+	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
+		t.Fatalf("err = %v, want ErrInvalidArg", err)
 	}
-	uc := zone.New(mock, mock, ops, serviceerr.ToStatus)
-	op, err := uc.Create(context.Background(), "region-1-a", "region-1", "Region 1 A", domain.ZoneStatusUp)
+	if msg := serviceerr.ToStatus(err).Error(); !strings.Contains(msg, "zone id 'ru-central1-a' must be prefixed by its regionId 'eu-west1'") {
+		t.Fatalf("coupling text = %q", msg)
+	}
+}
+
+// TestCreate_strictStartsWith_reject — GEO-1-30: 'ru-central10-a' под 'ru-central1' → REJECT.
+func TestCreate_strictStartsWith_reject(t *testing.T) {
+	uc, _ := newUC(&repomock.ZoneRepo{})
+	_, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central10-a", RegionID: "ru-central1", Name: "Zone A"})
+	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
+		t.Fatalf("strict startsWith failed: err = %v, want ErrInvalidArg", err)
+	}
+}
+
+// TestCreate_freshDOWN_warns — GEO-1-12: omit status → DOWN; done:true; response
+// openForPlacement=false; metadata.warnings[0] дословно; response БЕЗ warnings.
+func TestCreate_freshDOWN_warns(t *testing.T) {
+	mock := &repomock.ZoneRepo{InsertFunc: openInsert}
+	uc, _ := newUC(mock)
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-d", RegionID: "ru-central1", Name: "RU Central 1 — Zone D"})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
 	}
-	if op.ID == "" || op.Done {
-		t.Fatalf("Create op = %+v", op)
+	if !op.Done || op.Error != nil {
+		t.Fatalf("op = %+v", op)
 	}
-	done := repomock.AwaitOpDone(t, ops, op.ID)
-	if done.Error != nil {
-		t.Fatalf("op.Error = %v", done.Error)
+	msg, _ := op.Response.UnmarshalNew()
+	if msg.(*geov1.Zone).GetOpenForPlacement() {
+		t.Error("fresh zone without status must be DOWN → openForPlacement=false")
 	}
-	msg, err := done.Response.UnmarshalNew()
+	meta, err := operations.MetadataFor[*geov1.CreateZoneMetadata](op)
 	if err != nil {
-		t.Fatalf("unmarshal: %v", err)
+		t.Fatalf("metadata: %v", err)
 	}
-	z, ok := msg.(*geov1.Zone)
-	if !ok || z.GetId() != "region-1-a" || z.GetRegionId() != "region-1" {
-		t.Fatalf("response = %+v", msg)
+	want := "zone ru-central1-d created but CLOSED to placement (status DOWN); no tenant can place here — Internal Update status=UP to open"
+	if len(meta.GetWarnings()) != 1 || meta.GetWarnings()[0] != want {
+		t.Fatalf("warnings = %v, want [%q]", meta.GetWarnings(), want)
 	}
 }
 
-// TestCreate_unspecifiedStatus_defaultsUp — Create без статуса (proto default
-// STATUS_UNSPECIFIED=0) НЕ персистит бессмысленный STATUS_UNSPECIFIED: use-case
-// коэрсит его в UP (интент схемы — zones.status DEFAULT 'UP'; repo.Insert всегда
-// пишет явное значение, поэтому DB-DEFAULT никогда не срабатывает и default'ит
-// именно use-case). Insert получает Zone со Status=UP, response несёт UP.
-func TestCreate_unspecifiedStatus_defaultsUp(t *testing.T) {
-	ops := repomock.NewOpsRepo()
-	var got *domain.Zone
-	mock := &repomock.ZoneRepo{
-		InsertFunc: func(_ context.Context, z *domain.Zone) (*domain.Zone, error) { got = z; return z, nil },
-	}
-	uc := zone.New(mock, mock, ops, serviceerr.ToStatus)
-	op, err := uc.Create(context.Background(), "region-1-a", "region-1", "Zone A", domain.ZoneStatusUnspecified)
+// TestCreate_openUP_noWarning — GEO-1-01/02: status=UP под UP-регионом → open, warnings пусты.
+func TestCreate_openUP_noWarning(t *testing.T) {
+	mock := &repomock.ZoneRepo{InsertFunc: openInsert}
+	uc, _ := newUC(mock)
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1", Name: "Zone A", Status: domain.GeoStatusUp})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
 	}
-	done := repomock.AwaitOpDone(t, ops, op.ID)
-	if done.Error != nil {
-		t.Fatalf("op.Error = %v", done.Error)
+	msg, _ := op.Response.UnmarshalNew()
+	if !msg.(*geov1.Zone).GetOpenForPlacement() {
+		t.Error("zone UP under region UP → openForPlacement=true")
 	}
-	if got == nil || got.Status != domain.ZoneStatusUp {
-		t.Fatalf("Insert got Status = %v, want UP (unspecified must default to UP)", got)
-	}
-	msg, err := done.Response.UnmarshalNew()
-	if err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	z, ok := msg.(*geov1.Zone)
-	if !ok || z.GetStatus() != geov1.Zone_UP {
-		t.Fatalf("response status = %v, want UP", msg)
+	meta, _ := operations.MetadataFor[*geov1.CreateZoneMetadata](op)
+	if len(meta.GetWarnings()) != 0 {
+		t.Fatalf("open zone must carry empty warnings, got %v", meta.GetWarnings())
 	}
 }
 
-// TestUpdate_status — статус задан → передан в repo указателем; response несёт DOWN.
-// TestUpdate_malformedRegionID_invalidArg — малформ new region_id отвергается
-// СИНХРОННО InvalidArgument (парити с Create-путём и с name-веткой), а не уходит
-// в UPDATE и не ловится FK как SQLSTATE 23503 → FailedPrecondition. writer.Update
-// не вызывается.
-func TestUpdate_malformedRegionID_invalidArg(t *testing.T) {
-	mock := &repomock.ZoneRepo{
-		UpdateFunc: func(_ context.Context, _ string, _ zone.UpdateParams) (*domain.Zone, error) {
-			t.Fatal("writer.Update must not be called for a malformed region_id")
-			return nil, nil
-		},
-	}
-	uc := zone.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	_, err := uc.Update(context.Background(), "region-1-a", "Bad_Region!", "", domain.ZoneStatusUnspecified)
+// TestCreate_emptyName_invalidArg — GEO-1-38: пустой name → InvalidArgument.
+func TestCreate_emptyName_invalidArg(t *testing.T) {
+	uc, _ := newUC(&repomock.ZoneRepo{})
+	_, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1"})
 	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Update malformed region_id err = %v, want ErrInvalidArg", err)
+		t.Fatalf("err = %v, want ErrInvalidArg", err)
 	}
 }
 
-func TestUpdate_status(t *testing.T) {
-	ops := repomock.NewOpsRepo()
-	var got zone.UpdateParams
-	mock := &repomock.ZoneRepo{
-		UpdateFunc: func(_ context.Context, id string, p zone.UpdateParams) (*domain.Zone, error) {
-			got = p
-			return &domain.Zone{ID: id, RegionID: "region-1", Status: domain.ZoneStatusDown}, nil
-		},
+// TestCreate_absentRegion_FKopError — GEO-1-34 [PHASE-0-GATED]: несуществующий
+// region_id остаётся FK-FAILED_PRECONDITION в op.error (НЕ pre-flight NOT_FOUND).
+func TestCreate_absentRegion_FKopError(t *testing.T) {
+	mock := &repomock.ZoneRepo{InsertFunc: func(context.Context, *domain.Zone) (*domain.Zone, error) {
+		return nil, geoerrors.ErrFailedPrecondition // repo маппит FK 23503 → sentinel
+	}}
+	uc, _ := newUC(mock)
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "eu-west1-a", RegionID: "eu-west1", Name: "Zone A"})
+	if err != nil {
+		t.Fatalf("Create accept err = %v (FK must land in op.error)", err)
 	}
-	uc := zone.New(mock, mock, ops, serviceerr.ToStatus)
-	op, err := uc.Update(context.Background(), "region-1-a", "", "", domain.ZoneStatusDown)
+	if op.Error == nil || op.Error.GetCode() != int32(codes.FailedPrecondition) {
+		t.Fatalf("op.Error = %v, want FAILED_PRECONDITION (gated FK fallback)", op.Error)
+	}
+}
+
+// TestUpdate_immutableRegionId_invalidArg — GEO-1-32: mask=["regionId"] → синхронный
+// InvalidArgument "regionId is immutable after Zone.Create" ДО UpdateMask.
+func TestUpdate_immutableRegionId_invalidArg(t *testing.T) {
+	mock := &repomock.ZoneRepo{UpdateFunc: func(context.Context, string, zone.UpdateParams) (*domain.Zone, error) {
+		t.Fatal("writer.Update must not run for immutable regionId")
+		return nil, nil
+	}}
+	uc, _ := newUC(mock)
+	_, err := uc.Update(context.Background(), zone.UpdateInput{ID: "ru-central1-a", Mask: []string{"regionId"}})
+	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
+		t.Fatalf("err = %v, want ErrInvalidArg", err)
+	}
+	if msg := serviceerr.ToStatus(err).Error(); !strings.Contains(msg, "regionId is immutable after Zone.Create") {
+		t.Fatalf("immutable text = %q", msg)
+	}
+}
+
+// TestUpdate_infraSubset_applied — GEO-1-04: mask=["infra.capacityHint","infra.hostClasses"]
+// применяет ровно эти поля, остальные infra/поля НЕ трогаются.
+func TestUpdate_infraSubset_applied(t *testing.T) {
+	var got zone.UpdateParams
+	mock := &repomock.ZoneRepo{UpdateFunc: func(_ context.Context, id string, p zone.UpdateParams) (*domain.Zone, error) {
+		got = p
+		return &domain.Zone{ID: id, RegionID: "ru-central1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp}, nil
+	}}
+	uc, _ := newUC(mock)
+	_, err := uc.Update(context.Background(), zone.UpdateInput{
+		ID:    "ru-central1-a",
+		Mask:  []string{"infra.capacityHint", "infra.hostClasses"},
+		Infra: domain.ZoneInfra{CapacityHint: "CONSTRAINED", HostClasses: []string{"std-v3"}},
+	})
 	if err != nil {
 		t.Fatalf("Update err = %v", err)
 	}
-	done := repomock.AwaitOpDone(t, ops, op.ID)
-	if done.Error != nil {
-		t.Fatalf("op.Error = %v", done.Error)
+	if got.CapacityHint == nil || *got.CapacityHint != "CONSTRAINED" {
+		t.Fatalf("capacityHint param = %v, want &CONSTRAINED", got.CapacityHint)
 	}
-	if got.Status == nil || *got.Status != domain.ZoneStatusDown {
-		t.Fatalf("UpdateParams.Status = %v, want &DOWN", got.Status)
+	if got.HostClasses == nil || len(*got.HostClasses) != 1 || (*got.HostClasses)[0] != "std-v3" {
+		t.Fatalf("hostClasses param = %v", got.HostClasses)
 	}
-	if got.RegionID != nil || got.Name != nil {
-		t.Fatalf("UpdateParams = %+v, want regionID/name nil", got)
+	if got.FailureDomainCount != nil || got.UnderlayAnchor != nil || got.Status != nil || got.Name != nil {
+		t.Fatalf("unmasked fields leaked into params: %+v", got)
 	}
 }
 
-// TestUpdate_unspecifiedStatus_keepsExisting — Update без статуса не затирает
-// существующий (Status=nil → COALESCE в repo); меняется только name.
-func TestUpdate_unspecifiedStatus_keepsExisting(t *testing.T) {
-	ops := repomock.NewOpsRepo()
-	var got zone.UpdateParams
-	mock := &repomock.ZoneRepo{
-		UpdateFunc: func(_ context.Context, id string, p zone.UpdateParams) (*domain.Zone, error) {
-			got = p
-			return &domain.Zone{ID: id, RegionID: "region-1", Name: "new-name", Status: domain.ZoneStatusUp}, nil
-		},
+// TestUpdate_immutableNumericInfraId_invalidArg — GEO-1-04: numericInfraId в mask → InvalidArgument.
+func TestUpdate_immutableNumericInfraId_invalidArg(t *testing.T) {
+	uc, _ := newUC(&repomock.ZoneRepo{})
+	_, err := uc.Update(context.Background(), zone.UpdateInput{ID: "ru-central1-a", Mask: []string{"infra.numericInfraId"}})
+	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
+		t.Fatalf("err = %v, want ErrInvalidArg", err)
 	}
-	uc := zone.New(mock, mock, ops, serviceerr.ToStatus)
-	op, err := uc.Update(context.Background(), "region-1-a", "", "new-name", domain.ZoneStatusUnspecified)
-	if err != nil {
+	if msg := serviceerr.ToStatus(err).Error(); !strings.Contains(msg, "numericInfraId is immutable after Zone.Create") {
+		t.Fatalf("immutable text = %q", msg)
+	}
+}
+
+// TestUpdate_status_applied — GEO-1-15: mask=["status"], status=UP → param Status.
+func TestUpdate_status_applied(t *testing.T) {
+	var got zone.UpdateParams
+	mock := &repomock.ZoneRepo{UpdateFunc: func(_ context.Context, id string, p zone.UpdateParams) (*domain.Zone, error) {
+		got = p
+		return &domain.Zone{ID: id, RegionID: "ru-central1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp}, nil
+	}}
+	uc, _ := newUC(mock)
+	if _, err := uc.Update(context.Background(), zone.UpdateInput{ID: "ru-central1-d", Mask: []string{"status"}, Status: domain.GeoStatusUp}); err != nil {
 		t.Fatalf("Update err = %v", err)
 	}
-	_ = repomock.AwaitOpDone(t, ops, op.ID)
-	if got.Status != nil {
-		t.Fatalf("UpdateParams.Status = %v, want nil (unspecified must not overwrite)", got.Status)
-	}
-	if got.Name == nil || *got.Name != "new-name" {
-		t.Fatalf("UpdateParams.Name = %v, want &new-name", got.Name)
+	if got.Status == nil || *got.Status != domain.GeoStatusUp {
+		t.Fatalf("status param = %v, want &UP", got.Status)
 	}
 }
 
-// TestUpdate_invalidStatus_invalidArg — out-of-range статус → синхронный
-// ErrInvalidArg (репо не зовётся, операция не пишется).
-func TestUpdate_invalidStatus_invalidArg(t *testing.T) {
-	called := false
-	mock := &repomock.ZoneRepo{
-		UpdateFunc: func(_ context.Context, _ string, _ zone.UpdateParams) (*domain.Zone, error) {
-			called = true
-			return nil, nil
-		},
-	}
-	uc := zone.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	_, err := uc.Update(context.Background(), "region-1-a", "", "", domain.ZoneStatus(99))
-	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Update(status=99) err = %v, want ErrInvalidArg", err)
-	}
-	if called {
-		t.Fatal("repo.Update must not be called on invalid status")
+// TestGetInternal_malformedID_invalidArg — parity с Get.
+func TestGetInternal_malformedID_invalidArg(t *testing.T) {
+	uc, _ := newUC(&repomock.ZoneRepo{})
+	if _, err := uc.GetInternal(context.Background(), "ZZ!"); !stderrors.Is(err, geoerrors.ErrInvalidArg) {
+		t.Fatalf("GetInternal('ZZ!') err = %v, want ErrInvalidArg", err)
 	}
 }
 
-// TestUpdate_notFound — repo.Update возвращает ErrNotFound → Operation.error NOT_FOUND.
-func TestUpdate_notFound(t *testing.T) {
-	ops := repomock.NewOpsRepo()
-	mock := &repomock.ZoneRepo{
-		UpdateFunc: func(_ context.Context, _ string, _ zone.UpdateParams) (*domain.Zone, error) {
-			return nil, geoerrors.ErrNotFound
-		},
-	}
-	uc := zone.New(mock, mock, ops, serviceerr.ToStatus)
-	op, err := uc.Update(context.Background(), "no-such-zone", "", "new-name", domain.ZoneStatusDown)
-	if err != nil {
-		t.Fatalf("Update accept err = %v", err)
-	}
-	done := repomock.AwaitOpDone(t, ops, op.ID)
-	if done.Error == nil || done.Error.GetCode() != int32(codes.NotFound) {
-		t.Fatalf("op.Error = %v, want NOT_FOUND", done.Error)
-	}
-}
-
-func TestDelete_emptyID_invalidArg(t *testing.T) {
-	uc := zone.New(&repomock.ZoneRepo{}, &repomock.ZoneRepo{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	_, err := uc.Delete(context.Background(), "")
-	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Delete('') err = %v, want ErrInvalidArg", err)
-	}
-}
-
-// TestUpdate_malformedID_invalidArg — не-slug id (target zone) отвергается
-// СИНХРОННО InvalidArgument первым стейтментом (парити с Get и с region_id-веткой):
-// writer.Update не зовётся, spurious operations-строка не пишется. Без format-check
-// malformed-id ушёл бы в UPDATE → RETURNING 0 rows → async NotFound (неверный контракт).
-func TestUpdate_malformedID_invalidArg(t *testing.T) {
-	mock := &repomock.ZoneRepo{
-		UpdateFunc: func(_ context.Context, _ string, _ zone.UpdateParams) (*domain.Zone, error) {
-			t.Fatal("writer.Update must not be called for a malformed id")
-			return nil, nil
-		},
-	}
-	uc := zone.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	if _, err := uc.Update(context.Background(), "Zone A!", "", "new-name", domain.ZoneStatusUnspecified); !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Update('Zone A!') err = %v, want ErrInvalidArg", err)
-	}
-}
-
-// TestUpdate_emptyID_invalidArg — пустой id отвергается синхронно (парити с Get).
-func TestUpdate_emptyID_invalidArg(t *testing.T) {
-	uc := zone.New(&repomock.ZoneRepo{}, &repomock.ZoneRepo{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	if _, err := uc.Update(context.Background(), "", "", "new-name", domain.ZoneStatusUnspecified); !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Update('') err = %v, want ErrInvalidArg", err)
-	}
-}
-
-// TestDelete_malformedID_invalidArg — не-slug id отвергается СИНХРОННО
-// InvalidArgument (парити с Get); writer.Delete не вызывается, операция не пишется.
-func TestDelete_malformedID_invalidArg(t *testing.T) {
-	mock := &repomock.ZoneRepo{
-		DeleteFunc: func(_ context.Context, _ string) error {
-			t.Fatal("writer.Delete must not be called for a malformed id")
-			return nil
-		},
-	}
-	uc := zone.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	if _, err := uc.Delete(context.Background(), "Zone A!"); !stderrors.Is(err, geoerrors.ErrInvalidArg) {
-		t.Fatalf("Delete('Zone A!') err = %v, want ErrInvalidArg", err)
+func TestList_garbagePageSize_invalidArg(t *testing.T) {
+	uc, _ := newUC(&repomock.ZoneRepo{})
+	if _, _, err := uc.List(context.Background(), zone.Pagination{PageSize: 1_000_000}); err == nil {
+		t.Fatal("List(page_size too large) err = nil, want validation error")
 	}
 }

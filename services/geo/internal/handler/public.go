@@ -39,7 +39,11 @@ func (h *RegionHandler) Get(ctx context.Context, req *geov1.GetRegionRequest) (*
 
 // List возвращает регионы (cursor-пагинация).
 func (h *RegionHandler) List(ctx context.Context, req *geov1.ListRegionsRequest) (*geov1.ListRegionsResponse, error) {
-	regions, next, err := h.uc.List(ctx, region.Pagination{PageSize: req.GetPageSize(), PageToken: req.GetPageToken()})
+	regions, next, err := h.uc.List(ctx, region.Pagination{
+		PageSize:         req.GetPageSize(),
+		PageToken:        req.GetPageToken(),
+		OpenForPlacement: req.GetOpenForPlacement(),
+	})
 	if err != nil {
 		return nil, serviceerr.ToStatus(err)
 	}
@@ -70,7 +74,12 @@ func (h *ZoneHandler) Get(ctx context.Context, req *geov1.GetZoneRequest) (*geov
 
 // List возвращает зоны (cursor-пагинация).
 func (h *ZoneHandler) List(ctx context.Context, req *geov1.ListZonesRequest) (*geov1.ListZonesResponse, error) {
-	zones, next, err := h.uc.List(ctx, zone.Pagination{PageSize: req.GetPageSize(), PageToken: req.GetPageToken()})
+	zones, next, err := h.uc.List(ctx, zone.Pagination{
+		PageSize:         req.GetPageSize(),
+		PageToken:        req.GetPageToken(),
+		RegionID:         req.GetRegionId(),
+		OpenForPlacement: req.GetOpenForPlacement(),
+	})
 	if err != nil {
 		return nil, serviceerr.ToStatus(err)
 	}

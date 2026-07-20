@@ -8,22 +8,22 @@ import "testing"
 func TestPermissionMap_tiersAndPermissions(t *testing.T) {
 	m := PermissionMap()
 
-	read := []struct{ method, perm string }{
-		{"/kacho.cloud.geo.v1.RegionService/Get", "geo.regions.get"},
-		{"/kacho.cloud.geo.v1.RegionService/List", "geo.regions.list"},
-		{"/kacho.cloud.geo.v1.ZoneService/Get", "geo.zones.get"},
-		{"/kacho.cloud.geo.v1.ZoneService/List", "geo.zones.list"},
+	// GEO-1-20/21: Region/Zone Get/List — ambient project-scope EXEMPT
+	// (authN-only, снят per-RPC ReBAC-Check). Regression-lock: если кто-то вернёт
+	// viewer/scope-Check на catalog-read — zero-binding tenant снова получит отказ.
+	read := []string{
+		"/kacho.cloud.geo.v1.RegionService/Get",
+		"/kacho.cloud.geo.v1.RegionService/List",
+		"/kacho.cloud.geo.v1.ZoneService/Get",
+		"/kacho.cloud.geo.v1.ZoneService/List",
 	}
-	for _, r := range read {
-		e, ok := m.Lookup(r.method)
+	for _, method := range read {
+		e, ok := m.Lookup(method)
 		if !ok {
-			t.Fatalf("%s missing from PermissionMap", r.method)
+			t.Fatalf("%s missing from PermissionMap", method)
 		}
-		if e.Relation != relationViewer {
-			t.Errorf("%s relation = %q, want viewer", r.method, e.Relation)
-		}
-		if e.Permission != r.perm {
-			t.Errorf("%s permission = %q, want %q", r.method, e.Permission, r.perm)
+		if !e.Public {
+			t.Errorf("%s Public = false, want true (ambient project-scope EXEMPT, GEO-1 documented-exception)", method)
 		}
 	}
 

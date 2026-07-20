@@ -131,7 +131,7 @@ func TestResolve_DeleteRegion_present_interrupted(t *testing.T) {
 
 func TestResolve_CreateZone_present_done(t *testing.T) {
 	rs := operationresolver.New(operationresolver.Readers{
-		Zone: stubZoneReader{zone: &geov1.Zone{Id: "region-1-a", RegionId: "region-1", Status: geov1.Zone_UP}},
+		Zone: stubZoneReader{zone: &geov1.Zone{Id: "region-1-a", RegionId: "region-1", OpenForPlacement: true}},
 	}, nil)
 	res, err := rs.Resolve(context.Background(), opWith(mustAny(t, &geov1.CreateZoneMetadata{ZoneId: "region-1-a"})))
 	if err != nil {
@@ -141,8 +141,9 @@ func TestResolve_CreateZone_present_done(t *testing.T) {
 		t.Fatalf("outcome = %v, want Done", res.Outcome)
 	}
 	msg, _ := res.Response.UnmarshalNew()
-	if z, ok := msg.(*geov1.Zone); !ok || z.GetId() != "region-1-a" || z.GetStatus() != geov1.Zone_UP {
-		t.Fatalf("response = %+v, want Zone region-1-a UP", msg)
+	// Public Zone — two-projection: без status; резолвер отдаёт публичную проекцию.
+	if z, ok := msg.(*geov1.Zone); !ok || z.GetId() != "region-1-a" || !z.GetOpenForPlacement() {
+		t.Fatalf("response = %+v, want public Zone region-1-a open", msg)
 	}
 }
 
