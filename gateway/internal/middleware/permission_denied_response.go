@@ -123,7 +123,7 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
 	// nlb — services/nlb/internal/repo/kacho/pg/load_balancer_repo.go
-	"lb_network_load_balancer": "NetworkLoadBalancer %s not found",
+	"nlb_network_load_balancer": "NetworkLoadBalancer %s not found",
 }
 
 // notFoundMessage — the stable hide-existence message.
