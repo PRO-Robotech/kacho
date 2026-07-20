@@ -84,6 +84,66 @@ func validateCIDRPrefix(field, value string) error {
 	return nil
 }
 
+// validateSubnetWithinSupernet проверяет, что каждый CIDR-блок подсети (v4 и v6)
+// — подмножество одного из объявленных супернет-блоков сети соответствующего
+// семейства (redesign VPC-1 F7: Subnet.ipv4CidrPrimary ⊆ network.ipv4CidrBlocks).
+// Валидируется within-service против network-строки в той же БД.
+//
+// Back-compat: если сеть НЕ объявила супернет данного семейства (legacy/пустой
+// набор) — проверка этого семейства пропускается (существующие сети без
+// объявленного адресного пространства не ломаются). Нарушение → INVALID_ARGUMENT
+// с редизайн-текстом "subnet CIDR %s is not within any network CIDR block".
+func validateSubnetWithinSupernet(netV4, netV6, subV4, subV6 []string) error {
+	if err := eachWithinSupernet(netV4, subV4); err != nil {
+		return err
+	}
+	return eachWithinSupernet(netV6, subV6)
+}
+
+// eachWithinSupernet — общая проверка одного семейства: каждый блок из blocks
+// обязан лежать внутри одного из supernet-блоков. Пустой supernet → skip.
+func eachWithinSupernet(supernet, blocks []string) error {
+	if len(supernet) == 0 {
+		return nil // сеть не объявила супернет этого семейства → не ограничиваем (back-compat)
+	}
+	supers := make([]netip.Prefix, 0, len(supernet))
+	for _, s := range supernet {
+		p, perr := netip.ParsePrefix(s)
+		if perr != nil {
+			continue // malformed supernet-блок сети (валидируется на Network.Create) — не учитываем
+		}
+		supers = append(supers, p.Masked())
+	}
+	if len(supers) == 0 {
+		return nil
+	}
+	for _, b := range blocks {
+		inner, perr := netip.ParsePrefix(b)
+		if perr != nil {
+			continue // CIDR-формат блока подсети валидируется выше по стеку
+		}
+		if !prefixWithinAny(inner.Masked(), supers) {
+			return status.Errorf(codes.InvalidArgument,
+				"subnet CIDR %s is not within any network CIDR block", b)
+		}
+	}
+	return nil
+}
+
+// prefixWithinAny — true, если inner ⊆ хотя бы одного outer того же семейства.
+// inner ⊆ outer ⟺ outer не длиннее inner И outer содержит сетевой адрес inner.
+func prefixWithinAny(inner netip.Prefix, supers []netip.Prefix) bool {
+	for _, outer := range supers {
+		if outer.Addr().Is4() != inner.Addr().Is4() {
+			continue
+		}
+		if outer.Bits() <= inner.Bits() && outer.Contains(inner.Addr()) {
+			return true
+		}
+	}
+	return false
+}
+
 // prefixesOverlap возвращает true если два CIDR-блока пересекаются.
 func prefixesOverlap(a, b netip.Prefix) bool {
 	if a.Addr().Is4() != b.Addr().Is4() {

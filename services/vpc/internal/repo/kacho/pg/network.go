@@ -11,13 +11,26 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/PRO-Robotech/kacho/pkg/filter"
+	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
+
+// textArray кодирует []string в непустой (Valid) text[]-параметр — nil/пустой
+// слайс → SQL `'{}'`, а не NULL (колонки ipv4_cidr_blocks/ipv6_cidr_blocks
+// объявлены NOT NULL). Зеркалит паттерн subnetWriter.Insert.
+func textArray(v []string) pgtype.Array[string] {
+	return pgtype.Array[string]{
+		Elements: v,
+		Valid:    true,
+		Dims:     []pgtype.ArrayDimension{{Length: safeconv.IntToInt32(len(v)), LowerBound: 1}},
+	}
+}
 
 // networkReader — Get/List поверх произвольной pgx.Tx (read-only или RW).
 // Не имеет своего state кроме tx.
@@ -218,13 +231,15 @@ func (w *networkWriter) Insert(ctx context.Context, n *domain.Network) (*kacho.N
 
 	now := time.Now().UTC()
 	q := fmt.Sprintf(`
-		INSERT INTO networks (id, project_id, created_at, name, description, labels, default_security_group_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO networks (id, project_id, created_at, name, description, labels, default_security_group_id, ipv4_cidr_blocks, ipv6_cidr_blocks, default_route_table_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING %s`, helpers.NetworkCols)
 
 	row := w.tx.QueryRow(ctx, q,
 		// default_security_group_id nullable (0005, FK): '' → NULL.
 		n.ID, n.ProjectID, now, string(n.Name), string(n.Description), labelsJSON, helpers.NullableStr(n.DefaultSecurityGroupID),
+		// declared супернет + default RT id (0015). text[] NOT NULL → textArray (nil → '{}').
+		textArray(n.IPv4CidrBlocks), textArray(n.IPv6CidrBlocks), n.DefaultRouteTableID,
 	)
 	result, err := helpers.ScanNetwork(row)
 	if err != nil {

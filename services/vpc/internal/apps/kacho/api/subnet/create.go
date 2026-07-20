@@ -142,6 +142,13 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 		_ = rd.Close()
 		return nil, status.Errorf(codes.NotFound, "Network %s not found", s.NetworkID)
 	}
+	// F7: каждый CIDR подсети обязан лежать в объявленном супернете сети
+	// (within-service, против только что прочитанной network-строки). Пустой
+	// супернет (legacy) → skip. Нарушение → InvalidArgument (format-класс), sync.
+	if err := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
+		_ = rd.Close()
+		return nil, err
+	}
 	name := string(s.Name)
 	if name != "" {
 		existing, _, lerr := rd.Subnets().List(ctx, SubnetFilter{ProjectID: s.ProjectID, Name: name}, Pagination{})
@@ -214,6 +221,11 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	// вызывающего — тот же NotFound, что для отсутствующей сети (без oracle).
 	if parentNet.ProjectID != s.ProjectID {
 		return nil, status.Errorf(codes.NotFound, "Network %s not found", s.NetworkID)
+	}
+	// F7 backstop (writer-TX): супернет-принадлежность против актуальной
+	// network-строки (супернет мог сузиться между sync-read и Insert).
+	if err := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
+		return nil, err
 	}
 
 	// Пересечения v4 CIDR в рамках одной сети ловятся атомарно DB-level EXCLUDE

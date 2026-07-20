@@ -35,6 +35,9 @@ func (network) toPb(rec kachorepo.NetworkRecord) (*vpcv1.Network, error) {
 		Description:            string(rec.Description),
 		Labels:                 domain.LabelsToMap(rec.Labels),
 		DefaultSecurityGroupId: rec.DefaultSecurityGroupID,
+		Ipv4CidrBlocks:         rec.IPv4CidrBlocks,
+		Ipv6CidrBlocks:         rec.IPv6CidrBlocks,
+		DefaultRouteTableId:    rec.DefaultRouteTableID,
 	}, nil
 }
 

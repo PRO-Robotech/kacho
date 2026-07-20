@@ -119,10 +119,12 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateNetworkRequest) (
 		return nil, err
 	}
 	n := domain.Network{
-		ProjectID:   req.ProjectId,
-		Name:        domain.RcNameVPC(req.Name),
-		Description: domain.RcDescription(req.Description),
-		Labels:      domain.LabelsFromMap(req.Labels),
+		ProjectID:      req.ProjectId,
+		Name:           domain.RcNameVPC(req.Name),
+		Description:    domain.RcDescription(req.Description),
+		Labels:         domain.LabelsFromMap(req.Labels),
+		IPv4CidrBlocks: req.Ipv4CidrBlocks,
+		IPv6CidrBlocks: req.Ipv6CidrBlocks,
 	}
 	op, err := h.create.Execute(ctx, n)
 	if err != nil {

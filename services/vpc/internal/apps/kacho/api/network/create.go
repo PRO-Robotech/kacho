@@ -97,6 +97,11 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 	if err := serviceerr.FromValidation(n.Validate()); err != nil {
 		return nil, err
 	}
+	// F2: объявленный супернет валидируется по формату (canonical CIDR,
+	// host-bits=0, корректное семейство) sync, ДО создания Operation.
+	if err := validateNetworkSupernet(n.IPv4CidrBlocks, n.IPv6CidrBlocks); err != nil {
+		return nil, err
+	}
 	// Sync project.Exists precheck не делаем — он race-prone: между sync-проверкой
 	// и async-частью project может быть удален peer-сервисом, и second-writer-wins
 	// безусловно создавал бы ресурс. NotFound возвращается через `operation.error`

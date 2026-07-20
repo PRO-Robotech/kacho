@@ -49,8 +49,18 @@ type Network struct {
 	Labels map[string]string `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of default security group for network.
 	DefaultSecurityGroupId string `protobuf:"bytes,7,opt,name=default_security_group_id,json=defaultSecurityGroupId,proto3" json:"default_security_group_id,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// Declared IPv4 supernet block(s) for the network. Every Subnet.ipv4_cidr_primary
+	// must be a subset of one of these blocks. There is no primary at the network
+	// level — this is a pure set of supernet blocks. Mutated only via
+	// :add-cidr-blocks / :remove-cidr-blocks (immutable through Update).
+	Ipv4CidrBlocks []string `protobuf:"bytes,8,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
+	// Declared IPv6 supernet block(s) for the network. Mirror of ipv4_cidr_blocks.
+	Ipv6CidrBlocks []string `protobuf:"bytes,9,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
+	// ° ID of the system-provisioned default route table, created at Network.Create
+	// and auto-associated to every new Subnet of this network. Output-only.
+	DefaultRouteTableId string `protobuf:"bytes,10,opt,name=default_route_table_id,json=defaultRouteTableId,proto3" json:"default_route_table_id,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Network) Reset() {
@@ -132,11 +142,32 @@ func (x *Network) GetDefaultSecurityGroupId() string {
 	return ""
 }
 
+func (x *Network) GetIpv4CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv4CidrBlocks
+	}
+	return nil
+}
+
+func (x *Network) GetIpv6CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv6CidrBlocks
+	}
+	return nil
+}
+
+func (x *Network) GetDefaultRouteTableId() string {
+	if x != nil {
+		return x.DefaultRouteTableId
+	}
+	return ""
+}
+
 var File_kacho_cloud_vpc_v1_network_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_network_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/vpc/v1/network.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe0\x02\n" +
+	" kacho/cloud/vpc/v1/network.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe9\x03\n" +
 	"\aNetwork\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -146,7 +177,11 @@ const file_kacho_cloud_vpc_v1_network_proto_rawDesc = "" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x05 \x01(\tR\vdescription\x12?\n" +
 	"\x06labels\x18\x06 \x03(\v2'.kacho.cloud.vpc.v1.Network.LabelsEntryR\x06labels\x129\n" +
-	"\x19default_security_group_id\x18\a \x01(\tR\x16defaultSecurityGroupId\x1a9\n" +
+	"\x19default_security_group_id\x18\a \x01(\tR\x16defaultSecurityGroupId\x12(\n" +
+	"\x10ipv4_cidr_blocks\x18\b \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\t \x03(\tR\x0eipv6CidrBlocks\x123\n" +
+	"\x16default_route_table_id\x18\n" +
+	" \x01(\tR\x13defaultRouteTableId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"

@@ -208,6 +208,14 @@ message CreateNetworkRequest {
   // Не задано → fallback на env KACHO_VPC_DEFAULT_SG_INLINE (back-compat).
   // true → создать default-SG для сети; false → сеть без default-SG.
   optional bool create_default_security_group = 5;
+
+  // Declared IPv4 supernet block(s). Each Subnet.ipv4_cidr_primary must fall
+  // within one of these blocks (validated at Subnet.Create). Optional at Create;
+  // extended later via NetworkService.AddCidrBlocks.
+  repeated string ipv4_cidr_blocks = 6;
+
+  // Declared IPv6 supernet block(s). Mirror of ipv4_cidr_blocks.
+  repeated string ipv6_cidr_blocks = 7;
 }
 
 message CreateNetworkMetadata {

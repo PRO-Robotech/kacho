@@ -38,4 +38,17 @@ message Network {
 
   // ID of default security group for network.
   string default_security_group_id = 7;
+
+  // Declared IPv4 supernet block(s) for the network. Every Subnet.ipv4_cidr_primary
+  // must be a subset of one of these blocks. There is no primary at the network
+  // level — this is a pure set of supernet blocks. Mutated only via
+  // :add-cidr-blocks / :remove-cidr-blocks (immutable through Update).
+  repeated string ipv4_cidr_blocks = 8;
+
+  // Declared IPv6 supernet block(s) for the network. Mirror of ipv4_cidr_blocks.
+  repeated string ipv6_cidr_blocks = 9;
+
+  // ° ID of the system-provisioned default route table, created at Network.Create
+  // and auto-associated to every new Subnet of this network. Output-only.
+  string default_route_table_id = 10;
 }

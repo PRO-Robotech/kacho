@@ -24,7 +24,9 @@ type Scannable interface {
 // default_security_group_id nullable (FK ON DELETE SET NULL) — читаем через
 // COALESCE(..., ”) чтобы NULL → "" (proto-контракт не меняется, ScanNetwork
 // сканирует в string).
-const NetworkCols = `id, project_id, created_at, name, description, labels, COALESCE(default_security_group_id, '') AS default_security_group_id, COALESCE(vrf_id, 0) AS vrf_id`
+// ipv4_cidr_blocks / ipv6_cidr_blocks / default_route_table_id — NOT NULL DEFAULT
+// (0015_network_supernet), поэтому читаются напрямую без COALESCE.
+const NetworkCols = `id, project_id, created_at, name, description, labels, COALESCE(default_security_group_id, '') AS default_security_group_id, COALESCE(vrf_id, 0) AS vrf_id, ipv4_cidr_blocks, ipv6_cidr_blocks, default_route_table_id`
 
 // SubnetCols — список колонок таблицы subnets в порядке, ожидаемом ScanSubnet.
 const SubnetCols = `id, project_id, created_at, name, description, labels, network_id, zone_id, v4_cidr_blocks, v6_cidr_blocks, route_table_id, dhcp_options, placement_type, region_id`
@@ -62,6 +64,7 @@ func ScanNetwork(row Scannable) (*kachorepo.NetworkRecord, error) {
 	err := row.Scan(
 		&n.ID, &n.ProjectID, &n.CreatedAt, &name, &description, &labelsJSON,
 		&n.DefaultSecurityGroupID, &vrf,
+		&n.IPv4CidrBlocks, &n.IPv6CidrBlocks, &n.DefaultRouteTableID,
 	)
 	if err != nil {
 		return nil, err

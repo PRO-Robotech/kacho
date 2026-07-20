@@ -232,8 +232,14 @@ type CreateNetworkRequest struct {
 	// Не задано → fallback на env KACHO_VPC_DEFAULT_SG_INLINE (back-compat).
 	// true → создать default-SG для сети; false → сеть без default-SG.
 	CreateDefaultSecurityGroup *bool `protobuf:"varint,5,opt,name=create_default_security_group,json=createDefaultSecurityGroup,proto3,oneof" json:"create_default_security_group,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	// Declared IPv4 supernet block(s). Each Subnet.ipv4_cidr_primary must fall
+	// within one of these blocks (validated at Subnet.Create). Optional at Create;
+	// extended later via NetworkService.AddCidrBlocks.
+	Ipv4CidrBlocks []string `protobuf:"bytes,6,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
+	// Declared IPv6 supernet block(s). Mirror of ipv4_cidr_blocks.
+	Ipv6CidrBlocks []string `protobuf:"bytes,7,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CreateNetworkRequest) Reset() {
@@ -299,6 +305,20 @@ func (x *CreateNetworkRequest) GetCreateDefaultSecurityGroup() bool {
 		return *x.CreateDefaultSecurityGroup
 	}
 	return false
+}
+
+func (x *CreateNetworkRequest) GetIpv4CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv4CidrBlocks
+	}
+	return nil
+}
+
+func (x *CreateNetworkRequest) GetIpv6CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv6CidrBlocks
+	}
+	return nil
 }
 
 type CreateNetworkMetadata struct {
@@ -1088,14 +1108,16 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"w\n" +
 	"\x14ListNetworksResponse\x127\n" +
 	"\bnetworks\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.NetworkR\bnetworks\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe5\x03\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb9\x04\n" +
 	"\x14CreateNetworkRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
 	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
 	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12F\n" +
-	"\x1dcreate_default_security_group\x18\x05 \x01(\bH\x00R\x1acreateDefaultSecurityGroup\x88\x01\x01\x1a9\n" +
+	"\x1dcreate_default_security_group\x18\x05 \x01(\bH\x00R\x1acreateDefaultSecurityGroup\x88\x01\x01\x12(\n" +
+	"\x10ipv4_cidr_blocks\x18\x06 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\a \x03(\tR\x0eipv6CidrBlocks\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B \n" +
