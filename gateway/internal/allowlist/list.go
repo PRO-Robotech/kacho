@@ -21,6 +21,8 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.NetworkService/Create":             {},
 	"/kacho.cloud.vpc.v1.NetworkService/Update":             {},
 	"/kacho.cloud.vpc.v1.NetworkService/Delete":             {},
+	"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks":      {}, // :verb supernet growth (redesign-2026)
+	"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks":   {}, // :verb supernet shrink (redesign-2026)
 	"/kacho.cloud.vpc.v1.NetworkService/ListSubnets":        {},
 	"/kacho.cloud.vpc.v1.NetworkService/ListSecurityGroups": {},
 	"/kacho.cloud.vpc.v1.NetworkService/ListRouteTables":    {},
@@ -129,6 +131,11 @@ var AllowedMethods = map[string]struct{}{
 	// compute.v1 — DiskTypeService (read-only справочник)
 	"/kacho.cloud.compute.v1.DiskTypeService/Get":  {},
 	"/kacho.cloud.compute.v1.DiskTypeService/List": {},
+	// compute.v1 — MachineTypeService (read-only sizing catalog; cluster-viewer,
+	// parity с geo Region/Zone). Admin CRUD — InternalMachineTypeService на :9091
+	// (НЕ в allowlist; HasInternalSuffix блокирует автоматически, ban #6).
+	"/kacho.cloud.compute.v1.MachineTypeService/Get":  {},
+	"/kacho.cloud.compute.v1.MachineTypeService/List": {},
 	// compute.v1 — Geography (Region/Zone) НЕ публичная поверхность compute:
 	// выделена в leaf-сервис kacho-geo (см. geo.v1 ниже).
 
@@ -150,6 +157,15 @@ var AllowedMethods = map[string]struct{}{
 	// InternalDiskTypeService на :9091, НЕ в allowlist).
 	"/kacho.cloud.storage.v1.DiskTypeService/Get":  {},
 	"/kacho.cloud.storage.v1.DiskTypeService/List": {},
+	// storage.v1 — ImageService (StorageImage `img`; boot-image ресурс, выделен из
+	// compute Image). Read — sync; мутации — async Operation. InternalImageService
+	// (GetInternal, инфра-проекция) — НЕ в allowlist (HasInternalSuffix, ban #6).
+	"/kacho.cloud.storage.v1.ImageService/Get":            {},
+	"/kacho.cloud.storage.v1.ImageService/List":           {},
+	"/kacho.cloud.storage.v1.ImageService/Create":         {},
+	"/kacho.cloud.storage.v1.ImageService/Update":         {},
+	"/kacho.cloud.storage.v1.ImageService/Delete":         {},
+	"/kacho.cloud.storage.v1.ImageService/ListOperations": {},
 	// storage.v1 — InternalVolumeService (Attach/Detach/ListAttachments/GetInternal,
 	// инфра-чувствительные placement-поля) и InternalDiskTypeService (admin CRUD) —
 	// НЕ в allowlist (HasInternalSuffix блокирует автоматически; ban #6). :9091 only.
@@ -215,10 +231,13 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.RoleService/Delete":         {},
 	"/kacho.cloud.iam.v1.RoleService/ListOperations": {},
 	// iam.v1 — AccessBindingService
-	"/kacho.cloud.iam.v1.AccessBindingService/Get":                   {},
-	"/kacho.cloud.iam.v1.AccessBindingService/Create":                {},
-	"/kacho.cloud.iam.v1.AccessBindingService/Update":                {}, // public mutation (REST PATCH /iam/v1/accessBindings/{access_binding_id}); clears deletion_protection, editor relation (parity with Delete)
-	"/kacho.cloud.iam.v1.AccessBindingService/Delete":                {},
+	"/kacho.cloud.iam.v1.AccessBindingService/Get":    {},
+	"/kacho.cloud.iam.v1.AccessBindingService/List":   {}, // unified paginated read (REST GET /iam/v1/accessBindings), F11
+	"/kacho.cloud.iam.v1.AccessBindingService/Create": {},
+	"/kacho.cloud.iam.v1.AccessBindingService/Update": {}, // public mutation (REST PATCH /iam/v1/accessBindings/{access_binding_id}); clears deletion_protection, editor relation (parity with Delete)
+	"/kacho.cloud.iam.v1.AccessBindingService/Delete": {},
+	"/kacho.cloud.iam.v1.AccessBindingService/Revoke": {}, // soft-revoke :verb (REST POST /iam/v1/accessBindings/{access_binding_id}:revoke), F10
+
 	"/kacho.cloud.iam.v1.AccessBindingService/ListByScope":           {}, // public sync read (REST GET /iam/v1/accessBindings:listByScope)
 	"/kacho.cloud.iam.v1.AccessBindingService/ListBySubject":         {},
 	"/kacho.cloud.iam.v1.AccessBindingService/ListByAccount":         {},
