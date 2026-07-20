@@ -8,7 +8,11 @@
 -- software check-then-act (ban #10):
 --   - images.source_snapshot_id → snapshots(id) ON DELETE SET NULL (provenance);
 --   - images.source_volume_id   → volumes(id)   ON DELETE SET NULL (provenance);
---   - exactly-one source (snapshot XOR volume) — CHECK (backstop к sync-validate);
+--   - at-most-one source (snapshot XOR volume, но 0 допустимо) — mutual-exclusion CHECK,
+--     СОГЛАСОВАН с provenance-FK SET NULL: удаление источника, засевшего Image, зануляет
+--     source-колонку → Image переживает source-less (STOR-1-28/F5). «exactly-one» энфорсится
+--     в domain-слое sync-validate (F12/STOR-1-24: both/none → InvalidArgument), а НЕ в DB —
+--     иначе SET NULL ронял бы 23514 на удалении источника (см. images_source_at_most_one);
 --   - volumes.source_image_id   → images(id)    ON DELETE SET NULL (provenance,
 --     STOR-1-28: удаление Image не блокируется томом, а очищает lineage — блочные
 --     данные уже засеяны и независимы от Image; контраст с attachment→volume RESTRICT).
@@ -59,10 +63,15 @@ CREATE TABLE kacho_storage.images (
         CHECK (format IN ('STANDARD')),
     CONSTRAINT images_state_check
         CHECK (state IN ('CREATING','READY','DELETING','ERROR')),
-    -- exactly-one source (snapshot XOR volume) — backstop к sync-validate (F12).
-    CONSTRAINT images_source_exactly_one
-        CHECK ((source_snapshot_id IS NOT NULL AND source_volume_id IS NULL)
-            OR (source_snapshot_id IS NULL AND source_volume_id IS NOT NULL))
+    -- at-most-one source (mutual-exclusion, 0 допустимо) — backstop к sync-validate (F12).
+    -- НЕ «exactly-one»: provenance-FK source_snapshot_id/source_volume_id — ON DELETE SET
+    -- NULL (STOR-1-28/F5), удаление источника зануляет source-колонку → Image становится
+    -- source-less (блочные данные уже материализованы, независимы от источника). «exactly-one»
+    -- CHECK противоречил бы SET NULL (23514-abort на source-delete). Domain.Validate() (F12/
+    -- STOR-1-24) энфорсит at-least-one на Create (both/none → InvalidArgument); DB-CHECK ловит
+    -- лишь «оба непусты» — единственный инвариант, который SET NULL нарушить не может.
+    CONSTRAINT images_source_at_most_one
+        CHECK (NOT (source_snapshot_id IS NOT NULL AND source_volume_id IS NOT NULL))
 );
 
 CREATE UNIQUE INDEX images_name_uniq
