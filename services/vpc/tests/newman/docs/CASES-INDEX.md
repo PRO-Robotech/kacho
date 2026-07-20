@@ -909,3 +909,58 @@ SUB-UPD-STATE-IMMUTABLE-PROJECT-ID
 </details>
 
 > Эти ids — **инстансы matrix pattern**, не уникальные patterns в смысле coverage. Source of truth для генерации — `cases/authz-deny.py`. validate-cases.py использует substring-match на `CASES-INDEX.md` content.
+
+---
+
+## VPC-1 redesign — Network supernet + Subnet placement-anchor (`cases/vpc1.py`, коллекция `vpc1`)
+
+Отдельная suite для redesign-поверхности под-фазы **VPC-1** (acceptance
+`docs/specs/sub-phase-VPC-1-network-subnet-acceptance.md`, сценарии VPC-1-06..46). Кейсы
+**grounded** на фактическое поведение хендлеров kacho-vpc на ветке `redesign/integration`
+(op-in-response `RunSync`; placementType° server-derived; фикс. тон ошибок — сверено с
+`services/vpc/internal/apps/kacho/api/{network,subnet}/*.go`). Каждый кейс несёт
+`# verifies VPC-1-NN`. Все ресурсы self-seeded per-case (`{{runId}}`-имена, run-random
+CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` самодостаточен.
+
+| Case | Verifies | Classes | P | Что проверяет |
+|---|---|---|---|---|
+| `NET-CR-V1-SUPERNET-OK` | VPC-1-06 | CRUD,CONF | P1 | Network.Create с declared супернетом `ipv4CidrBlocks`/`ipv6CidrBlocks` → блоки эхаются на GET (F2). |
+| `NET-CR-V1-OP-IN-RESPONSE` | VPC-1-14 | CRUD,CONF | P1 | statusless op-in-response: Operation{done:true} + metadata.networkId + response.Network сразу; follow-up op-Get тот же done:true (F4). |
+| `NET-CR-V1-DEFAULT-SG` | VPC-1-11 | CRUD,STATE | P1 | system-provisioned default-SG → `defaultSecurityGroupId°` непустой (F3). |
+| `NET-UPD-V1-SUPERNET-IMMUTABLE` | VPC-1-07 | STATE,VAL,NEG | P1 | Update mask=`ipv4_cidr_blocks` → sync InvalidArgument «is immutable after Network.Create» (мутируется только verb-pair, F2). |
+| `NET-UPD-V1-PROJECT-IMMUTABLE` | VPC-1-20 | STATE,VAL,NEG | P1 | Update mask=`project_id` → sync InvalidArgument «project_id is immutable after Network.Create» (Move снят, F5). |
+| `NET-ACB-V1-GROW-OK` | VPC-1-08 | CRUD,STATE | P1 | `:add-cidr-blocks` расширяет супернет (op-in-response; original+added видны, F2). |
+| `NET-RCB-V1-SHRINK-OK` | VPC-1-08 | CRUD,STATE | P1 | `:remove-cidr-blocks` сужает супернет (блок исчезает, F2). |
+| `NET-CR-V1-SUPERNET-MALFORMED` | VPC-1-09 | VAL,NEG | P1 | Create с CIDR /33 в супернете → sync InvalidArgument «invalid CIDR block» (F2). |
+| `NET-RCB-V1-COVERS-SUBNET-FP` | VPC-1-10 | NEG,CONF,STATE | P0 | `:remove-cidr-blocks` блока, покрывающего живую подсеть → **op-error** FAILED_PRECONDITION «… still contains subnets» (hardening: скан ВСЕХ подсетей, не 1-й страницы). |
+| `NET-CR-V1-DUP-NAME` | VPC-1-21 | NEG,CONC,CONF | P1 | дубль name в проекте → sync 409 ALREADY_EXISTS «Network with name … already exists» (F5). |
+| `NET-DEL-V1-NONEMPTY-FP` | VPC-1-18 | NEG,CONF,STATE | P0 | Delete непустой сети → sync FAILED_PRECONDITION «Network … is not empty» (DB-backstop, F5). |
+| `NET-GET-V1-NO-VRFID` | VPC-1-16 | CONF,NEG | P1 | public Network НЕ несёт `vrfId`/`routeDistinguisher` (two-projection field-absence, F4). |
+| `SUB-CR-V1-ZONAL-OK` | VPC-1-23/40 | CRUD,CONF | P1 | ZONAL subnet → `placementType°=="ZONAL"` (голый токен), zoneId set, regionId пуст, ipv4CidrPrimary echoed (F6/F9). |
+| `SUB-CR-V1-REGIONAL-OK` | VPC-1-24 | CRUD,CONF | P1 | REGIONAL subnet → `placementType°=="REGIONAL"`, regionId set, zoneId пуст (anycast, F6). |
+| `SUB-CR-V1-PLACEMENT-BOTH` | VPC-1-25 | VAL,NEG | P1 | оба zoneId+regionId → sync InvalidArgument «exactly one of zone_id, region_id must be set» (F6). |
+| `SUB-CR-V1-PLACEMENT-NEITHER` | VPC-1-26 | VAL,NEG | P1 | ни zoneId ни regionId → sync InvalidArgument «exactly one of …» (F6). |
+| `SUB-CR-V1-PLACEMENTTYPE-BODY` | VPC-1-27 | VAL,NEG,STATE | P1 | placementType в теле → sync explicit-reject «placement_type is server-derived; set zone_id or region_id instead» (не silent, F6). |
+| `SUB-UPD-V1-ZONE-IMMUTABLE` | VPC-1-28 | STATE,VAL,NEG | P1 | Update mask=`zone_id` → sync InvalidArgument «zone_id is immutable after Subnet.Create» (F6). |
+| `SUB-UPD-V1-NETWORK-IMMUTABLE` | VPC-1-38 | STATE,VAL,NEG | P1 | Update mask=`network_id` → sync InvalidArgument «network_id is immutable after Subnet.Create» (F8). |
+| `SUB-CR-V1-CIDR-OUTSIDE-SUPERNET` | VPC-1-30 | VAL,NEG,CONF | P0 | ipv4CidrPrimary вне супернета сети → sync InvalidArgument «subnet CIDR … is not within any network CIDR block» (F7). |
+| `SUB-CR-V1-CIDR-OVERLAP` | VPC-1-31 | NEG,CONF | P0 | пересекающийся ipv4CidrPrimary в той же сети → sync FAILED_PRECONDITION «Subnet CIDRs can not overlap» (F7 EXCLUDE). |
+| `SUB-CR-V1-CIDR-PERNET-ISO` | VPC-1-32 | CONF,STATE | P1 | подсети РАЗНЫХ сетей с одинаковым CIDR → обе OK (per-network EXCLUDE-изоляция, F7). |
+| `SUB-ACB-V1-ADD-OK` | VPC-1-34 | CRUD,STATE | P1 | `:add-cidr-blocks` доп. диапазон ⊆ супернет → `ipv4CidrBlocks°` содержит блок, primary неизменён (F7). |
+| `SUB-ACB-V1-OUTSIDE-SUPERNET` | VPC-1-34 | NEG,CONF,VAL | P1 | `:add-cidr-blocks` блока вне супернета → **op-error** InvalidArgument «… is not within any network CIDR block» (containment-фикс). |
+| `SUB-RCB-V1-PRIMARY-IMMUTABLE` | VPC-1 F7 | NEG,STATE,CONF | P0 | `:remove-cidr-blocks` primary-anchor → **op-error** InvalidArgument «ipv4_cidr_primary is immutable after Subnet.Create» (hardening: смена placement-якоря запрещена). |
+| `SUB-CR-V1-NETWORK-NOTFOUND` | VPC-1-41 | NEG,CONF | P0 | well-formed-но-отсутствующий networkId → sync NOT_FOUND «Network … not found» (direct-read lane, ungated, F9). |
+| `SUB-CR-V1-NETWORK-MALFORMED` | VPC-1-42 | VAL,NEG | P1 | malformed networkId → sync InvalidArgument «invalid network id …» первым стейтментом (F9). |
+| `SUB-CR-V1-DHCP-DROPPED` | VPC-1-43 | CONF,NEG | P2 | DhcpOptions снят by design — read без `dhcpOptions`; попытка задать в теле игнорируется/reject (F9). |
+| `SUB-LST-V1-FILTER-ZONE` | VPC-1-45 | FILTER,CRUD,VAL | P1 | List filter=`zone_id="…"` → своя подсеть присутствует; unknown filter-поле → InvalidArgument (whitelist name/placement_type/zone_id/network_id, F9). |
+| `SUB-LST-V1-FILTER-NETWORK` | VPC-1-45 | FILTER,CRUD | P2 | List filter=`network_id="…"` → своя подсеть присутствует (whitelist, F9). |
+| `SUB-LST-V1-PAGE-VALIDATE` | VPC-1-44 | PAGE,VAL,BVA | P1 | авторизованный caller: `pageSize=10000` и garbage `pageToken` → InvalidArgument (format-validate, не clamp, F9). |
+| `SUB-CR-V1-V6-ONLY` | VPC-1-46 | CRUD,CONF,BVA | P2 | v6-only subnet (ipv6CidrPrimary, без ipv4CidrPrimary) → 200; ipv6CidrPrimary echoed, ipv4CidrPrimary пуст (F9 edge). |
+
+> **Grounded-vs-target тон (важно для регрессии):** ряд редизайн-целей acceptance-дока ещё
+> AS-IS в проде — кейсы локают **фактическую** строку: overlap → `«Subnet CIDRs can not overlap»`
+> (заглавная S, не lowercase-target); delete-non-empty → `«Network <id> is not empty»` (не
+> «network is not empty»); placement-absent zone/region → sync `InvalidArgument «unknown zone/region
+> id»` (PHASE-0-GATED унификация в `FAILED_PRECONDITION` ещё не landed). id-prefix — 3-char concat
+> `net…`/`sub…` (B3 hyphen ещё не мигрирован). default-RT-provision (VPC-1 F3/F8 target) в проде
+> **не реализован** — кейсы не ассёртят `defaultRouteTableId`/RT-auto-assoc (только default-SG landed).
