@@ -7,22 +7,49 @@
 | Коллекция | Кейсов | Стадия |
 |---|---:|---|
 | volume | 30 | S1 (CS1-S1-*) |
+| **image** | **39** | **redesign STOR-1 (F9..F14, NET-NEW `img-`)** |
 | snapshot | 16 | S3 (CS1-S3-*) |
 | disk-type | 7 | S2 (CS1-S2-*) |
 | operation | 3 | OperationService (OpsProxy sop) |
 | authz | 9 | INV-10 public authz (fixture-gated) |
 | internal-volume | 4 | S4 INV-7a external-absence |
-| **Всего** | **69** | |
+| **Всего** | **108** | |
 
-`scripts/validate-cases.py` → OK (69 уникальных case-id, нет дублей, все
-каталогизированы). `python3 scripts/gen.py` → OK (6 коллекций).
+`scripts/validate-cases.py` → OK (108 уникальных case-id, нет дублей, все
+каталогизированы). `python3 scripts/gen.py` → OK (7 коллекций).
+
+## STOR-1 redesign — Image (`cases/image.py`, 39 кейсов)
+
+NET-NEW ресурс `Image` (VM boot-образ, REGIONAL/anycast, `img-` prefix) + Volume↔Image
+boot-materialize (`source_image_id`). Трассировка `IMG-* ↔ STOR-1-NN` (F9..F14) — см.
+`docs/CASES-INDEX.md`. Покрыто black-box через api-gateway: Image CRUD+ListOperations
+(STOR-1-20/22), source-oneof exactly-one snapshot XOR volume (STOR-1-24: both/none →
+sync INVALID_ARGUMENT, unknown-source → op-error FAILED_PRECONDITION FK), UNIQUE(name)
+dup (STOR-1-21), malformed/not-found тон, region/project peer-validate (STOR-1-20/29,
+authz-first tolerant), BVA name/desc/labels (STOR-1-30), immutable region/source/format
+(STOR-1-22), List listauthz+pagination-validate-before-authz+filter+cursor (STOR-1-31/32/33),
+two-projection lean field-absence (STOR-1-25), boot-Volume materialize `sourceImageId`
+(STOR-1-18), Volume source XOR (STOR-1-19), **Image.Delete → volume.sourceImageId SET NULL,
+том цел** (STOR-1-28).
+
+**Internal/gated НЕ в этой суите** (integration/bufconn, по acceptance §DoD): attach-CAS
+`InternalVolumeService.Attach` + concurrent-race (F3/STOR-1-06..10), `GetInternal`/
+`InternalImageService` (F8/F12/STOR-1-16/17/25 internal-часть), `usedBy`→`common.v1.Referrer`
+(F7/STOR-1-14 — B1 Phase-0-gated, `usedBy` пока legacy `reference.Reference`; экспозиция —
+attach-driven :9091), owner-tuple materialization anti-BOLA (F13/STOR-1-27 — fixture-gated).
 
 ## Прогон против стенда
 
-_Не выполнен в рамках bootstrap-таска (TEST-ONLY; live-стенд/деплой не поднимался)._
-Требует: `kacho-deploy` up + `reload-svc SVC=storage` + port-forward api-gateway → :18080,
-`newman` установлен. Значения `existingProjectId`/`existingZoneId`/`existingDiskTypeId` в
+_Не выполнен (TEST-ONLY; local newman env-blocked — port-forward/HTTPS harness, см.
+memory `local-newman-env-blocked`). Кейсы авторены против APPROVED acceptance STOR-1 +
+реального контракта (proto/handler/domain/errmap — error-тексты grounded в коде). RED→GREEN
+исполняет CI-раннер._ Требует: `kacho-deploy` up + `reload-svc SVC=storage` + port-forward
+api-gateway → :18080, `newman` установлен. Значения `existingProjectId`/`existingZoneId`/
+`existingRegionId`/`existingDiskTypeId`/`garbageImageId` в
 `environments/local.postman_environment.json` — сверить с фактическим seed стенда.
+
+**Known failing — product bugs:** нет (расхождений прода от контракта STOR-1 при авторинге
+не выявлено; все IMG-кейсы — ожидаемо-зелёные regression против landed-редизайна).
 
 ## Integration-only (НЕ black-box reproducible через public API — по DoD §Тесты caveat)
 

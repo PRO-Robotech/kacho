@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "ada89801-5d41-4a83-98fe-ad384ea107f5",
+    "_postman_id": "9ad93fdd-ce9a-4f45-bf6c-400f052c4b3f",
     "name": "kacho-storage / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -268,7 +268,7 @@
           ]
         },
         {
-          "name": "get-rya1",
+          "name": "get-rya12",
           "request": {
             "method": "GET",
             "header": [
@@ -1385,7 +1385,7 @@
           ]
         },
         {
-          "name": "patch-rya2",
+          "name": "patch-rya13",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1942,7 +1942,7 @@
           ]
         },
         {
-          "name": "del-rya3",
+          "name": "del-rya14",
           "request": {
             "method": "DELETE",
             "header": [
