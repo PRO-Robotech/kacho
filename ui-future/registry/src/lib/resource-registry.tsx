@@ -13,6 +13,8 @@ import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import { ArtifactTypesTag } from "@/components/atoms/ArtifactTypeTag";
+import { LifecycleTag } from "@/components/atoms/LifecycleTag";
+import { VisibilityTag } from "@/components/atoms/VisibilityTag";
 
 export interface ResourceColumn {
   header: string;
@@ -271,6 +273,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "artifact_types",
         render: (row) => <ArtifactTypesTag value={row.artifact_types ?? row.artifact_type} />,
       },
+      // REG-1 F7: класс исчезаемости (DURABLE survives-empty / EPHEMERAL push-materialized).
+      { header: "Класс", path: "lifecycle", render: (row) => <LifecycleTag value={row.lifecycle} /> },
+      // REG-1 F5: видимость репозитория (PRIVATE / PUBLIC anonymous-pull).
+      { header: "Видимость", path: "visibility", render: (row) => <VisibilityTag value={row.visibility} /> },
       { header: "Тегов", path: "tag_count", format: "text" },
       // size_bytes — агрегат по репозиторию (int64 строкой) → человекочитаемо;
       // 0/пусто → «—» (никогда «0 B»).
