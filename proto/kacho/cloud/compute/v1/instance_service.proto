@@ -551,8 +551,18 @@ message ListInstancesResponse {
 }
 
 message CreateInstanceRequest {
+  // COMP-1 YC-cruft retire (ban #2): the raw YC sizing/boot input is removed from
+  // the request. Field numbers + names reserved so they can never be reused.
+  // platform_id/resources_spec → machine_type_id; scheduling_policy/gpu_settings/
+  // reserved_instance_pool_id/application → gone; metadata_options (old) →
+  // vm_spec.metadata_options; boot_disk_spec/secondary_disk_specs → boot_source /
+  // secondary_volume_specs.
+  reserved 6, 7, 9, 10, 13, 16, 19, 20, 24, 25, 26;
+  reserved "platform_id", "resources_spec", "boot_disk_spec", "secondary_disk_specs",
+    "scheduling_policy", "placement_policy", "metadata_options", "gpu_settings",
+    "reserved_instance_pool_id", "application", "image";
+
   // ID of the project to create an instance in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1 [
     (required) = true,
     (length) = "<=50"
@@ -574,105 +584,102 @@ message CreateInstanceRequest {
   ];
 
   // ID of the availability zone where the instance resides.
-  // To get a list of available zones, use the [kacho.cloud.geo.v1.ZoneService.List] request
+  // To get a list of available zones, use the [kacho.cloud.geo.v1.ZoneService.List] request.
   string zone_id = 5 [
     (required) = true,
     (length) = "<=50"
   ];
 
-  // ID of the hardware platform configuration for the instance.
-  // This field affects the available values in [resources_spec] field.
-  //
-  // Platforms allows you to create various types of instances: with a large amount of memory,
-  // with a large number of cores, with a burstable performance.
-  // For more information, see [Platforms](/docs/compute/concepts/vm-platforms).
-  string platform_id = 6 [(required) = true];
-
-  // Computing resources of the instance, such as the amount of memory and number of cores.
-  // To get a list of available values, see [Levels of core performance](/docs/compute/concepts/performance-levels).
-  ResourcesSpec resources_spec = 7 [(required) = true];
-
-  // The metadata `key:value` pairs that will be assigned to this instance. This includes custom metadata and predefined keys.
-  // The total size of all keys and values must be less than 512 KB.
-  //
-  // Values are free-form strings, and only have meaning as interpreted by the programs which configure the instance.
-  // The values must be 256 KB or less.
-  //
-  // For example, you may use the metadata in order to provide your public SSH key to the instance.
-  // For more information, see [Metadata](/docs/compute/concepts/vm-metadata).
+  // The metadata `key:value` pairs assigned to this instance (legacy free-form).
   map<string, string> metadata = 8;
 
-  // Options allow user to configure access to instance's metadata
-  MetadataOptions metadata_options = 19;
+  // Network interfaces to attach (F6 launch skeleton). Either this OR
+  // use_default_network must be set; content is structurally validated in COMP-1,
+  // the IPAM/NIC materialize saga is COMP-2.
+  repeated NetworkInterfaceSpec network_interface_specs = 11;
 
-  // Boot disk to attach to the instance.
-  AttachedDiskSpec boot_disk_spec = 9 [(required) = true];
-
-  // Array of secondary disks to attach to the instance.
-  repeated AttachedDiskSpec secondary_disk_specs = 10 [(size) = "<=3"];
-
-  // Array of local disks to attach to the instance.
-  repeated AttachedLocalDiskSpec local_disk_specs = 18;
-
-  // Array of filesystems to attach to the instance.
-  //
-  // The filesystems must reside in the same availability zone as the instance.
-  //
-  // To use the instance with an attached filesystem, the latter must be mounted.
-  // For details, see [documentation](/docs/compute/operations/filesystem/attach-to-vm).
-  repeated AttachedFilesystemSpec filesystem_specs = 17;
-
-  // Network configuration for the instance. Specifies how the network interface is configured
-  // to interact with other services on the internal network and on the internet.
-  repeated NetworkInterfaceSpec network_interface_specs = 11 [(required) = true];
-
-  // Host name for the instance.
-  // This field is used to generate the [kacho.cloud.compute.v1.Instance.fqdn] value.
-  // The host name must be unique within the network and region.
-  // If not specified, the host name will be equal to [kacho.cloud.compute.v1.Instance.id] of the instance
-  // and FQDN will be `<id>.auto.internal`. Otherwise FQDN will be `<hostname>.<region_id>.internal`.
+  // Host name for the instance (used to derive fqdn).
   string hostname = 12 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
 
-  // Scheduling policy configuration.
-  SchedulingPolicy scheduling_policy = 13;
+  // ID of the service account to use inside the instance (F4). Optional for public
+  // images; echoed as the reference.Referrer on the Instance.
+  string service_account_id = 14 [(length) = "<=50"];
 
-  // ID of the service account to use for [authentication inside the instance](/docs/compute/operations/vm-connect/auth-inside-vm).
-  // To get the service account ID, use a [kacho.cloud.iam.v1.ServiceAccountService.List] request.
-  string service_account_id = 14;
-
-  // Network settings.
+  // Network settings (legacy).
   NetworkSettings network_settings = 15;
 
-  // Placement policy configuration.
-  PlacementPolicy placement_policy = 16;
+  // Filesystems to attach (legacy).
+  repeated AttachedFilesystemSpec filesystem_specs = 17;
 
-  // GPU settings.
-  GpuSettings gpu_settings = 20;
+  // Local disks to attach (legacy).
+  repeated AttachedLocalDiskSpec local_disk_specs = 18;
 
-  // Behaviour on maintenance events
+  // Behaviour on maintenance events (legacy).
   MaintenancePolicy maintenance_policy = 21;
 
-  // Time between notification via metadata service and maintenance
+  // Time between notification via metadata service and maintenance (legacy).
   google.protobuf.Duration maintenance_grace_period = 22 [(value) = "1s-24h"];
 
-  // Serial port settings
+  // Serial port settings (legacy).
   SerialPortSettings serial_port_settings = 23;
 
-  // ID of the reserved instance pool that the instance should belong to.
-  // Instance will be created using resources from the reserved instance pool.
-  // Reserved instance pool resource configuration must match the resource configuration of the instance.
-  string reserved_instance_pool_id = 24 [(length) = "<=50"];
+  // --- COMP-1 redesign (NET-NEW) ---
 
-  // Instance application settings.
-  Application application = 25;
+  // Strong first discriminator (F1): VM XOR CONTAINER. Required; immutable after Create.
+  InstanceKind instance_kind = 27;
 
-  // OCI image reference (kacho-registry) the instance's OS is delivered from.
-  // INPUT: the rootfs is ephemeral and the OS is delivered from this image at
-  // create time. The server resolves it to an immutable content digest, surfaced
-  // output-only as [kacho.cloud.compute.v1.Instance.image_digest]. Populates the
-  // output [kacho.cloud.compute.v1.Instance.image]. See the compute→storage
-  // cutover (persistent state lives on attached storage Volumes).
-  string image = 26 [(length) = "<=256"];
+  // The single sizing channel (F2): "mt-" slug OR a stable machine-type name. Required.
+  string machine_type_id = 28 [(length) = "<=63"];
+
+  // The single OS entry (F3): {type,id} only — output-only fields on input → 400.
+  BootSource boot_source = 29;
+
+  // kind-gated spec (F1): exactly one, matching instance_kind (spoken-exclusion XOR).
+  oneof spec {
+    // VM configuration (instance_kind = VM).
+    VmSpec vm_spec = 30;
+    // CONTAINER configuration (instance_kind = CONTAINER).
+    ContainerSpec container_spec = 31;
+  }
+
+  // Guaranteed CPU baseline per vCPU, in percent (0..100; 0 = burstable). Family-gated.
+  int32 cpu_guarantee_percent = 32;
+
+  // SSH public keys to inject (F5/F6). Accepted + structurally validated in COMP-1.
+  repeated string ssh_public_keys = 33;
+
+  // Secondary Volumes to attach (F6 launch skeleton). Structurally validated in
+  // COMP-1 (size_gib > 0, mount_path); materialize is COMP-2.
+  repeated SecondaryVolumeSpec secondary_volume_specs = 34 [(size) = "<=8"];
+
+  // Use the project-default subnet+SG instead of network_interface_specs (F6). One of
+  // network_interface_specs / use_default_network is required.
+  bool use_default_network = 35;
+
+  // Request an external address (F5 unreachable-guard signal). A VM with neither
+  // ssh_public_keys nor an external address is unreachable unless acknowledged.
+  bool assign_external_address = 36;
+
+  // Acknowledge that the VM will be RUNNING but unreachable (no ssh, no external),
+  // lifting the unreachable-guard (F5). Not needed for CONTAINER.
+  bool acknowledge_unreachable = 37;
+
+  // Opaque placement-group slug (COMP-1 passthrough; existence/coherence → COMP-3).
+  // Well-formed "plg-" slug OR empty; malformed → 400.
+  string placement_group_id = 38 [(length) = "<=50"];
+}
+
+// SecondaryVolumeSpec — a secondary Volume to attach on launch (F6 skeleton).
+// Structurally validated in COMP-1; the materialize saga is COMP-2.
+message SecondaryVolumeSpec {
+  // Size in GiB (human-scale; must be > 0).
+  int64 size_gib = 1;
+  // Volume type to create the Volume with.
+  string volume_type_id = 2;
+  // Guest mount path.
+  string mount_path = 3;
+  // Whether the Volume is deleted together with the instance.
+  bool auto_delete = 4;
 }
 
 message CreateInstanceMetadata {
@@ -681,25 +688,31 @@ message CreateInstanceMetadata {
 }
 
 message UpdateInstanceRequest {
+  // COMP-1 YC-cruft retire (ban #2): raw sizing/boot input removed. Field numbers +
+  // names reserved so they can never be reused. platform_id/resources_spec →
+  // machine_type_id (STOPPED-gated); scheduling_policy/reserved_instance_pool_id/
+  // application → gone; metadata_options (old) → vm_spec.metadata_options;
+  // placement_policy → placement_group_id; image → Reinstall-only (rejected here).
+  reserved 6, 7, 11, 12, 13, 17, 18, 19;
+  reserved "platform_id", "resources_spec", "placement_policy", "scheduling_policy",
+    "metadata_options", "reserved_instance_pool_id", "application", "image";
+
   // ID of the Instance resource to update.
-  // To get the instance ID, use a [InstanceService.List] request.
   string instance_id = 1 [
     (required) = true,
     (length) = "<=50"
   ];
 
-  // Field mask that specifies which fields of the Instance resource are going to be updated.
+  // Field mask specifying which fields of the Instance resource are going to be updated.
   google.protobuf.FieldMask update_mask = 2;
 
-  // Name of the instance.
+  // Name of the instance (LIVE-mutable).
   string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
 
-  // Description of the instance.
+  // Description of the instance (LIVE-mutable).
   string description = 4 [(length) = "<=256"];
 
-  // Resource labels as `key:value` pairs.
-  //
-  // Existing set of `labels` is completely replaced by the provided set.
+  // Resource labels; the existing set is completely replaced (LIVE-mutable).
   map<string, string> labels = 5 [
     (kacho.cloud.size) = "<=64",
     (length) = "<=63",
@@ -708,70 +721,41 @@ message UpdateInstanceRequest {
     (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
   ];
 
-  // ID of the hardware platform configuration for the instance.
-  // This field affects the available values in [resources_spec] field.
-  //
-  // Platforms allows you to create various types of instances: with a large amount of memory,
-  // with a large number of cores, with a burstable performance.
-  // For more information, see [Platforms](/docs/compute/concepts/vm-platforms).
-  string platform_id = 6;
-
-  // Computing resources of the instance, such as the amount of memory and number of cores.
-  // To get a list of available values, see [Levels of core performance](/docs/compute/concepts/performance-levels).
-  ResourcesSpec resources_spec = 7;
-
-  // The metadata `key:value` pairs that will be assigned to this instance. This includes custom metadata and predefined keys.
-  // The total size of all keys and values must be less than 512 KB.
-  //
-  // Existing set of `metadata` is completely replaced by the provided set.
-  //
-  // Values are free-form strings, and only have meaning as interpreted by the programs which configure the instance.
-  // The values must be 256 KB or less.
-  //
-  // For example, you may use the metadata in order to provide your public SSH key to the instance.
-  // For more information, see [Metadata](/docs/compute/concepts/vm-metadata).
+  // The metadata `key:value` pairs; the existing set is completely replaced (legacy).
   map<string, string> metadata = 8;
 
-  // Options allow user to configure access to instance's metadata
-  MetadataOptions metadata_options = 13;
+  // ID of the service account used inside the instance (LIVE-mutable, F4).
+  string service_account_id = 9 [(length) = "<=50"];
 
-  // ID of the service account to use for [authentication inside the instance](/docs/compute/operations/vm-connect/auth-inside-vm).
-  // To get the service account ID, use a [kacho.cloud.iam.v1.ServiceAccountService.List] request.
-  string service_account_id = 9;
-
-  // Network settings.
+  // Network settings (legacy).
   NetworkSettings network_settings = 10;
 
-  // Placement policy configuration.
-  PlacementPolicy placement_policy = 11;
-
-  // Scheduling policy configuration.
-  SchedulingPolicy scheduling_policy = 12;
-
-  // Behaviour on maintenance events
+  // Behaviour on maintenance events (legacy).
   MaintenancePolicy maintenance_policy = 14;
 
-  // Time between notification via metadata service and maintenance
+  // Time between notification via metadata service and maintenance (legacy).
   google.protobuf.Duration maintenance_grace_period = 15 [(value) = "1s-24h"];
 
-  // Serial port settings
+  // Serial port settings (legacy).
   SerialPortSettings serial_port_settings = 16;
 
-  // ID of the reserved instance pool that the instance should belong to.
-  // Attaching/detaching running instance will increase/decrease the size of the reserved instance pool.
-  // Attaching/detaching stopped instance will leave the size of the reserved instance pool unchanged. Starting such attached instance will use resources from the reserved instance pool.
-  // Reserved instance pool resource configuration must match the resource configuration of the instance.
-  string reserved_instance_pool_id = 17 [(length) = "<=50"];
+  // --- COMP-1 redesign (NET-NEW) ---
 
-  // Instance application settings.
-  Application application = 18;
+  // The sizing channel (F2/F10). STOPPED-gated: a real change on a non-STOPPED
+  // instance → FAILED_PRECONDITION. Stays in the mask known-set.
+  string machine_type_id = 20 [(length) = "<=63"];
 
-  // OCI image reference (kacho-registry) the instance's OS is delivered from.
-  // Re-pins the OS image; the server re-resolves the immutable content digest
-  // surfaced output-only as [kacho.cloud.compute.v1.Instance.image_digest].
-  // Applied per update_mask discipline (member of the mask known-set); a re-pin
-  // is server-enforced to be admissible only while the instance is STOPPED.
-  string image = 19 [(length) = "<=256"];
+  // Guaranteed CPU baseline per vCPU, in percent (STOPPED-gated sizing, F10).
+  int32 cpu_guarantee_percent = 21;
+
+  // Opaque placement-group slug (STOPPED-gated placement, F10; COMP-1 passthrough).
+  string placement_group_id = 22 [(length) = "<=50"];
+
+  // SSH public keys (next-boot deferred class, F10 — accepted with deferral).
+  repeated string ssh_public_keys = 23;
+
+  // VM spec (next-boot deferred class, F10 — user_data/metadata_options).
+  VmSpec vm_spec = 24;
 }
 
 message UpdateInstanceMetadata {

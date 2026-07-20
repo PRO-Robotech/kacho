@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -26,72 +27,85 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 )
 
-// insResource / volResource — human-labels для malformed-id ошибок
+// insResource / volResource / plgResource — human-labels для malformed-id ошибок
 // (`corevalidate.ResourceID`: `invalid <label> id '<X>'`, api-conventions).
 const (
 	insResource = "instance"
 	volResource = "volume"
+	plgResource = "placement group"
+	saResource  = "service account"
 )
 
-// validCoreFractions — допустимые значения core_fraction (конвенция Kachō).
-var validCoreFractions = map[int64]struct{}{0: {}, 5: {}, 20: {}, 50: {}, 100: {}}
+// bootSourceStorageImage / bootSourceRegistryImage — owner-дискриминаторы
+// bootSource.type (COMP-1 F3/B13): storage.image (OS/disk-образ) vs registry.image
+// (OCI-контейнер). bare imageId никогда не двусмыслен между owner'ами.
+const (
+	bootSourceStorageImage  = "storage.image"
+	bootSourceRegistryImage = "registry.image"
+)
 
-// validCores — допустимые значения resources_spec.cores (proto (value)-set
-// ResourcesSpec.cores: instance_service.proto). Дискретный whitelist vCPU-count,
-// не «любое чётное»: после 36 шаг 4 (…,36,40,44,…,80). Enum-валидация СИНХРОННА
-// (первым стейтментом RPC, до Operation) — api-conventions.
-var validCores = map[int64]struct{}{
-	2: {}, 4: {}, 6: {}, 8: {}, 10: {}, 12: {}, 14: {}, 16: {}, 18: {}, 20: {},
-	22: {}, 24: {}, 26: {}, 28: {}, 30: {}, 32: {}, 34: {}, 36: {}, 40: {}, 44: {},
-	48: {}, 52: {}, 56: {}, 60: {}, 64: {}, 68: {}, 72: {}, 76: {}, 80: {},
-}
+// nextBootReason — statusReason для next-boot-deferred изменений (COMP-1 F10).
+const nextBootReason = "takes effect on next boot"
 
-// CreateInstanceReq — запрос на создание ВМ.
-//
-// Storage-split cutover: Instance.Create больше НЕ создаёт inline-диски и НЕ
-// подключает тома (acceptance sec.0.3 — inline-attach out-of-scope). Инстанс создаётся
-// без привязок; boot/secondary тома подключаются явными `AttachDisk` на уже
-// существующих storage-Volume (vol-id).
+// CreateInstanceReq — запрос на создание Instance (COMP-1 redesign). Sizing —
+// единственный канал MachineTypeID; ОС — единственный вход BootSource; kind гейтит
+// один из VMSpec/ContainerSpec. Launch-*Specs (NIC/Volume/ssh) приняты и структурно
+// валидированы, но НЕ материализуются (сага — COMP-2).
 type CreateInstanceReq struct {
-	ProjectID           string
-	Name                string
-	Description         string
-	Labels              map[string]string
-	ZoneID              string
-	PlatformID          string
-	Cores               int64
-	Memory              int64
-	CoreFraction        int64
-	GPUs                int64
+	ProjectID   string
+	Name        string
+	Description string
+	Labels      map[string]string
+	ZoneID      string
+	Metadata    map[string]string
+	Hostname    string
+
+	InstanceKind        domain.InstanceKind
+	MachineTypeID       string
 	CPUGuaranteePercent int32
-	Image               string
-	Metadata            map[string]string
-	MetadataOptions     *computev1.MetadataOptions
-	Hostname            string
-	Preemptible         bool
+	BootSource          domain.BootSource
 	ServiceAccountID    string
-	NetworkSettingsType string
-	PlacementPolicy     *computev1.PlacementPolicy
-	HardwareGeneration  *computev1.HardwareGeneration
-	Application         *computev1.Application
+	PlacementGroupID    string
+
+	VMSpec        *domain.VMSpec
+	ContainerSpec *domain.ContainerSpec
+
+	// Launch-*Specs (SKELETON — структурная валидация формы, materialize → COMP-2).
+	NetworkInterfaceSpecs  []NetworkInterfaceSpec
+	SecondaryVolumeSpecs   []SecondaryVolumeSpec
+	SSHPublicKeys          []string
+	UseDefaultNetwork      bool
+	AssignExternalAddress  bool
+	AcknowledgeUnreachable bool
 }
 
-// UpdateInstanceReq — запрос на обновление ВМ.
+// NetworkInterfaceSpec — форма NIC-spec на входе Create (F6 skeleton).
+type NetworkInterfaceSpec struct {
+	SubnetID         string
+	SecurityGroupIDs []string
+}
+
+// SecondaryVolumeSpec — форма secondary-Volume-spec на входе Create (F6 skeleton).
+type SecondaryVolumeSpec struct {
+	SizeGiB      int64
+	VolumeTypeID string
+	MountPath    string
+	AutoDelete   bool
+}
+
+// UpdateInstanceReq — запрос на обновление Instance (COMP-1 redesign,
+// mutability-классы F10).
 type UpdateInstanceReq struct {
 	InstanceID          string
 	Name                string
 	Description         string
 	Labels              map[string]string
 	ServiceAccountID    string
-	Cores               int64
-	Memory              int64
-	CoreFraction        int64
-	GPUs                int64
+	MachineTypeID       string
 	CPUGuaranteePercent int32
-	Image               string
-	PlatformID          string
-	PlacementPolicy     *computev1.PlacementPolicy
-	NetworkSettingsType string
+	PlacementGroupID    string
+	SSHPublicKeys       []string
+	VMSpec              *domain.VMSpec
 	UpdateMask          []string
 }
 
@@ -109,6 +123,9 @@ type AttachDiskReq struct {
 // (storageClient → InternalVolumeService), NIC↔Instance — в kacho-vpc (nicClient).
 type InstanceService struct {
 	repo InstanceRepo
+	// machineTypes — sync-каталог sizing (COMP-1 F2/F7). Резолвит machineTypeId
+	// (mt-slug ИЛИ стабильное имя) в effectiveResources + family + status.
+	machineTypes MachineTypeRepo
 	// zones — existence-check zone_id (авторитет — kacho-geo).
 	zones         ZoneRegistry
 	projectClient ProjectClient
@@ -126,9 +143,9 @@ type InstanceService struct {
 }
 
 // NewInstanceService создаёт InstanceService.
-func NewInstanceService(repo InstanceRepo, zones ZoneRegistry, projectClient ProjectClient, nicClient NicClient, storageClient StorageClient, opsRepo operations.Repo) *InstanceService {
+func NewInstanceService(repo InstanceRepo, machineTypes MachineTypeRepo, zones ZoneRegistry, projectClient ProjectClient, nicClient NicClient, storageClient StorageClient, opsRepo operations.Repo) *InstanceService {
 	return &InstanceService{
-		repo: repo, zones: zones, projectClient: projectClient,
+		repo: repo, machineTypes: machineTypes, zones: zones, projectClient: projectClient,
 		nicClient: nicClient, storageClient: storageClient, opsRepo: opsRepo,
 	}
 }
@@ -146,6 +163,12 @@ func (s *InstanceService) WithOwnerRegistrar(registrar OwnerRegistrar) *Instance
 // kacho-storage (source of truth) с graceful-degrade — недоступность owner'а НЕ
 // роняет Get (consumer грациозно переживает недоступность owner'а).
 func (s *InstanceService) Get(ctx context.Context, id string) (*domain.Instance, error) {
+	// malformed-id первым стейтментом (COMP-1 F8/F22): sync InvalidArgument до repo;
+	// well-formed-но-нет → NotFound через repo.Get. Покрывает и Update/Delete-хендлеры
+	// (они зовут Get для ownership-guard первым).
+	if err := corevalidate.ResourceID(insResource, ids.PrefixInstanceHyphen, id); err != nil {
+		return nil, err
+	}
 	in, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, mapRepoErr(err)
@@ -170,8 +193,11 @@ func (s *InstanceService) List(ctx context.Context, f InstanceFilter, p Paginati
 	return out, next, nil
 }
 
-// ValidateCreateInstanceReq — синхронная pre-flight валидация Create-запроса
-// (формат/диапазоны полей). Чистая (без DB/peer-вызовов). Выделена для fuzz.
+// ValidateCreateInstanceReq — синхронная pre-flight валидация Create-запроса (формат/
+// структура/guard'ы; COMP-1 F1/F2/F3/F5/F6). Чистая (без DB/peer/каталог-вызовов) —
+// выделена для fuzz. Порядок: kind-oneof → sizing-канал → bootSource-grammar →
+// name/desc/labels → cpuGuarantee → ref-форматы → net-runbook → volume-specs →
+// unreachable-guard.
 func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	if req.ProjectID == "" {
 		return status.Error(codes.InvalidArgument, "project_id required")
@@ -179,8 +205,27 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	if req.ZoneID == "" {
 		return status.Error(codes.InvalidArgument, "zone_id required")
 	}
-	if req.PlatformID == "" {
-		return status.Error(codes.InvalidArgument, "platform_id required")
+	// F1 — instanceKind — сильный первый required-дискриминатор; kind-oneof XOR.
+	if !req.InstanceKind.Valid() {
+		return invalidArg("instance_kind", "instanceKind is required")
+	}
+	switch req.InstanceKind {
+	case domain.InstanceKindVM:
+		if req.ContainerSpec != nil {
+			return invalidArg("container_spec", "containerSpec is not allowed when instanceKind is VM")
+		}
+	case domain.InstanceKindContainer:
+		if req.VMSpec != nil {
+			return invalidArg("vm_spec", "vmSpec is not allowed when instanceKind is CONTAINER")
+		}
+	}
+	// F2 — machineTypeId — единственный канал sizing (обязателен; резолв — doCreate).
+	if req.MachineTypeID == "" {
+		return invalidArg("machine_type_id", "machineTypeId is required")
+	}
+	// F3 — bootSource grammar + type-whitelist + output-field-reject.
+	if err := validateBootSource(req.BootSource); err != nil {
+		return err
 	}
 	if err := corevalidate.NameCompute("name", req.Name); err != nil {
 		return err
@@ -191,19 +236,56 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	if err := corevalidate.Labels("labels", req.Labels); err != nil {
 		return err
 	}
-	if err := validateResources(req.Cores, req.Memory, req.CoreFraction, req.CPUGuaranteePercent); err != nil {
-		return err
+	if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
+		return invalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
+	}
+	// F4 — serviceAccountId own-side format-check (existence peer-validate → COMP-2).
+	if req.ServiceAccountID != "" {
+		// "sva" — iam service-account prefix; ResourceID family-agnostic (accepts canon).
+		if err := corevalidate.ResourceID(saResource, "sva", req.ServiceAccountID); err != nil {
+			return err
+		}
+	}
+	// OQ4 — placementGroupId format-only passthrough (existence/coherence → COMP-3).
+	if req.PlacementGroupID != "" {
+		if err := corevalidate.ResourceID(plgResource, "plg", req.PlacementGroupID); err != nil {
+			return err
+		}
+	}
+	// F6 — launch net-spec: networkInterfaceSpecs ИЛИ useDefaultNetwork (одно обязательно).
+	if len(req.NetworkInterfaceSpecs) == 0 && !req.UseDefaultNetwork {
+		return status.Errorf(codes.FailedPrecondition,
+			"needs an existing subnet+SG in zone %s; discover via SubnetService.List / SecurityGroupService.List, create via SubnetService.Create — or set useDefaultNetwork:true",
+			req.ZoneID)
+	}
+	for i := range req.NetworkInterfaceSpecs {
+		if req.NetworkInterfaceSpecs[i].SubnetID == "" {
+			return invalidArg("network_interface_specs.subnet_id", "networkInterfaceSpecs[].subnetId is required")
+		}
+	}
+	// F6 — secondaryVolumeSpecs structural: sizeGiB>0 (human-scale GiB, не байты).
+	for i := range req.SecondaryVolumeSpecs {
+		if req.SecondaryVolumeSpecs[i].SizeGiB <= 0 {
+			return invalidArg("secondary_volume_specs.size_gib", "secondaryVolumeSpecs[].sizeGiB must be > 0")
+		}
+	}
+	// F5 — unreachable-guard: VM без ssh И без external → FAILED_PRECONDITION (снимается
+	// acknowledgeUnreachable). CONTAINER exempt (нужен NIC для egress, не ssh/external).
+	if req.InstanceKind == domain.InstanceKindVM &&
+		len(req.SSHPublicKeys) == 0 && !req.AssignExternalAddress && !req.AcknowledgeUnreachable {
+		return status.Error(codes.FailedPrecondition,
+			"VM will be RUNNING but unreachable (no sshPublicKeys and no external address); set acknowledgeUnreachable:true to proceed")
 	}
 	return nil
 }
 
-// Create инициирует создание Instance (без привязок — storage-split sec.0.3).
+// Create инициирует создание Instance (COMP-1: durable-персист без materialize).
 func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*operations.Operation, error) {
 	if err := ValidateCreateInstanceReq(req); err != nil {
 		return nil, err
 	}
 
-	instanceID := ids.NewID(ids.PrefixInstance)
+	instanceID := ids.NewHyphenID(ids.PrefixInstanceHyphen)
 	// Operation.done = durability ресурса (row закоммичен в doCreate). Owner-tuple
 	// материализуется eventually-consistent — sync-registrar (window-оптимизация) +
 	// register-drainer/reconciler backstop, НЕ гейтит op.done.
@@ -221,61 +303,123 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	if err := s.zones.GetZone(ctx, req.ZoneID); err != nil {
 		return nil, mapZoneRefErr(err, req.ZoneID)
 	}
+	// F2/F7 — резолв machineTypeId (mt-slug ИЛИ стабильное имя) в каталоге → canonical
+	// mt-slug + effectiveResources; RETIRED/unknown → FailedPrecondition.
+	mt, err := s.resolveMachineType(ctx, req.MachineTypeID)
+	if err != nil {
+		return nil, err
+	}
 
+	bs := req.BootSource
+	bs.ImageKind = imageKindFor(bs.Type) // server-derived B13 discriminator (F3)
 	in := &domain.Instance{
-		ID:                  instanceID,
-		ProjectID:           req.ProjectID,
-		CreatedAt:           time.Now().UTC(),
-		Name:                req.Name,
-		Description:         req.Description,
-		Labels:              req.Labels,
-		ZoneID:              req.ZoneID,
-		PlatformID:          req.PlatformID,
-		Cores:               req.Cores,
-		Memory:              req.Memory,
-		CoreFraction:        defaultCoreFraction(req.CoreFraction),
-		GPUs:                req.GPUs,
+		ID:          instanceID,
+		ProjectID:   req.ProjectID,
+		CreatedAt:   time.Now().UTC(),
+		Name:        req.Name,
+		Description: req.Description,
+		Labels:      req.Labels,
+		ZoneID:      req.ZoneID,
+		// OQ1 — resting-status PROVISIONING persisted (durable; launch-сага NIC/Volume +
+		// переход к RUNNING — COMP-2). Operation.done = durability, не materialize (ban 9).
+		Status:              domain.InstanceStatusProvisioning,
+		Metadata:            req.Metadata,
+		Hostname:            req.Hostname,
+		FQDN:                fqdn(instanceID, req.Hostname),
 		CPUGuaranteePercent: req.CPUGuaranteePercent,
-		Image:               req.Image,
-		// ImageDigest остаётся пустым: registry-resolve отложен (acceptance sec.0.3 —
-		// digest не резолвим на этой фазе; output-only поле заполнит later slice).
-		Status:                domain.InstanceStatusRunning, // control-plane: PROVISIONING→RUNNING instantly
-		Metadata:              req.Metadata,
-		MetadataOptions:       req.MetadataOptions,
-		ServiceAccountID:      req.ServiceAccountID,
-		Hostname:              req.Hostname,
-		FQDN:                  fqdn(instanceID, req.Hostname),
-		NetworkSettingsType:   orDefault(req.NetworkSettingsType, "STANDARD"),
-		SchedulingPreemptible: req.Preemptible,
-		PlacementPolicy:       req.PlacementPolicy,
-		HardwareGeneration:    req.HardwareGeneration,
-		Application:           req.Application,
+		InstanceKind:        req.InstanceKind,
+		MachineTypeID:       mt.ID, // canonical mt- slug (F2/F6 echo)
+		EffectiveResources:  mt.EffectiveResources,
+		BootSource:          bs,
+		PlacementGroupID:    req.PlacementGroupID,
+		ServiceAccountID:    req.ServiceAccountID,
+		VMSpec:              req.VMSpec,
+		ContainerSpec:       req.ContainerSpec,
 	}
 	// Self-validating domain invariant на persistence-границе (last-line guard;
 	// формат уже проверен sync ValidateCreateInstanceReq).
 	if err := in.Validate(); err != nil {
-		return nil, invalidArg("resources_spec.cpu_guarantee_percent", "Illegal argument cpu_guarantee_percent")
+		return nil, invalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
 	created, err := s.repo.Insert(ctx, in)
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
-	// Sync-register owner-tuple post-commit (best-effort window-оптимизация) — делает
-	// `project:<proj> #project @compute_instance:<id>` эффективным раньше, чем async
-	// register-drainer опросит outbox, сужая окно, в котором немедленная мутация
-	// создателя могла бы кратко 403/404. Durable outbox-intent (writer-tx repo.Insert)
-	// + drainer — at-least-once backstop; НЕ гейтит op.done.
+	// Sync-register owner-tuple post-commit (best-effort window-оптимизация); durable
+	// outbox-intent (writer-tx repo.Insert) + drainer — at-least-once backstop.
 	syncRegisterOwner(ctx, s.ownerRegistrar, "Instance", created.ID, created.ProjectID, created.Labels)
 	return anypb.New(protoconv.Instance(created))
 }
 
-// Update обновляет ВМ. mask ⊇ {resources_spec/platform_id} требует STOPPED.
+// resolveMachineType резолвит machineTypeId (mt-slug ИЛИ стабильное имя) в каталоге
+// (COMP-1 F2/F7). unknown → FailedPrecondition "machine type <ref> not found";
+// RETIRED → FailedPrecondition (не запускается на Create; DEPRECATED — можно).
+func (s *InstanceService) resolveMachineType(ctx context.Context, ref string) (*domain.MachineType, error) {
+	var mt *domain.MachineType
+	if strings.HasPrefix(ref, ids.PrefixMachineTypeHyphen+"-") {
+		got, err := s.machineTypes.Get(ctx, ref)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, status.Errorf(codes.FailedPrecondition, "machine type %s not found", ref)
+			}
+			return nil, mapRepoErr(err)
+		}
+		mt = got
+	} else {
+		list, _, err := s.machineTypes.List(ctx, MachineTypeFilter{Name: ref}, Pagination{PageSize: 2})
+		if err != nil {
+			return nil, mapRepoErr(err)
+		}
+		if len(list) == 0 {
+			return nil, status.Errorf(codes.FailedPrecondition, "machine type %s not found", ref)
+		}
+		mt = list[0]
+	}
+	if mt.Status == domain.MachineTypeStatusRetired {
+		return nil, status.Errorf(codes.FailedPrecondition, "machine type %s is retired and cannot be used on Create", ref)
+	}
+	return mt, nil
+}
+
+// instanceUpdateKnown — known-set маски Update (snake_case proto/spec-пути; COMP-1
+// F10). instance_kind/zone_id immutable, bootSource Reinstall-only — НЕ в наборе
+// (спец-reject срабатывает первым). ssh_public_keys/vm_spec — next-boot deferred;
+// machine_type_id/cpu_guarantee_percent/placement_group_id — STOPPED-gated.
+var instanceUpdateKnown = map[string]struct{}{
+	"name": {}, "description": {}, "labels": {}, "service_account_id": {},
+	"machine_type_id": {}, "cpu_guarantee_percent": {}, "placement_group_id": {},
+	"ssh_public_keys": {}, "vm_spec": {},
+}
+
+// instanceStoppedGatedMask — маска-поля, требующие STOPPED (sizing/placement, F10).
+var instanceStoppedGatedMask = map[string]struct{}{
+	"machine_type_id": {}, "cpu_guarantee_percent": {}, "placement_group_id": {},
+}
+
+// Update обновляет Instance (COMP-1 mutability-классы, F10). immutable-reject и
+// Reinstall-only-reject срабатывают ДО UpdateMask; STOPPED-gate (sizing/placement) —
+// sync FAILED_PRECONDITION (в COMP-1 STOPPED недостижим ⇒ always-reject).
 func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*operations.Operation, error) {
 	if req.InstanceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
+	if err := corevalidate.ResourceID(insResource, ids.PrefixInstanceHyphen, req.InstanceID); err != nil {
+		return nil, err
+	}
 	if err := validateInstanceUpdate(req); err != nil {
 		return nil, err
+	}
+	// STOPPED-gate (F10): sizing/placement маска на не-STOPPED инстансе → sync
+	// FAILED_PRECONDITION. Sync repo.Get для статуса ДО Operation (в COMP-1 инстанс
+	// никогда не STOPPED ⇒ always-reject; COMP-2 добавит достижимость через Stop).
+	if maskIntersects(req.UpdateMask, instanceStoppedGatedMask) {
+		in, err := s.repo.Get(ctx, req.InstanceID)
+		if err != nil {
+			return nil, mapRepoErr(err)
+		}
+		if in.Status != domain.InstanceStatusStopped {
+			return nil, status.Error(codes.FailedPrecondition, "instance must be STOPPED to change sizing or placement")
+		}
 	}
 	return runOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s", req.InstanceID),
 		&computev1.UpdateInstanceMetadata{InstanceId: req.InstanceID},
@@ -285,13 +429,14 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 				return nil, mapRepoErr(err)
 			}
 			updates := req.UpdateMask
-			full := len(updates) == 0
-			if full {
-				updates = []string{"name", "description", "labels", "service_account_id", "placement_policy", "network_settings", "image"}
+			if len(updates) == 0 {
+				// пустая маска = full-object PATCH mutable-полей (LIVE-mutable only —
+				// STOPPED-gated/next-boot применяются лишь при явной маске).
+				updates = []string{"name", "description", "labels", "service_account_id"}
 			}
-			touchesCompute := false
 			labelsInMask := false
-			changed := make([]string, 0, len(updates))
+			nextBoot := false
+			changed := make([]string, 0, len(updates)+1)
 			for _, f := range updates {
 				switch f {
 				case "name":
@@ -307,38 +452,28 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 				case "service_account_id":
 					in.ServiceAccountID = req.ServiceAccountID
 					changed = append(changed, "service_account_id")
-				case "placement_policy":
-					in.PlacementPolicy = req.PlacementPolicy
-					changed = append(changed, "placement_policy")
-				case "network_settings":
-					if req.NetworkSettingsType != "" {
-						in.NetworkSettingsType = req.NetworkSettingsType
-						changed = append(changed, "network_settings")
-					}
-				case "image":
-					// image (OCI-ref) mutable в любом статусе — re-pin, не sizing.
-					in.Image = req.Image
-					changed = append(changed, "image")
-				case "resources_spec":
-					if !full {
-						touchesCompute = true
-						if err := validateResources(req.Cores, req.Memory, req.CoreFraction, req.CPUGuaranteePercent); err != nil {
-							return nil, err
-						}
-						in.Cores, in.Memory, in.CoreFraction, in.GPUs = req.Cores, req.Memory, defaultCoreFraction(req.CoreFraction), req.GPUs
-						in.CPUGuaranteePercent = req.CPUGuaranteePercent
-						changed = append(changed, "resources_spec")
-					}
-				case "platform_id":
-					if !full && req.PlatformID != "" {
-						touchesCompute = true
-						in.PlatformID = req.PlatformID
-						changed = append(changed, "platform_id")
-					}
+				case "machine_type_id":
+					in.MachineTypeID = req.MachineTypeID
+					changed = append(changed, "machine_type_id")
+				case "cpu_guarantee_percent":
+					in.CPUGuaranteePercent = req.CPUGuaranteePercent
+					changed = append(changed, "cpu_guarantee_percent")
+				case "placement_group_id":
+					in.PlacementGroupID = req.PlacementGroupID
+					changed = append(changed, "placement_group_id")
+				case "vm_spec":
+					in.VMSpec = req.VMSpec
+					nextBoot = true
+					changed = append(changed, "vm_spec")
+				case "ssh_public_keys":
+					// next-boot deferred: ключи не персистятся на durable-row в COMP-1
+					// (launch-spec skeleton) — фиксируется только deferral-marker.
+					nextBoot = true
 				}
 			}
-			if touchesCompute && in.Status != domain.InstanceStatusStopped {
-				return nil, status.Error(codes.FailedPrecondition, "Instance must be STOPPED to change sizing")
+			if nextBoot {
+				in.StatusReason = nextBootReason
+				changed = append(changed, "status_reason")
 			}
 			updated, err := s.repo.Update(ctx, in, labelsInMask, changed)
 			if err != nil {
@@ -349,21 +484,20 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 }
 
 func validateInstanceUpdate(req UpdateInstanceReq) error {
-	known := map[string]struct{}{
-		"name": {}, "description": {}, "labels": {}, "service_account_id": {},
-		"placement_policy": {}, "network_settings": {}, "image": {},
-		"resources_spec": {}, "platform_id": {},
-	}
+	// immutable-switch + Reinstall-only ДО corevalidate.UpdateMask (known-set не несёт
+	// этих полей → UpdateMask отверг бы их generic "unknown field" вместо конвенционных
+	// текстов). camelCase в сообщении — часть контракта (api-conventions).
 	for _, f := range req.UpdateMask {
 		switch f {
-		case "zone_id", "boot_disk", "boot_volume", "secondary_volumes", "network_interfaces", "metadata":
-			return invalidArg(f, f+" is immutable after Instance.Create (use AttachDisk/UpdateMetadata/Relocate)")
-		case "scheduling_policy", "metadata_options", "image_digest":
-			// image_digest — output-only resolved digest, не принимается на вход Update.
-			return invalidArg(f, f+" is immutable after Instance.Create")
+		case "instance_kind":
+			return invalidArg(f, "instanceKind is immutable after Instance.Create")
+		case "zone_id":
+			return invalidArg(f, "zoneId is immutable after Instance.Create")
+		case "boot_source":
+			return invalidArg(f, "bootSource cannot be changed via Update; use Reinstall")
 		}
 	}
-	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, known); err != nil {
+	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, instanceUpdateKnown); err != nil {
 		return err
 	}
 	for _, f := range req.UpdateMask {
@@ -380,9 +514,35 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 			if err := corevalidate.Labels("labels", req.Labels); err != nil {
 				return err
 			}
+		case "cpu_guarantee_percent":
+			if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
+				return invalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
+			}
+		case "placement_group_id":
+			if req.PlacementGroupID != "" {
+				if err := corevalidate.ResourceID(plgResource, "plg", req.PlacementGroupID); err != nil {
+					return err
+				}
+			}
+		case "service_account_id":
+			if req.ServiceAccountID != "" {
+				if err := corevalidate.ResourceID(saResource, "sva", req.ServiceAccountID); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// maskIntersects сообщает, пересекается ли маска с набором полей.
+func maskIntersects(mask []string, set map[string]struct{}) bool {
+	for _, f := range mask {
+		if _, ok := set[f]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // UpdateMetadata обновляет map metadata (delete + upsert).
@@ -744,32 +904,55 @@ func volumeMirror(atts []VolumeAttachmentInfo) []domain.AttachedDisk {
 // protoreflectMessage — alias для proto.Message (operations.New принимает его).
 type protoreflectMessage = proto.Message
 
-func validateResources(cores, memory, coreFraction int64, cpuGuaranteePercent int32) error {
-	if cores <= 0 {
-		return invalidArg("resources_spec.cores", "cores must be > 0")
+// validateBootSource — grammar + type-whitelist + output-field-reject (COMP-1 F3).
+// На входе допустимы только Type/ID; tag/digest живут ВНУТРИ ID; bare-untagged → 400
+// с грамматикой в тексте; name/resolvedDigest/materializedVolume/imageKind —
+// output-only (на вход не принимаются, COMP-1-11).
+func validateBootSource(bs domain.BootSource) error {
+	if bs.Type == "" && bs.ID == "" {
+		return invalidArg("boot_source", "bootSource is required")
 	}
-	if _, ok := validCores[cores]; !ok {
-		return invalidArg("resources_spec.cores", "cores must be a supported vCPU count")
+	if bs.Type != bootSourceStorageImage && bs.Type != bootSourceRegistryImage {
+		return invalidArg("boot_source.type",
+			"bootSource.type must be one of storage.image, registry.image")
 	}
-	if memory <= 0 {
-		return invalidArg("resources_spec.memory", "memory must be > 0 bytes")
+	if bs.Name != "" || bs.ResolvedDigest != "" || bs.MaterializedVolume != nil || bs.ImageKind != domain.ImageKindUnspecified {
+		return invalidArg("boot_source",
+			"bootSource name/resolvedDigest/materializedVolume are output-only and must not be set on input")
 	}
-	if coreFraction != 0 {
-		if _, ok := validCoreFractions[coreFraction]; !ok {
-			return invalidArg("resources_spec.core_fraction", "core_fraction must be one of 0, 5, 20, 50, 100")
-		}
+	if bs.ID == "" {
+		return invalidArg("boot_source.id", "bootSource.id is required")
 	}
-	if !domain.ValidCPUGuaranteePercent(cpuGuaranteePercent) {
-		return invalidArg("resources_spec.cpu_guarantee_percent", "Illegal argument cpu_guarantee_percent")
+	if !hasTagOrDigest(bs.ID) {
+		return invalidArg("boot_source.id",
+			"bootSource.id needs a tag or digest, e.g. 'img-<base32>:<tag>' or 'img-<base32>@sha256:<hex>'; use ImageCatalog item.bootSource")
 	}
 	return nil
 }
 
-func defaultCoreFraction(cf int64) int64 {
-	if cf == 0 {
-		return 100
+// hasTagOrDigest — id несёт tag (":" в последнем path-сегменте) ИЛИ digest
+// ("@sha256:"). bare "img-<b32>" / "repo/name" без tag/digest → false (→ 400).
+func hasTagOrDigest(id string) bool {
+	if strings.Contains(id, "@sha256:") {
+		return true
 	}
-	return cf
+	seg := id
+	if i := strings.LastIndexByte(id, '/'); i >= 0 {
+		seg = id[i+1:]
+	}
+	return strings.Contains(seg, ":")
+}
+
+// imageKindFor — server-derived B13 imageKind по bootSource.type (COMP-1 F3).
+func imageKindFor(bsType string) domain.ImageKind {
+	switch bsType {
+	case bootSourceStorageImage:
+		return domain.ImageKindStorageImage
+	case bootSourceRegistryImage:
+		return domain.ImageKindOCIImage
+	default:
+		return domain.ImageKindUnspecified
+	}
 }
 
 func fqdn(id, hostname string) string {
@@ -777,13 +960,6 @@ func fqdn(id, hostname string) string {
 		return hostname + ".kacho.internal"
 	}
 	return id + ".auto.internal"
-}
-
-func orDefault(v, def string) string {
-	if v == "" {
-		return def
-	}
-	return v
 }
 
 func instanceStatusName(s domain.InstanceStatus) string {

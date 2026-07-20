@@ -14,6 +14,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 	svc "github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
@@ -100,17 +101,10 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 	return resp, nil
 }
 
-// Create инициирует создание Instance.
+// Create инициирует создание Instance (COMP-1 redesign).
 func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInstanceRequest) (*operationpb.Operation, error) {
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
-	}
-	// boot_disk_spec required (proto (required)=true) — presence-check СИНХРОННО, до
-	// Operation (api-conventions: required-валидация первым стейтментом RPC). Оставаясь
-	// в рамках storage-split (содержимое boot_disk_spec на входе Create игнорируется,
-	// см. CreateReqFromProto) — контракт запроса всё равно требует НЕСУЩЕЕ поле.
-	if req.BootDiskSpec == nil {
-		return nil, status.Error(codes.InvalidArgument, "boot_disk_spec is required")
 	}
 	op, err := h.svc.Create(ctx, CreateReqFromProto(req))
 	if err != nil {
@@ -122,39 +116,35 @@ func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInsta
 // CreateReqFromProto — чистая proto→use-case конвертация CreateInstanceRequest в
 // svc.CreateInstanceReq (без auth/transport). Тот же маппинг, что выполняет RPC
 // Create; выделен, чтобы fuzz (internal/fuzz) прогонял ровно этот путь на
-// hostile-входах.
-//
-// Storage-split cutover: СОДЕРЖИМОЕ boot_disk_spec / secondary_disk_specs /
-// network_interface_specs на входе Create ИГНОРИРУЕТСЯ — Instance создаётся без
-// привязок (acceptance sec.0.3: inline-attach out-of-scope). Тома/NIC подключаются
-// явными AttachDisk/AttachNetworkInterface на уже существующих ресурсах. NB:
-// ПРИСУТСТВИЕ boot_disk_spec всё равно обязательно (proto (required)=true) и
-// проверяется синхронно в Create до Operation — здесь валидируется только контент-drop.
+// hostile-входах. Launch-*Specs передаются как форма (структурная валидация в
+// use-case; materialize — COMP-2).
 func CreateReqFromProto(req *computev1.CreateInstanceRequest) svc.CreateInstanceReq {
 	cr := svc.CreateInstanceReq{
-		ProjectID:        req.ProjectId,
-		Name:             req.Name,
-		Description:      req.Description,
-		Labels:           req.Labels,
-		ZoneID:           req.ZoneId,
-		PlatformID:       req.PlatformId,
-		Metadata:         req.Metadata,
-		MetadataOptions:  req.MetadataOptions,
-		Hostname:         req.Hostname,
-		ServiceAccountID: req.ServiceAccountId,
-		PlacementPolicy:  req.PlacementPolicy,
-		Application:      req.Application,
-		Image:            req.Image,
+		ProjectID:              req.ProjectId,
+		Name:                   req.Name,
+		Description:            req.Description,
+		Labels:                 req.Labels,
+		ZoneID:                 req.ZoneId,
+		Metadata:               req.Metadata,
+		Hostname:               req.Hostname,
+		InstanceKind:           domain.InstanceKind(req.InstanceKind), // #nosec G115 -- proto enum зеркалит domain
+		MachineTypeID:          req.MachineTypeId,
+		CPUGuaranteePercent:    req.CpuGuaranteePercent,
+		BootSource:             bootSourceFromProto(req.BootSource),
+		ServiceAccountID:       req.ServiceAccountId,
+		PlacementGroupID:       req.PlacementGroupId,
+		SSHPublicKeys:          req.SshPublicKeys,
+		UseDefaultNetwork:      req.UseDefaultNetwork,
+		AssignExternalAddress:  req.AssignExternalAddress,
+		AcknowledgeUnreachable: req.AcknowledgeUnreachable,
+		NetworkInterfaceSpecs:  nicSpecsFromProto(req.NetworkInterfaceSpecs),
+		SecondaryVolumeSpecs:   secVolSpecsFromProto(req.SecondaryVolumeSpecs),
 	}
-	if rs := req.ResourcesSpec; rs != nil {
-		cr.Cores, cr.Memory, cr.CoreFraction, cr.GPUs = rs.Cores, rs.Memory, rs.CoreFraction, rs.Gpus
-		cr.CPUGuaranteePercent = rs.CpuGuaranteePercent
-	}
-	if sp := req.SchedulingPolicy; sp != nil {
-		cr.Preemptible = sp.Preemptible
-	}
-	if ns := req.NetworkSettings; ns != nil {
-		cr.NetworkSettingsType = ns.Type.String()
+	switch sp := req.Spec.(type) {
+	case *computev1.CreateInstanceRequest_VmSpec:
+		cr.VMSpec = vmSpecFromProto(sp.VmSpec)
+	case *computev1.CreateInstanceRequest_ContainerSpec:
+		cr.ContainerSpec = containerSpecFromProto(sp.ContainerSpec)
 	}
 	return cr
 }
@@ -176,22 +166,17 @@ func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInsta
 		mask = req.UpdateMask.Paths
 	}
 	ur := svc.UpdateInstanceReq{
-		InstanceID:       req.InstanceId,
-		Name:             req.Name,
-		Description:      req.Description,
-		Labels:           req.Labels,
-		ServiceAccountID: req.ServiceAccountId,
-		PlatformID:       req.PlatformId,
-		PlacementPolicy:  req.PlacementPolicy,
-		Image:            req.Image,
-		UpdateMask:       mask,
-	}
-	if rs := req.ResourcesSpec; rs != nil {
-		ur.Cores, ur.Memory, ur.CoreFraction, ur.GPUs = rs.Cores, rs.Memory, rs.CoreFraction, rs.Gpus
-		ur.CPUGuaranteePercent = rs.CpuGuaranteePercent
-	}
-	if ns := req.NetworkSettings; ns != nil {
-		ur.NetworkSettingsType = ns.Type.String()
+		InstanceID:          req.InstanceId,
+		Name:                req.Name,
+		Description:         req.Description,
+		Labels:              req.Labels,
+		ServiceAccountID:    req.ServiceAccountId,
+		MachineTypeID:       req.MachineTypeId,
+		CPUGuaranteePercent: req.CpuGuaranteePercent,
+		PlacementGroupID:    req.PlacementGroupId,
+		SSHPublicKeys:       req.SshPublicKeys,
+		VMSpec:              vmSpecFromProto(req.VmSpec),
+		UpdateMask:          mask,
 	}
 	op, err := h.svc.Update(ctx, ur)
 	if err != nil {
@@ -423,6 +408,104 @@ func (h *InstanceHandler) ListOperations(ctx context.Context, req *computev1.Lis
 }
 
 // ---- conversion helpers ----
+
+// bootSourceFromProto — proto BootSource → domain.BootSource (COMP-1 F3). Output-only
+// поля (name/resolvedDigest/materializedVolume/imageKind) передаются как есть, чтобы
+// use-case отверг их на входе (COMP-1-11).
+func bootSourceFromProto(bs *computev1.BootSource) domain.BootSource {
+	if bs == nil {
+		return domain.BootSource{}
+	}
+	out := domain.BootSource{
+		Type:           bs.Type,
+		ID:             bs.Id,
+		Name:           bs.Name,
+		ResolvedDigest: bs.ResolvedDigest,
+		ImageKind:      domain.ImageKind(bs.ImageKind), // #nosec G115 -- proto enum зеркалит domain
+	}
+	if mv := bs.MaterializedVolume; mv != nil {
+		out.MaterializedVolume = &domain.MaterializedVolume{
+			VolumeID:     mv.VolumeId,
+			SizeBytes:    mv.SizeBytes,
+			SizeGiB:      mv.SizeGib,
+			VolumeTypeID: mv.VolumeTypeId,
+		}
+	}
+	return out
+}
+
+// vmSpecFromProto — proto VmSpec → domain.VMSpec (nil → nil).
+func vmSpecFromProto(v *computev1.VmSpec) *domain.VMSpec {
+	if v == nil {
+		return nil
+	}
+	out := &domain.VMSpec{UserData: v.UserData}
+	if mo := v.MetadataOptions; mo != nil {
+		out.MetadataEndpoint = domain.MetadataOption(mo.MetadataEndpoint) // #nosec G115 -- proto enum зеркалит domain
+		out.MetadataTokenRequired = mo.MetadataTokenRequired
+	}
+	return out
+}
+
+// containerSpecFromProto — proto ContainerSpec → domain.ContainerSpec (nil → nil).
+func containerSpecFromProto(c *computev1.ContainerSpec) *domain.ContainerSpec {
+	if c == nil {
+		return nil
+	}
+	out := &domain.ContainerSpec{
+		Command:       c.Command,
+		Args:          c.Args,
+		Env:           c.Env,
+		WorkingDir:    c.WorkingDir,
+		RestartPolicy: domain.RestartPolicy(c.RestartPolicy), // #nosec G115 -- proto enum зеркалит domain
+	}
+	for i := range c.Ports {
+		out.Ports = append(out.Ports, domain.ContainerPort{
+			ContainerPort: c.Ports[i].ContainerPort,
+			Protocol:      c.Ports[i].Protocol,
+		})
+	}
+	return out
+}
+
+// nicSpecsFromProto — proto NetworkInterfaceSpec[] → svc.NetworkInterfaceSpec[] (F6
+// launch skeleton; структурная валидация в use-case).
+func nicSpecsFromProto(specs []*computev1.NetworkInterfaceSpec) []svc.NetworkInterfaceSpec {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]svc.NetworkInterfaceSpec, 0, len(specs))
+	for _, s := range specs {
+		if s == nil {
+			continue
+		}
+		out = append(out, svc.NetworkInterfaceSpec{
+			SubnetID:         s.SubnetId,
+			SecurityGroupIDs: s.SecurityGroupIds,
+		})
+	}
+	return out
+}
+
+// secVolSpecsFromProto — proto SecondaryVolumeSpec[] → svc.SecondaryVolumeSpec[].
+func secVolSpecsFromProto(specs []*computev1.SecondaryVolumeSpec) []svc.SecondaryVolumeSpec {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]svc.SecondaryVolumeSpec, 0, len(specs))
+	for _, s := range specs {
+		if s == nil {
+			continue
+		}
+		out = append(out, svc.SecondaryVolumeSpec{
+			SizeGiB:      s.SizeGib,
+			VolumeTypeID: s.VolumeTypeId,
+			MountPath:    s.MountPath,
+			AutoDelete:   s.AutoDelete,
+		})
+	}
+	return out
+}
 
 // attachDiskReqFromSpec — proto AttachedDiskSpec → svc.AttachDiskReq. Только
 // volume_id-arm (storage-split: inline disk_spec на AttachDisk не поддерживается —

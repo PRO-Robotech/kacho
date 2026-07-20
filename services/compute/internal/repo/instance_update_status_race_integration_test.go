@@ -24,9 +24,11 @@ import (
 func newRunningInstance(id string) *domain.Instance {
 	return &domain.Instance{
 		ID: id, ProjectID: "f-upd-status-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
-		ZoneID: "ru-central1-a", PlatformID: "standard-v3", Cores: 2, Memory: 2 << 30, CoreFraction: 100,
-		Status: domain.InstanceStatusRunning,
-		FQDN:   id + ".auto.internal", NetworkSettingsType: "STANDARD",
+		ZoneID: "ru-central1-a", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
+		Status:             domain.InstanceStatusRunning,
+		FQDN:               id + ".auto.internal",
 	}
 }
 

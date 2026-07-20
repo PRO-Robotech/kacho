@@ -35,11 +35,13 @@ type InstanceRepo struct {
 // NewInstanceRepo создаёт InstanceRepo.
 func NewInstanceRepo(pool *pgxpool.Pool) *InstanceRepo { return &InstanceRepo{pool: pool} }
 
-const instanceCols = `id, project_id, created_at, name, description, labels, zone_id, platform_id, cores, memory, core_fraction, gpus, ` +
-	`status, metadata, metadata_options, service_account_id, hostname, fqdn, network_settings_type, scheduling_preemptible, ` +
-	`placement_policy, serial_port_ssh_authorization, gpu_cluster_id, hardware_generation, maintenance_policy, ` +
-	`maintenance_grace_period_seconds, reserved_instance_pool_id, host_group_id, host_id, application, ` +
-	`cpu_guarantee_percent, image, image_digest`
+// instanceCols — колонки таблицы instances (COMP-1 redesign; vendor-cruft-колонки
+// сняты миграцией 0016). effective_resources распакованы в eff_* скаляры;
+// boot_source — bs_* скаляры; vm_spec/container_spec — JSONB.
+const instanceCols = `id, project_id, created_at, name, description, labels, zone_id, status, status_reason, ` +
+	`metadata, hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
+	`instance_kind, machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
+	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec`
 
 // Get возвращает ВМ по id. AttachedDisks НЕ заполняются здесь — это зеркало из
 // kacho-storage, use-case подтягивает его на чтении (graceful-degrade).
@@ -142,7 +144,7 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	const qIns = `INSERT INTO instances (` + instanceCols + `)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33) RETURNING ` + instanceCols
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING ` + instanceCols
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", in.Name)
@@ -186,34 +188,34 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 	if _, ok := ch["service_account_id"]; ok {
 		us.add("service_account_id", in.ServiceAccountID)
 	}
-	if _, ok := ch["placement_policy"]; ok {
-		ppJSON, err := marshalProtoJSONB(in.PlacementPolicy, "Instance.placement_policy")
+	// status_reason — next-boot deferral marker ("takes effect on next boot", COMP-1
+	// F10); LIVE-применяется вместе с vm_spec/ssh next-boot полями.
+	if _, ok := ch["status_reason"]; ok {
+		us.add("status_reason", in.StatusReason)
+	}
+	if _, ok := ch["vm_spec"]; ok {
+		vmSpecJSON, err := marshalSpecJSONB(in.VMSpec, "Instance.vm_spec")
 		if err != nil {
 			return nil, err
 		}
-		us.add("placement_policy", ppJSON)
+		us.add("vm_spec", vmSpecJSON)
 	}
-	if _, ok := ch["network_settings"]; ok {
-		us.add("network_settings_type", in.NetworkSettingsType)
-	}
-	if _, ok := ch["image"]; ok {
-		// image (OCI-ref) mutable в любом статусе — re-pin OS-образа не resize.
-		us.add("image", in.Image)
-	}
-	// requireStopped: resize (resources_spec) и replatform (platform_id) разрешены
-	// ТОЛЬКО пока instance STOPPED. Инвариант закрывается на DB-уровне атомарным CAS
-	// `AND status='STOPPED'` в самом UPDATE — НЕ software Get→check→UPDATE.
+	// requireStopped: sizing (machine_type_id/cpu_guarantee_percent) и placement
+	// (placement_group_id) разрешены ТОЛЬКО пока instance STOPPED (COMP-1 F10). В
+	// COMP-1 STOPPED недостижимо (Stop=COMP-2) → service отвергает эти маски sync
+	// первым (always-reject). CAS `AND status='STOPPED'` — DB-level backstop
+	// (defense-in-depth; NOT software Get→check→UPDATE), актуален в COMP-2.
 	requireStopped := false
-	if _, ok := ch["resources_spec"]; ok {
-		us.add("cores", in.Cores)
-		us.add("memory", in.Memory)
-		us.add("core_fraction", in.CoreFraction)
-		us.add("gpus", in.GPUs)
+	if _, ok := ch["machine_type_id"]; ok {
+		us.add("machine_type_id", in.MachineTypeID)
+		requireStopped = true
+	}
+	if _, ok := ch["cpu_guarantee_percent"]; ok {
 		us.add("cpu_guarantee_percent", in.CPUGuaranteePercent)
 		requireStopped = true
 	}
-	if _, ok := ch["platform_id"]; ok {
-		us.add("platform_id", in.PlatformID)
+	if _, ok := ch["placement_group_id"]; ok {
+		us.add("placement_group_id", in.PlacementGroupID)
 		requireStopped = true
 	}
 
@@ -246,7 +248,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 			if !exists {
 				return nil, fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, in.ID)
 			}
-			return nil, fmt.Errorf("%w: Instance must be STOPPED to change sizing", ports.ErrFailedPrecondition)
+			return nil, fmt.Errorf("%w: instance must be STOPPED to change sizing or placement", ports.ErrFailedPrecondition)
 		}
 		return nil, wrapPgErr(err, "Instance", in.ID)
 	}
@@ -460,41 +462,56 @@ func instanceInsertArgs(in *domain.Instance) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	mdOptJSON, err := marshalProtoJSONB(in.MetadataOptions, "Instance.metadata_options")
+	vmSpecJSON, err := marshalSpecJSONB(in.VMSpec, "Instance.vm_spec")
 	if err != nil {
 		return nil, err
 	}
-	ppJSON, err := marshalProtoJSONB(in.PlacementPolicy, "Instance.placement_policy")
-	if err != nil {
-		return nil, err
-	}
-	hgJSON, err := marshalProtoJSONB(in.HardwareGeneration, "Instance.hardware_generation")
-	if err != nil {
-		return nil, err
-	}
-	appJSON, err := marshalProtoJSONB(in.Application, "Instance.application")
+	ctrSpecJSON, err := marshalSpecJSONB(in.ContainerSpec, "Instance.container_spec")
 	if err != nil {
 		return nil, err
 	}
 	return []any{
-		in.ID, in.ProjectID, in.CreatedAt, in.Name, in.Description, labelsJSON, in.ZoneID, in.PlatformID, in.Cores, in.Memory, in.CoreFraction, in.GPUs,
-		instanceStatusName(in.Status), mdJSON, mdOptJSON, in.ServiceAccountID, in.Hostname, in.FQDN, in.NetworkSettingsType, in.SchedulingPreemptible,
-		ppJSON, in.SerialPortSSHAuthorization, in.GPUClusterID, hgJSON, in.MaintenancePolicy,
-		in.MaintenanceGracePeriodSeconds, in.ReservedInstancePoolID, in.HostGroupID, in.HostID, appJSON,
-		in.CPUGuaranteePercent, in.Image, in.ImageDigest,
+		in.ID, in.ProjectID, in.CreatedAt, in.Name, in.Description, labelsJSON, in.ZoneID,
+		instanceStatusName(in.Status), in.StatusReason,
+		mdJSON, in.Hostname, in.FQDN, in.CPUGuaranteePercent, in.ServiceAccountID,
+		int32(in.InstanceKind), in.MachineTypeID,
+		in.EffectiveResources.VCPU, in.EffectiveResources.MemoryMiB, in.EffectiveResources.GPUs, in.EffectiveResources.GPUType,
+		in.BootSource.Type, in.BootSource.ID, int32(in.BootSource.ImageKind), in.PlacementGroupID,
+		vmSpecJSON, ctrSpecJSON,
 	}, nil
+}
+
+// marshalSpecJSONB сериализует vm_spec/container_spec в JSONB (nil → NULL-байты).
+func marshalSpecJSONB(v any, field string) ([]byte, error) {
+	switch spec := v.(type) {
+	case *domain.VMSpec:
+		if spec == nil {
+			return nil, nil
+		}
+		return marshalJSONB(spec, field)
+	case *domain.ContainerSpec:
+		if spec == nil {
+			return nil, nil
+		}
+		return marshalJSONB(spec, field)
+	default:
+		return nil, nil
+	}
 }
 
 func scanInstance(row scannable) (*domain.Instance, error) {
 	var in domain.Instance
-	var labelsJSON, mdJSON, mdOptJSON, ppJSON, hgJSON, appJSON []byte
+	var labelsJSON, mdJSON, vmSpecJSON, ctrSpecJSON []byte
 	var statusName string
+	var kind, imageKind int32
 	if err := row.Scan(
-		&in.ID, &in.ProjectID, &in.CreatedAt, &in.Name, &in.Description, &labelsJSON, &in.ZoneID, &in.PlatformID, &in.Cores, &in.Memory, &in.CoreFraction, &in.GPUs,
-		&statusName, &mdJSON, &mdOptJSON, &in.ServiceAccountID, &in.Hostname, &in.FQDN, &in.NetworkSettingsType, &in.SchedulingPreemptible,
-		&ppJSON, &in.SerialPortSSHAuthorization, &in.GPUClusterID, &hgJSON, &in.MaintenancePolicy,
-		&in.MaintenanceGracePeriodSeconds, &in.ReservedInstancePoolID, &in.HostGroupID, &in.HostID, &appJSON,
-		&in.CPUGuaranteePercent, &in.Image, &in.ImageDigest,
+		&in.ID, &in.ProjectID, &in.CreatedAt, &in.Name, &in.Description, &labelsJSON, &in.ZoneID,
+		&statusName, &in.StatusReason,
+		&mdJSON, &in.Hostname, &in.FQDN, &in.CPUGuaranteePercent, &in.ServiceAccountID,
+		&kind, &in.MachineTypeID,
+		&in.EffectiveResources.VCPU, &in.EffectiveResources.MemoryMiB, &in.EffectiveResources.GPUs, &in.EffectiveResources.GPUType,
+		&in.BootSource.Type, &in.BootSource.ID, &imageKind, &in.PlacementGroupID,
+		&vmSpecJSON, &ctrSpecJSON,
 	); err != nil {
 		return nil, err
 	}
@@ -505,27 +522,17 @@ func scanInstance(row scannable) (*domain.Instance, error) {
 		return nil, err
 	}
 	in.Status = instanceStatusFromName(statusName)
-	if len(mdOptJSON) > 0 {
-		in.MetadataOptions = &computev1.MetadataOptions{}
-		if err := unmarshalProtoJSONB(mdOptJSON, in.MetadataOptions, "Instance.metadata_options"); err != nil {
+	in.InstanceKind = domain.InstanceKind(kind)
+	in.BootSource.ImageKind = domain.ImageKind(imageKind)
+	if len(vmSpecJSON) > 0 {
+		in.VMSpec = &domain.VMSpec{}
+		if err := unmarshalJSONB(vmSpecJSON, in.VMSpec, "Instance.vm_spec"); err != nil {
 			return nil, err
 		}
 	}
-	if len(ppJSON) > 0 {
-		in.PlacementPolicy = &computev1.PlacementPolicy{}
-		if err := unmarshalProtoJSONB(ppJSON, in.PlacementPolicy, "Instance.placement_policy"); err != nil {
-			return nil, err
-		}
-	}
-	if len(hgJSON) > 0 {
-		in.HardwareGeneration = &computev1.HardwareGeneration{}
-		if err := unmarshalProtoJSONB(hgJSON, in.HardwareGeneration, "Instance.hardware_generation"); err != nil {
-			return nil, err
-		}
-	}
-	if len(appJSON) > 0 {
-		in.Application = &computev1.Application{}
-		if err := unmarshalProtoJSONB(appJSON, in.Application, "Instance.application"); err != nil {
+	if len(ctrSpecJSON) > 0 {
+		in.ContainerSpec = &domain.ContainerSpec{}
+		if err := unmarshalJSONB(ctrSpecJSON, in.ContainerSpec, "Instance.container_spec"); err != nil {
 			return nil, err
 		}
 	}

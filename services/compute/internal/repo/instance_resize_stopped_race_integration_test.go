@@ -37,7 +37,7 @@ func stopInstance(ctx context.Context, t *testing.T, r *repo.InstanceRepo, id st
 // resize-vs-Start TOCTOU: the Update use-case Get()s a STOPPED instance, passes
 // the software `must be STOPPED` check, but a concurrent Start commits
 // STOPPED→RUNNING before the column UPDATE lands. A resize UPDATE with no
-// status predicate would silently mutate cores/memory/platform on a now-RUNNING
+// status predicate would silently mutate machine_type_id on a now-RUNNING
 // instance (a forbidden live-resize). The DB-level CAS (`AND status='STOPPED'`)
 // must reject it with FailedPrecondition and leave the resize columns untouched.
 func TestIntegration_InstanceResize_RequiresStopped_ConcurrentStart(t *testing.T) {
@@ -53,17 +53,16 @@ func TestIntegration_InstanceResize_RequiresStopped_ConcurrentStart(t *testing.T
 	instRepo := repo.NewInstanceRepo(pool)
 
 	inID := ids.NewID(ids.PrefixInstance)
-	stale := stopInstance(ctx, t, instRepo, inID) // stale STOPPED snapshot (cores=2)
+	stale := stopInstance(ctx, t, instRepo, inID) // stale STOPPED snapshot (mt-std2)
 
 	// (1) Concurrent Start commits STOPPED→RUNNING.
 	running, err := instRepo.SetStatusCAS(ctx, inID, domain.InstanceStatusStopped, domain.InstanceStatusRunning)
 	require.NoError(t, err)
 	require.Equal(t, domain.InstanceStatusRunning, running.Status)
 
-	// (2) Resize runs on the now-stale STOPPED snapshot: cores 2 → 8.
-	stale.Cores = 8
-	stale.Memory = 8 << 30
-	_, err = instRepo.Update(ctx, stale, false, []string{"resources_spec"})
+	// (2) Resize runs on the now-stale STOPPED snapshot: mt-std2 → mt-highcpu8.
+	stale.MachineTypeID = "mt-highcpu8"
+	_, err = instRepo.Update(ctx, stale, false, []string{"machine_type_id"})
 
 	// Must be rejected — the instance is RUNNING, resize requires STOPPED.
 	require.Error(t, err, "resize on a RUNNING instance must be rejected")
@@ -73,12 +72,12 @@ func TestIntegration_InstanceResize_RequiresStopped_ConcurrentStart(t *testing.T
 	// The resize columns must NOT have been written.
 	got, err := instRepo.Get(ctx, inID)
 	require.NoError(t, err)
-	assert.Equal(t, int64(2), got.Cores, "cores must remain unchanged after a rejected resize")
+	assert.Equal(t, "mt-std2", got.MachineTypeID, "machine_type_id must remain unchanged after a rejected resize")
 	assert.Equal(t, domain.InstanceStatusRunning, got.Status)
 }
 
 // TestIntegration_InstanceResize_WhileStopped_OK — positive path: a resize on a
-// genuinely STOPPED instance succeeds and persists the new resources_spec.
+// genuinely STOPPED instance succeeds and persists the new machine_type_id.
 func TestIntegration_InstanceResize_WhileStopped_OK(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -94,15 +93,14 @@ func TestIntegration_InstanceResize_WhileStopped_OK(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	stopped := stopInstance(ctx, t, instRepo, inID)
 
-	stopped.Cores = 8
-	stopped.Memory = 8 << 30
-	updated, err := instRepo.Update(ctx, stopped, false, []string{"resources_spec"})
+	stopped.MachineTypeID = "mt-highcpu8"
+	updated, err := instRepo.Update(ctx, stopped, false, []string{"machine_type_id"})
 	require.NoError(t, err, "resize on a STOPPED instance must succeed")
-	assert.Equal(t, int64(8), updated.Cores)
+	assert.Equal(t, "mt-highcpu8", updated.MachineTypeID)
 
 	got, err := instRepo.Get(ctx, inID)
 	require.NoError(t, err)
-	assert.Equal(t, int64(8), got.Cores)
+	assert.Equal(t, "mt-highcpu8", got.MachineTypeID)
 	assert.Equal(t, domain.InstanceStatusStopped, got.Status)
 }
 
@@ -123,8 +121,8 @@ func TestIntegration_InstanceResize_MissingInstance_NotFound(t *testing.T) {
 
 	ghost := newRunningInstance(ids.NewID(ids.PrefixInstance)) // never inserted
 	ghost.Status = domain.InstanceStatusStopped
-	ghost.Cores = 8
-	_, err = instRepo.Update(ctx, ghost, false, []string{"resources_spec"})
+	ghost.MachineTypeID = "mt-highcpu8"
+	_, err = instRepo.Update(ctx, ghost, false, []string{"machine_type_id"})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ports.ErrNotFound),
 		"resize of a nonexistent instance must map to NotFound, got: %v", err)
@@ -168,9 +166,8 @@ func TestIntegration_InstanceResize_ConcurrentResizersOnRunning_AllRejected(t *t
 			defer wg.Done()
 			<-startBarrier
 			cp := *stale // stale STOPPED snapshot
-			cp.Cores = 8
-			cp.Memory = 8 << 30
-			_, uerr := instRepo.Update(ctx, &cp, false, []string{"resources_spec"})
+			cp.MachineTypeID = "mt-highcpu8"
+			_, uerr := instRepo.Update(ctx, &cp, false, []string{"machine_type_id"})
 			switch {
 			case uerr == nil:
 				resizeOK.Add(1)
@@ -189,6 +186,6 @@ func TestIntegration_InstanceResize_ConcurrentResizersOnRunning_AllRejected(t *t
 
 	got, err := instRepo.Get(ctx, inID)
 	require.NoError(t, err)
-	assert.Equal(t, int64(2), got.Cores, "resize columns must be untouched on the RUNNING instance")
+	assert.Equal(t, "mt-std2", got.MachineTypeID, "resize columns must be untouched on the RUNNING instance")
 	assert.Equal(t, domain.InstanceStatusRunning, got.Status)
 }

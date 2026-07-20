@@ -90,9 +90,11 @@ func TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate(t *testing.T) {
 	_, err = instRepo.Insert(ctx, &domain.Instance{
 		ID: id, ProjectID: "f-lost-upd", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		Name: "old-name", Description: "old-desc",
-		ZoneID: "ru-central1-a", PlatformID: "standard-v3", Cores: 2, Memory: 2 << 30, CoreFraction: 100,
-		Status: domain.InstanceStatusRunning, FQDN: id + ".auto.internal", NetworkSettingsType: "STANDARD",
-		NetworkInterfaces: []domain.NetworkInterface{{Index: "0", SubnetID: "e9bsub", PrimaryV4Address: "10.0.0.10"}},
+		ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning, FQDN: id + ".auto.internal",
+		InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
+		NetworkInterfaces:  []domain.NetworkInterface{{Index: "0", SubnetID: "e9bsub", PrimaryV4Address: "10.0.0.10"}},
 	})
 	require.NoError(t, err)
 

@@ -27,7 +27,7 @@ func TestInstanceGet_MirrorReadCtxBounded(t *testing.T) {
 	instanceRepo := portmock.NewInstanceRepo()
 	nic := portmock.NewNicClient()
 	storage := portmock.NewStorageClient()
-	svc := NewInstanceService(instanceRepo, portmock.NewZoneRegistry(),
+	svc := NewInstanceService(instanceRepo, portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
 		&portmock.ProjectClient{OK: true}, nic, storage, portmock.NewOpsRepo())
 
 	in := &domain.Instance{
@@ -64,7 +64,7 @@ func TestInstanceGet_MirrorGracefulDegradeOnUnavailable(t *testing.T) {
 	storage := portmock.NewStorageClient()
 	nic.ListErr = context.DeadlineExceeded // peer «down» (bound истёк)
 	storage.ListErr = context.DeadlineExceeded
-	svc := NewInstanceService(instanceRepo, portmock.NewZoneRegistry(),
+	svc := NewInstanceService(instanceRepo, portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
 		&portmock.ProjectClient{OK: true}, nic, storage, portmock.NewOpsRepo())
 
 	in := &domain.Instance{

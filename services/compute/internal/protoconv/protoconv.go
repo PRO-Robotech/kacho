@@ -15,9 +15,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
+	referencev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 )
+
+// serviceAccountRefType — canonical class-C Referrer type для serviceAccountId
+// (COMP-1 F4/B2; graceful-dangling reference на iam.service_account).
+const serviceAccountRefType = "iam.service_account"
 
 func ts(t time.Time) *timestamppb.Timestamp { return timestamppb.New(t.Truncate(time.Second)) }
 
@@ -128,45 +133,48 @@ func DiskType(t *domain.DiskType) *computev1.DiskType {
 	}
 }
 
-// Instance конвертирует domain.Instance → computev1.Instance.
+// Instance конвертирует domain.Instance → computev1.Instance (COMP-1 redesign).
+// Vendor-cruft (platform_id/resources/scheduling_policy/gpu_settings/application/...)
+// НЕ маппится (retired, ban 2). serviceAccountId эхается как class-C Referrer;
+// effectiveResources — output-зеркало каталога; boot_source — единый вход ОС.
 func Instance(in *domain.Instance) *computev1.Instance {
 	out := &computev1.Instance{
-		Id:          in.ID,
-		ProjectId:   in.ProjectID,
-		CreatedAt:   ts(in.CreatedAt),
-		Name:        in.Name,
-		Description: in.Description,
-		Labels:      in.Labels,
-		ZoneId:      in.ZoneID,
-		PlatformId:  in.PlatformID,
-		Resources: &computev1.Resources{
-			Memory:       in.Memory,
-			Cores:        in.Cores,
-			CoreFraction: in.CoreFraction,
-			Gpus:         in.GPUs,
+		Id:                  in.ID,
+		ProjectId:           in.ProjectID,
+		CreatedAt:           ts(in.CreatedAt),
+		Name:                in.Name,
+		Description:         in.Description,
+		Labels:              in.Labels,
+		ZoneId:              in.ZoneID,
+		Status:              computev1.Instance_Status(in.Status), // #nosec G115 -- domain.InstanceStatus зеркалит computev1.Instance_Status
+		StatusReason:        in.StatusReason,
+		Metadata:            in.Metadata,
+		Fqdn:                in.FQDN,
+		CpuGuaranteePercent: in.CPUGuaranteePercent,
+		InstanceKind:        computev1.InstanceKind(in.InstanceKind), // #nosec G115 -- domain.InstanceKind зеркалит computev1.InstanceKind
+		MachineTypeId:       in.MachineTypeID,
+		EffectiveResources: &computev1.EffectiveResources{
+			VCpu:      in.EffectiveResources.VCPU,
+			MemoryMib: in.EffectiveResources.MemoryMiB,
+			Gpus:      in.EffectiveResources.GPUs,
+			GpuType:   in.EffectiveResources.GPUType,
 		},
-		CpuGuaranteePercent:    in.CPUGuaranteePercent,
-		Image:                  in.Image,
-		ImageDigest:            in.ImageDigest,
-		Status:                 computev1.Instance_Status(in.Status), // #nosec G115 -- domain.InstanceStatus зеркалит computev1.Instance_Status
-		Metadata:               in.Metadata,
-		MetadataOptions:        in.MetadataOptions,
-		ServiceAccountId:       in.ServiceAccountID,
-		Fqdn:                   in.FQDN,
-		PlacementPolicy:        in.PlacementPolicy,
-		HardwareGeneration:     in.HardwareGeneration,
-		ReservedInstancePoolId: in.ReservedInstancePoolID,
-		Application:            in.Application,
+		BootSource:       bootSource(in.BootSource),
+		PlacementGroupId: in.PlacementGroupID,
 	}
-	if in.NetworkSettingsType != "" {
-		out.NetworkSettings = &computev1.NetworkSettings{
-			Type: networkSettingsTypeFromString(in.NetworkSettingsType),
+	if in.ServiceAccountID != "" {
+		out.ServiceAccount = &referencev1.Referrer{
+			Type: serviceAccountRefType,
+			Id:   in.ServiceAccountID,
 		}
 	}
-	if in.SchedulingPreemptible {
-		out.SchedulingPolicy = &computev1.SchedulingPolicy{Preemptible: true}
+	switch {
+	case in.VMSpec != nil:
+		out.Spec = &computev1.Instance_VmSpec{VmSpec: vmSpec(in.VMSpec)}
+	case in.ContainerSpec != nil:
+		out.Spec = &computev1.Instance_ContainerSpec{ContainerSpec: containerSpec(in.ContainerSpec)}
 	}
-	if boot := in.BootDisk(); boot != nil {
+	if boot := in.BootDiskMirror(); boot != nil {
 		out.BootDisk = attachedDisk(boot)
 	}
 	for i := range in.AttachedDisks {
@@ -178,6 +186,57 @@ func Instance(in *domain.Instance) *computev1.Instance {
 	}
 	for i := range in.NetworkInterfaces {
 		out.NetworkInterfaces = append(out.NetworkInterfaces, networkInterface(&in.NetworkInterfaces[i]))
+	}
+	return out
+}
+
+// bootSource конвертирует domain.BootSource → computev1.BootSource. Output-only
+// поля (name/resolvedDigest/materializedVolume) — заполняет resolve/materialize
+// сага COMP-2; в COMP-1 пусты.
+func bootSource(bs domain.BootSource) *computev1.BootSource {
+	out := &computev1.BootSource{
+		Type:           bs.Type,
+		Id:             bs.ID,
+		Name:           bs.Name,
+		ResolvedDigest: bs.ResolvedDigest,
+		ImageKind:      computev1.ImageKind(bs.ImageKind), // #nosec G115 -- domain.ImageKind зеркалит computev1.ImageKind
+	}
+	if mv := bs.MaterializedVolume; mv != nil {
+		out.MaterializedVolume = &computev1.MaterializedVolume{
+			VolumeId:     mv.VolumeID,
+			SizeBytes:    mv.SizeBytes,
+			SizeGib:      mv.SizeGiB,
+			VolumeTypeId: mv.VolumeTypeID,
+		}
+	}
+	return out
+}
+
+func vmSpec(v *domain.VMSpec) *computev1.VmSpec {
+	out := &computev1.VmSpec{UserData: v.UserData}
+	if v.MetadataEndpoint != domain.MetadataOptionUnspecified || v.MetadataTokenRequired {
+		out.MetadataOptions = &computev1.MetadataOptions{
+			MetadataEndpoint:      computev1.MetadataOption(v.MetadataEndpoint), // #nosec G115 -- domain.MetadataOption зеркалит computev1.MetadataOption
+			MetadataTokenRequired: v.MetadataTokenRequired,
+		}
+	}
+	return out
+}
+
+func containerSpec(c *domain.ContainerSpec) *computev1.ContainerSpec {
+	out := &computev1.ContainerSpec{
+		Command:       c.Command,
+		Args:          c.Args,
+		Env:           c.Env,
+		WorkingDir:    c.WorkingDir,
+		RestartPolicy: computev1.RestartPolicy(c.RestartPolicy), // #nosec G115 -- domain.RestartPolicy зеркалит computev1.RestartPolicy
+		ExitCode:      c.ExitCode,
+	}
+	for i := range c.Ports {
+		out.Ports = append(out.Ports, &computev1.ContainerPort{
+			ContainerPort: c.Ports[i].ContainerPort,
+			Protocol:      c.Ports[i].Protocol,
+		})
 	}
 	return out
 }
@@ -226,11 +285,4 @@ func oneToOneNat(n *domain.OneToOneNat) *computev1.OneToOneNat {
 		Address:   n.Address,
 		IpVersion: computev1.IpVersion(n.IPVersion),
 	}
-}
-
-func networkSettingsTypeFromString(s string) computev1.NetworkSettings_Type {
-	if v, ok := computev1.NetworkSettings_Type_value[s]; ok {
-		return computev1.NetworkSettings_Type(v)
-	}
-	return computev1.NetworkSettings_STANDARD
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
@@ -37,17 +38,35 @@ func newInstanceSvcGeo(t *testing.T, geoZones fakeGeoZoneCli) (*service.Instance
 	t.Helper()
 	instanceRepo := portmock.NewInstanceRepo()
 	ops := portmock.NewOpsRepo()
+	mtRepo := portmock.NewMachineTypeRepo()
+	mtRepo.Seed(&domain.MachineType{
+		ID: "mt-std2", Name: "std2", Family: domain.MachineTypeFamilyStandard,
+		Status:             domain.MachineTypeStatusAvailable,
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+	})
 	geoReg := clients.NewGeoClientWith(geoZones) // GeoClient implements service.ZoneRegistry
 	svc := service.NewInstanceService(
-		instanceRepo, geoReg, &portmock.ProjectClient{OK: true}, portmock.NewNicClient(), portmock.NewStorageClient(), ops,
+		instanceRepo, mtRepo, geoReg, &portmock.ProjectClient{OK: true}, portmock.NewNicClient(), portmock.NewStorageClient(), ops,
 	)
 	return svc, ops
 }
 
+// geoInstanceReq — минимальный ВАЛИДНЫЙ Create-запрос (COMP-1 redesign): sync-
+// валидация проходит, machineTypeId резолвится в засеянном каталоге → doCreate
+// доходит до geo zone peer-validate (интент этого теста).
 func geoInstanceReq() service.CreateInstanceReq {
 	return service.CreateInstanceReq{
-		ProjectID: "f", Name: "vm-geo", ZoneID: "ru-central1-a", PlatformID: "standard-v3",
-		Cores: 2, Memory: 2 << 30, CoreFraction: 100,
+		ProjectID:     "f",
+		Name:          "vm-geo",
+		ZoneID:        "ru-central1-a",
+		InstanceKind:  domain.InstanceKindVM,
+		MachineTypeID: "mt-std2",
+		BootSource:    domain.BootSource{Type: "storage.image", ID: "img-x:22.04"},
+		NetworkInterfaceSpecs: []service.NetworkInterfaceSpec{
+			{SubnetID: "sub-a", SecurityGroupIDs: []string{"scg-a"}},
+		},
+		SSHPublicKeys: []string{"ssh-ed25519 AAAA user@h"},
+		VMSpec:        &domain.VMSpec{},
 	}
 }
 

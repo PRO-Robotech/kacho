@@ -148,8 +148,10 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
 		ID: inID, ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond), Name: "vm-1",
-		ZoneID: "ru-central1-a", PlatformID: "standard-v3", Cores: 2, Memory: 2 << 30, CoreFraction: 100,
-		Status: domain.InstanceStatusRunning, FQDN: inID + ".auto.internal", NetworkSettingsType: "STANDARD",
+		ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning, FQDN: inID + ".auto.internal",
+		InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
 	}
 	created, err := instRepo.Insert(ctx, in)
 	require.NoError(t, err)

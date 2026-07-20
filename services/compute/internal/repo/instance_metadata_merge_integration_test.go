@@ -26,10 +26,12 @@ func seedInstanceForMetadata(t *testing.T, ctx context.Context, instRepo *repo.I
 	inID := ids.NewID(ids.PrefixInstance)
 	_, err := instRepo.Insert(ctx, &domain.Instance{
 		ID: inID, ProjectID: "f-md", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
-		ZoneID: "ru-central1-a", PlatformID: "standard-v3", Cores: 2, Memory: 2 << 30, CoreFraction: 100,
-		Status: domain.InstanceStatusRunning, FQDN: inID + ".auto.internal", NetworkSettingsType: "STANDARD",
-		Metadata:          md,
-		NetworkInterfaces: []domain.NetworkInterface{{Index: "0", SubnetID: "e9bsub", PrimaryV4Address: "10.0.0.10"}},
+		ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning, FQDN: inID + ".auto.internal",
+		InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
+		Metadata:           md,
+		NetworkInterfaces:  []domain.NetworkInterface{{Index: "0", SubnetID: "e9bsub", PrimaryV4Address: "10.0.0.10"}},
 	})
 	require.NoError(t, err)
 	return inID

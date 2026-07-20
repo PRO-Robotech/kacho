@@ -23,7 +23,7 @@ func newNicSvc(t *testing.T) (*InstanceService, *portmock.InstanceRepo, *portmoc
 	instanceRepo := portmock.NewInstanceRepo()
 	nic := portmock.NewNicClient()
 	ops := portmock.NewOpsRepo()
-	svc := NewInstanceService(instanceRepo, portmock.NewZoneRegistry(),
+	svc := NewInstanceService(instanceRepo, portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
 		&portmock.ProjectClient{OK: true}, nic, portmock.NewStorageClient(), ops)
 	return svc, instanceRepo, nic, ops
 }
