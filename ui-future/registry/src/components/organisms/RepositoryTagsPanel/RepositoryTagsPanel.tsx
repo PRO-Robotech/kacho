@@ -86,7 +86,14 @@ export const RepositoryTagsPanel: FC<{
   return (
     <div
       className="kc-tags-panel"
-      style={{ height: "100%", minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}
+      style={{
+        height: "100%",
+        minHeight: 0,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
     >
       {/* Шапка панели */}
       <div
@@ -102,7 +109,15 @@ export const RepositoryTagsPanel: FC<{
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <ResourceIcon specId="tags" />
-          <span style={{ fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span
+            style={{
+              fontWeight: 600,
+              maxWidth: 220,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {repository}
           </span>
           <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
@@ -113,7 +128,17 @@ export const RepositoryTagsPanel: FC<{
       </div>
 
       {/* Тело: вертикальный список карточек тегов (скролл внутри). */}
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
         {isError ? (
           <ErrorResult error={error} />
         ) : isLoading ? (
@@ -153,7 +178,13 @@ export const RepositoryTagsPanel: FC<{
                       type="secondary"
                       code
                       copyable={{ text: digest, tooltips: ["Копировать digest", "Скопировано"] }}
-                      style={{ fontSize: 11, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      style={{
+                        fontSize: 11,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
                     >
                       sha256:{shortDigest(digest)}…
                     </Typography.Text>
@@ -192,7 +223,10 @@ export const RepositoryTagsPanel: FC<{
                     </span>
                   </Tooltip>
                   {arch && (
-                    <Tag bordered style={{ margin: 0, fontFamily: "var(--font-mono, monospace)", fontSize: 11, lineHeight: "18px" }}>
+                    <Tag
+                      bordered
+                      style={{ margin: 0, fontFamily: "var(--font-mono, monospace)", fontSize: 11, lineHeight: "18px" }}
+                    >
                       {arch}
                     </Tag>
                   )}

@@ -15,7 +15,11 @@ describe("fetchAllPages (load-all pagination)", () => {
       return pages[q.pageToken ?? ""];
     };
 
-    const rows = await fetchAllPages<{ name: string }>("/registry/v1/registries/reg-x/repositories", "repositories", listFn);
+    const rows = await fetchAllPages<{ name: string }>(
+      "/registry/v1/registries/reg-x/repositories",
+      "repositories",
+      listFn,
+    );
 
     expect(rows.map((r) => r.name)).toEqual(["a", "b", "helm-on-page-2"]);
     // Первая страница — без pageToken; вторая — с pageToken=tok2.
@@ -51,11 +55,7 @@ describe("fetchAllPages (load-all pagination)", () => {
       n++;
       return { repositories: [{ name: "x" }], next_page_token: "" };
     };
-    const rows = await fetchAllPages(
-      "/registry/v1/registries/{registryId}/repositories",
-      "repositories",
-      listFn,
-    );
+    const rows = await fetchAllPages("/registry/v1/registries/{registryId}/repositories", "repositories", listFn);
     expect(rows).toEqual([]);
     expect(n).toBe(0);
   });

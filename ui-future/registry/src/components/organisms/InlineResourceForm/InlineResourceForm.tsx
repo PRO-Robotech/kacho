@@ -69,7 +69,13 @@ export function InlineResourceForm(props: InlineResourceFormProps): ReactNode {
   }
   if (action === "edit" && (data || id)) {
     return (
-      <InlineResourceEditForm spec={spec} data={data ?? {}} projectId={projectId} onCancel={onCancel} onSuccess={onSuccess} />
+      <InlineResourceEditForm
+        spec={spec}
+        data={data ?? {}}
+        projectId={projectId}
+        onCancel={onCancel}
+        onSuccess={onSuccess}
+      />
     );
   }
   return null;
