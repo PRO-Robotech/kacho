@@ -269,7 +269,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Исходный том",
         path: "source_volume_id",
-        render: (row) => <RefNameLink specId="volumes" refId={row.source_volume_id as string | undefined} maxChars={32} />,
+        render: (row) => (
+          <RefNameLink specId="volumes" refId={row.source_volume_id as string | undefined} maxChars={32} />
+        ),
       },
       { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
       { header: "Статус", path: "status", format: "status" },
@@ -289,7 +291,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: true,
         immutable: true,
-        description: "Том, с которого снимается point-in-time копия (immutable после Create). Within-service ref → Volume.",
+        description:
+          "Том, с которого снимается point-in-time копия (immutable после Create). Within-service ref → Volume.",
       },
       FIELD_NAME,
       FIELD_DESCRIPTION,
@@ -367,7 +370,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "regions",
         required: true,
         immutable: true,
-        description: "Регион размещения образа (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
+        description:
+          "Регион размещения образа (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
       },
       {
         // Дискриминатор источника (form-only): образ создаётся РОВНО из одного —
