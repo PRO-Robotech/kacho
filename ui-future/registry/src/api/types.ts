@@ -325,6 +325,13 @@ export interface ComputeZoneList {
 
 // ====== registry (Container Registry) ======
 // proto: kacho.cloud.registry.v1. Ресурсы плоские; мутации async → Operation.
+//
+// REG-1 REDESIGN: Registry становится REGIONAL-anycast (region_id + placement_type
+// const REGIONAL, оба immutable; peer-validate geo.Region). default_repository_visibility
+// (rename default_visibility) сидит visibility новых Repository (any-path-to-PUBLIC
+// admin-gated). id — единственная идентичность/URL-адресация (pull-путь
+// $domain/$registryId/$repo:$tag); name — mutable косметический label (НЕ в URL).
+// Явно НЕТ: globalSlug / displayName / top-level visibility / :rename.
 
 // Registry — реестр контейнерных образов (project-scoped, tenant-facing).
 export interface Registry {
@@ -334,11 +341,20 @@ export interface Registry {
   name?: string;
   description?: string;
   labels?: Record<string, string>;
-  // Endpoint для docker login / push / pull (output-only).
+  // Endpoint для docker login / push / pull (output-only; derived по id: <host>/<id>).
   endpoint?: string;
   // Число репозиториев в реестре (output-only; растёт с docker push).
   repository_count?: number;
   status?: string;
+  // --- REG-1 (NET-NEW) ---
+  // Регион размещения (REG-1 F4): required на Create, immutable, peer-validate geo.Region.
+  region_id?: string;
+  // Тип размещения — всегда REGIONAL (REG-1 F4, regional-anycast const, immutable).
+  // zone_id отсутствует by construction (зоне-независимый ресурс).
+  placement_type?: "PLACEMENT_TYPE_UNSPECIFIED" | "REGIONAL" | string;
+  // Видимость по умолчанию для новых Repository (REG-1 F5, rename default_visibility).
+  // any-path-to-PUBLIC admin-gated (enforced server-side).
+  default_repository_visibility?: "PRIVATE" | "PUBLIC" | string;
 }
 
 export interface RegistryList {
@@ -351,6 +367,14 @@ export interface RegistryList {
 export interface Repository {
   name: string;
   registry_id?: string;
+  // Класс исчезаемости репозитория (REG-1 F7): output-only enum. DURABLE —
+  // survives-empty (явный CreateRepository / установленный overlay); EPHEMERAL —
+  // register-on-first-push, unregister-on-last-tag. Установка overlay AUTO-PROMOTE'ит
+  // EPHEMERAL→DURABLE. Понижение через API не выразимо (снимается DeleteRepository).
+  lifecycle?: "REPOSITORY_LIFECYCLE_UNSPECIFIED" | "DURABLE" | "EPHEMERAL" | string;
+  // Видимость репозитория (авторитетный per-repo гейт). Сидится из
+  // Registry.default_repository_visibility на create; any-path-to-PUBLIC admin-gated.
+  visibility?: "PRIVATE" | "PUBLIC" | string;
   // Число тегов образов в репозитории (output-only).
   tag_count?: number;
   // Агрегатный размер репозитория; proto3 int64 сериализуется как СТРОКА.

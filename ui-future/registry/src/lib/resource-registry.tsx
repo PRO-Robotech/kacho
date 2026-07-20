@@ -13,6 +13,8 @@ import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import { ArtifactTypesTag } from "@/components/atoms/ArtifactTypeTag";
+import { LifecycleTag } from "@/components/atoms/LifecycleTag";
+import { VisibilityTag } from "@/components/atoms/VisibilityTag";
 
 export interface ResourceColumn {
   header: string;
@@ -159,6 +161,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "id",
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
+      // REG-1 F4: registry REGIONAL-anycast — регион размещения (placement-якорь).
+      { header: "Регион", path: "region_id", format: "text" },
       { header: "Статус", path: "status", format: "status" },
       { header: "Репозиториев", path: "repository_count", format: "text" },
       { header: "Endpoint", path: "endpoint", format: "code" },
@@ -169,11 +173,46 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
-    fields: [FIELD_NAME_REGISTRY, FIELD_DESCRIPTION, FIELD_LABELS, FIELD_PROJECT_ID],
+    fields: [
+      FIELD_NAME_REGISTRY,
+      FIELD_DESCRIPTION,
+      // REG-1 F4: regionId — required + immutable, cross-service ref → geo.Region
+      // (REGIONAL-anycast placement, peer-validate fail-closed). Смена региона
+      // сломала бы storage-locality блобов → immutable после Create.
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        description:
+          "Регион размещения реестра (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
+      },
+      // REG-1 F5: defaultRepositoryVisibility — видимость по умолчанию для новых
+      // репозиториев реестра. PUBLIC требует прав администратора реестра (проверяется
+      // на сервере: any-path-to-PUBLIC admin-gate).
+      {
+        name: "default_repository_visibility",
+        label: "Видимость репозиториев по умолчанию",
+        type: "enum",
+        default: "PRIVATE",
+        options: [
+          { value: "PRIVATE", label: "PRIVATE — приватные (доступ по правам)" },
+          { value: "PUBLIC", label: "PUBLIC — публичные (anonymous pull; требует прав администратора)" },
+        ],
+        description:
+          "Видимость, наследуемая новыми репозиториями при создании. Переключение на PUBLIC требует прав администратора реестра.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
     template: ({ projectId }) => ({
       project_id: projectId ?? "",
       name: "",
       description: "",
+      region_id: "",
+      default_repository_visibility: "PRIVATE",
       labels: {},
     }),
     emptyState: {
@@ -234,6 +273,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "artifact_types",
         render: (row) => <ArtifactTypesTag value={row.artifact_types ?? row.artifact_type} />,
       },
+      // REG-1 F7: класс исчезаемости (DURABLE survives-empty / EPHEMERAL push-materialized).
+      { header: "Класс", path: "lifecycle", render: (row) => <LifecycleTag value={row.lifecycle} /> },
+      // REG-1 F5: видимость репозитория (PRIVATE / PUBLIC anonymous-pull).
+      { header: "Видимость", path: "visibility", render: (row) => <VisibilityTag value={row.visibility} /> },
       { header: "Тегов", path: "tag_count", format: "text" },
       // size_bytes — агрегат по репозиторию (int64 строкой) → человекочитаемо;
       // 0/пусто → «—» (никогда «0 B»).
@@ -277,6 +320,24 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Дата создания", path: "created_at", format: "datetime" },
     ],
     // Мутаций create/update нет — form-schema не требуется.
+    template: () => ({}),
+  },
+
+  // ====== geo (read-only ref-цель) ======
+  // Region — cross-service ref-цель (owner geo) для Registry.region_id (REG-1 F4,
+  // REGIONAL-anycast). Read-only registry-запись нужна RefSelect'у для резолва
+  // apiPath/payloadKey/имени в dropdown'е (не навигируется как реестр-ресурс).
+  regions: {
+    id: "regions",
+    route: "regions",
+    apiPath: "/geo/v1/regions",
+    payloadKey: "regions",
+    singular: "Регион",
+    plural: "Регионы",
+    serviceTitle: "Geography",
+    scope: "global",
+    ops: { create: false, update: false, delete: false },
+    columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
     template: () => ({}),
   },
 };

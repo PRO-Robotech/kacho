@@ -83,10 +83,7 @@ export async function fetchAllPages<T = Record<string, unknown>>(
  * образы реестра): handler пагинирует (pageByName), поэтому одиночная страница
  * дала бы неполный фильтр (helm-образ со страницы 2+ пропал бы).
  */
-export function useResourceListAllPages<T = Record<string, unknown>>(
-  spec: ResourceSpec,
-  opts: { enabled: boolean },
-) {
+export function useResourceListAllPages<T = Record<string, unknown>>(spec: ResourceSpec, opts: { enabled: boolean }) {
   return useQuery({
     queryKey: [spec.id, "list-all", spec.apiPath],
     queryFn: async () => {

@@ -7,9 +7,7 @@ import { lazy, Suspense } from "react";
 import { Spin } from "antd";
 
 // Именованный экспорт → default для React.lazy.
-const JsonMonacoViewLazy = lazy(() =>
-  import("./JsonMonacoView").then((m) => ({ default: m.JsonMonacoView })),
-);
+const JsonMonacoViewLazy = lazy(() => import("./JsonMonacoView").then((m) => ({ default: m.JsonMonacoView })));
 
 interface Props {
   data: unknown;

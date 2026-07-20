@@ -34,7 +34,16 @@ type RowAction = { key: string; icon: ReactNode; label: string; danger?: boolean
 
 // Ресурсы без семантики cross-project «Переместить»: системные + OCI-сущности
 // реестра (registry/репозиторий/тег).
-const MOVE_INCAPABLE = ["accounts", "projects", "regions", "zones", "address-pools", "registries", "repositories", "tags"];
+const MOVE_INCAPABLE = [
+  "accounts",
+  "projects",
+  "regions",
+  "zones",
+  "address-pools",
+  "registries",
+  "repositories",
+  "tags",
+];
 
 // resourceHasRowActions — есть ли у ресурса хоть одно строчное действие
 // (мутация или move/create-subnet). Совпадает с логикой mutationActions ниже —
