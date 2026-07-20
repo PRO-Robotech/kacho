@@ -185,6 +185,22 @@ spec:
             - name: KACHO_COMPUTE_GEO_MTLS_SERVERNAME
               value: {{ .Values.mtls.serverName.geo | quote }}
             {{- end }}
+            {{- if .Values.mtls.edges.storage }}
+            # compute/storage split — compute→storage (storage.v1.InternalVolumeService
+            # Attach/Detach, volume↔Instance attach-saga, internal :9091) client-creds.
+            # Reuses the same kacho-compute-client-tls SPIFFE leaf as the vpc/geo/iam
+            # edges. ServerName=kacho-storage (∈ storage server-cert SAN serverHosts).
+            - name: KACHO_COMPUTE_STORAGE_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_COMPUTE_STORAGE_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_COMPUTE_STORAGE_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_COMPUTE_STORAGE_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_COMPUTE_STORAGE_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.storage | quote }}
+            {{- end }}
             {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
@@ -199,6 +215,12 @@ spec:
             # Instance.zone_id validation). config.go cfg.GeoGRPCAddr — public :9090.
             - name: KACHO_COMPUTE_GEO_GRPC_ADDR
               value: "{{ .Values.geoAddr }}"
+            # compute/storage split: compute→storage dial host (storage.v1.
+            # InternalVolumeService Attach/Detach, volume↔Instance attach-saga). config.go
+            # cfg.StorageInternalGRPCAddr — internal :9091. Empty "" (present) →
+            # NoopStorageClient (attach fail-closed; used by storage-less dev profiles).
+            - name: KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR
+              value: "{{ .Values.storageInternalAddr }}"
             - name: KACHO_COMPUTE_SKIP_PEER_VALIDATION
               value: "{{ .Values.skipPeerValidation }}"
             # KAC-127 Phase 4 — FGA-filtered List + per-RPC authz endpoint.

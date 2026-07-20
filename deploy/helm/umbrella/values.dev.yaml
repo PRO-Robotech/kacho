@@ -172,8 +172,11 @@ compute:
   # unset). Прод не затронут — values.fe3455-prod.yaml выставляет реальный addr явно.
   # Attach/Detach-VOLUME кейсы (INST-AD/INST-DD) требуют ЖИВОГО storage — зелёные только
   # в umbrella-e2e со storage.enabled=true, не в этом compute-only профиле.
-  env:
-    KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR: ""
+  # storageInternalAddr — first-class compute-chart key (deployment renders
+  # KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR from it). "" present → overrides the
+  # non-empty config.go default → NoopStorageClient (was a compute.env override before
+  # the storage edge became first-class in the chart).
+  storageInternalAddr: ""
   # Delete-instance сага (internal/service/instance.go) НЕ становится fast-success от
   # одного лишь storage-Noop: перед step-3 (storage volume-release) идёт step-2 —
   # NIC-release через compute→vpc InternalNetworkInterfaceService.ListByInstance на
