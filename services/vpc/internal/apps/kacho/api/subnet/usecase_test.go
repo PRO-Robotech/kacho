@@ -299,11 +299,11 @@ func TestCreateUseCase_OK(t *testing.T) {
 	h, or, kr, netID := minimalHandler(t, true)
 
 	op, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
-		ProjectId:    "f1",
-		NetworkId:    netID,
-		Name:         "sub1",
-		ZoneId:       testZone,
-		V4CidrBlocks: []string{"10.0.0.0/24"},
+		ProjectId:       "f1",
+		NetworkId:       netID,
+		Name:            "sub1",
+		ZoneId:          testZone,
+		Ipv4CidrPrimary: "10.0.0.0/24",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, op.Id)
@@ -335,8 +335,8 @@ func TestCreateUseCase_DuplicateName(t *testing.T) {
 	// Первый Create — OK.
 	op1, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "dup",
-		ZoneId:       testZone,
-		V4CidrBlocks: []string{"10.0.0.0/24"},
+		ZoneId:          testZone,
+		Ipv4CidrPrimary: "10.0.0.0/24",
 	})
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, op1.Id)
@@ -344,8 +344,8 @@ func TestCreateUseCase_DuplicateName(t *testing.T) {
 	// Второй Create с тем же name — sync AlreadyExists.
 	_, err = h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "dup",
-		ZoneId:       testZone,
-		V4CidrBlocks: []string{"10.0.1.0/24"},
+		ZoneId:          testZone,
+		Ipv4CidrPrimary: "10.0.1.0/24",
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -362,7 +362,7 @@ func TestCreateUseCase_NeitherZoneRegion_Rejected(t *testing.T) {
 	h, _, _, netID := minimalHandler(t, true)
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "no-placement",
-		V4CidrBlocks: []string{"10.0.0.0/24"},
+		Ipv4CidrPrimary: "10.0.0.0/24",
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -376,7 +376,7 @@ func TestCreateUseCase_BothZoneAndRegion_Rejected(t *testing.T) {
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "both-bad",
 		ZoneId: testZone, RegionId: testRegion,
-		V4CidrBlocks: []string{"10.0.0.0/24"},
+		Ipv4CidrPrimary: "10.0.0.0/24",
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -391,7 +391,7 @@ func TestCreateUseCase_PlacementTypeInBody_Rejected(t *testing.T) {
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "with-pt",
 		PlacementType: vpcv1.SubnetPlacementType_ZONAL, ZoneId: testZone,
-		V4CidrBlocks: []string{"10.0.0.0/24"},
+		Ipv4CidrPrimary: "10.0.0.0/24",
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -405,8 +405,8 @@ func TestCreateUseCase_Regional_OK(t *testing.T) {
 	h, or, kr, netID := minimalHandler(t, true)
 	op, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "reg1",
-		RegionId:     testRegion,
-		V4CidrBlocks: []string{"192.168.0.0/24"},
+		RegionId:        testRegion,
+		Ipv4CidrPrimary: "192.168.0.0/24",
 	})
 	require.NoError(t, err)
 	saved := repomock.AwaitOpDone(t, or, op.Id)
@@ -426,8 +426,8 @@ func TestCreateUseCase_RegionalUnknownRegion_Rejected(t *testing.T) {
 	h, _, _, netID := minimalHandler(t, true)
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "reg-unknown",
-		RegionId:     "region-z",
-		V4CidrBlocks: []string{"192.168.0.0/24"},
+		RegionId:        "region-z",
+		Ipv4CidrPrimary: "192.168.0.0/24",
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -543,8 +543,8 @@ func TestHandler_FullFlow(t *testing.T) {
 	// Create
 	createOp, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "sub1",
-		ZoneId:       testZone,
-		V4CidrBlocks: []string{"10.0.0.0/24"},
+		ZoneId:          testZone,
+		Ipv4CidrPrimary: "10.0.0.0/24",
 	})
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
@@ -573,16 +573,16 @@ func TestHandler_FullFlow(t *testing.T) {
 
 	// AddCidrBlocks
 	addOp, err := h.AddCidrBlocks(context.Background(), &vpcv1.AddSubnetCidrBlocksRequest{
-		SubnetId:     subID,
-		V4CidrBlocks: []string{"10.1.0.0/24"},
+		SubnetId:       subID,
+		Ipv4CidrBlocks: []string{"10.1.0.0/24"},
 	})
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, addOp.Id)
 
 	// RemoveCidrBlocks
 	rmOp, err := h.RemoveCidrBlocks(context.Background(), &vpcv1.RemoveSubnetCidrBlocksRequest{
-		SubnetId:     subID,
-		V4CidrBlocks: []string{"10.1.0.0/24"},
+		SubnetId:       subID,
+		Ipv4CidrBlocks: []string{"10.1.0.0/24"},
 	})
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, rmOp.Id)
@@ -609,8 +609,8 @@ func TestHandler_Delete_ResponseIsEmpty(t *testing.T) {
 
 	createOp, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "del-resp-test",
-		ZoneId:       testZone,
-		V4CidrBlocks: []string{"10.0.0.0/24"},
+		ZoneId:          testZone,
+		Ipv4CidrPrimary: "10.0.0.0/24",
 	})
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)

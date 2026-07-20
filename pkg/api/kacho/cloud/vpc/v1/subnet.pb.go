@@ -161,20 +161,23 @@ type Subnet struct {
 	// ID of the region (set iff placement_type == REGIONAL). The subnet is
 	// region-scoped; its prefix is anycast across the region's zones.
 	RegionId string `protobuf:"bytes,14,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	// CIDR block.
-	// The range of internal addresses that are defined for this subnet.
-	// This field can be set only at Subnet resource creation time and cannot be changed.
-	// For example, 10.0.0.0/22 or 192.168.0.0/24.
-	// Minimum subnet size is /28, maximum subnet size is /16.
-	V4CidrBlocks []string `protobuf:"bytes,10,rep,name=v4_cidr_blocks,json=v4CidrBlocks,proto3" json:"v4_cidr_blocks,omitempty"`
-	// IPv6 not available yet.
-	V6CidrBlocks []string `protobuf:"bytes,11,rep,name=v6_cidr_blocks,json=v6CidrBlocks,proto3" json:"v6_cidr_blocks,omitempty"`
 	// ID of route table the subnet is linked to.
 	RouteTableId string `protobuf:"bytes,12,opt,name=route_table_id,json=routeTableId,proto3" json:"route_table_id,omitempty"`
 	// DHCP options for the subnet.
-	DhcpOptions   *DhcpOptions `protobuf:"bytes,13,opt,name=dhcp_options,json=dhcpOptions,proto3" json:"dhcp_options,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DhcpOptions *DhcpOptions `protobuf:"bytes,13,opt,name=dhcp_options,json=dhcpOptions,proto3" json:"dhcp_options,omitempty"`
+	// Primary IPv4 CIDR anchor (immutable, set at Create). Must be a subset of one
+	// of the parent network's ipv4_cidr_blocks supernet blocks. Empty for a v6-only
+	// subnet. For example, 10.20.0.0/24. Minimum /28, maximum /16.
+	Ipv4CidrPrimary string `protobuf:"bytes,16,opt,name=ipv4_cidr_primary,json=ipv4CidrPrimary,proto3" json:"ipv4_cidr_primary,omitempty"`
+	// Additional IPv4 CIDR ranges beyond the primary anchor, added/removed via
+	// AddCidrBlocks/RemoveCidrBlocks. Each must be within a supernet block and disjoint.
+	Ipv4CidrBlocks []string `protobuf:"bytes,17,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
+	// Primary IPv6 CIDR anchor (immutable). Empty for a v4-only subnet.
+	Ipv6CidrPrimary string `protobuf:"bytes,18,opt,name=ipv6_cidr_primary,json=ipv6CidrPrimary,proto3" json:"ipv6_cidr_primary,omitempty"`
+	// Additional IPv6 CIDR ranges beyond the primary anchor (verb-pair mutation).
+	Ipv6CidrBlocks []string `protobuf:"bytes,19,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Subnet) Reset() {
@@ -277,20 +280,6 @@ func (x *Subnet) GetRegionId() string {
 	return ""
 }
 
-func (x *Subnet) GetV4CidrBlocks() []string {
-	if x != nil {
-		return x.V4CidrBlocks
-	}
-	return nil
-}
-
-func (x *Subnet) GetV6CidrBlocks() []string {
-	if x != nil {
-		return x.V6CidrBlocks
-	}
-	return nil
-}
-
 func (x *Subnet) GetRouteTableId() string {
 	if x != nil {
 		return x.RouteTableId
@@ -301,6 +290,34 @@ func (x *Subnet) GetRouteTableId() string {
 func (x *Subnet) GetDhcpOptions() *DhcpOptions {
 	if x != nil {
 		return x.DhcpOptions
+	}
+	return nil
+}
+
+func (x *Subnet) GetIpv4CidrPrimary() string {
+	if x != nil {
+		return x.Ipv4CidrPrimary
+	}
+	return ""
+}
+
+func (x *Subnet) GetIpv4CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv4CidrBlocks
+	}
+	return nil
+}
+
+func (x *Subnet) GetIpv6CidrPrimary() string {
+	if x != nil {
+		return x.Ipv6CidrPrimary
+	}
+	return ""
+}
+
+func (x *Subnet) GetIpv6CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv6CidrBlocks
 	}
 	return nil
 }
@@ -372,7 +389,7 @@ var File_kacho_cloud_vpc_v1_subnet_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_subnet_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkacho/cloud/vpc/v1/subnet.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x84\x05\n" +
+	"\x1fkacho/cloud/vpc/v1/subnet.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf0\x05\n" +
 	"\x06Subnet\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -387,15 +404,17 @@ const file_kacho_cloud_vpc_v1_subnet_proto_rawDesc = "" +
 	"\x0eplacement_type\x18\x0f \x01(\x0e2'.kacho.cloud.vpc.v1.SubnetPlacementTypeR\rplacementType\x12\x17\n" +
 	"\azone_id\x18\b \x01(\tR\x06zoneId\x12\x1b\n" +
 	"\tregion_id\x18\x0e \x01(\tR\bregionId\x12$\n" +
-	"\x0ev4_cidr_blocks\x18\n" +
-	" \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\v \x03(\tR\fv6CidrBlocks\x12$\n" +
 	"\x0eroute_table_id\x18\f \x01(\tR\frouteTableId\x12B\n" +
-	"\fdhcp_options\x18\r \x01(\v2\x1f.kacho.cloud.vpc.v1.DhcpOptionsR\vdhcpOptions\x1a9\n" +
+	"\fdhcp_options\x18\r \x01(\v2\x1f.kacho.cloud.vpc.v1.DhcpOptionsR\vdhcpOptions\x12*\n" +
+	"\x11ipv4_cidr_primary\x18\x10 \x01(\tR\x0fipv4CidrPrimary\x12(\n" +
+	"\x10ipv4_cidr_blocks\x18\x11 \x03(\tR\x0eipv4CidrBlocks\x12*\n" +
+	"\x11ipv6_cidr_primary\x18\x12 \x01(\tR\x0fipv6CidrPrimary\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\x13 \x03(\tR\x0eipv6CidrBlocks\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"\"\x7f\n" +
+	"J\x04\b\n" +
+	"\x10\vJ\x04\b\v\x10\f\"\x7f\n" +
 	"\vDhcpOptions\x12.\n" +
 	"\x13domain_name_servers\x18\x01 \x03(\tR\x11domainNameServers\x12\x1f\n" +
 	"\vdomain_name\x18\x02 \x01(\tR\n" +

@@ -22,7 +22,11 @@ enum SubnetPlacementType {
 
 // A Subnet resource. For more information, see [Subnets](/docs/vpc/concepts/network#subnet).
 message Subnet {
-  reserved 9;
+  // 9 — legacy route_table oneof slot (retired). 10/11 — legacy
+  // v4_cidr_blocks/v6_cidr_blocks (retired in redesign VPC-1 F7: the flat
+  // "all blocks" array is split into an explicit immutable primary anchor
+  // + additional ranges — see ipv4_cidr_primary/ipv4_cidr_blocks below).
+  reserved 9, 10, 11;
   // ID of the subnet.
   string id = 1;
 
@@ -63,21 +67,26 @@ message Subnet {
   // region-scoped; its prefix is anycast across the region's zones.
   string region_id = 14;
 
-  // CIDR block.
-  // The range of internal addresses that are defined for this subnet.
-  // This field can be set only at Subnet resource creation time and cannot be changed.
-  // For example, 10.0.0.0/22 or 192.168.0.0/24.
-  // Minimum subnet size is /28, maximum subnet size is /16.
-  repeated string v4_cidr_blocks = 10;
-
-  // IPv6 not available yet.
-  repeated string v6_cidr_blocks = 11;
-
   // ID of route table the subnet is linked to.
   string route_table_id = 12;
 
   // DHCP options for the subnet.
   DhcpOptions dhcp_options = 13;
+
+  // Primary IPv4 CIDR anchor (immutable, set at Create). Must be a subset of one
+  // of the parent network's ipv4_cidr_blocks supernet blocks. Empty for a v6-only
+  // subnet. For example, 10.20.0.0/24. Minimum /28, maximum /16.
+  string ipv4_cidr_primary = 16;
+
+  // Additional IPv4 CIDR ranges beyond the primary anchor, added/removed via
+  // AddCidrBlocks/RemoveCidrBlocks. Each must be within a supernet block and disjoint.
+  repeated string ipv4_cidr_blocks = 17;
+
+  // Primary IPv6 CIDR anchor (immutable). Empty for a v4-only subnet.
+  string ipv6_cidr_primary = 18;
+
+  // Additional IPv6 CIDR ranges beyond the primary anchor (verb-pair mutation).
+  repeated string ipv6_cidr_blocks = 19;
 }
 
 message DhcpOptions {

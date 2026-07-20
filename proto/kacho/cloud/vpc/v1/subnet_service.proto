@@ -214,7 +214,10 @@ message ListSubnetsResponse {
 }
 
 message CreateSubnetRequest {
-  reserved 8;
+  // 7/11 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7:
+  // Create takes the immutable primary anchor only; additional ranges via
+  // AddCidrBlocks). 8 — retired oneof slot.
+  reserved 7, 8, 11;
   // ID of the project to create a subnet in.
   // To get project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1 [
@@ -257,16 +260,14 @@ message CreateSubnetRequest {
   // To get a list of available regions, use the [kacho.cloud.geo.v1.RegionService.List] request.
   string region_id = 12 [(length) = "<=50"];
 
-  // CIDR block.
-  // The range of internal addresses that are defined for this subnet.
-  // For example, 10.0.0.0/22 or 192.168.0.0/24.
-  // Minimum subnet size is /28, maximum subnet size is /16.
-  // Optional: a subnet may be created without an IPv4 CIDR and have one added
-  // later via AddCidrBlocks.
-  repeated string v4_cidr_blocks = 7;
+  // Primary IPv4 CIDR anchor (immutable placement-anchor). Must be a subset of one
+  // of the parent network's ipv4_cidr_blocks supernet blocks. Optional: a subnet
+  // may be v6-only (empty ipv4_cidr_primary). Additional ranges via AddCidrBlocks.
+  // For example, 10.20.0.0/24. Minimum /28, maximum /16.
+  string ipv4_cidr_primary = 14;
 
-  // IPv6 CIDR block(s). (IPv6 vertical.)
-  repeated string v6_cidr_blocks = 11;
+  // Primary IPv6 CIDR anchor (immutable). Optional: a subnet may be v4-only.
+  string ipv6_cidr_primary = 15;
 
   // ID of route table the subnet is linked to.
   string route_table_id = 9 [(length) = "<=50"];
@@ -310,13 +311,10 @@ message UpdateSubnetRequest {
 
   DhcpOptions dhcp_options = 7;
 
-  // New CIDR blocks which will overwrite the existing ones.
-  repeated string v4_cidr_blocks = 8;
-
-  // New IPv6 CIDR blocks which will overwrite the existing ones. (IPv6 vertical;
-  // soft-immutable — accepted in the mask but the actual CIDR change is a no-op,
-  // mirroring v4_cidr_blocks here. Real changes go through AddCidrBlocks/RemoveCidrBlocks.)
-  repeated string v6_cidr_blocks = 9;
+  // 8/9 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7). CIDR is
+  // immutable via Update: the primary anchor never changes; additional ranges
+  // go through AddCidrBlocks/RemoveCidrBlocks.
+  reserved 8, 9;
 }
 
 message UpdateSubnetMetadata {
@@ -335,10 +333,10 @@ message AddSubnetCidrBlocksRequest {
   // The range of internal addresses that should be added to this subnet.
   // For example, 10.0.0.0/22 or 192.168.0.0/24.
   // Minimum subnet size is /28, maximum subnet size is /16.
-  repeated string v4_cidr_blocks = 2;
+  repeated string ipv4_cidr_blocks = 2;
 
   // IPv6 CIDR block(s) to add to this subnet (e.g. fd00:1234::/64). (IPv6 vertical.)
-  repeated string v6_cidr_blocks = 3;
+  repeated string ipv6_cidr_blocks = 3;
 }
 
 message AddSubnetCidrBlocksMetadata {
@@ -355,10 +353,10 @@ message RemoveSubnetCidrBlocksRequest {
 
   // CIDR block.
   // The range of internal addresses that are removed from this subnet.
-  repeated string v4_cidr_blocks = 2;
+  repeated string ipv4_cidr_blocks = 2;
 
   // IPv6 CIDR block(s) to remove from this subnet. (IPv6 vertical.)
-  repeated string v6_cidr_blocks = 3;
+  repeated string ipv6_cidr_blocks = 3;
 }
 
 message RemoveSubnetCidrBlocksMetadata {

@@ -125,9 +125,12 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateSubnetRequest) (*
 		PlacementType: placementFromPb(req.PlacementType),
 		ZoneID:        req.ZoneId,
 		RegionID:      req.RegionId,
-		V4CidrBlocks:  req.V4CidrBlocks,
-		V6CidrBlocks:  req.V6CidrBlocks,
-		RouteTableID:  req.RouteTableId,
+		// VPC-1 F7: Create carries only the immutable primary anchor. Additional
+		// ranges arrive later via AddCidrBlocks. The flat domain array holds the
+		// primary as blocks[0]; empty primary → v-only family (subnet may be v6-only).
+		V4CidrBlocks: cidrPrimaryToBlocks(req.Ipv4CidrPrimary),
+		V6CidrBlocks: cidrPrimaryToBlocks(req.Ipv6CidrPrimary),
+		RouteTableID: req.RouteTableId,
 	}
 	if req.DhcpOptions != nil {
 		s.DhcpOptions = &domain.DhcpOptions{
@@ -141,6 +144,16 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateSubnetRequest) (*
 		return nil, err
 	}
 	return pbconv.OperationToProto(op), nil
+}
+
+// cidrPrimaryToBlocks оборачивает непустой primary-anchor в одноэлементный
+// массив блоков (domain хранит плоский массив, primary = blocks[0]). Пустой
+// primary → nil (v-only family: подсеть может быть создана без этого семейства).
+func cidrPrimaryToBlocks(primary string) []string {
+	if primary == "" {
+		return nil
+	}
+	return []string{primary}
 }
 
 // placementFromPb — proto-enum дискриминатора размещения → domain. UNSPECIFIED
@@ -180,8 +193,9 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSubnetRequest) (*
 			Labels:       domain.LabelsFromMap(req.Labels),
 			RouteTableID: req.RouteTableId,
 		},
-		V4CidrBlocks: req.V4CidrBlocks,
-		UpdateMask:   mask,
+		// VPC-1 F7: CIDR is immutable via Update (no CIDR fields on UpdateSubnetRequest);
+		// ipv4_cidr_primary/ipv4_cidr_blocks in update_mask → immutable-reject (use-case).
+		UpdateMask: mask,
 	}
 	if req.DhcpOptions != nil {
 		in.Subnet.DhcpOptions = &domain.DhcpOptions{
@@ -228,7 +242,7 @@ func (h *Handler) AddCidrBlocks(ctx context.Context, req *vpcv1.AddSubnetCidrBlo
 	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
 		return nil, err
 	}
-	op, err := h.addCidrBlocks.Execute(ctx, req.SubnetId, req.GetV4CidrBlocks(), req.GetV6CidrBlocks())
+	op, err := h.addCidrBlocks.Execute(ctx, req.SubnetId, req.GetIpv4CidrBlocks(), req.GetIpv6CidrBlocks())
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +261,7 @@ func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveSubnetC
 	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
 		return nil, err
 	}
-	op, err := h.removeCidrBlocks.Execute(ctx, req.SubnetId, req.GetV4CidrBlocks(), req.GetV6CidrBlocks())
+	op, err := h.removeCidrBlocks.Execute(ctx, req.SubnetId, req.GetIpv4CidrBlocks(), req.GetIpv6CidrBlocks())
 	if err != nil {
 		return nil, err
 	}

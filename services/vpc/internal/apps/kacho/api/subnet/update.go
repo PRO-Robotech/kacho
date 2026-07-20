@@ -26,10 +26,9 @@ import (
 // domain.Subnet (с заявленными полями), и UpdateMask, поэтому используется
 // отдельный input-тип.
 type UpdateInput struct {
-	SubnetID     string
-	Subnet       domain.Subnet // несет Name/Description/Labels/RouteTableID/DhcpOptions/V4CidrBlocks; остальные не используются
-	V4CidrBlocks []string      // soft-immutable: принимаем, но не пишем
-	UpdateMask   []string
+	SubnetID   string
+	Subnet     domain.Subnet // несет Name/Description/Labels/RouteTableID/DhcpOptions; остальные не используются
+	UpdateMask []string
 }
 
 // UpdateSubnetUseCase — sync-валидация update_mask + значений, затем создание
@@ -37,10 +36,9 @@ type UpdateInput struct {
 //
 // network_id / zone_id — hard-immutable: явное указание в update_mask →
 // InvalidArgument; присланное в body без mask — silently игнорируется
-// (full-object PATCH из UI). v4_cidr_blocks / v6_cidr_blocks в mask запрос не
-// отвергают, но репозиторный Update не перезаписывает CIDR-колонки (defensive
-// depth) — т.е. изменение CIDR через Update это no-op; правят их через
-// :add/:removeCidrBlocks.
+// (full-object PATCH из UI). VPC-1 F7: CIDR immutable через Update —
+// ipv4_cidr_primary / ipv4_cidr_blocks (и v6) в mask → immutable-reject; правят
+// их через :add/:removeCidrBlocks (primary-anchor не меняется вовсе).
 //
 // Worker открывает Writer-TX и делает Get+Update+outbox атомарно.
 type UpdateSubnetUseCase struct {
@@ -69,7 +67,8 @@ func (u *UpdateSubnetUseCase) Execute(ctx context.Context, in UpdateInput) (*ope
 	// это не «immutable value», а «нельзя писать» → derive-reject текст.
 	for _, field := range in.UpdateMask {
 		switch field {
-		case "network_id", "zone_id", "region_id":
+		case "network_id", "zone_id", "region_id",
+			"ipv4_cidr_primary", "ipv6_cidr_primary", "ipv4_cidr_blocks", "ipv6_cidr_blocks":
 			return nil, serviceerr.InvalidArg(field, field+" is immutable after Subnet.Create")
 		case "placement_type":
 			return nil, status.Error(codes.InvalidArgument,
@@ -147,14 +146,13 @@ func (u *UpdateSubnetUseCase) doUpdate(ctx context.Context, in UpdateInput) (*an
 // validateSubnetUpdate проверяет name/description/labels/dhcp_options в Update.
 // Валидация идет через domain-newtypes (self-validating domain).
 //
-// Immutable-поля (v4_cidr_blocks, v6_cidr_blocks, network_id, zone_id) известны
-// маску-валидатору (чтобы пройти check на unknown), а сама immutability ловится
-// выше в Execute() (network_id/zone_id) либо игнорируется silently (v4/v6_cidr).
+// Immutable-поля (network_id, zone_id, region_id, ipv4/ipv6_cidr_primary/_blocks)
+// ловятся раньше в Execute() immutable-switch (до UpdateMask) → сюда не доходят;
+// known-set содержит только mutable-поля.
 func validateSubnetUpdate(in UpdateInput) error {
 	known := map[string]struct{}{
 		"name": {}, "description": {}, "labels": {},
 		"route_table_id": {}, "dhcp_options": {},
-		"v4_cidr_blocks": {}, "v6_cidr_blocks": {}, "network_id": {}, "zone_id": {},
 	}
 	if err := corevalidate.UpdateMask("update_mask", in.UpdateMask, known); err != nil {
 		return err

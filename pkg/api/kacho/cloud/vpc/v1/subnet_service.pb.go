@@ -241,15 +241,13 @@ type CreateSubnetRequest struct {
 	// ID of the region (set iff placement_type == REGIONAL).
 	// To get a list of available regions, use the [kacho.cloud.geo.v1.RegionService.List] request.
 	RegionId string `protobuf:"bytes,12,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	// CIDR block.
-	// The range of internal addresses that are defined for this subnet.
-	// For example, 10.0.0.0/22 or 192.168.0.0/24.
-	// Minimum subnet size is /28, maximum subnet size is /16.
-	// Optional: a subnet may be created without an IPv4 CIDR and have one added
-	// later via AddCidrBlocks.
-	V4CidrBlocks []string `protobuf:"bytes,7,rep,name=v4_cidr_blocks,json=v4CidrBlocks,proto3" json:"v4_cidr_blocks,omitempty"`
-	// IPv6 CIDR block(s). (IPv6 vertical.)
-	V6CidrBlocks []string `protobuf:"bytes,11,rep,name=v6_cidr_blocks,json=v6CidrBlocks,proto3" json:"v6_cidr_blocks,omitempty"`
+	// Primary IPv4 CIDR anchor (immutable placement-anchor). Must be a subset of one
+	// of the parent network's ipv4_cidr_blocks supernet blocks. Optional: a subnet
+	// may be v6-only (empty ipv4_cidr_primary). Additional ranges via AddCidrBlocks.
+	// For example, 10.20.0.0/24. Minimum /28, maximum /16.
+	Ipv4CidrPrimary string `protobuf:"bytes,14,opt,name=ipv4_cidr_primary,json=ipv4CidrPrimary,proto3" json:"ipv4_cidr_primary,omitempty"`
+	// Primary IPv6 CIDR anchor (immutable). Optional: a subnet may be v4-only.
+	Ipv6CidrPrimary string `protobuf:"bytes,15,opt,name=ipv6_cidr_primary,json=ipv6CidrPrimary,proto3" json:"ipv6_cidr_primary,omitempty"`
 	// ID of route table the subnet is linked to.
 	RouteTableId  string       `protobuf:"bytes,9,opt,name=route_table_id,json=routeTableId,proto3" json:"route_table_id,omitempty"`
 	DhcpOptions   *DhcpOptions `protobuf:"bytes,10,opt,name=dhcp_options,json=dhcpOptions,proto3" json:"dhcp_options,omitempty"`
@@ -343,18 +341,18 @@ func (x *CreateSubnetRequest) GetRegionId() string {
 	return ""
 }
 
-func (x *CreateSubnetRequest) GetV4CidrBlocks() []string {
+func (x *CreateSubnetRequest) GetIpv4CidrPrimary() string {
 	if x != nil {
-		return x.V4CidrBlocks
+		return x.Ipv4CidrPrimary
 	}
-	return nil
+	return ""
 }
 
-func (x *CreateSubnetRequest) GetV6CidrBlocks() []string {
+func (x *CreateSubnetRequest) GetIpv6CidrPrimary() string {
 	if x != nil {
-		return x.V6CidrBlocks
+		return x.Ipv6CidrPrimary
 	}
-	return nil
+	return ""
 }
 
 func (x *CreateSubnetRequest) GetRouteTableId() string {
@@ -430,14 +428,8 @@ type UpdateSubnetRequest struct {
 	// Resource labels as “ key:value “ pairs.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of route table the subnet is linked to.
-	RouteTableId string       `protobuf:"bytes,6,opt,name=route_table_id,json=routeTableId,proto3" json:"route_table_id,omitempty"`
-	DhcpOptions  *DhcpOptions `protobuf:"bytes,7,opt,name=dhcp_options,json=dhcpOptions,proto3" json:"dhcp_options,omitempty"`
-	// New CIDR blocks which will overwrite the existing ones.
-	V4CidrBlocks []string `protobuf:"bytes,8,rep,name=v4_cidr_blocks,json=v4CidrBlocks,proto3" json:"v4_cidr_blocks,omitempty"`
-	// New IPv6 CIDR blocks which will overwrite the existing ones. (IPv6 vertical;
-	// soft-immutable — accepted in the mask but the actual CIDR change is a no-op,
-	// mirroring v4_cidr_blocks here. Real changes go through AddCidrBlocks/RemoveCidrBlocks.)
-	V6CidrBlocks  []string `protobuf:"bytes,9,rep,name=v6_cidr_blocks,json=v6CidrBlocks,proto3" json:"v6_cidr_blocks,omitempty"`
+	RouteTableId  string       `protobuf:"bytes,6,opt,name=route_table_id,json=routeTableId,proto3" json:"route_table_id,omitempty"`
+	DhcpOptions   *DhcpOptions `protobuf:"bytes,7,opt,name=dhcp_options,json=dhcpOptions,proto3" json:"dhcp_options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -521,20 +513,6 @@ func (x *UpdateSubnetRequest) GetDhcpOptions() *DhcpOptions {
 	return nil
 }
 
-func (x *UpdateSubnetRequest) GetV4CidrBlocks() []string {
-	if x != nil {
-		return x.V4CidrBlocks
-	}
-	return nil
-}
-
-func (x *UpdateSubnetRequest) GetV6CidrBlocks() []string {
-	if x != nil {
-		return x.V6CidrBlocks
-	}
-	return nil
-}
-
 type UpdateSubnetMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Subnet resource that is being updated.
@@ -588,11 +566,11 @@ type AddSubnetCidrBlocksRequest struct {
 	// The range of internal addresses that should be added to this subnet.
 	// For example, 10.0.0.0/22 or 192.168.0.0/24.
 	// Minimum subnet size is /28, maximum subnet size is /16.
-	V4CidrBlocks []string `protobuf:"bytes,2,rep,name=v4_cidr_blocks,json=v4CidrBlocks,proto3" json:"v4_cidr_blocks,omitempty"`
+	Ipv4CidrBlocks []string `protobuf:"bytes,2,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
 	// IPv6 CIDR block(s) to add to this subnet (e.g. fd00:1234::/64). (IPv6 vertical.)
-	V6CidrBlocks  []string `protobuf:"bytes,3,rep,name=v6_cidr_blocks,json=v6CidrBlocks,proto3" json:"v6_cidr_blocks,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Ipv6CidrBlocks []string `protobuf:"bytes,3,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AddSubnetCidrBlocksRequest) Reset() {
@@ -632,16 +610,16 @@ func (x *AddSubnetCidrBlocksRequest) GetSubnetId() string {
 	return ""
 }
 
-func (x *AddSubnetCidrBlocksRequest) GetV4CidrBlocks() []string {
+func (x *AddSubnetCidrBlocksRequest) GetIpv4CidrBlocks() []string {
 	if x != nil {
-		return x.V4CidrBlocks
+		return x.Ipv4CidrBlocks
 	}
 	return nil
 }
 
-func (x *AddSubnetCidrBlocksRequest) GetV6CidrBlocks() []string {
+func (x *AddSubnetCidrBlocksRequest) GetIpv6CidrBlocks() []string {
 	if x != nil {
-		return x.V6CidrBlocks
+		return x.Ipv6CidrBlocks
 	}
 	return nil
 }
@@ -697,11 +675,11 @@ type RemoveSubnetCidrBlocksRequest struct {
 	SubnetId string `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	// CIDR block.
 	// The range of internal addresses that are removed from this subnet.
-	V4CidrBlocks []string `protobuf:"bytes,2,rep,name=v4_cidr_blocks,json=v4CidrBlocks,proto3" json:"v4_cidr_blocks,omitempty"`
+	Ipv4CidrBlocks []string `protobuf:"bytes,2,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
 	// IPv6 CIDR block(s) to remove from this subnet. (IPv6 vertical.)
-	V6CidrBlocks  []string `protobuf:"bytes,3,rep,name=v6_cidr_blocks,json=v6CidrBlocks,proto3" json:"v6_cidr_blocks,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Ipv6CidrBlocks []string `protobuf:"bytes,3,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RemoveSubnetCidrBlocksRequest) Reset() {
@@ -741,16 +719,16 @@ func (x *RemoveSubnetCidrBlocksRequest) GetSubnetId() string {
 	return ""
 }
 
-func (x *RemoveSubnetCidrBlocksRequest) GetV4CidrBlocks() []string {
+func (x *RemoveSubnetCidrBlocksRequest) GetIpv4CidrBlocks() []string {
 	if x != nil {
-		return x.V4CidrBlocks
+		return x.Ipv4CidrBlocks
 	}
 	return nil
 }
 
-func (x *RemoveSubnetCidrBlocksRequest) GetV6CidrBlocks() []string {
+func (x *RemoveSubnetCidrBlocksRequest) GetIpv6CidrBlocks() []string {
 	if x != nil {
-		return x.V6CidrBlocks
+		return x.Ipv6CidrBlocks
 	}
 	return nil
 }
@@ -1212,7 +1190,7 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"s\n" +
 	"\x13ListSubnetsResponse\x124\n" +
 	"\asubnets\x18\x01 \x03(\v2\x1a.kacho.cloud.vpc.v1.SubnetR\asubnets\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x86\x06\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9e\x06\n" +
 	"\x13CreateSubnetRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
@@ -1223,17 +1201,17 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"network_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12N\n" +
 	"\x0eplacement_type\x18\r \x01(\x0e2'.kacho.cloud.vpc.v1.SubnetPlacementTypeR\rplacementType\x12!\n" +
 	"\azone_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneId\x12%\n" +
-	"\tregion_id\x18\f \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12$\n" +
-	"\x0ev4_cidr_blocks\x18\a \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\v \x03(\tR\fv6CidrBlocks\x12.\n" +
+	"\tregion_id\x18\f \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12*\n" +
+	"\x11ipv4_cidr_primary\x18\x0e \x01(\tR\x0fipv4CidrPrimary\x12*\n" +
+	"\x11ipv6_cidr_primary\x18\x0f \x01(\tR\x0fipv6CidrPrimary\x12.\n" +
 	"\x0eroute_table_id\x18\t \x01(\tB\b\x8a\xc81\x04<=50R\frouteTableId\x12B\n" +
 	"\fdhcp_options\x18\n" +
 	" \x01(\v2\x1f.kacho.cloud.vpc.v1.DhcpOptionsR\vdhcpOptions\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\t\"3\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\f\"3\n" +
 	"\x14CreateSubnetMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\xf4\x04\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\xb4\x04\n" +
 	"\x13UpdateSubnetRequest\x12)\n" +
 	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -1242,24 +1220,23 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x88\x01\n" +
 	"\x06labels\x18\x05 \x03(\v23.kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12.\n" +
 	"\x0eroute_table_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=50R\frouteTableId\x12B\n" +
-	"\fdhcp_options\x18\a \x01(\v2\x1f.kacho.cloud.vpc.v1.DhcpOptionsR\vdhcpOptions\x12$\n" +
-	"\x0ev4_cidr_blocks\x18\b \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\t \x03(\tR\fv6CidrBlocks\x1a9\n" +
+	"\fdhcp_options\x18\a \x01(\v2\x1f.kacho.cloud.vpc.v1.DhcpOptionsR\vdhcpOptions\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"3\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
+	"\"3\n" +
 	"\x14UpdateSubnetMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x93\x01\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x9b\x01\n" +
 	"\x1aAddSubnetCidrBlocksRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12$\n" +
-	"\x0ev4_cidr_blocks\x18\x02 \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\":\n" +
+	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12(\n" +
+	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\":\n" +
 	"\x1bAddSubnetCidrBlocksMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x96\x01\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x9e\x01\n" +
 	"\x1dRemoveSubnetCidrBlocksRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12$\n" +
-	"\x0ev4_cidr_blocks\x18\x02 \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"=\n" +
+	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12(\n" +
+	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"=\n" +
 	"\x1eRemoveSubnetCidrBlocksMetadata\x12\x1b\n" +
 	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"@\n" +
 	"\x13DeleteSubnetRequest\x12)\n" +
