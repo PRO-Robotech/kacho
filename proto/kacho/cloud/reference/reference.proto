@@ -7,6 +7,29 @@ package kacho.cloud.reference;
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference;referencev1";
 
+// Ref-naming law (B1, redesign-2026 governance — 3 разные семантики, НЕ overload
+// одного идентификатора; переименование существующих landed-типов ЗАПРЕЩЕНО —
+// сломало бы wire-форму):
+//
+//   1. reference.Referrer{type,id,name°}  — generic cross-owner dependency handle
+//      (class-C, graceful-dangling). `name°` — best-effort зеркало на момент
+//      привязки. Здесь + reference.Reference (reverse managed_by/used_by). Landed:
+//      vpc (NIC/Address/SG usedBy), storage (Volume usedBy).
+//   2. iam.v1.ResourceRef{type,id}        — closed-table authz/AccessBinding target
+//      (БЕЗ name; `type` из закрытого FGA object-type словаря). Живёт в
+//      kacho/cloud/iam/v1/authorize_service.proto (пакет kacho.cloud.iam.v1) и
+//      переиспользуется AccessBinding.target в том же пакете (import, без
+//      relocation — F8 iam-редизайн добавляет поле; wire/Go-тип уже доступен).
+//   3. registry.v1 OCI referrer-граф      — OCI-1.1 artifact граф (подпись/SBOM/
+//      аттестация). Сейчас назван `Referrer` в пакете kacho.cloud.registry.v1
+//      (FQN отличается от #1, коллизии нет — только читаемостная неоднозначность).
+//      Каноничное имя `OciReferrer`/`ArtifactRef` вводится в REG-2 (registry-
+//      редизайн, Phase-2) — это buf-breaking rename в registry-домене, ВНЕ
+//      Phase-0 surgical scope. Phase-0 НЕ добавляет пустой OciReferrer-скелет в
+//      этот файл (LEAN — мёртвый тип без импортёров запрещён, ban #11).
+//
+// Полный регламент + семантики — api-conventions.md «3-way ref-naming».
+
 message Reference {
   enum Type {
     TYPE_UNSPECIFIED = 0;
