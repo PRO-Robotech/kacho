@@ -16,13 +16,38 @@
 
 import { api } from "./client";
 
+// ====== IAM-1 redesign: dotted tier / scope discriminators ======
+// Снятие путаницы «scope»/«tier»: Role.definitionTier несёт dotted tierType +
+// anchor id; AccessBinding.scopeType — dotted anchor-tier. Значения — закрытый
+// dotted-словарь (iam.account | iam.project | iam.cluster). tierType==iam.cluster
+// ⇒ system-роль (isSystem° derived). См. acceptance IAM-1 F4/F7.
+export type TierType = "iam.account" | "iam.project" | "iam.cluster";
+export type IamScopeType = "iam.account" | "iam.project" | "iam.cluster";
+
+// DefinitionTier — wire-проекция «где определена роль» {tierType,tierId} над
+// типизированными FK+CHECK-XOR (ровно один anchor). Backend gateway отдаёт
+// camelCase; читаем обе формы для устойчивости.
+export interface DefinitionTier {
+  tier_type?: TierType;
+  tierType?: TierType;
+  tier_id?: string;
+  tierId?: string;
+}
+
 // ====== Account ======
 export interface Account {
   id: string;
   name: string;
   description?: string;
   labels?: Record<string, string>;
+  // ownerUserId° — output-only, derived-from-caller (НЕ принимается в Create-body,
+  // immutable в Update). Зеркало субъекта owner-AccessBinding. IAM-1 F1.
   owner_user_id?: string;
+  ownerUserId?: string;
+  // IAM-1: защита от удаления + жизненный статус аккаунта (output-only).
+  deletion_protection?: boolean;
+  deletionProtection?: boolean;
+  status?: string;
   created_at?: string;
 }
 export interface AccountList {
@@ -204,7 +229,8 @@ export type RuleArm = "ARM_ANCHOR" | "ARM_NAMES" | "ARM_LABELS";
 /** Выводит арм правила из его формы (наличие resource_names XOR match_labels). */
 export function ruleArm(rule: Rule): RuleArm {
   if (rule.resource_names && rule.resource_names.length > 0) return "ARM_NAMES";
-  if (rule.match_labels && Object.keys(rule.match_labels).length > 0) return "ARM_LABELS";
+  if (rule.match_labels && Object.keys(rule.match_labels).length > 0)
+    return "ARM_LABELS";
   return "ARM_ANCHOR";
 }
 
@@ -216,22 +242,69 @@ export function ruleArm(rule: Rule): RuleArm {
 // undefined → filter never matched.
 export interface Role {
   id: string;
+  // Legacy flat anchor-FK (AS-IS): retained для back-compat чтения. IAM-1 wire-
+  // проекция — definitionTier{tierType,tierId} (dotted). Оба читаемы.
   account_id?: string;
   accountId?: string;
+  // IAM-1 F4: definitionTier — где определена роль (dotted tierType + anchor id).
+  // isSystem° = derived (tierType==iam.cluster) — не хранимый bool на wire.
+  definition_tier?: DefinitionTier;
+  definitionTier?: DefinitionTier;
   name: string;
   description?: string;
   // RBAC rules-model: публичная поверхность роли. UI рендерит и редактирует из неё.
   rules?: Rule[];
-  // INTERNAL compiled-форма — в Get/List для rules-ролей пустая, на входе НЕ
-  // отправляется. Оставлено только для forward-compat чтения; UI её НЕ рендерит.
+  // INTERNAL compiled-форма — на public поверхности отсутствует/пуста (two-projection,
+  // IAM-1 F5). На входе НЕ принимается; UI её НЕ рендерит и НЕ шлёт.
   permissions?: string[];
   is_system?: boolean;
   isSystem?: boolean;
-  // OCC-токен для Role.Update под конкуренцией (публичный Get его возвращает).
+  // IAM-1 F6: канонический system-catalog — честный co-материализованный verb-набор.
+  // authoredVerbs° — что задано в rules; effectiveVerbs° — что реально даёт (editor
+  // включает delete*). verbNotes° — дословные пояснения (delete* → «co-materialized
+  // on in-scope leaf objects, NOT on the account/project anchor itself»).
+  authored_verbs?: string[];
+  authoredVerbs?: string[];
+  effective_verbs?: string[];
+  effectiveVerbs?: string[];
+  verb_notes?: Record<string, string>;
+  verbNotes?: Record<string, string>;
+  // OCC-токен для Role.Update под конкуренцией (IAM-1 снимает с wire — OCC server-side;
+  // поле оставлено optional для back-compat чтения legacy-ответов).
   resource_version?: string;
   created_at?: string;
   createdAt?: string;
 }
+
+/** isSystem° — derived: роль системная ⟺ definitionTier.tierType == iam.cluster.
+ *  Fallback на хранимый is_system/isSystem (AS-IS до redesign-миграции). */
+export function roleIsSystem(
+  role: Pick<
+    Role,
+    "is_system" | "isSystem" | "definition_tier" | "definitionTier"
+  >,
+): boolean {
+  const dt = role.definition_tier ?? role.definitionTier;
+  const tt = dt?.tier_type ?? dt?.tierType;
+  if (tt) return tt === "iam.cluster";
+  return role.is_system === true || role.isSystem === true;
+}
+
+/** definitionTier роли, независимо от camel/snake. */
+export function roleDefinitionTier(
+  role: Pick<Role, "definition_tier" | "definitionTier">,
+): DefinitionTier | undefined {
+  return role.definition_tier ?? role.definitionTier;
+}
+
+/** Канонический порядок system-ролей (viewer→editor→admin→owner) — для группировки
+ *  каталога, когда сервер не гарантировал first-in-order. IAM-1 F6. */
+export const SYSTEM_ROLE_CANON_ORDER = [
+  "viewer",
+  "editor",
+  "admin",
+  "owner",
+] as const;
 export interface RoleList {
   roles: Role[];
   next_page_token?: string;
@@ -292,16 +365,67 @@ export type ResourceType = "account" | "project" | "cluster";
 // из resource_type; в CreateAccessBindingRequest поля scope НЕТ.
 export type Scope = "CLUSTER" | "ACCOUNT" | "PROJECT" | "SCOPE_UNSPECIFIED";
 
+// ====== IAM-1 F8: AccessBinding.target — REQUIRED least-priv spine ======
+// ResourceRef — closed-table {type,id} (без name — least-info, anti-oracle; в
+// отличие от generic reference.Referrer{type,id,name°}). `type` — dotted из
+// закрытого type-registry (compute.instance, vpc.network, …). Graceful-dangling.
+export interface ResourceRef {
+  type: string;
+  id: string;
+}
+
+// target oneof: allInScope{} (широчайший явный opt-in — все объекты под anchor'ом,
+// включая будущие) XOR resources[] (per-object least-priv). REQUIRED — самый
+// широкий грант достижим ТОЛЬКО явным allInScope (нет sentinel-по-умолчанию).
+export type TargetKind = "allInScope" | "resources";
+export interface AccessBindingTarget {
+  all_in_scope?: Record<string, never>;
+  allInScope?: Record<string, never>;
+  resources?: ResourceRef[];
+}
+
+/** Дискриминатор target'а из его формы (allInScope vs resources[]). */
+export function targetKind(
+  t: AccessBindingTarget | undefined,
+): TargetKind | undefined {
+  if (!t) return undefined;
+  if (t.resources && t.resources.length > 0) return "resources";
+  if (t.all_in_scope !== undefined || t.allInScope !== undefined)
+    return "allInScope";
+  return undefined;
+}
+
 export interface AccessBinding {
   id: string;
+  // Legacy single-subject (AS-IS): retained для back-compat. IAM-1 — subjects[].
   subject_type: string;
   subject_id: string;
   role_id: string;
+  // Legacy scope-anchor (AS-IS, [DEPRECATED]): resource_type/resource_id. IAM-1
+  // переименовывает в scopeType/scopeId («resource» зарезервирован за target).
   resource_type: string;
   resource_id: string;
   created_at?: string;
-  // RBAC v2 (KAC-214): output-only scope tier (CLUSTER/ACCOUNT/PROJECT).
+  // RBAC v2 (KAC-214): output-only scope tier enum (CLUSTER/ACCOUNT/PROJECT).
   scope?: Scope;
+  // ── IAM-1 redesign (additive) ──
+  // subjects[] — 1..N грантополучателей (per-subject независимый tuple-set/revoke).
+  subjects?: Subject[];
+  // scopeType/scopeId — dotted anchor-tier + anchor id (immutable). F7.
+  scope_type?: IamScopeType;
+  scopeType?: IamScopeType;
+  scope_id?: string;
+  scopeId?: string;
+  // target — REQUIRED least-priv spine (allInScope{} | resources[ResourceRef]). F8.
+  target?: AccessBindingTarget;
+  // Жизненный статус (PENDING/ACTIVE/REVOKED). Delete=hard(404) / :revoke=soft. F10.
+  status?: AccessBindingStatus;
+  revoked_at?: string;
+  revokedAt?: string;
+  granted_by_user_id?: string;
+  grantedByUserId?: string;
+  deletion_protection?: boolean;
+  deletionProtection?: boolean;
 }
 export interface AccessBindingList {
   access_bindings: AccessBinding[];
@@ -314,7 +438,8 @@ export interface AccessBindingList {
 // РОВНО по этому полю, без клиентской scope-логики. `permissions` НЕ возвращаются
 // (picker ≠ role-detail). Wire — camelCase; api.list прогоняет ответ через
 // camelToSnake → в UI ключи snake_case (role_id/scope_group/…).
-export type ScopeGroup = "SYSTEM" | "ACCOUNT" | "PROJECT" | "SCOPE_GROUP_UNSPECIFIED";
+export type ScopeGroup =
+  "SYSTEM" | "ACCOUNT" | "PROJECT" | "SCOPE_GROUP_UNSPECIFIED";
 
 export interface AssignableRole {
   role_id: string;
@@ -397,21 +522,28 @@ export const IAM = {
 // ====== List helpers (без auth) ======
 export const iamApi = {
   // Accounts
-  listAccounts: (q?: Record<string, string>) => api.list<AccountList>(IAM.accounts, q),
+  listAccounts: (q?: Record<string, string>) =>
+    api.list<AccountList>(IAM.accounts, q),
   // Projects — account_id обязателен по proto, но handler допускает list-all.
-  listProjects: (q?: Record<string, string>) => api.list<ProjectList>(IAM.projects, q),
+  listProjects: (q?: Record<string, string>) =>
+    api.list<ProjectList>(IAM.projects, q),
   // Users
   // KAC-125: Invite user by email (admin OR editor permission on account).
   inviteUser: (req: InviteUserRequest) =>
     api.post<{
       id?: string;
-      metadata?: { user_id?: string; account_id?: string; magic_link_url?: string };
+      metadata?: {
+        user_id?: string;
+        account_id?: string;
+        magic_link_url?: string;
+      };
       response?: User;
       error?: { code: number; message: string };
     }>(`${IAM.users}:invite`, req),
   listUsers: (q?: Record<string, string>) => api.list<UserList>(IAM.users, q),
   // SAs
-  listServiceAccounts: (q?: Record<string, string>) => api.list<ServiceAccountList>(IAM.serviceAccounts, q),
+  listServiceAccounts: (q?: Record<string, string>) =>
+    api.list<ServiceAccountList>(IAM.serviceAccounts, q),
   // SA OAuth keys (SAKeyService.List) — метаданные ключей без секрета.
   listSaKeys: (serviceAccountId: string, q?: Record<string, string>) =>
     api.list<ListSAKeysResponse>(saKeysPath(serviceAccountId), q),
@@ -419,22 +551,32 @@ export const iamApi = {
   listUserTokens: (userId: string, q?: Record<string, string>) =>
     api.list<ListUserTokensResponse>(userTokensPath(userId), q),
   // Groups
-  listGroups: (q?: Record<string, string>) => api.list<GroupList>(IAM.groups, q),
+  listGroups: (q?: Record<string, string>) =>
+    api.list<GroupList>(IAM.groups, q),
   // Group members — custom GET endpoint /iam/v1/groups/{group_id}:listMembers
   listGroupMembers: (groupId: string, q?: Record<string, string>) =>
     api.list<GroupMemberList>(`${IAM.groups}/${groupId}:listMembers`, q),
   // Roles
   listRoles: (q?: Record<string, string>) => api.list<RoleList>(IAM.roles, q),
   // Permission-каталог (RBAC rules-model) — grantable-таксономия для RulesEditor.
-  fetchPermissionCatalog: () => api.get<PermissionCatalog>(PERMISSION_CATALOG_PATH),
+  fetchPermissionCatalog: () =>
+    api.get<PermissionCatalog>(PERMISSION_CATALOG_PATH),
   // AccessBindings: list-by-resource + list-by-subject (custom verbs)
-  listAccessBindingsByResource: (resource_type: string, resource_id: string, q?: Record<string, string>) =>
+  listAccessBindingsByResource: (
+    resource_type: string,
+    resource_id: string,
+    q?: Record<string, string>,
+  ) =>
     api.list<AccessBindingList>(`${IAM.accessBindings}:listByResource`, {
       resource_type,
       resource_id,
       ...(q ?? {}),
     }),
-  listAccessBindingsBySubject: (subject_type: string, subject_id: string, q?: Record<string, string>) =>
+  listAccessBindingsBySubject: (
+    subject_type: string,
+    subject_id: string,
+    q?: Record<string, string>,
+  ) =>
     api.list<AccessBindingList>(`${IAM.accessBindings}:listBySubject`, {
       subject_type,
       subject_id,
@@ -447,7 +589,11 @@ export const iamApi = {
    * scope_group (SYSTEM/ACCOUNT/PROJECT). Grant-форма рендерит РОВНО этот набор,
    * сгруппированный по scope_group — без клиентской scope-логики. Read sync.
    */
-  listAssignableRoles: (resource_type: string, resource_id: string, pageSize = "1000") =>
+  listAssignableRoles: (
+    resource_type: string,
+    resource_id: string,
+    pageSize = "1000",
+  ) =>
     api.list<AssignableRolesList>(`${IAM.accessBindings}:listAssignableRoles`, {
       resource_type,
       resource_id,
@@ -459,22 +605,43 @@ export const iamApi = {
    * {"user","service_account","group"}. Cursor-pagination через page_size /
    * page_token. Read sync.
    */
-  listSubjectPrivileges: (subject_type: string, subject_id: string, q?: Record<string, string>) =>
-    api.list<SubjectPrivilegeList>(`${IAM.accessBindings}:listSubjectPrivileges`, {
-      subject_type,
-      subject_id,
-      ...(q ?? {}),
-    }),
+  listSubjectPrivileges: (
+    subject_type: string,
+    subject_id: string,
+    q?: Record<string, string>,
+  ) =>
+    api.list<SubjectPrivilegeList>(
+      `${IAM.accessBindings}:listSubjectPrivileges`,
+      {
+        subject_type,
+        subject_id,
+        ...(q ?? {}),
+      },
+    ),
   /**
    * PATCH /iam/v1/accessBindings/{id} — снять/поставить `deletion_protection`
    * (единственное mutable-поле). Используется, чтобы СНЯТЬ защиту с protected
    * (owner-auto) binding перед удалением. Async через Operation.
    */
-  updateAccessBindingDeletionProtection: (id: string, deletionProtection: boolean) =>
+  updateAccessBindingDeletionProtection: (
+    id: string,
+    deletionProtection: boolean,
+  ) =>
     api.update(`${IAM.accessBindings}/${encodeURIComponent(id)}`, {
       deletion_protection: deletionProtection,
       update_mask: "deletion_protection",
     } satisfies UpdateAccessBindingBody),
+  /**
+   * POST /iam/v1/accessBindings/{id}:revoke — IAM-1 F10 soft-revoke (async
+   * Operation). В отличие от Delete (hard, Get→404), :revoke переводит binding в
+   * status=REVOKED с retention (revokedAt°/grantedByUserId° удержаны, replay
+   * emitted-ledger). Re-grant после revoke — новая ACTIVE-строка.
+   */
+  revokeAccessBinding: (id: string) =>
+    api.post<Record<string, unknown>>(
+      `${IAM.accessBindings}/${encodeURIComponent(id)}:revoke`,
+      {},
+    ),
   /**
    * KAC item #1: GET /iam/v1/accounts/{account_id}/accessBindings — все
    * AccessBinding'и видимые админу в account'е (включает project-scoped + account-scoped).
@@ -495,8 +662,13 @@ export const iamApi = {
     const query: Record<string, string> = {};
     if (q?.page_size !== undefined) query.page_size = String(q.page_size);
     if (q?.page_token) query.page_token = q.page_token;
-    if (q?.include_revoked !== undefined) query.include_revoked = q.include_revoked ? "true" : "false";
-    if (q?.subject_type_filter) query.subject_type_filter = q.subject_type_filter;
-    return api.list<AccessBindingList>(`${IAM.accounts}/${encodeURIComponent(accountId)}/accessBindings`, query);
+    if (q?.include_revoked !== undefined)
+      query.include_revoked = q.include_revoked ? "true" : "false";
+    if (q?.subject_type_filter)
+      query.subject_type_filter = q.subject_type_filter;
+    return api.list<AccessBindingList>(
+      `${IAM.accounts}/${encodeURIComponent(accountId)}/accessBindings`,
+      query,
+    );
   },
 };

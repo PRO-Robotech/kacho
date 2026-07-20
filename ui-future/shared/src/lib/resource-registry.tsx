@@ -7,18 +7,35 @@ import { Tag } from "antd";
 import type { FormField } from "./form-schema";
 import { setByPath, getByPath as getByPathImpl } from "./path";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
-import { RoutesEditor, type RouteEntry } from "@shared/components/organisms/RoutesEditor";
+import {
+  RoutesEditor,
+  type RouteEntry,
+} from "@shared/components/organisms/RoutesEditor";
 import { CopyableName } from "@shared/components/atoms/CopyableName";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { LabelsCell } from "@shared/components/atoms/LabelsCell";
 import { NicSpecFields } from "@shared/components/organisms/form/NicSpecFields";
+import {
+  roleIsSystem,
+  targetKind,
+  type AccessBindingTarget,
+  type DefinitionTier,
+  type Role,
+} from "@shared/api/iam";
 
 export interface ResourceColumn {
   header: string;
   // Путь в плоском объекте: "name", "status", "zone_id"
   path: string;
-  format?: "text" | "uid-short" | "datetime" | "status" | "code" | "list" | "references";
+  format?:
+    | "text"
+    | "uid-short"
+    | "datetime"
+    | "status"
+    | "code"
+    | "list"
+    | "references";
   className?: string;
   render?: (row: Record<string, unknown>) => ReactNode;
 }
@@ -78,6 +95,11 @@ export interface ResourceSpec {
    *  RefSelect получает массив строк вместо объектов и не отображает
    *  выбранные значения в edit-режиме. */
   hydrate?: (obj: Record<string, unknown>) => Record<string, unknown>;
+  /** Клиентская pre-submit валидация формы (form-values → сообщение об ошибке |
+   *  null). Возвращает первый нарушенный инвариант (напр. IAM-1: Role.rules[]
+   *  non-empty, definitionTier XOR); null = ок. Дополняет per-field required —
+   *  для кросс-полевых/структурных гейтов, как в compute/storage remote. */
+  validate?: (obj: Record<string, unknown>) => string | null;
   /** Path-template для internal/infra-проекции ресурса (плейсхолдер `{id}`).
    *  Если задан — на DetailPage появляется tab "jsonint", который делает
    *  GET <internalGetPath с подставленным {id}> и pretty-print'ит JSON-ответ.
@@ -88,7 +110,11 @@ export interface ResourceSpec {
    *  поле(я) ребёнка, ссылающееся на этот ресурс (client-side фильтр; массив =
    *  OR по нескольким полям, напр. subnet→addresses v4∪v6). label —
    *  переопределение заголовка таба (по умолчанию childSpec.plural). */
-  related?: { childId: string; filterField: string | string[]; label?: string }[];
+  related?: {
+    childId: string;
+    filterField: string | string[];
+    label?: string;
+  }[];
   /** KAC-233: ссылки на документацию по типу ресурса (блок «Документация» в
    *  aside DetailShell). Kachō-style. */
   docs?: { label: string; href: string }[];
@@ -128,7 +154,8 @@ const FIELD_NAME: FormField = {
   type: "string",
   required: true,
   placeholder: "my-resource",
-  description: "Строчные латинские буквы, цифры и дефисы. Должно начинаться с буквы, длина 2–63 символа.",
+  description:
+    "Строчные латинские буквы, цифры и дефисы. Должно начинаться с буквы, длина 2–63 символа.",
   pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
 };
 
@@ -239,6 +266,179 @@ function PlacementCell({ row }: { row: Record<string, unknown> }): ReactNode {
   );
 }
 
+// ── IAM-1 render helpers (definitionTier / scopeType / target) ──
+const IAM_DASH = <span className="text-muted-foreground">—</span>;
+
+// Dotted tier/scope → цвет тега (cluster=red / account=blue / project=green).
+function iamTierColor(dotted: string): string {
+  return dotted === "iam.cluster"
+    ? "red"
+    : dotted === "iam.account"
+      ? "blue"
+      : dotted === "iam.project"
+        ? "green"
+        : "default";
+}
+
+// definitionTier роли (IAM-1 F4) → тег tierType + ref-ссылка на anchor
+// (account/project). cluster-tier (system) → id без ref (нет IAM-ресурса cluster).
+// Legacy fallback — flat account_id.
+function definitionTierCell(row: Record<string, unknown>): ReactNode {
+  const dt = (row.definition_tier ?? row.definitionTier) as
+    DefinitionTier | undefined;
+  const tt = dt?.tier_type ?? dt?.tierType ?? "";
+  const tid = dt?.tier_id ?? dt?.tierId ?? "";
+  if (!tt) {
+    const acc = (row.account_id ?? row.accountId) as string | undefined;
+    return acc ? <IamRefLink specId="accounts" refId={acc} /> : IAM_DASH;
+  }
+  const spec =
+    tt === "iam.account"
+      ? "accounts"
+      : tt === "iam.project"
+        ? "projects"
+        : undefined;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        flexWrap: "wrap",
+      }}
+    >
+      <Tag color={iamTierColor(tt)}>{tt}</Tag>
+      {spec && tid ? (
+        <IamRefLink specId={spec} refId={tid} />
+      ) : tid ? (
+        <CopyableId id={tid} />
+      ) : null}
+    </span>
+  );
+}
+
+// AccessBinding scopeType (dotted, IAM-1 F7) с legacy fallback (scope enum).
+function scopeTypeCell(row: Record<string, unknown>): ReactNode {
+  const st = String(row.scope_type ?? row.scopeType ?? "");
+  if (st) return <Tag color={iamTierColor(st)}>{st}</Tag>;
+  const s = String(row.scope ?? "");
+  if (!s || s === "SCOPE_UNSPECIFIED") return IAM_DASH;
+  const color =
+    s === "CLUSTER"
+      ? "red"
+      : s === "ACCOUNT"
+        ? "blue"
+        : s === "PROJECT"
+          ? "green"
+          : "default";
+  return <Tag color={color}>{s}</Tag>;
+}
+
+// AccessBinding scope anchor (scopeId, IAM-1 F7) — ref по типу scope; legacy
+// fallback resource_id/resource_type.
+function scopeAnchorCell(row: Record<string, unknown>): ReactNode {
+  const st = String(row.scope_type ?? row.scopeType ?? "");
+  const rt = String(row.resource_type ?? "");
+  const anchorType =
+    st === "iam.account"
+      ? "account"
+      : st === "iam.project"
+        ? "project"
+        : st === "iam.cluster"
+          ? "cluster"
+          : rt;
+  const anchorId = String(row.scope_id ?? row.scopeId ?? row.resource_id ?? "");
+  if (!anchorId) return IAM_DASH;
+  const spec =
+    anchorType === "account"
+      ? "accounts"
+      : anchorType === "project"
+        ? "projects"
+        : undefined;
+  return spec ? (
+    <IamRefLink specId={spec} refId={anchorId} />
+  ) : (
+    <CopyableId id={anchorId} />
+  );
+}
+
+// AccessBinding target (IAM-1 F8, allInScope | resources[]) → компактный тег.
+function targetCell(row: Record<string, unknown>): ReactNode {
+  const t = row.target as AccessBindingTarget | undefined;
+  const kind = targetKind(t);
+  if (kind === "resources") {
+    const n = t?.resources?.length ?? 0;
+    return (
+      <Tag color="geekblue" title="Per-object least-priv">
+        {n} объект{n === 1 ? "" : "а/ов"}
+      </Tag>
+    );
+  }
+  if (kind === "allInScope")
+    return (
+      <Tag title="Весь scope (явный opt-in)" color="default">
+        весь scope
+      </Tag>
+    );
+  return IAM_DASH;
+}
+
+// Subject type (UI-строка / enum-имя) → registry specId.
+function subjectSpecId(t: string): string | undefined {
+  if (t === "user" || t === "USER" || t === "SUBJECT_TYPE_USER") return "users";
+  if (t === "group" || t === "GROUP" || t === "SUBJECT_TYPE_GROUP")
+    return "groups";
+  if (
+    t === "service_account" ||
+    t === "SERVICE_ACCOUNT" ||
+    t === "SUBJECT_TYPE_SERVICE_ACCOUNT"
+  )
+    return "service-accounts";
+  return undefined;
+}
+
+// AccessBinding subjects (IAM-1 subjects[]) → первый как ref-ссылка + «+N».
+// Legacy single subject_type/subject_id — fallback.
+function accessBindingSubjectsCell(row: Record<string, unknown>): ReactNode {
+  const subjects = row.subjects as
+    Array<{ type?: string; id?: string }> | undefined;
+  const list =
+    Array.isArray(subjects) && subjects.length > 0
+      ? subjects
+      : row.subject_id
+        ? [{ type: String(row.subject_type ?? ""), id: String(row.subject_id) }]
+        : [];
+  if (list.length === 0) return IAM_DASH;
+  const first = list[0];
+  const spec = subjectSpecId(String(first.type ?? ""));
+  const firstNode = spec ? (
+    <IamRefLink
+      specId={spec}
+      refId={first.id}
+      nameField={spec === "users" ? "email" : "name"}
+    />
+  ) : (
+    <CopyableId id={String(first.id ?? "")} />
+  );
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        flexWrap: "wrap",
+      }}
+    >
+      {firstNode}
+      {list.length > 1 && (
+        <Tag title={`Ещё ${list.length - 1} субъект(ов)`}>
+          +{list.length - 1}
+        </Tag>
+      )}
+    </span>
+  );
+}
+
 export const REGISTRY: Record<string, ResourceSpec> = {
   // ====== iam ======
   // proto: kacho.cloud.iam.v1.AccountService / ProjectService.
@@ -258,30 +458,56 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     columns: [
       COL_NAME,
       {
+        // ownerUserId° — output-only, derived-from-caller (IAM-1 F1). camel/snake.
         header: "Владелец",
         path: "owner_user_id",
-        render: (row) => <IamRefLink specId="users" refId={row.owner_user_id as string} nameField="email" />,
+        render: (row) => (
+          <IamRefLink
+            specId="users"
+            refId={(row.owner_user_id ?? row.ownerUserId) as string | undefined}
+            nameField="email"
+          />
+        ),
       },
+      {
+        header: "Защита",
+        path: "deletion_protection",
+        render: (row) =>
+          row.deletion_protection || row.deletionProtection ? (
+            <Tag color="gold" title="Защита от удаления включена">
+              Да
+            </Tag>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      { header: "Статус", path: "status", format: "status" },
       COL_CREATED,
       COL_ID,
     ],
+    // IAM-1 F1: ownerUserId НЕ в Create-форме (derived-from-caller, output-only;
+    // передача в body → sync INVALID_ARGUMENT). Create-сага co-commit'ит default
+    // Project + owner-AccessBinding (F2) — сервер-сторона, не форма.
     fields: [
       FIELD_NAME,
       {
-        name: "owner_user_id",
-        label: "Владелец",
-        type: "ref",
-        refResource: "users",
-        required: true,
-        editHidden: true,
-        description: "Пользователь-владелец Account. Неизменяемо после создания.",
+        name: "deletion_protection",
+        label: "Защита от удаления",
+        type: "bool",
+        default: false,
+        description:
+          "Запретить удаление аккаунта, пока защита не снята (Update).",
       },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
     ],
     related: [
       { childId: "projects", filterField: "account_id", label: "Проекты" },
-      { childId: "service-accounts", filterField: "account_id", label: "Сервисные аккаунты" },
+      {
+        childId: "service-accounts",
+        filterField: "account_id",
+        label: "Сервисные аккаунты",
+      },
       { childId: "groups", filterField: "account_id", label: "Группы" },
     ],
     docs: [
@@ -295,7 +521,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "Создайте Account, чтобы начать выдавать доступ и заводить проекты.",
       docs: ["Аккаунты и организации"],
     },
-    template: () => ({ name: "", owner_user_id: "", description: "" }),
+    template: () => ({
+      name: "",
+      description: "",
+      deletion_protection: false,
+      labels: {},
+    }),
   },
 
   // Project — account-scoped (ListProjects требует account_id). account_id
@@ -316,12 +547,28 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Аккаунт",
         path: "account_id",
-        render: (row) => <IamRefLink specId="accounts" refId={row.account_id as string} />,
+        render: (row) => (
+          <IamRefLink specId="accounts" refId={row.account_id as string} />
+        ),
       },
       COL_CREATED,
       COL_ID,
     ],
-    fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_LABELS, FIELD_DESCRIPTION],
+    // IAM-1 F3: accountId immutable (Move удалён, строго 2 уровня) — hidden
+    // (наполняется из Account-контекста) + immutable (исключён из update_mask;
+    // cross-account перенос сломал бы scope-координату downstream). name — mutable.
+    fields: [
+      FIELD_NAME,
+      {
+        name: "account_id",
+        label: "Account",
+        type: "string",
+        hidden: true,
+        immutable: true,
+      },
+      FIELD_LABELS,
+      FIELD_DESCRIPTION,
+    ],
     // Клик по проекту в списке ведёт на его IAM-detail (/iam/projects/:id) —
     // без childRoute drill идёт на generic ResourceShell detail, а не на дашборд.
     docs: [
@@ -351,7 +598,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Аккаунт",
         path: "account_id",
-        render: (row) => <IamRefLink specId="accounts" refId={row.account_id as string} />,
+        render: (row) => (
+          <IamRefLink specId="accounts" refId={row.account_id as string} />
+        ),
       },
       COL_CREATED,
       COL_ID,
@@ -388,7 +637,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Аккаунт",
         path: "account_id",
-        render: (row) => <IamRefLink specId="accounts" refId={row.account_id as string | undefined} />,
+        render: (row) => (
+          <IamRefLink
+            specId="accounts"
+            refId={row.account_id as string | undefined}
+          />
+        ),
       },
       { header: "ID", path: "id", format: "uid-short" },
       { header: "External ID", path: "external_id", format: "uid-short" },
@@ -420,7 +674,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Аккаунт",
         path: "account_id",
-        render: (row) => <IamRefLink specId="accounts" refId={row.account_id as string | undefined} />,
+        render: (row) => (
+          <IamRefLink
+            specId="accounts"
+            refId={row.account_id as string | undefined}
+          />
+        ),
       },
       COL_ID,
       { header: "Описание", path: "description", format: "text" },
@@ -428,7 +687,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_LABELS, FIELD_DESCRIPTION],
@@ -470,10 +733,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Тип",
         path: "is_system",
-        // gRPC-gateway отдаёт camelCase isSystem; api-клиент нормализует в
-        // snake_case, но читаем оба для устойчивости (см. api/iam.ts Role).
+        // IAM-1 F4/F6: isSystem° derived (definitionTier.tierType==iam.cluster);
+        // fallback на хранимый is_system/isSystem (AS-IS до миграции).
         render: (row) =>
-          row.is_system === true || row.isSystem === true ? (
+          roleIsSystem(row as unknown as Role) ? (
             <Tag color="purple">system</Tag>
           ) : (
             <Tag color="default">custom</Tag>
@@ -481,11 +744,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       COL_ID,
       {
-        header: "Аккаунт",
-        path: "account_id",
-        render: (row) => (
-          <IamRefLink specId="accounts" refId={(row.account_id ?? row.accountId) as string | undefined} />
-        ),
+        // IAM-1 F4: «Уровень» = definitionTier (dotted tierType + anchor).
+        // Заменяет плоскую колонку «Аккаунт» (слово «scope» снято с роли).
+        header: "Уровень",
+        path: "definition_tier",
+        render: (row) => definitionTierCell(row),
       },
       { header: "Описание", path: "description", format: "text" },
       {
@@ -495,20 +758,43 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         header: "Правила",
         path: "rules",
         render: (row) => {
-          const rules = (row.rules as Array<{ module?: string }> | undefined) ?? [];
-          if (rules.length === 0) return <span className="text-muted-foreground">—</span>;
-          const modules = Array.from(new Set(rules.map((r) => r.module || "*")));
+          const rules =
+            (row.rules as Array<{ module?: string }> | undefined) ?? [];
+          if (rules.length === 0)
+            return <span className="text-muted-foreground">—</span>;
+          const modules = Array.from(
+            new Set(rules.map((r) => r.module || "*")),
+          );
           const head = modules.slice(0, 3);
           const more = modules.length - head.length;
           return (
-            <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                flexWrap: "wrap",
+                gap: 4,
+                alignItems: "center",
+              }}
+            >
               {head.map((m, i) => (
-                <code key={i} style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, monospace" }}>
+                <code
+                  key={i}
+                  style={{
+                    fontSize: 11,
+                    fontFamily: "ui-monospace, SFMono-Regular, monospace",
+                  }}
+                >
                   {m}
                 </code>
               ))}
-              {more > 0 && <span style={{ fontSize: 11, color: "rgba(0,0,0,.45)" }}>+{more}</span>}
-              <span style={{ fontSize: 11, color: "rgba(0,0,0,.45)" }}>· {rules.length}</span>
+              {more > 0 && (
+                <span style={{ fontSize: 11, color: "rgba(0,0,0,.45)" }}>
+                  +{more}
+                </span>
+              )}
+              <span style={{ fontSize: 11, color: "rgba(0,0,0,.45)" }}>
+                · {rules.length}
+              </span>
             </span>
           );
         },
@@ -529,11 +815,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "Системные роли поставляются платформой и доступны только для чтения; собственные роли вы создаёте под свои сценарии.",
       docs: ["Роли и разрешения"],
     },
+    // IAM-1 F5: permissions[] (compiled) — output-only Internal-проекция, на вход
+    // НЕ принимается. Авторская политика — rules[] (bespoke InlineRoleCreateForm).
     template: ({ accountId }) => ({
       name: "",
       account_id: accountId ?? "",
       description: "",
-      permissions: [],
+      rules: [],
     }),
   },
 
@@ -557,79 +845,67 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: true },
     columns: [
       {
-        // Субъект: иконка-ссылка на IAM-ресурс субъекта (тип несёт иконка).
-        // subject_type → specId; неизвестный тип → CopyableId (forward-compat).
+        // Субъект(ы): IAM-1 — subjects[] (1..N); первый как ref-ссылка + «+N».
+        // Legacy single subject_type/subject_id — fallback.
         header: "Субъект",
         path: "subject_id",
-        render: (row) => {
-          const subjType = String(row.subject_type ?? "");
-          const subjSpec =
-            subjType === "user"
-              ? "users"
-              : subjType === "group"
-                ? "groups"
-                : subjType === "service_account"
-                  ? "service-accounts"
-                  : undefined;
-          const subjId = (row.subject_id as string) ?? "";
-          return subjSpec ? (
-            <IamRefLink specId={subjSpec} refId={subjId} nameField={subjType === "user" ? "email" : "name"} />
-          ) : (
-            <CopyableId id={subjId} />
-          );
-        },
+        render: (row) => accessBindingSubjectsCell(row),
       },
       {
         header: "Роль",
         path: "role_id",
-        render: (row) => <IamRefLink specId="roles" refId={row.role_id as string | undefined} />,
+        render: (row) => (
+          <IamRefLink
+            specId="roles"
+            refId={row.role_id as string | undefined}
+          />
+        ),
       },
       {
-        // Ресурс: account/project → IamRefLink; cluster/unknown → CopyableId
-        // (нет IAM-ресурса cluster в REGISTRY).
-        header: "Ресурс",
-        path: "resource_id",
-        render: (row) => {
-          const resType = String(row.resource_type ?? "");
-          const resSpec = resType === "account" ? "accounts" : resType === "project" ? "projects" : undefined;
-          const resId = (row.resource_id as string) ?? "";
-          return resSpec ? <IamRefLink specId={resSpec} refId={resId} /> : <CopyableId id={resId} />;
-        },
+        // Область — IAM-1 F7 scopeType (dotted iam.account/project/cluster);
+        // legacy fallback scope enum.
+        header: "Область",
+        path: "scope_type",
+        render: (row) => scopeTypeCell(row),
+      },
+      {
+        // Anchor — scopeId (ref по типу scope); legacy resource_id fallback.
+        header: "Anchor",
+        path: "scope_id",
+        render: (row) => scopeAnchorCell(row),
+      },
+      {
+        // Цель — IAM-1 F8 target (allInScope | resources[]); REQUIRED least-priv.
+        header: "Цель",
+        path: "target",
+        render: (row) => targetCell(row),
       },
       { header: "Статус", path: "status", format: "status" },
       {
-        // Область — output-only scope-tier (CLUSTER/ACCOUNT/PROJECT). Цвет инлайн
-        // (в future нет общего scopeColor-хелпера).
-        header: "Область",
-        path: "scope",
-        render: (row) => {
-          const s = String(row.scope ?? "");
-          if (!s || s === "SCOPE_UNSPECIFIED") return <span className="text-muted-foreground">—</span>;
-          const color = s === "CLUSTER" ? "red" : s === "ACCOUNT" ? "blue" : s === "PROJECT" ? "green" : "default";
-          return <Tag color={color}>{s}</Tag>;
-        },
-      },
-      {
-        // Кто выдал привязку (granted_by_user_id, output-only) — ссылка на
-        // пользователя (email); пусто → «—».
+        // Кто выдал привязку (grantedByUserId°, output-only) — ссылка на юзера.
         header: "Кто выдал",
         path: "granted_by_user_id",
         render: (row) => {
-          const grantedBy = (row.granted_by_user_id as string | undefined) ?? "";
+          const grantedBy = (row.granted_by_user_id ?? row.grantedByUserId) as
+            string | undefined;
           return grantedBy ? (
-            <IamRefLink specId="users" refId={grantedBy} nameField="email" maxChars={24} />
+            <IamRefLink
+              specId="users"
+              refId={grantedBy}
+              nameField="email"
+              maxChars={24}
+            />
           ) : (
             <span className="text-muted-foreground">—</span>
           );
         },
       },
       {
-        // Owner-auto-binding несёт deletion_protection=true → системная
-        // привязка-владелец (нельзя отозвать без снятия защиты). Метка «Owner».
+        // deletionProtection=true → owner-auto-binding (нельзя удалить без снятия).
         header: "Защита",
         path: "deletion_protection",
         render: (row) =>
-          row.deletion_protection ? (
+          row.deletion_protection || row.deletionProtection ? (
             <Tag color="gold" title="Защита от удаления (owner-привязка)">
               Owner
             </Tag>
@@ -672,8 +948,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     internalGetPath: "/vpc/v1/networks/{id}/internal",
     related: [
       { childId: "subnets", filterField: "network_id", label: "Подсети" },
-      { childId: "route-tables", filterField: "network_id", label: "Таблицы маршрутов" },
-      { childId: "security-groups", filterField: "network_id", label: "Группы безопасности" },
+      {
+        childId: "route-tables",
+        filterField: "network_id",
+        label: "Таблицы маршрутов",
+      },
+      {
+        childId: "security-groups",
+        filterField: "network_id",
+        label: "Группы безопасности",
+      },
     ],
     docs: [
       { label: "Облачные сети и подсети", href: "#" },
@@ -699,7 +983,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -745,7 +1034,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     // VPC-1: declared supernet ipv4/ipv6_cidr_blocks[] is required at Create and
@@ -831,7 +1124,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         // Под подсетью адреса всегда ВНУТРЕННИЕ (фильтр по internal_*.subnet_id).
         childId: "addresses",
-        filterField: ["internal_ipv4_address.subnet_id", "internal_ipv6_address.subnet_id"],
+        filterField: [
+          "internal_ipv4_address.subnet_id",
+          "internal_ipv6_address.subnet_id",
+        ],
         label: "IP-адреса",
       },
     ],
@@ -858,7 +1154,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -868,7 +1169,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Сеть",
         path: "network_id",
-        render: (row) => <RefNameLink specId="networks" refId={row.network_id as string | undefined} />,
+        render: (row) => (
+          <RefNameLink
+            specId="networks"
+            refId={row.network_id as string | undefined}
+          />
+        ),
       },
       {
         header: "Описание",
@@ -897,12 +1203,21 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
       {
         header: "Таблица маршрутизации",
         path: "route_table_id",
-        render: (row) => <RefNameLink specId="route-tables" refId={row.route_table_id as string | undefined} />,
+        render: (row) => (
+          <RefNameLink
+            specId="route-tables"
+            refId={row.route_table_id as string | undefined}
+          />
+        ),
       },
     ],
     // VPC-1: placement is a server-derived discriminator — the form channel
@@ -1057,7 +1372,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -1068,10 +1388,18 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         header: "IP-адрес",
         path: "external_ipv4_address.address",
         render: (row) => {
-          const ext = (row.external_ipv4_address as { address?: string } | undefined)?.address;
-          const ext6 = (row.external_ipv6_address as { address?: string } | undefined)?.address;
-          const int = (row.internal_ipv4_address as { address?: string } | undefined)?.address;
-          const int6 = (row.internal_ipv6_address as { address?: string } | undefined)?.address;
+          const ext = (
+            row.external_ipv4_address as { address?: string } | undefined
+          )?.address;
+          const ext6 = (
+            row.external_ipv6_address as { address?: string } | undefined
+          )?.address;
+          const int = (
+            row.internal_ipv4_address as { address?: string } | undefined
+          )?.address;
+          const int6 = (
+            row.internal_ipv6_address as { address?: string } | undefined
+          )?.address;
           // KAC-58: показываем external_ipv6_address наравне с external_ipv4
           // (обе ветки oneof; форма теперь предлагает только external).
           // internal_* оставлены в render для backward compat — Address-ресурсы,
@@ -1085,7 +1413,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Используется",
         path: "used",
-        render: (row) => (row.used ? "Да" : <span className="text-muted-foreground">Нет</span>),
+        render: (row) =>
+          row.used ? "Да" : <span className="text-muted-foreground">Нет</span>,
       },
       {
         header: "Версия",
@@ -1110,7 +1439,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Защита от удаления",
         path: "deletion_protection",
-        render: (row) => (row.deletion_protection ? "Да" : <span className="text-muted-foreground">Нет</span>),
+        render: (row) =>
+          row.deletion_protection ? (
+            "Да"
+          ) : (
+            <span className="text-muted-foreground">Нет</span>
+          ),
       },
       {
         // `used_by` — output-only список kacho.cloud.reference.Reference
@@ -1129,7 +1463,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
@@ -1168,7 +1506,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         description:
           "Зона, в которой выделяется внешний адрес. Оставьте поле «Адрес» пустым, чтобы адрес был выделен автоматически из пула зоны.",
-        visibleWhen: { field: "_address_kind", equals: ["external", "external_v6"] },
+        visibleWhen: {
+          field: "_address_kind",
+          equals: ["external", "external_v6"],
+        },
         editHidden: true,
       },
       {
@@ -1212,7 +1553,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Адрес",
         type: "string",
         placeholder: "auto",
-        description: "Конкретный IPv4-адрес из CIDR выбранной подсети. Оставьте пустым — будет выделен автоматически.",
+        description:
+          "Конкретный IPv4-адрес из CIDR выбранной подсети. Оставьте пустым — будет выделен автоматически.",
         visibleWhen: { field: "_address_kind", equals: "internal" },
         editHidden: true,
       },
@@ -1235,7 +1577,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Адрес",
         type: "string",
         placeholder: "auto",
-        description: "Конкретный IPv6-адрес из CIDR выбранной подсети. Оставьте пустым — будет выделен автоматически.",
+        description:
+          "Конкретный IPv6-адрес из CIDR выбранной подсети. Оставьте пустым — будет выделен автоматически.",
         visibleWhen: { field: "_address_kind", equals: "internal_v6" },
         editHidden: true,
       },
@@ -1244,7 +1587,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Защита от удаления",
         type: "bool",
         default: false,
-        description: "Если включена, адрес нельзя будет удалить, пока защита не будет снята.",
+        description:
+          "Если включена, адрес нельзя будет удалить, пока защита не будет снята.",
       },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
@@ -1267,9 +1611,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       for (const [k, v] of Object.entries(obj)) {
         if (k === "_address_kind" || k === "_zone_id") continue;
         if (k === "external_ipv4_address_spec" && kind !== "external") continue;
-        if (k === "external_ipv6_address_spec" && kind !== "external_v6") continue;
+        if (k === "external_ipv6_address_spec" && kind !== "external_v6")
+          continue;
         if (k === "internal_ipv4_address_spec" && kind !== "internal") continue;
-        if (k === "internal_ipv6_address_spec" && kind !== "internal_v6") continue;
+        if (k === "internal_ipv6_address_spec" && kind !== "internal_v6")
+          continue;
         result[k] = v;
       }
       // Общая зона `_zone_id` → в активную external-ветку spec'а.
@@ -1277,12 +1623,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       if (zone) {
         if (kind === "external") {
           result["external_ipv4_address_spec"] = {
-            ...(result["external_ipv4_address_spec"] as Record<string, unknown> | undefined),
+            ...(result["external_ipv4_address_spec"] as
+              Record<string, unknown> | undefined),
             zone_id: zone,
           };
         } else if (kind === "external_v6") {
           result["external_ipv6_address_spec"] = {
-            ...(result["external_ipv6_address_spec"] as Record<string, unknown> | undefined),
+            ...(result["external_ipv6_address_spec"] as
+              Record<string, unknown> | undefined),
             zone_id: zone,
           };
         }
@@ -1321,7 +1669,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -1331,7 +1684,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Сеть",
         path: "network_id",
-        render: (row) => <RefNameLink specId="networks" refId={row.network_id as string | undefined} />,
+        render: (row) => (
+          <RefNameLink
+            specId="networks"
+            refId={row.network_id as string | undefined}
+          />
+        ),
       },
       {
         header: "Описание",
@@ -1349,7 +1707,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
                   next_hop_address?: string;
                 }>
               | undefined) ?? [];
-          if (routes.length === 0) return <span className="text-muted-foreground">—</span>;
+          if (routes.length === 0)
+            return <span className="text-muted-foreground">—</span>;
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {routes.map((r, i) => (
@@ -1376,7 +1735,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
@@ -1416,8 +1779,17 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         fullWidth: false,
         description: "При обновлении список заменяется целиком (full-replace).",
         render: ({ value, onChange }) => {
-          const routes = (getByPath(value, "static_routes") as RouteEntry[] | undefined) ?? [];
-          return <RoutesEditor value={routes} onChange={(next) => onChange(setByPath(value, "static_routes", next))} />;
+          const routes =
+            (getByPath(value, "static_routes") as RouteEntry[] | undefined) ??
+            [];
+          return (
+            <RoutesEditor
+              value={routes}
+              onChange={(next) =>
+                onChange(setByPath(value, "static_routes", next))
+              }
+            />
+          );
         },
       },
     ],
@@ -1432,7 +1804,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     sanitize: (obj) => {
       const routes = Array.isArray(obj.static_routes)
         ? (obj.static_routes as RouteEntry[]).filter(
-            (r) => (r?.destination_prefix ?? "").trim() !== "" && (r?.next_hop_address ?? "").trim() !== "",
+            (r) =>
+              (r?.destination_prefix ?? "").trim() !== "" &&
+              (r?.next_hop_address ?? "").trim() !== "",
           )
         : [];
       return { ...obj, static_routes: routes };
@@ -1462,7 +1836,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -1472,7 +1851,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Подсеть",
         path: "subnet_id",
-        render: (row) => <RefNameLink specId="subnets" refId={row.subnet_id as string | undefined} />,
+        render: (row) => (
+          <RefNameLink
+            specId="subnets"
+            refId={row.subnet_id as string | undefined}
+          />
+        ),
       },
       {
         // mac_address — output-only, аллоцируется kacho-vpc при Create
@@ -1482,7 +1866,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "mac_address",
         render: (row) => {
           const mac = row.mac_address as string | undefined;
-          return mac ? <CopyableId id={mac} /> : <span className="text-muted-foreground">—</span>;
+          return mac ? (
+            <CopyableId id={mac} />
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
         },
       },
       {
@@ -1526,7 +1914,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         header: "Используется",
         path: "used_by",
         render: (row) => {
-          const ub = row.used_by as { referrer?: { type?: string; id?: string } } | undefined;
+          const ub = row.used_by as
+            { referrer?: { type?: string; id?: string } } | undefined;
           const ref = ub?.referrer;
           if (!ref?.id) return <span className="text-muted-foreground">—</span>;
           if (ref.type === "compute_instance") {
@@ -1547,7 +1936,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
@@ -1560,7 +1953,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: true,
         immutable: true,
-        description: "Subnet, в которой создаётся интерфейс. Менять нельзя после создания.",
+        description:
+          "Subnet, в которой создаётся интерфейс. Менять нельзя после создания.",
       },
       // NIC ссылается на Address-ресурсы по id (модель KAC-2/KAC-7): NIC
       // больше не хранит IP-строки, а держит список id внутренних Address'ов
@@ -1579,7 +1973,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // NIC. Backend отбивает > 1 sync InvalidArgument + DB CHECK
         // network_interfaces_v4_addr_max1 (миграция 0018) как backstop.
         maxItems: 1,
-        description: "Опционально. IPv4 Address-ресурс из выбранной подсети. Можно создать новый прямо в дропдауне.",
+        description:
+          "Опционально. IPv4 Address-ресурс из выбранной подсети. Можно создать новый прямо в дропдауне.",
         newItem: () => ({ value: "" }),
         itemFields: [
           {
@@ -1613,7 +2008,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         itemLabel: "адрес",
         // KAC-55: на одной NIC максимум один IPv6 (и максимум один IPv4).
         maxItems: 1,
-        description: "Опционально. IPv6 Address-ресурс из выбранной подсети. Можно создать новый прямо в дропдауне.",
+        description:
+          "Опционально. IPv6 Address-ресурс из выбранной подсети. Можно создать новый прямо в дропдауне.",
         newItem: () => ({ value: "" }),
         itemFields: [
           {
@@ -1679,12 +2075,18 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // (как subnets.v4_cidr_blocks / instance NIC security_group_ids).
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["v4_address_ids", "v6_address_ids", "security_group_ids"]) {
+      for (const key of [
+        "v4_address_ids",
+        "v6_address_ids",
+        "security_group_ids",
+      ]) {
         const raw = out[key];
         if (Array.isArray(raw)) {
           out[key] = raw
             .map((item) =>
-              typeof item === "object" && item !== null && "value" in (item as object)
+              typeof item === "object" &&
+              item !== null &&
+              "value" in (item as object)
                 ? (item as Record<string, unknown>)["value"]
                 : item,
             )
@@ -1698,10 +2100,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // edit-режиме RefSelect получает массив строк и не показывает имена.
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["v4_address_ids", "v6_address_ids", "security_group_ids"]) {
+      for (const key of [
+        "v4_address_ids",
+        "v6_address_ids",
+        "security_group_ids",
+      ]) {
         const raw = out[key];
         if (Array.isArray(raw)) {
-          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
+          out[key] = raw.map((item) =>
+            typeof item === "string" ? { value: item } : item,
+          );
         }
       }
       return out;
@@ -1742,7 +2150,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // больше нет; «—» остаётся только для legacy-строк до backfill-миграции.
         render: (row) => {
           const nid = row.network_id as string | undefined;
-          return nid ? <RefNameLink specId="networks" refId={nid} /> : <span className="text-muted-foreground">—</span>;
+          return nid ? (
+            <RefNameLink specId="networks" refId={nid} />
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
         },
       },
       { header: "По умолчанию", path: "default_for_network", format: "text" },
@@ -1772,7 +2184,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "rules",
         label: "Rules",
         type: "sg-rules",
-        description: "Direction + protocol/ports + target (cidr | другая SG | predefined). Без правил — default-deny.",
+        description:
+          "Direction + protocol/ports + target (cidr | другая SG | predefined). Без правил — default-deny.",
         // В Update RPC backend ждёт `rule_specs`, не `rules` (Kachō контракт).
         // В edit-форме скрываем — правила меняются через спец-RPC UpdateRules /
         // UpdateRule на отдельной вкладке.
@@ -1796,7 +2209,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       if (!out["network_id"]) delete out["network_id"];
       const raw = out["rules"];
       if (Array.isArray(raw)) {
-        out["rules"] = raw.map((r) => sanitizeSgRule(r as Record<string, unknown>));
+        out["rules"] = raw.map((r) =>
+          sanitizeSgRule(r as Record<string, unknown>),
+        );
       }
       return out;
     },
@@ -1819,7 +2234,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -1834,7 +2254,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
       COL_CREATED,
     ],
@@ -1873,7 +2297,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+      {
+        header: "Идентификатор",
+        path: "id",
+        format: "text",
+        className: "font-mono",
+      },
       { header: "Описание", path: "description", format: "text" },
       { header: "Зоны", path: "zone_ids", format: "list" },
     ],
@@ -1894,7 +2323,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+      {
+        header: "Идентификатор",
+        path: "id",
+        format: "text",
+        className: "font-mono",
+      },
       { header: "Регион", path: "region_id", format: "text" },
       { header: "Статус", path: "status", format: "status" },
     ],
@@ -1912,7 +2346,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+      {
+        header: "Идентификатор",
+        path: "id",
+        format: "text",
+        className: "font-mono",
+      },
       { header: "Название", path: "name", format: "text" },
       { header: "Статус", path: "status", format: "status" },
     ],
@@ -1934,16 +2373,27 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
-      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
       { header: "Статус", path: "status", format: "status" },
       { header: "Зона", path: "zone_id", format: "text" },
       { header: "Тип", path: "type_id", format: "text" },
       {
         header: "Размер",
         path: "size",
-        render: (row) => <span className="font-mono text-xs">{fmtBytesGiB(row.size)}</span>,
+        render: (row) => (
+          <span className="font-mono text-xs">{fmtBytesGiB(row.size)}</span>
+        ),
       },
       {
         header: "Источник",
@@ -1952,7 +2402,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           const img = row.source_image_id as string | undefined;
           const snap = row.source_snapshot_id as string | undefined;
           if (img) return <RefNameLink specId="compute-images" refId={img} />;
-          if (snap) return <RefNameLink specId="compute-snapshots" refId={snap} />;
+          if (snap)
+            return <RefNameLink specId="compute-snapshots" refId={snap} />;
           return <span className="text-muted-foreground">—</span>;
         },
       },
@@ -1961,7 +2412,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "instance_ids",
         render: (row) => {
           const ids = (row.instance_ids as string[] | undefined) ?? [];
-          if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
+          if (ids.length === 0)
+            return <span className="text-muted-foreground">—</span>;
           return <RefNameLink specId="compute-instances" refId={ids[0]} />;
         },
       },
@@ -1969,12 +2421,23 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
       FIELD_NAME_COMPUTE,
-      { name: "zone_id", label: "Зона", type: "ref", refResource: "compute-zones", required: true, immutable: true },
+      {
+        name: "zone_id",
+        label: "Зона",
+        type: "ref",
+        refResource: "compute-zones",
+        required: true,
+        immutable: true,
+      },
       {
         name: "type_id",
         label: "Тип диска",
@@ -1990,7 +2453,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         default: 10,
         min: 4,
-        description: "Минимум — размер источника (image/snapshot), либо 4 ГиБ. В Update только увеличение.",
+        description:
+          "Минимум — размер источника (image/snapshot), либо 4 ГиБ. В Update только увеличение.",
       },
       {
         name: "_disk_source",
@@ -2070,15 +2534,28 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
-      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
       { header: "Статус", path: "status", format: "status" },
       { header: "Семейство", path: "family", format: "text" },
       {
         header: "Мин. размер диска",
         path: "min_disk_size",
-        render: (row) => <span className="font-mono text-xs">{fmtBytesGiB(row.min_disk_size)}</span>,
+        render: (row) => (
+          <span className="font-mono text-xs">
+            {fmtBytesGiB(row.min_disk_size)}
+          </span>
+        ),
       },
       {
         header: "ОС",
@@ -2092,7 +2569,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
@@ -2160,7 +2641,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Мин. размер диска (ГиБ)",
         type: "int",
         min: 4,
-        description: "Опционально. Если задано — диски из образа не могут быть меньше.",
+        description:
+          "Опционально. Если задано — диски из образа не могут быть меньше.",
         immutable: true,
       },
       FIELD_LABELS,
@@ -2210,25 +2692,47 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
-      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
       { header: "Статус", path: "status", format: "status" },
       {
         header: "Исходный диск",
         path: "source_disk_id",
-        render: (row) => <RefNameLink specId="compute-disks" refId={row.source_disk_id as string | undefined} />,
+        render: (row) => (
+          <RefNameLink
+            specId="compute-disks"
+            refId={row.source_disk_id as string | undefined}
+          />
+        ),
       },
       {
         header: "Размер диска",
         path: "disk_size",
-        render: (row) => <span className="font-mono text-xs">{fmtBytesGiB(row.disk_size)}</span>,
+        render: (row) => (
+          <span className="font-mono text-xs">
+            {fmtBytesGiB(row.disk_size)}
+          </span>
+        ),
       },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
@@ -2265,14 +2769,30 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     genitive: "Виртуальной машины",
     serviceTitle: "Compute Cloud",
     scope: "project",
-    ops: { create: true, update: true, delete: true, start: true, stop: true, restart: true },
+    ops: {
+      create: true,
+      update: true,
+      delete: true,
+      start: true,
+      stop: true,
+      restart: true,
+    },
     columns: [
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
-      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
       { header: "Статус", path: "status", format: "status" },
       { header: "Зона", path: "zone_id", format: "text" },
       { header: "Платформа", path: "platform_id", format: "text" },
@@ -2280,7 +2800,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         header: "vCPU / RAM",
         path: "resources",
         render: (row) => {
-          const r = row.resources as { cores?: string | number; memory?: string | number } | undefined;
+          const r = row.resources as
+            { cores?: string | number; memory?: string | number } | undefined;
           if (!r) return <span className="text-muted-foreground">—</span>;
           return (
             <span className="font-mono text-xs">
@@ -2294,7 +2815,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "network_interfaces",
         render: (row) => {
           const nics =
-            (row.network_interfaces as Array<{ primary_v4_address?: { address?: string } }> | undefined) ?? [];
+            (row.network_interfaces as
+              | Array<{ primary_v4_address?: { address?: string } }>
+              | undefined) ?? [];
           const ip = nics[0]?.primary_v4_address?.address;
           return ip ? (
             <span className="font-mono text-xs">{ip}</span>
@@ -2307,7 +2830,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         header: "Загрузочный диск",
         path: "boot_disk.disk_id",
         render: (row) => {
-          const bd = (row.boot_disk as { disk_id?: string } | undefined)?.disk_id;
+          const bd = (row.boot_disk as { disk_id?: string } | undefined)
+            ?.disk_id;
           return <RefNameLink specId="compute-disks" refId={bd} />;
         },
       },
@@ -2315,12 +2839,23 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
       FIELD_NAME_COMPUTE,
-      { name: "zone_id", label: "Зона", type: "ref", refResource: "compute-zones", required: true, immutable: true },
+      {
+        name: "zone_id",
+        label: "Зона",
+        type: "ref",
+        refResource: "compute-zones",
+        required: true,
+        immutable: true,
+      },
       {
         name: "platform_id",
         label: "Платформа",
@@ -2331,7 +2866,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "standard-v1", label: "Intel Broadwell (standard-v1)" },
           { value: "standard-v2", label: "Intel Cascade Lake (standard-v2)" },
           { value: "standard-v3", label: "Intel Ice Lake (standard-v3)" },
-          { value: "highfreq-v3", label: "Intel Ice Lake, 3.1 GHz (highfreq-v3)" },
+          {
+            value: "highfreq-v3",
+            label: "Intel Ice Lake, 3.1 GHz (highfreq-v3)",
+          },
         ],
         immutable: true,
         description: "Менять platform_id можно только когда ВМ остановлена.",
@@ -2343,7 +2881,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         default: 2,
         min: 2,
-        description: "2,4,6,8,...; зависит от платформы. Менять только когда ВМ остановлена.",
+        description:
+          "2,4,6,8,...; зависит от платформы. Менять только когда ВМ остановлена.",
         editHidden: true,
       },
       {
@@ -2451,7 +2990,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             name: "_nic_config",
             label: "",
             type: "custom",
-            render: (p) => <NicSpecFields pathPrefix={p.pathPrefix} value={p.value} onChange={p.onChange} />,
+            render: (p) => (
+              <NicSpecFields
+                pathPrefix={p.pathPrefix}
+                value={p.value}
+                onChange={p.onChange}
+              />
+            ),
           },
           // Группы безопасности — generic ArrayField с inline-create «+ SG»
           // (без изменений; на NIC-айтеме остаётся как было).
@@ -2460,7 +3005,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             label: "Группы безопасности",
             type: "array",
             itemLabel: "SG",
-            description: "Опционально. Применяются к интерфейсу. Можно создать новую прямо в дропдауне.",
+            description:
+              "Опционально. Применяются к интерфейсу. Можно создать новую прямо в дропдауне.",
             newItem: () => ({ value: "" }),
             itemFields: [
               {
@@ -2485,7 +3031,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
         editHidden: true,
       },
-      { name: "service_account_id", label: "Service Account ID", type: "string", placeholder: "(опционально)" },
+      {
+        name: "service_account_id",
+        label: "Service Account ID",
+        type: "string",
+        placeholder: "(опционально)",
+      },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       FIELD_PROJECT_ID,
@@ -2497,7 +3048,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       platform_id: "standard-v3",
       resources_spec: { cores: 2, memory_gib: 2, core_fraction: "100" },
       _boot_source: "image",
-      boot_disk_spec: { auto_delete: true, disk_spec: { size_gib: 10, type_id: "" } },
+      boot_disk_spec: {
+        auto_delete: true,
+        disk_spec: { size_gib: 10, type_id: "" },
+      },
       network_interface_specs: [
         {
           _addr_cascader: undefined,
@@ -2534,7 +3088,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "global",
     ops: { create: true, update: true, delete: true },
     columns: [
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+      {
+        header: "Идентификатор",
+        path: "id",
+        format: "text",
+        className: "font-mono",
+      },
       { header: "Имя", path: "name", format: "text" },
       COL_CREATED,
     ],
@@ -2549,7 +3108,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Lower-snake-kebab. Immutable PK.",
         pattern: "^[a-z][a-z0-9-]*$",
       },
-      { name: "name", label: "Name", type: "string", placeholder: "Region display name" },
+      {
+        name: "name",
+        label: "Name",
+        type: "string",
+        placeholder: "Region display name",
+      },
     ],
     template: () => ({ id: "", name: "" }),
   },
@@ -2565,7 +3129,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "global",
     ops: { create: true, update: true, delete: true },
     columns: [
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+      {
+        header: "Идентификатор",
+        path: "id",
+        format: "text",
+        className: "font-mono",
+      },
       { header: "Регион", path: "region_id", format: "text" },
       { header: "Имя", path: "name", format: "text" },
       COL_CREATED,
@@ -2588,7 +3157,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         immutable: true,
       },
-      { name: "name", label: "Name", type: "string", placeholder: "Zone display name" },
+      {
+        name: "name",
+        label: "Name",
+        type: "string",
+        placeholder: "Zone display name",
+      },
     ],
     template: () => ({ id: "", region_id: "", name: "" }),
   },
@@ -2610,7 +3184,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -2647,9 +3226,17 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки селектора",
         path: "selector_labels",
-        render: (row) => <LabelsCell labels={row.selector_labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.selector_labels as Record<string, string> | undefined}
+          />
+        ),
       },
-      { header: "Приоритет селектора", path: "selector_priority", format: "text" },
+      {
+        header: "Приоритет селектора",
+        path: "selector_priority",
+        format: "text",
+      },
     ],
     fields: [
       {
@@ -2688,7 +3275,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "IPv4 CIDR blocks",
         type: "array",
         itemLabel: "v4-CIDR",
-        description: "IPv4 CIDR-блоки, из которых аллоцируются внешние v4 адреса.",
+        description:
+          "IPv4 CIDR-блоки, из которых аллоцируются внешние v4 адреса.",
         // KAC-269: CIDR задаётся только при Create; Update больше не меняет CIDR
         // (proto убрал поля из UpdateAddressPoolRequest). В edit-форме скрыто и
         // не попадает в update_mask — изменение через :addCidrBlocks /
@@ -2709,7 +3297,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "IPv6 CIDR blocks",
         type: "array",
         itemLabel: "v6-CIDR",
-        description: "IPv6 CIDR-блоки, из которых аллоцируются внешние v6 адреса.",
+        description:
+          "IPv6 CIDR-блоки, из которых аллоцируются внешние v6 адреса.",
         // KAC-269: createOnly — см. v4_cidr_blocks выше.
         createOnly: true,
         newItem: () => ({ value: "" }),
@@ -2757,7 +3346,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         if (Array.isArray(raw)) {
           flat[key] = raw
             .map((item) =>
-              typeof item === "object" && item !== null && "value" in (item as object)
+              typeof item === "object" &&
+              item !== null &&
+              "value" in (item as object)
                 ? (item as Record<string, unknown>)["value"]
                 : item,
             )
@@ -2796,7 +3387,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -2809,7 +3405,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
@@ -2821,7 +3421,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "ref",
         refResource: "compute-regions",
         required: true,
-        description: "Регион размещения балансировщика. Cross-service ref → compute.Region; verified на request-path.",
+        description:
+          "Регион размещения балансировщика. Cross-service ref → compute.Region; verified на request-path.",
       },
       {
         name: "type",
@@ -2833,7 +3434,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "EXTERNAL", label: "EXTERNAL (публичный VIP)" },
           { value: "INTERNAL", label: "INTERNAL (cluster-internal VIP)" },
         ],
-        description: "Тип VIP-адреса: EXTERNAL — публичный, INTERNAL — внутренний (immutable после Create).",
+        description:
+          "Тип VIP-адреса: EXTERNAL — публичный, INTERNAL — внутренний (immutable после Create).",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -2862,7 +3464,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -2873,7 +3480,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         header: "Балансировщик",
         path: "load_balancer_id",
         render: (row) => (
-          <RefNameLink specId="load-balancers" refId={row.load_balancer_id as string | undefined} maxChars={36} />
+          <RefNameLink
+            specId="load-balancers"
+            refId={row.load_balancer_id as string | undefined}
+            maxChars={36}
+          />
         ),
       },
       { header: "Протокол", path: "protocol", format: "code" },
@@ -2889,7 +3500,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Балансировщик",
         type: "string",
         required: true,
-        description: "ID балансировщика-родителя (immutable после Create). Within-service FK → load_balancers.",
+        description:
+          "ID балансировщика-родителя (immutable после Create). Within-service FK → load_balancers.",
       },
       {
         name: "protocol",
@@ -2914,7 +3526,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Порт на target",
         type: "int",
         required: false,
-        description: "Порт на target-е (1..65535). Если не задан — равен `port`.",
+        description:
+          "Порт на target-е (1..65535). Если не задан — равен `port`.",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -2945,7 +3558,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Имя",
         path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+        render: (row) => (
+          <CopyableName
+            name={(row.name as string) ?? ""}
+            fallback={row.id as string}
+          />
+        ),
       },
       {
         header: "Идентификатор",
@@ -2957,7 +3575,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
-        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+        render: (row) => (
+          <LabelsCell
+            labels={row.labels as Record<string, string> | undefined}
+          />
+        ),
       },
     ],
     fields: [
@@ -2970,7 +3592,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "compute-regions",
         required: true,
         immutable: true,
-        description: "Регион размещения target-group (immutable после Create). Cross-service ref → compute.Region.",
+        description:
+          "Регион размещения target-group (immutable после Create). Cross-service ref → compute.Region.",
       },
       {
         name: "deregistration_delay_seconds",
@@ -3003,7 +3626,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         required: true,
         default: "2s",
-        description: "Интервал между health-check'ами (Duration в формате 'Ns', range 1s-600s). По умолчанию 2s.",
+        description:
+          "Интервал между health-check'ами (Duration в формате 'Ns', range 1s-600s). По умолчанию 2s.",
       },
       {
         name: "health_check.timeout",
@@ -3011,7 +3635,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         required: true,
         default: "1s",
-        description: "Таймаут одного health-check'а (Duration). По умолчанию 1s.",
+        description:
+          "Таймаут одного health-check'а (Duration). По умолчанию 1s.",
       },
       {
         name: "health_check.unhealthy_threshold",
@@ -3019,7 +3644,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "int",
         required: true,
         default: 2,
-        description: "Сколько failed checks подряд до перевода в UNHEALTHY (2..10). По умолчанию 2.",
+        description:
+          "Сколько failed checks подряд до перевода в UNHEALTHY (2..10). По умолчанию 2.",
       },
       {
         name: "health_check.healthy_threshold",
@@ -3027,7 +3653,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "int",
         required: true,
         default: 2,
-        description: "Сколько успешных checks подряд до перевода в HEALTHY (2..10). По умолчанию 2.",
+        description:
+          "Сколько успешных checks подряд до перевода в HEALTHY (2..10). По умолчанию 2.",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -3052,14 +3679,26 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 };
 
 // Экспортирована для тестов.
-export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unknown> {
+export function sanitizeSgRule(
+  r: Record<string, unknown>,
+): Record<string, unknown> {
   const protoMode =
     (r._protocol_mode as string | undefined) ??
-    (r.protocol_name ? "name" : typeof r.protocol_number === "number" ? "number" : "any");
+    (r.protocol_name
+      ? "name"
+      : typeof r.protocol_number === "number"
+        ? "number"
+        : "any");
   const portsAny = typeof r._ports_any === "boolean" ? r._ports_any : !r.ports;
   const targetKind =
     (r._target_kind as string | undefined) ??
-    (r.cidr_blocks ? "cidr" : r.security_group_id ? "sg" : r.predefined_target ? "predefined" : "cidr");
+    (r.cidr_blocks
+      ? "cidr"
+      : r.security_group_id
+        ? "sg"
+        : r.predefined_target
+          ? "predefined"
+          : "cidr");
 
   const out: Record<string, unknown> = {};
   // copy non-discriminator persistent fields
@@ -3116,7 +3755,9 @@ export function gibToBytes(v: unknown): string | undefined {
  *  в wire format: memory_gib→memory (байты), size_gib→size, core_fraction строка→число,
  *  boot_disk oneof (disk_spec vs disk_id), one-to-one NAT toggle → one_to_one_nat_spec,
  *  security_group_ids [{value}]→[ids]; вырезает _boot_source и пустые поля. */
-export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<string, unknown> {
+export function sanitizeInstanceCreate(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
   const o = { ...obj } as Record<string, unknown>;
 
   // resources_spec
@@ -3125,7 +3766,8 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
     rs["memory"] = gibToBytes(rs["memory_gib"]);
     delete rs["memory_gib"];
   }
-  if (rs["cores"] !== undefined && rs["cores"] !== "") rs["cores"] = Number(rs["cores"]);
+  if (rs["cores"] !== undefined && rs["cores"] !== "")
+    rs["cores"] = Number(rs["cores"]);
   if (rs["core_fraction"] !== undefined && rs["core_fraction"] !== "")
     rs["core_fraction"] = Number(rs["core_fraction"]);
   o["resources_spec"] = rs;
@@ -3139,8 +3781,10 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
       ds["size"] = gibToBytes(ds["size_gib"]);
       delete ds["size_gib"];
     }
-    if (ds["type_id"] === "" || ds["type_id"] === undefined) delete ds["type_id"];
-    if (ds["image_id"] === "" || ds["image_id"] === undefined) delete ds["image_id"];
+    if (ds["type_id"] === "" || ds["type_id"] === undefined)
+      delete ds["type_id"];
+    if (ds["image_id"] === "" || ds["image_id"] === undefined)
+      delete ds["image_id"];
     bds["disk_spec"] = ds;
     delete bds["disk_id"];
   } else {
@@ -3181,8 +3825,11 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
     if (nic["subnet_id"]) out["subnet_id"] = nic["subnet_id"];
     if (sgs.length > 0) out["security_group_ids"] = sgs;
     const primaryAddr =
-      typeof nic["primary_v4_address_spec"] === "object" && nic["primary_v4_address_spec"] !== null
-        ? ((nic["primary_v4_address_spec"] as Record<string, unknown>)["address"] as string | undefined)
+      typeof nic["primary_v4_address_spec"] === "object" &&
+      nic["primary_v4_address_spec"] !== null
+        ? ((nic["primary_v4_address_spec"] as Record<string, unknown>)[
+            "address"
+          ] as string | undefined)
         : undefined;
     const pv4: Record<string, unknown> = {};
     if (primaryAddr) pv4["address"] = primaryAddr;
@@ -3213,7 +3860,9 @@ export function getResource(id: string): ResourceSpec | undefined {
 // /iam/ для IAM-scoped) per spec.id. Соответствует routes в App.tsx
 // (KAC-198 fix: некоторые компоненты строили `/projects/<pid>/<route>` без
 // этого сегмента — детальная страница 404'илась).
-export function resourceServicePrefix(specId: string): "vpc" | "compute" | "nlb" | "iam" {
+export function resourceServicePrefix(
+  specId: string,
+): "vpc" | "compute" | "nlb" | "iam" {
   if (specId.startsWith("compute-")) return "compute";
   switch (specId) {
     // NLB domain
@@ -3246,7 +3895,10 @@ export function resourceServicePrefix(specId: string): "vpc" | "compute" | "nlb"
 // resourceProjectPath — полный SPA-путь до listing данного ресурса в
 // контексте project'а. Возвращает null для IAM-ресурсов (они не scoped to
 // project) и когда projectId не известен.
-export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
+export function resourceProjectPath(
+  specId: string,
+  projectId: string | null | undefined,
+): string | null {
   const prefix = resourceServicePrefix(specId);
   if (prefix === "iam") return null;
   if (!projectId) return null;
@@ -3259,7 +3911,10 @@ export function resourceProjectPath(specId: string, projectId: string | null | u
 // also resolves bracket-indexed array paths like "spec.rules[0].direction").
 // Kept as a named export (re-exported as getResourceValueByPath) so the many
 // detail/list call sites keep their <T> type signature unchanged.
-export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {
+export function getByPath<T = unknown>(
+  obj: unknown,
+  path: string,
+): T | undefined {
   return getByPathImpl(obj, path) as T | undefined;
 }
 

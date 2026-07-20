@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Form, Input, Alert } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
-import { IAM, type Role, type Rule } from "@shared/api/iam";
+import { IAM, roleDefinitionTier, type Role, type Rule } from "@shared/api/iam";
 import { usePermissionCatalog } from "@shared/api/usePermissionCatalog";
 import { useIamMutation } from "@shared/components/organisms/iam/IamCommon";
 import { RulesEditor, emptyRule, rulesInvalid } from "@/components/organisms/iam/RulesEditor";
@@ -123,6 +123,20 @@ export function InlineRoleEditForm({
           <Form.Item label="Имя">
             <ImmutableField value={role.name} reason="Имя роли неизменяемо после создания" />
           </Form.Item>
+          {/* IAM-1 F4: definitionTier (уровень роли) неизменяем после Create. */}
+          {(() => {
+            const dt = roleDefinitionTier(role);
+            const tt = dt?.tier_type ?? dt?.tierType;
+            const tid = dt?.tier_id ?? dt?.tierId;
+            return tt ? (
+              <Form.Item label="Уровень (tierType)">
+                <ImmutableField
+                  value={`${tt}${tid ? ` · ${tid}` : ""}`}
+                  reason="Уровень роли (definitionTier) неизменяем после создания"
+                />
+              </Form.Item>
+            ) : null;
+          })()}
           <Form.Item label="Описание" name="description">
             <Input.TextArea rows={2} />
           </Form.Item>
