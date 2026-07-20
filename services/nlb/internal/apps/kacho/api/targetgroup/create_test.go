@@ -41,7 +41,49 @@ func mkCreateReq(projectID, regionID, name string) *lbv1.CreateTargetGroupReques
 		},
 		DeregistrationDelaySeconds: 300,
 		SlowStartSeconds:           30,
+		Port:                       8080,
 	}
+}
+
+// TestCreate_Port_BVA — NLB-1-35 (F6-co-req): TargetGroup.port required, range
+// 1..65535. Absent (0) and out-of-range → sync InvalidArgument.
+func TestCreate_Port_BVA(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		port int32
+	}{
+		{"absent (0) → required", 0},
+		{"over max (70000)", 70000},
+		{"negative (-1)", -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newFakeRepo()
+			uc := mkUC(repo, newFakeOpsRepo())
+			req := mkCreateReq("prj-acme", "ru-central1", "bad-port")
+			req.Port = tc.port
+			_, err := uc.Execute(context.Background(), req)
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.Contains(t, fieldViolationsText(err), "port must be in range [1, 65535]")
+		})
+	}
+}
+
+// TestCreate_Port_Valid — valid port passes sync validation and the created TG
+// carries it (echoed by Listener.resolvedBackendPort in F4).
+func TestCreate_Port_Valid(t *testing.T) {
+	repo := newFakeRepo()
+	opsRepo := newFakeOpsRepo()
+	uc := mkUC(repo, opsRepo)
+	req := mkCreateReq("prj-acme", "ru-central1", "port-ok")
+	req.Port = 9090
+	op, err := uc.Execute(context.Background(), req)
+	require.NoError(t, err)
+	final := awaitOpDone(t, opsRepo, op.ID)
+	require.Nil(t, final.Error)
+
+	var tg lbv1.TargetGroup
+	require.NoError(t, final.Response.UnmarshalTo(&tg))
+	require.Equal(t, int32(9090), tg.Port)
 }
 
 // mkUC — констр+conv для CreateTargetGroupUseCase без peer-failures.

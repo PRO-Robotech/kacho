@@ -210,8 +210,12 @@ type CreateTargetGroupRequest struct {
 	DeregistrationDelaySeconds int32 `protobuf:"varint,9,opt,name=deregistration_delay_seconds,json=deregistrationDelaySeconds,proto3" json:"deregistration_delay_seconds,omitempty"`
 	// Slow-start ramp window for added targets. Default 0 (off).
 	SlowStartSeconds int32 `protobuf:"varint,10,opt,name=slow_start_seconds,json=slowStartSeconds,proto3" json:"slow_start_seconds,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Required — single backend port of the group (NLB-1b F6-co-req). Every
+	// target receives forwarded traffic on this port; echoed by
+	// Listener.resolved_backend_port. Range 1..65535.
+	Port          int32 `protobuf:"varint,11,opt,name=port,proto3" json:"port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateTargetGroupRequest) Reset() {
@@ -303,6 +307,13 @@ func (x *CreateTargetGroupRequest) GetDeregistrationDelaySeconds() int32 {
 func (x *CreateTargetGroupRequest) GetSlowStartSeconds() int32 {
 	if x != nil {
 		return x.SlowStartSeconds
+	}
+	return 0
+}
+
+func (x *CreateTargetGroupRequest) GetPort() int32 {
+	if x != nil {
+		return x.Port
 	}
 	return 0
 }
@@ -1020,7 +1031,7 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"\x91\x01\n" +
 	"\x18ListTargetGroupsResponse\x12M\n" +
 	"\rtarget_groups\x18\x01 \x03(\v2(.kacho.cloud.loadbalancer.v1.TargetGroupR\ftargetGroups\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xc5\x05\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xea\x05\n" +
 	"\x18CreateTargetGroupRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x125\n" +
@@ -1033,7 +1044,8 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\x1cderegistration_delay_seconds\x18\t \x01(\x05B\n" +
 	"\xfa\xc71\x060-3600R\x1aderegistrationDelaySeconds\x127\n" +
 	"\x12slow_start_seconds\x18\n" +
-	" \x01(\x05B\t\xfa\xc71\x050-900R\x10slowStartSeconds\x1a9\n" +
+	" \x01(\x05B\t\xfa\xc71\x050-900R\x10slowStartSeconds\x12#\n" +
+	"\x04port\x18\v \x01(\x05B\x0f\xe8\xc71\x01\xfa\xc71\a1-65535R\x04port\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\a\"C\n" +

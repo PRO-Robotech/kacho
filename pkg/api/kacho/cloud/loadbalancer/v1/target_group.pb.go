@@ -105,8 +105,14 @@ type TargetGroup struct {
 	// (no ramp).
 	SlowStartSeconds int32              `protobuf:"varint,12,opt,name=slow_start_seconds,json=slowStartSeconds,proto3" json:"slow_start_seconds,omitempty"`
 	Status           TargetGroup_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.TargetGroup_Status" json:"status,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// port — single backend port of the group (net-new, NLB-1b F6-co-req). Every
+	// target of the group receives forwarded traffic on this port; it is the sole
+	// backend-port source echoed by Listener.resolved_backend_port (design NLB-1
+	// §Listener wiring). Required, range 1..65535. Set-at-create in NLB-1b;
+	// LIVE-mutable re-echo semantics arrive in NLB-1c.
+	Port          int32 `protobuf:"varint,14,opt,name=port,proto3" json:"port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TargetGroup) Reset() {
@@ -221,6 +227,13 @@ func (x *TargetGroup) GetStatus() TargetGroup_Status {
 		return x.Status
 	}
 	return TargetGroup_STATUS_UNSPECIFIED
+}
+
+func (x *TargetGroup) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
 }
 
 // Target — one backend endpoint. 4-way identity oneof (design §2.5):
@@ -473,7 +486,7 @@ var File_kacho_cloud_loadbalancer_v1_target_group_proto protoreflect.FileDescrip
 
 const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/loadbalancer/v1/target_group.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xf7\x05\n" +
+	".kacho/cloud/loadbalancer/v1/target_group.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\x98\x06\n" +
 	"\vTargetGroup\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -490,7 +503,8 @@ const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\x1cderegistration_delay_seconds\x18\v \x01(\x05B\n" +
 	"\xfa\xc71\x060-3600R\x1aderegistrationDelaySeconds\x127\n" +
 	"\x12slow_start_seconds\x18\f \x01(\x05B\t\xfa\xc71\x050-900R\x10slowStartSeconds\x12G\n" +
-	"\x06status\x18\r \x01(\x0e2/.kacho.cloud.loadbalancer.v1.TargetGroup.StatusR\x06status\x1a9\n" +
+	"\x06status\x18\r \x01(\x0e2/.kacho.cloud.loadbalancer.v1.TargetGroup.StatusR\x06status\x12\x1f\n" +
+	"\x04port\x18\x0e \x01(\x05B\v\xfa\xc71\a1-65535R\x04port\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\":\n" +

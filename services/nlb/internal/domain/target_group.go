@@ -28,6 +28,9 @@ type TargetGroup struct {
 	DeregistrationDelaySeconds int32
 	SlowStartSeconds           int32
 	Status                     TargetGroupStatus
+	// Port — single backend port of the group (NLB-1b F6-co-req). Required,
+	// 1..65535. Echoed by Listener.resolved_backend_port. Set-at-create.
+	Port LbPort
 }
 
 // Validate — все семантически-нагруженные поля + cardinality лимит + bound checks.
@@ -72,6 +75,7 @@ func (tg TargetGroup) Validate() error {
 		ValidateLabels(tg.Labels),
 		tg.Status.Validate(),
 		tg.HealthCheck.Validate(),
+		tg.Port.Validate(),
 		deregErr,
 		slowErr,
 		cardErr,

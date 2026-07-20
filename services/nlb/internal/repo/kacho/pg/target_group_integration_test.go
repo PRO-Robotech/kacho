@@ -48,6 +48,48 @@ func TestTG_CRUD_WithHealthCheck(t *testing.T) {
 	assert.Equal(t, domain.LbDuration(2*time.Second), got.HealthCheck.Interval)
 }
 
+// TestTG_Port_RoundTrip — NLB-1-35 (F6-co-req): TargetGroup.port persists and
+// round-trips through Insert → Get. It is the sole backend-port source echoed
+// by Listener.resolvedBackendPort.
+func TestTG_Port_RoundTrip(t *testing.T) {
+	repo, cleanup := newRepo(t, setupTestDB(t))
+	defer cleanup()
+	ctx := context.Background()
+
+	tg := newTG("prj01TGPT1234567890ll", "port-tg")
+	tg.Port = 9090
+	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		rec, err := w.TargetGroups().Insert(ctx, tg)
+		require.NoError(t, err)
+		assert.Equal(t, domain.LbPort(9090), rec.Port)
+	})
+
+	rd, _ := repo.Reader(ctx)
+	defer func() { _ = rd.Close() }()
+	got, err := rd.TargetGroups().Get(ctx, string(tg.ID))
+	require.NoError(t, err)
+	assert.Equal(t, domain.LbPort(9090), got.Port)
+}
+
+// TestTG_Port_CheckConstraint — DB-level BVA invariant (data-integrity.md
+// ban #10): an out-of-range port is rejected by the CHECK constraint even if a
+// caller bypasses domain.Validate (defense-in-depth, SQLSTATE 23514).
+func TestTG_Port_CheckConstraint(t *testing.T) {
+	repo, cleanup := newRepo(t, setupTestDB(t))
+	defer cleanup()
+	ctx := context.Background()
+
+	for _, bad := range []domain.LbPort{0, 70000} {
+		tg := newTG("prj01TGPC1234567890ll", "")
+		tg.Port = bad
+		w, err := repo.Writer(ctx)
+		require.NoError(t, err)
+		_, insErr := w.TargetGroups().Insert(ctx, tg)
+		require.Error(t, insErr, "port=%d must be rejected by DB CHECK", bad)
+		w.Abort()
+	}
+}
+
 func TestTG_AddTargets_Idempotent(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
