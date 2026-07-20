@@ -1,0 +1,278 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/cloud/storage/v1/image.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// A set of methods for managing Image resources (public :9090; REST /storage/v1/images).
+service ImageService {
+  // Returns the specified Image resource.
+  //
+  // To get the list of available Image resources, make a [List] request.
+  rpc Get(GetImageRequest) returns (Image) {
+    option (google.api.http) = {get: "/storage/v1/images/{image_id}"};
+    option (kacho.iam.authz.v1.permission)        = "storage.images.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_image"
+      from_request_field: "image_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Retrieves the list of Image resources in the specified project.
+  rpc List(ListImagesRequest) returns (ListImagesResponse) {
+    option (google.api.http) = {get: "/storage/v1/images"};
+    option (kacho.iam.authz.v1.permission)        = "storage.images.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Creates an image in the specified project.
+  rpc Create(CreateImageRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/storage/v1/images"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateImageMetadata"
+      response: "Image"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.images.create";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Updates the specified image.
+  //
+  // Mutable: name / description / labels.
+  // Immutable: region_id / source_snapshot_id / source_volume_id / format.
+  rpc Update(UpdateImageRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/storage/v1/images/{image_id}"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateImageMetadata"
+      response: "Image"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.images.update";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_image"
+      from_request_field: "image_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Deletes the specified image.
+  //
+  // Deleting an image referenced by a boot Volume succeeds — the volume's
+  // source_image_id is cleared (FK ON DELETE SET NULL, provenance, not a live
+  // dependency).
+  rpc Delete(DeleteImageRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/storage/v1/images/{image_id}"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteImageMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.images.delete";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_image"
+      from_request_field: "image_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Lists operations for the specified image.
+  rpc ListOperations(ListImageOperationsRequest) returns (ListImageOperationsResponse) {
+    option (google.api.http) = {get: "/storage/v1/images/{image_id}/operations"};
+    option (kacho.iam.authz.v1.permission)        = "storage.images.listOperations";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_image"
+      from_request_field: "image_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message GetImageRequest {
+  // ID of the Image resource to return.
+  // To get the image ID, use an [ImageService.List] request.
+  string image_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+}
+
+message ListImagesRequest {
+  // ID of the project to list images in.
+  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  string project_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // The maximum number of results per page to return. If the number of available
+  // results is larger than [page_size], the service returns a
+  // [ListImagesResponse.next_page_token] that can be used to get the next page of
+  // results in subsequent list requests.
+  int64 page_size = 2 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListImagesResponse.next_page_token] returned by a previous list request.
+  string page_token = 3 [(length) = "<=100"];
+
+  // A filter expression that filters resources listed in the response. Currently
+  // filtering is supported on the `name` field only.
+  string filter = 4 [(length) = "<=1000"];
+
+  // By which column the listing should be ordered and in which direction,
+  // format is "createdAt desc". "id asc" if omitted.
+  string order_by = 5 [(length) = "<=100"];
+}
+
+message ListImagesResponse {
+  // List of images.
+  repeated Image images = 1;
+
+  // This token allows you to get the next page of results for list requests.
+  string next_page_token = 2;
+}
+
+message CreateImageRequest {
+  // ID of the project to create an image in.
+  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  string project_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // ID of the region the image lives in (REGIONAL/anycast). Peer-validated against
+  // kacho-geo.
+  string region_id = 2 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Name of the image.
+  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Description of the image.
+  string description = 4 [(length) = "<=256"];
+
+  // Resource labels as `key:value` pairs.
+  map<string, string> labels = 5 [
+    (kacho.cloud.size) = "<=64",
+    (length) = "<=63",
+    (pattern) = "[-_./\\@0-9a-z]*",
+    (map_key).length = "1-63",
+    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
+  ];
+
+  // ID of the source snapshot to create the image from. Exactly one of
+  // source_snapshot_id / source_volume_id must be set.
+  string source_snapshot_id = 6 [(length) = "<=50"];
+
+  // ID of the source volume to create the image from. Exactly one of
+  // source_snapshot_id / source_volume_id must be set.
+  string source_volume_id = 7 [(length) = "<=50"];
+}
+
+message CreateImageMetadata {
+  // ID of the image that is being created.
+  string image_id = 1;
+}
+
+message UpdateImageRequest {
+  // ID of the Image resource to update.
+  // To get the image ID, use an [ImageService.List] request.
+  string image_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Field mask that specifies which fields of the Image resource are going to be
+  // updated.
+  google.protobuf.FieldMask update_mask = 2;
+
+  // Name of the image.
+  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Description of the image.
+  string description = 4 [(length) = "<=256"];
+
+  // Resource labels as `key:value` pairs.
+  //
+  // Existing set of `labels` is completely replaced by the provided set.
+  map<string, string> labels = 5 [
+    (kacho.cloud.size) = "<=64",
+    (length) = "<=63",
+    (pattern) = "[-_./\\@0-9a-z]*",
+    (map_key).length = "1-63",
+    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
+  ];
+}
+
+message UpdateImageMetadata {
+  // ID of the Image resource that is being updated.
+  string image_id = 1;
+}
+
+message DeleteImageRequest {
+  // ID of the image to delete.
+  // To get the image ID, use an [ImageService.List] request.
+  string image_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+}
+
+message DeleteImageMetadata {
+  // ID of the image that is being deleted.
+  string image_id = 1;
+}
+
+message ListImageOperationsRequest {
+  // ID of the Image resource to list operations for.
+  string image_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // The maximum number of results per page to return.
+  int64 page_size = 2 [(value) = "<=1000"];
+
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListImageOperationsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3 [(length) = "<=100"];
+}
+
+message ListImageOperationsResponse {
+  // List of operations for the specified image.
+  repeated operation.Operation operations = 1;
+
+  // This token allows you to get the next page of results for list requests.
+  string next_page_token = 2;
+}

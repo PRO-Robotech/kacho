@@ -46,6 +46,7 @@ func Volume(v *domain.Volume) *storagev1.Volume {
 		SizeBytes:        v.SizeBytes,
 		BlockSize:        v.BlockSize,
 		SourceSnapshotId: v.SourceSnapshot,
+		SourceImageId:    v.SourceImage,
 		Status:           storagev1.Volume_Status(v.Status),
 	}
 	for i := range v.Attachments {
@@ -115,6 +116,33 @@ func Snapshot(s *domain.Snapshot) *storagev1.Snapshot {
 		SourceVolumeId: s.SourceVolumeID,
 		SizeBytes:      s.SizeBytes,
 		Status:         storagev1.Snapshot_Status(s.Status),
+	}
+}
+
+// Image конвертирует domain.Image → storagev1.Image. Публичная проекция lean
+// (INV-1): infra-полей (blob-layout/bucket/engine-namespace/storage-node) нет — они
+// только в internal-проекции :9091 (ImageInternal). placement_type всегда REGIONAL;
+// size_bytes°/min_disk_bytes°/format° — output-only (derived).
+func Image(i *domain.Image) *storagev1.Image {
+	if i == nil {
+		return nil
+	}
+	return &storagev1.Image{
+		Id:               i.ID,
+		ProjectId:        i.ProjectID,
+		CreatedAt:        ts(i.CreatedAt),
+		UpdatedAt:        ts(i.UpdatedAt),
+		Name:             i.Name,
+		Description:      i.Description,
+		Labels:           i.Labels,
+		RegionId:         i.RegionID,
+		PlacementType:    storagev1.Image_PlacementType(i.Placement),
+		SourceSnapshotId: i.SourceSnapshot,
+		SourceVolumeId:   i.SourceVolume,
+		SizeBytes:        i.SizeBytes,
+		MinDiskBytes:     i.MinDiskBytes,
+		Format:           storagev1.Image_Format(i.Format),
+		Status:           storagev1.Image_Status(i.Status),
 	}
 }
 

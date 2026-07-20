@@ -1,0 +1,52 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "kacho/cloud/storage/v1/image.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// InternalImageService — cluster-internal RPC (port 9091; ban #6), reachable ONLY on
+// the internal listener over mTLS, NOT on the external TLS endpoint.
+//
+// It carries the internal (infra) projection of an Image. AuthN (mTLS) + AuthZ
+// (per-RPC Check) apply on this listener as well.
+service InternalImageService {
+  // GetInternal — full (infra) projection of an Image, internal-only.
+  //
+  // NOTE: the infra fields (blob-layout / bucket / engine-namespace / storage-node)
+  // are a FUTURE data-plane increment and are out-of-scope here: the response
+  // message is a skeleton that embeds the public Image; infra fields are declared as
+  // a reserved range and are never populated on the public Image (ban #6 +
+  // infra-sensitive).
+  rpc GetInternal(GetInternalImageRequest) returns (ImageInternal) {
+    option (kacho.iam.authz.v1.permission)        = "storage.images.getInternal";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_image"
+      from_request_field: "image_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+}
+
+message GetInternalImageRequest {
+  // ID of the image to return the internal projection for.
+  string image_id = 1;
+}
+
+// ImageInternal — internal (infra) projection of an Image. Skeleton for this
+// increment: it embeds the public Image; infra fields (blob-layout / bucket /
+// engine-namespace / storage-node) are a future data-plane increment and are
+// reserved here — never populated on the public Image (ban #6 + infra-sensitive).
+message ImageInternal {
+  // Public projection of the image.
+  Image image = 1;
+
+  // Reserved for the future data-plane infra fields (out-of-scope this increment).
+  reserved 2 to 15;
+}

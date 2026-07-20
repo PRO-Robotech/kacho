@@ -239,10 +239,13 @@ type CreateVolumeRequest struct {
 	// Block size of the volume, specified in bytes. Default 4096 when omitted.
 	BlockSize int64 `protobuf:"varint,8,opt,name=block_size,json=blockSize,proto3" json:"block_size,omitempty"`
 	// ID of the source snapshot to restore the volume from. Optional; empty = a fresh
-	// volume.
+	// volume. Mutually exclusive with source_image_id.
 	SourceSnapshotId string `protobuf:"bytes,9,opt,name=source_snapshot_id,json=sourceSnapshotId,proto3" json:"source_snapshot_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// ID of the source image to materialise a boot volume from. Optional; empty = a
+	// non-boot volume. Mutually exclusive with source_snapshot_id.
+	SourceImageId string `protobuf:"bytes,10,opt,name=source_image_id,json=sourceImageId,proto3" json:"source_image_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateVolumeRequest) Reset() {
@@ -334,6 +337,13 @@ func (x *CreateVolumeRequest) GetBlockSize() int64 {
 func (x *CreateVolumeRequest) GetSourceSnapshotId() string {
 	if x != nil {
 		return x.SourceSnapshotId
+	}
+	return ""
+}
+
+func (x *CreateVolumeRequest) GetSourceImageId() string {
+	if x != nil {
+		return x.SourceImageId
 	}
 	return ""
 }
@@ -751,7 +761,7 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\border_by\x18\x05 \x01(\tB\t\x8a\xc81\x05<=100R\aorderBy\"w\n" +
 	"\x13ListVolumesResponse\x128\n" +
 	"\avolumes\x18\x01 \x03(\v2\x1e.kacho.cloud.storage.v1.VolumeR\avolumes\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xd1\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x83\x05\n" +
 	"\x13CreateVolumeRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x129\n" +
@@ -765,7 +775,9 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"size_bytes\x18\a \x01(\x03B\x06\xfa\xc71\x02>0R\tsizeBytes\x12\x1d\n" +
 	"\n" +
 	"block_size\x18\b \x01(\x03R\tblockSize\x126\n" +
-	"\x12source_snapshot_id\x18\t \x01(\tB\b\x8a\xc81\x04<=50R\x10sourceSnapshotId\x1a9\n" +
+	"\x12source_snapshot_id\x18\t \x01(\tB\b\x8a\xc81\x04<=50R\x10sourceSnapshotId\x120\n" +
+	"\x0fsource_image_id\x18\n" +
+	" \x01(\tB\b\x8a\xc81\x04<=50R\rsourceImageId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"3\n" +

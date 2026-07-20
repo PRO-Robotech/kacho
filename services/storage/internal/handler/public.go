@@ -20,6 +20,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
@@ -75,6 +76,7 @@ func (h *VolumeHandler) Create(ctx context.Context, req *storagev1.CreateVolumeR
 		SizeBytes:      req.GetSizeBytes(),
 		BlockSize:      req.GetBlockSize(),
 		SourceSnapshot: req.GetSourceSnapshotId(),
+		SourceImage:    req.GetSourceImageId(),
 	}
 	op, err := h.uc.Create(ctx, v)
 	if err != nil {
@@ -190,6 +192,95 @@ func (h *SnapshotHandler) Delete(ctx context.Context, req *storagev1.DeleteSnaps
 		return nil, serviceerr.ToStatus(err)
 	}
 	return operationToProto(op), nil
+}
+
+// ── ImageService (public :9090) ───────────────────────────────────────────
+
+// ImageHandler реализует storagev1.ImageServiceServer.
+type ImageHandler struct {
+	storagev1.UnimplementedImageServiceServer
+	uc *image.UseCase
+}
+
+// NewImageHandler конструирует ImageHandler.
+func NewImageHandler(uc *image.UseCase) *ImageHandler { return &ImageHandler{uc: uc} }
+
+// Get возвращает Image по id.
+func (h *ImageHandler) Get(ctx context.Context, req *storagev1.GetImageRequest) (*storagev1.Image, error) {
+	i, err := h.uc.Get(ctx, req.GetImageId())
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return protoconv.Image(i), nil
+}
+
+// List возвращает образы проекта (cursor-пагинация).
+func (h *ImageHandler) List(ctx context.Context, req *storagev1.ListImagesRequest) (*storagev1.ListImagesResponse, error) {
+	imgs, next, err := h.uc.List(ctx, image.Pagination{
+		PageSize:  req.GetPageSize(),
+		PageToken: req.GetPageToken(),
+		ProjectID: req.GetProjectId(),
+		Filter:    req.GetFilter(),
+	})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	resp := &storagev1.ListImagesResponse{NextPageToken: next}
+	for _, i := range imgs {
+		resp.Images = append(resp.Images, protoconv.Image(i))
+	}
+	return resp, nil
+}
+
+// Create создаёт Image (async Operation).
+func (h *ImageHandler) Create(ctx context.Context, req *storagev1.CreateImageRequest) (*operationpb.Operation, error) {
+	i := &domain.Image{
+		ProjectID:      req.GetProjectId(),
+		Name:           req.GetName(),
+		Description:    req.GetDescription(),
+		Labels:         req.GetLabels(),
+		RegionID:       req.GetRegionId(),
+		SourceSnapshot: req.GetSourceSnapshotId(),
+		SourceVolume:   req.GetSourceVolumeId(),
+	}
+	op, err := h.uc.Create(ctx, i)
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
+}
+
+// Update меняет mutable-поля Image (async Operation). Тонкий transport: делегирует
+// use-case (immutable-switch → UpdateMask → full-PATCH-семантика — в use-case).
+func (h *ImageHandler) Update(ctx context.Context, req *storagev1.UpdateImageRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.Update(ctx, req.GetImageId(), req.GetUpdateMask().GetPaths(),
+		req.GetName(), req.GetDescription(), req.GetLabels())
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
+}
+
+// Delete удаляет Image (async Operation).
+func (h *ImageHandler) Delete(ctx context.Context, req *storagev1.DeleteImageRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.Delete(ctx, req.GetImageId())
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
+}
+
+// ListOperations возвращает операции по Image.
+func (h *ImageHandler) ListOperations(ctx context.Context, req *storagev1.ListImageOperationsRequest) (*storagev1.ListImageOperationsResponse, error) {
+	ops, next, err := h.uc.ListOperations(ctx, req.GetImageId(), image.Pagination{PageSize: req.GetPageSize(), PageToken: req.GetPageToken()})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	resp := &storagev1.ListImageOperationsResponse{NextPageToken: next}
+	for i := range ops {
+		resp.Operations = append(resp.Operations, operationToProto(&ops[i]))
+	}
+	return resp, nil
 }
 
 // ── DiskTypeService (public :9090, read-only) ─────────────────────────────

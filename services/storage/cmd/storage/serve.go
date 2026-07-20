@@ -35,6 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
@@ -96,9 +97,11 @@ func runServe(cfg config.Config) error {
 	// mapper sentinel→gRPC, инжектится из handler-слоя (serviceerr.ToStatus). ──
 	volumeRepo := pg.NewVolumeRepo(pool)
 	snapshotRepo := pg.NewSnapshotRepo(pool)
+	imageRepo := pg.NewImageRepo(pool)
 	diskTypeRepo := pg.NewDiskTypeRepo(pool)
 	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
 	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus)
+	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
 	diskTypeUC := disktype.New(diskTypeRepo)
 
 	// ── authz: per-RPC InternalIAMService.Check на ОБОИХ листенерах (AuthN+AuthZ
@@ -146,6 +149,7 @@ func runServe(cfg config.Config) error {
 		syncRegistrar := clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(authzConn))
 		volumeUC.WithRegistrar(syncRegistrar)
 		snapshotUC.WithRegistrar(syncRegistrar)
+		imageUC.WithRegistrar(syncRegistrar)
 	} else {
 		logger.Warn("FGA register-drainer NOT started (disabled or authz.iam-addr empty) — " +
 			"owner-tuple register-intents stay durable in fga_register_outbox until configured")
@@ -177,7 +181,7 @@ func runServe(cfg config.Config) error {
 
 	// ── регистрация сервисов по листенерам + health на обоих ───────────────
 	opHandler := handler.NewOperationHandler(opsRepo)
-	registerServices(grpcSrv, internalSrv, volumeUC, snapshotUC, diskTypeUC, opHandler)
+	registerServices(grpcSrv, internalSrv, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
 	healthSrv := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, healthSrv)
 	healthpb.RegisterHealthServer(internalSrv, healthSrv)
@@ -249,13 +253,16 @@ func registerServices(
 	publicSrv, internalSrv grpc.ServiceRegistrar,
 	volumeUC *volume.UseCase,
 	snapshotUC *snapshot.UseCase,
+	imageUC *image.UseCase,
 	diskTypeUC *disktype.UseCase,
 	opHandler operationpb.OperationServiceServer,
 ) {
 	storagev1.RegisterVolumeServiceServer(publicSrv, handler.NewVolumeHandler(volumeUC))
 	storagev1.RegisterSnapshotServiceServer(publicSrv, handler.NewSnapshotHandler(snapshotUC))
+	storagev1.RegisterImageServiceServer(publicSrv, handler.NewImageHandler(imageUC))
 	storagev1.RegisterDiskTypeServiceServer(publicSrv, handler.NewDiskTypeHandler(diskTypeUC))
 	storagev1.RegisterInternalVolumeServiceServer(internalSrv, handler.NewInternalVolumeHandler(volumeUC))
+	storagev1.RegisterInternalImageServiceServer(internalSrv, handler.NewInternalImageHandler(imageUC))
 	storagev1.RegisterInternalDiskTypeServiceServer(internalSrv, handler.NewInternalDiskTypeHandler(diskTypeUC))
 	operationpb.RegisterOperationServiceServer(publicSrv, opHandler)
 	operationpb.RegisterOperationServiceServer(internalSrv, opHandler)

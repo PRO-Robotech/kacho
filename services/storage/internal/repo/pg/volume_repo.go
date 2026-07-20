@@ -49,7 +49,7 @@ func NewVolumeRepo(pool *pgxpool.Pool) *VolumeRepo { return &VolumeRepo{pool: po
 const volumeSelectCols = `
 	v.id, v.project_id, v.created_at, v.updated_at, v.name, v.description, v.labels,
 	v.zone_id, v.disk_type_id, v.size_bytes, v.block_size,
-	COALESCE(v.source_snapshot_id, ''), v.state,
+	COALESCE(v.source_snapshot_id, ''), COALESCE(v.source_image_id, ''), v.state,
 	va.instance_id, va.instance_name, va.device_name, va.is_boot, va.mode, va.auto_delete, va.attached_at`
 
 // scanVolume читает одну строку проекции volumeSelectCols в domain.Volume, деривя
@@ -70,7 +70,7 @@ func scanVolume(row pgx.Row) (*domain.Volume, error) {
 	)
 	if err := row.Scan(
 		&v.ID, &v.ProjectID, &v.CreatedAt, &v.UpdatedAt, &v.Name, &v.Description, &labelsJSON,
-		&v.ZoneID, &v.DiskTypeID, &v.SizeBytes, &v.BlockSize, &v.SourceSnapshot, &state,
+		&v.ZoneID, &v.DiskTypeID, &v.SizeBytes, &v.BlockSize, &v.SourceSnapshot, &v.SourceImage, &state,
 		&instanceID, &instanceName, &deviceName, &isBoot, &mode, &autoDelete, &attachedAt,
 	); err != nil {
 		return nil, err
@@ -195,17 +195,23 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume) (*domain.Volu
 	if v.SourceSnapshot != "" {
 		srcSnap = &v.SourceSnapshot
 	}
+	// source_image_id: ''→NULL (иначе FK ловит пустую ссылку). Взаимоисключение с
+	// source_snapshot проверено доменом (Volume.Validate) на sync-фазе use-case.
+	var srcImg *string
+	if v.SourceImage != "" {
+		srcImg = &v.SourceImage
+	}
 	created := *v
 	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx, `
 			INSERT INTO volumes
 				(id, project_id, name, description, labels, zone_id, disk_type_id,
-				 size_bytes, block_size, source_snapshot_id, state)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'READY')
+				 size_bytes, block_size, source_snapshot_id, source_image_id, state)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'READY')
 			RETURNING created_at, updated_at`,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
-			v.SizeBytes, blockSize, srcSnap).
+			v.SizeBytes, blockSize, srcSnap, srcImg).
 			Scan(&created.CreatedAt, &created.UpdatedAt)
 		if serr != nil {
 			return serr
@@ -223,7 +229,8 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume) (*domain.Volu
 	})
 	if txErr != nil {
 		return nil, mapVolumeErr(txErr, volErrCtx{
-			volumeID: v.ID, volumeName: v.Name, diskTypeID: v.DiskTypeID, snapshotID: v.SourceSnapshot,
+			volumeID: v.ID, volumeName: v.Name, diskTypeID: v.DiskTypeID,
+			snapshotID: v.SourceSnapshot, imageID: v.SourceImage,
 		})
 	}
 	created.Status = domain.DeriveStatus("READY", false) // just created → AVAILABLE

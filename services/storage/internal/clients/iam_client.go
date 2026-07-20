@@ -15,6 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
@@ -59,4 +60,5 @@ func (c *IAMClient) EnsureProjectExists(ctx context.Context, projectID string) e
 var (
 	_ volume.IAMClient   = (*IAMClient)(nil)
 	_ snapshot.IAMClient = (*IAMClient)(nil)
+	_ image.IAMClient    = (*IAMClient)(nil)
 )

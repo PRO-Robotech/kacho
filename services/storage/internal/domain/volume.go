@@ -16,6 +16,7 @@ import (
 const (
 	PrefixVolume    = "vol"
 	PrefixSnapshot  = "snp"
+	PrefixImage     = "img"
 	PrefixDiskType  = "dtp"
 	PrefixOperation = "sop"
 )
@@ -38,6 +39,8 @@ var (
 	errIllegalName = errors.New("Illegal argument name")
 	//nolint:staticcheck // ST1005: контрактный текст Kachō (§1.7) — капитализация нормативна
 	errIllegalSize = errors.New("Illegal argument size_bytes")
+	// errSourceConflict — том нельзя засеять одновременно из snapshot и image (F9).
+	errSourceConflict = errors.New("a volume is seeded from either a snapshot or an image, not both")
 )
 
 // VolumeName — self-validating newtype display-name тома (skill evgeniy: инвариант
@@ -134,10 +137,14 @@ type Volume struct {
 	SizeBytes      int64
 	BlockSize      int64
 	SourceSnapshot string
-	Status         VolumeStatus
-	Attachments    []VolumeAttachment // output-only (0..1: PK volume_id → ≤1 attach)
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// SourceImage — id образа (Image), из которого материализован boot-Volume (F9).
+	// Immutable; same-DB FK → images ON DELETE SET NULL (provenance, не live-dependency).
+	// Взаимоисключение с SourceSnapshot: том засевается из ОДНОГО источника.
+	SourceImage string
+	Status      VolumeStatus
+	Attachments []VolumeAttachment // output-only (0..1: PK volume_id → ≤1 attach)
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Validate проверяет domain-инварианты Volume перед созданием. Порядок выдаёт
@@ -160,6 +167,12 @@ func (v Volume) Validate() error {
 	}
 	if v.SizeBytes <= 0 {
 		return errIllegalSize
+	}
+	// Взаимоисключение источников (F9, STOR-1-19): том засевается ЛИБО из snapshot,
+	// ЛИБО из image, не из обоих (spoken-exclusion). Backstop — нет (нельзя выразить
+	// одним DB-CHECK, оба поля независимо nullable), поэтому энфорсим в домене.
+	if v.SourceSnapshot != "" && v.SourceImage != "" {
+		return errSourceConflict
 	}
 	return v.Status.Validate()
 }

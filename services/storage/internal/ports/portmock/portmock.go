@@ -21,6 +21,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
@@ -69,19 +70,56 @@ func (m *VolumeWriter) Detach(ctx context.Context, volumeID, instanceID string) 
 	return m.DetachFunc(ctx, volumeID, instanceID)
 }
 
-// PeerClient — мок volume.GeoClient и volume.IAMClient / snapshot.IAMClient
-// (идентичная EnsureZoneExists/EnsureProjectExists-форма на функциях-полях).
+// PeerClient — мок volume.GeoClient / image.GeoClient и volume.IAMClient /
+// snapshot.IAMClient / image.IAMClient (EnsureZoneExists/EnsureRegionExists/
+// EnsureProjectExists на функциях-полях).
 type PeerClient struct {
 	EnsureZoneFunc    func(ctx context.Context, zoneID string) error
+	EnsureRegionFunc  func(ctx context.Context, regionID string) error
 	EnsureProjectFunc func(ctx context.Context, projectID string) error
 }
 
 func (m *PeerClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
 	return m.EnsureZoneFunc(ctx, zoneID)
 }
+func (m *PeerClient) EnsureRegionExists(ctx context.Context, regionID string) error {
+	return m.EnsureRegionFunc(ctx, regionID)
+}
 func (m *PeerClient) EnsureProjectExists(ctx context.Context, projectID string) error {
 	return m.EnsureProjectFunc(ctx, projectID)
 }
+
+// ImageReader — мок image.Reader на функциях-полях.
+type ImageReader struct {
+	GetFunc         func(ctx context.Context, id string) (*domain.Image, error)
+	ListFunc        func(ctx context.Context, p image.Pagination) ([]*domain.Image, string, error)
+	GetInternalFunc func(ctx context.Context, id string) (*domain.Image, error)
+}
+
+func (m *ImageReader) Get(ctx context.Context, id string) (*domain.Image, error) {
+	return m.GetFunc(ctx, id)
+}
+func (m *ImageReader) List(ctx context.Context, p image.Pagination) ([]*domain.Image, string, error) {
+	return m.ListFunc(ctx, p)
+}
+func (m *ImageReader) GetInternal(ctx context.Context, id string) (*domain.Image, error) {
+	return m.GetInternalFunc(ctx, id)
+}
+
+// ImageWriter — мок image.Writer на функциях-полях.
+type ImageWriter struct {
+	InsertFunc func(ctx context.Context, i *domain.Image) (*domain.Image, error)
+	UpdateFunc func(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error)
+	DeleteFunc func(ctx context.Context, id string) error
+}
+
+func (m *ImageWriter) Insert(ctx context.Context, i *domain.Image) (*domain.Image, error) {
+	return m.InsertFunc(ctx, i)
+}
+func (m *ImageWriter) Update(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error) {
+	return m.UpdateFunc(ctx, id, u)
+}
+func (m *ImageWriter) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
 
 // SnapshotRepo — мок snapshot.Repo на функциях-полях.
 type SnapshotRepo struct {
@@ -260,6 +298,10 @@ var (
 	_ volume.IAMClient   = (*PeerClient)(nil)
 	_ snapshot.IAMClient = (*PeerClient)(nil)
 	_ snapshot.Repo      = (*SnapshotRepo)(nil)
+	_ image.Reader       = (*ImageReader)(nil)
+	_ image.Writer       = (*ImageWriter)(nil)
+	_ image.GeoClient    = (*PeerClient)(nil)
+	_ image.IAMClient    = (*PeerClient)(nil)
 	_ disktype.Repo      = (*DiskTypeRepo)(nil)
 	_ operations.Repo    = (*OpsRepo)(nil)
 )
