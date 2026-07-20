@@ -42,6 +42,12 @@ describe("registry resource-registry", () => {
     expect(repo.columns.some((c) => c.header === "Тип" && c.path === "artifact_types")).toBe(true);
   });
 
+  it("repositories — колонки «Класс» (lifecycle) + «Видимость» (visibility) (REG-1 F5/F7)", () => {
+    const repo = getResource("repositories")!;
+    expect(repo.columns.some((c) => c.header === "Класс" && c.path === "lifecycle")).toBe(true);
+    expect(repo.columns.some((c) => c.header === "Видимость" && c.path === "visibility")).toBe(true);
+  });
+
   it("tags — единственная мутация delete, nested apiPath, без create/update-полей", () => {
     const tag = getResource("tags")!;
     expect(tag.apiPath).toBe("/registry/v1/registries/{registryId}/repositories/{repository}/tags");
