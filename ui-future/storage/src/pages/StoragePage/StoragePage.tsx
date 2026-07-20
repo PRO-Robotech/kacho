@@ -24,9 +24,9 @@ export interface StoragePageProps {
   navigate?: (path: string) => void | Promise<void>;
 }
 
-// Storage-домен: Volume / Snapshot (project-scoped CRUD) + DiskType (read-only
-// cluster-scoped справочник) через единый REGISTRY.
-const CRUD_SPECS: ResourceSpec[] = ["volumes", "snapshots"].map((id) => REGISTRY[id]).filter(Boolean);
+// Storage-домен: Volume / Snapshot / Image (project-scoped CRUD) + DiskType
+// (read-only cluster-scoped справочник) через единый REGISTRY.
+const CRUD_SPECS: ResourceSpec[] = ["volumes", "snapshots", "images"].map((id) => REGISTRY[id]).filter(Boolean);
 const DISK_TYPES = REGISTRY["disk-types"];
 
 export const StoragePage: FC<StoragePageProps> = ({ context }) => {
