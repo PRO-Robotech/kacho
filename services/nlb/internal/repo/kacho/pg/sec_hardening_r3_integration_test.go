@@ -288,16 +288,15 @@ func TestLBStatusRecompute_PreservesConcurrentStop(t *testing.T) {
 	const prj = "prj0RECOMP234567890ll"
 	lb := newLB(prj, "recomp-lb")
 	tg := newTG(prj, "recomp-tg")
-	lst := newListener(lb.ID, prj, "recomp-lst", 80)
+	// NLB-1b F3/F4: a wired listener (resolving targetGroupId) drives INACTIVE→ACTIVE
+	// — recompute keys on listener-TG resolution, not the legacy pivot attach.
+	lst := wiredListener(lb.ID, prj, "recomp-lst", 80, tg.ID)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		_, err := w.LoadBalancers().Insert(ctx, lb)
 		require.NoError(t, err)
 		_, err = w.TargetGroups().Insert(ctx, tg)
 		require.NoError(t, err)
 		_, err = w.Listeners().Insert(ctx, lst)
-		require.NoError(t, err)
-		// Attach → recompute (listener + attach present) drives INACTIVE→ACTIVE.
-		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 0)
 		require.NoError(t, err)
 	})
 
@@ -315,8 +314,9 @@ func TestLBStatusRecompute_PreservesConcurrentStop(t *testing.T) {
 		domain.LBStatusActive, domain.LBStatusStopping)
 	require.NoError(t, statErr)
 
-	// TX-detach: DELETE attach → fires recompute → its status-guarded UPDATE must
-	// block on the lb row, then re-evaluate and NOT clobber the STOPPING commit.
+	// TX-recompute: DELETE the wired listener → fires recompute (→INACTIVE) whose
+	// status-guarded UPDATE must block on the lb row, then re-evaluate and NOT
+	// clobber the STOPPING commit.
 	detachCh := make(chan error, 1)
 	go func() {
 		wDet, derr := repo.Writer(ctx)
@@ -325,7 +325,7 @@ func TestLBStatusRecompute_PreservesConcurrentStop(t *testing.T) {
 			return
 		}
 		defer wDet.Abort()
-		e := wDet.AttachedTargetGroups().Detach(ctx, string(lb.ID), string(tg.ID))
+		e := wDet.Listeners().Delete(ctx, string(lst.ID))
 		if e == nil {
 			e = wDet.Commit()
 		}

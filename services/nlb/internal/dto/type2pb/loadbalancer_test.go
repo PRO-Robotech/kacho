@@ -182,6 +182,8 @@ func TestNetworkLoadBalancer_StatusMapping(t *testing.T) {
 		{domain.LBStatusStopped, lbv1.NetworkLoadBalancer_STOPPED},
 		{domain.LBStatusDeleting, lbv1.NetworkLoadBalancer_DELETING},
 		{domain.LBStatusInactive, lbv1.NetworkLoadBalancer_INACTIVE},
+		{domain.LBStatusDegraded, lbv1.NetworkLoadBalancer_DEGRADED},
+		{domain.LBStatusDisabled, lbv1.NetworkLoadBalancer_DISABLED},
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.domain), func(t *testing.T) {

@@ -340,10 +340,10 @@ func TestLB_StatusRecomputeTrigger(t *testing.T) {
 		require.NoError(t, err)
 		_, err = w.TargetGroups().Insert(ctx, tg)
 		require.NoError(t, err)
-		l := newListener(lb.ID, string(lb.ProjectID), "trig-lst", 7777)
+		// NLB-1b F3/F4: ACTIVE is gated on the listener's own resolving
+		// targetGroupId (direct FK), NOT on the legacy pivot attach.
+		l := wiredListener(lb.ID, string(lb.ProjectID), "trig-lst", 7777, tg.ID)
 		_, err = w.Listeners().Insert(ctx, l)
-		require.NoError(t, err)
-		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 100)
 		require.NoError(t, err)
 	})
 
@@ -351,7 +351,7 @@ func TestLB_StatusRecomputeTrigger(t *testing.T) {
 	defer func() { _ = rd.Close() }()
 	got, err := rd.LoadBalancers().Get(ctx, string(lb.ID))
 	require.NoError(t, err)
-	assert.Equal(t, domain.LBStatusActive, got.Status, "trigger lb_status_recompute → ACTIVE")
+	assert.Equal(t, domain.LBStatusActive, got.Status, "trigger lb_status_recompute → ACTIVE (listener resolves TG)")
 }
 
 // TestLB_ConcurrentInsertSameName — partial UNIQUE race. Две goroutine

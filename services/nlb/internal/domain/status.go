@@ -43,12 +43,20 @@ const (
 	LBStatusStopped  LBStatus = "STOPPED"
 	LBStatusDeleting LBStatus = "DELETING"
 	LBStatusInactive LBStatus = "INACTIVE"
+	// LBStatusDegraded — NLB-1b F3 (NLB-1-18): enabled ∧ ≥1 listener, но хотя бы
+	// один listener без резолвящейся target group (пустой targetGroupId) —
+	// misconfigured, silent-blackhole не маскируется под ACTIVE. Auto-recompute.
+	LBStatusDegraded LBStatus = "DEGRADED"
+	// LBStatusDisabled — NLB-1b F3 (NLB-1-13): admin_state=DISABLED («админ-выключен,
+	// конфиг сохранён» — не failure). Auto-recompute из admin_state feed.
+	LBStatusDisabled LBStatus = "DISABLED"
 )
 
 func (s LBStatus) Validate() error {
 	switch s {
 	case LBStatusCreating, LBStatusStarting, LBStatusActive,
-		LBStatusStopping, LBStatusStopped, LBStatusDeleting, LBStatusInactive:
+		LBStatusStopping, LBStatusStopped, LBStatusDeleting, LBStatusInactive,
+		LBStatusDegraded, LBStatusDisabled:
 		return nil
 	}
 	return coreerrors.InvalidArgument().

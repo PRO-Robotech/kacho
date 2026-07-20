@@ -132,6 +132,10 @@ func lbStatusToPb(s domain.LBStatus) (lbv1.NetworkLoadBalancer_Status, error) {
 		return lbv1.NetworkLoadBalancer_DELETING, nil
 	case domain.LBStatusInactive:
 		return lbv1.NetworkLoadBalancer_INACTIVE, nil
+	case domain.LBStatusDegraded:
+		return lbv1.NetworkLoadBalancer_DEGRADED, nil
+	case domain.LBStatusDisabled:
+		return lbv1.NetworkLoadBalancer_DISABLED, nil
 	}
 	return lbv1.NetworkLoadBalancer_STATUS_UNSPECIFIED, fmt.Errorf("unknown LBStatus: %q", s)
 }

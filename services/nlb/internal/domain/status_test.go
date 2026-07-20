@@ -37,7 +37,7 @@ func TestLBStatus_Validate(t *testing.T) {
 	good := []domain.LBStatus{
 		domain.LBStatusCreating, domain.LBStatusStarting, domain.LBStatusActive,
 		domain.LBStatusStopping, domain.LBStatusStopped, domain.LBStatusDeleting,
-		domain.LBStatusInactive,
+		domain.LBStatusInactive, domain.LBStatusDegraded, domain.LBStatusDisabled,
 	}
 	for _, s := range good {
 		if err := s.Validate(); err != nil {

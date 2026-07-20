@@ -315,14 +315,16 @@ func TestIntegration_AttachTargetGroup_HappyPath_AndStatusRecompute(t *testing.T
 	_, err = w.TargetGroups().Insert(context.Background(), tg)
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
-	// Insert listener (raw SQL) after LB committed so trigger lb_status_recompute fires.
+	// Insert a WIRED listener (default_target_group_id = tgID) after LB committed so
+	// trigger lb_status_recompute fires. NLB-1b F3/F4: ACTIVE is gated on the
+	// listener resolving its targetGroupId (direct FK), not on the pivot attach.
 	_, err = pool.Exec(context.Background(), `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
 			description, labels, protocol, port, target_port, ip_version,
 			address_id, allocated_address, subnet_id, proxy_protocol_v2, default_target_group_id, status)
 		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, 'IPV4',
-		        '', '203.0.113.5', '', false, '', 'ACTIVE')`,
-		ids.NewID(ids.PrefixListener), "prj-acme", lbID, "ru-central1",
+		        '', '203.0.113.5', '', false, $5, 'ACTIVE')`,
+		ids.NewID(ids.PrefixListener), "prj-acme", lbID, "ru-central1", tgID,
 	)
 	require.NoError(t, err)
 
@@ -342,7 +344,8 @@ func TestIntegration_AttachTargetGroup_HappyPath_AndStatusRecompute(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, lbID, rec.LoadBalancerID)
 
-	// Trigger lb_status_recompute should have switched status to ACTIVE.
+	// Trigger lb_status_recompute should have switched status to ACTIVE (the wired
+	// listener resolves its target group; the pivot attach is legacy/no-op for status).
 	lbRec, err := rd.LoadBalancers().Get(context.Background(), lbID)
 	require.NoError(t, err)
 	require.Equal(t, domain.LBStatusActive, lbRec.Status, "trigger should have moved INACTIVE → ACTIVE")

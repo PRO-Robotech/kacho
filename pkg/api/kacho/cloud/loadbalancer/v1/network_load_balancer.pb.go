@@ -89,6 +89,13 @@ const (
 	// No active listeners or attached target groups; no health-checks issued,
 	// no traffic forwarded.
 	NetworkLoadBalancer_INACTIVE NetworkLoadBalancer_Status = 7
+	// NLB-1b F3 (NLB-1-18): enabled with >=1 listener but at least one listener
+	// has no resolvable target group (misconfigured) — surfaced, not masked as
+	// ACTIVE. Auto-recomputed from listener target-group resolution.
+	NetworkLoadBalancer_DEGRADED NetworkLoadBalancer_Status = 8
+	// NLB-1b F3 (NLB-1-13): administratively disabled (admin_state=DISABLED);
+	// configuration intact, not a failure state. Auto-recomputed from admin_state.
+	NetworkLoadBalancer_DISABLED NetworkLoadBalancer_Status = 9
 )
 
 // Enum value maps for NetworkLoadBalancer_Status.
@@ -102,6 +109,8 @@ var (
 		5: "STOPPED",
 		6: "DELETING",
 		7: "INACTIVE",
+		8: "DEGRADED",
+		9: "DISABLED",
 	}
 	NetworkLoadBalancer_Status_value = map[string]int32{
 		"STATUS_UNSPECIFIED": 0,
@@ -112,6 +121,8 @@ var (
 		"STOPPED":            5,
 		"DELETING":           6,
 		"INACTIVE":           7,
+		"DEGRADED":           8,
+		"DISABLED":           9,
 	}
 )
 
@@ -971,7 +982,7 @@ var File_kacho_cloud_loadbalancer_v1_network_load_balancer_proto protoreflect.Fi
 
 const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xde\x0f\n" +
+	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xfb\x0f\n" +
 	"\x13NetworkLoadBalancer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -999,7 +1010,7 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\x12security_group_ids\x18+ \x03(\tR\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x7f\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9b\x01\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bCREATING\x10\x01\x12\f\n" +
@@ -1009,7 +1020,9 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\bSTOPPING\x10\x04\x12\v\n" +
 	"\aSTOPPED\x10\x05\x12\f\n" +
 	"\bDELETING\x10\x06\x12\f\n" +
-	"\bINACTIVE\x10\a\"8\n" +
+	"\bINACTIVE\x10\a\x12\f\n" +
+	"\bDEGRADED\x10\b\x12\f\n" +
+	"\bDISABLED\x10\t\"8\n" +
 	"\x04Type\x12\x14\n" +
 	"\x10TYPE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bEXTERNAL\x10\x01\x12\f\n" +
