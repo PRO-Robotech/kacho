@@ -316,7 +316,7 @@ def build_collection(service: str, cases: List[Case]) -> Dict:
     return {
         "info": {
             "_postman_id": str(uuid.uuid4()),
-            "name": f"kacho-nlb / newman / {service}",
+            "name": f"kacho-registry / newman / {service}",
             "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         },
         "event": [

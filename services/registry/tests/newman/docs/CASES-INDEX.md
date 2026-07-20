@@ -48,7 +48,7 @@ op-id prefix `reo`, polled via `/registries/v1/operations/{id}`). Registry id pr
 | `REG-CR-CRUD-OK` | CRUD | P1 | Create → Operation → poll → response Registry (prefix `reg`, status ACTIVE, endpoint) → Get echoes name/projectId | REG-01 |
 | `REG-LST-CRUD-OK` | CRUD | P1 | List (project-scope) → `registries[]` array (authz-filtered) | REG-06 |
 | `REG-UPD-CRUD-OK` | CRUD | P1 | Update labels+description via `updateMask` → Operation → poll → Get reflects new fields | REG-36 |
-| `REG-UPD-NEG-IMMUTABLE-NAME` | NEG, CONF | P1 | Update with `updateMask=name` → 400 INVALID_ARGUMENT ("name is immutable after Registry.Create") | REG-36 |
+| `REG-UPD-CRUD-RENAME-NAME` | CRUD | P1 | Update `updateMask=name` → Operation → Get reflects new name, id stable (REG-1 F2: name **mutable**; identity is immutable id) | REG-1-06 |
 | `REG-DEL-CRUD-OK` | CRUD | P1 | Delete → Operation → poll → Get 404 NOT_FOUND | REG-07 |
 | `REG-CR-NEG-INVALID-NAME` | NEG, VAL | P0 | Create `name="Team_Images"` (uppercase/underscore) → 400 INVALID_ARGUMENT, no Operation | REG-02 |
 | `REG-CR-NEG-PROJECT-NOTFOUND` | NEG | P1 | Create with unknown `projectId` → 400 INVALID_ARGUMENT ("project ... not found", cross-domain reject) | REG-03 |
@@ -95,6 +95,45 @@ public-mux registration (отдельный срез) — green after routes wir
 | `REPO-REF-EMPTY` | CRUD | P2 | ListReferrers subject без referrer'ов → `referrers=[]` 200 (not 404) | RG-1-C03 |
 | `REPO-REF-NEG-BADDIGEST` | NEG, VAL | P1 | ListReferrers malformed subject_digest → 400 ("invalid subject digest") | RG-1-C04 |
 | `REPO-CLEANUP` | CRUD | P3 | Cleanup: delete shared overlay registry | RG-1-A01 |
+
+---
+
+## 1c. Redesign surface (REG-1) — `cases/registry-redesign.py` (PRESENT — 17 cases)
+
+Production-инкремент REG-1 поверх уже id-based `Registry`: **F4** regional placement
+(`regionId` peer-validate geo, `placementType` always-REGIONAL), **F5** `defaultRepositoryVisibility`
+(rename `default_visibility` + admin-gate→PUBLIC), **F7** `Repository.lifecycle`
+(`DURABLE`/`EPHEMERAL` output-only enum), плюс **F1/F2** identity-lock (id immutable, rename
+name НЕ ломает id/endpoint/pull-URL, field-absence globalSlug/displayName/top-level visibility)
+и **F8** hardening (empty-mask immutable-ignored, pageSize BVA). Acceptance source of truth:
+`docs/specs/sub-phase-REG-1-registry-repository-acceptance.md` (REG-1-01..32). Self-contained
+setup/cleanup, `-{{runId}}`-изоляция, `regionId={{existingRegionId}}` (geo-фикстура kacho-deploy).
+
+| Case id | Classes | Prio | Meaning | Verifies |
+|---|---|---|---|---|
+| `REG-RD-SETUP` | CRUD | P0 | Setup: create shared REGIONAL registry `{{rdRegId}}` (regionId) | REG-1-01 |
+| `REG-RD-F4-PLACEMENT-REGIONAL` | CRUD, CONF | P0 | Get → regionId echoed, placementType REGIONAL const, zoneId absent (anycast) | REG-1-01, REG-1-10 |
+| `REG-RD-F4-NEG-REGION-REQUIRED` | NEG, VAL | P0 | Create without regionId → 400 INVALID_ARGUMENT ("regionId is required"), no Operation | REG-1-11 |
+| `REG-RD-F4-NEG-REGION-NOTFOUND` | NEG | P1 | Create with nonexistent regionId → FAILED_PRECONDITION (code 9) peer-validate geo | REG-1-12 |
+| `REG-RD-F4-NEG-REGION-IMMUTABLE` | NEG, CONF | P1 | Update `updateMask=regionId`/`placementType` → 400 (immutable placement anchor) | REG-1-14 |
+| `REG-RD-F1-FIELD-ABSENCE` | CONF | P1 | Get → no globalSlug/displayName/top-level visibility/infra fields (two-projection, ban #15) | REG-1-02 |
+| `REG-RD-F1-NEG-ID-IMMUTABLE` | NEG, CONF | P0 | Update `updateMask=id` → 400 (id immutable); POST `:rename` → route absent (no id-rename) | REG-1-04 |
+| `REG-RD-F2-RENAME-STABLE-ID` | CRUD, CONF | P0 | Rename name via Update → name changes, id/endpoint **unchanged** (URL/pull by immutable id) | REG-1-06, REG-1-07 |
+| `REG-RD-F5-INHERIT-PRIVATE` | CRUD | P1 | defaultRepositoryVisibility PRIVATE seeds new Repository.visibility when visibility omitted | REG-1-15 |
+| `REG-RD-F5-NEG-PUBLIC-ADMIN-GATE` | NEG, AZ | P0 | Non-admin drives defaultRepositoryVisibility→PUBLIC → 403 PERMISSION_DENIED; description-only Update → OK | REG-1-16 |
+| `REG-RD-F7-CREATE-DURABLE` | CRUD | P0 | CreateRepository (no lifecycle) → lifecycle DURABLE by default (survives-empty), tagCount 0 | REG-1-21 |
+| `REG-RD-F7-CREATE-EPHEMERAL` | CRUD | P1 | CreateRepository lifecycle=EPHEMERAL → lifecycle EPHEMERAL (opt-in overrides default) | REG-1-22 |
+| `REG-RD-F7-NEG-LIFECYCLE-READONLY` | NEG, VAL | P1 | UpdateRepository `updateMask=lifecycle` → 400 (output-only, system-managed) | REG-1-24 |
+| `REG-RD-F6-NEG-REGISTRYID-IMMUTABLE` | NEG, CONF | P1 | UpdateRepository `updateMask=registryId` → 400 (registryId immutable, natural key) | REG-1-19 |
+| `REG-RD-F8-EMPTY-MASK-IMMUTABLE-IGNORED` | CRUD, CONF | P1 | Empty updateMask → mutable applied (description/name), immutable (id/regionId) in body silently ignored | REG-1-28 |
+| `REG-RD-F8-NEG-PAGESIZE-OVERMAX` | NEG, BVA, VAL | P1 | List pageSize=1001 (>max) → 400 INVALID_ARGUMENT (rejected not clamped, format-validate before authz) | REG-1-31 |
+| `REG-RD-CLEANUP` | IDEM | P3 | Teardown: delete shared `{{rdRegId}}` (tolerant) | REG-1-09 |
+
+> **Not black-box-testable via control-plane newman** (by construction — covered by integration
+> `internal/repo/.../*_integration_test.go`, noted in RESULTS): REG-1-13 (geo-down `UNAVAILABLE` —
+> cannot kill geo from black-box); REG-1-23 (auto-promote of a *register-on-first-push* ephemeral —
+> the overlay-less repo requires a data-plane push); REG-1-25 (concurrent lifecycle-CAS — concurrency);
+> REG-1-30 (INTERNAL no-leak — DB-error simulation); REG-1-20 (ACTIVE-guard DELETING — racy window).
 
 ---
 
@@ -203,6 +242,8 @@ the data-plane per-request Check.
 | Surface | Module | Status | Cases / scenarios | Acceptance |
 |---|---|---|---|---|
 | Control-plane CRUD | `cases/registry.py` | present | 9 | REG-01/02/03/05/06/07/36 |
+| Redesign surface (REG-1) | `cases/registry-redesign.py` | present | 17 | REG-1-01/02/04/06/07/10/11/12/14/15/16/19/21/22/24/28/31 |
+| Config-overlay Repository (RG-1) | `cases/registry-repository.py` | present | 13 | RG-1-A01..C04 |
 | Control-plane authz | `cases/registry-authz.py` | **pending** | 12 intended | REG-01a/05/06/07/26/28/29/30/36 |
 | Data-plane OCI proxy | `scripts/dataplane-e2e.sh` | **pending** | 18 intended | REG-10..25, 35, 37, 39 |
 | Token-exchange (Hydra) | `scripts/dataplane-e2e.sh` | **pending** | 22 intended | REG-TX-01..22 |

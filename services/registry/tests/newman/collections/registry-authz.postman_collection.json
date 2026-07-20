@@ -1,7 +1,7 @@
 {
   "info": {
-    "_postman_id": "ca868432-023a-4887-9c0c-520ad87c97ae",
-    "name": "kacho-nlb / newman / registry-authz",
+    "_postman_id": "7f86582f-2c2b-4797-a4c1-39d4c91909c1",
+    "name": "kacho-registry / newman / registry-authz",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -57,7 +57,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"az-fixture-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"description\": \"authz coverage fixture\"}",
+              "raw": "{\"name\": \"az-fixture-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"description\": \"authz coverage fixture\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -539,7 +539,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"az-intruder-{{runId}}\", \"projectId\": \"{{existingProjectId}}\"}",
+              "raw": "{\"name\": \"az-intruder-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
