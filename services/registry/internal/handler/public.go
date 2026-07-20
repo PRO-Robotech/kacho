@@ -79,6 +79,8 @@ func (h *RegistryHandler) CreateNamespace(ctx context.Context, req *registryv1.C
 		Name:        req.GetName(),
 		Description: req.GetDescription(),
 		Labels:      req.GetLabels(),
+		RegionID:    req.GetRegionId(),
+		GlobalSlug:  req.GetGlobalSlug(),
 	})
 	if err != nil {
 		return nil, mapErr(err)

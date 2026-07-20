@@ -78,14 +78,19 @@ func withSearchPath(dsn string) string {
 	return dsn + sep + opt
 }
 
-// newReg строит domain.Namespace с сгенерированным id (prefix reg).
+// newReg строит domain.Namespace с сгенерированным id. RegionID/GlobalSlug —
+// NOT NULL после migration 0007; GlobalSlug = id (уникален) чтобы фикстуры с одним
+// именем в разных проектах не коллизили на глобальном partial UNIQUE(global_slug).
 func newReg(projectID, name string, labels map[string]string) *domain.Namespace {
+	id := ids.NewHyphenID(ids.PrefixNamespace)
 	return &domain.Namespace{
-		ID:        ids.NewID(ids.PrefixRegistry),
-		ProjectID: projectID,
-		Name:      name,
-		Labels:    labels,
-		Status:    domain.NamespaceStatusActive,
+		ID:         id,
+		ProjectID:  projectID,
+		Name:       name,
+		Labels:     labels,
+		Status:     domain.NamespaceStatusActive,
+		RegionID:   "eu-north-1",
+		GlobalSlug: id,
 	}
 }
 

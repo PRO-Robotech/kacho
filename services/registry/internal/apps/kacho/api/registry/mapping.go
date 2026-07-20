@@ -29,6 +29,11 @@ func (u *UseCase) ProtoNamespace(r *domain.Namespace) *registryv1.Namespace {
 		Endpoint:                    u.EndpointFor(r.ID),
 		Status:                      registryv1.NamespaceStatus(r.Status),
 		DefaultRepositoryVisibility: registryv1.Visibility(r.DefaultVisibility),
+		RegionId:                    r.RegionID,
+		// placement_type — always-REGIONAL const (REG-1 F4 carve-out): проекция
+		// не читает из БД (placement_type DB-CHECK-замкнут в 'REGIONAL'), эмитит константу.
+		PlacementType: registryv1.PlacementType_REGIONAL,
+		GlobalSlug:    r.GlobalSlug,
 	}
 }
 

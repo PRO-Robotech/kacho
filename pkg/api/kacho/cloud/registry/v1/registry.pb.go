@@ -25,6 +25,56 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// PlacementType — placement-дискриминатор ресурса. Registry namespace — всегда
+// REGIONAL (const carve-out): OCI-контент региональный (anycast), зоны не несёт.
+// Bare-значения (без PLACEMENT_TYPE_-префикса) — JSON-проекция "REGIONAL" (parity
+// с Visibility PRIVATE/PUBLIC; buf ENUM_VALUE_PREFIX exempt).
+type PlacementType int32
+
+const (
+	PlacementType_PLACEMENT_TYPE_UNSPECIFIED PlacementType = 0
+	PlacementType_REGIONAL                   PlacementType = 1
+)
+
+// Enum value maps for PlacementType.
+var (
+	PlacementType_name = map[int32]string{
+		0: "PLACEMENT_TYPE_UNSPECIFIED",
+		1: "REGIONAL",
+	}
+	PlacementType_value = map[string]int32{
+		"PLACEMENT_TYPE_UNSPECIFIED": 0,
+		"REGIONAL":                   1,
+	}
+)
+
+func (x PlacementType) Enum() *PlacementType {
+	p := new(PlacementType)
+	*p = x
+	return p
+}
+
+func (x PlacementType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PlacementType) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[0].Descriptor()
+}
+
+func (PlacementType) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[0]
+}
+
+func (x PlacementType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PlacementType.Descriptor instead.
+func (PlacementType) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{0}
+}
+
 // NamespaceStatus — терминальность DELETING обязательна (forward-only delete):
 // revert DELETING→ACTIVE запрещён, иначе partial-UNIQUE(project,name) конфликтует
 // с re-Create нового ACTIVE того же (project,name).
@@ -61,11 +111,11 @@ func (x NamespaceStatus) String() string {
 }
 
 func (NamespaceStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[0].Descriptor()
+	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[1].Descriptor()
 }
 
 func (NamespaceStatus) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[0]
+	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[1]
 }
 
 func (x NamespaceStatus) Number() protoreflect.EnumNumber {
@@ -74,7 +124,7 @@ func (x NamespaceStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NamespaceStatus.Descriptor instead.
 func (NamespaceStatus) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{0}
+	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{1}
 }
 
 // ArtifactType — тип OCI-артефакта образа, классифицированный по config.mediaType
@@ -117,11 +167,11 @@ func (x ArtifactType) String() string {
 }
 
 func (ArtifactType) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[1].Descriptor()
+	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[2].Descriptor()
 }
 
 func (ArtifactType) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[1]
+	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[2]
 }
 
 func (x ArtifactType) Number() protoreflect.EnumNumber {
@@ -130,7 +180,7 @@ func (x ArtifactType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ArtifactType.Descriptor instead.
 func (ArtifactType) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{2}
 }
 
 // Visibility — публичность репозитория (overlay-authoritative на Repository;
@@ -173,11 +223,11 @@ func (x Visibility) String() string {
 }
 
 func (Visibility) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[2].Descriptor()
+	return file_kacho_cloud_registry_v1_registry_proto_enumTypes[3].Descriptor()
 }
 
 func (Visibility) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[2]
+	return &file_kacho_cloud_registry_v1_registry_proto_enumTypes[3]
 }
 
 func (x Visibility) Number() protoreflect.EnumNumber {
@@ -186,7 +236,7 @@ func (x Visibility) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Visibility.Descriptor instead.
 func (Visibility) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{3}
 }
 
 // Namespace — тенант-namespace OCI/Docker-реестра Kachō.
@@ -202,7 +252,7 @@ func (Visibility) EnumDescriptor() ([]byte, []int) {
 // fga-proxy (RegisterResource), object-type `registry_registry`.
 type Namespace struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID реестра. Prefix "reg" (kacho-corelib/ids.NewID). Immutable PK.
+	// ID namespace. Hyphen-form prefix "ns-" (kacho-corelib/ids.NewHyphenID). Immutable PK.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ID project-владельца (iam). Immutable после Create.
 	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
@@ -227,8 +277,23 @@ type Namespace struct {
 	// admin (D-6: любой путь к PUBLIC — admin-gated). Смена НЕ перекрашивает
 	// существующие repo (per-repo Repository.visibility остаётся authoritative).
 	DefaultRepositoryVisibility Visibility `protobuf:"varint,9,opt,name=default_repository_visibility,json=defaultRepositoryVisibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"default_repository_visibility,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	// region_id — REGIONAL placement-якорь namespace (peer-validate geo.RegionService.Get
+	// на Create, fail-closed). Immutable после Create (перенос региона сломал бы
+	// storage-locality блобов). Обязателен на Create (REG-1 F4; optional-server-default
+	// отложен — источник дефолт-региона ещё не определён). Cross-domain ref (TEXT, без FK).
+	RegionId string `protobuf:"bytes,11,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// Output-only: placement-дискриминатор namespace. Всегда REGIONAL (const carve-out
+	// ради spine placement-parity; «not a choice»). REGIONAL anycast → zone_id пуст
+	// by construction (registry-ресурсы зон не несут).
+	PlacementType PlacementType `protobuf:"varint,12,opt,name=placement_type,json=placementType,proto3,enum=kacho.cloud.registry.v1.PlacementType" json:"placement_type,omitempty"`
+	// Output-only: derived глобально-уникальный slug — первый сегмент глобального
+	// pull-пути. Default (input опущен) → "<accountSlug>-<name>" (глобально-уникален
+	// by construction). Opt-in (input задан) → bare-global slug (UNIQUE(global_slug)
+	// глобальный; коллизия → ALREADY_EXISTS). Immutable через Update; re-derive только
+	// через RenameNamespace.
+	GlobalSlug    string `protobuf:"bytes,13,opt,name=global_slug,json=globalSlug,proto3" json:"global_slug,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Namespace) Reset() {
@@ -329,6 +394,27 @@ func (x *Namespace) GetDefaultRepositoryVisibility() Visibility {
 		return x.DefaultRepositoryVisibility
 	}
 	return Visibility_VISIBILITY_UNSPECIFIED
+}
+
+func (x *Namespace) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *Namespace) GetPlacementType() PlacementType {
+	if x != nil {
+		return x.PlacementType
+	}
+	return PlacementType_PLACEMENT_TYPE_UNSPECIFIED
+}
+
+func (x *Namespace) GetGlobalSlug() string {
+	if x != nil {
+		return x.GlobalSlug
+	}
+	return ""
 }
 
 // Repository — OCI-репозиторий (образ) внутри namespace. Два ортогональных слоя
@@ -766,7 +852,7 @@ var File_kacho_cloud_registry_v1_registry_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"\n" +
-	"&kacho/cloud/registry/v1/registry.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x04\n" +
+	"&kacho/cloud/registry/v1/registry.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xad\x05\n" +
 	"\tNamespace\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -780,7 +866,11 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"\x10repository_count\x18\b \x01(\x05R\x0frepositoryCount\x12@\n" +
 	"\x06status\x18\n" +
 	" \x01(\x0e2(.kacho.cloud.registry.v1.NamespaceStatusR\x06status\x12g\n" +
-	"\x1ddefault_repository_visibility\x18\t \x01(\x0e2#.kacho.cloud.registry.v1.VisibilityR\x1bdefaultRepositoryVisibility\x1a9\n" +
+	"\x1ddefault_repository_visibility\x18\t \x01(\x0e2#.kacho.cloud.registry.v1.VisibilityR\x1bdefaultRepositoryVisibility\x12\x1b\n" +
+	"\tregion_id\x18\v \x01(\tR\bregionId\x12M\n" +
+	"\x0eplacement_type\x18\f \x01(\x0e2&.kacho.cloud.registry.v1.PlacementTypeR\rplacementType\x12\x1f\n" +
+	"\vglobal_slug\x18\r \x01(\tR\n" +
+	"globalSlug\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe3\x05\n" +
@@ -841,7 +931,10 @@ const file_kacho_cloud_registry_v1_registry_proto_rawDesc = "" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*o\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*=\n" +
+	"\rPlacementType\x12\x1e\n" +
+	"\x1aPLACEMENT_TYPE_UNSPECIFIED\x10\x00\x12\f\n" +
+	"\bREGIONAL\x10\x01*o\n" +
 	"\x0fNamespaceStatus\x12 \n" +
 	"\x1cNAMESPACE_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17NAMESPACE_STATUS_ACTIVE\x10\x01\x12\x1d\n" +
@@ -870,42 +963,44 @@ func file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescData
 }
 
-var file_kacho_cloud_registry_v1_registry_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_kacho_cloud_registry_v1_registry_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_kacho_cloud_registry_v1_registry_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kacho_cloud_registry_v1_registry_proto_goTypes = []any{
-	(NamespaceStatus)(0),          // 0: kacho.cloud.registry.v1.NamespaceStatus
-	(ArtifactType)(0),             // 1: kacho.cloud.registry.v1.ArtifactType
-	(Visibility)(0),               // 2: kacho.cloud.registry.v1.Visibility
-	(*Namespace)(nil),             // 3: kacho.cloud.registry.v1.Namespace
-	(*Repository)(nil),            // 4: kacho.cloud.registry.v1.Repository
-	(*Tag)(nil),                   // 5: kacho.cloud.registry.v1.Tag
-	(*Referrer)(nil),              // 6: kacho.cloud.registry.v1.Referrer
-	nil,                           // 7: kacho.cloud.registry.v1.Namespace.LabelsEntry
-	nil,                           // 8: kacho.cloud.registry.v1.Repository.LabelsEntry
-	nil,                           // 9: kacho.cloud.registry.v1.Referrer.AnnotationsEntry
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(PlacementType)(0),            // 0: kacho.cloud.registry.v1.PlacementType
+	(NamespaceStatus)(0),          // 1: kacho.cloud.registry.v1.NamespaceStatus
+	(ArtifactType)(0),             // 2: kacho.cloud.registry.v1.ArtifactType
+	(Visibility)(0),               // 3: kacho.cloud.registry.v1.Visibility
+	(*Namespace)(nil),             // 4: kacho.cloud.registry.v1.Namespace
+	(*Repository)(nil),            // 5: kacho.cloud.registry.v1.Repository
+	(*Tag)(nil),                   // 6: kacho.cloud.registry.v1.Tag
+	(*Referrer)(nil),              // 7: kacho.cloud.registry.v1.Referrer
+	nil,                           // 8: kacho.cloud.registry.v1.Namespace.LabelsEntry
+	nil,                           // 9: kacho.cloud.registry.v1.Repository.LabelsEntry
+	nil,                           // 10: kacho.cloud.registry.v1.Referrer.AnnotationsEntry
+	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
 }
 var file_kacho_cloud_registry_v1_registry_proto_depIdxs = []int32{
-	10, // 0: kacho.cloud.registry.v1.Namespace.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 1: kacho.cloud.registry.v1.Namespace.labels:type_name -> kacho.cloud.registry.v1.Namespace.LabelsEntry
-	0,  // 2: kacho.cloud.registry.v1.Namespace.status:type_name -> kacho.cloud.registry.v1.NamespaceStatus
-	2,  // 3: kacho.cloud.registry.v1.Namespace.default_repository_visibility:type_name -> kacho.cloud.registry.v1.Visibility
-	10, // 4: kacho.cloud.registry.v1.Repository.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 5: kacho.cloud.registry.v1.Repository.artifact_type:type_name -> kacho.cloud.registry.v1.ArtifactType
-	1,  // 6: kacho.cloud.registry.v1.Repository.artifact_types:type_name -> kacho.cloud.registry.v1.ArtifactType
-	10, // 7: kacho.cloud.registry.v1.Repository.last_pulled_at:type_name -> google.protobuf.Timestamp
-	8,  // 8: kacho.cloud.registry.v1.Repository.labels:type_name -> kacho.cloud.registry.v1.Repository.LabelsEntry
-	2,  // 9: kacho.cloud.registry.v1.Repository.visibility:type_name -> kacho.cloud.registry.v1.Visibility
-	10, // 10: kacho.cloud.registry.v1.Repository.created_at:type_name -> google.protobuf.Timestamp
-	10, // 11: kacho.cloud.registry.v1.Tag.created_at:type_name -> google.protobuf.Timestamp
-	10, // 12: kacho.cloud.registry.v1.Tag.last_pulled_at:type_name -> google.protobuf.Timestamp
-	9,  // 13: kacho.cloud.registry.v1.Referrer.annotations:type_name -> kacho.cloud.registry.v1.Referrer.AnnotationsEntry
-	10, // 14: kacho.cloud.registry.v1.Referrer.created_at:type_name -> google.protobuf.Timestamp
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	11, // 0: kacho.cloud.registry.v1.Namespace.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 1: kacho.cloud.registry.v1.Namespace.labels:type_name -> kacho.cloud.registry.v1.Namespace.LabelsEntry
+	1,  // 2: kacho.cloud.registry.v1.Namespace.status:type_name -> kacho.cloud.registry.v1.NamespaceStatus
+	3,  // 3: kacho.cloud.registry.v1.Namespace.default_repository_visibility:type_name -> kacho.cloud.registry.v1.Visibility
+	0,  // 4: kacho.cloud.registry.v1.Namespace.placement_type:type_name -> kacho.cloud.registry.v1.PlacementType
+	11, // 5: kacho.cloud.registry.v1.Repository.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 6: kacho.cloud.registry.v1.Repository.artifact_type:type_name -> kacho.cloud.registry.v1.ArtifactType
+	2,  // 7: kacho.cloud.registry.v1.Repository.artifact_types:type_name -> kacho.cloud.registry.v1.ArtifactType
+	11, // 8: kacho.cloud.registry.v1.Repository.last_pulled_at:type_name -> google.protobuf.Timestamp
+	9,  // 9: kacho.cloud.registry.v1.Repository.labels:type_name -> kacho.cloud.registry.v1.Repository.LabelsEntry
+	3,  // 10: kacho.cloud.registry.v1.Repository.visibility:type_name -> kacho.cloud.registry.v1.Visibility
+	11, // 11: kacho.cloud.registry.v1.Repository.created_at:type_name -> google.protobuf.Timestamp
+	11, // 12: kacho.cloud.registry.v1.Tag.created_at:type_name -> google.protobuf.Timestamp
+	11, // 13: kacho.cloud.registry.v1.Tag.last_pulled_at:type_name -> google.protobuf.Timestamp
+	10, // 14: kacho.cloud.registry.v1.Referrer.annotations:type_name -> kacho.cloud.registry.v1.Referrer.AnnotationsEntry
+	11, // 15: kacho.cloud.registry.v1.Referrer.created_at:type_name -> google.protobuf.Timestamp
+	16, // [16:16] is the sub-list for method output_type
+	16, // [16:16] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_registry_v1_registry_proto_init() }
@@ -918,7 +1013,7 @@ func file_kacho_cloud_registry_v1_registry_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_registry_v1_registry_proto_rawDesc), len(file_kacho_cloud_registry_v1_registry_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      4,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,

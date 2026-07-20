@@ -46,13 +46,17 @@ type TagListQuery struct {
 	PageToken   string
 }
 
-// CreateSpec — вход на создание Registry (тело CreateRegistryRequest, распарсенное
+// CreateSpec — вход на создание Namespace (тело CreateNamespaceRequest, распарсенное
 // тонким handler'ом в нейтральную форму).
 type CreateSpec struct {
 	ProjectID   string
 	Name        string
 	Description string
 	Labels      map[string]string
+	// RegionID — обязателен (REG-1 F4); peer-validate geo. Immutable после Create.
+	RegionID string
+	// GlobalSlug — opt-in bare-global slug. Пусто → сервер деривит default-slug (F3).
+	GlobalSlug string
 }
 
 // UpdateSpec — вход Update. project immutable (в spec не входит); name — mutable.
@@ -161,6 +165,16 @@ type IAMClient interface {
 	ProjectExists(ctx context.Context, projectID string) error
 }
 
+// GeoClient — порт к kacho-geo: cross-domain валидация region_id
+// (geo.v1.RegionService.Get) на Create. **Новое runtime-ребро registry→geo**
+// (REG-1 F4; ацикличность holds — geo leaf, registry не зовётся обратно). Per-call
+// deadline — в adapter'е (architecture.md concurrency).
+type GeoClient interface {
+	// RegionExists валидирует region-якорь на Create (не найдено → ErrInvalidArg;
+	// geo недоступен → ErrUnavailable, мутация fail-closed).
+	RegionExists(ctx context.Context, regionID string) error
+}
+
 // RepoRegistrar — порт эмита owner/parent-tuple intent'ов репозитория в
 // registry_outbox (тот же transactional-outbox, что CRUD реестра). Repo как
 // authz-объект появляется на первом push (register) и снимается на удалении
@@ -181,6 +195,7 @@ type UseCase struct {
 	cfg          RepositoryConfigRepo
 	zot          ZotClient
 	iam          IAMClient
+	geo          GeoClient
 	repoReg      RepoRegistrar
 	ops          operations.Repo
 	endpointBase string
@@ -191,11 +206,11 @@ type UseCase struct {
 // repoReg эмитит repo-tuple intent'ы (register-on-first-push / unregister-on-last-tag,
 // adopt-owner, public-grant governance); ops — corelib LRO-репозиторий; endpointBase —
 // tenant-facing база для output-only Registry.endpoint ("<base>/<id>").
-func New(reader NamespaceReader, writer NamespaceWriter, cfg RepositoryConfigRepo, zot ZotClient, iam IAMClient, repoReg RepoRegistrar, ops operations.Repo, endpointBase string) *UseCase {
+func New(reader NamespaceReader, writer NamespaceWriter, cfg RepositoryConfigRepo, zot ZotClient, iam IAMClient, geo GeoClient, repoReg RepoRegistrar, ops operations.Repo, endpointBase string) *UseCase {
 	if endpointBase == "" {
 		endpointBase = "registry.kacho.local"
 	}
-	return &UseCase{reader: reader, writer: writer, cfg: cfg, zot: zot, iam: iam, repoReg: repoReg, ops: ops, endpointBase: endpointBase}
+	return &UseCase{reader: reader, writer: writer, cfg: cfg, zot: zot, iam: iam, geo: geo, repoReg: repoReg, ops: ops, endpointBase: endpointBase}
 }
 
 // EndpointFor возвращает tenant-facing OCI-endpoint реестра ("<base>/<id>").
@@ -210,7 +225,7 @@ func (u *UseCase) EndpointFor(id string) string {
 // assertWired — defensive-гейт: composition root обязан подать все коллабораторы.
 // Незаполненная зависимость → Unavailable (не паника в prod-path).
 func (u *UseCase) assertWired() error {
-	if u.reader == nil || u.writer == nil || u.zot == nil || u.iam == nil || u.ops == nil {
+	if u.reader == nil || u.writer == nil || u.zot == nil || u.iam == nil || u.geo == nil || u.ops == nil {
 		return regerrors.ErrUnavailable
 	}
 	return nil

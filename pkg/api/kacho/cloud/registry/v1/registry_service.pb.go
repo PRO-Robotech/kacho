@@ -195,11 +195,18 @@ func (x *ListNamespacesResponse) GetNextPageToken() string {
 }
 
 type CreateNamespaceRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId   string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Labels      map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// region_id — обязателен на Create (REG-1 F4); peer-validate geo.RegionService.Get
+	// (fail-closed UNAVAILABLE). Immutable после Create.
+	RegionId string `protobuf:"bytes,5,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// global_slug — необязательный opt-in bare-global slug. Опущен → сервер деривит
+	// "<accountSlug>-<name>". Задан → bare-global (UNIQUE(global_slug) глобальный;
+	// коллизия → ALREADY_EXISTS с tenant-prefix-подсказкой).
+	GlobalSlug    string `protobuf:"bytes,6,opt,name=global_slug,json=globalSlug,proto3" json:"global_slug,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -260,6 +267,20 @@ func (x *CreateNamespaceRequest) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *CreateNamespaceRequest) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *CreateNamespaceRequest) GetGlobalSlug() string {
+	if x != nil {
+		return x.GlobalSlug
+	}
+	return ""
 }
 
 type CreateNamespaceMetadata struct {
@@ -1673,13 +1694,16 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"\n" +
 	"namespaces\x18\x01 \x03(\v2\".kacho.cloud.registry.v1.NamespaceR\n" +
 	"namespaces\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfd\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xbb\x02\n" +
 	"\x16CreateNamespaceRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12S\n" +
-	"\x06labels\x18\x04 \x03(\v2;.kacho.cloud.registry.v1.CreateNamespaceRequest.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\x04 \x03(\v2;.kacho.cloud.registry.v1.CreateNamespaceRequest.LabelsEntryR\x06labels\x12\x1b\n" +
+	"\tregion_id\x18\x05 \x01(\tR\bregionId\x12\x1f\n" +
+	"\vglobal_slug\x18\x06 \x01(\tR\n" +
+	"globalSlug\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"<\n" +

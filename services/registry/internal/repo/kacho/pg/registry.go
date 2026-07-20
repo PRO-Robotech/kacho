@@ -30,7 +30,7 @@ import (
 const schema = "kacho_registry"
 
 // namespaceColumns — канонический порядок SELECT/RETURNING строки реестра.
-const namespaceColumns = `id, project_id, name, description, labels, status, created_at, default_visibility`
+const namespaceColumns = `id, project_id, name, description, labels, status, created_at, default_visibility, region_id, global_slug`
 
 // NamespaceRepo — реализация registry.NamespaceRepo поверх pgxpool.
 type NamespaceRepo struct {
@@ -172,11 +172,11 @@ func (r *NamespaceRepo) Insert(ctx context.Context, reg *domain.Namespace, inten
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := fmt.Sprintf(`
-		INSERT INTO %s.registries (id, project_id, name, description, labels, status)
-		VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+		INSERT INTO %s.registries (id, project_id, name, description, labels, status, region_id, global_slug)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
 		RETURNING %s`, schema, namespaceColumns)
 	created, err := scanNamespace(tx.QueryRow(ctx, q,
-		reg.ID, reg.ProjectID, reg.Name, reg.Description, labels, statusString(reg.Status)))
+		reg.ID, reg.ProjectID, reg.Name, reg.Description, labels, statusString(reg.Status), reg.RegionID, reg.GlobalSlug))
 	if err != nil {
 		return nil, wrapPgErr(err, "Namespace", reg.ID)
 	}
@@ -379,7 +379,7 @@ func scanNamespace(row pgx.Row) (*domain.Namespace, error) {
 		statusRaw     string
 		defaultVisRaw string
 	)
-	if err := row.Scan(&reg.ID, &reg.ProjectID, &reg.Name, &reg.Description, &labelsRaw, &statusRaw, &reg.CreatedAt, &defaultVisRaw); err != nil {
+	if err := row.Scan(&reg.ID, &reg.ProjectID, &reg.Name, &reg.Description, &labelsRaw, &statusRaw, &reg.CreatedAt, &defaultVisRaw, &reg.RegionID, &reg.GlobalSlug); err != nil {
 		return nil, err
 	}
 	labels, err := unmarshalLabels(labelsRaw)

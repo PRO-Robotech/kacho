@@ -75,6 +75,12 @@ type Namespace struct {
 	Labels      map[string]string
 	Status      NamespaceStatus
 	CreatedAt   time.Time
+	// RegionID — REGIONAL placement-якорь (peer-validate geo на Create, immutable).
+	// Cross-domain ref на geo.Region (TEXT, без FK). Обязателен (REG-1 F4).
+	RegionID string
+	// GlobalSlug — derived глобально-уникальный slug (первый сегмент pull-пути).
+	// UNIQUE(global_slug) глобальный. Immutable через Update (re-derive — RenameNamespace).
+	GlobalSlug string
 	// DefaultVisibility — сид visibility для НОВЫХ repo реестра (RG-1, D-6). Mutable
 	// через UpdateRegistry; переход →PUBLIC подчинён any-path-to-PUBLIC admin-gate
 	// (B10/B11). Дефолт PRIVATE (fail-safe). CreateRepository без явного visibility

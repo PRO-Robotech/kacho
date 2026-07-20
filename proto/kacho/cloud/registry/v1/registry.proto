@@ -21,7 +21,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/
 // через iam.ProjectService.Get на Create). Owner-иерархия в FGA пишется через
 // fga-proxy (RegisterResource), object-type `registry_registry`.
 message Namespace {
-  // ID реестра. Prefix "reg" (kacho-corelib/ids.NewID). Immutable PK.
+  // ID namespace. Hyphen-form prefix "ns-" (kacho-corelib/ids.NewHyphenID). Immutable PK.
   string id = 1;
 
   // ID project-владельца (iam). Immutable после Create.
@@ -55,6 +55,33 @@ message Namespace {
   // admin (D-6: любой путь к PUBLIC — admin-gated). Смена НЕ перекрашивает
   // существующие repo (per-repo Repository.visibility остаётся authoritative).
   Visibility default_repository_visibility = 9;
+
+  // region_id — REGIONAL placement-якорь namespace (peer-validate geo.RegionService.Get
+  // на Create, fail-closed). Immutable после Create (перенос региона сломал бы
+  // storage-locality блобов). Обязателен на Create (REG-1 F4; optional-server-default
+  // отложен — источник дефолт-региона ещё не определён). Cross-domain ref (TEXT, без FK).
+  string region_id = 11;
+
+  // Output-only: placement-дискриминатор namespace. Всегда REGIONAL (const carve-out
+  // ради spine placement-parity; «not a choice»). REGIONAL anycast → zone_id пуст
+  // by construction (registry-ресурсы зон не несут).
+  PlacementType placement_type = 12;
+
+  // Output-only: derived глобально-уникальный slug — первый сегмент глобального
+  // pull-пути. Default (input опущен) → "<accountSlug>-<name>" (глобально-уникален
+  // by construction). Opt-in (input задан) → bare-global slug (UNIQUE(global_slug)
+  // глобальный; коллизия → ALREADY_EXISTS). Immutable через Update; re-derive только
+  // через RenameNamespace.
+  string global_slug = 13;
+}
+
+// PlacementType — placement-дискриминатор ресурса. Registry namespace — всегда
+// REGIONAL (const carve-out): OCI-контент региональный (anycast), зоны не несёт.
+// Bare-значения (без PLACEMENT_TYPE_-префикса) — JSON-проекция "REGIONAL" (parity
+// с Visibility PRIVATE/PUBLIC; buf ENUM_VALUE_PREFIX exempt).
+enum PlacementType {
+  PLACEMENT_TYPE_UNSPECIFIED = 0;
+  REGIONAL = 1;
 }
 
 // NamespaceStatus — терминальность DELETING обязательна (forward-only delete):

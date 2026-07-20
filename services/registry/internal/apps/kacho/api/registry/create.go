@@ -35,8 +35,23 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	if spec.ProjectID == "" {
 		return nil, failInvalidArg("projectId is required")
 	}
+	if spec.RegionID == "" {
+		// REG-1 F4/REG-1-15: regionId обязателен на Create (optional-server-default
+		// отложен — источник дефолт-региона не определён). Первым sync-стейтментом,
+		// операция НЕ создаётся.
+		return nil, failInvalidArg("regionId is required")
+	}
 	if err := corevalidate.Labels("labels", spec.Labels); err != nil {
 		return nil, err
+	}
+
+	// F3 two-identity: globalSlug опущен → сервер деривит default-slug (глобально-
+	// уникален by construction). Opt-in bare-global slug используется как есть —
+	// авторитетная уникальность — DB partial UNIQUE(global_slug) (REG-1-12);
+	// probe-then-insert TOCTOU не строим (ban #10).
+	globalSlug := spec.GlobalSlug
+	if globalSlug == "" {
+		globalSlug = deriveDefaultGlobalSlug(spec.ProjectID, spec.Name)
 	}
 
 	reg := &domain.Namespace{
@@ -46,6 +61,8 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 		Description: spec.Description,
 		Labels:      spec.Labels,
 		Status:      domain.NamespaceStatusActive,
+		RegionID:    spec.RegionID,
+		GlobalSlug:  globalSlug,
 	}
 	// Self-validating domain: name DNS-safe (OCI-namespace segment), status,
 	// project_id. Ошибка → InvalidArgument (каноничный "Illegal argument"-класс).
@@ -57,6 +74,13 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	// not-found → InvalidArgument; iam недоступен → Unavailable (мутация fail-closed).
 	if err := u.iam.ProjectExists(ctx, spec.ProjectID); err != nil {
 		return nil, projectExistsErr(spec.ProjectID, err)
+	}
+
+	// Cross-domain existence региона (geo.v1.RegionService.Get) — новое ребро
+	// registry→geo (REG-1 F4). not-found → InvalidArgument; geo недоступен →
+	// Unavailable (мутация fail-closed, REG-1-17). Per-call deadline — в geo-adapter'е.
+	if err := u.geo.RegionExists(ctx, spec.RegionID); err != nil {
+		return nil, regionExistsErr(spec.RegionID, err)
 	}
 
 	// Principal захватывается в sync-ctx (реальный вызывающий от interceptor'а) —
@@ -92,7 +116,7 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	if err != nil {
 		syncErr := mapRepoErr(err)
 		if errors.Is(err, regerrors.ErrAlreadyExists) {
-			syncErr = failAlreadyExists("namespace %s already exists", reg.Name)
+			syncErr = alreadyExistsErr(spec, reg.Name)
 		}
 		// Финализируем осиротевший pending-Operation тем же статусом (worker переведёт
 		// его в done=true+error). Клиент всё равно получает sync-ошибку ниже.
@@ -123,6 +147,41 @@ func (u *UseCase) namespaceAny(r *domain.Namespace) (*anypb.Any, error) {
 		return nil, mapRepoErr(err)
 	}
 	return out, nil
+}
+
+// deriveDefaultGlobalSlug строит default global-slug при омитнутом входе. Целевой
+// контракт F3 — "<accountSlug>-<name>", но источник accountSlug (iam) ещё НЕ определён
+// (REG-1 accountSlug-addendum, cross-phase зависимость). ВРЕМЕННО деривим
+// "<projectId>-<name>" — глобально-уникален by construction (projectId уникален),
+// echo-корректен и не broken. TODO(REG-1 accountSlug-addendum): заменить projectId
+// на accountSlug (потребует нового iam-поля/lookup'а).
+func deriveDefaultGlobalSlug(projectID, name string) string {
+	return projectID + "-" + name
+}
+
+// alreadyExistsErr различает конфликт по natural-key (project,name) и по bare-global
+// globalSlug. Явный opt-in globalSlug → collision по глобальному slug (derived-slug
+// уникален by construction) → tenant-prefix-подсказка (REG-1-10); иначе — name
+// collision (REG-1-11). Авторитетный арбитр — DB partial UNIQUE (ban #10); это лишь тон.
+func alreadyExistsErr(spec CreateSpec, name string) error {
+	if spec.GlobalSlug != "" {
+		return failAlreadyExists("explicit globalSlug '%s' is globally unique across ALL tenants and is already taken; omit globalSlug to auto-derive a tenant-prefixed slug (e.g. acme-payments), or choose a tenant-prefixed one", spec.GlobalSlug)
+	}
+	return failAlreadyExists("namespace %s already exists", name)
+}
+
+// regionExistsErr — маппинг cross-domain region-precheck (geo) в gRPC-status:
+//
+//	not-found / invalid → InvalidArgument ("region <id> not found")
+//	geo недоступен      → Unavailable (fail-closed для мутации, REG-1-17)
+func regionExistsErr(regionID string, err error) error {
+	switch {
+	case errors.Is(err, regerrors.ErrInvalidArg), errors.Is(err, regerrors.ErrNotFound):
+		return failInvalidArg("region %s not found", regionID)
+	case errors.Is(err, regerrors.ErrUnavailable):
+		return failUnavailable("region existence check unavailable")
+	}
+	return mapRepoErr(err)
 }
 
 // projectExistsErr — маппинг cross-domain project-precheck в gRPC-status:

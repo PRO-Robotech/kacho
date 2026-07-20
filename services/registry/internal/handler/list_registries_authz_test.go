@@ -106,7 +106,7 @@ func (r listReader) List(context.Context, registry.ListQuery) ([]*domain.Namespa
 }
 
 func newListHandler(reader registry.NamespaceReader, az Authorizer) *RegistryHandler {
-	uc := registry.New(reader, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
+	uc := registry.New(reader, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubGeo{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
 	return NewRegistryHandler(uc, az)
 }
 

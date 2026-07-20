@@ -44,7 +44,7 @@ func TestRegistry_REG01_Create_HappyPath(t *testing.T) {
 
 	op, err := uc.Create(aliceCtx(), registry.CreateSpec{
 		ProjectID: "prj-P", Name: "team-images", Description: "CI images",
-		Labels: map[string]string{"env": "prod"},
+		Labels: map[string]string{"env": "prod"}, RegionID: "eu-north-1",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, op)
@@ -76,7 +76,7 @@ func TestRegistry_REG28_Create_OwnerTupleIntentOrder(t *testing.T) {
 	ops := newMemOps()
 	uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
 
-	op, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "team-images"})
+	op, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "team-images", RegionID: "eu-north-1"})
 	require.NoError(t, err)
 	awaitOpDone(t, ops, op.ID)
 
@@ -103,7 +103,7 @@ func TestRegistry_REG02_Create_InvalidName(t *testing.T) {
 			repo := &mockRepo{}
 			iam := &mockIAM{}
 			uc := newUC(repo, &mockZot{}, iam, newMemOps())
-			_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: value})
+			_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: value, RegionID: "eu-north-1"})
 			require.Equal(t, codes.InvalidArgument, codeOf(t, err))
 			require.Nil(t, repo.insertReg, "no row inserted")
 			require.False(t, iam.called, "project not checked before validation")
@@ -118,7 +118,7 @@ func TestRegistry_REG03_Create_CrossDomainProject(t *testing.T) {
 		repo := &mockRepo{}
 		iam := &mockIAM{projectFn: func(context.Context, string) error { return regerrors.ErrInvalidArg }}
 		uc := newUC(repo, &mockZot{}, iam, newMemOps())
-		_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-NOPE", Name: "x"})
+		_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-NOPE", Name: "x", RegionID: "eu-north-1"})
 		require.Equal(t, codes.InvalidArgument, codeOf(t, err))
 		require.Contains(t, status.Convert(err).Message(), "prj-NOPE")
 		require.Nil(t, repo.insertReg)
@@ -127,7 +127,7 @@ func TestRegistry_REG03_Create_CrossDomainProject(t *testing.T) {
 		repo := &mockRepo{}
 		iam := &mockIAM{projectFn: func(context.Context, string) error { return regerrors.ErrUnavailable }}
 		uc := newUC(repo, &mockZot{}, iam, newMemOps())
-		_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "x"})
+		_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "x", RegionID: "eu-north-1"})
 		require.Equal(t, codes.Unavailable, codeOf(t, err))
 		require.Nil(t, repo.insertReg)
 	})
@@ -140,7 +140,7 @@ func TestRegistry_REG04_Create_DuplicateName(t *testing.T) {
 		return nil, regerrors.ErrAlreadyExists
 	}}
 	uc := newUC(repo, &mockZot{}, &mockIAM{}, newMemOps())
-	_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "team-images"})
+	_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "team-images", RegionID: "eu-north-1"})
 	require.Equal(t, codes.AlreadyExists, codeOf(t, err))
 	require.Contains(t, status.Convert(err).Message(), "team-images")
 }
@@ -156,7 +156,7 @@ func TestRegistry_REG01_Create_OperationBeforeInsert(t *testing.T) {
 	ops.createErr = regerrors.ErrUnavailable // персист pending-Operation падает
 	uc := newUC(repo, &mockZot{}, &mockIAM{}, ops)
 
-	_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "team-images"})
+	_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "team-images", RegionID: "eu-north-1"})
 	require.Error(t, err)
 	require.Nil(t, repo.insertReg, "resource must NOT be inserted when Operation-envelope create fails")
 }

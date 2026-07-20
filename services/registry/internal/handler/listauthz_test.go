@@ -309,7 +309,7 @@ func registryLevelOpH(t *testing.T, id, namespaceID, desc string) operations.Ope
 }
 
 func newTestHandlerOps(ops operations.Repo, az Authorizer) *RegistryHandler {
-	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubRepo{}, ops, "registry.kacho.local")
+	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubGeo{}, stubRepo{}, ops, "registry.kacho.local")
 	return NewRegistryHandler(uc, az)
 }
 
@@ -395,7 +395,7 @@ func TestHandler_ListOperations_Breakglass_NilAuthorizer_AllVisible(t *testing.T
 // ---- fakes для handler-method тестов --------------------------------------
 
 func newTestHandler(zot registry.ZotClient, az Authorizer) *RegistryHandler {
-	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, zot, stubIAM{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
+	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, zot, stubIAM{}, stubGeo{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
 	return NewRegistryHandler(uc, az)
 }
 
@@ -421,6 +421,10 @@ func (stubRepo) UnregisterRepository(context.Context, domain.RegisterIntent) err
 type stubIAM struct{}
 
 func (stubIAM) ProjectExists(context.Context, string) error { return nil }
+
+type stubGeo struct{}
+
+func (stubGeo) RegionExists(context.Context, string) error { return nil }
 
 type fakeZotH struct {
 	repos          []*domain.Repository

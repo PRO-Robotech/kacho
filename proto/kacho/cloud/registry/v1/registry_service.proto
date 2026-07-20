@@ -271,6 +271,13 @@ message CreateNamespaceRequest {
   string name = 2;
   string description = 3;
   map<string, string> labels = 4;
+  // region_id — обязателен на Create (REG-1 F4); peer-validate geo.RegionService.Get
+  // (fail-closed UNAVAILABLE). Immutable после Create.
+  string region_id = 5;
+  // global_slug — необязательный opt-in bare-global slug. Опущен → сервер деривит
+  // "<accountSlug>-<name>". Задан → bare-global (UNIQUE(global_slug) глобальный;
+  // коллизия → ALREADY_EXISTS с tenant-prefix-подсказкой).
+  string global_slug = 6;
 }
 
 message CreateNamespaceMetadata {

@@ -32,6 +32,7 @@ import (
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
+	geoclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/clients/jwks"
 	zotclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/zot"
@@ -105,9 +106,27 @@ func runServe(cfg config.Config) error {
 		}
 		defer func() { _ = projectConn.Close() }()
 	}
+	// geoConn — PUBLIC :9090 kacho-geo (RegionService.Get — новое ребро registry→geo,
+	// REG-1 F4). Отдельный conn/mTLS (ServerName kacho-geo dial-host'а). Пусто → nil
+	// conn → RegionExists fail-closed Unavailable (Create не создаст namespace).
+	var geoConn *grpc.ClientConn
+	if cfg.GeoGRPCAddr != "" {
+		geoCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.GeoMTLS)
+		if cerr != nil {
+			return fmt.Errorf("registry→geo mTLS creds: %w", cerr)
+		}
+		geoConn, err = grpc.NewClient(cfg.GeoGRPCAddr,
+			grpc.WithTransportCredentials(geoCreds),
+			grpcclient.KeepaliveDialOption(true))
+		if err != nil {
+			return fmt.Errorf("dial kacho-geo region: %w", err)
+		}
+		defer func() { _ = geoConn.Close() }()
+	}
 	logger.Info("registry→iam edges wired",
 		"authz_addr", cfg.AuthZIAMGRPCAddr, "authz_mtls", cfg.IAMAuthzMTLS.Enable,
-		"project_addr", cfg.IAMProjectGRPCAddr, "project_mtls", cfg.IAMProjectMTLS.Enable)
+		"project_addr", cfg.IAMProjectGRPCAddr, "project_mtls", cfg.IAMProjectMTLS.Enable,
+		"geo_addr", cfg.GeoGRPCAddr, "geo_mtls", cfg.GeoMTLS.Enable)
 
 	// ── adapters (порты use-case): pgx-repo, zot data/registry-API, iam-клиент ──
 	// iamConn — internal :9091 (Check-интерсептор + fga-proxy register-drainer).
@@ -133,12 +152,17 @@ func runServe(cfg config.Config) error {
 	pushGrantRepo := pg.NewPushGrantRepo(pool, cfg.PushGrantTTL)
 	zotAdapter := zotclient.New(cfg.ZotAddr)
 	iamAdapter := iamclient.New(projectIAMConn)
+	var geoIAMConn grpc.ClientConnInterface
+	if geoConn != nil {
+		geoIAMConn = geoConn
+	}
+	geoAdapter := geoclient.New(geoIAMConn)
 	// repoConfigRepo — config-overlay Repository (repository_configs, RG-1): durable
 	// overlay-строки (survives-empty) + ACTIVE-guard + transactional-outbox owner/public-grant.
 	repoConfigRepo := pg.NewRepositoryConfigRepo(pool)
 
 	// ── use-case (CQRS repo + config-overlay + zot + iam + repo-registrar + LRO) ──
-	registryUC := registry.New(registryRepo, registryRepo, repoConfigRepo, zotAdapter, iamAdapter, registryRepo, opsRepo, cfg.EndpointBase)
+	registryUC := registry.New(registryRepo, registryRepo, repoConfigRepo, zotAdapter, iamAdapter, geoAdapter, registryRepo, opsRepo, cfg.EndpointBase)
 
 	// ── register-drainer: owner-tuple register/unregister intent из registry_outbox
 	// применяется через kacho-iam fga-proxy (:9091, mTLS, идемпотентно, at-least-once,

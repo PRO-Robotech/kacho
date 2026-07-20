@@ -37,14 +37,30 @@ var knownUpdateFields = map[string]struct{}{
 	"labels":                        {},
 	"default_repository_visibility": {},
 	"defaultRepositoryVisibility":   {},
+	// immutable-но-known (F4/F3): наличие в mask → каноничный immutable-текст
+	// (immutableUpdateFields), а не generic unknown-field.
+	"region_id":      {},
+	"regionId":       {},
+	"placement_type": {},
+	"placementType":  {},
+	"global_slug":    {},
+	"globalSlug":     {},
 }
 
 // immutableUpdateFields → каноничный immutable-текст (update_mask
 // discipline): поле в mask, но менять нельзя после Create. name — mutable
-// (смена не трогает endpoint/zot по id), поэтому здесь только project_id.
+// (смена не трогает endpoint/zot по id). region_id/placement_type immutable
+// (перенос сломал бы storage-locality, REG-1-18); global_slug immutable через
+// Update (re-derive только RenameNamespace, REG-1-13).
 var immutableUpdateFields = map[string]string{
-	"project_id": "projectId is immutable after Namespace.Create",
-	"projectId":  "projectId is immutable after Namespace.Create",
+	"project_id":     "projectId is immutable after Namespace.Create",
+	"projectId":      "projectId is immutable after Namespace.Create",
+	"region_id":      "regionId is immutable after Namespace.Create",
+	"regionId":       "regionId is immutable after Namespace.Create",
+	"placement_type": "placementType is immutable after Namespace.Create",
+	"placementType":  "placementType is immutable after Namespace.Create",
+	"global_slug":    "globalSlug is immutable after Namespace.Create",
+	"globalSlug":     "globalSlug is immutable after Namespace.Create",
 }
 
 // knownRepoUpdateFields — whitelist update_mask config-overlay Repository (RG-1).
