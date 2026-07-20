@@ -18,7 +18,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
-	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
 // RemoveCidrBlocksUseCase — атомарное сужение declared-супернета сети (F2/VPC-1-10).
@@ -26,8 +25,9 @@ import (
 //   - GetForUpdate(network) (row-lock) сериализует конкурентные Add/Remove.
 //   - ∉-guard: блок, всё ещё покрывающий CIDR живой подсети (не покрытый ни одним
 //     remaining-блоком), удалить нельзя → FAILED_PRECONDITION (иначе subnet.primary
-//     осиротел бы вне супернета). Проверка идёт под network row-lock, в той же
-//     writer-TX, что читает подсети сети — не software-TOCTOU (окно закрыто lock'ом).
+//     осиротел бы вне супернета). Проверка — single-query по subnet_cidr_blocks
+//     (SupernetBlockCoveringSubnet) под network row-lock в той же writer-TX: учитывает
+//     ВСЕ подсети сети (любое их число), не только первую страницу — не software-TOCTOU.
 //   - SetCidrBlocks(remaining) + outbox UPDATED — одна writer-TX.
 //
 // Op-in-response: reject приходит embedded в Operation.error (op-in-response), не
@@ -83,19 +83,18 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 		remainingV4 := subtractCidrBlocks(n.IPv4CidrBlocks, v4)
 		remainingV6 := subtractCidrBlocks(n.IPv6CidrBlocks, v6)
 
-		// ∉-guard: под network row-lock читаем подсети сети и проверяем, что ни
-		// один удаляемый блок не осиротит живую подсеть.
-		subs, _, serr := w.Subnets().List(ctx, kachorepo.SubnetFilter{NetworkID: id}, kachorepo.Pagination{})
-		if serr != nil {
-			return nil, serviceerr.MapRepoErr(serr)
-		}
-		for _, s := range subs {
-			if b := orphanedRemovedBlock(v4, remainingV4, s.V4CidrBlocks); b != "" {
-				return nil, status.Errorf(codes.FailedPrecondition, "network CIDR block %s still contains subnets", b)
-			}
-			if b := orphanedRemovedBlock(v6, remainingV6, s.V6CidrBlocks); b != "" {
-				return nil, status.Errorf(codes.FailedPrecondition, "network CIDR block %s still contains subnets", b)
-			}
+		// ∉-guard: под network row-lock single-query проверяем, что ни один удаляемый
+		// блок не осиротит живую подсеть (её CIDR ⊆ удаляемого блока и НЕ покрыт ни
+		// одним из остающихся). Один indexed-запрос по subnet_cidr_blocks — корректно
+		// при ЛЮБОМ числе подсетей (без окна пагинации; прежний List первой страницы
+		// пропускал подсети со 2-й страницы у сетей с >50 подсетями). candidate/retained
+		// смешивают семейства (v4+v6): cidr `>>=` не пересекает разные семейства.
+		candidate := append(append([]string{}, v4...), v6...)
+		retained := append(append([]string{}, remainingV4...), remainingV6...)
+		if b, cerr := w.Subnets().SupernetBlockCoveringSubnet(ctx, id, candidate, retained); cerr != nil {
+			return nil, serviceerr.MapRepoErr(cerr)
+		} else if b != "" {
+			return nil, status.Errorf(codes.FailedPrecondition, "network CIDR block %s still contains subnets", b)
 		}
 
 		updated, uerr := w.Networks().SetCidrBlocks(ctx, id, remainingV4, remainingV6)
