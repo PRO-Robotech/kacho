@@ -121,7 +121,14 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	listener.Description = domain.LbDescription(req.GetDescription())
 	listener.Labels = domain.LabelsFromMap(req.GetLabels())
 	listener.ProxyProtocolV2 = req.GetProxyProtocolV2()
-	if tgID := req.GetDefaultTargetGroupId(); tgID != "" {
+	// NLB-1b EXPAND (additive): target_group_id and the legacy default_target_group_id
+	// both map to the listener's TG reference; target_group_id takes precedence when
+	// set (both coexist in EXPAND — the M:N pivot + authoritative FK are NLB-1c/MIGRATE).
+	tgID := req.GetTargetGroupId()
+	if tgID == "" {
+		tgID = req.GetDefaultTargetGroupId()
+	}
+	if tgID != "" {
 		listener.DefaultTargetGroupID = option.MustNewOption(domain.ResourceID(tgID))
 	}
 	// VIP-only LB-консолидация: листенер не аллоцирует адрес, поэтому терминальное

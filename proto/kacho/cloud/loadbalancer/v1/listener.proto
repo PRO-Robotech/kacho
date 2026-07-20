@@ -48,6 +48,16 @@ message Listener {
     UDP = 2;
   }
 
+  // Substatus — NLB-1b EXPAND (additive, output-only, derived): whether the
+  // listener resolves a target group. OK when target_group_id resolves to an
+  // existing TargetGroup; MISCONFIGURED when it does not (no/dangling TG). A
+  // pure server/client-derived value (not persisted).
+  enum Substatus {
+    SUBSTATUS_UNSPECIFIED = 0;
+    OK = 1;
+    MISCONFIGURED = 2;
+  }
+
   // ID of the listener (prefix `lst`).
   string id = 1;
 
@@ -89,4 +99,20 @@ message Listener {
 
   // Current lifecycle status.
   Status status = 18;
+
+  // target_group_id — NLB-1b EXPAND (additive, output + Create/Update input).
+  // The single (soon authoritative) target group the listener wires to. In
+  // EXPAND it maps to the same underlying reference as default_target_group_id
+  // (both coexist); the M:N pivot + FK-RESTRICT authority switch land in
+  // NLB-1c/MIGRATE. LIVE-mutable (repoint).
+  string target_group_id = 19;
+
+  // resolved_backend_port — NLB-1b EXPAND (additive, output-only, derived).
+  // Echo of the wired TargetGroup.port (NLB-1-19); 0 when no TG resolves. Not
+  // the frontend `port`.
+  int64 resolved_backend_port = 20;
+
+  // substatus — NLB-1b EXPAND (additive, output-only, derived). OK when the
+  // wired target group resolves, MISCONFIGURED otherwise.
+  Substatus substatus = 21;
 }
