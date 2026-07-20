@@ -60,7 +60,10 @@ func mapPgErr(err error, kind, id string) error {
 			case "listeners_lb_port_proto_uniq":
 				return fmt.Errorf("%w: listener with this port and protocol already exists on the load balancer", kacho.ErrAlreadyExists)
 			case "listeners_region_vip_uniq":
-				return fmt.Errorf("%w: listener address/port/protocol already in use in this region", kacho.ErrAlreadyExists)
+				// NLB-1b MIGRATE F5 (NLB-1-30/31): per-region Listener VIP
+				// (region_id, allocated_address, port, protocol) collision. Contract
+				// tone «address already in use» (api-conventions error-format; stable).
+				return fmt.Errorf("%w: address already in use", kacho.ErrAlreadyExists)
 			case "targets_instance_id_uniq", "targets_nic_id_uniq",
 				"targets_ip_ref_uniq", "targets_external_ip_uniq":
 				return fmt.Errorf("%w: target with this identity already exists in the target group", kacho.ErrAlreadyExists)
