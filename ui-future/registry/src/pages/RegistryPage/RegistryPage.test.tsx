@@ -36,7 +36,7 @@ describe("RegistryPage wiring", () => {
   });
 
   it("wires list / create / detail / edit routes per resource", () => {
-    expect(source).toContain("parentField=\"project_id\"");
+    expect(source).toContain('parentField="project_id"');
     expect(source).toContain('mode="edit"');
     expect(source).toContain(":uid");
   });
