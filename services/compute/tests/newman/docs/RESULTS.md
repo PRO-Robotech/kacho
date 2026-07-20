@@ -1,5 +1,58 @@
 # newman — результаты прогона (kacho-compute)
 
+## COMP-1 redesign (Instance core + MachineType) — добавлено (2026-07-20)
+
+Новые коллекции black-box для tenant-facing редизайна `kacho-compute` против APPROVED
+`docs/specs/sub-phase-COMP-1-instance-machinetype-acceptance.md`:
+
+| Collection | Cases | Покрытие COMP-1-NN |
+|---|---|---|
+| `machine-type` | 12 | F7 sync sizing-каталог: Get/List (18/19), malformed-first + NOT_FOUND (20), admin-CRUD на Internal* :8081 (21), pageSize/token BVA |
+| `instance-redesign` | 36 | F1 kind-oneof XOR (01-04) · F2 machineTypeId single-channel (05-08) · F3 bootSource grammar (09-11) · F4 SA Referrer (12-13) · F5 unreachable-guard (14) · F6 launch-skeleton (16-17) · F8 malformed-first (22) · F9/F11 field-absence (24/28) · F10 Update mutability + STOPPED-gate (04/25/26/27) · F12 dup-name (30) · F13 zone peer-validate (33) · F14 List authz+pagination+filter (34-36) · F15 Delete hard-delete + name-recycle (37-38) |
+
+Прогон — **CI** (`deploy/scripts/newman-e2e.sh`, локальный env-blocked: harness убивает port-forward).
+Ожидание: все кейсы **зелёные** (поведение сверено с реализацией `services/compute/internal/service/
+{instance,machine_type}.go` + `protoconv` + gateway `restmux`/`DiscardUnknown` — не по идеализированному
+тексту acceptance).
+
+### Сверка с контрактом — задокументированные нюансы (НЕ баги продукта, findings для acceptance-author)
+
+1. **Gateway `DiscardUnknown: true`** (`gateway/internal/restmux/mux.go`) — retired/reserved поля
+   (`platformId`/`resourcesSpec`/`gce_*`/`aws_*`/`hostGroupId`) **молча отбрасываются**, а НЕ `400 unknown field`.
+   Поэтому acceptance-формулировка F2/F9 «легаси-поле → 400 unknown field» **не наблюдаема** через gateway.
+   Retire залочен наблюдаемыми инвариантами: **single-channel** (`INST-RD-CR-VAL-RAW-SIZING-RETIRED`:
+   legacy-only sizing → `400 machineTypeId is required`) + **field-absence на выводе** (`INST-RD-GET-CONF-FIELD-ABSENCE`).
+   Исключение: output-only поля `bootSource.name°/resolvedDigest°` — **known** proto-поля, реджектятся
+   **сервисом** (не gateway) → `INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS` строго локает 400.
+
+2. **F14 filter-whitelist gap** — acceptance F14/COMP-1-36 заявляет whitelist `name=`/`placementGroupId=`/
+   `instanceKind=`, но реализация (`instance_repo.go`: `filter.Parse(f, []string{"name"})`) whitelist'ит
+   **только `name=`** (согласуется с `api-conventions.md` «текущая фаза — name=»). `filter=instanceKind=…`
+   сейчас → `400 unknown filter field`. `INST-RD-LST-FILTER-KIND-TOLERANT` документирует поведение
+   толерантно (`oneOf([200,400])`, но 500/leak падает). **→ acceptance-author reconcile** (F14 filter-список
+   vs current-phase). НЕ красный кейс: это фазовый scope-вопрос конвенции, не расхождение с реализацией.
+
+3. **Legacy `cases/instance.py` (77 кейсов)** таргетит **retired YC-поверхность** (`platformId`/`resourcesSpec`/
+   `bootDiskSpec`; 0 redesign-полей) → на `redesign/integration` его Create-кейсы **pre-existing-red**
+   (шлют легаси-sizing без `instanceKind`/`machineTypeId`/`bootSource` → sync `400 instanceKind is required`).
+   Это **не** внесено этой задачей — миграция legacy instance.py на redesign-поверхность = **отдельный scope**
+   (follow-up). Redesign-покрытие живёт в новом `cases/instance-redesign.py`.
+
+4. **MachineType-каталог не засеян** на стенде (миграция 0015 — пустая таблица, deploy-seed нет) → каждый
+   зависимый кейс **self-seed'ит** mt через `InternalMachineTypeService.Create` (`{{internalBaseUrl}}`
+   :8081, ban #6) с `{{runId}}`-уникальным именем + cleanup. `internalBaseUrl` инжектится CI-драйвером
+   (`newman-e2e.sh --env-var`); PRE_GLOBAL деривирует fallback из baseUrl (:18080→:18081) для standalone.
+
+5. **authz-first толерантность** (`testing.md`): Instance Get/Delete по malformed/absent id — gateway
+   `scope_extractor{compute_instance,instance_id}` может короткозамкнуть `403` ДО backend → negatives
+   ждут `oneOf([400,403])` (malformed) / `oneOf([403,404])` (absent), НИКОГДА 200. Malformed-first контракт
+   строго локнут отдельно на cluster-scope MachineType.Get (`MT-GET-VAL-MALFORMED-ID` → строгий 400 + текст).
+
+**Known failing — product bugs:** нет. Всё redesign-поведение сверено с реализацией и соответствует
+контракту; п.1-2 — gateway-policy / фазовый scope конвенции (не баги).
+
+---
+
 ## Статус: v1 — сгенерировано, ещё не прогнано против задеплоенного стенда
 
 Коллекции сгенерированы (`scripts/gen.py`); прогон против live api-gateway **не выполнен** —
