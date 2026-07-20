@@ -157,6 +157,10 @@ type Repository struct {
 	LastPulledAt time.Time
 	// DownloadCount — суммарное число скачиваний тегов репозитория (zot download-count).
 	DownloadCount int64
+	// Lifecycle — output-only исчезаемость (REG-1 F7): DURABLE (overlay survives-empty)
+	// либо EPHEMERAL (проекция без overlay, register-on-first-push). Авторитетный enum
+	// вместо вывода из наличия overlay-field.
+	Lifecycle Lifecycle
 }
 
 // Tag — output-only проекция тега/манифеста из zot (source of truth = zot).

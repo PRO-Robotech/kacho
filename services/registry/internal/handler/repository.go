@@ -65,6 +65,7 @@ func (h *RegistryHandler) CreateRepository(ctx context.Context, req *registryv1.
 		Description: req.GetDescription(),
 		Labels:      req.GetLabels(),
 		Visibility:  domain.Visibility(req.GetVisibility()),
+		Lifecycle:   domain.Lifecycle(req.GetLifecycle()),
 	})
 	if err != nil {
 		return nil, mapErr(err)

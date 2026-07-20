@@ -91,6 +91,12 @@ func resolveRepoUpdateMask(spec RepositoryConfigUpdate, mask []string) (Reposito
 		if msg, ok := immutableRepoUpdateFields[p]; ok {
 			return spec, failInvalidArg("%s", msg)
 		}
+		// REG-1-24 (F7): lifecycle — output-only (system-managed auto-promote), не
+		// tenant-input. В update_mask → INVALID_ARGUMENT (тот же класс, что tagCount/
+		// createdAt). Reject ДО UpdateMask — специфичный текст вместо generic unknown-field.
+		if p == "lifecycle" {
+			return spec, failInvalidArg("lifecycle is read-only (system-managed)")
+		}
 	}
 	if err := corevalidate.UpdateMask("update_mask", mask, knownRepoUpdateFields); err != nil {
 		return spec, err

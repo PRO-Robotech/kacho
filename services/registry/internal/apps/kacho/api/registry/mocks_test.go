@@ -521,6 +521,9 @@ func (m *mockRepoConfig) UpdateConfig(ctx context.Context, spec registry.Reposit
 	if spec.ApplyVisibility {
 		c.Visibility = spec.Visibility
 	}
+	// REG-1 F7 auto-promote parity: любой overlay-set поднимает lifecycle до DURABLE
+	// (реальный adapter — SET lifecycle='DURABLE' в UPDATE; mock зеркалит контракт).
+	c.Lifecycle = domain.LifecycleDurable
 	return c, nil
 }
 
