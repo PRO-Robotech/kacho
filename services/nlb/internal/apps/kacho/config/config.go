@@ -185,7 +185,7 @@ type AuthzConfig struct {
 
 // AuthzListFilterConfig — per-object filtered List (RBAC).
 // Каждый публичный List<Resource> прогоняет id-set через
-// iam.AuthorizeService.ListObjects(subject, action, "lb_*") и отдаёт пересечение
+// iam.AuthorizeService.ListObjects(subject, action, "nlb_*") и отдаёт пересечение
 // (только доступные объекты), read==enforce, fail-closed (security.md). Endpoint
 // iam (там AuthorizeService); по умолчанию переиспользуется conn, которым nlb
 // уже зовёт iam (см. main.go buildListFilter), mTLS — через mtls.iam-register.

@@ -22,7 +22,7 @@ import (
 // RBAC  per-object filtered List — kacho-nlb consumer.
 // Acceptance (docs/specs/rbac-rules-model-2026-acceptance.md):
 //   - byName / global: List отдаёт только доступные объекты (union
-//     армов) — пересечение repo-rows с FGA ListObjects(subject,"...","lb_*").
+//     армов) — пересечение repo-rows с FGA ListObjects(subject,"...","nlb_*").
 //   - no-leak: объект вне грантов отсутствует в List И Get→NotFound.
 //   - read==enforce: List-видимость = Check-allow (одна tuple-база, relation viewer).
 //   - fail-closed: IAM недоступен → Unavailable (НЕ нефильтрованный список).
@@ -74,7 +74,7 @@ func TestListLoadBalancersFilter_OnlyAccessible(t *testing.T) {
 	_ = seedLB(t, repo, "prj-a", "lb-a3") // НЕ в гранте → не должен попасть в List
 
 	flt := &fakeListFilter{allowed: map[string][]string{
-		"lb_network_load_balancer": {a, b},
+		"nlb_network_load_balancer": {a, b},
 	}}
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
@@ -91,7 +91,7 @@ func TestListLoadBalancersFilter_OnlyAccessible(t *testing.T) {
 
 	// read==enforce: фильтр спрошен с relation viewer-action на правильном типе.
 	assert.Equal(t, "user:usr_alice", flt.gotSubj)
-	assert.Equal(t, "lb_network_load_balancer", flt.gotType)
+	assert.Equal(t, "nlb_network_load_balancer", flt.gotType)
 	assert.Equal(t, "loadbalancer.networkLoadBalancers.list", flt.gotAct)
 }
 

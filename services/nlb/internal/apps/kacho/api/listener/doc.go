@@ -45,9 +45,9 @@
 //
 // FGA owner-hierarchy tuple emit (transactional-outbox, replaces the former
 // best-effort direct FGA write —):
-//   - creator tuple `<subject> #admin @lb_listener:<id>` (skipped if the principal
+//   - creator tuple `<subject> #admin @nlb_listener:<id>` (skipped if the principal
 //     is system/unauthenticated) + parent-link tuple
-//     `lb_network_load_balancer:<lb_id> #load_balancer @lb_listener:<id>` are
+//     `nlb_network_load_balancer:<lb_id> #load_balancer @nlb_listener:<id>` are
 //     serialised into a `domain.FGARegisterIntent` and persisted via
 //     `w.FGARegisterOutbox.Emit(fga.register, …)` in the SAME writer-tx as the
 //     listener INSERT (one commit, no dual-write).

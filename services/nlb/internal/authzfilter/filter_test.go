@@ -20,7 +20,7 @@ import (
 
 // Unit tests for the kacho-nlb FGA list-filter (RBAC).
 // Mirror of kacho-compute internal/authzfilter/filter_test.go, adapted to the
-// nlb `lb_*` resource types + `loadbalancer.*.list` actions. No network: a fake
+// nlb `nlb_*` resource types + `loadbalancer.*.list` actions. No network: a fake
 // AuthorizeService client returns programmed responses.
 
 // mockAuthClient — captures calls and returns programmed responses (one per call;

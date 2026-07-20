@@ -81,7 +81,7 @@ func TestListActions_VerbIsList(t *testing.T) {
 	}
 }
 
-// the FGA object-type constants must match the `lb_*` authorization-model types
+// the FGA object-type constants must match the `nlb_*` authorization-model types
 // (single source of truth: internal/domain.FGAObjectType*). A drift here would
 // scope ListObjects to a non-existent type → empty grants → no-leak over-blocking.
 func TestResourceTypes_MatchDomainFGAObjectTypes(t *testing.T) {
@@ -99,8 +99,8 @@ func TestResourceTypes_MatchDomainFGAObjectTypes(t *testing.T) {
 			if c.filterTyp != c.domainTyp {
 				t.Fatalf("resource-type drift: authzfilter %q != domain %q", c.filterTyp, c.domainTyp)
 			}
-			if !strings.HasPrefix(c.filterTyp, "lb_") {
-				t.Fatalf("resource-type %q must carry the lb_ prefix (FGA model + permission_catalog)", c.filterTyp)
+			if !strings.HasPrefix(c.filterTyp, "nlb_") {
+				t.Fatalf("resource-type %q must carry the nlb_ prefix (FGA model + permission_catalog)", c.filterTyp)
 			}
 		})
 	}

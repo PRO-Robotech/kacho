@@ -83,7 +83,7 @@ def _create_external_lb(suffix: str, body_extra: dict = None):
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
         # read-your-writes: materialize the LB owner-tuple before cross-resource children
-        # (Listener.Create / attach-TG) that authorize against editor@lb_network_load_balancer.
+        # (Listener.Create / attach-TG) that authorize against editor@nlb_network_load_balancer.
         retry_until_authorized(Step(name="materialize-lb", method="GET",
              path=f"{_LB_BASE}/{{{{nlbId}}}}", test_script=[])),
     ]
@@ -154,7 +154,7 @@ CASES.append(Case(
                           "pm.test('EXTERNAL auto public VIP: v4AddressId resolved to bound vpc Address', () => "
                           "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));"])),
         # Step 2: listener with auto external VIP. Child-create under the fresh LB is
-        # authorized against editor@lb_network_load_balancer — its owner-tuple is
+        # authorized against editor@nlb_network_load_balancer — its owner-tuple is
         # eventually-consistent, so wrap the first child-create in the same bounded
         # read-your-writes retry as materialize-lb (round-4 wrapped update/get/del but
         # left the child-CREATE unwrapped, so a transient 403 reddened the whole chain).
@@ -180,7 +180,7 @@ CASES.append(Case(
         *_create_tg("ext-flow"),
         # Step 4: register an Instance target (peer-validated in worker; tolerated
         # when the seeded Compute instance is absent on a bare lane). Authorized against
-        # editor@lb_target_group — fresh TG owner-tuple lag → bounded retry.
+        # editor@nlb_target_group — fresh TG owner-tuple lag → bounded retry.
         retry_until_authorized(Step(name="add-instance-target", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "{{existingInstanceId}}", "weight": 100}]},

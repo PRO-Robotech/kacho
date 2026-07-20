@@ -83,7 +83,7 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 	stop := startDrainer(t, tc.Pool, fake)
 	defer stop()
 	require.Eventually(t, func() bool {
-		return fake.appliedCount("project:prj-x", "project", "lb_network_load_balancer:nlb-redrive") == 1
+		return fake.appliedCount("project:prj-x", "project", "nlb_network_load_balancer:nlb-redrive") == 1
 	}, 5*time.Second, 50*time.Millisecond, "re-driven intent delivered exactly once")
 }
 

@@ -88,7 +88,7 @@ func TestLBRegisterIntent_UserPrincipal_ProjectAndCreator(t *testing.T) {
 	require.Len(t, intent.Tuples, 2)
 	require.Equal(t, "user:usr-1", intent.Tuples[1].SubjectID)
 	require.Equal(t, domain.FGARelationAdmin, intent.Tuples[1].Relation)
-	require.Equal(t, "lb_network_load_balancer:nlb-x", intent.Tuples[1].Object)
+	require.Equal(t, "nlb_network_load_balancer:nlb-x", intent.Tuples[1].Object)
 }
 
 func TestPeerErrToStatus_ProjectClientCaller(t *testing.T) {

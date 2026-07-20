@@ -112,7 +112,7 @@ func TestSyncRegistrar_RegistersEachTuple_ForwardsMirrorFields(t *testing.T) {
 	got := cli.register[0]
 	assert.Equal(t, domain.FGARelationProject, got.GetRelation())
 	assert.Equal(t, "project:"+testProjID, got.GetSubjectId())
-	assert.Equal(t, "lb_network_load_balancer:"+testLBID, got.GetObject())
+	assert.Equal(t, "nlb_network_load_balancer:"+testLBID, got.GetObject())
 	assert.Equal(t, map[string]string{"tier": "critical"}, got.GetLabels(), "labels forwarded")
 	assert.Equal(t, testProjID, got.GetParentProjectId(), "parent_project_id forwarded")
 	assert.Equal(t, "acc-aaaaaaaaaaaaaaaa", got.GetParentAccountId(), "parent_account_id forwarded")

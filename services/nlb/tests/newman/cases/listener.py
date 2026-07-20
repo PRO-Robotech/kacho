@@ -101,7 +101,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                  ])),
             poll_operation_until_done(),
             # read-your-writes: materialize the PARENT LB owner-tuple before the child
-            # Listener.Create (which is authorized against editor@lb_network_load_balancer)
+            # Listener.Create (which is authorized against editor@nlb_network_load_balancer)
             # -> avoids a spurious 403 on the fresh LB whose tuple is eventually-consistent.
             retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
                  path=f"{_LB_BASE}/{{{{nlbId}}}}", test_script=[])),
@@ -171,7 +171,7 @@ CASES.append(Case(
         # Exercises EXTERNAL auto-public-VIP listener semantics → parent must be EXTERNAL.
         # Pool-dependent (external AddressPool) — tracked under the systemic external-pool finding.
         *_setup_lb("auto-vip", lb_type="EXTERNAL"),
-        # Child Listener.Create is authorized against editor@lb_network_load_balancer,
+        # Child Listener.Create is authorized against editor@nlb_network_load_balancer,
         # whose owner-tuple is eventually-consistent after the parent LB Create. round-4
         # wrapped the setup GET/UPDATE/DELETE but left the child-CREATE unwrapped, so a
         # transient 403 reddened the whole listener CRUD chain — wrap it too (fail-closed).
@@ -722,7 +722,7 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgAltId")]),
         poll_operation_until_done(),
-        # First self-UPDATE of the fresh listener → v_update@lb_listener owner-tuple lag
+        # First self-UPDATE of the fresh listener → v_update@nlb_listener owner-tuple lag
         # (403) is retried; the real reject is what the assertion observes. retry_on=(403,)
         # ONLY — a 404 here is a terminal, lawful non-acceptance (the alt-region TG could
         # not be created because `_suiteRegionAltId`=ru-central2 is unseeded on this stand

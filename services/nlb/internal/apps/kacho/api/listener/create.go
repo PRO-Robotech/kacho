@@ -286,8 +286,8 @@ func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 
 // listenerRegisterIntent — FGA-register-intent для созданного Listener:
 //
-//	<subject> #admin @lb_listener:<id>                                 (creator)
-//	lb_network_load_balancer:<lb_id> #load_balancer @lb_listener:<id>  (parent-link)
+//	<subject> #admin @nlb_listener:<id>                                 (creator)
+//	nlb_network_load_balancer:<lb_id> #load_balancer @nlb_listener:<id>  (parent-link)
 //
 // creator-tuple пропускается на пустом subject (system-initiated). Листенер
 // резолвит проект через parent-link → LB-иерархию (своего project-tuple нет).

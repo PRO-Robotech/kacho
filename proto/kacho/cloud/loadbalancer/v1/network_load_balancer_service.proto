@@ -25,7 +25,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.get";
     option (kacho.iam.authz.v1.required_relation) = "v_get";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -70,7 +70,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.update";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -85,7 +85,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.delete";
     option (kacho.iam.authz.v1.required_relation) = "v_delete";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -100,7 +100,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.start";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -115,7 +115,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.stop";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -138,7 +138,7 @@ service NetworkLoadBalancerService {
     // Source-project scope check; destination-project editor check is added
     // by a scope-conditional extractor in kacho-nlb (design §6.5).
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -156,7 +156,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.attachTargetGroup";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -174,7 +174,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.detachTargetGroup";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -189,7 +189,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.getTargetStates";
     option (kacho.iam.authz.v1.required_relation) = "v_get";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -200,7 +200,7 @@ service NetworkLoadBalancerService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_network_load_balancer"
+      object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";

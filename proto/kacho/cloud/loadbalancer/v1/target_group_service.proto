@@ -22,7 +22,7 @@ service TargetGroupService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.get";
     option (kacho.iam.authz.v1.required_relation) = "v_get";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_target_group"
+      object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -67,7 +67,7 @@ service TargetGroupService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.update";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_target_group"
+      object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -82,7 +82,7 @@ service TargetGroupService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.delete";
     option (kacho.iam.authz.v1.required_relation) = "v_delete";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_target_group"
+      object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -104,7 +104,7 @@ service TargetGroupService {
     // Source-project scope; destination editor check added by a
     // scope-conditional extractor in kacho-nlb (design §6.5).
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_target_group"
+      object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -122,7 +122,7 @@ service TargetGroupService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.addTargets";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_target_group"
+      object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -140,7 +140,7 @@ service TargetGroupService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.removeTargets";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_target_group"
+      object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
@@ -151,7 +151,7 @@ service TargetGroupService {
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "lb_target_group"
+      object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";

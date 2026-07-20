@@ -36,13 +36,13 @@ import (
 const (
 	// object types MUST match the FGA model (iam/v1/fga_model.fga) and
 	// the nlb owner-tuple intents (internal/domain FGAObjectType*, applied via
-	// fga_register_outbox → IAM) — both use the `lb_*` prefix. The
+	// fga_register_outbox → IAM) — both use the `nlb_*` prefix. The
 	// interceptor Checks these object types; mismatched names → no tuple →
 	// per-RPC 403 even when the gateway-edge FGA Check allowed.
 	objectTypeProject      = "project"
-	objectTypeLoadBalancer = "lb_network_load_balancer"
-	objectTypeListener     = "lb_listener"
-	objectTypeTargetGroup  = "lb_target_group"
+	objectTypeLoadBalancer = "nlb_network_load_balancer"
+	objectTypeListener     = "nlb_listener"
+	objectTypeTargetGroup  = "nlb_target_group"
 
 	// objectTypeCluster / clusterSingletonRoot — singleton root объекта FGA-иерархии
 	// (cluster ▸ account ▸ project ▸ resource). Используется как scope cluster-floor
@@ -83,7 +83,7 @@ const (
 	// relationAnnounceWriter — least-priv writer-relation для inbound announce-state
 	// write (ReportAnnounceState). Единственный носитель — data plane (новое
 	// одностороннее runtime-ребро kacho-vpc-implement → kacho-nlb). object-scoped на
-	// `lb_network_load_balancer:<id>`: viewer/tenant НЕ несут её → PermissionDenied.
+	// `nlb_network_load_balancer:<id>`: viewer/tenant НЕ несут её → PermissionDenied.
 	// Материализация relation'а в FGA-модели — часть iam-стороны интеграции; тут —
 	// backend view-only имя для per-RPC Check.
 	relationAnnounceWriter = "announce_writer"
@@ -181,7 +181,7 @@ func Catalog() []string {
 //
 // Семантика per-RPC:
 //   - Create / List              — на parent scope `project:<project_id>` (из request);
-//   - Get/Update/Delete/<verb>   — на самом ресурсе `lb_<type>:<id>`;
+//   - Get/Update/Delete/<verb>   — на самом ресурсе `nlb_<type>:<id>`;
 //   - OperationService.Get/Cancel — `Public: true` (proto-аннотация `<exempt>`);
 //     api-gateway opsproxy маршрутизирует по prefix, single-resource Check
 //     здесь нерелевантен (op-id opaque + поллится creator'ом сразу после Create —
@@ -195,19 +195,19 @@ func Catalog() []string {
 // parity, но Interceptor его не вызывает.
 //
 // **Move** (NLB & TG): per-RPC Check выполняется на ресурсе (`editor on
-// lb_*`) — это гарантирует authz на source project через FGA cascade
-// (`editor on lb_*` ← `editor on project`). Проверка editor'а на
+// nlb_*`) — это гарантирует authz на source project через FGA cascade
+// (`editor on nlb_*` ← `editor on project`). Проверка editor'а на
 // destination_project_id — задача handler'а (он зовёт `iam.Check` напрямую
 // перед `repo.Update(project_id=<dst>)`). Acceptance покрывает оба
 // edge'а в end-to-end newman case.
 //
-// **AttachTargetGroup**: per-RPC Check — `editor on lb_network_load_balancer:<lb_id>`.
-// Дополнительный `viewer on lb_target_group:<tg_id>` проверяется
+// **AttachTargetGroup**: per-RPC Check — `editor on nlb_network_load_balancer:<lb_id>`.
+// Дополнительный `viewer on nlb_target_group:<tg_id>` проверяется
 // handler'ом перед attach (`iam.Check` напрямую).
 //
 // scope-guard: для Get/Update/Delete/<verb> мы НЕ резолвим
 // project_id из БД заранее — лишний DB-trip; relation проверяется на самом
-// ресурсе, FGA-модель E3 настроена так, что `editor on lb_network_load_balancer` →
+// ресурсе, FGA-модель E3 настроена так, что `editor on nlb_network_load_balancer` →
 // computed через `editor on project` → `member on group`.
 func PermissionMap() authz.RPCMap {
 	return authz.RPCMap{
@@ -462,7 +462,7 @@ func PermissionMap() authz.RPCMap {
 		// «authN+authZ на ОБОИХ listener'ах»; «Internal = trusted» — запрещённое
 		// допущение): оба RPC замаплены с реальным object-scoped Relation, НЕ Public.
 		//
-		// Scope — `lb_network_load_balancer:<network_load_balancer_id>` (из request):
+		// Scope — `nlb_network_load_balancer:<network_load_balancer_id>` (из request):
 		//   - GetAnnounceState  — read, viewer-tier verb-bearing `v_get` (как Get LB);
 		//   - ReportAnnounceState — inbound write, least-priv `announce_writer`
 		//     (единственный носитель = data plane; viewer/tenant → PermissionDenied).

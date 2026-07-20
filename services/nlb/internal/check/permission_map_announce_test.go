@@ -33,7 +33,7 @@ func TestAnnounce_GetIsViewerGatedNotExempt(t *testing.T) {
 	const id = "nlb-xyz"
 	objType, objID, err := e.Extract(&lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id})
 	require.NoError(t, err)
-	require.Equal(t, "lb_network_load_balancer", objType)
+	require.Equal(t, "nlb_network_load_balancer", objType)
 	require.Equal(t, id, objID)
 }
 
@@ -49,7 +49,7 @@ func TestAnnounce_ReportIsWriterGatedNotExempt(t *testing.T) {
 	const id = "nlb-xyz"
 	objType, objID, err := e.Extract(&lbv1.ReportLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id})
 	require.NoError(t, err)
-	require.Equal(t, "lb_network_load_balancer", objType)
+	require.Equal(t, "nlb_network_load_balancer", objType)
 	require.Equal(t, id, objID)
 }
 

@@ -13,7 +13,7 @@
     D-consumer: до фикса nlb НЕ фильтровал List per-object (ScopeFiltered:true
     лишь пропускал per-RPC Check, без ListObjects-фильтра); после — List
     прогоняет id-set через iam.AuthorizeService.ListObjects(subject, action,
-    "lb_*") и отдаёт пересечение. List возвращает 200 + доступные объекты;
+    "nlb_*") и отдаёт пересечение. List возвращает 200 + доступные объекты;
     list-filter.enabled=true НЕ ломает List (нет 503 от broken verb).
 
   - D-44 no-leak (negative): well-formed-но-отсутствующий id → Get == 404
