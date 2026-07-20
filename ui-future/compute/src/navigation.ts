@@ -1,4 +1,4 @@
-export type RemoteIconName = "cloud" | "server";
+export type RemoteIconName = "cloud" | "server" | "layers";
 
 export interface RemoteNavItem {
   key: string;
@@ -35,6 +35,13 @@ export const COMPUTE_NAVIGATION: RemoteNavSection[] = [
         icon: "server",
         label: "Виртуальные машины",
         path: "compute/instances",
+        requiresProject: true,
+      },
+      {
+        key: "compute-machine-types",
+        icon: "layers",
+        label: "Типы машин",
+        path: "compute/machine-types",
         requiresProject: true,
       },
     ],

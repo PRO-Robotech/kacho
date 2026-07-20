@@ -228,6 +228,16 @@ function extraInfoFor(refResource: string, row: Record<string, unknown>): string
       const r = (row.region_id as string | undefined) ?? "";
       return r;
     }
+    // MachineType: показываем размер (vCPU · память) + семейство, чтобы различать
+    // безымянно-похожие типы в дропдауне machineTypeId.
+    case "machine-types": {
+      const er = (row.effective_resources as Record<string, unknown> | undefined) ?? {};
+      const vcpu = er.v_cpu != null ? `${er.v_cpu} vCPU` : "";
+      const memMib = typeof er.memory_mib === "string" ? Number.parseInt(er.memory_mib, 10) : Number(er.memory_mib);
+      const mem = Number.isFinite(memMib) && memMib > 0 ? `${Math.round(memMib / 1024)} ГиБ` : "";
+      const fam = (row.family as string | undefined) ?? "";
+      return [vcpu, mem, fam].filter(Boolean).join(" · ");
+    }
     case "route-tables":
     case "security-groups": {
       const net = (row.network_id as string | undefined) ?? "";
