@@ -49,7 +49,7 @@ func TestSubnetList_FilterByZoneAndNetwork_VPC_1_45(t *testing.T) {
 		require.NoError(t, e)
 		return s.ID
 	}
-	_ = mkSub("sub-a", "enp_zf1", "zone-a", "10.10.0.0/24")     // zone-a, net1
+	_ = mkSub("sub-a", "enp_zf1", "zone-a", "10.10.0.0/24")       // zone-a, net1
 	bZoneB := mkSub("sub-b", "enp_zf1", "zone-b", "10.11.0.0/24") // zone-b, net1
 	cNet2 := mkSub("sub-c", "enp_zf2", "zone-a", "10.12.0.0/24")  // zone-a, net2
 	require.NoError(t, w.Commit())
