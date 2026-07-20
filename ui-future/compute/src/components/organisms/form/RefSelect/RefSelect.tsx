@@ -123,9 +123,7 @@ export function RefSelect({
             value: o.uid as string,
             label: `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`,
           })),
-          ...(createSpec
-            ? [{ value: CREATE_SENTINEL, label: `+ Создать ${createSpec.singular.toLowerCase()}…` }]
-            : []),
+          ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ Создать ${createSpec.singular.toLowerCase()}…` }] : []),
         ]}
       />
       {refProjectScoped && !project && <p className="text-xs text-amber-600">Выберите проект в шапке для загрузки.</p>}
@@ -151,28 +149,28 @@ export function RefSelect({
         >
           <FormBareProvider>
             <InlineResourceCreateForm
-            spec={createSpec}
-            ctx={{
-              projectId: project?.id,
-              accountId: project?.accountId,
-            }}
-            presetFields={createPresetFields && formValue ? createPresetFields(formValue) : undefined}
-            projectId={project?.id ?? null}
-            title={createTitle}
-            onCancel={() => setCreating(false)}
-            onSuccess={() => {
-              // refetch candidate-list — новый ресурс должен появиться;
-              // затем подхватываем последний созданный по имени-эвристике
-              // (InlineResourceCreateForm не отдаёт id наверх — после refetch
-              // diff'им список). Простой best-effort: перезапрашиваем и
-              // оставляем выбор пользователю, если не смогли определить.
-              void refetch().then((r) => {
-                const after = (r.data?.[spec.payloadKey] ?? []) as Array<{ id: string }>;
-                const before = new Set(options.map((o) => o.uid));
-                const fresh = after.find((it) => !before.has(it.id));
-                if (fresh) onChange(fresh.id);
-              });
-            }}
+              spec={createSpec}
+              ctx={{
+                projectId: project?.id,
+                accountId: project?.accountId,
+              }}
+              presetFields={createPresetFields && formValue ? createPresetFields(formValue) : undefined}
+              projectId={project?.id ?? null}
+              title={createTitle}
+              onCancel={() => setCreating(false)}
+              onSuccess={() => {
+                // refetch candidate-list — новый ресурс должен появиться;
+                // затем подхватываем последний созданный по имени-эвристике
+                // (InlineResourceCreateForm не отдаёт id наверх — после refetch
+                // diff'им список). Простой best-effort: перезапрашиваем и
+                // оставляем выбор пользователю, если не смогли определить.
+                void refetch().then((r) => {
+                  const after = (r.data?.[spec.payloadKey] ?? []) as Array<{ id: string }>;
+                  const before = new Set(options.map((o) => o.uid));
+                  const fresh = after.find((it) => !before.has(it.id));
+                  if (fresh) onChange(fresh.id);
+                });
+              }}
             />
           </FormBareProvider>
         </Modal>
@@ -227,6 +225,16 @@ function extraInfoFor(refResource: string, row: Record<string, unknown>): string
     case "zones": {
       const r = (row.region_id as string | undefined) ?? "";
       return r;
+    }
+    // MachineType: показываем размер (vCPU · память) + семейство, чтобы различать
+    // безымянно-похожие типы в дропдауне machineTypeId.
+    case "machine-types": {
+      const er = (row.effective_resources as Record<string, unknown> | undefined) ?? {};
+      const vcpu = er.v_cpu != null ? `${er.v_cpu} vCPU` : "";
+      const memMib = typeof er.memory_mib === "string" ? Number.parseInt(er.memory_mib, 10) : Number(er.memory_mib);
+      const mem = Number.isFinite(memMib) && memMib > 0 ? `${Math.round(memMib / 1024)} ГиБ` : "";
+      const fam = (row.family as string | undefined) ?? "";
+      return [vcpu, mem, fam].filter(Boolean).join(" · ");
     }
     case "route-tables":
     case "security-groups": {

@@ -8,11 +8,12 @@
 // тома) для мест, где нужен явный контракт.
 
 import { api } from "./client";
-import type { Operation, VolumeList, SnapshotList, DiskTypeList } from "./types";
+import type { Operation, VolumeList, SnapshotList, DiskTypeList, ImageList } from "./types";
 
 const VOLUMES = "/storage/v1/volumes";
 const SNAPSHOTS = "/storage/v1/snapshots";
 const DISK_TYPES = "/storage/v1/diskTypes";
+const IMAGES = "/storage/v1/images";
 
 export const volumesApi = {
   list: (q?: Record<string, string>) => api.list<VolumeList>(VOLUMES, q),
@@ -35,4 +36,13 @@ export const diskTypesApi = {
   // Read-only каталог (cluster-scoped, без project_id). Admin-CRUD — Internal* API.
   list: (q?: Record<string, string>) => api.list<DiskTypeList>(DISK_TYPES, q),
   get: (id: string) => api.get<Record<string, unknown>>(`${DISK_TYPES}/${id}`),
+};
+
+export const imagesApi = {
+  list: (q?: Record<string, string>) => api.list<ImageList>(IMAGES, q),
+  get: (id: string) => api.get<Record<string, unknown>>(`${IMAGES}/${id}`),
+  // Образ создаётся РОВНО из одного источника: source_snapshot_id XOR source_volume_id.
+  create: (body: unknown): Promise<{ operation: Operation }> => api.create(IMAGES, body),
+  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${IMAGES}/${id}`, body),
+  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${IMAGES}/${id}`),
 };

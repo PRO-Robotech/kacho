@@ -4,7 +4,9 @@
 // ResourceShell остаётся generic (Обзор / связанные / Операции / JSON + формы-
 // панели). Доменно-специфичные строки Обзора, header-действия и табы инстанса
 // подключаются здесь по spec.id:
-//   • Обзор — зона / платформа / vCPU / память / гарантия CPU / образ / статус / FQDN;
+//   • Обзор (COMP-1) — тип (VM/CONTAINER) / зона / тип машины (+ effectiveResources
+//     vCPU·память) / гарантия CPU / boot source (тип·id·имя°·digest°·boot-том°) /
+//     сервисный аккаунт / статус (+ status_reason) / FQDN;
 //   • header-действия — Запустить / Остановить / Перезапустить (InstanceActions);
 //   • табы «Диски» (attach/detach тома) и «Сетевые интерфейсы» (attach/detach NIC).
 
@@ -66,6 +68,13 @@ function bytes(v: unknown): ReactNode {
   return s === "—" ? dash : <>{s}</>;
 }
 
+// effective_resources.memory_mib хранится в МиБ (int64 строкой); приводим к байтам
+// для общего formatBytes. Пусто/невалидно → NaN (formatBytes отдаст «—»).
+function mibToBytes(v: unknown): number {
+  const mib = typeof v === "string" ? Number.parseInt(v, 10) : typeof v === "number" ? v : Number.NaN;
+  return Number.isFinite(mib) && mib > 0 ? mib * 1024 * 1024 : Number.NaN;
+}
+
 function diskCount(data: Record<string, unknown>): number {
   const boot = getByPath<Record<string, unknown>>(data, "boot_disk");
   const secondary = getByPath<unknown[]>(data, "secondary_disks") ?? [];
@@ -76,17 +85,32 @@ function diskCount(data: Record<string, unknown>): number {
 
 export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   "compute-instances": {
-    overviewExtra: ({ data }) => [
-      { label: "Зона доступности", value: txt(getByPath<string>(data, "zone_id")) },
-      { label: "Платформа", value: code(getByPath<string>(data, "platform_id")) },
-      { label: "vCPU", value: txt(getByPath<unknown>(data, "resources.cores")) },
-      { label: "Память", value: bytes(getByPath<unknown>(data, "resources.memory")) },
-      { label: "Гарантия CPU, %", value: txt(getByPath<unknown>(data, "cpu_guarantee_percent")) },
-      { label: "OCI-образ", value: code(getByPath<string>(data, "image")) },
-      { label: "Image digest", value: code(getByPath<string>(data, "image_digest")) },
-      { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
-      { label: "FQDN", value: code(getByPath<string>(data, "fqdn")) },
-    ],
+    overviewExtra: ({ data }) => {
+      const memMib = getByPath<unknown>(data, "effective_resources.memory_mib");
+      const memBytes = mibToBytes(memMib);
+      const bootType = getByPath<string>(data, "boot_source.type");
+      const bootId = getByPath<string>(data, "boot_source.id");
+      const bootName = getByPath<string>(data, "boot_source.name");
+      const bootDigest = getByPath<string>(data, "boot_source.resolved_digest");
+      const bootVolume = getByPath<string>(data, "boot_source.materialized_volume.volume_id");
+      const statusReason = getByPath<string>(data, "status_reason");
+      return [
+        { label: "Тип инстанса", value: code(getByPath<string>(data, "instance_kind")) },
+        { label: "Зона доступности", value: txt(getByPath<string>(data, "zone_id")) },
+        { label: "Тип машины", value: code(getByPath<string>(data, "machine_type_id")) },
+        { label: "vCPU", value: txt(getByPath<unknown>(data, "effective_resources.v_cpu")) },
+        { label: "Память", value: bytes(memBytes) },
+        { label: "Гарантия CPU, %", value: txt(getByPath<unknown>(data, "cpu_guarantee_percent")) },
+        { label: "Источник ОС", value: code(bootType) },
+        { label: "Образ", value: bootName ? txt(bootName) : code(bootId) },
+        { label: "Image digest", value: code(bootDigest) },
+        { label: "Boot-том", value: code(bootVolume) },
+        { label: "Сервисный аккаунт", value: code(getByPath<string>(data, "service_account.id")) },
+        { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
+        ...(statusReason ? [{ label: "Причина статуса", value: txt(statusReason) }] : []),
+        { label: "FQDN", value: code(getByPath<string>(data, "fqdn")) },
+      ];
+    },
     headerActions: ({ data, projectId }) => (
       <InstanceActions
         instanceId={getByPath<string>(data, "id") ?? ""}

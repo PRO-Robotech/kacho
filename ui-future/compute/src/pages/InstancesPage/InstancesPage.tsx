@@ -24,10 +24,12 @@ export interface InstancesPageProps {
   navigate?: (path: string) => void | Promise<void>;
 }
 
-// Compute-домен: Instance (виртуальная машина) через единый REGISTRY. Detail
-// инстанса (start/stop/restart + attach-disk/attach-nic) подаётся доменными
-// расширениями DETAIL_EXTENSIONS поверх generic ResourceShell.
+// Compute-домен: Instance (виртуальная машина / контейнер-джоба) + MachineType
+// (read-only cluster-scoped каталог sizing) через единый REGISTRY. Detail инстанса
+// (start/stop/restart + attach-disk/attach-nic) подаётся доменными расширениями
+// DETAIL_EXTENSIONS поверх generic ResourceShell.
 const INSTANCES = REGISTRY["compute-instances"];
+const MACHINE_TYPES = REGISTRY["machine-types"];
 
 export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
   const queryClient = useMemo(
@@ -72,6 +74,10 @@ export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
                 <Route path={`${INSTANCES.route}/:uid`} element={<ResourceShell spec={INSTANCES} />} />
                 <Route path={`${INSTANCES.route}/:uid/edit`} element={<ResourceShell spec={INSTANCES} mode="edit" />} />
                 <Route path={`${INSTANCES.route}/:uid/:tab`} element={<ResourceShell spec={INSTANCES} />} />
+                {/* MachineType — read-only cluster-scoped каталог sizing (без create/edit). */}
+                <Route path={MACHINE_TYPES.route} element={<ResourceListPage spec={MACHINE_TYPES} />} />
+                <Route path={`${MACHINE_TYPES.route}/:uid`} element={<ResourceShell spec={MACHINE_TYPES} />} />
+                <Route path={`${MACHINE_TYPES.route}/:uid/:tab`} element={<ResourceShell spec={MACHINE_TYPES} />} />
                 <Route path="*" element={<ProjectComputeDefaultRedirect />} />
               </Routes>
             </ComputeFrame>
