@@ -3,17 +3,20 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-storage-config
+  name: {{ include "storage.fullname" . }}-config
+  labels:
+    {{- include "storage.labels" . | nindent 4 }}
 data:
   KACHO_STORAGE_AUTH_MODE: {{ .Values.config.authMode | quote }}
   KACHO_STORAGE_GRPC_PORT: {{ .Values.ports.public | quote }}
   KACHO_STORAGE_INTERNAL_PORT: {{ .Values.ports.internal | quote }}
   KACHO_STORAGE_METRICS_ADDR: {{ printf ":%v" .Values.ports.metrics | quote }}
-  KACHO_STORAGE_DB_HOST: {{ .Values.config.dbHost | quote }}
-  KACHO_STORAGE_DB_PORT: {{ .Values.config.dbPort | quote }}
-  KACHO_STORAGE_DB_USER: {{ .Values.config.dbUser | quote }}
-  KACHO_STORAGE_DB_NAME: {{ .Values.config.dbName | quote }}
-  KACHO_STORAGE_DB_SSLMODE: {{ .Values.config.dbSslMode | quote }}
+  KACHO_STORAGE_DB_HOST: {{ .Values.db.host | quote }}
+  KACHO_STORAGE_DB_PORT: {{ .Values.db.port | quote }}
+  KACHO_STORAGE_DB_USER: {{ .Values.db.user | quote }}
+  KACHO_STORAGE_DB_NAME: {{ .Values.db.name | quote }}
+  KACHO_STORAGE_DB_SSLMODE: {{ .Values.db.sslMode | quote }}
   KACHO_STORAGE_GEO_GRPC_ADDR: {{ .Values.config.geoGrpcAddr | quote }}
   KACHO_STORAGE_IAM_GRPC_ADDR: {{ .Values.config.iamGrpcAddr | quote }}
   KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR: {{ .Values.config.authzIamGrpcAddr | quote }}
+  KACHO_STORAGE_FGA_REGISTER_DRAINER_ENABLED: {{ .Values.config.fgaRegisterDrainerEnabled | quote }}

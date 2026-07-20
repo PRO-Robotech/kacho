@@ -1,8 +1,17 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-# Helm-values kacho-storage (skeleton). Реальные mTLS-секреты / peer-адреса /
-# ресурсные лимиты донастраивает kacho-deploy при интеграции в стенд.
+# Helm-values kacho-storage. mTLS-секреты / peer-адреса / DB-секрет донастраивает
+# umbrella при интеграции в стенд (values.fe3455-prod.yaml).
+
+# fullnameOverride — фиксирует базовое имя ресурсов (Service/Deployment/DNS) как
+# `kacho-storage` вместо release-производного `<Release.Name>-storage`. ВСЕ консумеры
+# ждут именно `kacho-storage`: compute→storage (storageInternalAddr default
+# kacho-storage.kacho.svc.cluster.local:9091 + compute server-cert serverName.storage
+# SAN), config-дефолты, deploy/Makefile reload-svc (DEPLOY_NAME=kacho-storage). Без
+# override Service рендерится `kacho-umbrella-storage` → DNS не резолвится, mTLS-SAN
+# не совпадает. См. templates/_helpers.tpl.
+fullnameOverride: kacho-storage
 
 replicaCount: 1
 
@@ -17,20 +26,46 @@ ports:
   internal: 9091   # Internal* (cluster-internal only, ban #6)
   metrics: 9095    # /healthz diagnostic listener
 
-# Env (KACHO_STORAGE_*). Секреты (DB_PASSWORD, mTLS) — через secret.yaml.
-config:
-  authMode: production
-  dbHost: kacho-storage-postgres
-  dbPort: "5432"
-  dbUser: storage
-  dbName: kacho_storage
-  dbSslMode: require
-  # Peer-адреса (runtime cross-domain edges). Пусто → клиент fail-closed.
-  geoGrpcAddr: ""
-  iamGrpcAddr: ""
-  authzIamGrpcAddr: ""
+# ─── DB — existingSecret-паттерн (выровнен с compute/vpc) ────────────────────
+# Пароль НИКОГДА не лежит в values (git-committed) — берётся из
+# operator-/bitnami-provisioned Secret по ссылке (passwordSecretName/Key). deployment
+# монтирует его через secretKeyRef в migrator init-container И main-container. Ключи
+# host/port/user/name/sslMode/passwordSecretName/passwordSecretKey совпадают с
+# umbrella overlay (values.fe3455-prod.yaml storage.db.*).
+db:
+  host: kacho-storage-postgres
+  port: "5432"
+  user: storage
+  name: kacho_storage
+  # sslMode — postgres sslmode для DSN (migrator + serve). Прод обязан require|
+  # verify-ca|verify-full (security.md: TLS-канал БД). disable — только dev-стенд.
+  sslMode: require
+  # existingSecret: пароль читается из этого Secret'а по ключу passwordSecretKey.
+  # umbrella пинит на bitnami-provisioned kacho-umbrella-pg-storage (ключ password).
+  passwordSecretName: kacho-storage-postgres
+  passwordSecretKey: password
 
-# Init-контейнер миграций (cmd/migrator up) до старта основного pod.
+# ─── Env (KACHO_STORAGE_*) не-секретные / не-mTLS. Секрет БД — через secretKeyRef;
+# mTLS-env рендерит deployment.yaml по mtls.* ──────────────────────────────────
+config:
+  # authMode — fail-closed режим: dev | production | production-strict.
+  authMode: production
+  # Peer-адреса (runtime cross-domain edges). Пусто → клиент fail-closed.
+  geoGrpcAddr: ""      # storage→geo ZoneService.Get (zone_id), public :9090
+  iamGrpcAddr: ""      # storage→iam ProjectService.Get (project_id), public :9090
+  # authzIamGrpcAddr — kacho-iam INTERNAL :9091: несёт per-RPC Check И
+  # RegisterResource/UnregisterResource (FGA-proxy owner-tuple, SEC-D). Пусто →
+  # authz-интерсептор и register-drainer не подключаются (dev). Прод ОБЯЗАН задать.
+  authzIamGrpcAddr: ""
+  # fgaRegisterDrainerEnabled — SEC-D/CS-1 GAP-D: register-drainer применяет
+  # owner-tuple register-intent'ы (kacho_storage.fga_register_outbox) через kacho-iam
+  # RegisterResource по ребру storage→iam (authzIamGrpcAddr, mTLS). Без него
+  # созданные Volume/Snapshot не получают owner-tuple → gateway scope_extractor
+  # {storage_volume,volume_id}/{storage_snapshot,snapshot_id} не резолвит target→
+  # project (анти-BOLA). Требует непустой authzIamGrpcAddr (иначе intents durable).
+  fgaRegisterDrainerEnabled: true
+
+# Init-контейнер миграций (kacho-migrator up) до старта основного pod.
 migrator:
   enabled: true
 
@@ -45,6 +80,49 @@ resources:
   limits:
     cpu: 500m
     memory: 256Mi
+
+# ─── SEC-F mTLS — per-edge opt-in (cert-manager internal-CA leaf-сертификаты) ───
+# enable=false (default) → НИ Certificate, НИ KACHO_STORAGE_*_MTLS_* env → insecure
+# dev (нулевая регрессия). umbrella прокидывает .mtls.enable + per-edge флаги.
+#
+# При enable=true (corelib LoadPrefixed("KACHO_STORAGE"), config.go):
+#   server (оба листенера): KACHO_STORAGE_PUBLIC_SERVER_MTLS_* /
+#                           KACHO_STORAGE_INTERNAL_SERVER_MTLS_*
+#   storage→geo (zone_id):  KACHO_STORAGE_GEO_CLIENT_MTLS_*   (:9090 ZoneService.Get)
+#   storage→iam (все рёбра): KACHO_STORAGE_IAM_CLIENT_MTLS_*   (:9090 ProjectService.Get
+#                           + :9091 Check + :9091 RegisterResource fga-register)
+# Один client-cert (kacho-storage-client-tls) обслуживает ВСЕ storage→iam-дозвоны:
+# serverName=kacho-iam.kacho.svc.cluster.local входит в SAN iam-server-cert'а
+# (serverHosts ["kacho-iam","kacho-iam-internal"]), поэтому валиден и для :9090, и
+# для internal :9091 (тот же pod предъявляет один cert на обоих листенерах).
+mtls:
+  # enable=true в проде: server-mTLS на обоих листенерах. flip в false ТОЛЬКО вместе
+  # с auth.mode=dev (локальный insecure-стенд). Per-edge client-mTLS (.edges.*) —
+  # независимый opt-in для staged rollout.
+  enable: false
+  # ─── internal-CA leaf-cert issuance (этот чарт владеет своим Certificate, rule #1) ─
+  # client-cert URI-SAN saName ОБЯЗАН совпасть с IAM module-SA seed (migration
+  # 0057_storage_sa_least_priv): kacho-storage → sva(md5("kacho-storage")) держит
+  # fga_writer@iam_fgaproxy:system → RegisterResource storage_* авторизован.
+  issuer:
+    name: kacho-internal-ca
+    kind: ClusterIssuer   # cluster-scoped, НЕ namespaced Issuer
+  serverHosts: ["kacho-storage"]   # server-cert DNS-SAN dial-host (Service = kacho-storage)
+  spiffe:
+    trustDomain: kacho.cloud
+    namespace: kacho-storage
+    saName: kacho-storage
+  leafDuration: 2160h
+  leafRenewBefore: 720h
+  serverSecretName: kacho-storage-server-tls
+  clientSecretName: kacho-storage-client-tls
+  mountPath: /etc/kacho-storage/tls   # <mp>/server|client/{tls.crt,tls.key,ca.crt}
+  edges:
+    geo: false    # storage→geo ZoneService.Get (zone_id, :9090)
+    iam: false    # storage→iam ProjectService.Get (:9090) + Check + RegisterResource (:9091)
+  serverName:
+    geo: kacho-geo.kacho.svc.cluster.local     # :9090 ZoneService.Get dial-host (∈ geo server-SAN)
+    iam: kacho-iam.kacho.svc.cluster.local     # ∈ iam server-SAN — валиден для :9090 И internal :9091
 
 # INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
 #
