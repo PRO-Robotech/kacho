@@ -72,6 +72,9 @@ func mergeRepository(registryID, name string, overlay *domain.RepositoryConfig, 
 			Labels:      overlay.Labels,
 			Visibility:  overlay.Visibility,
 			CreatedAt:   overlay.CreatedAt,
+			// REG-1 F7: durable overlay несёт свой lifecycle (DURABLE, либо EPHEMERAL
+			// если создан явно EPHEMERAL до overlay-set auto-promote).
+			Lifecycle: overlay.Lifecycle,
 		}
 		if proj != nil {
 			repo.TagCount = proj.TagCount
@@ -85,10 +88,12 @@ func mergeRepository(registryID, name string, overlay *domain.RepositoryConfig, 
 		return repo
 	case proj != nil && proj.TagCount > 0:
 		// Ephemeral: проекция без overlay — visibility=PRIVATE by default, overlay-поля
-		// пусты, created_at нулевой (своей строки нет).
+		// пусты, created_at нулевой (своей строки нет). REG-1 F7: lifecycle=EPHEMERAL
+		// (register-on-first-push, авторитетный enum вместо «overlay-строки нет»).
 		proj.RegistryID = registryID
 		proj.Name = name
 		proj.Visibility = domain.VisibilityPrivate
+		proj.Lifecycle = domain.LifecycleEphemeral
 		return proj
 	default:
 		return nil
@@ -124,6 +129,7 @@ func (u *UseCase) ProtoRepository(r *domain.Repository) *registryv1.Repository {
 		ArtifactTypes: types,
 		LastPulledAt:  prototime.Truncate(r.LastPulledAt),
 		DownloadCount: r.DownloadCount,
+		Lifecycle:     registryv1.RepositoryLifecycle(r.Lifecycle),
 	}
 }
 
@@ -140,6 +146,17 @@ func resolveVisibility(requested, registryDefault domain.Visibility) domain.Visi
 		return domain.VisibilityPublic
 	}
 	return domain.VisibilityPrivate
+}
+
+// resolveLifecycle разрешает опц. вход lifecycle на CreateRepository (REG-1 F7):
+// EPHEMERAL — как есть (register-on-first-push); UNSPECIFIED / out-of-range — DURABLE
+// by default (omit-equivalent: explicit intent-create = сохранить каркас). Понижение
+// не выразимо; DURABLE — терминал (снимается только DeleteRepository).
+func resolveLifecycle(requested domain.Lifecycle) domain.Lifecycle {
+	if requested == domain.LifecycleEphemeral {
+		return domain.LifecycleEphemeral
+	}
+	return domain.LifecycleDurable
 }
 
 // validateRepoDescription — description-границы overlay Repository (A22): длина

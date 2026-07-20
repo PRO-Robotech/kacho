@@ -49,12 +49,34 @@ message Registry {
   // Состояние жизненного цикла.
   RegistryStatus status = 10;
 
-  // Дефолтная публичность для НОВЫХ repo в namespace — сид Repository.visibility
-  // на CreateRepository, когда явное visibility не задано (mutable через Update,
-  // дефолт PRIVATE / fail-safe). Переход default_visibility→PUBLIC требует registry
-  // admin (D-6: любой путь к PUBLIC — admin-gated). Смена НЕ перекрашивает
-  // существующие repo (per-repo Repository.visibility остаётся authoritative).
-  Visibility default_visibility = 9;
+  // Дефолтная публичность для НОВЫХ repo реестра (REG-1 F5, ранее default_visibility) —
+  // сид Repository.visibility на CreateRepository, когда явное visibility не задано
+  // (mutable через Update, дефолт PRIVATE / fail-safe). Единственный registry-level
+  // рычаг видимости — сам Registry top-level `visibility` НЕ несёт (F1). Переход
+  // defaultRepositoryVisibility→PUBLIC требует registry admin (D-6: любой путь к PUBLIC —
+  // admin-gated). Смена НЕ перекрашивает существующие repo (per-repo
+  // Repository.visibility остаётся authoritative).
+  Visibility default_repository_visibility = 9;
+
+  // region_id — REGIONAL placement-якорь реестра (REG-1 F4). Cross-domain ref на
+  // geo.Region (TEXT, без FK: DB-per-service). Обязателен на Create (peer-validate
+  // geo.v1.RegionService.Get, fail-closed). Immutable после Create (перенос региона
+  // сломал бы storage-locality блобов). Registry — regional-anycast: zone_id НЕ несёт.
+  string region_id = 11;
+
+  // placement_type — placement-дискриминатор. Registry всегда REGIONAL (const
+  // carve-out ради spine placement-parity; «not a choice»). REGIONAL anycast →
+  // zone_id пуст by construction. Immutable после Create.
+  PlacementType placement_type = 12;
+}
+
+// PlacementType — placement-дискриминатор ресурса. Registry — всегда REGIONAL
+// (const carve-out): OCI-контент региональный (anycast), зоны не несёт. Bare-значения
+// (без PLACEMENT_TYPE_-префикса) — JSON-проекция "REGIONAL" (parity с Visibility
+// PRIVATE/PUBLIC; buf ENUM_VALUE_PREFIX exempt).
+enum PlacementType {
+  PLACEMENT_TYPE_UNSPECIFIED = 0;
+  REGIONAL = 1;
 }
 
 // RegistryStatus — терминальность DELETING обязательна (forward-only delete):
@@ -152,6 +174,23 @@ message Repository {
   // Output-only: момент создания overlay-строки (durable-repo), truncate до секунд.
   // Пусто у ephemeral-repo (проекция без overlay — своей строки/created_at нет).
   google.protobuf.Timestamp created_at = 10;
+
+  // Output-only: исчезаемость репозитория (REG-1 F7). Авторитетный enum, заменивший
+  // протекающий implicit-сигнал «есть overlay-строка». DURABLE — survives-empty
+  // (явный CreateRepository → DURABLE by default; overlay-set auto-promote'ит
+  // EPHEMERAL→DURABLE). EPHEMERAL — register-on-first-push / auto-removed-when-empty.
+  // Управляется системой (не tenant'ом) — в UpdateRepository.update_mask → INVALID_ARGUMENT.
+  RepositoryLifecycle lifecycle = 14;
+}
+
+// RepositoryLifecycle — исчезаемость OCI-репозитория (REG-1 F7). Один авторитетный
+// output-only сигнал вместо вывода из наличия overlay-field. Bare-значения (без
+// REPOSITORY_LIFECYCLE_-префикса) — JSON-проекция "DURABLE"/"EPHEMERAL" (parity с
+// Visibility PRIVATE/PUBLIC; buf ENUM_VALUE_PREFIX exempt).
+enum RepositoryLifecycle {
+  REPOSITORY_LIFECYCLE_UNSPECIFIED = 0;
+  DURABLE = 1;    // сохраняется даже без тегов (survives-empty)
+  EPHEMERAL = 2;  // авто-удаляется при опустошении (register-on-first-push)
 }
 
 // Tag — тегированный образ (манифест) в репозитории. Read-only проекция из zot.

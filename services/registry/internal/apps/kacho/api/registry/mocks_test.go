@@ -268,6 +268,23 @@ func (i *mockIAM) ProjectExists(ctx context.Context, projectID string) error {
 	return nil
 }
 
+// ---- mock GeoClient (RegionExists — REG-1 F4 peer-validate) -----------------
+
+type mockGeo struct {
+	regionFn func(ctx context.Context, regionID string) error
+	called   bool
+	lastArg  string
+}
+
+func (g *mockGeo) RegionExists(ctx context.Context, regionID string) error {
+	g.called = true
+	g.lastArg = regionID
+	if g.regionFn != nil {
+		return g.regionFn(ctx, regionID)
+	}
+	return nil // дефолт: регион существует
+}
+
 // ---- mock RepoRegistrar (register/unregister repo-tuple outbox intent) -----
 
 type mockRepoReg struct {
@@ -398,13 +415,19 @@ func newUC(repo *mockRepo, zot *mockZot, iam *mockIAM, ops *memOps) *registry.Us
 }
 
 // newUCWithReg — вариант с явным RepoRegistrar (для проверки unregister-on-last-tag).
+// geo — дефолтный passing mockGeo (регион существует); F4-тесты используют newUCWithGeo.
 func newUCWithReg(repo *mockRepo, zot *mockZot, iam *mockIAM, ops *memOps, reg *mockRepoReg) *registry.UseCase {
-	return registry.New(repo, repo, newMockCfg(), zot, iam, reg, ops, "registry.kacho.local")
+	return registry.New(repo, repo, newMockCfg(), zot, iam, &mockGeo{}, reg, ops, "registry.kacho.local")
 }
 
 // newUCWithCfg — вариант с явным config-overlay repo (RG-1 Repository RPC-тесты).
 func newUCWithCfg(repo *mockRepo, cfg *mockRepoConfig, zot *mockZot, iam *mockIAM, ops *memOps) *registry.UseCase {
-	return registry.New(repo, repo, cfg, zot, iam, &mockRepoReg{}, ops, "registry.kacho.local")
+	return registry.New(repo, repo, cfg, zot, iam, &mockGeo{}, &mockRepoReg{}, ops, "registry.kacho.local")
+}
+
+// newUCWithGeo — вариант с явным GeoClient (REG-1 F4 region peer-validate тесты).
+func newUCWithGeo(repo *mockRepo, zot *mockZot, iam *mockIAM, geo *mockGeo, ops *memOps) *registry.UseCase {
+	return registry.New(repo, repo, newMockCfg(), zot, iam, geo, &mockRepoReg{}, ops, "registry.kacho.local")
 }
 
 // ---- mock RepositoryConfigRepo (config-overlay CQRS-порт, RG-1) --------------
@@ -498,6 +521,9 @@ func (m *mockRepoConfig) UpdateConfig(ctx context.Context, spec registry.Reposit
 	if spec.ApplyVisibility {
 		c.Visibility = spec.Visibility
 	}
+	// REG-1 F7 auto-promote parity: любой overlay-set поднимает lifecycle до DURABLE
+	// (реальный adapter — SET lifecycle='DURABLE' в UPDATE; mock зеркалит контракт).
+	c.Lifecycle = domain.LifecycleDurable
 	return c, nil
 }
 

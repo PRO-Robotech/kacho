@@ -78,14 +78,17 @@ func withSearchPath(dsn string) string {
 	return dsn + sep + opt
 }
 
-// newReg строит domain.Registry с сгенерированным id (prefix reg).
+// newReg строит domain.Registry с сгенерированным id (prefix reg). REG-1 F4:
+// region_id NOT NULL + placement_type REGIONAL (DB placement-anchor CHECK).
 func newReg(projectID, name string, labels map[string]string) *domain.Registry {
 	return &domain.Registry{
-		ID:        ids.NewID(ids.PrefixRegistry),
-		ProjectID: projectID,
-		Name:      name,
-		Labels:    labels,
-		Status:    domain.RegistryStatusActive,
+		ID:            ids.NewID(ids.PrefixRegistry),
+		ProjectID:     projectID,
+		Name:          name,
+		Labels:        labels,
+		Status:        domain.RegistryStatusActive,
+		RegionID:      "eu-north-1",
+		PlacementType: domain.PlacementTypeRegional,
 	}
 }
 

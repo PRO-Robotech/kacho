@@ -34,7 +34,7 @@ import (
 // Registry MarkDeleting (тот же lock), закрывая гонку «мутируем overlay в DELETING-реестре».
 
 // configColumns — канонический порядок SELECT/RETURNING overlay-строки.
-const configColumns = `registry_id, name, description, labels, visibility, created_at`
+const configColumns = `registry_id, name, description, labels, visibility, created_at, lifecycle`
 
 // RepositoryConfigRepo — реализация registry.RepositoryConfigRepo поверх pgxpool.
 type RepositoryConfigRepo struct {
@@ -112,23 +112,29 @@ func (r *RepositoryConfigRepo) InsertConfig(ctx context.Context, cfg *domain.Rep
 	}
 	return runConfigTx(ctx, r.pool, cfg.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
-			INSERT INTO %s.repository_configs (registry_id, name, description, labels, visibility)
-			VALUES ($1, $2, $3, $4::jsonb, $5)
+			INSERT INTO %s.repository_configs (registry_id, name, description, labels, visibility, lifecycle)
+			VALUES ($1, $2, $3, $4::jsonb, $5, $6)
 			RETURNING %s`, schema, configColumns)
 		return scanConfig(tx.QueryRow(ctx, q,
-			cfg.RegistryID, cfg.Name, cfg.Description, labels, cfg.Visibility.String()))
+			cfg.RegistryID, cfg.Name, cfg.Description, labels, cfg.Visibility.String(), cfg.Lifecycle.String()))
 	})
 }
 
 // UpdateConfig применяет mutable-поля (Apply*-флаги) одним UPDATE ... RETURNING под
 // ACTIVE-guard + эмиссию intents одной tx. visibility-flip сериализуется row-lock'ом
-// (детерминированный терминал, B09). 0 rows (строки нет) → ErrNotFound. Пустой набор
-// Apply-флагов → SELECT ... FOR UPDATE (тот же row-lock, что SET-ветка).
+// (детерминированный терминал, B09). 0 rows (строки нет) → ErrNotFound.
+//
+// REG-1 F7 AUTO-PROMOTE: любой overlay-set ставит lifecycle='DURABLE' (REG-1-23) —
+// explicit UpdateRepository = durable intent; EPHEMERAL overlay поднимается до DURABLE
+// (наблюдаемо через enum). Понижение DURABLE→EPHEMERAL через API не выразимо (REG-1-24).
+// lifecycle всегда в SET → UPDATE выполняется даже при отсутствии других mutable-полей
+// (тот же row-lock; конкурентный promote идемпотентен — REG-1-25).
 func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.RepositoryConfigUpdate, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	if err := r.ready(); err != nil {
 		return nil, err
 	}
-	sets := []string{}
+	// lifecycle='DURABLE' — auto-promote-инвариант overlay-set (первым, литерал без арга).
+	sets := []string{"lifecycle = 'DURABLE'"}
 	args := []any{spec.RegistryID, spec.Name}
 	idx := 3
 	if spec.ApplyDescription {
@@ -151,11 +157,6 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 	}
 
 	return runConfigTx(ctx, r.pool, spec.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
-		if len(sets) == 0 {
-			q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs
-				WHERE registry_id = $1 AND name = $2 FOR UPDATE`, configColumns, schema)
-			return scanConfig(tx.QueryRow(ctx, q, spec.RegistryID, spec.Name))
-		}
 		q := fmt.Sprintf(`
 			UPDATE %s.repository_configs SET %s
 			WHERE registry_id = $1 AND name = $2
@@ -174,8 +175,9 @@ func (r *RepositoryConfigRepo) RekeyConfig(ctx context.Context, registryID, oldN
 		return nil, err
 	}
 	return runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+		// Rename = overlay-set → auto-promote lifecycle='DURABLE' (REG-1-23 parity).
 		q := fmt.Sprintf(`
-			UPDATE %s.repository_configs SET name = $3
+			UPDATE %s.repository_configs SET name = $3, lifecycle = 'DURABLE'
 			WHERE registry_id = $1 AND name = $2
 			RETURNING %s`, schema, configColumns)
 		return scanConfig(tx.QueryRow(ctx, q, registryID, oldName, newName))
@@ -257,11 +259,12 @@ func guardRegistryActive(ctx context.Context, tx pgx.Tx, registryID string) erro
 // scanConfig читает overlay-строку из pgx.Row/pgx.Rows в domain.RepositoryConfig.
 func scanConfig(row pgx.Row) (*domain.RepositoryConfig, error) {
 	var (
-		cfg       domain.RepositoryConfig
-		labelsRaw []byte
-		visRaw    string
+		cfg          domain.RepositoryConfig
+		labelsRaw    []byte
+		visRaw       string
+		lifecycleRaw string
 	)
-	if err := row.Scan(&cfg.RegistryID, &cfg.Name, &cfg.Description, &labelsRaw, &visRaw, &cfg.CreatedAt); err != nil {
+	if err := row.Scan(&cfg.RegistryID, &cfg.Name, &cfg.Description, &labelsRaw, &visRaw, &cfg.CreatedAt, &lifecycleRaw); err != nil {
 		return nil, err
 	}
 	labels, err := unmarshalLabels(labelsRaw)
@@ -270,6 +273,7 @@ func scanConfig(row pgx.Row) (*domain.RepositoryConfig, error) {
 	}
 	cfg.Labels = labels
 	cfg.Visibility = domain.VisibilityFromString(visRaw)
+	cfg.Lifecycle = domain.LifecycleFromString(lifecycleRaw)
 	return &cfg, nil
 }
 

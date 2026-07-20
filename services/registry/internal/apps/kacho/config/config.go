@@ -65,6 +65,11 @@ type Config struct {
 	// отдельный от authz/register-ребра на :9091 (единый conn на :9091 давал
 	// Unimplemented на Get → фикс. INTERNAL на Create ещё до insert'а).
 	IAMProjectGRPCAddr string `envconfig:"KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR" default:"kacho-iam.kacho.svc.cluster.local:9090"`
+	// GeoGRPCAddr — PUBLIC endpoint kacho-geo (:9090) для RegionService.Get
+	// (existence-валидация Registry.region_id на Create — новое ребро registry→geo,
+	// REG-1 F4). RegionService — публичный read-only справочник Geography на :9090.
+	// Пусто → geo-client nil → RegionExists отвечает Unavailable (Create fail-closed).
+	GeoGRPCAddr string `envconfig:"KACHO_REGISTRY_GEO_GRPC_ADDR" default:"kacho-geo.kacho.svc.cluster.local:9090"`
 	// AuthZBreakglass — аварийный режим: пропускать все RPC без Check + WARN
 	// (только dev / break-glass).
 	AuthZBreakglass bool `envconfig:"KACHO_REGISTRY_AUTHZ_BREAKGLASS" default:"false"`
@@ -177,6 +182,10 @@ type Config struct {
 	// (kacho-iam.*) ≠ internal (kacho-iam-internal.*): единый ServerName некорректен
 	// для обоих листенеров под RequireAndVerifyClientCert.
 	IAMProjectMTLS grpcclient.TLSClient `envconfig:"IAM_PROJECT_MTLS"`
+
+	// GeoMTLS — client-creds для ребра registry→geo public (:9090): RegionService.Get.
+	// ServerName = kacho-geo public dial-host'а (REG-1 F4 новое ребро).
+	GeoMTLS grpcclient.TLSClient `envconfig:"GEO_MTLS"`
 
 	// PublicServerMTLS — server-creds для публичного листенера (:9090).
 	PublicServerMTLS grpcsrv.TLSServer `envconfig:"PUBLIC_SERVER_MTLS"`
