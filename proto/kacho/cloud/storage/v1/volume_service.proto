@@ -203,8 +203,12 @@ message CreateVolumeRequest {
   int64 block_size = 8;
 
   // ID of the source snapshot to restore the volume from. Optional; empty = a fresh
-  // volume.
+  // volume. Mutually exclusive with source_image_id.
   string source_snapshot_id = 9 [(length) = "<=50"];
+
+  // ID of the source image to materialise a boot volume from. Optional; empty = a
+  // non-boot volume. Mutually exclusive with source_snapshot_id.
+  string source_image_id = 10 [(length) = "<=50"];
 }
 
 message CreateVolumeMetadata {

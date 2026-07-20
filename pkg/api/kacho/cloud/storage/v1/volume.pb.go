@@ -173,11 +173,17 @@ type Volume struct {
 	BlockSize int64 `protobuf:"varint,11,opt,name=block_size,json=blockSize,proto3" json:"block_size,omitempty"`
 	// ID of the source snapshot the volume was restored from. Optional (empty = a
 	// fresh volume). Same-DB FK to Snapshot (ON DELETE SET NULL). Immutable.
-	// There is no source-image field (the OS comes from an OCI image, not the volume).
+	// Mutually exclusive with source_image_id (a volume is seeded from one source).
 	SourceSnapshotId string `protobuf:"bytes,12,opt,name=source_snapshot_id,json=sourceSnapshotId,proto3" json:"source_snapshot_id,omitempty"`
 	// Current status of the volume. AVAILABLE / IN_USE are DERIVED from the presence
 	// of an attachment (they cannot drift from the attachment state).
 	Status Volume_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.storage.v1.Volume_Status" json:"status,omitempty"`
+	// ID of the source image the boot volume was materialised from. Optional (empty =
+	// a non-boot / snapshot-seeded / fresh volume). Same-DB FK to Image (ON DELETE SET
+	// NULL — provenance, NOT a live dependency: deleting the Image clears this lineage
+	// but leaves the block data intact). Mutually exclusive with source_snapshot_id.
+	// Immutable.
+	SourceImageId string `protobuf:"bytes,16,opt,name=source_image_id,json=sourceImageId,proto3" json:"source_image_id,omitempty"`
 	// Authoritative attach-state of the volume (public, lean projection).
 	Attachments []*VolumeAttachment `protobuf:"bytes,14,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	// Output-only generic projection of `attachments` for uniform dependents/impact
@@ -308,6 +314,13 @@ func (x *Volume) GetStatus() Volume_Status {
 	return Volume_STATUS_UNSPECIFIED
 }
 
+func (x *Volume) GetSourceImageId() string {
+	if x != nil {
+		return x.SourceImageId
+	}
+	return ""
+}
+
 func (x *Volume) GetAttachments() []*VolumeAttachment {
 	if x != nil {
 		return x.Attachments
@@ -430,7 +443,7 @@ var File_kacho_cloud_storage_v1_volume_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_volume_proto_rawDesc = "" +
 	"\n" +
-	"#kacho/cloud/storage/v1/volume.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\xb3\x06\n" +
+	"#kacho/cloud/storage/v1/volume.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\xdb\x06\n" +
 	"\x06Volume\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -451,7 +464,8 @@ const file_kacho_cloud_storage_v1_volume_proto_rawDesc = "" +
 	"\n" +
 	"block_size\x18\v \x01(\x03R\tblockSize\x12,\n" +
 	"\x12source_snapshot_id\x18\f \x01(\tR\x10sourceSnapshotId\x12=\n" +
-	"\x06status\x18\r \x01(\x0e2%.kacho.cloud.storage.v1.Volume.StatusR\x06status\x12J\n" +
+	"\x06status\x18\r \x01(\x0e2%.kacho.cloud.storage.v1.Volume.StatusR\x06status\x12&\n" +
+	"\x0fsource_image_id\x18\x10 \x01(\tR\rsourceImageId\x12J\n" +
 	"\vattachments\x18\x0e \x03(\v2(.kacho.cloud.storage.v1.VolumeAttachmentR\vattachments\x129\n" +
 	"\aused_by\x18\x0f \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +

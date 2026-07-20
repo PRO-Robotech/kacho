@@ -257,7 +257,7 @@ func (u *UseCase) Update(ctx context.Context, id string, mask []string, name, de
 	// UpdateMask отверг бы их generic'ом «unknown field» вместо конвенц-сообщения.
 	for _, p := range mask {
 		switch p {
-		case "zone_id", "disk_type_id", "block_size", "source_snapshot_id", "used_by":
+		case "zone_id", "disk_type_id", "block_size", "source_snapshot_id", "source_image_id", "used_by", "attachments":
 			return nil, u.errStatus(fmt.Errorf("%w: %s is immutable after Volume.Create", ports.ErrInvalidArg, p))
 		}
 	}

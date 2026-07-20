@@ -21,6 +21,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
@@ -89,6 +90,29 @@ func (h *InternalVolumeHandler) GetInternal(ctx context.Context, req *storagev1.
 		return nil, serviceerr.ToStatus(err)
 	}
 	return &storagev1.VolumeInternal{Volume: protoconv.Volume(v)}, nil
+}
+
+// ── InternalImageService (:9091) ──────────────────────────────────────────
+
+// InternalImageHandler реализует storagev1.InternalImageServiceServer.
+type InternalImageHandler struct {
+	storagev1.UnimplementedInternalImageServiceServer
+	uc *image.UseCase
+}
+
+// NewInternalImageHandler конструирует InternalImageHandler.
+func NewInternalImageHandler(uc *image.UseCase) *InternalImageHandler {
+	return &InternalImageHandler{uc: uc}
+}
+
+// GetInternal — full (infra) проекция Image (internal-only). infra-поля reserved в
+// ImageInternal (future data-plane); публичный Image embeds без infra (STOR-1-25).
+func (h *InternalImageHandler) GetInternal(ctx context.Context, req *storagev1.GetInternalImageRequest) (*storagev1.ImageInternal, error) {
+	i, err := h.uc.GetInternal(ctx, req.GetImageId())
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return &storagev1.ImageInternal{Image: protoconv.Image(i)}, nil
 }
 
 // ── InternalDiskTypeService (:9091, admin CRUD, sync) ─────────────────────

@@ -50,6 +50,10 @@ const (
 const (
 	ObjectStorageVolume   = "storage_volume"
 	ObjectStorageSnapshot = "storage_snapshot"
+	// ObjectStorageImage — FGA object-тип образа (парити с gateway scope_extractor
+	// {storage_image, image_id}, F13/STOR-1-27). owner-tuple эмитится в STOR-1
+	// (reuse CS-1 GAP-D outbox), чтобы gate резолвил target→project (анти-BOLA).
+	ObjectStorageImage = "storage_image"
 )
 
 // relationProject — hierarchy-relation owner-tuple: `project:<id> #project @<obj>`.
@@ -153,6 +157,11 @@ func StorageSnapshot(projectID, snapshotID string) Tuple {
 	return ProjectHierarchy(projectID, ObjectStorageSnapshot, snapshotID)
 }
 
+// StorageImage — owner-tuple образа: project:<projectID> #project @storage_image:<imageID>.
+func StorageImage(projectID, imageID string) Tuple {
+	return ProjectHierarchy(projectID, ObjectStorageImage, imageID)
+}
+
 // Item helpers -----------------------------------------------------------------
 
 // VolumeItem — register-Item тома с mirror-feed (labels + parent_project_id=projectID).
@@ -163,4 +172,9 @@ func VolumeItem(projectID, volumeID string, labels map[string]string) Item {
 // SnapshotItem — register-Item снапшота с mirror-feed.
 func SnapshotItem(projectID, snapshotID string, labels map[string]string) Item {
 	return Item{Tuple: StorageSnapshot(projectID, snapshotID), Labels: labels, ParentProjectID: projectID}
+}
+
+// ImageItem — register-Item образа с mirror-feed (labels + parent_project_id=projectID).
+func ImageItem(projectID, imageID string, labels map[string]string) Item {
+	return Item{Tuple: StorageImage(projectID, imageID), Labels: labels, ParentProjectID: projectID}
 }

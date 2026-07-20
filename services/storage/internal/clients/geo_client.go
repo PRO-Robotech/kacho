@@ -22,6 +22,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
 
@@ -30,9 +31,11 @@ import (
 // иначе повесил бы request-горутину до конца request-ctx.
 const peerCallTimeout = 3 * time.Second
 
-// GeoClient — клиент ребра storage→geo (валидация zone_id через ZoneService.Get).
+// GeoClient — клиент ребра storage→geo (валидация zone_id через ZoneService.Get для
+// Volume; region_id через RegionService.Get для Image — REGIONAL).
 type GeoClient struct {
-	cli geov1.ZoneServiceClient
+	cli       geov1.ZoneServiceClient
+	regionCli geov1.RegionServiceClient
 }
 
 // NewGeoClient создаёт GeoClient поверх готового *grpc.ClientConn к kacho-geo
@@ -42,6 +45,7 @@ func NewGeoClient(conn *grpc.ClientConn) *GeoClient {
 	c := &GeoClient{}
 	if conn != nil {
 		c.cli = geov1.NewZoneServiceClient(conn)
+		c.regionCli = geov1.NewRegionServiceClient(conn)
 	}
 	return c
 }
@@ -67,4 +71,28 @@ func (c *GeoClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
 	return nil
 }
 
-var _ volume.GeoClient = (*GeoClient)(nil)
+// EnsureRegionExists валидирует region_id через kacho-geo (RegionService.Get) на
+// request-path Image.Create (REGIONAL/anycast). Несуществующий/невалидный регион →
+// InvalidArgument "unknown region id '<X>'" (зеркалит nlb→geo). Peer недоступен →
+// Unavailable (fail-closed для мутации). Identity форвардится (auth.PropagateOutgoing).
+func (c *GeoClient) EnsureRegionExists(ctx context.Context, regionID string) error {
+	if c.regionCli == nil {
+		return status.Error(codes.Unavailable, "storage→geo RegionService not configured")
+	}
+	cctx, cancel := context.WithTimeout(ctx, peerCallTimeout)
+	defer cancel()
+	if _, err := c.regionCli.Get(auth.PropagateOutgoing(cctx), &geov1.GetRegionRequest{RegionId: regionID}); err != nil {
+		switch status.Code(err) {
+		case codes.NotFound, codes.InvalidArgument:
+			return fmt.Errorf("%w: unknown region id '%s'", ports.ErrInvalidArg, regionID)
+		default:
+			return status.Error(codes.Unavailable, "geo region validation unavailable")
+		}
+	}
+	return nil
+}
+
+var (
+	_ volume.GeoClient = (*GeoClient)(nil)
+	_ image.GeoClient  = (*GeoClient)(nil)
+)

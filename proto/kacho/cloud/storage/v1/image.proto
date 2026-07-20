@@ -1,0 +1,113 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// An Image resource — a VM boot image owned by kacho-storage (prefix "img").
+//
+// A storage Image is the seed for a boot Volume: a Volume with source_image_id set
+// is materialised from this Image. Image is a REGIONAL (anycast) resource — it is
+// region-scoped (region_id, placement_type == REGIONAL), zone-independent, and a
+// ZONAL boot Volume is coherent with it when the volume's zone belongs to the
+// image's region.
+//
+// A storage Image is addressed as a `storage.image` Referrer (orthogonal to a
+// registry OCI `registry.image`: the imageKind discriminator keeps a bare image id
+// unambiguous between the two owners).
+//
+// A storage Image is created from EXACTLY ONE source — a Snapshot
+// (source_snapshot_id) OR a Volume (source_volume_id). A blank upload (data-plane
+// blob pipeline) is deferred and out of scope.
+message Image {
+
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+
+    // Image is being created.
+    CREATING = 1;
+
+    // Image is ready to seed boot volumes.
+    READY = 2;
+
+    // Image is being deleted.
+    DELETING = 3;
+
+    // Image encountered a problem and cannot operate.
+    ERROR = 4;
+  }
+
+  // Placement family of the image. A storage Image is always REGIONAL (anycast).
+  enum PlacementType {
+    PLACEMENT_TYPE_UNSPECIFIED = 0;
+
+    // Region-scoped, zone-independent (anycast).
+    REGIONAL = 1;
+  }
+
+  // Image disk format — a native Kachō enum (single-tier default; NOT a foreign
+  // format literal). Output-only.
+  enum Format {
+    FORMAT_UNSPECIFIED = 0;
+
+    // Standard single-tier Kachō image format.
+    STANDARD = 1;
+  }
+
+  // ID of the image. Prefix "img". Immutable.
+  string id = 1;
+
+  // ID of the project that owns the image. Immutable. Peer-validated against kacho-iam.
+  string project_id = 2;
+
+  // Creation timestamp. Truncated to seconds on the wire.
+  google.protobuf.Timestamp created_at = 3;
+
+  // Last modification timestamp. Truncated to seconds on the wire.
+  google.protobuf.Timestamp updated_at = 4;
+
+  // Name of the image. 1-63 characters long, lowercase. Unique within
+  // (project_id, name) when non-empty.
+  string name = 5;
+
+  // Description of the image. 0-256 characters long.
+  string description = 6;
+
+  // Resource labels as `key:value` pairs. Maximum of 64 per resource.
+  map<string, string> labels = 7;
+
+  // ID of the region where the image lives (REGIONAL/anycast). TEXT reference to
+  // kacho-geo (peer-validated, no FK). Immutable.
+  string region_id = 8;
+
+  // Placement family — output-only, always REGIONAL for a storage Image.
+  PlacementType placement_type = 9;
+
+  // ID of the source snapshot the image was created from. Same-DB FK to Snapshot
+  // (ON DELETE SET NULL, provenance). Mutually exclusive with source_volume_id.
+  // Immutable.
+  string source_snapshot_id = 10;
+
+  // ID of the source volume the image was created from. Same-DB FK to Volume
+  // (ON DELETE SET NULL, provenance). Mutually exclusive with source_snapshot_id.
+  // Immutable.
+  string source_volume_id = 11;
+
+  // Virtual disk size of the image, in bytes. Output-only (derived from the source).
+  int64 size_bytes = 12;
+
+  // Minimum size (in bytes) of a receiving boot Volume. Output-only (derived).
+  // compute derives GiB and enforces boot_volume >= min_disk (output-echo contract).
+  int64 min_disk_bytes = 13;
+
+  // Image disk format. Output-only native Kachō enum.
+  Format format = 14;
+
+  // Current status of the image.
+  Status status = 15;
+}

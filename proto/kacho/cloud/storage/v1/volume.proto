@@ -73,12 +73,19 @@ message Volume {
 
   // ID of the source snapshot the volume was restored from. Optional (empty = a
   // fresh volume). Same-DB FK to Snapshot (ON DELETE SET NULL). Immutable.
-  // There is no source-image field (the OS comes from an OCI image, not the volume).
+  // Mutually exclusive with source_image_id (a volume is seeded from one source).
   string source_snapshot_id = 12;
 
   // Current status of the volume. AVAILABLE / IN_USE are DERIVED from the presence
   // of an attachment (they cannot drift from the attachment state).
   Status status = 13;
+
+  // ID of the source image the boot volume was materialised from. Optional (empty =
+  // a non-boot / snapshot-seeded / fresh volume). Same-DB FK to Image (ON DELETE SET
+  // NULL — provenance, NOT a live dependency: deleting the Image clears this lineage
+  // but leaves the block data intact). Mutually exclusive with source_snapshot_id.
+  // Immutable.
+  string source_image_id = 16;
 
   // Authoritative attach-state of the volume (public, lean projection).
   repeated VolumeAttachment attachments = 14;

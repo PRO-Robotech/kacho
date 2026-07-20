@@ -23,6 +23,7 @@ type volErrCtx struct {
 	volumeName string
 	diskTypeID string
 	snapshotID string
+	imageID    string // source_image_id FK → images текст ("Image <id> not found")
 	deviceName string // attach-путь: device_name для UNIQUE(instance_id,device_name) текста
 	instanceID string // attach-путь: instance_id для device/boot-конфликт текста
 }
@@ -33,6 +34,7 @@ const (
 	cnVolumeNameUniq     = "volumes_name_uniq"                 // partial UNIQUE(project_id,name) WHERE name<>''
 	cnVolumeDiskTypeFK   = "volumes_disk_type_id_fkey"         // volumes.disk_type_id → disk_types RESTRICT
 	cnVolumeSnapshotFK   = "volumes_source_snapshot_fk"        // volumes.source_snapshot_id → snapshots SET NULL
+	cnVolumeImageFK      = "volumes_source_image_fk"           // volumes.source_image_id → images SET NULL (0007)
 	cnAttachmentVolumeFK = "volume_attachments_volume_id_fkey" // volume_attachments.volume_id → volumes RESTRICT
 	cnAttachDeviceUniq   = "volume_attachments_instance_device_uniq"
 	cnAttachOneBoot      = "volume_attachments_one_boot"
@@ -76,6 +78,8 @@ func mapVolumeErr(err error, c volErrCtx) error {
 				return fmt.Errorf("%w: DiskType %s not found", ports.ErrFailedPrecondition, c.diskTypeID)
 			case cnVolumeSnapshotFK:
 				return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, c.snapshotID)
+			case cnVolumeImageFK:
+				return fmt.Errorf("%w: Image %s not found", ports.ErrFailedPrecondition, c.imageID)
 			case cnAttachmentVolumeFK:
 				return fmt.Errorf("%w: Volume %s is in use", ports.ErrFailedPrecondition, c.volumeID)
 			}
@@ -141,6 +145,65 @@ func mapSnapshotErr(err error, c snapErrCtx) error {
 		return ports.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "snapshot_id", c.snapshotID)
+	return ports.ErrInternal
+}
+
+// Имена DB-constraint'ов образа (миграция 0007_image_and_volume_source_image).
+const (
+	cnImageNameUniq   = "images_name_uniq"               // partial UNIQUE(project_id,name) WHERE name<>''
+	cnImageSnapshotFK = "images_source_snapshot_id_fkey" // images.source_snapshot_id → snapshots SET NULL (inline-FK name)
+	cnImageVolumeFK   = "images_source_volume_id_fkey"   // images.source_volume_id → volumes SET NULL (inline-FK name)
+)
+
+// imgErrCtx — контекстные hint'ы для constraint-aware маппинга ошибок Image-репо.
+type imgErrCtx struct {
+	imageID    string
+	imageName  string
+	snapshotID string
+	volumeID   string
+}
+
+// mapImageErr транслирует pgx/pgconn-ошибку Image-репо в чистый ports-sentinel с
+// контрактным текстом Kachō. Сырой pgx/SQL наружу не течёт (uncategorized →
+// ports.ErrInternal, SQLSTATE логируется на границе). Уже-замапленный sentinel
+// пробрасывается как есть.
+func mapImageErr(err error, c imgErrCtx) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, ports.ErrNotFound), errors.Is(err, ports.ErrAlreadyExists),
+		errors.Is(err, ports.ErrFailedPrecondition), errors.Is(err, ports.ErrInvalidArg),
+		errors.Is(err, ports.ErrInternal):
+		return err
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: Image %s not found", ports.ErrNotFound, c.imageID)
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505": // unique_violation
+			if pgErr.ConstraintName == cnImageNameUniq {
+				return fmt.Errorf("%w: image with name %s already exists in project", ports.ErrAlreadyExists, c.imageName)
+			}
+			return fmt.Errorf("%w: image already exists", ports.ErrAlreadyExists)
+		case "23503": // foreign_key_violation — source_snapshot_id / source_volume_id
+			switch pgErr.ConstraintName {
+			case cnImageSnapshotFK:
+				return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, c.snapshotID)
+			case cnImageVolumeFK:
+				return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, c.volumeID)
+			}
+			return fmt.Errorf("%w: image violates a reference constraint", ports.ErrFailedPrecondition)
+		case "23514": // check_violation (source exactly-one / name / description / format / size / labels)
+			return fmt.Errorf("%w: Illegal argument", ports.ErrInvalidArg)
+		}
+		slog.Error("uncategorized postgres error mapped to internal",
+			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "image_id", c.imageID)
+		return ports.ErrInternal
+	}
+	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "image_id", c.imageID)
 	return ports.ErrInternal
 }
 
