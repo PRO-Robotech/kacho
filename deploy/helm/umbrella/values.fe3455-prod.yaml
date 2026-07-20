@@ -174,19 +174,16 @@ compute:
   mtls:
     edges:
       geo: true
-  # compute→storage edge (InternalVolumeService attach/detach + Volume mirror, :9091).
-  # The compute sub-chart has no dedicated storage-edge template, so wire it via the
-  # generic env map. mTLS reuses compute's already-mounted client leaf
-  # (kacho-compute-client-tls at /etc/kacho-compute/tls/client) — storage's internal
-  # :9091 is RequireAndVerifyClientCert. serverName kacho-storage.<ns>.svc.cluster.local
-  # ∈ the storage server-cert SAN (storage.mtls.serverHosts=["kacho-storage"]).
-  env:
-    KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR: kacho-storage.kacho.svc.cluster.local:9091
-    KACHO_COMPUTE_STORAGE_MTLS_ENABLE: "true"
-    KACHO_COMPUTE_STORAGE_MTLS_CERTFILE: /etc/kacho-compute/tls/client/tls.crt
-    KACHO_COMPUTE_STORAGE_MTLS_KEYFILE: /etc/kacho-compute/tls/client/tls.key
-    KACHO_COMPUTE_STORAGE_MTLS_CAFILES: /etc/kacho-compute/tls/client/ca.crt
-    KACHO_COMPUTE_STORAGE_MTLS_SERVERNAME: kacho-storage.kacho.svc.cluster.local
+      # compute→storage edge (InternalVolumeService attach/detach + Volume mirror, :9091)
+      # is now FIRST-CLASS in the compute chart: storageInternalAddr (default
+      # kacho-storage.kacho.svc.cluster.local:9091) + mtls.edges.storage → the
+      # KACHO_COMPUTE_STORAGE_MTLS_* block. mTLS reuses compute's already-mounted client
+      # leaf (kacho-compute-client-tls at /etc/kacho-compute/tls/client) — storage's
+      # internal :9091 is RequireAndVerifyClientCert; serverName default
+      # kacho-storage.kacho.svc.cluster.local ∈ the storage server-cert SAN
+      # (storage.mtls.serverHosts=["kacho-storage"]). NB storage is disabled below
+      # (chart not yet umbrella-integrated) so this edge is armed but not yet exercised.
+      storage: true
 kacho-geo:
   image: docker.io/prorobotech/kacho-geo:main-b622b388
   # hardened geo defaults AUTH_MODE=production → validateSecurityConfig requires a
@@ -430,6 +427,11 @@ registry:
     edges:
       iamAuthz: true
       iamProject: true
+      # registry→geo RegionService.Get (public :9090, REG-1 F4). geo runs hardened
+      # (AUTH_MODE=production) and requires verified transport, so arm the client-mTLS
+      # edge (reuses registry-client-tls; serverName default kacho-geo.kacho.svc.cluster.local
+      # ∈ geo server-cert SAN). Without it the geo peer rejects the insecure dial.
+      geo: true
 
 # pg-registry — greenfield bitnamilegacy image + operator secret (like the other pgs)
 pg-registry:
