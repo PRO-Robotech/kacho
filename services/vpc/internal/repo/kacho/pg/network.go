@@ -309,6 +309,28 @@ func (w *networkWriter) SetDefaultSGID(ctx context.Context, id, sgID string) (*k
 	return result, nil
 }
 
+// SetCidrBlocks атомарно перезаписывает declared-супернет
+// ipv4_cidr_blocks / ipv6_cidr_blocks — узкий column-update для
+// AddCidrBlocks/RemoveCidrBlocks, не трогающий name/description/labels/default_*.
+// Caller собрал merged/remaining наборы под network row-lock (GetForUpdate),
+// поэтому здесь безусловный UPDATE (сериализация — на row-lock'е). text[] NOT NULL
+// → textArray (nil → '{}').
+func (w *networkWriter) SetCidrBlocks(ctx context.Context, id string, v4, v6 []string) (*kacho.NetworkRecord, error) {
+	q := fmt.Sprintf(`
+		UPDATE networks SET ipv4_cidr_blocks = $2, ipv6_cidr_blocks = $3
+		WHERE id = $1
+		RETURNING %s`, helpers.NetworkCols)
+	row := w.tx.QueryRow(ctx, q, id, textArray(v4), textArray(v6))
+	result, err := helpers.ScanNetwork(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: Network %s not found", helpers.ErrNotFound, id)
+		}
+		return nil, helpers.WrapPgErr(err, "Network", id)
+	}
+	return result, nil
+}
+
 // GetForUpdate — Get с row-lock (`FOR UPDATE`) в writer-TX. Сериализует
 // конкурентный read-modify-write в Update: второй concurrent Update блокируется
 // на GetForUpdate до commit первого, затем читает уже обновленный row и применяет

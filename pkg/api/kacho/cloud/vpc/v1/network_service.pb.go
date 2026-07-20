@@ -494,6 +494,134 @@ func (x *UpdateNetworkMetadata) GetNetworkId() string {
 	return ""
 }
 
+type AddNetworkCidrBlocksRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Network resource whose declared supernet is being extended.
+	NetworkId string `protobuf:"bytes,1,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
+	// IPv4 supernet block(s) to add to the network's declared supernet
+	// (canonical network form, host-bits zero). For example, 10.30.0.0/16.
+	Ipv4CidrBlocks []string `protobuf:"bytes,2,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
+	// IPv6 supernet block(s) to add to the network's declared supernet.
+	Ipv6CidrBlocks []string `protobuf:"bytes,3,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AddNetworkCidrBlocksRequest) Reset() {
+	*x = AddNetworkCidrBlocksRequest{}
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddNetworkCidrBlocksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddNetworkCidrBlocksRequest) ProtoMessage() {}
+
+func (x *AddNetworkCidrBlocksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddNetworkCidrBlocksRequest.ProtoReflect.Descriptor instead.
+func (*AddNetworkCidrBlocksRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *AddNetworkCidrBlocksRequest) GetNetworkId() string {
+	if x != nil {
+		return x.NetworkId
+	}
+	return ""
+}
+
+func (x *AddNetworkCidrBlocksRequest) GetIpv4CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv4CidrBlocks
+	}
+	return nil
+}
+
+func (x *AddNetworkCidrBlocksRequest) GetIpv6CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv6CidrBlocks
+	}
+	return nil
+}
+
+type RemoveNetworkCidrBlocksRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Network resource whose declared supernet is being shrunk.
+	NetworkId string `protobuf:"bytes,1,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
+	// IPv4 supernet block(s) to remove from the network's declared supernet.
+	// A block that still contains a live subnet cannot be removed.
+	Ipv4CidrBlocks []string `protobuf:"bytes,2,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
+	// IPv6 supernet block(s) to remove from the network's declared supernet.
+	Ipv6CidrBlocks []string `protobuf:"bytes,3,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RemoveNetworkCidrBlocksRequest) Reset() {
+	*x = RemoveNetworkCidrBlocksRequest{}
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveNetworkCidrBlocksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveNetworkCidrBlocksRequest) ProtoMessage() {}
+
+func (x *RemoveNetworkCidrBlocksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveNetworkCidrBlocksRequest.ProtoReflect.Descriptor instead.
+func (*RemoveNetworkCidrBlocksRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RemoveNetworkCidrBlocksRequest) GetNetworkId() string {
+	if x != nil {
+		return x.NetworkId
+	}
+	return ""
+}
+
+func (x *RemoveNetworkCidrBlocksRequest) GetIpv4CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv4CidrBlocks
+	}
+	return nil
+}
+
+func (x *RemoveNetworkCidrBlocksRequest) GetIpv6CidrBlocks() []string {
+	if x != nil {
+		return x.Ipv6CidrBlocks
+	}
+	return nil
+}
+
 type DeleteNetworkRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Network resource to update.
@@ -505,7 +633,7 @@ type DeleteNetworkRequest struct {
 
 func (x *DeleteNetworkRequest) Reset() {
 	*x = DeleteNetworkRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -517,7 +645,7 @@ func (x *DeleteNetworkRequest) String() string {
 func (*DeleteNetworkRequest) ProtoMessage() {}
 
 func (x *DeleteNetworkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -530,7 +658,7 @@ func (x *DeleteNetworkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNetworkRequest.ProtoReflect.Descriptor instead.
 func (*DeleteNetworkRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteNetworkRequest) GetNetworkId() string {
@@ -550,7 +678,7 @@ type DeleteNetworkMetadata struct {
 
 func (x *DeleteNetworkMetadata) Reset() {
 	*x = DeleteNetworkMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -562,7 +690,7 @@ func (x *DeleteNetworkMetadata) String() string {
 func (*DeleteNetworkMetadata) ProtoMessage() {}
 
 func (x *DeleteNetworkMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -575,7 +703,7 @@ func (x *DeleteNetworkMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNetworkMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteNetworkMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteNetworkMetadata) GetNetworkId() string {
@@ -604,7 +732,7 @@ type ListNetworkSubnetsRequest struct {
 
 func (x *ListNetworkSubnetsRequest) Reset() {
 	*x = ListNetworkSubnetsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -616,7 +744,7 @@ func (x *ListNetworkSubnetsRequest) String() string {
 func (*ListNetworkSubnetsRequest) ProtoMessage() {}
 
 func (x *ListNetworkSubnetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -629,7 +757,7 @@ func (x *ListNetworkSubnetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkSubnetsRequest.ProtoReflect.Descriptor instead.
 func (*ListNetworkSubnetsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListNetworkSubnetsRequest) GetNetworkId() string {
@@ -670,7 +798,7 @@ type ListNetworkSubnetsResponse struct {
 
 func (x *ListNetworkSubnetsResponse) Reset() {
 	*x = ListNetworkSubnetsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -682,7 +810,7 @@ func (x *ListNetworkSubnetsResponse) String() string {
 func (*ListNetworkSubnetsResponse) ProtoMessage() {}
 
 func (x *ListNetworkSubnetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -695,7 +823,7 @@ func (x *ListNetworkSubnetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkSubnetsResponse.ProtoReflect.Descriptor instead.
 func (*ListNetworkSubnetsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListNetworkSubnetsResponse) GetSubnets() []*Subnet {
@@ -731,7 +859,7 @@ type ListNetworkSecurityGroupsRequest struct {
 
 func (x *ListNetworkSecurityGroupsRequest) Reset() {
 	*x = ListNetworkSecurityGroupsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -743,7 +871,7 @@ func (x *ListNetworkSecurityGroupsRequest) String() string {
 func (*ListNetworkSecurityGroupsRequest) ProtoMessage() {}
 
 func (x *ListNetworkSecurityGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -756,7 +884,7 @@ func (x *ListNetworkSecurityGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkSecurityGroupsRequest.ProtoReflect.Descriptor instead.
 func (*ListNetworkSecurityGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{11}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListNetworkSecurityGroupsRequest) GetNetworkId() string {
@@ -797,7 +925,7 @@ type ListNetworkSecurityGroupsResponse struct {
 
 func (x *ListNetworkSecurityGroupsResponse) Reset() {
 	*x = ListNetworkSecurityGroupsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -809,7 +937,7 @@ func (x *ListNetworkSecurityGroupsResponse) String() string {
 func (*ListNetworkSecurityGroupsResponse) ProtoMessage() {}
 
 func (x *ListNetworkSecurityGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -822,7 +950,7 @@ func (x *ListNetworkSecurityGroupsResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ListNetworkSecurityGroupsResponse.ProtoReflect.Descriptor instead.
 func (*ListNetworkSecurityGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{12}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListNetworkSecurityGroupsResponse) GetSecurityGroups() []*SecurityGroup {
@@ -858,7 +986,7 @@ type ListNetworkRouteTablesRequest struct {
 
 func (x *ListNetworkRouteTablesRequest) Reset() {
 	*x = ListNetworkRouteTablesRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -870,7 +998,7 @@ func (x *ListNetworkRouteTablesRequest) String() string {
 func (*ListNetworkRouteTablesRequest) ProtoMessage() {}
 
 func (x *ListNetworkRouteTablesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -883,7 +1011,7 @@ func (x *ListNetworkRouteTablesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkRouteTablesRequest.ProtoReflect.Descriptor instead.
 func (*ListNetworkRouteTablesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{13}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListNetworkRouteTablesRequest) GetNetworkId() string {
@@ -924,7 +1052,7 @@ type ListNetworkRouteTablesResponse struct {
 
 func (x *ListNetworkRouteTablesResponse) Reset() {
 	*x = ListNetworkRouteTablesResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -936,7 +1064,7 @@ func (x *ListNetworkRouteTablesResponse) String() string {
 func (*ListNetworkRouteTablesResponse) ProtoMessage() {}
 
 func (x *ListNetworkRouteTablesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -949,7 +1077,7 @@ func (x *ListNetworkRouteTablesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkRouteTablesResponse.ProtoReflect.Descriptor instead.
 func (*ListNetworkRouteTablesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{14}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListNetworkRouteTablesResponse) GetRouteTables() []*RouteTable {
@@ -983,7 +1111,7 @@ type ListNetworkOperationsRequest struct {
 
 func (x *ListNetworkOperationsRequest) Reset() {
 	*x = ListNetworkOperationsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -995,7 +1123,7 @@ func (x *ListNetworkOperationsRequest) String() string {
 func (*ListNetworkOperationsRequest) ProtoMessage() {}
 
 func (x *ListNetworkOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1008,7 +1136,7 @@ func (x *ListNetworkOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListNetworkOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{15}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListNetworkOperationsRequest) GetNetworkId() string {
@@ -1047,7 +1175,7 @@ type ListNetworkOperationsResponse struct {
 
 func (x *ListNetworkOperationsResponse) Reset() {
 	*x = ListNetworkOperationsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1059,7 +1187,7 @@ func (x *ListNetworkOperationsResponse) String() string {
 func (*ListNetworkOperationsResponse) ProtoMessage() {}
 
 func (x *ListNetworkOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1072,7 +1200,7 @@ func (x *ListNetworkOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListNetworkOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{16}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListNetworkOperationsResponse) GetOperations() []*operation.Operation {
@@ -1138,7 +1266,17 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"6\n" +
 	"\x15UpdateNetworkMetadata\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tR\tnetworkId\"C\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\"\x9e\x01\n" +
+	"\x1bAddNetworkCidrBlocksRequest\x12+\n" +
+	"\n" +
+	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12(\n" +
+	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"\xa1\x01\n" +
+	"\x1eRemoveNetworkCidrBlocksRequest\x12+\n" +
+	"\n" +
+	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12(\n" +
+	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"C\n" +
 	"\x14DeleteNetworkRequest\x12+\n" +
 	"\n" +
 	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\"6\n" +
@@ -1186,7 +1324,7 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x92\x10\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd8\x14\n" +
 	"\x0eNetworkService\x12\xaf\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetNetworkRequest\x1a\x1b.kacho.cloud.vpc.v1.Network\"d\x8a\xb5\x18\x10vpc.networks.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
@@ -1203,7 +1341,15 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteNetworkRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x13vpc.networks.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x012\xb2\xd2*.\n" +
-	"\x15DeleteNetworkMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/networks/{network_id}\x12\xec\x01\n" +
+	"\x15DeleteNetworkMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/networks/{network_id}\x12\x9a\x02\n" +
+	"\rAddCidrBlocks\x12/.kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb5\x01\x8a\xb5\x18'vpc.network_cidr_blockses.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_network\x12\n" +
+	"network_id\xa2\xb5\x18\x012\xb2\xd2* \n" +
+	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x022:\x01*\"-/vpc/v1/networks/{network_id}:add-cidr-blocks\x12\xa6\x02\n" +
+	"\x10RemoveCidrBlocks\x122.kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xbb\x01\x8a\xb5\x18*vpc.network_cidr_blockses.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_network\x12\n" +
+	"network_id\xa2\xb5\x18\x012\xb2\xd2* \n" +
+	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}:remove-cidr-blocks\x12\xec\x01\n" +
 	"\vListSubnets\x12-.kacho.cloud.vpc.v1.ListNetworkSubnetsRequest\x1a..kacho.cloud.vpc.v1.ListNetworkSubnetsResponse\"~\x8a\xb5\x18!vpc.network_subnetses.listSubnets\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02'\x12%/vpc/v1/networks/{network_id}/subnets\x12\x99\x02\n" +
@@ -1229,7 +1375,7 @@ func file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_network_service_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_kacho_cloud_vpc_v1_network_service_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_kacho_cloud_vpc_v1_network_service_proto_goTypes = []any{
 	(*GetNetworkRequest)(nil),                 // 0: kacho.cloud.vpc.v1.GetNetworkRequest
 	(*ListNetworksRequest)(nil),               // 1: kacho.cloud.vpc.v1.ListNetworksRequest
@@ -1238,54 +1384,60 @@ var file_kacho_cloud_vpc_v1_network_service_proto_goTypes = []any{
 	(*CreateNetworkMetadata)(nil),             // 4: kacho.cloud.vpc.v1.CreateNetworkMetadata
 	(*UpdateNetworkRequest)(nil),              // 5: kacho.cloud.vpc.v1.UpdateNetworkRequest
 	(*UpdateNetworkMetadata)(nil),             // 6: kacho.cloud.vpc.v1.UpdateNetworkMetadata
-	(*DeleteNetworkRequest)(nil),              // 7: kacho.cloud.vpc.v1.DeleteNetworkRequest
-	(*DeleteNetworkMetadata)(nil),             // 8: kacho.cloud.vpc.v1.DeleteNetworkMetadata
-	(*ListNetworkSubnetsRequest)(nil),         // 9: kacho.cloud.vpc.v1.ListNetworkSubnetsRequest
-	(*ListNetworkSubnetsResponse)(nil),        // 10: kacho.cloud.vpc.v1.ListNetworkSubnetsResponse
-	(*ListNetworkSecurityGroupsRequest)(nil),  // 11: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest
-	(*ListNetworkSecurityGroupsResponse)(nil), // 12: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse
-	(*ListNetworkRouteTablesRequest)(nil),     // 13: kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest
-	(*ListNetworkRouteTablesResponse)(nil),    // 14: kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse
-	(*ListNetworkOperationsRequest)(nil),      // 15: kacho.cloud.vpc.v1.ListNetworkOperationsRequest
-	(*ListNetworkOperationsResponse)(nil),     // 16: kacho.cloud.vpc.v1.ListNetworkOperationsResponse
-	nil,                                       // 17: kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
-	nil,                                       // 18: kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
-	(*Network)(nil),                           // 19: kacho.cloud.vpc.v1.Network
-	(*fieldmaskpb.FieldMask)(nil),             // 20: google.protobuf.FieldMask
-	(*Subnet)(nil),                            // 21: kacho.cloud.vpc.v1.Subnet
-	(*SecurityGroup)(nil),                     // 22: kacho.cloud.vpc.v1.SecurityGroup
-	(*RouteTable)(nil),                        // 23: kacho.cloud.vpc.v1.RouteTable
-	(*operation.Operation)(nil),               // 24: kacho.cloud.operation.Operation
+	(*AddNetworkCidrBlocksRequest)(nil),       // 7: kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
+	(*RemoveNetworkCidrBlocksRequest)(nil),    // 8: kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
+	(*DeleteNetworkRequest)(nil),              // 9: kacho.cloud.vpc.v1.DeleteNetworkRequest
+	(*DeleteNetworkMetadata)(nil),             // 10: kacho.cloud.vpc.v1.DeleteNetworkMetadata
+	(*ListNetworkSubnetsRequest)(nil),         // 11: kacho.cloud.vpc.v1.ListNetworkSubnetsRequest
+	(*ListNetworkSubnetsResponse)(nil),        // 12: kacho.cloud.vpc.v1.ListNetworkSubnetsResponse
+	(*ListNetworkSecurityGroupsRequest)(nil),  // 13: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest
+	(*ListNetworkSecurityGroupsResponse)(nil), // 14: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse
+	(*ListNetworkRouteTablesRequest)(nil),     // 15: kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest
+	(*ListNetworkRouteTablesResponse)(nil),    // 16: kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse
+	(*ListNetworkOperationsRequest)(nil),      // 17: kacho.cloud.vpc.v1.ListNetworkOperationsRequest
+	(*ListNetworkOperationsResponse)(nil),     // 18: kacho.cloud.vpc.v1.ListNetworkOperationsResponse
+	nil,                                       // 19: kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
+	nil,                                       // 20: kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
+	(*Network)(nil),                           // 21: kacho.cloud.vpc.v1.Network
+	(*fieldmaskpb.FieldMask)(nil),             // 22: google.protobuf.FieldMask
+	(*Subnet)(nil),                            // 23: kacho.cloud.vpc.v1.Subnet
+	(*SecurityGroup)(nil),                     // 24: kacho.cloud.vpc.v1.SecurityGroup
+	(*RouteTable)(nil),                        // 25: kacho.cloud.vpc.v1.RouteTable
+	(*operation.Operation)(nil),               // 26: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_network_service_proto_depIdxs = []int32{
-	19, // 0: kacho.cloud.vpc.v1.ListNetworksResponse.networks:type_name -> kacho.cloud.vpc.v1.Network
-	17, // 1: kacho.cloud.vpc.v1.CreateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
-	20, // 2: kacho.cloud.vpc.v1.UpdateNetworkRequest.update_mask:type_name -> google.protobuf.FieldMask
-	18, // 3: kacho.cloud.vpc.v1.UpdateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
-	21, // 4: kacho.cloud.vpc.v1.ListNetworkSubnetsResponse.subnets:type_name -> kacho.cloud.vpc.v1.Subnet
-	22, // 5: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse.security_groups:type_name -> kacho.cloud.vpc.v1.SecurityGroup
-	23, // 6: kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse.route_tables:type_name -> kacho.cloud.vpc.v1.RouteTable
-	24, // 7: kacho.cloud.vpc.v1.ListNetworkOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	21, // 0: kacho.cloud.vpc.v1.ListNetworksResponse.networks:type_name -> kacho.cloud.vpc.v1.Network
+	19, // 1: kacho.cloud.vpc.v1.CreateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
+	22, // 2: kacho.cloud.vpc.v1.UpdateNetworkRequest.update_mask:type_name -> google.protobuf.FieldMask
+	20, // 3: kacho.cloud.vpc.v1.UpdateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
+	23, // 4: kacho.cloud.vpc.v1.ListNetworkSubnetsResponse.subnets:type_name -> kacho.cloud.vpc.v1.Subnet
+	24, // 5: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse.security_groups:type_name -> kacho.cloud.vpc.v1.SecurityGroup
+	25, // 6: kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse.route_tables:type_name -> kacho.cloud.vpc.v1.RouteTable
+	26, // 7: kacho.cloud.vpc.v1.ListNetworkOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	0,  // 8: kacho.cloud.vpc.v1.NetworkService.Get:input_type -> kacho.cloud.vpc.v1.GetNetworkRequest
 	1,  // 9: kacho.cloud.vpc.v1.NetworkService.List:input_type -> kacho.cloud.vpc.v1.ListNetworksRequest
 	3,  // 10: kacho.cloud.vpc.v1.NetworkService.Create:input_type -> kacho.cloud.vpc.v1.CreateNetworkRequest
 	5,  // 11: kacho.cloud.vpc.v1.NetworkService.Update:input_type -> kacho.cloud.vpc.v1.UpdateNetworkRequest
-	7,  // 12: kacho.cloud.vpc.v1.NetworkService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteNetworkRequest
-	9,  // 13: kacho.cloud.vpc.v1.NetworkService.ListSubnets:input_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsRequest
-	11, // 14: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:input_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest
-	13, // 15: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:input_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest
-	15, // 16: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
-	19, // 17: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
-	2,  // 18: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
-	24, // 19: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
-	24, // 20: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
-	24, // 21: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
-	10, // 22: kacho.cloud.vpc.v1.NetworkService.ListSubnets:output_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsResponse
-	12, // 23: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:output_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse
-	14, // 24: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:output_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse
-	16, // 25: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
-	17, // [17:26] is the sub-list for method output_type
-	8,  // [8:17] is the sub-list for method input_type
+	9,  // 12: kacho.cloud.vpc.v1.NetworkService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteNetworkRequest
+	7,  // 13: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:input_type -> kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
+	8,  // 14: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:input_type -> kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
+	11, // 15: kacho.cloud.vpc.v1.NetworkService.ListSubnets:input_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsRequest
+	13, // 16: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:input_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest
+	15, // 17: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:input_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest
+	17, // 18: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
+	21, // 19: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
+	2,  // 20: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
+	26, // 21: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
+	26, // 22: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
+	26, // 23: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
+	26, // 24: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	26, // 25: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	12, // 26: kacho.cloud.vpc.v1.NetworkService.ListSubnets:output_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsResponse
+	14, // 27: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:output_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse
+	16, // 28: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:output_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse
+	18, // 29: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
+	19, // [19:30] is the sub-list for method output_type
+	8,  // [8:19] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1307,7 +1459,7 @@ func file_kacho_cloud_vpc_v1_network_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_network_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_network_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

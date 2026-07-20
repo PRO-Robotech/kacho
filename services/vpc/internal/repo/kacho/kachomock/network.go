@@ -177,6 +177,21 @@ func (nw *networkWriter) SetDefaultSGID(_ context.Context, id, sgID string) (*ka
 	return &cp, nil
 }
 
+// SetCidrBlocks — узкая перезапись declared-супернета (parity с pg-impl).
+func (nw *networkWriter) SetCidrBlocks(_ context.Context, id string, v4, v6 []string) (*kacho.NetworkRecord, error) {
+	if _, deleted := nw.w.deletedIDs[id]; deleted {
+		return nil, repo.ErrNotFound
+	}
+	n, ok := nw.w.local[id]
+	if !ok {
+		return nil, repo.ErrNotFound
+	}
+	n.IPv4CidrBlocks = v4
+	n.IPv6CidrBlocks = v6
+	cp := *n
+	return &cp, nil
+}
+
 func (nw *networkWriter) Delete(_ context.Context, id string) error {
 	if _, ok := nw.w.local[id]; !ok {
 		return repo.ErrNotFound

@@ -98,6 +98,47 @@ service NetworkService {
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
 
+  // Extends the network's declared IPv4/IPv6 supernet with additional CIDR
+  // block(s). The declared supernet is immutable through Update — it is grown
+  // only via this verb-pair. Returns an Operation carrying the updated Network.
+  rpc AddCidrBlocks (AddNetworkCidrBlocksRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/vpc/v1/networks/{network_id}:add-cidr-blocks"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateNetworkMetadata"
+      response: "Network"
+    };
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blockses.addCidrBlocks";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "vpc_network"
+      from_request_field: "network_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Shrinks the network's declared supernet by removing CIDR block(s). A block
+  // that still contains a live subnet cannot be removed (FAILED_PRECONDITION).
+  rpc RemoveCidrBlocks (RemoveNetworkCidrBlocksRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/vpc/v1/networks/{network_id}:remove-cidr-blocks"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateNetworkMetadata"
+      response: "Network"
+    };
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blockses.removeCidrBlocks";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "vpc_network"
+      from_request_field: "network_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
   // Lists subnets from the specified network.
   rpc ListSubnets (ListNetworkSubnetsRequest) returns (ListNetworkSubnetsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/subnets" };
@@ -245,6 +286,36 @@ message UpdateNetworkRequest {
 message UpdateNetworkMetadata {
   // ID of the Network resource that is being updated.
   string network_id = 1;
+}
+
+message AddNetworkCidrBlocksRequest {
+  // ID of the Network resource whose declared supernet is being extended.
+  string network_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // IPv4 supernet block(s) to add to the network's declared supernet
+  // (canonical network form, host-bits zero). For example, 10.30.0.0/16.
+  repeated string ipv4_cidr_blocks = 2;
+
+  // IPv6 supernet block(s) to add to the network's declared supernet.
+  repeated string ipv6_cidr_blocks = 3;
+}
+
+message RemoveNetworkCidrBlocksRequest {
+  // ID of the Network resource whose declared supernet is being shrunk.
+  string network_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // IPv4 supernet block(s) to remove from the network's declared supernet.
+  // A block that still contains a live subnet cannot be removed.
+  repeated string ipv4_cidr_blocks = 2;
+
+  // IPv6 supernet block(s) to remove from the network's declared supernet.
+  repeated string ipv6_cidr_blocks = 3;
 }
 
 message DeleteNetworkRequest {

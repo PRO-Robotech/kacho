@@ -28,6 +28,8 @@ const (
 	NetworkService_Create_FullMethodName             = "/kacho.cloud.vpc.v1.NetworkService/Create"
 	NetworkService_Update_FullMethodName             = "/kacho.cloud.vpc.v1.NetworkService/Update"
 	NetworkService_Delete_FullMethodName             = "/kacho.cloud.vpc.v1.NetworkService/Delete"
+	NetworkService_AddCidrBlocks_FullMethodName      = "/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks"
+	NetworkService_RemoveCidrBlocks_FullMethodName   = "/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks"
 	NetworkService_ListSubnets_FullMethodName        = "/kacho.cloud.vpc.v1.NetworkService/ListSubnets"
 	NetworkService_ListSecurityGroups_FullMethodName = "/kacho.cloud.vpc.v1.NetworkService/ListSecurityGroups"
 	NetworkService_ListRouteTables_FullMethodName    = "/kacho.cloud.vpc.v1.NetworkService/ListRouteTables"
@@ -54,6 +56,13 @@ type NetworkServiceClient interface {
 	Update(ctx context.Context, in *UpdateNetworkRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified network.
 	Delete(ctx context.Context, in *DeleteNetworkRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Extends the network's declared IPv4/IPv6 supernet with additional CIDR
+	// block(s). The declared supernet is immutable through Update — it is grown
+	// only via this verb-pair. Returns an Operation carrying the updated Network.
+	AddCidrBlocks(ctx context.Context, in *AddNetworkCidrBlocksRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Shrinks the network's declared supernet by removing CIDR block(s). A block
+	// that still contains a live subnet cannot be removed (FAILED_PRECONDITION).
+	RemoveCidrBlocks(ctx context.Context, in *RemoveNetworkCidrBlocksRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists subnets from the specified network.
 	ListSubnets(ctx context.Context, in *ListNetworkSubnetsRequest, opts ...grpc.CallOption) (*ListNetworkSubnetsResponse, error)
 	// Lists security groups from the specified network.
@@ -122,6 +131,26 @@ func (c *networkServiceClient) Delete(ctx context.Context, in *DeleteNetworkRequ
 	return out, nil
 }
 
+func (c *networkServiceClient) AddCidrBlocks(ctx context.Context, in *AddNetworkCidrBlocksRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, NetworkService_AddCidrBlocks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkServiceClient) RemoveCidrBlocks(ctx context.Context, in *RemoveNetworkCidrBlocksRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, NetworkService_RemoveCidrBlocks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *networkServiceClient) ListSubnets(ctx context.Context, in *ListNetworkSubnetsRequest, opts ...grpc.CallOption) (*ListNetworkSubnetsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListNetworkSubnetsResponse)
@@ -182,6 +211,13 @@ type NetworkServiceServer interface {
 	Update(context.Context, *UpdateNetworkRequest) (*operation.Operation, error)
 	// Deletes the specified network.
 	Delete(context.Context, *DeleteNetworkRequest) (*operation.Operation, error)
+	// Extends the network's declared IPv4/IPv6 supernet with additional CIDR
+	// block(s). The declared supernet is immutable through Update — it is grown
+	// only via this verb-pair. Returns an Operation carrying the updated Network.
+	AddCidrBlocks(context.Context, *AddNetworkCidrBlocksRequest) (*operation.Operation, error)
+	// Shrinks the network's declared supernet by removing CIDR block(s). A block
+	// that still contains a live subnet cannot be removed (FAILED_PRECONDITION).
+	RemoveCidrBlocks(context.Context, *RemoveNetworkCidrBlocksRequest) (*operation.Operation, error)
 	// Lists subnets from the specified network.
 	ListSubnets(context.Context, *ListNetworkSubnetsRequest) (*ListNetworkSubnetsResponse, error)
 	// Lists security groups from the specified network.
@@ -214,6 +250,12 @@ func (UnimplementedNetworkServiceServer) Update(context.Context, *UpdateNetworkR
 }
 func (UnimplementedNetworkServiceServer) Delete(context.Context, *DeleteNetworkRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedNetworkServiceServer) AddCidrBlocks(context.Context, *AddNetworkCidrBlocksRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddCidrBlocks not implemented")
+}
+func (UnimplementedNetworkServiceServer) RemoveCidrBlocks(context.Context, *RemoveNetworkCidrBlocksRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveCidrBlocks not implemented")
 }
 func (UnimplementedNetworkServiceServer) ListSubnets(context.Context, *ListNetworkSubnetsRequest) (*ListNetworkSubnetsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSubnets not implemented")
@@ -338,6 +380,42 @@ func _NetworkService_Delete_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NetworkService_AddCidrBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddNetworkCidrBlocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkServiceServer).AddCidrBlocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkService_AddCidrBlocks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkServiceServer).AddCidrBlocks(ctx, req.(*AddNetworkCidrBlocksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkService_RemoveCidrBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveNetworkCidrBlocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkServiceServer).RemoveCidrBlocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkService_RemoveCidrBlocks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkServiceServer).RemoveCidrBlocks(ctx, req.(*RemoveNetworkCidrBlocksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NetworkService_ListSubnets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListNetworkSubnetsRequest)
 	if err := dec(in); err != nil {
@@ -436,6 +514,14 @@ var NetworkService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _NetworkService_Delete_Handler,
+		},
+		{
+			MethodName: "AddCidrBlocks",
+			Handler:    _NetworkService_AddCidrBlocks_Handler,
+		},
+		{
+			MethodName: "RemoveCidrBlocks",
+			Handler:    _NetworkService_RemoveCidrBlocks_Handler,
 		},
 		{
 			MethodName: "ListSubnets",
