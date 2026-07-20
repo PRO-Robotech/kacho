@@ -26,7 +26,10 @@ message Subnet {
   // v4_cidr_blocks/v6_cidr_blocks (retired in redesign VPC-1 F7: the flat
   // "all blocks" array is split into an explicit immutable primary anchor
   // + additional ranges — see ipv4_cidr_primary/ipv4_cidr_blocks below).
-  reserved 9, 10, 11;
+  // 13 — legacy dhcp_options (retired VPC-1 F9/VPC-1-43: Network-level
+  // DHCP/DNS-resolver knobs dropped by design).
+  reserved 9, 10, 11, 13;
+  reserved "dhcp_options";
   // ID of the subnet.
   string id = 1;
 
@@ -70,9 +73,6 @@ message Subnet {
   // ID of route table the subnet is linked to.
   string route_table_id = 12;
 
-  // DHCP options for the subnet.
-  DhcpOptions dhcp_options = 13;
-
   // Primary IPv4 CIDR anchor (immutable, set at Create). Must be a subset of one
   // of the parent network's ipv4_cidr_blocks supernet blocks. Empty for a v6-only
   // subnet. For example, 10.20.0.0/24. Minimum /28, maximum /16.
@@ -87,17 +87,6 @@ message Subnet {
 
   // Additional IPv6 CIDR ranges beyond the primary anchor (verb-pair mutation).
   repeated string ipv6_cidr_blocks = 19;
-}
-
-message DhcpOptions {
-  // A list of DHCP servers for this subnet.
-  repeated string domain_name_servers = 1;
-
-  // A domain name to us as a suffix when resolving host names in this subnet.
-  string domain_name = 2;
-
-  // List of NTP servers for this subnet.
-  repeated string ntp_servers = 3;
 }
 
 enum IpVersion {

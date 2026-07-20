@@ -132,13 +132,7 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateSubnetRequest) (*
 		V6CidrBlocks: cidrPrimaryToBlocks(req.Ipv6CidrPrimary),
 		RouteTableID: req.RouteTableId,
 	}
-	if req.DhcpOptions != nil {
-		s.DhcpOptions = &domain.DhcpOptions{
-			DomainNameServers: req.DhcpOptions.DomainNameServers,
-			DomainName:        req.DhcpOptions.DomainName,
-			NtpServers:        req.DhcpOptions.NtpServers,
-		}
-	}
+	// VPC-1-43: DhcpOptions dropped by design — no dhcp_options on Create.
 	op, err := h.create.Execute(ctx, s)
 	if err != nil {
 		return nil, err
@@ -197,13 +191,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSubnetRequest) (*
 		// ipv4_cidr_primary/ipv4_cidr_blocks in update_mask → immutable-reject (use-case).
 		UpdateMask: mask,
 	}
-	if req.DhcpOptions != nil {
-		in.Subnet.DhcpOptions = &domain.DhcpOptions{
-			DomainNameServers: req.DhcpOptions.DomainNameServers,
-			DomainName:        req.DhcpOptions.DomainName,
-			NtpServers:        req.DhcpOptions.NtpServers,
-		}
-	}
+	// VPC-1-43: DhcpOptions dropped by design — no dhcp_options on Update.
 	op, err := h.update.Execute(ctx, in)
 	if err != nil {
 		return nil, err

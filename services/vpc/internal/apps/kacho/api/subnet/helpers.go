@@ -211,30 +211,6 @@ func subtractCIDRs(existing, remove []string) ([]string, int) {
 	return remaining, removed
 }
 
-// validateDhcpOptions — валидация DHCP-опций:
-//   - domainName: RFC 1123 DNS name либо empty.
-//   - domainNameServers[]: каждый элемент — IP-адрес.
-//   - ntpServers[]: каждый элемент — IP-адрес.
-func validateDhcpOptions(d *domain.DhcpOptions) error {
-	if d == nil {
-		return nil
-	}
-	if err := corevalidate.DhcpDomainName("dhcp_options.domain_name", d.DomainName); err != nil {
-		return err
-	}
-	for _, ns := range d.DomainNameServers {
-		if err := corevalidate.IPAddress("dhcp_options.domain_name_servers", ns); err != nil {
-			return err
-		}
-	}
-	for _, ntp := range d.NtpServers {
-		if err := corevalidate.IPAddress("dhcp_options.ntp_servers", ntp); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // validateZoneID — sync-валидация zone_id: required + existence у владельца.
 //
 // Возвращает gRPC InvalidArgument с FieldViolation для пустого значения; для

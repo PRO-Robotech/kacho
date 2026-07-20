@@ -42,13 +42,8 @@ func (subnet) toPb(rec kachorepo.SubnetRecord) (*vpcv1.Subnet, error) {
 		Ipv6CidrBlocks:  v6Additional,
 		RouteTableId:    rec.RouteTableID,
 	}
-	if rec.DhcpOptions != nil {
-		p.DhcpOptions = &vpcv1.DhcpOptions{
-			DomainNameServers: rec.DhcpOptions.DomainNameServers,
-			DomainName:        rec.DhcpOptions.DomainName,
-			NtpServers:        rec.DhcpOptions.NtpServers,
-		}
-	}
+	// VPC-1-43: DhcpOptions dropped by design — no dhcp_options on the public
+	// Subnet contract (Network-level DHCP/DNS-resolver knobs absent).
 	return p, nil
 }
 

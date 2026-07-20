@@ -112,9 +112,7 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	if err := serviceerr.FromValidation(s.Validate()); err != nil {
 		return nil, err
 	}
-	if err := validateDhcpOptions(s.DhcpOptions); err != nil {
-		return nil, err
-	}
+	// VPC-1-43: dhcp_options снят by design — на Create не принимается/не валидируется.
 
 	// Sync project.Exists precheck убран — он race-prone: между sync-проверкой и
 	// async-частью project может быть удален peer-сервисом, и second-writer-wins

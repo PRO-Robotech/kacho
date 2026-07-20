@@ -216,8 +216,10 @@ message ListSubnetsResponse {
 message CreateSubnetRequest {
   // 7/11 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7:
   // Create takes the immutable primary anchor only; additional ranges via
-  // AddCidrBlocks). 8 — retired oneof slot.
-  reserved 7, 8, 11;
+  // AddCidrBlocks). 8 — retired oneof slot. 10 — legacy dhcp_options
+  // (retired VPC-1-43: DHCP/DNS knobs dropped by design).
+  reserved 7, 8, 10, 11;
+  reserved "dhcp_options";
   // ID of the project to create a subnet in.
   // To get project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1 [
@@ -271,8 +273,6 @@ message CreateSubnetRequest {
 
   // ID of route table the subnet is linked to.
   string route_table_id = 9 [(length) = "<=50"];
-
-  DhcpOptions dhcp_options = 10;
 }
 
 message CreateSubnetMetadata {
@@ -309,12 +309,12 @@ message UpdateSubnetRequest {
   // ID of route table the subnet is linked to.
   string route_table_id = 6 [(length) = "<=50"];
 
-  DhcpOptions dhcp_options = 7;
-
-  // 8/9 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7). CIDR is
-  // immutable via Update: the primary anchor never changes; additional ranges
-  // go through AddCidrBlocks/RemoveCidrBlocks.
-  reserved 8, 9;
+  // 7 — legacy dhcp_options (retired VPC-1-43: DHCP/DNS knobs dropped by
+  // design). 8/9 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7).
+  // CIDR is immutable via Update: the primary anchor never changes; additional
+  // ranges go through AddCidrBlocks/RemoveCidrBlocks.
+  reserved 7, 8, 9;
+  reserved "dhcp_options";
 }
 
 message UpdateSubnetMetadata {
