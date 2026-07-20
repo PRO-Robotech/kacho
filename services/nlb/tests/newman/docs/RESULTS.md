@@ -320,7 +320,7 @@ a burst transiently over-subscribes it before the async deletes free their VIPs.
 
 ### Root cause D — owner/parent FGA tuple materialization > retry budget under --jobs 4 (~11)
 
-403 `lacks relation "editor" on lb_network_load_balancer:<id>` on the first editor-gated op of a
+403 `lacks relation "editor" on nlb_network_load_balancer:<id>` on the first editor-gated op of a
 fresh setup LB/TG (attach / listener-create / start / addTargets). The owner/parent hierarchy
 tuple is eventually-consistent (at-least-once register-outbox drainer); under `--jobs 4` the
 drainer was CPU-starved by the parallel busy-wait retry loops, so materialization outran the

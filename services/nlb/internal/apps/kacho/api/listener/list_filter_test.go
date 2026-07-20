@@ -87,7 +87,7 @@ func TestListListenersFilter_OnlyAccessible(t *testing.T) {
 	_ = seedListenerLF(t, repo, "prj-a", "nlb_lb1", "l-a3") // НЕ в гранте
 
 	flt := &fakeListFilter{allowed: map[string][]string{
-		"lb_listener": {a, b},
+		"nlb_listener": {a, b},
 	}}
 	uc := NewListUseCase(repo, flt)
 
@@ -103,7 +103,7 @@ func TestListListenersFilter_OnlyAccessible(t *testing.T) {
 	assert.True(t, got[b])
 
 	assert.Equal(t, "user:usr_alice", flt.gotSubj)
-	assert.Equal(t, "lb_listener", flt.gotType)
+	assert.Equal(t, "nlb_listener", flt.gotType)
 	assert.Equal(t, "loadbalancer.listeners.list", flt.gotAct)
 }
 

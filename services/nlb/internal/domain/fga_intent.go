@@ -26,22 +26,22 @@ import (
 
 // FGA object-type strings of the kacho-nlb authorization model.
 //
-// `lb_*` (NOT `nlb_*`) — matches the FGA model
-// (`type lb_network_load_balancer / lb_listener / lb_target_group` in
+// `nlb_*` (matches the kacho-nlb service name, NLB-1a hard-rename) — matches the
+// FGA model (`type nlb_network_load_balancer / nlb_listener / nlb_target_group` in
 // kacho-proto fga_model.fga) and api-gateway permission_catalog.json.
 const (
-	FGAObjectTypeLoadBalancer = "lb_network_load_balancer"
-	FGAObjectTypeListener     = "lb_listener"
-	FGAObjectTypeTargetGroup  = "lb_target_group"
+	FGAObjectTypeLoadBalancer = "nlb_network_load_balancer"
+	FGAObjectTypeListener     = "nlb_listener"
+	FGAObjectTypeTargetGroup  = "nlb_target_group"
 )
 
 // FGA relation strings emitted in kacho-nlb tuples.
 //
-// creator relation is "admin" (NOT "owner"): the `lb_*` model
+// creator relation is "admin" (NOT "owner"): the `nlb_*` model
 // defines only viewer/editor/admin. "admin" is the closest fit for creator
 // semantics (full control). "project" links a resource to its project for the
 // hierarchy cascade; "load_balancer" is the parent-link relation
-// (lb_network_load_balancer → lb_listener).
+// (nlb_network_load_balancer → nlb_listener).
 const (
 	FGARelationAdmin        = "admin"
 	FGARelationProject      = "project"
@@ -170,7 +170,7 @@ func FGACreatorTuple(subject, objectType, objectID string) FGATuple {
 
 // FGAParentLinkTuple builds the parent→child link tuple
 // "<parentType>:<parentID> #<relation> @<childType>:<childID>" (e.g.
-// lb_network_load_balancer:<lbID> #load_balancer @lb_listener:<id>).
+// nlb_network_load_balancer:<lbID> #load_balancer @nlb_listener:<id>).
 func FGAParentLinkTuple(parentType, parentID, relation, childType, childID string) FGATuple {
 	return FGATuple{
 		SubjectID: FGAObjectRef(parentType, parentID),

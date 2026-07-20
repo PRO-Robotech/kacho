@@ -17,7 +17,7 @@ import (
 )
 
 // checkTargetGroupViewer authorizes the caller (`viewer` on
-// `lb_target_group:<tg>`) against a caller-supplied TargetGroup object
+// `nlb_target_group:<tg>`) against a caller-supplied TargetGroup object
 // (CWE-863 guard).
 //
 // Shared by every use-case that reads/mutates a TargetGroup referenced by a

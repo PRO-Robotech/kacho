@@ -47,7 +47,7 @@ type AttachTargetGroupUseCase struct {
 }
 
 // NewAttachTargetGroupUseCase конструктор. checkClient авторизует caller'а на
-// target-group object (`viewer on lb_target_group:<tg>`); nil → TG-authz
+// target-group object (`viewer on nlb_target_group:<tg>`); nil → TG-authz
 // пропускается (dev/unwired; breakglass также обходит source-check interceptor'а).
 func NewAttachTargetGroupUseCase(repo Repo, opsRepo operations.Repo, checkClient CheckClient, logger *slog.Logger) *AttachTargetGroupUseCase {
 	if logger == nil {
