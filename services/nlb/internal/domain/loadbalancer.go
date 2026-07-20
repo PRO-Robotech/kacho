@@ -49,6 +49,24 @@ type LoadBalancer struct {
 	Status             LBStatus
 	SessionAffinity    SessionAffinity
 	DeletionProtection bool
+	// AdminState — NLB-1b EXPAND (additive): desired administrative state
+	// (ENABLED|DISABLED), LIVE-mutable. Persisted + echoed; does NOT yet gate
+	// status recompute (MIGRATE). Empty → normalised to ENABLED at persist.
+	AdminState AdminState
+	// Placement — NLB-1b EXPAND (additive): merged placement discriminator,
+	// derived-consistent with Type/PlacementType. Persisted + echoed; not yet
+	// authoritative (legacy type/placement_type still drive behaviour — MIGRATE).
+	Placement Placement
+	// CrossZoneEnabled — NLB-1b MIGRATE (revival): REGIONAL-only cross-zone
+	// load-balancing toggle, LIVE-mutable. Inapplicable to ZONAL placement (rejected
+	// by the use-case ZONAL-guard + DB CHECK). REGIONAL/anycast excluded from the
+	// zonal check by construction.
+	CrossZoneEnabled bool
+	// SecurityGroupIDs — NLB-1b MIGRATE (revival): vpc SecurityGroup refs firewalling
+	// the LB VIP. Cross-service refs (TEXT, no FK); same-project existence
+	// peer-validated via vpc.SecurityGroupService.Get. LIVE-mutable (replace-whole).
+	// Valid only for INTERNAL placement (DB CHECK load_balancers_sg_internal_check).
+	SecurityGroupIDs []string
 }
 
 // Validate проверяет семантически-нагруженные поля LoadBalancer. multierr.Combine
@@ -64,6 +82,8 @@ func (lb LoadBalancer) Validate() error {
 		lb.Status.Validate(),
 		lb.SessionAffinity.Validate(),
 		lb.PlacementType.Validate(),
+		lb.AdminState.Validate(),
+		lb.Placement.Validate(),
 	)
 }
 
@@ -88,7 +108,11 @@ func (lb LoadBalancer) Equal(other LoadBalancer) bool {
 		lb.Type == other.Type &&
 		lb.Status == other.Status &&
 		lb.SessionAffinity == other.SessionAffinity &&
-		lb.DeletionProtection == other.DeletionProtection
+		lb.DeletionProtection == other.DeletionProtection &&
+		lb.AdminState == other.AdminState &&
+		lb.Placement == other.Placement &&
+		lb.CrossZoneEnabled == other.CrossZoneEnabled &&
+		stringsEqualOrdered(lb.SecurityGroupIDs, other.SecurityGroupIDs)
 }
 
 // ipVersionsEqual — order-insensitive equality двух наборов IPVersion (семейства

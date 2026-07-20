@@ -35,6 +35,7 @@ type createDeps struct {
 	addr   InternalAddressClient
 	zone   ZoneClient
 	region RegionClient
+	sg     SecurityGroupClient // NLB-1b MIGRATE: vpc SecurityGroup peer-validate
 }
 
 func newCreateUC(repo *fakeRepo, opsRepo *fakeOpsRepo, d createDeps) *CreateLoadBalancerUseCase {
@@ -54,7 +55,8 @@ func newCreateUC(repo *fakeRepo, opsRepo *fakeOpsRepo, d createDeps) *CreateLoad
 		d.region = &fakeRegionClient{}
 	}
 	return NewCreateLoadBalancerUseCase(repo, opsRepo,
-		&fakeProjectClient{}, d.region, d.zone, d.subnet, d.reader, d.addr, slog.Default())
+		&fakeProjectClient{}, d.region, d.zone, d.subnet, d.reader, d.addr, slog.Default()).
+		WithSecurityGroupClient(d.sg)
 }
 
 // ---- VipSource-хелперы -----------------------------------------------------

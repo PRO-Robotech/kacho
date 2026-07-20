@@ -46,7 +46,11 @@ type CreateLoadBalancerUseCase struct {
 	// вызывается BEST-EFFORT после durable commit LB. nil → только async
 	// register-drainer (dev/no-iam). См. WithRegistrar.
 	registrar Registrar
-	logger    *slog.Logger
+	// sgClient — NLB-1b MIGRATE peer-validate of security_group_ids (same-project
+	// existence via vpc). nil → SG validation skipped (DB CHECK backstop). См.
+	// WithSecurityGroupClient.
+	sgClient SecurityGroupClient
+	logger   *slog.Logger
 }
 
 // NewCreateLoadBalancerUseCase конструктор.
@@ -79,6 +83,15 @@ func (u *CreateLoadBalancerUseCase) WithRegistrar(r Registrar) *CreateLoadBalanc
 	return u
 }
 
+// WithSecurityGroupClient wires the vpc SecurityGroup peer-client used to
+// peer-validate security_group_ids (same-project existence, fail-closed). nil →
+// SG validation is skipped (DB CHECK INTERNAL-only remains the backstop). Returns
+// self for chaining in the composition root.
+func (u *CreateLoadBalancerUseCase) WithSecurityGroupClient(c SecurityGroupClient) *CreateLoadBalancerUseCase {
+	u.sgClient = c
+	return u
+}
+
 // syncRegister — BEST-EFFORT sync owner-tuple регистрация после durable commit.
 // Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent +
 // register-drainer — at-least-once backstop; Operation.done НЕ гейтится на
@@ -105,13 +118,13 @@ func (u *CreateLoadBalancerUseCase) Execute(
 		return nil, errInvalidArg("region_id", "required")
 	}
 
-	lbType, err := lbTypeFromPb(req.GetType())
-	if err != nil {
-		return nil, err
-	}
-
-	// placement_type ↔ type coupling.
-	placement, err := resolvePlacement(lbType, req.GetPlacementType())
+	// NLB-1b MIGRATE (F2): `placement` is the AUTHORITATIVE input driving the
+	// (type, placement_type) columns. Legacy type/placement_type inputs remain
+	// accepted as a bridge (must be consistent when co-supplied); the full
+	// output-only reject of legacy inputs lands in CONTRACT (NLB-1-08). When
+	// placement is unset the legacy inputs drive (back-compat) and placement is
+	// derived + persisted.
+	lbType, placement, placementMode, err := resolvePlacementAuthoritative(req)
 	if err != nil {
 		return nil, err
 	}
@@ -146,6 +159,22 @@ func (u *CreateLoadBalancerUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 	lb.SessionAffinity = sa
+	// NLB-1b EXPAND (additive): admin_state — default ENABLED via builder;
+	// explicit input overrides. LIVE-mutable (Update), not yet status-authoritative.
+	if as := adminStateFromPb(req.GetAdminState()); as != "" {
+		lb.AdminState = as
+	}
+	// NLB-1b MIGRATE (F2): placement is authoritative — persisted as resolved above.
+	lb.Placement = placementMode
+	// NLB-1b MIGRATE (F3/NLB-1-16): cross_zone_enabled is REGIONAL-only — reject it
+	// on ZONAL placement (a ZONAL LB serves a single zone). REGIONAL/anycast passes.
+	if req.GetCrossZoneEnabled() && !domain.CrossZoneApplicable(placement) {
+		return nil, status.Error(codes.InvalidArgument, crossZoneZonalMsg)
+	}
+	lb.CrossZoneEnabled = req.GetCrossZoneEnabled()
+	// NLB-1b MIGRATE (F2/NLB-1-51): security_group_ids — vpc SecurityGroup refs
+	// firewalling the VIP (peer-validated below in the sync phase). INTERNAL-only.
+	lb.SecurityGroupIDs = req.GetSecurityGroupIds()
 	// ip_families — заявленные семейства VIP (проставляются ДО Insert-handle:
 	// family-guard CHECK требует семейство в ip_families прежде чем persist-VIP
 	// запишет непустой address).
@@ -162,6 +191,12 @@ func (u *CreateLoadBalancerUseCase) Execute(
 	// Резолв источников: placement подсети/адреса == placement LB;
 	// kind/family/ownership link'а; derived network + dualstack same-network.
 	if err := u.resolveSources(ctx, lb, specs); err != nil {
+		return nil, err
+	}
+
+	// NLB-1b MIGRATE (F2/NLB-1-51/52): security_group_ids peer-validate (INTERNAL-only
+	// + same-project existence via vpc; fail-closed). No region-coherence check.
+	if err := validateSecurityGroups(ctx, u.sgClient, lb.Type, string(lb.ProjectID), lb.SecurityGroupIDs); err != nil {
 		return nil, err
 	}
 

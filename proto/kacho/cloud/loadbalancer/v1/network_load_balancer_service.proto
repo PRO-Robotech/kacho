@@ -230,7 +230,7 @@ message CreateNetworkLoadBalancerRequest {
   reserved 7, 8, 10;
   reserved 12, 13, 14, 15, 16;
   reserved "listener_specs", "attached_target_groups", "allow_zonal_shift";
-  reserved "cross_zone_enabled", "network_id", "security_group_ids", "address_spec", "ip_families";
+  reserved "network_id", "address_spec", "ip_families";
 
   string project_id = 1 [(required) = true, (length) = "<=50"];
 
@@ -265,6 +265,25 @@ message CreateNetworkLoadBalancerRequest {
   // public ⟹ EXTERNAL auto.
   VipSource v4_source = 19;
   VipSource v6_source = 20;
+
+  // placement — NLB-1b EXPAND (additive, optional): merged placement value.
+  // If set it must be consistent with type/placement_type (which stay the
+  // authoritative inputs in EXPAND); inconsistent → InvalidArgument. If unset,
+  // placement is derived from type/placement_type and persisted for read.
+  NetworkLoadBalancer.Placement placement = 21;
+
+  // admin_state — NLB-1b EXPAND (additive, optional). Desired administrative
+  // state; UNSPECIFIED is persisted as ENABLED.
+  NetworkLoadBalancer.AdminState admin_state = 22;
+
+  // cross_zone_enabled — NLB-1b MIGRATE (revival, optional): REGIONAL-only
+  // cross-zone toggle. true on a ZONAL placement → InvalidArgument.
+  bool cross_zone_enabled = 23;
+
+  // security_group_ids — NLB-1b MIGRATE (revival, optional): vpc SecurityGroup refs
+  // firewalling the VIP. Same-project existence peer-validated via vpc (fail-closed
+  // UNAVAILABLE). INTERNAL-only.
+  repeated string security_group_ids = 24 [(length) = "<=50"];
 }
 
 message CreateNetworkLoadBalancerMetadata {
@@ -281,7 +300,7 @@ message UpdateNetworkLoadBalancerRequest {
   reserved 6, 7, 9;
   reserved 11, 12, 13, 14, 15, 16;
   reserved "listener_specs", "attached_target_groups", "allow_zonal_shift";
-  reserved "cross_zone_enabled", "network_id", "security_group_ids", "address_id_v4", "address_id_v6", "ip_families";
+  reserved "network_id", "address_id_v4", "address_id_v6", "ip_families";
 
   string network_load_balancer_id = 1 [(required) = true, (length) = "<=50"];
   google.protobuf.FieldMask update_mask = 2;
@@ -304,6 +323,20 @@ message UpdateNetworkLoadBalancerRequest {
   // disabled_announce_zones — mutable (REGIONAL only): drain / re-enable зон.
   // Валидируется по тем же правилам, что Create (зоны ∈ регион, не все зоны).
   repeated string disabled_announce_zones = 17 [(length) = "<=50"];
+
+  // admin_state — NLB-1b EXPAND (additive): LIVE-mutable administrative state.
+  // Applied only when present in update_mask (Update never auto-ENABLE/DISABLE).
+  // placement / type / placement_type stay immutable (rejected by mask path).
+  NetworkLoadBalancer.AdminState admin_state = 18;
+
+  // cross_zone_enabled — NLB-1b MIGRATE (revival): REGIONAL-only cross-zone toggle,
+  // LIVE-mutable. Applied only when present in update_mask; true on a ZONAL LB →
+  // InvalidArgument.
+  bool cross_zone_enabled = 19;
+
+  // security_group_ids — NLB-1b MIGRATE (revival): LIVE-mutable vpc SecurityGroup
+  // refs (replace-whole). Same-project existence peer-validated via vpc.
+  repeated string security_group_ids = 20 [(length) = "<=50"];
 }
 
 message UpdateNetworkLoadBalancerMetadata {

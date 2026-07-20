@@ -63,6 +63,13 @@ type InternalAddressClient interface {
 // vpc.SubnetService.Get. not-found → InvalidArgument; недоступен → Unavailable.
 type SubnetClient = vpcclient.SubnetClient
 
+// SecurityGroupClient — Get(securityGroupID) → *vpcclient.SecurityGroup. NLB-1b
+// MIGRATE peer-validate of NetworkLoadBalancer.security_group_ids: same-project
+// existence via vpc.SecurityGroupService.Get. absent/no-access → FailedPrecondition;
+// vpc unavailable → Unavailable (fail-closed). nil → SG validation skipped
+// (dev/unwired) — the DB CHECK (INTERNAL-only) remains the backstop.
+type SecurityGroupClient = vpcclient.SecurityGroupClient
+
 // AddressClient — Get(addressID) → *vpcclient.Address (публичный vpc
 // AddressService.Get, authz-gated `v_get`). sync-precheck link-источника: адрес
 // резолвится под tenant-identity, проверяются kind/family/ownership/placement.
