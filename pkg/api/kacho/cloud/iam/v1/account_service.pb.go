@@ -205,8 +205,12 @@ type CreateAccountRequest struct {
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs.
 	Labels map[string]string `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// ID of the User who owns this Account (account-administrator).
-	// Required: must reference an existing User in kacho-iam — иначе FailedPrecondition (async).
+	// OUTPUT-ONLY (redesign-2026 F1). ownerUserId° is derived from the
+	// authenticated caller — it MUST NOT be set on input. Supplying ANY value
+	// (even the caller's own id) is rejected sync with INVALID_ARGUMENT
+	// "Illegal argument ownerUserId (derived from caller)", first statement,
+	// before the Operation is minted. The verified principal becomes the owner
+	// and the subject of the owner AccessBinding co-committed by the Create saga.
 	OwnerUserId   string `protobuf:"bytes,4,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -652,12 +656,12 @@ const file_kacho_cloud_iam_v1_account_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"w\n" +
 	"\x14ListAccountsResponse\x127\n" +
 	"\baccounts\x18\x01 \x03(\v2\x1b.kacho.cloud.iam.v1.AccountR\baccounts\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x81\x03\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfd\x02\n" +
 	"\x14CreateAccountRequest\x12C\n" +
 	"\x04name\x18\x01 \x01(\tB/\xe8\xc71\x01\xf2\xc71\x1f[a-z]([-a-z0-9]{0,61}[a-z0-9])?\x8a\xc81\x043-63R\x04name\x12+\n" +
 	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
-	"\x06labels\x18\x03 \x03(\v24.kacho.cloud.iam.v1.CreateAccountRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x120\n" +
-	"\rowner_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\vownerUserId\x1a9\n" +
+	"\x06labels\x18\x03 \x03(\v24.kacho.cloud.iam.v1.CreateAccountRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12,\n" +
+	"\rowner_user_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\vownerUserId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xae\x03\n" +

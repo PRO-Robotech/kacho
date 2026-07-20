@@ -12,8 +12,10 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // An Account resource. Top-level tenant container in kacho-iam.
 //
 // Account groups Projects and owns custom Roles/Groups/ServiceAccounts. Each Account
-// has a single owner_user_id (User id), который не редактируется через публичный Update
-// после Create (см. UpdateAccountRequest — owner_user_id не входит в update_mask).
+// has a single owner_user_id° (User id), which is OUTPUT-ONLY derived-from-caller
+// (redesign-2026 F1): not accepted in the Create body (supplying it →
+// INVALID_ARGUMENT) and immutable after Create (not in UpdateAccountRequest.update_mask
+// → "ownerUserId is immutable after Account.Create").
 //
 // Resource id prefix: `acc-`.
 message Account {
@@ -32,9 +34,11 @@ message Account {
   // No more than 64 per resource.
   map<string, string> labels = 4;
 
-  // ID of the User who owns this Account (account-administrator).
-  // Immutable after Account.Create — попытка изменить через UpdateAccount.update_mask
-  // вернет InvalidArgument.
+  // ID of the User who owns this Account (account-administrator). OUTPUT-ONLY,
+  // derived-from-caller (mirror of the owner AccessBinding subject). Not accepted
+  // in Create (F1) and immutable after Account.Create — including it in
+  // UpdateAccount.update_mask returns InvalidArgument
+  // ("ownerUserId is immutable after Account.Create").
   string owner_user_id = 5;
 
   // Creation timestamp.

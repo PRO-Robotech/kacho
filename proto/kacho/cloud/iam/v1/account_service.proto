@@ -165,9 +165,13 @@ message CreateAccountRequest {
   // Resource labels as `key:value` pairs.
   map<string, string> labels = 3 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
 
-  // ID of the User who owns this Account (account-administrator).
-  // Required: must reference an existing User in kacho-iam — иначе FailedPrecondition (async).
-  string owner_user_id = 4 [(required) = true, (length) = "<=20"];
+  // OUTPUT-ONLY (redesign-2026 F1). ownerUserId° is derived from the
+  // authenticated caller — it MUST NOT be set on input. Supplying ANY value
+  // (even the caller's own id) is rejected sync with INVALID_ARGUMENT
+  // "Illegal argument ownerUserId (derived from caller)", first statement,
+  // before the Operation is minted. The verified principal becomes the owner
+  // and the subject of the owner AccessBinding co-committed by the Create saga.
+  string owner_user_id = 4 [(length) = "<=20"];
 }
 
 message UpdateAccountRequest {

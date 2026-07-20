@@ -28,8 +28,10 @@ const (
 // An Account resource. Top-level tenant container in kacho-iam.
 //
 // Account groups Projects and owns custom Roles/Groups/ServiceAccounts. Each Account
-// has a single owner_user_id (User id), который не редактируется через публичный Update
-// после Create (см. UpdateAccountRequest — owner_user_id не входит в update_mask).
+// has a single owner_user_id° (User id), which is OUTPUT-ONLY derived-from-caller
+// (redesign-2026 F1): not accepted in the Create body (supplying it →
+// INVALID_ARGUMENT) and immutable after Create (not in UpdateAccountRequest.update_mask
+// → "ownerUserId is immutable after Account.Create").
 //
 // Resource id prefix: `acc-`.
 type Account struct {
@@ -45,9 +47,11 @@ type Account struct {
 	// Resource labels as `key:value` pairs.
 	// No more than 64 per resource.
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// ID of the User who owns this Account (account-administrator).
-	// Immutable after Account.Create — попытка изменить через UpdateAccount.update_mask
-	// вернет InvalidArgument.
+	// ID of the User who owns this Account (account-administrator). OUTPUT-ONLY,
+	// derived-from-caller (mirror of the owner AccessBinding subject). Not accepted
+	// in Create (F1) and immutable after Account.Create — including it in
+	// UpdateAccount.update_mask returns InvalidArgument
+	// ("ownerUserId is immutable after Account.Create").
 	OwnerUserId string `protobuf:"bytes,5,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
 	// Creation timestamp.
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
