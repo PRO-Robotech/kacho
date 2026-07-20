@@ -29,8 +29,11 @@ const (
 //
 // Project — заменитель Folder из kacho-resource-manager в IAM-модели.
 //
-// Constraint: (account_id, name) — UNIQUE. Project можно Move в другой Account
-// (см. ProjectService.Move) — DB-level атомарный CAS.
+// Строго два уровня аренды: Account → Project (Project — leaf-workspace, без
+// вложенности). Constraint: (account_id, name) — UNIQUE per-account.
+// `account_id` — hard-immutable после Create: НЕТ ProjectService.Move RPC
+// (cross-account перенос сломал бы scope-координату всех downstream-ресурсов,
+// держащих projectId) — Update отвергает account_id в update_mask.
 //
 // Resource id prefix: `prj-`.
 type Project struct {
@@ -38,7 +41,8 @@ type Project struct {
 	// ID of the project.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ID of the Account that this Project belongs to.
-	// Changes via ProjectService.Move (not via Update).
+	// Immutable after Project.Create (no Move RPC; Update rejects account_id in
+	// update_mask with "accountId is immutable after Project.Create").
 	AccountId string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	// Name of the project. Unique within an Account. 3-63 characters long.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
