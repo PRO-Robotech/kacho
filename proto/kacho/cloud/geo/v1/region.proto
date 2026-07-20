@@ -6,23 +6,72 @@ syntax = "proto3";
 package kacho.cloud.geo.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/geo/v1/geo_common.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
 
-// Region — global platform-topology resource.
+// Region — public, tenant-facing placement-axis coordinate (REGIONAL/anycast).
 //
 // Geography (Region/Zone) is owned by kacho-geo, the leaf platform-topology
-// service (depends on nothing else in Kachō). Not bound to Project/Account —
-// it is global cluster-scoped topology. Other services reference a region by
-// id (string) and validate it via RegionService.Get (cross-domain ref by id,
-// no cross-service FK). See data-integrity.md §«Cross-domain ссылки».
+// service. This is the LEAN public projection: it carries only tenant-facing
+// "intent + result". The raw admin `status` (GeoStatus) and the whole infra°
+// block live ONLY on InternalRegion (two-projection, security.md). The
+// placement axis (REGIONAL) is NOT emitted as a field — a consumer infers it
+// from the service it called (module-geo rule 1).
 message Region {
-  // ID of the region (e.g. "ru-central1"). Admin-assigned, immutable PK.
+  // ID of the region (e.g. "ru-central1"). Admin-assigned immutable slug PK —
+  // THE ONE carve-out from the 3-char-prefix+crockford-base32 id convention
+  // (it IS a coordinate, written by hand into every placement Create).
   string id = 1;
 
-  // Human-readable name of the region.
+  // Human-readable label; LIVE-mutable via InternalRegionService.Update.
+  // Globally UNIQUE, required.
   string name = 2;
 
-  // Creation timestamp.
+  // Creation timestamp (truncated to seconds on the wire).
   google.protobuf.Timestamp created_at = 3;
+
+  // ISO-3166 alpha-2 country code (output-only descriptor, non-sensitive → on
+  // public). LIVE-mutable via InternalRegionService.Update.
+  string country_code = 4;
+
+  // Derived: the SINGLE actionable placement signal. = status==UP. This is
+  // ADMINISTRATIVE availability, NOT a capacity/health guarantee — Create may
+  // still fail on capacity at schedule time. Region: when false, the cause is
+  // always REGION_DOWN by construction (hence no placement_blocked_reason here).
+  bool open_for_placement = 5;
+
+  // Advisory read-time COUNT rollup of zones with openForPlacement°=true (NOT a
+  // persisted denormalized column). Authoritative source =
+  // ZoneService.List?openForPlacement=true — divergence is possible, do not
+  // build an invariant on this hint.
+  int64 open_zone_count_hint = 6;
+}
+
+// RegionInfra — infra-sensitive projection of a Region. Accepted on
+// InternalRegionService.Create (numeric_infra_id°) and readable via GetInternal.
+// NEVER on the public surface (security.md two-projection).
+message RegionInfra {
+  // Numeric infra identifier of the region; IMMUTABLE after create.
+  int64 numeric_infra_id = 1;
+
+  // Read-time rollup of zone-infra capacity_hint° (NOT persisted, not settable);
+  // scheduler signal, never on public.
+  string capacity_hint = 2;
+}
+
+// InternalRegion — full admin-plane projection (InternalRegionService.GetInternal,
+// :9091 only). Carries the raw admin `status` and the infra° block; NEVER routed
+// to the external TLS endpoint (ban #6).
+message InternalRegion {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  string country_code = 4;
+
+  // Raw admin maintenance flag (UP/DOWN). LIVE-mutable via Internal Update.
+  GeoStatus status = 5;
+
+  // Infra-sensitive projection — Internal-only.
+  RegionInfra infra = 6;
 }

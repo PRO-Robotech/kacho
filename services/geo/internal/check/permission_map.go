@@ -8,16 +8,15 @@ import (
 )
 
 // FGA-скоупинг для kacho-geo: Region/Zone — глобальные cluster-scoped read-only
-// справочники. Публичные Get/List гейтятся viewer-tier на cluster-синглтоне;
-// admin Internal* CRUD — system_admin на том же синглтоне (зеркалит аннотации
-// proto geo.v1: required_relation viewer / system_admin,
-// scope_extractor.object_type=cluster). cluster_kacho_root — ClusterSingletonID
+// справочники. Публичные Get/List — ambient project-scope EXEMPT (authN-only, снят
+// per-RPC ReBAC-Check, GEO-1 documented-exception); admin Internal* CRUD — system_admin
+// на cluster-синглтоне (зеркалит аннотации proto geo.v1: <exempt> reads / system_admin
+// admin, scope_extractor.object_type=cluster). cluster_kacho_root — ClusterSingletonID
 // из kacho-iam, один на деплой.
 const (
 	objectTypeCluster      = "cluster"
 	clusterSingletonObject = "cluster_kacho_root"
 
-	relationViewer      = "viewer"
 	relationSystemAdmin = "system_admin"
 )
 
@@ -38,27 +37,19 @@ func staticClusterCatalog() authz.ObjectExtractor {
 // permission_catalog в api-gateway.
 func PermissionMap() authz.RPCMap {
 	return authz.RPCMap{
-		// ---- публичный read-only справочник (viewer floor) ----
-		"/kacho.cloud.geo.v1.RegionService/Get": {
-			Relation:   relationViewer,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.regions.get",
-		},
-		"/kacho.cloud.geo.v1.RegionService/List": {
-			Relation:   relationViewer,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.regions.list",
-		},
-		"/kacho.cloud.geo.v1.ZoneService/Get": {
-			Relation:   relationViewer,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.zones.get",
-		},
-		"/kacho.cloud.geo.v1.ZoneService/List": {
-			Relation:   relationViewer,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.zones.list",
-		},
+		// ---- публичный read-only справочник (ambient project-scope EXEMPT, GEO-1) ----
+		// Region/Zone Get/List — admin-curated глобальный catalog: КАЖДЫЙ
+		// аутентифицированный tenant читает его без project-scope гранта (zero-binding
+		// project → 200). `Public:true` тут = «снят per-RPC ReBAC-Check», НЕ
+		// «unauthenticated»: anti-anon principal-цепочка сохраняется (unauthenticated →
+		// UNAUTHENTICATED). Это documented-exception, зеркалит gateway `<exempt>` на тех
+		// же 4 RPC и note в security.md («geo public-read — project-scope EXEMPT»).
+		// Anti-регресс: снятие Check — ТОЛЬКО для этих read-only catalog-RPC; admin
+		// Internal* CRUD ниже остаётся system_admin-гейтед.
+		"/kacho.cloud.geo.v1.RegionService/Get":  {Public: true},
+		"/kacho.cloud.geo.v1.RegionService/List": {Public: true},
+		"/kacho.cloud.geo.v1.ZoneService/Get":    {Public: true},
+		"/kacho.cloud.geo.v1.ZoneService/List":   {Public: true},
 
 		// ---- admin CRUD (Internal*, system_admin) ----
 		"/kacho.cloud.geo.v1.InternalRegionService/Create": {

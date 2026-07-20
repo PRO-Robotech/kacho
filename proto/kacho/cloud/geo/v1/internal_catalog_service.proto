@@ -6,7 +6,10 @@ syntax = "proto3";
 package kacho.cloud.geo.v1;
 
 import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/geo/v1/geo_common.proto";
+import "kacho/cloud/geo/v1/region.proto";
 import "kacho/cloud/geo/v1/zone.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
@@ -14,21 +17,22 @@ import "kacho/iam/authz/v1/authz_options.proto";
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
 
 // InternalRegionService / InternalZoneService — kacho-only admin API to manage
-// the read-only Region/Zone catalog. Exposed ONLY on the cluster-internal port
-// of kacho-geo (:9091); routed through the api-gateway internal mux onto
-// /geo/v1/regions, /geo/v1/zones — NEVER on the external TLS endpoint (ban #6,
-// security.md §Internal-vs-external). Region/Zone is owned by kacho-geo (leaf
-// platform-topology service).
+// the Region/Zone catalog AND its Internal-only projection (raw `status` +
+// infra°). Exposed ONLY on the cluster-internal port of kacho-geo (:9091),
+// routed through the api-gateway internal mux onto the SELF-DESCRIBING
+// /geo/v1/internal/… segment — NEVER on the external TLS endpoint (ban #6,
+// security.md §Internal-vs-external).
 //
-// Admin mutations follow the standard Kachō async form: Create/Update/Delete
-// return operation.Operation (done=false); the client polls
-// OperationService.Get(id) until done=true, then reads the final resource via
-// RegionService.Get / ZoneService.Get. Read RPCs (Region/ZoneService.Get/List)
-// stay synchronous.
+// Catalog mutations are spine-preserving but synchronously complete: topology is
+// cluster-scoped config in one DB with no provision saga (one INSERT), so
+// Create/Update/Delete return operation.Operation with done=true IMMEDIATELY
+// (metadata carries <res>Id + warnings°; result.response carries the full PUBLIC
+// resource body). The client unwraps .response — no OperationService.Get poll is
+// ever needed. GetInternal reads the full Internal projection synchronously.
 
 service InternalRegionService {
   rpc Create (CreateRegionRequest) returns (operation.Operation) {
-    option (google.api.http) = { post: "/geo/v1/regions" body: "*" };
+    option (google.api.http) = { post: "/geo/v1/internal/regions" body: "*" };
     option (kacho.cloud.api.operation) = {
       metadata: "CreateRegionMetadata"
       response: "Region"
@@ -42,7 +46,7 @@ service InternalRegionService {
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
   rpc Update (UpdateRegionRequest) returns (operation.Operation) {
-    option (google.api.http) = { patch: "/geo/v1/regions/{region_id}" body: "*" };
+    option (google.api.http) = { patch: "/geo/v1/internal/regions/{region_id}" body: "*" };
     option (kacho.cloud.api.operation) = {
       metadata: "UpdateRegionMetadata"
       response: "Region"
@@ -56,7 +60,7 @@ service InternalRegionService {
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
   rpc Delete (DeleteRegionRequest) returns (operation.Operation) {
-    option (google.api.http) = { delete: "/geo/v1/regions/{region_id}" };
+    option (google.api.http) = { delete: "/geo/v1/internal/regions/{region_id}" };
     option (kacho.cloud.api.operation) = {
       metadata: "DeleteRegionMetadata"
       response: "google.protobuf.Empty"
@@ -69,29 +73,52 @@ service InternalRegionService {
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
+  // GetInternal returns the FULL Internal projection (raw status + infra°).
+  rpc GetInternal (GetInternalRegionRequest) returns (InternalRegion) {
+    option (google.api.http) = { get: "/geo/v1/internal/regions/{region_id}" };
+    option (kacho.iam.authz.v1.permission)        = "geo.regions.getInternal";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
 }
 
 message CreateRegionRequest {
-  // Region ID — admin-assigned explicitly (e.g. "region-1"). PrimaryKey, immutable.
+  // Region ID — admin-assigned immutable slug PK (e.g. "ru-central1").
   string id = 1;
   string name = 2;
+  // ISO-3166 alpha-2 country code (validated on input if non-empty).
+  string country_code = 3;
+  // Optional; DEFAULT DOWN (fail-safe) if omitted → region stays CLOSED.
+  GeoStatus status = 4;
+  // Region-level infra (numeric_infra_id° immutable after create).
+  RegionInfra infra = 5;
 }
 
 // CreateRegionMetadata — operation.metadata for InternalRegionService.Create.
 message CreateRegionMetadata {
   // ID of the Region that is being created.
   string region_id = 1;
+  // geo-owned loud-no-op channel: non-empty when the region was created CLOSED
+  // to placement (status DOWN). NOT placed in the shared Operation proto, NOT in
+  // the public Region response.
+  repeated string warnings = 2;
 }
 
 message UpdateRegionRequest {
   string region_id = 1;
-  // If non-empty — update name. ID cannot be updated (immutable PK).
   string name = 2;
+  string country_code = 3;
+  GeoStatus status = 4;
+  RegionInfra infra = 5;
+  google.protobuf.FieldMask update_mask = 6;
 }
 
 // UpdateRegionMetadata — operation.metadata for InternalRegionService.Update.
 message UpdateRegionMetadata {
-  // ID of the Region that is being updated.
   string region_id = 1;
 }
 
@@ -99,13 +126,16 @@ message DeleteRegionRequest { string region_id = 1; }
 
 // DeleteRegionMetadata — operation.metadata for InternalRegionService.Delete.
 message DeleteRegionMetadata {
-  // ID of the Region that is being deleted.
+  string region_id = 1;
+}
+
+message GetInternalRegionRequest {
   string region_id = 1;
 }
 
 service InternalZoneService {
   rpc Create (CreateZoneRequest) returns (operation.Operation) {
-    option (google.api.http) = { post: "/geo/v1/zones" body: "*" };
+    option (google.api.http) = { post: "/geo/v1/internal/zones" body: "*" };
     option (kacho.cloud.api.operation) = {
       metadata: "CreateZoneMetadata"
       response: "Zone"
@@ -119,7 +149,7 @@ service InternalZoneService {
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
   rpc Update (UpdateZoneRequest) returns (operation.Operation) {
-    option (google.api.http) = { patch: "/geo/v1/zones/{zone_id}" body: "*" };
+    option (google.api.http) = { patch: "/geo/v1/internal/zones/{zone_id}" body: "*" };
     option (kacho.cloud.api.operation) = {
       metadata: "UpdateZoneMetadata"
       response: "Zone"
@@ -133,7 +163,7 @@ service InternalZoneService {
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
   rpc Delete (DeleteZoneRequest) returns (operation.Operation) {
-    option (google.api.http) = { delete: "/geo/v1/zones/{zone_id}" };
+    option (google.api.http) = { delete: "/geo/v1/internal/zones/{zone_id}" };
     option (kacho.cloud.api.operation) = {
       metadata: "DeleteZoneMetadata"
       response: "google.protobuf.Empty"
@@ -146,34 +176,55 @@ service InternalZoneService {
     };
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
+  // GetInternal returns the FULL Internal projection (raw status + infra°).
+  rpc GetInternal (GetInternalZoneRequest) returns (InternalZone) {
+    option (google.api.http) = { get: "/geo/v1/internal/zones/{zone_id}" };
+    option (kacho.iam.authz.v1.permission)        = "geo.zones.getInternal";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
 }
 
 message CreateZoneRequest {
-  // Zone ID — admin-assigned explicitly (e.g. "region-1-a"). PrimaryKey, immutable.
+  // Zone ID — admin-assigned immutable slug PK (e.g. "ru-central1-a");
+  // coupling id == regionId + "-" + <zoneSuffix>.
   string id = 1;
   string region_id = 2;
-  Zone.Status status = 3;
-  // Human-readable name of the zone.
+  // Optional; DEFAULT DOWN (fail-safe) if omitted → zone stays CLOSED.
+  GeoStatus status = 3;
   string name = 4;
+  // Zone infra accepted whole (numeric_infra_id° immutable after create).
+  ZoneInfra infra = 5;
 }
 
 // CreateZoneMetadata — operation.metadata for InternalZoneService.Create.
 message CreateZoneMetadata {
   // ID of the Zone that is being created.
   string zone_id = 1;
+  // geo-owned loud-no-op channel (see CreateRegionMetadata.warnings).
+  repeated string warnings = 2;
 }
 
 message UpdateZoneRequest {
+  // Reserved: was `region_id = 2`. regionId is IMMUTABLE after Zone.Create
+  // (moving a zone between regions would break coherence of every placed
+  // resource). An attempt to set it via update_mask=["regionId"] is rejected
+  // synchronously with "regionId is immutable after Zone.Create".
+  reserved 2;
+  reserved "region_id";
   string zone_id = 1;
-  string region_id = 2;
-  Zone.Status status = 3;
-  // If non-empty — update name.
+  GeoStatus status = 3;
   string name = 4;
+  ZoneInfra infra = 5;
+  google.protobuf.FieldMask update_mask = 6;
 }
 
 // UpdateZoneMetadata — operation.metadata for InternalZoneService.Update.
 message UpdateZoneMetadata {
-  // ID of the Zone that is being updated.
   string zone_id = 1;
 }
 
@@ -181,6 +232,9 @@ message DeleteZoneRequest { string zone_id = 1; }
 
 // DeleteZoneMetadata — operation.metadata for InternalZoneService.Delete.
 message DeleteZoneMetadata {
-  // ID of the Zone that is being deleted.
+  string zone_id = 1;
+}
+
+message GetInternalZoneRequest {
   string zone_id = 1;
 }

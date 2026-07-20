@@ -10,6 +10,7 @@ package pg
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -30,15 +31,11 @@ const outboxTable = "geo_outbox"
 
 // actorUnknown — sentinel для audit-actor, когда атрибуция утрачена (в ctx явно
 // выставлен principal с пустым ID: misconfig / wiring-регрессия). Пишем
-// наблюдаемый маркер в geo_outbox, а НЕ пустую строку, чтобы утрата атрибуции
-// была видна в самой audit-строке при разборе инцидента (CWE-778). В штатном
-// no-auth пути этой ветки нет: PrincipalFromContext отдаёт SystemPrincipal
-// (system:bootstrap), а не пустой ID.
+// наблюдаемый маркер в geo_outbox, а НЕ пустую строку (CWE-778).
 const actorUnknown = "unknown"
 
 // actorFromCtx форматирует trusted principal вызывающего как "<type>:<id>" для
-// audit-payload (например "user:usr_...", "service_account:sva_..."). Пустой ID
-// (явно выставленный principal без ID) → actorUnknown-sentinel, а не blank.
+// audit-payload. Пустой ID → actorUnknown-sentinel, а не blank.
 func actorFromCtx(ctx context.Context) string {
 	p := operations.PrincipalFromContext(ctx)
 	if p.ID == "" {
@@ -46,6 +43,13 @@ func actorFromCtx(ctx context.Context) string {
 	}
 	return p.Type + ":" + p.ID
 }
+
+// openZoneCountExpr — read-time rollup числа зон региона с openForPlacement°=true
+// (advisory-hint, НЕ persisted). Зона open ⟺ zone.status='UP' И region.status='UP',
+// поэтому для DOWN-региона hint=0 by construction.
+const openZoneCountExpr = `CASE WHEN r.status = 'UP'
+	THEN (SELECT count(*) FROM zones z WHERE z.region_id = r.id AND z.status = 'UP')
+	ELSE 0 END`
 
 // RegionRepo — реализация region.Repo поверх pgx.
 type RegionRepo struct {
@@ -55,33 +59,66 @@ type RegionRepo struct {
 // NewRegionRepo создает RegionRepo поверх pgxpool.
 func NewRegionRepo(pool *pgxpool.Pool) *RegionRepo { return &RegionRepo{pool: pool} }
 
-// Get возвращает регион по id.
+// Get возвращает публичную проекцию региона (со status для деривации
+// openForPlacement° + read-time openZoneCount rollup). infra НЕ читается тут —
+// она two-projection (см. GetInternal).
 func (r *RegionRepo) Get(ctx context.Context, id string) (*domain.Region, error) {
 	var rg domain.Region
-	err := r.pool.QueryRow(ctx, `SELECT id, name, created_at FROM regions WHERE id = $1`, id).
-		Scan(&rg.ID, &rg.Name, &rg.CreatedAt)
+	var statusName string
+	err := r.pool.QueryRow(ctx,
+		`SELECT r.id, r.name, r.country_code, r.status, r.created_at, `+openZoneCountExpr+`
+		   FROM regions r WHERE r.id = $1`, id).
+		Scan(&rg.ID, &rg.Name, &rg.CountryCode, &statusName, &rg.CreatedAt, &rg.OpenZoneCount)
 	if err != nil {
 		return nil, dberr.Wrap(err, "Region", id)
 	}
+	rg.Status = geoStatusFromName(statusName)
 	return &rg, nil
 }
 
-// List возвращает регионы с курсорной пагинацией по id. pageSize уже
-// нормализован use-case-слоем (region.UseCase.List), repo его не валидирует.
+// GetInternal возвращает full admin-проекцию региона (status + infra°). :9091-only.
+// Region-infra capacity_hint° — advisory read-time rollup (не persisted); текущая
+// фаза его не наполняет (остаётся пустым — инвариант на hint не строим).
+func (r *RegionRepo) GetInternal(ctx context.Context, id string) (*domain.Region, error) {
+	var rg domain.Region
+	var statusName string
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, country_code, status, numeric_infra_id, created_at
+		   FROM regions WHERE id = $1`, id).
+		Scan(&rg.ID, &rg.Name, &rg.CountryCode, &statusName, &rg.Infra.NumericInfraID, &rg.CreatedAt)
+	if err != nil {
+		return nil, dberr.Wrap(err, "Region", id)
+	}
+	rg.Status = geoStatusFromName(statusName)
+	return &rg, nil
+}
+
+// List возвращает публичные проекции регионов с курсорной пагинацией по id.
+// openForPlacement=true фильтрует по status='UP'. pageSize нормализован use-case'ом.
 func (r *RegionRepo) List(ctx context.Context, p region.Pagination) ([]*domain.Region, string, error) {
 	pageSize := p.PageSize
+	var conds []string
 	args := []any{}
-	where := ""
 	if p.PageToken != "" {
 		cursorID, derr := decodePageToken(p.PageToken)
 		if derr != nil {
 			return nil, "", invalidPageTokenErr(derr)
 		}
-		where = "WHERE id > $1"
 		args = append(args, cursorID)
+		conds = append(conds, fmt.Sprintf("r.id > $%d", len(args)))
 	}
-	q := fmt.Sprintf(`SELECT id, name, created_at FROM regions %s ORDER BY id ASC LIMIT $%d`, where, len(args)+1)
+	if p.OpenForPlacement {
+		conds = append(conds, "r.status = 'UP'")
+	}
+	where := ""
+	if len(conds) > 0 {
+		where = "WHERE " + strings.Join(conds, " AND ")
+	}
 	args = append(args, pageSize+1)
+	q := fmt.Sprintf(
+		`SELECT r.id, r.name, r.country_code, r.status, r.created_at, %s
+		   FROM regions r %s ORDER BY r.id ASC LIMIT $%d`,
+		openZoneCountExpr, where, len(args))
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, "", dberr.Wrap(err, "Region", "")
@@ -90,9 +127,11 @@ func (r *RegionRepo) List(ctx context.Context, p region.Pagination) ([]*domain.R
 	var out []*domain.Region
 	for rows.Next() {
 		var rg domain.Region
-		if err := rows.Scan(&rg.ID, &rg.Name, &rg.CreatedAt); err != nil {
+		var statusName string
+		if err := rows.Scan(&rg.ID, &rg.Name, &rg.CountryCode, &statusName, &rg.CreatedAt, &rg.OpenZoneCount); err != nil {
 			return nil, "", dberr.Wrap(err, "Region", "")
 		}
+		rg.Status = geoStatusFromName(statusName)
 		out = append(out, &rg)
 	}
 	if err := rows.Err(); err != nil {
@@ -100,61 +139,80 @@ func (r *RegionRepo) List(ctx context.Context, p region.Pagination) ([]*domain.R
 	}
 	var next string
 	if int64(len(out)) > pageSize {
-		last := out[pageSize-1]
-		next = encodePageToken(last.ID)
+		next = encodePageToken(out[pageSize-1].ID)
 		out = out[:pageSize]
 	}
 	return out, next, nil
 }
 
-// Insert создает регион (admin-only) и пишет geo_outbox-строку CREATED в той же
-// tx (атомарно). Audit-payload фиксирует actor admin-мутации.
+// Insert создает регион (admin-only) + пишет geo_outbox CREATED атомарно в той
+// же tx. Дубль id/name → 23505 → ErrAlreadyExists.
 func (r *RegionRepo) Insert(ctx context.Context, rg *domain.Region) (*domain.Region, error) {
 	actor := actorFromCtx(ctx)
 	var created domain.Region
+	var statusName string
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx,
-			`INSERT INTO regions (id, name, created_at) VALUES ($1,$2,$3) RETURNING id, name, created_at`,
-			rg.ID, rg.Name, time.Now().UTC()).
-			Scan(&created.ID, &created.Name, &created.CreatedAt)
+			`INSERT INTO regions (id, name, country_code, status, numeric_infra_id, created_at)
+			 VALUES ($1,$2,$3,$4,$5,$6)
+			 RETURNING id, name, country_code, status, numeric_infra_id, created_at`,
+			rg.ID, rg.Name, rg.CountryCode, geoStatusName(rg.Status), rg.Infra.NumericInfraID, time.Now().UTC()).
+			Scan(&created.ID, &created.Name, &created.CountryCode, &statusName, &created.Infra.NumericInfraID, &created.CreatedAt)
 		if serr != nil {
 			return dberr.Wrap(serr, "Region", rg.ID)
 		}
 		return outbox.Emit(ctx, tx, outboxTable, "Region", created.ID, "CREATED", map[string]any{
-			"id":    created.ID,
-			"name":  created.Name,
-			"actor": actor,
+			"id":           created.ID,
+			"name":         created.Name,
+			"country_code": created.CountryCode,
+			"status":       statusName,
+			"actor":        actor,
 		})
 	})
 	if err != nil {
 		return nil, err
 	}
+	created.Status = geoStatusFromName(statusName)
 	return &created, nil
 }
 
-// Update меняет name региона (admin-only) одним атомарным statement (без
-// предварительного Get / TOCTOU) + пишет geo_outbox UPDATED в той же tx.
-// name=nil → поле не меняется (COALESCE). 0 rows из RETURNING → ErrNotFound.
-func (r *RegionRepo) Update(ctx context.Context, id string, name *string) (*domain.Region, error) {
+// Update — атомарный partial-update региона (name/status/country_code) одним
+// statement (COALESCE, без TOCTOU) + geo_outbox UPDATED. nil-поля не меняются.
+// 0 rows из RETURNING → ErrNotFound. Дубль name → 23505 → ErrAlreadyExists.
+func (r *RegionRepo) Update(ctx context.Context, id string, p region.UpdateParams) (*domain.Region, error) {
 	actor := actorFromCtx(ctx)
+	var statusName *string
+	if p.Status != nil {
+		s := geoStatusName(*p.Status)
+		statusName = &s
+	}
 	var updated domain.Region
+	var outStatus string
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx,
-			`UPDATE regions SET name = COALESCE($2, name) WHERE id=$1 RETURNING id, name, created_at`,
-			id, name).
-			Scan(&updated.ID, &updated.Name, &updated.CreatedAt)
+			`UPDATE regions
+			    SET name         = COALESCE($2, name),
+			        status       = COALESCE($3, status),
+			        country_code = COALESCE($4, country_code)
+			  WHERE id = $1
+			RETURNING id, name, country_code, status, numeric_infra_id, created_at`,
+			id, p.Name, statusName, p.CountryCode).
+			Scan(&updated.ID, &updated.Name, &updated.CountryCode, &outStatus, &updated.Infra.NumericInfraID, &updated.CreatedAt)
 		if serr != nil {
 			return dberr.Wrap(serr, "Region", id)
 		}
 		return outbox.Emit(ctx, tx, outboxTable, "Region", updated.ID, "UPDATED", map[string]any{
-			"id":    updated.ID,
-			"name":  updated.Name,
-			"actor": actor,
+			"id":           updated.ID,
+			"name":         updated.Name,
+			"country_code": updated.CountryCode,
+			"status":       outStatus,
+			"actor":        actor,
 		})
 	})
 	if err != nil {
 		return nil, err
 	}
+	updated.Status = geoStatusFromName(outStatus)
 	return &updated, nil
 }
 

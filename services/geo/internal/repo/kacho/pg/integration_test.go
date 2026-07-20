@@ -109,7 +109,7 @@ func TestZoneList(t *testing.T) {
 	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
 	require.NoError(t, err)
 	for _, z := range []string{"region-1-a", "region-1-b"} {
-		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z, RegionID: "region-1", Status: domain.ZoneStatusUp})
+		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z, RegionID: "region-1", Name: "Zone " + z, Status: domain.ZoneStatusUp})
 		require.NoError(t, zerr)
 	}
 
@@ -130,7 +130,7 @@ func TestRegionCRUDAndOutbox(t *testing.T) {
 	// Строка outbox CREATED записана атомарно.
 	require.Equal(t, 1, outboxCount(t, pool, "Region", "region-1", "CREATED"))
 
-	updated, err := rr.Update(ctx, "region-1", strPtr("Region One"))
+	updated, err := rr.Update(ctx, "region-1", region.UpdateParams{Name: strPtr("Region One")})
 	require.NoError(t, err)
 	require.Equal(t, "Region One", updated.Name)
 	require.Equal(t, 1, outboxCount(t, pool, "Region", "region-1", "UPDATED"))
@@ -162,7 +162,7 @@ func TestZoneFKRestrict_DeleteRegionWithZones(t *testing.T) {
 
 	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
 	require.NoError(t, err)
 
 	err = rr.Delete(ctx, "region-1")
@@ -264,7 +264,7 @@ func TestConcurrentZoneInsertVsRegionDelete_NoOrphan(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		<-start
-		_, insertErr = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Status: domain.ZoneStatusUp})
+		_, insertErr = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
 	}()
 	go func() {
 		defer wg.Done()
@@ -368,7 +368,7 @@ func TestZoneListPagination(t *testing.T) {
 	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
 	require.NoError(t, err)
 	for _, id := range []string{"region-1-a", "region-1-b", "region-1-c"} {
-		_, zerr := zr.Insert(ctx, &domain.Zone{ID: id, RegionID: "region-1", Status: domain.ZoneStatusUp})
+		_, zerr := zr.Insert(ctx, &domain.Zone{ID: id, RegionID: "region-1", Name: "Zone " + id, Status: domain.ZoneStatusUp})
 		require.NoError(t, zerr)
 	}
 
@@ -385,32 +385,6 @@ func TestZoneListPagination(t *testing.T) {
 	require.Empty(t, token2, "empty page_token expected on last page")
 }
 
-// TestZoneUpdateFK_NoSuchRegion — Zone.Update, перенаправляющий region_id на
-// несуществующий регион, упирается в FK 23503 zones→regions → FailedPrecondition.
-// Транзакция откатывается целиком, поэтому region_id остаётся прежним (partial
-// re-point региона Create-путь тестируется отдельно; здесь — Update-путь).
-func TestZoneUpdateFK_NoSuchRegion(t *testing.T) {
-	pool := newTestPool(t)
-	ctx := context.Background()
-	rr := pg.NewRegionRepo(pool)
-	zr := pg.NewZoneRepo(pool)
-
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
-	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
-	require.NoError(t, err)
-
-	ghost := "no-such-region"
-	_, uerr := zr.Update(ctx, "region-1-a", zone.UpdateParams{RegionID: &ghost})
-	require.True(t, stderrors.Is(uerr, geoerrors.ErrFailedPrecondition),
-		"re-point region_id to a ghost region must surface FK 23503 as FailedPrecondition, got %v", uerr)
-
-	// region_id не изменился — UPDATE откатился целиком.
-	got, gerr := zr.Get(ctx, "region-1-a")
-	require.NoError(t, gerr)
-	require.Equal(t, "region-1", got.RegionID, "region_id must be unchanged after a failed re-point")
-}
-
 // TestZoneInsertDuplicate — повторный INSERT той же зоны → ErrAlreadyExists
 // (UNIQUE PK). Zone Insert — отдельный от Region код-путь (свой outbox emit),
 // поэтому дублируем проверку явно, а не полагаемся на region-parity.
@@ -422,9 +396,9 @@ func TestZoneInsertDuplicate(t *testing.T) {
 
 	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A dup", Status: domain.ZoneStatusUp})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
 }
 

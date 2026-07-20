@@ -146,6 +146,45 @@ func local_request_InternalRegionService_Delete_0(ctx context.Context, marshaler
 	return msg, metadata, err
 }
 
+func request_InternalRegionService_GetInternal_0(ctx context.Context, marshaler runtime.Marshaler, client InternalRegionServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetInternalRegionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["region_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "region_id")
+	}
+	protoReq.RegionId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "region_id", err)
+	}
+	msg, err := client.GetInternal(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_InternalRegionService_GetInternal_0(ctx context.Context, marshaler runtime.Marshaler, server InternalRegionServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetInternalRegionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["region_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "region_id")
+	}
+	protoReq.RegionId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "region_id", err)
+	}
+	msg, err := server.GetInternal(ctx, &protoReq)
+	return msg, metadata, err
+}
+
 func request_InternalZoneService_Create_0(ctx context.Context, marshaler runtime.Marshaler, client InternalZoneServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq CreateZoneRequest
@@ -257,6 +296,45 @@ func local_request_InternalZoneService_Delete_0(ctx context.Context, marshaler r
 	return msg, metadata, err
 }
 
+func request_InternalZoneService_GetInternal_0(ctx context.Context, marshaler runtime.Marshaler, client InternalZoneServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetInternalZoneRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["zone_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "zone_id")
+	}
+	protoReq.ZoneId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "zone_id", err)
+	}
+	msg, err := client.GetInternal(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_InternalZoneService_GetInternal_0(ctx context.Context, marshaler runtime.Marshaler, server InternalZoneServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetInternalZoneRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["zone_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "zone_id")
+	}
+	protoReq.ZoneId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "zone_id", err)
+	}
+	msg, err := server.GetInternal(ctx, &protoReq)
+	return msg, metadata, err
+}
+
 // RegisterInternalRegionServiceHandlerServer registers the http handlers for service InternalRegionService to "mux".
 // UnaryRPC     :call InternalRegionServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -269,7 +347,7 @@ func RegisterInternalRegionServiceHandlerServer(ctx context.Context, mux *runtim
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Create", runtime.WithHTTPPathPattern("/geo/v1/regions"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Create", runtime.WithHTTPPathPattern("/geo/v1/internal/regions"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -289,7 +367,7 @@ func RegisterInternalRegionServiceHandlerServer(ctx context.Context, mux *runtim
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Update", runtime.WithHTTPPathPattern("/geo/v1/regions/{region_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Update", runtime.WithHTTPPathPattern("/geo/v1/internal/regions/{region_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -309,7 +387,7 @@ func RegisterInternalRegionServiceHandlerServer(ctx context.Context, mux *runtim
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Delete", runtime.WithHTTPPathPattern("/geo/v1/regions/{region_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Delete", runtime.WithHTTPPathPattern("/geo/v1/internal/regions/{region_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -322,6 +400,26 @@ func RegisterInternalRegionServiceHandlerServer(ctx context.Context, mux *runtim
 			return
 		}
 		forward_InternalRegionService_Delete_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_InternalRegionService_GetInternal_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/GetInternal", runtime.WithHTTPPathPattern("/geo/v1/internal/regions/{region_id}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_InternalRegionService_GetInternal_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_InternalRegionService_GetInternal_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
@@ -339,7 +437,7 @@ func RegisterInternalZoneServiceHandlerServer(ctx context.Context, mux *runtime.
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Create", runtime.WithHTTPPathPattern("/geo/v1/zones"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Create", runtime.WithHTTPPathPattern("/geo/v1/internal/zones"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -359,7 +457,7 @@ func RegisterInternalZoneServiceHandlerServer(ctx context.Context, mux *runtime.
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Update", runtime.WithHTTPPathPattern("/geo/v1/zones/{zone_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Update", runtime.WithHTTPPathPattern("/geo/v1/internal/zones/{zone_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -379,7 +477,7 @@ func RegisterInternalZoneServiceHandlerServer(ctx context.Context, mux *runtime.
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Delete", runtime.WithHTTPPathPattern("/geo/v1/zones/{zone_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Delete", runtime.WithHTTPPathPattern("/geo/v1/internal/zones/{zone_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -392,6 +490,26 @@ func RegisterInternalZoneServiceHandlerServer(ctx context.Context, mux *runtime.
 			return
 		}
 		forward_InternalZoneService_Delete_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_InternalZoneService_GetInternal_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/GetInternal", runtime.WithHTTPPathPattern("/geo/v1/internal/zones/{zone_id}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_InternalZoneService_GetInternal_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_InternalZoneService_GetInternal_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
@@ -437,7 +555,7 @@ func RegisterInternalRegionServiceHandlerClient(ctx context.Context, mux *runtim
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Create", runtime.WithHTTPPathPattern("/geo/v1/regions"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Create", runtime.WithHTTPPathPattern("/geo/v1/internal/regions"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -454,7 +572,7 @@ func RegisterInternalRegionServiceHandlerClient(ctx context.Context, mux *runtim
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Update", runtime.WithHTTPPathPattern("/geo/v1/regions/{region_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Update", runtime.WithHTTPPathPattern("/geo/v1/internal/regions/{region_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -471,7 +589,7 @@ func RegisterInternalRegionServiceHandlerClient(ctx context.Context, mux *runtim
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Delete", runtime.WithHTTPPathPattern("/geo/v1/regions/{region_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/Delete", runtime.WithHTTPPathPattern("/geo/v1/internal/regions/{region_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -484,19 +602,38 @@ func RegisterInternalRegionServiceHandlerClient(ctx context.Context, mux *runtim
 		}
 		forward_InternalRegionService_Delete_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodGet, pattern_InternalRegionService_GetInternal_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalRegionService/GetInternal", runtime.WithHTTPPathPattern("/geo/v1/internal/regions/{region_id}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_InternalRegionService_GetInternal_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_InternalRegionService_GetInternal_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	return nil
 }
 
 var (
-	pattern_InternalRegionService_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"geo", "v1", "regions"}, ""))
-	pattern_InternalRegionService_Update_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"geo", "v1", "regions", "region_id"}, ""))
-	pattern_InternalRegionService_Delete_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"geo", "v1", "regions", "region_id"}, ""))
+	pattern_InternalRegionService_Create_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"geo", "v1", "internal", "regions"}, ""))
+	pattern_InternalRegionService_Update_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"geo", "v1", "internal", "regions", "region_id"}, ""))
+	pattern_InternalRegionService_Delete_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"geo", "v1", "internal", "regions", "region_id"}, ""))
+	pattern_InternalRegionService_GetInternal_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"geo", "v1", "internal", "regions", "region_id"}, ""))
 )
 
 var (
-	forward_InternalRegionService_Create_0 = runtime.ForwardResponseMessage
-	forward_InternalRegionService_Update_0 = runtime.ForwardResponseMessage
-	forward_InternalRegionService_Delete_0 = runtime.ForwardResponseMessage
+	forward_InternalRegionService_Create_0      = runtime.ForwardResponseMessage
+	forward_InternalRegionService_Update_0      = runtime.ForwardResponseMessage
+	forward_InternalRegionService_Delete_0      = runtime.ForwardResponseMessage
+	forward_InternalRegionService_GetInternal_0 = runtime.ForwardResponseMessage
 )
 
 // RegisterInternalZoneServiceHandlerFromEndpoint is same as RegisterInternalZoneServiceHandler but
@@ -539,7 +676,7 @@ func RegisterInternalZoneServiceHandlerClient(ctx context.Context, mux *runtime.
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Create", runtime.WithHTTPPathPattern("/geo/v1/zones"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Create", runtime.WithHTTPPathPattern("/geo/v1/internal/zones"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -556,7 +693,7 @@ func RegisterInternalZoneServiceHandlerClient(ctx context.Context, mux *runtime.
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Update", runtime.WithHTTPPathPattern("/geo/v1/zones/{zone_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Update", runtime.WithHTTPPathPattern("/geo/v1/internal/zones/{zone_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -573,7 +710,7 @@ func RegisterInternalZoneServiceHandlerClient(ctx context.Context, mux *runtime.
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Delete", runtime.WithHTTPPathPattern("/geo/v1/zones/{zone_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/Delete", runtime.WithHTTPPathPattern("/geo/v1/internal/zones/{zone_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -586,17 +723,36 @@ func RegisterInternalZoneServiceHandlerClient(ctx context.Context, mux *runtime.
 		}
 		forward_InternalZoneService_Delete_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodGet, pattern_InternalZoneService_GetInternal_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.geo.v1.InternalZoneService/GetInternal", runtime.WithHTTPPathPattern("/geo/v1/internal/zones/{zone_id}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_InternalZoneService_GetInternal_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_InternalZoneService_GetInternal_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	return nil
 }
 
 var (
-	pattern_InternalZoneService_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"geo", "v1", "zones"}, ""))
-	pattern_InternalZoneService_Update_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"geo", "v1", "zones", "zone_id"}, ""))
-	pattern_InternalZoneService_Delete_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"geo", "v1", "zones", "zone_id"}, ""))
+	pattern_InternalZoneService_Create_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"geo", "v1", "internal", "zones"}, ""))
+	pattern_InternalZoneService_Update_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"geo", "v1", "internal", "zones", "zone_id"}, ""))
+	pattern_InternalZoneService_Delete_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"geo", "v1", "internal", "zones", "zone_id"}, ""))
+	pattern_InternalZoneService_GetInternal_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"geo", "v1", "internal", "zones", "zone_id"}, ""))
 )
 
 var (
-	forward_InternalZoneService_Create_0 = runtime.ForwardResponseMessage
-	forward_InternalZoneService_Update_0 = runtime.ForwardResponseMessage
-	forward_InternalZoneService_Delete_0 = runtime.ForwardResponseMessage
+	forward_InternalZoneService_Create_0      = runtime.ForwardResponseMessage
+	forward_InternalZoneService_Update_0      = runtime.ForwardResponseMessage
+	forward_InternalZoneService_Delete_0      = runtime.ForwardResponseMessage
+	forward_InternalZoneService_GetInternal_0 = runtime.ForwardResponseMessage
 )

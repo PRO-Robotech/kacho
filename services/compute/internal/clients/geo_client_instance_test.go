@@ -78,7 +78,7 @@ func TestInstance_Create_ValidatesZoneViaGeo_OK(t *testing.T) {
 	svc, ops := newInstanceSvcGeo(t, fakeGeoZoneCli{get: func(_ context.Context, in *geov1.GetZoneRequest) (*geov1.Zone, error) {
 		called = true
 		require.Equal(t, "ru-central1-a", in.GetZoneId())
-		return &geov1.Zone{Id: "ru-central1-a", RegionId: "ru-central1", Status: geov1.Zone_UP}, nil
+		return &geov1.Zone{Id: "ru-central1-a", RegionId: "ru-central1", OpenForPlacement: true}, nil
 	}})
 
 	op, err := svc.Create(context.Background(), geoInstanceReq())
