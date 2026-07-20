@@ -8,7 +8,7 @@
 
 | Часть | Значения |
 |---|---|
-| DOMAIN | `DISK` (Disk), `IMG` (Image), `SNAP` (Snapshot), `INST` (Instance), `DT` (DiskType), `ZONE` (Zone), `OP` (Operation) |
+| DOMAIN | `DISK` (Disk), `IMG` (Image), `SNAP` (Snapshot), `INST` (Instance; COMP-1 redesign — `INST-RD-` в `cases/instance-redesign.py`), `MT` (MachineType, COMP-1 F7 каталог), `DT` (DiskType), `ZONE` (Zone), `OP` (Operation) |
 | METHOD | `CR` (Create), `GET`, `LST` (List), `UPD` (Update), `DEL` (Delete), `MV` (Move), `REL` (Relocate), `LOP` (ListOperations), `GLF` (GetLatestByFamily — Image), `START`/`STOP`/`RESTART` (Instance state), `AD` (AttachDisk), `DD` (DetachDisk), `NAT` (Add/RemoveOneToOneNat), `UNI` (UpdateNetworkInterface), `ANI` (AttachNetworkInterface), `UMETA` (UpdateMetadata), `SPO` (GetSerialPortOutput), `SME` (SimulateMaintenanceEvent), `STATE` (state-машина), `CANCEL` (Operation.Cancel), `LIFECYCLE` (полный CRUD-цикл) |
 | CLASS | `CRUD`, `VAL`, `NEG`, `BVA`, `IDM`, `CONC`, `CONF`, `STATE`, `AUTHZ`, `PAGE`, `FILTER`, `SEC` |
 | DETAIL | свободное краткое описание |
