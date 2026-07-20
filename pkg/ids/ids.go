@@ -102,6 +102,16 @@ const (
 	PrefixRegistry     = "reg"
 	PrefixOperationReg = "rop"
 
+	// PrefixNamespace — hyphen-form resource-prefix `ns` для редизайн-ресурса
+	// Namespace (REG-1: бывший Registry; слово «registry» зарезервировано за
+	// serving-host'ом). В отличие от 3-char legacy-prefix'ов, Namespace адресуется
+	// going-forward hyphen-формой "ns-<17 crockford-base32>" (B3, unified §2) —
+	// генерируется через NewHyphenID(PrefixNamespace), НЕ NewID (тот требует ровно
+	// 3 символа). Router (validate.ResourceID) уже принимает `ns-` (Phase-0 B3);
+	// REG-1 добавляет генерацию. Operation-prefix registry-домена остаётся `rop`
+	// (concat-форма, маршрутизируется opsproxy — hyphen-канон его не касается).
+	PrefixNamespace = "ns"
+
 	// Operation prefix per service-domain — отдельный, стабильный per-домен
 	// prefix, по которому gateway opsproxy маршрутизирует Operation.Get.
 	//
@@ -125,14 +135,45 @@ func NewID(prefix string) string {
 	if len(prefix) != 3 {
 		panic("ids.NewID: prefix must be exactly 3 chars, got " + prefix)
 	}
+	var sb strings.Builder
+	sb.Grow(totalLen)
+	sb.WriteString(prefix)
+	sb.Write(newIDBody())
+	return sb.String()
+}
 
+// NewHyphenID возвращает идентификатор going-forward hyphen-формы
+// "<prefix>-<17-char crockford-base32>" (B3, redesign-2026 governance canon).
+// Используется редизайн-ресурсами, чей prefix мигрировал в hyphen-канон
+// (напр. Namespace: "ns-abc…"). В отличие от NewID (ровно 3 символа, слитная
+// форma), prefix здесь — 2..3 символа и ОБЯЗАН входить в hyphenFormPrefixes
+// (иначе router validate.ResourceID отверг бы сгенерированный id — тот же класс
+// бага, что reg/rop drift). Неизвестный hyphen-prefix → panic (programmer error:
+// prefix приходит из package-level Prefix*-константы). Источник энтропии и длина
+// тела — те же, что у NewID (17 crockford-base32 символов).
+func NewHyphenID(prefix string) string {
+	if _, ok := hyphenFormPrefixSet[prefix]; !ok {
+		panic("ids.NewHyphenID: prefix must be a registered hyphen-form prefix, got " + prefix)
+	}
+	var sb strings.Builder
+	sb.Grow(len(prefix) + 1 + idBodyLen)
+	sb.WriteString(prefix)
+	sb.WriteByte('-')
+	sb.Write(newIDBody())
+	return sb.String()
+}
+
+// newIDBody генерирует idBodyLen (17) символов crockford-base32 из 88 бит
+// crypto/rand-энтропии. Общий движок для NewID (слитная форма) и NewHyphenID
+// (hyphen-форма) — единственный источник тела id (LEAN, без дублирования).
+func newIDBody() []byte {
 	// 17 символов crockford-base32 = 85 бит энтропии. Берем 11 случайных
 	// байт (88 бит) и читаем по 5 бит на символ из big-endian потока.
 	var raw [11]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		// crypto/rand.Read не должен fail-ить на linux/macOS;
 		// если он fail-ит — система сломана, panic корректно.
-		panic("ids.NewID: crypto/rand failed: " + err.Error())
+		panic("ids.newIDBody: crypto/rand failed: " + err.Error())
 	}
 
 	// Преобразуем 11 байт в uint64+uint64 (88 бит ⊂ 128 бит) и читаем по
@@ -168,12 +209,7 @@ func NewID(prefix string) string {
 		}
 		body[i] = crockfordAlphabet[val]
 	}
-
-	var sb strings.Builder
-	sb.Grow(totalLen)
-	sb.WriteString(prefix)
-	sb.Write(body)
-	return sb.String()
+	return body
 }
 
 // IsValid проверяет, что id соответствует формату "<prefix><17 lowercase
@@ -283,14 +319,26 @@ var hyphenFormPrefixes = []string{
 	// маршрутизируются opsproxy, НЕ hyphen-канон.
 }
 
+// hyphenFormPrefixSet — множество hyphen-form prefix'ов, выведенное из
+// hyphenFormPrefixes один раз. ЕДИНЫЙ источник истины для KnownHyphenPrefixes()
+// (router-канон) и для guard'а NewHyphenID (generation-канон) — чтобы генератор
+// и классификатор не разошлись копиями списка.
+var hyphenFormPrefixSet = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(hyphenFormPrefixes))
+	for _, p := range hyphenFormPrefixes {
+		m[p] = struct{}{}
+	}
+	return m
+}()
+
 // KnownHyphenPrefixes возвращает КОПИЮ множества going-forward hyphen-form
 // prefix'ов (B3). Потребитель (validate.baseHyphenPrefixes) строит свой набор
 // поверх этого + config-extra, не дублируя литералы. Как и KnownPrefixes(), это
 // ЕДИНЫЙ источник истины для hyphen-канона — чтобы router-классификатор и любой
 // будущий consumer не разошлись копиями списка.
 func KnownHyphenPrefixes() map[string]struct{} {
-	m := make(map[string]struct{}, len(hyphenFormPrefixes))
-	for _, p := range hyphenFormPrefixes {
+	m := make(map[string]struct{}, len(hyphenFormPrefixSet))
+	for p := range hyphenFormPrefixSet {
 		m[p] = struct{}{}
 	}
 	return m
