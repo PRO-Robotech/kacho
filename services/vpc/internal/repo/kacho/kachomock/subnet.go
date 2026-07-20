@@ -5,6 +5,7 @@ package kachomock
 
 import (
 	"context"
+	"net/netip"
 	"sort"
 	"time"
 
@@ -12,6 +13,44 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
+
+// cidrContainsMock — outer ⊇ inner (outer не длиннее inner И покрывает его сетевой
+// адрес). Невалидный префикс → false. In-memory аналог pg-оператора cidr `>>=`.
+func cidrContainsMock(outer, inner string) bool {
+	o, err := netip.ParsePrefix(outer)
+	if err != nil {
+		return false
+	}
+	i, err := netip.ParsePrefix(inner)
+	if err != nil {
+		return false
+	}
+	return o.Bits() <= i.Bits() && o.Contains(i.Addr())
+}
+
+// firstCoveringBlock — первый candidate-блок, покрывающий хотя бы один subnetCidr,
+// который НЕ покрыт ни одним retained-блоком (in-memory аналог pg-запроса
+// SupernetBlockCoveringSubnet). Пустая строка → нет осиротевших.
+func firstCoveringBlock(subnetCidrs, candidate, retained []string) string {
+	for _, sc := range subnetCidrs {
+		for _, cb := range candidate {
+			if !cidrContainsMock(cb, sc) {
+				continue
+			}
+			covered := false
+			for _, rb := range retained {
+				if cidrContainsMock(rb, sc) {
+					covered = true
+					break
+				}
+			}
+			if !covered {
+				return cb
+			}
+		}
+	}
+	return ""
+}
 
 // In-memory Subnet reader/writer для kachomock.
 //
@@ -75,6 +114,22 @@ func (r *subnetReader) ListByIDs(_ context.Context, f kacho.SubnetFilter, allowe
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
 	return result, "", nil
+}
+
+// SupernetBlockCoveringSubnet — in-memory ∉-guard: перебирает ВСЕ подсети сети в
+// snapshot'е (mock не пагинирует — этим он не воспроизводит реальный первополосный
+// баг, но корректно моделирует контракт метода для unit-теста use-case'а).
+func (r *subnetReader) SupernetBlockCoveringSubnet(_ context.Context, networkID string, candidateBlocks, retainedBlocks []string) (string, error) {
+	for _, s := range r.snap {
+		if s.NetworkID != networkID {
+			continue
+		}
+		blocks := append(append([]string{}, s.V4CidrBlocks...), s.V6CidrBlocks...)
+		if b := firstCoveringBlock(blocks, candidateBlocks, retainedBlocks); b != "" {
+			return b, nil
+		}
+	}
+	return "", nil
 }
 
 // AddressesBySubnet — filter by internal_ipv4.subnet_id / internal_ipv6.subnet_id.
@@ -166,6 +221,24 @@ func (sw *subnetWriter) ListByIDs(_ context.Context, f kacho.SubnetFilter, allow
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
 	return result, "", nil
+}
+
+// SupernetBlockCoveringSubnet — writer-side: перебирает подсети сети в localSubs
+// (writer видит свои writes), исключая помеченные на удаление.
+func (sw *subnetWriter) SupernetBlockCoveringSubnet(_ context.Context, networkID string, candidateBlocks, retainedBlocks []string) (string, error) {
+	for id, s := range sw.w.localSubs {
+		if _, deleted := sw.w.deletedSubIDs[id]; deleted {
+			continue
+		}
+		if s.NetworkID != networkID {
+			continue
+		}
+		blocks := append(append([]string{}, s.V4CidrBlocks...), s.V6CidrBlocks...)
+		if b := firstCoveringBlock(blocks, candidateBlocks, retainedBlocks); b != "" {
+			return b, nil
+		}
+	}
+	return "", nil
 }
 
 func (sw *subnetWriter) AddressesBySubnet(_ context.Context, subnetID string, _ kacho.Pagination) ([]*kacho.AddressRecord, string, error) {

@@ -35,6 +35,16 @@ type SubnetReaderIface interface {
 	// набору. Пустой allowedIDs → (nil, "", nil) short-circuit. Используется в
 	// per-object filtered List.
 	ListByIDs(ctx context.Context, f SubnetFilter, allowedIDs []string, p Pagination) ([]*SubnetRecord, string, error)
+	// SupernetBlockCoveringSubnet — ∉-guard для Network.RemoveCidrBlocks: возвращает
+	// первый блок из candidateBlocks, который всё ещё полностью покрывает CIDR живой
+	// подсети сети networkID, НЕ покрытый ни одним из retainedBlocks (удаление
+	// candidateBlocks∖retainedBlocks осиротило бы placement-anchor подсети вне
+	// объявленного супернета). Пустая строка → удалять безопасно. Один indexed-запрос
+	// по нормализованной child-таблице subnet_cidr_blocks (family-aware cidr-операторы)
+	// — корректно при любом числе подсетей, без окна пагинации (в отличие от List
+	// первой страницы). candidate/retained смешивают семейства (v4+v6) — cidr `>>=`
+	// не пересекает разные семейства.
+	SupernetBlockCoveringSubnet(ctx context.Context, networkID string, candidateBlocks, retainedBlocks []string) (string, error)
 }
 
 // SubnetWriterIface — write-операции плюс read (writer видит свои writes).

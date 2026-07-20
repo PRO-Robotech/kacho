@@ -92,47 +92,6 @@ func subtractCidrBlocks(existing, remove []string) []string {
 	return out
 }
 
-// cidrContains сообщает, содержит ли outer-префикс inner-префикс целиком
-// (outer ⊇ inner): outer не длиннее inner И покрывает его базовый адрес.
-// Невалидный префикс → false (формат валидируется отдельно ДО этого вызова).
-func cidrContains(outer, inner string) bool {
-	o, err := netip.ParsePrefix(outer)
-	if err != nil {
-		return false
-	}
-	i, err := netip.ParsePrefix(inner)
-	if err != nil {
-		return false
-	}
-	return o.Bits() <= i.Bits() && o.Contains(i.Addr())
-}
-
-// orphanedRemovedBlock проверяет ∉-guard для RemoveCidrBlocks: возвращает первый
-// removed-блок, который всё ещё покрывает CIDR живой подсети, НЕ покрытый ни одним
-// из remaining-блоков (удаление осиротило бы её primary вне супернета). Пустая
-// строка → безопасно удалять. subnetCidrs — плоский список CIDR подсети (одного
-// семейства); removed/remaining — блоки того же семейства.
-func orphanedRemovedBlock(removed, remaining, subnetCidrs []string) string {
-	for _, rb := range removed {
-		for _, sc := range subnetCidrs {
-			if !cidrContains(rb, sc) {
-				continue
-			}
-			coveredByRemaining := false
-			for _, rem := range remaining {
-				if cidrContains(rem, sc) {
-					coveredByRemaining = true
-					break
-				}
-			}
-			if !coveredByRemaining {
-				return rb
-			}
-		}
-	}
-	return ""
-}
-
 // marshalNetworkRecord конвертирует repo-entity Network в *anypb.Any через
 // DTO-реестр. Используется worker'ами Create/Update/Move для упаковки результата
 // в Operation.response.

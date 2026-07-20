@@ -207,6 +207,42 @@ func (r *subnetReader) ListByIDs(ctx context.Context, f kacho.SubnetFilter, allo
 	return result, nextToken, nil
 }
 
+// SupernetBlockCoveringSubnet — ∉-guard для Network.RemoveCidrBlocks одним
+// indexed-запросом по нормализованной child-таблице subnet_cidr_blocks (в ней ВСЕ
+// CIDR-блоки всех подсетей сети, поддерживаются syncCidrBlocks в той же writer-TX).
+// Возвращает первый candidateBlocks-блок, который всё ещё покрывает CIDR живой
+// подсети (`c.blk >>= scb.block`), НЕ покрытый ни одним retainedBlocks-блоком.
+// Пустая строка → удалять безопасно. cidr-оператор `>>=` family-aware (v4 и v6 в
+// одной колонке не дают ложных пересечений), поэтому candidate/retained смешивают
+// оба семейства. Корректно при любом числе подсетей — без окна пагинации (в отличие
+// от прежнего List первой страницы, который пропускал подсети со 2-й страницы).
+// []string передаётся как text[] с per-элементным ::cidr cast (тот же приём, что
+// `id = ANY($1::text[])` в ListByIDs) — избегаем неоднозначности вывода cidr[]-типа
+// параметра. COALESCE отдаёт пустую строку, когда таких блоков нет (всегда одна
+// строка результата, без ErrNoRows).
+func (r *subnetReader) SupernetBlockCoveringSubnet(ctx context.Context, networkID string, candidateBlocks, retainedBlocks []string) (string, error) {
+	const q = `
+SELECT COALESCE((
+    SELECT c.blk::text
+    FROM (SELECT unnest($2::text[])::cidr AS blk) AS c
+    WHERE EXISTS (
+        SELECT 1 FROM subnet_cidr_blocks scb
+        WHERE scb.network_id = $1
+          AND c.blk >>= scb.block
+          AND NOT EXISTS (
+              SELECT 1 FROM (SELECT unnest($3::text[])::cidr AS blk) AS rt
+              WHERE rt.blk >>= scb.block
+          )
+    )
+    LIMIT 1
+), '')`
+	var blk string
+	if err := r.tx.QueryRow(ctx, q, networkID, candidateBlocks, retainedBlocks).Scan(&blk); err != nil {
+		return "", helpers.WrapPgErr(err, "Subnet", "")
+	}
+	return blk, nil
+}
+
 // AddressesBySubnet — Address-ресурсы, привязанные к subnet через
 // internal_ipv4.subnet_id ИЛИ internal_ipv6.subnet_id (family-agnostic).
 // Используется ListUsedAddresses и SubnetService.Delete (sync precheck) — поэтому

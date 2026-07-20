@@ -24,6 +24,8 @@ import (
 // Возвращает Operation; внутри worker'а:
 //   - Get subnet (FOR UPDATE) → если не найден → NotFound.
 //   - Validate каждого CIDR (host-bits=0).
+//   - Get parent Network → каждый добавляемый блок ⊆ супернета сети (F7/VPC-1-34);
+//     блок вне супернета → InvalidArgument.
 //   - Проверка overlap внутри новой объединенной коллекции (v4 + v6).
 //   - SetCidrBlocks (DB UPDATE) — внутри него child-таблица subnet_cidr_blocks
 //     пересобирается и ее EXCLUDE gist ловит пересечение ЛЮБОГО блока (primary и
@@ -96,6 +98,19 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		sub, gerr := w.Subnets().GetForUpdate(ctx, id)
 		if gerr != nil {
 			return nil, serviceerr.MapRepoErr(gerr)
+		}
+		// F7 (VPC-1-34): добавляемый диапазон обязан лежать ВНУТРИ объявленного
+		// супернета родительской сети (within-service, та же БД). Фетчим network в
+		// той же writer-TX и валидируем containment каждого добавляемого блока ⊆
+		// одного из network CIDR-блоков соответствующего семейства. Пустой супернет
+		// (legacy-сеть) → skip (back-compat, как в Subnet.Create). Блок вне супернета
+		// → InvalidArgument "subnet CIDR <X> is not within any network CIDR block".
+		parentNet, nerr := w.Networks().Get(ctx, sub.NetworkID)
+		if nerr != nil {
+			return nil, serviceerr.MapRepoErr(nerr)
+		}
+		if verr := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, v4, v6); verr != nil {
+			return nil, verr
 		}
 		mergedV4 := append([]string{}, sub.V4CidrBlocks...)
 		mergedV4 = append(mergedV4, v4...)
