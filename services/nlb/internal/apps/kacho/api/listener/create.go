@@ -24,24 +24,29 @@ import (
 
 // CreateUseCase инициирует создание Listener'а.
 //
-// VIP консолидирован на LoadBalancer (anycast active-active): листенер — «порт на
-// VIP LB», собственной аллокации адреса больше не делает. Поэтому Create —
-// чистый INSERT строки-листенера (FK на LB), без acquireVIP-саги и без обращения
-// к vpc.
+// NLB-1b F5 (MIGRATE): VIP-анкер вернулся на Listener. Create принимает
+// взаимоисключающие immutable-инпуты `address_id` (BYO) / `subnet_id` (auto); их
+// отсутствие → без собственного VIP (optional-first fallback на VIP LB). LB
+// `VipSource` сделан OPTIONAL, поэтому VIP задаётся на Listener ЛИБО (legacy) на LB —
+// без double-alloc.
 //
 // Sync (handler-thread, до возврата Operation клиенту):
 //  1. Required: load_balancer_id.
 //  2. LB.Get (same project + status != DELETING) — NotFound иначе.
-//  3. domain.Listener builder + Validate (name regex, port range, protocol, labels).
-//  4. opsRepo.CreateWithPrincipal(op, principal).
-//  5. operations.Run(callerCtx, opsRepo, op.ID, worker) — fire-and-trigger.
+//  3. VIP-анкер parse + placement/zone-coherence peer-validate (subnet_id, NLB-1-32/33).
+//  4. domain.Listener builder + Validate (name regex, port range, protocol, labels).
+//  5. opsRepo.CreateWithPrincipal(op, principal).
+//  6. operations.Run(callerCtx, opsRepo, op.ID, worker) — fire-and-trigger.
 //
-// Async worker — одна writer-TX (внешнего side-effect нет):
+// Async worker (doCreate):
+//   - без VIP-анкера — одна writer-TX (INSERT ACTIVE + outbox + FGA-intent).
+//   - с VIP-анкером — acquire VIP externally (`used_by=nlb_listener:<id>`) ДО durable
+//     INSERT → та же INSERT-TX несёт address_id+allocated_address (partial-UNIQUE
+//     `(region,ip,port,proto)` — атомарный backstop) + zone-anchor CAS (NLB-1-33) +
+//     outbox `nlb_listener:<id> CREATED` + `nlb_load_balancer:<lb_id> UPDATED` +
+//     FGA-register-intent. Pre-commit fail → best-effort worker-компенсация releaseVIP.
 //
-//	INSERT listener (status='ACTIVE') + outbox `nlb_listener:<id> CREATED` +
-//	`nlb_load_balancer:<lb_id> UPDATED` + FGA-register-intent (creator +
-//	parent-link). Триггер lb_status_recompute переводит LB INACTIVE→ACTIVE, если
-//	теперь есть листенер И attached TG.
+// Триггер lb_status_recompute переводит LB INACTIVE→ACTIVE, если есть листенер И attached TG.
 type CreateUseCase struct {
 	repo    RepoFactory
 	opsRepo OperationsRepo

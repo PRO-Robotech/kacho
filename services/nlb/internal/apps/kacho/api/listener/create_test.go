@@ -20,11 +20,12 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
-// VIP консолидирован на LoadBalancer: Listener.Create — чистый INSERT строки
-// (FK на LB), без acquireVIP-саги и без обращения к vpc. Поэтому use-case больше
-// не получает address/subnet-клиентов. Тесты покрывают: happy-path (ACTIVE +
-// outbox + FGA, без VIP-аллокации), наследование vestigial ip_version от LB,
-// валидацию формы и uniqueness, LB precond'ы.
+// Эти тесты покрывают Listener.Create БЕЗ VIP-анкера (optional-first fallback на
+// VIP LB): чистый INSERT строки (FK на LB), без acquireVIP-саги — поэтому UC строится
+// без address/subnet-клиентов. happy-path (ACTIVE + outbox + FGA), наследование
+// vestigial ip_version от LB, валидация формы/uniqueness, LB precond'ы. VIP-анкерный
+// путь (BYO address_id / auto subnet_id + saga + placement/zone-coherence) —
+// create_vip_test.go (NLB-1-27/28/32/33).
 
 const testTimeout = 2 * time.Second
 
