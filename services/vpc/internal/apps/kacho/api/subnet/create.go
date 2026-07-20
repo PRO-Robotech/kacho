@@ -184,9 +184,11 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
 	// материализуется eventually-consistent (sync-registrar + drainer/reconciler
 	// backstop), а не гейтит done.
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, subID, s)
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return &op, nil
 }

@@ -68,9 +68,11 @@ func (u *UpdateNetworkUseCase) Execute(ctx context.Context, in UpdateInput) (*op
 		return nil, err
 	}
 
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doUpdate(ctx, in)
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return &op, nil
 }
