@@ -111,6 +111,28 @@ message Role {
   // (iam-direct same-DB), а List фильтрует через `viewer ∪ v_list`. Mutable
   // через Update (`labels` в update_mask).
   map<string, string> labels = 15;
+
+  // Definition tier (redesign-2026 F4) — the hierarchy tier this role is DEFINED
+  // at, dotted (`iam.cluster` | `iam.account` | `iam.project`) + the anchor id.
+  // Output projection over the within-service typed scope columns
+  // (cluster_id / account_id / project_id); the word "scope" is reserved for the
+  // AccessBinding anchor. `is_system` (tag 6) is DERIVED from the tier
+  // (tier_type == `iam.cluster`), not an independently stored provenance flag.
+  DefinitionTier definition_tier = 16;
+}
+
+// DefinitionTier is the hierarchy tier a Role is defined at (redesign-2026 F4):
+// `tier_type` dotted (`iam.cluster` | `iam.account` | `iam.project`) + `tier_id`
+// the anchor object id. A projection over the within-service typed scope columns
+// (cluster_id / account_id / project_id). `is_system` is derived
+// (tier_type == `iam.cluster`), never a stored provenance flag (roles_definition_tier_xor
+// DB CHECK keeps exactly one tier anchor non-null).
+message DefinitionTier {
+  // Dotted tier type: `iam.cluster` | `iam.account` | `iam.project`.
+  string tier_type = 1;
+
+  // Anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+  string tier_id = 2;
 }
 
 // Rule — один однородный грант: `{verbs}` над `{module} × resources` (ровно

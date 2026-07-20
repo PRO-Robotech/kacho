@@ -180,6 +180,14 @@ message CreateRoleRequest {
   // наравне с account/project. Аннотации (size/key/value pattern) — паритет
   // account/project/group request `labels`.
   map<string, string> labels = 7 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+
+  // Definition tier (redesign-2026 F4) — the CANONICAL scope input, superseding the
+  // legacy account_id/project_id pair: `tier_type` dotted (`iam.account` |
+  // `iam.project`; `iam.cluster` rejected — system roles are seeded, not API-created)
+  // + `tier_id` the anchor id. Pre-Phase-0 `tier_type` is REQUIRED (prefix-derivation
+  // is B3-gated). When set it takes precedence; the legacy account_id/project_id are
+  // still accepted for back-compat when definition_tier is omitted.
+  DefinitionTier definition_tier = 8;
 }
 
 message UpdateRoleRequest {

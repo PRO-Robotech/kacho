@@ -239,9 +239,16 @@ type CreateRoleRequest struct {
 	// которое отбирает ОБЪЕКТЫ под грантом). Делают Role label-selectable
 	// наравне с account/project. Аннотации (size/key/value pattern) — паритет
 	// account/project/group request `labels`.
-	Labels        map[string]string `protobuf:"bytes,7,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Labels map[string]string `protobuf:"bytes,7,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Definition tier (redesign-2026 F4) — the CANONICAL scope input, superseding the
+	// legacy account_id/project_id pair: `tier_type` dotted (`iam.account` |
+	// `iam.project`; `iam.cluster` rejected — system roles are seeded, not API-created)
+	// + `tier_id` the anchor id. Pre-Phase-0 `tier_type` is REQUIRED (prefix-derivation
+	// is B3-gated). When set it takes precedence; the legacy account_id/project_id are
+	// still accepted for back-compat when definition_tier is omitted.
+	DefinitionTier *DefinitionTier `protobuf:"bytes,8,opt,name=definition_tier,json=definitionTier,proto3" json:"definition_tier,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CreateRoleRequest) Reset() {
@@ -320,6 +327,13 @@ func (x *CreateRoleRequest) GetProjectId() string {
 func (x *CreateRoleRequest) GetLabels() map[string]string {
 	if x != nil {
 		return x.Labels
+	}
+	return nil
+}
+
+func (x *CreateRoleRequest) GetDefinitionTier() *DefinitionTier {
+	if x != nil {
+		return x.DefinitionTier
 	}
 	return nil
 }
@@ -623,7 +637,7 @@ const file_kacho_cloud_iam_v1_role_service_proto_rawDesc = "" +
 	"account_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\taccountId\"k\n" +
 	"\x11ListRolesResponse\x12.\n" +
 	"\x05roles\x18\x01 \x03(\v2\x18.kacho.cloud.iam.v1.RoleR\x05roles\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8f\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xdc\x04\n" +
 	"\x11CreateRoleRequest\x12'\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=20R\taccountId\x12D\n" +
@@ -633,7 +647,8 @@ const file_kacho_cloud_iam_v1_role_service_proto_rawDesc = "" +
 	"\x05rules\x18\x05 \x03(\v2\x18.kacho.cloud.iam.v1.RuleB\b\x82\xc81\x041-64R\x05rules\x12'\n" +
 	"\n" +
 	"project_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=20R\tprojectId\x12\x86\x01\n" +
-	"\x06labels\x18\a \x03(\v21.kacho.cloud.iam.v1.CreateRoleRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"\x06labels\x18\a \x03(\v21.kacho.cloud.iam.v1.CreateRoleRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12K\n" +
+	"\x0fdefinition_tier\x18\b \x01(\v2\".kacho.cloud.iam.v1.DefinitionTierR\x0edefinitionTier\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc1\x04\n" +
@@ -705,34 +720,36 @@ var file_kacho_cloud_iam_v1_role_service_proto_goTypes = []any{
 	nil,                                // 9: kacho.cloud.iam.v1.UpdateRoleRequest.LabelsEntry
 	(*Role)(nil),                       // 10: kacho.cloud.iam.v1.Role
 	(*Rule)(nil),                       // 11: kacho.cloud.iam.v1.Rule
-	(*fieldmaskpb.FieldMask)(nil),      // 12: google.protobuf.FieldMask
-	(*operation.Operation)(nil),        // 13: kacho.cloud.operation.Operation
+	(*DefinitionTier)(nil),             // 12: kacho.cloud.iam.v1.DefinitionTier
+	(*fieldmaskpb.FieldMask)(nil),      // 13: google.protobuf.FieldMask
+	(*operation.Operation)(nil),        // 14: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_role_service_proto_depIdxs = []int32{
 	10, // 0: kacho.cloud.iam.v1.ListRolesResponse.roles:type_name -> kacho.cloud.iam.v1.Role
 	11, // 1: kacho.cloud.iam.v1.CreateRoleRequest.rules:type_name -> kacho.cloud.iam.v1.Rule
 	8,  // 2: kacho.cloud.iam.v1.CreateRoleRequest.labels:type_name -> kacho.cloud.iam.v1.CreateRoleRequest.LabelsEntry
-	12, // 3: kacho.cloud.iam.v1.UpdateRoleRequest.update_mask:type_name -> google.protobuf.FieldMask
-	11, // 4: kacho.cloud.iam.v1.UpdateRoleRequest.rules:type_name -> kacho.cloud.iam.v1.Rule
-	9,  // 5: kacho.cloud.iam.v1.UpdateRoleRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateRoleRequest.LabelsEntry
-	13, // 6: kacho.cloud.iam.v1.ListRoleOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	0,  // 7: kacho.cloud.iam.v1.RoleService.Get:input_type -> kacho.cloud.iam.v1.GetRoleRequest
-	1,  // 8: kacho.cloud.iam.v1.RoleService.List:input_type -> kacho.cloud.iam.v1.ListRolesRequest
-	3,  // 9: kacho.cloud.iam.v1.RoleService.Create:input_type -> kacho.cloud.iam.v1.CreateRoleRequest
-	4,  // 10: kacho.cloud.iam.v1.RoleService.Update:input_type -> kacho.cloud.iam.v1.UpdateRoleRequest
-	5,  // 11: kacho.cloud.iam.v1.RoleService.Delete:input_type -> kacho.cloud.iam.v1.DeleteRoleRequest
-	6,  // 12: kacho.cloud.iam.v1.RoleService.ListOperations:input_type -> kacho.cloud.iam.v1.ListRoleOperationsRequest
-	10, // 13: kacho.cloud.iam.v1.RoleService.Get:output_type -> kacho.cloud.iam.v1.Role
-	2,  // 14: kacho.cloud.iam.v1.RoleService.List:output_type -> kacho.cloud.iam.v1.ListRolesResponse
-	13, // 15: kacho.cloud.iam.v1.RoleService.Create:output_type -> kacho.cloud.operation.Operation
-	13, // 16: kacho.cloud.iam.v1.RoleService.Update:output_type -> kacho.cloud.operation.Operation
-	13, // 17: kacho.cloud.iam.v1.RoleService.Delete:output_type -> kacho.cloud.operation.Operation
-	7,  // 18: kacho.cloud.iam.v1.RoleService.ListOperations:output_type -> kacho.cloud.iam.v1.ListRoleOperationsResponse
-	13, // [13:19] is the sub-list for method output_type
-	7,  // [7:13] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	12, // 3: kacho.cloud.iam.v1.CreateRoleRequest.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
+	13, // 4: kacho.cloud.iam.v1.UpdateRoleRequest.update_mask:type_name -> google.protobuf.FieldMask
+	11, // 5: kacho.cloud.iam.v1.UpdateRoleRequest.rules:type_name -> kacho.cloud.iam.v1.Rule
+	9,  // 6: kacho.cloud.iam.v1.UpdateRoleRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateRoleRequest.LabelsEntry
+	14, // 7: kacho.cloud.iam.v1.ListRoleOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 8: kacho.cloud.iam.v1.RoleService.Get:input_type -> kacho.cloud.iam.v1.GetRoleRequest
+	1,  // 9: kacho.cloud.iam.v1.RoleService.List:input_type -> kacho.cloud.iam.v1.ListRolesRequest
+	3,  // 10: kacho.cloud.iam.v1.RoleService.Create:input_type -> kacho.cloud.iam.v1.CreateRoleRequest
+	4,  // 11: kacho.cloud.iam.v1.RoleService.Update:input_type -> kacho.cloud.iam.v1.UpdateRoleRequest
+	5,  // 12: kacho.cloud.iam.v1.RoleService.Delete:input_type -> kacho.cloud.iam.v1.DeleteRoleRequest
+	6,  // 13: kacho.cloud.iam.v1.RoleService.ListOperations:input_type -> kacho.cloud.iam.v1.ListRoleOperationsRequest
+	10, // 14: kacho.cloud.iam.v1.RoleService.Get:output_type -> kacho.cloud.iam.v1.Role
+	2,  // 15: kacho.cloud.iam.v1.RoleService.List:output_type -> kacho.cloud.iam.v1.ListRolesResponse
+	14, // 16: kacho.cloud.iam.v1.RoleService.Create:output_type -> kacho.cloud.operation.Operation
+	14, // 17: kacho.cloud.iam.v1.RoleService.Update:output_type -> kacho.cloud.operation.Operation
+	14, // 18: kacho.cloud.iam.v1.RoleService.Delete:output_type -> kacho.cloud.operation.Operation
+	7,  // 19: kacho.cloud.iam.v1.RoleService.ListOperations:output_type -> kacho.cloud.iam.v1.ListRoleOperationsResponse
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_role_service_proto_init() }

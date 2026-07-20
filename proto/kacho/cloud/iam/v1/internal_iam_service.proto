@@ -142,6 +142,17 @@ service InternalIAMService {
   rpc UnregisterResource (UnregisterResourceRequest) returns (UnregisterResourceResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
+
+  // GetRoleCompiled — Internal two-projection read (redesign-2026 F5): returns a
+  // Role's COMPILED permission set (`module.resource.resourceName.verb` 4-segment
+  // form) that backs FGA emission. This authz-topology projection is Internal-ONLY
+  // (:9091) — the public RoleService.Get/List never carry compiled `permissions`
+  // (they expose only authored `rules[]`). A label-only role compiles to an empty
+  // set (all rules ARM_LABELS are not compiled). cluster-internal listener only —
+  // no google.api.http; admin-UI authz gating happens at the internal mux layer.
+  rpc GetRoleCompiled (GetRoleCompiledRequest) returns (GetRoleCompiledResponse) {
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
 }
 
 message LookupSubjectRequest {
@@ -406,4 +417,20 @@ message PollSubjectChangesResponse {
   // head_id — current MAX(id) in the outbox (0 when empty). Lets a freshly
   // started gateway initialise its cursor without replaying history.
   int64 head_id = 2;
+}
+
+// GetRoleCompiledRequest — the role whose compiled permissions to read (F5).
+message GetRoleCompiledRequest {
+  // ID of the Role.
+  string role_id = 1 [(required) = true, (length) = "<=20"];
+}
+
+// GetRoleCompiledResponse — the Internal-only compiled permission projection (F5).
+message GetRoleCompiledResponse {
+  // ID of the Role.
+  string role_id = 1;
+
+  // Compiled permission set (`module.resource.resourceName.verb` 4-segment form)
+  // backing FGA emission. Empty for a label-only role (all rules ARM_LABELS).
+  repeated string permissions = 2;
 }

@@ -106,9 +106,16 @@ type Role struct {
 	// на iam.role материализует v_list по совпадению `labels @> matchLabels`
 	// (iam-direct same-DB), а List фильтрует через `viewer ∪ v_list`. Mutable
 	// через Update (`labels` в update_mask).
-	Labels        map[string]string `protobuf:"bytes,15,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Labels map[string]string `protobuf:"bytes,15,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Definition tier (redesign-2026 F4) — the hierarchy tier this role is DEFINED
+	// at, dotted (`iam.cluster` | `iam.account` | `iam.project`) + the anchor id.
+	// Output projection over the within-service typed scope columns
+	// (cluster_id / account_id / project_id); the word "scope" is reserved for the
+	// AccessBinding anchor. `is_system` (tag 6) is DERIVED from the tier
+	// (tier_type == `iam.cluster`), not an independently stored provenance flag.
+	DefinitionTier *DefinitionTier `protobuf:"bytes,16,opt,name=definition_tier,json=definitionTier,proto3" json:"definition_tier,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Role) Reset() {
@@ -240,6 +247,73 @@ func (x *Role) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *Role) GetDefinitionTier() *DefinitionTier {
+	if x != nil {
+		return x.DefinitionTier
+	}
+	return nil
+}
+
+// DefinitionTier is the hierarchy tier a Role is defined at (redesign-2026 F4):
+// `tier_type` dotted (`iam.cluster` | `iam.account` | `iam.project`) + `tier_id`
+// the anchor object id. A projection over the within-service typed scope columns
+// (cluster_id / account_id / project_id). `is_system` is derived
+// (tier_type == `iam.cluster`), never a stored provenance flag (roles_definition_tier_xor
+// DB CHECK keeps exactly one tier anchor non-null).
+type DefinitionTier struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Dotted tier type: `iam.cluster` | `iam.account` | `iam.project`.
+	TierType string `protobuf:"bytes,1,opt,name=tier_type,json=tierType,proto3" json:"tier_type,omitempty"`
+	// Anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+	TierId        string `protobuf:"bytes,2,opt,name=tier_id,json=tierId,proto3" json:"tier_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DefinitionTier) Reset() {
+	*x = DefinitionTier{}
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DefinitionTier) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DefinitionTier) ProtoMessage() {}
+
+func (x *DefinitionTier) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DefinitionTier.ProtoReflect.Descriptor instead.
+func (*DefinitionTier) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *DefinitionTier) GetTierType() string {
+	if x != nil {
+		return x.TierType
+	}
+	return ""
+}
+
+func (x *DefinitionTier) GetTierId() string {
+	if x != nil {
+		return x.TierId
+	}
+	return ""
+}
+
 // Rule — один однородный грант: `{verbs}` над `{module} × resources` (ровно
 // ОДИН модуль на правило), опционально суженный `resource_names`
 // (pin-by-id) XOR `match_labels` (наше расширение над K8s RBAC, AND-equality).
@@ -277,7 +351,7 @@ type Rule struct {
 
 func (x *Rule) Reset() {
 	*x = Rule{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -289,7 +363,7 @@ func (x *Rule) String() string {
 func (*Rule) ProtoMessage() {}
 
 func (x *Rule) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -302,7 +376,7 @@ func (x *Rule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Rule.ProtoReflect.Descriptor instead.
 func (*Rule) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Rule) GetResources() []string {
@@ -350,7 +424,7 @@ type CreateRoleMetadata struct {
 
 func (x *CreateRoleMetadata) Reset() {
 	*x = CreateRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -362,7 +436,7 @@ func (x *CreateRoleMetadata) String() string {
 func (*CreateRoleMetadata) ProtoMessage() {}
 
 func (x *CreateRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -375,7 +449,7 @@ func (x *CreateRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRoleMetadata.ProtoReflect.Descriptor instead.
 func (*CreateRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateRoleMetadata) GetRoleId() string {
@@ -395,7 +469,7 @@ type UpdateRoleMetadata struct {
 
 func (x *UpdateRoleMetadata) Reset() {
 	*x = UpdateRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -407,7 +481,7 @@ func (x *UpdateRoleMetadata) String() string {
 func (*UpdateRoleMetadata) ProtoMessage() {}
 
 func (x *UpdateRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -420,7 +494,7 @@ func (x *UpdateRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRoleMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{3}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *UpdateRoleMetadata) GetRoleId() string {
@@ -440,7 +514,7 @@ type DeleteRoleMetadata struct {
 
 func (x *DeleteRoleMetadata) Reset() {
 	*x = DeleteRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -452,7 +526,7 @@ func (x *DeleteRoleMetadata) String() string {
 func (*DeleteRoleMetadata) ProtoMessage() {}
 
 func (x *DeleteRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -465,7 +539,7 @@ func (x *DeleteRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRoleMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{4}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeleteRoleMetadata) GetRoleId() string {
@@ -479,7 +553,7 @@ var File_kacho_cloud_iam_v1_role_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\x84\x05\n" +
+	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xd1\x05\n" +
 	"\x04Role\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -500,11 +574,15 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\x12created_by_user_id\x18\r \x01(\tR\x0fcreatedByUserId\x129\n" +
 	"\n" +
 	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12<\n" +
-	"\x06labels\x18\x0f \x03(\v2$.kacho.cloud.iam.v1.Role.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\x0f \x03(\v2$.kacho.cloud.iam.v1.Role.LabelsEntryR\x06labels\x12K\n" +
+	"\x0fdefinition_tier\x18\x10 \x01(\v2\".kacho.cloud.iam.v1.DefinitionTierR\x0edefinitionTier\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"R\x0forganization_id\"\xe1\x02\n" +
+	"R\x0forganization_id\"F\n" +
+	"\x0eDefinitionTier\x12\x1b\n" +
+	"\ttier_type\x18\x01 \x01(\tR\btierType\x12\x17\n" +
+	"\atier_id\x18\x02 \x01(\tR\x06tierId\"\xe1\x02\n" +
 	"\x04Rule\x12.\n" +
 	"\tresources\x18\x02 \x03(\tB\x10\x82\xc81\x041-16\x8a\xc81\x041-64R\tresources\x12&\n" +
 	"\x05verbs\x18\x03 \x03(\tB\x10\x82\xc81\x041-16\x8a\xc81\x041-64R\x05verbs\x128\n" +
@@ -533,28 +611,30 @@ func file_kacho_cloud_iam_v1_role_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_role_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_iam_v1_role_proto_goTypes = []any{
 	(*Role)(nil),                  // 0: kacho.cloud.iam.v1.Role
-	(*Rule)(nil),                  // 1: kacho.cloud.iam.v1.Rule
-	(*CreateRoleMetadata)(nil),    // 2: kacho.cloud.iam.v1.CreateRoleMetadata
-	(*UpdateRoleMetadata)(nil),    // 3: kacho.cloud.iam.v1.UpdateRoleMetadata
-	(*DeleteRoleMetadata)(nil),    // 4: kacho.cloud.iam.v1.DeleteRoleMetadata
-	nil,                           // 5: kacho.cloud.iam.v1.Role.LabelsEntry
-	nil,                           // 6: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*DefinitionTier)(nil),        // 1: kacho.cloud.iam.v1.DefinitionTier
+	(*Rule)(nil),                  // 2: kacho.cloud.iam.v1.Rule
+	(*CreateRoleMetadata)(nil),    // 3: kacho.cloud.iam.v1.CreateRoleMetadata
+	(*UpdateRoleMetadata)(nil),    // 4: kacho.cloud.iam.v1.UpdateRoleMetadata
+	(*DeleteRoleMetadata)(nil),    // 5: kacho.cloud.iam.v1.DeleteRoleMetadata
+	nil,                           // 6: kacho.cloud.iam.v1.Role.LabelsEntry
+	nil,                           // 7: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_role_proto_depIdxs = []int32{
-	7, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
-	1, // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
-	7, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
-	5, // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
-	6, // 4: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	8, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
+	2, // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
+	8, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
+	6, // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
+	1, // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
+	7, // 5: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_role_proto_init() }
@@ -568,7 +648,7 @@ func file_kacho_cloud_iam_v1_role_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_role_proto_rawDesc), len(file_kacho_cloud_iam_v1_role_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
