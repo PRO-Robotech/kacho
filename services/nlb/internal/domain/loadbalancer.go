@@ -57,6 +57,11 @@ type LoadBalancer struct {
 	// derived-consistent with Type/PlacementType. Persisted + echoed; not yet
 	// authoritative (legacy type/placement_type still drive behaviour — MIGRATE).
 	Placement Placement
+	// CrossZoneEnabled — NLB-1b MIGRATE (revival): REGIONAL-only cross-zone
+	// load-balancing toggle, LIVE-mutable. Inapplicable to ZONAL placement (rejected
+	// by the use-case ZONAL-guard + DB CHECK). REGIONAL/anycast excluded from the
+	// zonal check by construction.
+	CrossZoneEnabled bool
 }
 
 // Validate проверяет семантически-нагруженные поля LoadBalancer. multierr.Combine
@@ -100,7 +105,8 @@ func (lb LoadBalancer) Equal(other LoadBalancer) bool {
 		lb.SessionAffinity == other.SessionAffinity &&
 		lb.DeletionProtection == other.DeletionProtection &&
 		lb.AdminState == other.AdminState &&
-		lb.Placement == other.Placement
+		lb.Placement == other.Placement &&
+		lb.CrossZoneEnabled == other.CrossZoneEnabled
 }
 
 // ipVersionsEqual — order-insensitive equality двух наборов IPVersion (семейства

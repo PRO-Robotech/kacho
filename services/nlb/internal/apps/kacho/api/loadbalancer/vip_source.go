@@ -40,6 +40,10 @@ type familyVIPSpec struct {
 	zoneID string
 }
 
+// crossZoneZonalMsg — verbatim contract text (NLB-1-16) when cross_zone_enabled is
+// set true on a ZONAL placement. Part of the API contract (stable tone).
+const crossZoneZonalMsg = "crossZoneEnabled is not applicable to ZONAL placement"
+
 // resolvePlacementAuthoritative — NLB-1b MIGRATE (F2): resolve the (type,
 // placement_type, merged placement) triple with `placement` as the AUTHORITATIVE
 // input. When placement is set it drives the legacy (type, placement_type) pair;

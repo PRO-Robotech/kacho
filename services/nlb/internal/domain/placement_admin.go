@@ -101,3 +101,11 @@ func TypeAndPlacementTypeFromPlacement(p Placement) (LBType, PlacementType) {
 	}
 	return "", ""
 }
+
+// CrossZoneApplicable — NLB-1b MIGRATE (F3): cross_zone_enabled is meaningful only
+// for non-ZONAL placement. A ZONAL LB serves a single zone, so cross-zone
+// load-balancing is inapplicable; REGIONAL/anycast (incl. EXTERNAL, placement_type
+// empty) spans zones and may enable it. Used by the Create/Update ZONAL-guard.
+func CrossZoneApplicable(pt PlacementType) bool {
+	return pt != PlacementZonal
+}

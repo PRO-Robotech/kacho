@@ -224,9 +224,12 @@ type CreateNetworkLoadBalancerRequest struct {
 	Placement NetworkLoadBalancer_Placement `protobuf:"varint,21,opt,name=placement,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Placement" json:"placement,omitempty"`
 	// admin_state — NLB-1b EXPAND (additive, optional). Desired administrative
 	// state; UNSPECIFIED is persisted as ENABLED.
-	AdminState    NetworkLoadBalancer_AdminState `protobuf:"varint,22,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AdminState NetworkLoadBalancer_AdminState `protobuf:"varint,22,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
+	// cross_zone_enabled — NLB-1b MIGRATE (revival, optional): REGIONAL-only
+	// cross-zone toggle. true on a ZONAL placement → InvalidArgument.
+	CrossZoneEnabled bool `protobuf:"varint,23,opt,name=cross_zone_enabled,json=crossZoneEnabled,proto3" json:"cross_zone_enabled,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateNetworkLoadBalancerRequest) Reset() {
@@ -357,6 +360,13 @@ func (x *CreateNetworkLoadBalancerRequest) GetAdminState() NetworkLoadBalancer_A
 	return NetworkLoadBalancer_ADMIN_STATE_UNSPECIFIED
 }
 
+func (x *CreateNetworkLoadBalancerRequest) GetCrossZoneEnabled() bool {
+	if x != nil {
+		return x.CrossZoneEnabled
+	}
+	return false
+}
+
 type CreateNetworkLoadBalancerMetadata struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
@@ -418,9 +428,13 @@ type UpdateNetworkLoadBalancerRequest struct {
 	// admin_state — NLB-1b EXPAND (additive): LIVE-mutable administrative state.
 	// Applied only when present in update_mask (Update never auto-ENABLE/DISABLE).
 	// placement / type / placement_type stay immutable (rejected by mask path).
-	AdminState    NetworkLoadBalancer_AdminState `protobuf:"varint,18,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AdminState NetworkLoadBalancer_AdminState `protobuf:"varint,18,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
+	// cross_zone_enabled — NLB-1b MIGRATE (revival): REGIONAL-only cross-zone toggle,
+	// LIVE-mutable. Applied only when present in update_mask; true on a ZONAL LB →
+	// InvalidArgument.
+	CrossZoneEnabled bool `protobuf:"varint,19,opt,name=cross_zone_enabled,json=crossZoneEnabled,proto3" json:"cross_zone_enabled,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UpdateNetworkLoadBalancerRequest) Reset() {
@@ -514,6 +528,13 @@ func (x *UpdateNetworkLoadBalancerRequest) GetAdminState() NetworkLoadBalancer_A
 		return x.AdminState
 	}
 	return NetworkLoadBalancer_ADMIN_STATE_UNSPECIFIED
+}
+
+func (x *UpdateNetworkLoadBalancerRequest) GetCrossZoneEnabled() bool {
+	if x != nil {
+		return x.CrossZoneEnabled
+	}
+	return false
 }
 
 type UpdateNetworkLoadBalancerMetadata struct {
@@ -1363,7 +1384,7 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	"\x8a\xc81\x06<=1000R\x06filter\"\xb2\x01\n" +
 	" ListNetworkLoadBalancersResponse\x12f\n" +
 	"\x16network_load_balancers\x18\x01 \x03(\v20.kacho.cloud.loadbalancer.v1.NetworkLoadBalancerR\x14networkLoadBalancers\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xca\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe4\n" +
 	"\n" +
 	" CreateNetworkLoadBalancerRequest\x12+\n" +
 	"\n" +
@@ -1381,14 +1402,15 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	"\tv6_source\x18\x14 \x01(\v2&.kacho.cloud.loadbalancer.v1.VipSourceR\bv6Source\x12X\n" +
 	"\tplacement\x18\x15 \x01(\x0e2:.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementR\tplacement\x12\\\n" +
 	"\vadmin_state\x18\x16 \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
-	"adminState\x1a9\n" +
+	"adminState\x12,\n" +
+	"\x12cross_zone_enabled\x18\x17 \x01(\bR\x10crossZoneEnabled\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\n" +
-	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\x12cross_zone_enabledR\n" +
+	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\n" +
 	"network_idR\x12security_group_idsR\faddress_specR\vip_families\"\\\n" +
 	"!CreateNetworkLoadBalancerMetadata\x127\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\xf4\a\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\x8e\b\n" +
 	" UpdateNetworkLoadBalancerRequest\x12E\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x15networkLoadBalancerId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -1401,11 +1423,12 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	" \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x12@\n" +
 	"\x17disabled_announce_zones\x18\x11 \x03(\tB\b\x8a\xc81\x04<=50R\x15disabledAnnounceZones\x12\\\n" +
 	"\vadmin_state\x18\x12 \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
-	"adminState\x1a9\n" +
+	"adminState\x12,\n" +
+	"\x12cross_zone_enabled\x18\x13 \x01(\bR\x10crossZoneEnabled\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\t\x10\n" +
-	"J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\x12cross_zone_enabledR\n" +
+	"J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\n" +
 	"network_idR\x12security_group_idsR\raddress_id_v4R\raddress_id_v6R\vip_families\"\\\n" +
 	"!UpdateNetworkLoadBalancerMetadata\x127\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"i\n" +

@@ -230,7 +230,7 @@ message CreateNetworkLoadBalancerRequest {
   reserved 7, 8, 10;
   reserved 12, 13, 14, 15, 16;
   reserved "listener_specs", "attached_target_groups", "allow_zonal_shift";
-  reserved "cross_zone_enabled", "network_id", "security_group_ids", "address_spec", "ip_families";
+  reserved "network_id", "security_group_ids", "address_spec", "ip_families";
 
   string project_id = 1 [(required) = true, (length) = "<=50"];
 
@@ -275,6 +275,10 @@ message CreateNetworkLoadBalancerRequest {
   // admin_state — NLB-1b EXPAND (additive, optional). Desired administrative
   // state; UNSPECIFIED is persisted as ENABLED.
   NetworkLoadBalancer.AdminState admin_state = 22;
+
+  // cross_zone_enabled — NLB-1b MIGRATE (revival, optional): REGIONAL-only
+  // cross-zone toggle. true on a ZONAL placement → InvalidArgument.
+  bool cross_zone_enabled = 23;
 }
 
 message CreateNetworkLoadBalancerMetadata {
@@ -291,7 +295,7 @@ message UpdateNetworkLoadBalancerRequest {
   reserved 6, 7, 9;
   reserved 11, 12, 13, 14, 15, 16;
   reserved "listener_specs", "attached_target_groups", "allow_zonal_shift";
-  reserved "cross_zone_enabled", "network_id", "security_group_ids", "address_id_v4", "address_id_v6", "ip_families";
+  reserved "network_id", "security_group_ids", "address_id_v4", "address_id_v6", "ip_families";
 
   string network_load_balancer_id = 1 [(required) = true, (length) = "<=50"];
   google.protobuf.FieldMask update_mask = 2;
@@ -319,6 +323,11 @@ message UpdateNetworkLoadBalancerRequest {
   // Applied only when present in update_mask (Update never auto-ENABLE/DISABLE).
   // placement / type / placement_type stay immutable (rejected by mask path).
   NetworkLoadBalancer.AdminState admin_state = 18;
+
+  // cross_zone_enabled — NLB-1b MIGRATE (revival): REGIONAL-only cross-zone toggle,
+  // LIVE-mutable. Applied only when present in update_mask; true on a ZONAL LB →
+  // InvalidArgument.
+  bool cross_zone_enabled = 19;
 }
 
 message UpdateNetworkLoadBalancerMetadata {
