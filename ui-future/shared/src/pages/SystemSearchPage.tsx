@@ -171,10 +171,20 @@ function extractExtras(resource: string, r: Record<string, unknown>): Record<str
       if (r.type) e.type = String(r.type);
       break;
     }
-    case "subnets":
+    case "subnets": {
+      // VPC-1: placement anchor is zone_id (ZONAL) or region_id (REGIONAL);
+      // CIDR is ipv4_cidr_primary + additional ranges (v4_cidr_blocks retired).
       if (r.zone_id) e.zone = String(r.zone_id);
-      if (Array.isArray(r.v4_cidr_blocks)) e.cidrs = (r.v4_cidr_blocks as string[]).join(",");
+      else if (r.region_id) e.region = String(r.region_id);
+      const cidrs = [
+        typeof r.ipv4_cidr_primary === "string" ? r.ipv4_cidr_primary : "",
+        typeof r.ipv6_cidr_primary === "string" ? r.ipv6_cidr_primary : "",
+        ...(Array.isArray(r.ipv4_cidr_blocks) ? (r.ipv4_cidr_blocks as string[]) : []),
+        ...(Array.isArray(r.ipv6_cidr_blocks) ? (r.ipv6_cidr_blocks as string[]) : []),
+      ].filter(Boolean);
+      if (cidrs.length > 0) e.cidrs = cidrs.join(",");
       break;
+    }
     case "address-pools":
       if (r.zone_id) e.zone = String(r.zone_id);
       if (r.kind) e.kind = String(r.kind);

@@ -123,9 +123,7 @@ export function RefSelect({
             value: o.uid as string,
             label: `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`,
           })),
-          ...(createSpec
-            ? [{ value: CREATE_SENTINEL, label: `+ Создать ${createSpec.singular.toLowerCase()}…` }]
-            : []),
+          ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ Создать ${createSpec.singular.toLowerCase()}…` }] : []),
         ]}
       />
       {refProjectScoped && !project && <p className="text-xs text-amber-600">Выберите проект в шапке для загрузки.</p>}
@@ -151,28 +149,28 @@ export function RefSelect({
         >
           <FormBareProvider>
             <InlineResourceCreateForm
-            spec={createSpec}
-            ctx={{
-              projectId: project?.id,
-              accountId: project?.accountId,
-            }}
-            presetFields={createPresetFields && formValue ? createPresetFields(formValue) : undefined}
-            projectId={project?.id ?? null}
-            title={createTitle}
-            onCancel={() => setCreating(false)}
-            onSuccess={() => {
-              // refetch candidate-list — новый ресурс должен появиться;
-              // затем подхватываем последний созданный по имени-эвристике
-              // (InlineResourceCreateForm не отдаёт id наверх — после refetch
-              // diff'им список). Простой best-effort: перезапрашиваем и
-              // оставляем выбор пользователю, если не смогли определить.
-              void refetch().then((r) => {
-                const after = (r.data?.[spec.payloadKey] ?? []) as Array<{ id: string }>;
-                const before = new Set(options.map((o) => o.uid));
-                const fresh = after.find((it) => !before.has(it.id));
-                if (fresh) onChange(fresh.id);
-              });
-            }}
+              spec={createSpec}
+              ctx={{
+                projectId: project?.id,
+                accountId: project?.accountId,
+              }}
+              presetFields={createPresetFields && formValue ? createPresetFields(formValue) : undefined}
+              projectId={project?.id ?? null}
+              title={createTitle}
+              onCancel={() => setCreating(false)}
+              onSuccess={() => {
+                // refetch candidate-list — новый ресурс должен появиться;
+                // затем подхватываем последний созданный по имени-эвристике
+                // (InlineResourceCreateForm не отдаёт id наверх — после refetch
+                // diff'им список). Простой best-effort: перезапрашиваем и
+                // оставляем выбор пользователю, если не смогли определить.
+                void refetch().then((r) => {
+                  const after = (r.data?.[spec.payloadKey] ?? []) as Array<{ id: string }>;
+                  const before = new Set(options.map((o) => o.uid));
+                  const fresh = after.find((it) => !before.has(it.id));
+                  if (fresh) onChange(fresh.id);
+                });
+              }}
             />
           </FormBareProvider>
         </Modal>
@@ -196,9 +194,13 @@ function headLabelFor(refResource: string, row: Record<string, unknown>): string
 function extraInfoFor(refResource: string, row: Record<string, unknown>): string {
   switch (refResource) {
     case "subnets": {
-      const v4 = (row.v4_cidr_blocks as string[] | undefined) ?? [];
-      const v6 = (row.v6_cidr_blocks as string[] | undefined) ?? [];
-      const cidrs = [...v4, ...v6];
+      // VPC-1: prefer the immutable primary anchor; fall back to additional
+      // ranges. v4_cidr_blocks[] retired in favour of ipv4_cidr_primary.
+      const primary4 = (row.ipv4_cidr_primary as string | undefined) ?? "";
+      const primary6 = (row.ipv6_cidr_primary as string | undefined) ?? "";
+      const extra4 = (row.ipv4_cidr_blocks as string[] | undefined) ?? [];
+      const extra6 = (row.ipv6_cidr_blocks as string[] | undefined) ?? [];
+      const cidrs = [primary4, primary6, ...extra4, ...extra6].filter(Boolean);
       return cidrs.length > 0 ? cidrs.join(", ") : "";
     }
     case "addresses": {
