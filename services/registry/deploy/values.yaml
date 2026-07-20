@@ -164,6 +164,13 @@ authz:
   # (existence-validation of project on Create). Separate conn from iamGrpcAddr —
   # ProjectService is registered ONLY on public :9090.
   iamProjectGrpcAddr: "kacho-iam.kacho.svc.cluster.local:9090"
+  # GEO_GRPC_ADDR — kacho-geo PUBLIC listener (:9090) for RegionService.Get
+  # (existence-validation of Registry.region_id on Create — runtime edge
+  # registry→geo, REG-1 F4). geo is a leaf domain; registry is never called back
+  # (acyclic). RegionService is a public read-only Geography catalog on :9090 —
+  # a SEPARATE conn from the iam edges. Empty → geo-client nil → RegionExists
+  # returns Unavailable (Create fail-closed).
+  geoGrpcAddr: "kacho-geo.kacho.svc.cluster.local:9090"
   # Emergency pass-all (dev / break-glass only): bypasses authz Check + mTLS on BOTH
   # gRPC listeners AND data-plane AuthN+AuthZ. production forbids leaving it on.
   breakglass: false
@@ -294,8 +301,9 @@ endpointBase: "registry.in-cloud.io"
 #                            KACHO_REGISTRY_INTERNAL_SERVER_MTLS_*
 #   registry→iam Check+fga:  KACHO_REGISTRY_IAM_AUTHZ_MTLS_*  (:9091, ServerName ∈ SAN)
 #   registry→iam Project:    KACHO_REGISTRY_IAM_PROJECT_MTLS_* (:9090, ServerName ∈ SAN)
-# Both client edges present the SAME client leaf (one clientSecretName); only the
-# verified peer ServerName differs (internal vs public iam dial-host).
+#   registry→geo Region:     KACHO_REGISTRY_GEO_MTLS_*         (:9090, ServerName ∈ SAN)
+# All client edges present the SAME client leaf (one clientSecretName); only the
+# verified peer ServerName differs (iam-internal vs iam-public vs geo-public dial-host).
 mtls:
   enable: false
   # internal-CA leaf issuance (this chart owns its Certificate). client-cert URI-SAN
@@ -320,9 +328,11 @@ mtls:
   edges:
     iamAuthz: false     # registry→iam Check + fga-proxy (internal :9091)
     iamProject: false   # registry→iam ProjectService.Get (public :9090)
+    geo: false          # registry→geo RegionService.Get (public :9090, REG-1 F4)
   serverName:
     iamAuthz: kacho-iam-internal.kacho.svc.cluster.local
     iamProject: kacho-iam.kacho.svc.cluster.local
+    geo: kacho-geo.kacho.svc.cluster.local
 
 # Extra free-form env (KACHO_REGISTRY_*) — merged verbatim onto the server container.
 env: {}
