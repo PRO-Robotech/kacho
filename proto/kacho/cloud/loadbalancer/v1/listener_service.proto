@@ -176,6 +176,19 @@ message CreateListenerRequest {
   // listener wires to. When set it takes precedence over default_target_group_id
   // (both coexist in EXPAND). resolved_backend_port°/substatus° echo the wired TG.
   string target_group_id = 12 [(length) = "<=50"];
+
+  // address_id — NLB-1b F5 (MIGRATE): BYO VIP anchor. Links an EXISTING vpc
+  // Address as the listener VIP (immutable after Create, NLB-1-29). Mutually
+  // exclusive with subnet_id. Foreign vpc id (shared prefix) — existence is
+  // peer-validated via vpc, NEVER nlb-prefix-checked (B4). Empty = no BYO.
+  string address_id = 13 [(length) = "<=50"];
+
+  // subnet_id — NLB-1b F5 (MIGRATE): auto-alloc VIP anchor. A fresh vpc Address
+  // is allocated from this subnet as the listener VIP (immutable after Create,
+  // NLB-1-29). Mutually exclusive with address_id. Foreign vpc id — existence +
+  // placement/zone-coherence peer-validated via vpc (NLB-1-32/33). Empty = no
+  // auto-alloc.
+  string subnet_id = 14 [(length) = "<=50"];
 }
 
 message CreateListenerMetadata {

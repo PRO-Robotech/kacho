@@ -58,6 +58,28 @@ message Listener {
     MISCONFIGURED = 2;
   }
 
+  // Address — NLB-1b F5 (MIGRATE): the managed VIP projection of a Listener
+  // (output-only). The VIP anchor returns to the Listener as an immutable input
+  // (CreateListenerRequest.address_id / subnet_id); its resolved form is echoed
+  // here as a SINGLE projection — the immutable addressId is carried by `id`
+  // (NOT duplicated as a separate flat field, NLB-1-27). A plain new message
+  // (deliberately NOT the generic reference.Referrer): the VIP is nlb-managed,
+  // graceful-dangling on the underlying vpc.Address.
+  message Address {
+    // Dotted shared-catalog type of the referent — always "vpc.address".
+    string type = 1;
+    // Resolved vpc Address id (the immutable addressId input, BYO or the
+    // auto-allocated address id). Empty until the worker resolves the VIP.
+    string id = 2;
+    // Output-only best-effort mirror of the vpc Address name at bind time.
+    string name = 3;
+    // Resolved VIP IP string (output-only).
+    string ip = 4;
+    // Managed stable DNS name (CNAME-target over the migrating anycast IP),
+    // output-only best-effort.
+    string hostname = 5;
+  }
+
   // ID of the listener (prefix `lst`).
   string id = 1;
 
@@ -115,4 +137,11 @@ message Listener {
   // substatus — NLB-1b EXPAND (additive, output-only, derived). OK when the
   // wired target group resolves, MISCONFIGURED otherwise.
   Substatus substatus = 21;
+
+  // address — NLB-1b F5 (MIGRATE): managed VIP projection (output-only). Single
+  // projection of the resolved VIP; the immutable addressId input is carried by
+  // address.id (not duplicated as a flat field). Empty until the worker resolves
+  // the VIP. The VIP anchor is set on Create via CreateListenerRequest.address_id
+  // (BYO) or subnet_id (auto-alloc); both are immutable after Create (NLB-1-29).
+  Address address = 22;
 }

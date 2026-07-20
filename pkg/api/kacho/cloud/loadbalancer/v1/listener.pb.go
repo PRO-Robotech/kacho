@@ -235,7 +235,13 @@ type Listener struct {
 	ResolvedBackendPort int64 `protobuf:"varint,20,opt,name=resolved_backend_port,json=resolvedBackendPort,proto3" json:"resolved_backend_port,omitempty"`
 	// substatus — NLB-1b EXPAND (additive, output-only, derived). OK when the
 	// wired target group resolves, MISCONFIGURED otherwise.
-	Substatus     Listener_Substatus `protobuf:"varint,21,opt,name=substatus,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Substatus" json:"substatus,omitempty"`
+	Substatus Listener_Substatus `protobuf:"varint,21,opt,name=substatus,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Substatus" json:"substatus,omitempty"`
+	// address — NLB-1b F5 (MIGRATE): managed VIP projection (output-only). Single
+	// projection of the resolved VIP; the immutable addressId input is carried by
+	// address.id (not duplicated as a flat field). Empty until the worker resolves
+	// the VIP. The VIP anchor is set on Create via CreateListenerRequest.address_id
+	// (BYO) or subnet_id (auto-alloc); both are immutable after Create (NLB-1-29).
+	Address       *Listener_Address `protobuf:"bytes,22,opt,name=address,proto3" json:"address,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -382,11 +388,109 @@ func (x *Listener) GetSubstatus() Listener_Substatus {
 	return Listener_SUBSTATUS_UNSPECIFIED
 }
 
+func (x *Listener) GetAddress() *Listener_Address {
+	if x != nil {
+		return x.Address
+	}
+	return nil
+}
+
+// Address — NLB-1b F5 (MIGRATE): the managed VIP projection of a Listener
+// (output-only). The VIP anchor returns to the Listener as an immutable input
+// (CreateListenerRequest.address_id / subnet_id); its resolved form is echoed
+// here as a SINGLE projection — the immutable addressId is carried by `id`
+// (NOT duplicated as a separate flat field, NLB-1-27). A plain new message
+// (deliberately NOT the generic reference.Referrer): the VIP is nlb-managed,
+// graceful-dangling on the underlying vpc.Address.
+type Listener_Address struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Dotted shared-catalog type of the referent — always "vpc.address".
+	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// Resolved vpc Address id (the immutable addressId input, BYO or the
+	// auto-allocated address id). Empty until the worker resolves the VIP.
+	Id string `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	// Output-only best-effort mirror of the vpc Address name at bind time.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Resolved VIP IP string (output-only).
+	Ip string `protobuf:"bytes,4,opt,name=ip,proto3" json:"ip,omitempty"`
+	// Managed stable DNS name (CNAME-target over the migrating anycast IP),
+	// output-only best-effort.
+	Hostname      string `protobuf:"bytes,5,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Listener_Address) Reset() {
+	*x = Listener_Address{}
+	mi := &file_kacho_cloud_loadbalancer_v1_listener_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Listener_Address) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Listener_Address) ProtoMessage() {}
+
+func (x *Listener_Address) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_loadbalancer_v1_listener_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Listener_Address.ProtoReflect.Descriptor instead.
+func (*Listener_Address) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_loadbalancer_v1_listener_proto_rawDescGZIP(), []int{0, 0}
+}
+
+func (x *Listener_Address) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *Listener_Address) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Listener_Address) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Listener_Address) GetIp() string {
+	if x != nil {
+		return x.Ip
+	}
+	return ""
+}
+
+func (x *Listener_Address) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
 var File_kacho_cloud_loadbalancer_v1_listener_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/loadbalancer/v1/listener.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe7\b\n" +
+	"*kacho/cloud/loadbalancer/v1/listener.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9f\n" +
+	"\n" +
 	"\bListener\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -407,7 +511,14 @@ const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"\x06status\x18\x12 \x01(\x0e2,.kacho.cloud.loadbalancer.v1.Listener.StatusR\x06status\x12&\n" +
 	"\x0ftarget_group_id\x18\x13 \x01(\tR\rtargetGroupId\x122\n" +
 	"\x15resolved_backend_port\x18\x14 \x01(\x03R\x13resolvedBackendPort\x12M\n" +
-	"\tsubstatus\x18\x15 \x01(\x0e2/.kacho.cloud.loadbalancer.v1.Listener.SubstatusR\tsubstatus\x1a9\n" +
+	"\tsubstatus\x18\x15 \x01(\x0e2/.kacho.cloud.loadbalancer.v1.Listener.SubstatusR\tsubstatus\x12G\n" +
+	"\aaddress\x18\x16 \x01(\v2-.kacho.cloud.loadbalancer.v1.Listener.AddressR\aaddress\x1am\n" +
+	"\aAddress\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x0e\n" +
+	"\x02ip\x18\x04 \x01(\tR\x02ip\x12\x1a\n" +
+	"\bhostname\x18\x05 \x01(\tR\bhostname\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"V\n" +
@@ -442,26 +553,28 @@ func file_kacho_cloud_loadbalancer_v1_listener_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_loadbalancer_v1_listener_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_kacho_cloud_loadbalancer_v1_listener_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_kacho_cloud_loadbalancer_v1_listener_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_kacho_cloud_loadbalancer_v1_listener_proto_goTypes = []any{
 	(Listener_Status)(0),          // 0: kacho.cloud.loadbalancer.v1.Listener.Status
 	(Listener_Protocol)(0),        // 1: kacho.cloud.loadbalancer.v1.Listener.Protocol
 	(Listener_Substatus)(0),       // 2: kacho.cloud.loadbalancer.v1.Listener.Substatus
 	(*Listener)(nil),              // 3: kacho.cloud.loadbalancer.v1.Listener
-	nil,                           // 4: kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*Listener_Address)(nil),      // 4: kacho.cloud.loadbalancer.v1.Listener.Address
+	nil,                           // 5: kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_kacho_cloud_loadbalancer_v1_listener_proto_depIdxs = []int32{
-	5, // 0: kacho.cloud.loadbalancer.v1.Listener.created_at:type_name -> google.protobuf.Timestamp
-	4, // 1: kacho.cloud.loadbalancer.v1.Listener.labels:type_name -> kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
+	6, // 0: kacho.cloud.loadbalancer.v1.Listener.created_at:type_name -> google.protobuf.Timestamp
+	5, // 1: kacho.cloud.loadbalancer.v1.Listener.labels:type_name -> kacho.cloud.loadbalancer.v1.Listener.LabelsEntry
 	1, // 2: kacho.cloud.loadbalancer.v1.Listener.protocol:type_name -> kacho.cloud.loadbalancer.v1.Listener.Protocol
 	0, // 3: kacho.cloud.loadbalancer.v1.Listener.status:type_name -> kacho.cloud.loadbalancer.v1.Listener.Status
 	2, // 4: kacho.cloud.loadbalancer.v1.Listener.substatus:type_name -> kacho.cloud.loadbalancer.v1.Listener.Substatus
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	4, // 5: kacho.cloud.loadbalancer.v1.Listener.address:type_name -> kacho.cloud.loadbalancer.v1.Listener.Address
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_listener_proto_init() }
@@ -475,7 +588,7 @@ func file_kacho_cloud_loadbalancer_v1_listener_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc), len(file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

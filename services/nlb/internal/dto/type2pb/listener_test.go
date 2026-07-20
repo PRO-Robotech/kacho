@@ -94,6 +94,43 @@ func TestListener_NLB_1b_TargetGroupProjection(t *testing.T) {
 	assert.Equal(t, lbv1.Listener_MISCONFIGURED, unwired.GetSubstatus())
 }
 
+// NLB-1b F5 (NLB-1-27/28): the resolved VIP is echoed as a SINGLE managed
+// projection address{type,id,name°,ip°,hostname°}. address.id carries the
+// immutable addressId (NOT duplicated as a flat field). No VIP anchor → nil
+// address (MIGRATE optional-first: VIP-on-Listener is optional).
+func TestListener_NLB_1_27_AddressProjection(t *testing.T) {
+	mk := func(mut func(*kachorepo.ListenerRecord)) *lbv1.Listener {
+		rec := kachorepo.ListenerRecord{
+			Listener: domain.Listener{
+				ID: "lst01ABCDEF1234567xx", ProjectID: "p1", LoadBalancerID: "nlb1",
+				RegionID: "eu-north", Name: "l1", Protocol: domain.ProtoTCP, Port: 443,
+				Status: domain.ListenerStatusActive,
+			},
+			CreatedAt: time.Now(),
+		}
+		mut(&rec)
+		var pb *lbv1.Listener
+		require.NoError(t, dto.Transfer(dto.FromTo(rec, &pb)))
+		return pb
+	}
+
+	// BYO resolved VIP → single address° projection; id == addressId; ip echoed.
+	byo := mk(func(rec *kachorepo.ListenerRecord) {
+		rec.AddressID = option.MustNewOption(domain.AddressID("e9b-t8y2u4i6o8p0aq"))
+		rec.AllocatedAddress = "203.0.113.40"
+		rec.VipOrigin = domain.VipOriginBYO
+	})
+	require.NotNil(t, byo.GetAddress())
+	assert.Equal(t, "vpc.address", byo.GetAddress().GetType())
+	assert.Equal(t, "e9b-t8y2u4i6o8p0aq", byo.GetAddress().GetId())
+	assert.Equal(t, "203.0.113.40", byo.GetAddress().GetIp())
+	assert.Equal(t, domain.ListenerVIPHostname("lst01ABCDEF1234567xx", "eu-north"), byo.GetAddress().GetHostname())
+
+	// No VIP anchor → address° is nil (optional VIP-on-Listener during MIGRATE).
+	none := mk(func(*kachorepo.ListenerRecord) {})
+	assert.Nil(t, none.GetAddress())
+}
+
 func TestListener_StatusMapping(t *testing.T) {
 	tests := []struct {
 		domain domain.ListenerStatus

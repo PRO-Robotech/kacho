@@ -43,9 +43,11 @@ func (listener) toPb(rec kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 		resolvedBackendPort = int64(*rec.ResolvedBackendPort)
 		substatus = lbv1.Listener_OK
 	}
-	// VIP консолидирован на LoadBalancer: листенер = «порт на VIP LB» и собственных
-	// address-полей больше не несёт (region_id/ip_version/address_id/allocated_address/
-	// subnet_id сняты с proto). VIP сервиса берётся с родительского LB.address_v4/v6.
+	// NLB-1b F5 (NLB-1-27/28): the VIP anchor returns to the Listener. The resolved
+	// VIP is echoed as a SINGLE managed projection address{type,id,name°,ip°,hostname°};
+	// the immutable addressId input is carried by address.id (NOT duplicated as a flat
+	// field). nil until a VIP is resolved (MIGRATE optional-first: VIP-on-Listener is
+	// optional — legacy VIP-on-LB listeners carry no address_id → address° stays nil).
 	return &lbv1.Listener{
 		Id:                   string(rec.ID),
 		ProjectId:            string(rec.ProjectID),
@@ -63,7 +65,26 @@ func (listener) toPb(rec kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 		TargetGroupId:        defaultTGID,
 		ResolvedBackendPort:  resolvedBackendPort,
 		Substatus:            substatus,
+		Address:              listenerAddressProjection(rec),
 	}, nil
+}
+
+// listenerAddressProjection — NLB-1b F5 managed VIP projection. Populated only
+// when a VIP anchor is resolved (address_id set); the addressId is echoed via
+// address.id (single projection, no flat duplicate). name° is best-effort (not
+// durably stored — omitted rather than fabricated); hostname° is the deterministic
+// managed CNAME-target. Returns nil when no VIP anchor is set.
+func listenerAddressProjection(rec kachorepo.ListenerRecord) *lbv1.Listener_Address {
+	addrID, ok := rec.AddressID.Maybe()
+	if !ok || string(addrID) == "" {
+		return nil
+	}
+	return &lbv1.Listener_Address{
+		Type:     "vpc.address",
+		Id:       string(addrID),
+		Ip:       string(rec.AllocatedAddress),
+		Hostname: domain.ListenerVIPHostname(rec.ID, rec.RegionID),
+	}
 }
 
 func listenerProtocolToPb(p domain.LbProto) (lbv1.Listener_Protocol, error) {

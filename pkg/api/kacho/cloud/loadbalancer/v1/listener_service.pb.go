@@ -224,6 +224,17 @@ type CreateListenerRequest struct {
 	// listener wires to. When set it takes precedence over default_target_group_id
 	// (both coexist in EXPAND). resolved_backend_port°/substatus° echo the wired TG.
 	TargetGroupId string `protobuf:"bytes,12,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	// address_id — NLB-1b F5 (MIGRATE): BYO VIP anchor. Links an EXISTING vpc
+	// Address as the listener VIP (immutable after Create, NLB-1-29). Mutually
+	// exclusive with subnet_id. Foreign vpc id (shared prefix) — existence is
+	// peer-validated via vpc, NEVER nlb-prefix-checked (B4). Empty = no BYO.
+	AddressId string `protobuf:"bytes,13,opt,name=address_id,json=addressId,proto3" json:"address_id,omitempty"`
+	// subnet_id — NLB-1b F5 (MIGRATE): auto-alloc VIP anchor. A fresh vpc Address
+	// is allocated from this subnet as the listener VIP (immutable after Create,
+	// NLB-1-29). Mutually exclusive with address_id. Foreign vpc id — existence +
+	// placement/zone-coherence peer-validated via vpc (NLB-1-32/33). Empty = no
+	// auto-alloc.
+	SubnetId      string `protobuf:"bytes,14,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -324,6 +335,20 @@ func (x *CreateListenerRequest) GetDefaultTargetGroupId() string {
 func (x *CreateListenerRequest) GetTargetGroupId() string {
 	if x != nil {
 		return x.TargetGroupId
+	}
+	return ""
+}
+
+func (x *CreateListenerRequest) GetAddressId() string {
+	if x != nil {
+		return x.AddressId
+	}
+	return ""
+}
+
+func (x *CreateListenerRequest) GetSubnetId() string {
+	if x != nil {
+		return x.SubnetId
 	}
 	return ""
 }
@@ -758,7 +783,7 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"\x84\x01\n" +
 	"\x15ListListenersResponse\x12C\n" +
 	"\tlisteners\x18\x01 \x03(\v2%.kacho.cloud.loadbalancer.v1.ListenerR\tlisteners\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xea\x05\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xba\x06\n" +
 	"\x15CreateListenerRequest\x126\n" +
 	"\x10load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x0eloadBalancerId\x125\n" +
 	"\x04name\x18\x02 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
@@ -771,7 +796,10 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\x11proxy_protocol_v2\x18\n" +
 	" \x01(\bR\x0fproxyProtocolV2\x12?\n" +
 	"\x17default_target_group_id\x18\v \x01(\tB\b\x8a\xc81\x04<=50R\x14defaultTargetGroupId\x120\n" +
-	"\x0ftarget_group_id\x18\f \x01(\tB\b\x8a\xc81\x04<=50R\rtargetGroupId\x1a9\n" +
+	"\x0ftarget_group_id\x18\f \x01(\tB\b\x8a\xc81\x04<=50R\rtargetGroupId\x12'\n" +
+	"\n" +
+	"address_id\x18\r \x01(\tB\b\x8a\xc81\x04<=50R\taddressId\x12%\n" +
+	"\tsubnet_id\x18\x0e \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\t\x10\n" +

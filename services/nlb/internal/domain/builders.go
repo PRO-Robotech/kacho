@@ -3,7 +3,11 @@
 
 package domain
 
-import "github.com/PRO-Robotech/kacho/pkg/ids"
+import (
+	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/ids"
+)
 
 // Factory-builders для domain-сущностей. Inline-литералы domain-структур с
 // magic-defaults (Status="CREATING", SlowStart=0, DeregistrationDelay=300) в
@@ -129,6 +133,19 @@ func TruncateID(id ResourceID) string {
 // listener-id — устойчиво к чужому BYO-адресу с похожим именем).
 func ListenerAutoAddressName(id ResourceID) string {
 	return "nlb-listener-" + TruncateID(id)
+}
+
+// ListenerVIPHostname — детерминированный managed DNS-name VIP листенера
+// (NLB-1b F5, `Listener.address.hostname°`): `<short-id>.nlb.<region>.kacho.cloud`.
+// Стабильный CNAME-target поверх мигрирующего anycast-IP — не меняется при
+// переезде адреса. Control-plane-декларация managed-hostname'а (фактический DNS —
+// data plane, вне scope nlb). Пустой region → без regional-сегмента.
+func ListenerVIPHostname(id ResourceID, region RegionID) string {
+	label := strings.ToLower(TruncateID(id))
+	if region == "" {
+		return label + ".nlb.kacho.cloud"
+	}
+	return label + ".nlb." + string(region) + ".kacho.cloud"
 }
 
 // LBAnycastAddressName — детерминированное имя anycast-Address, который NLB
