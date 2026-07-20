@@ -37,9 +37,11 @@ func TestGateway_S5_GeoActive(t *testing.T) {
 		"/kacho.cloud.geo.v1.InternalRegionService/Create",
 		"/kacho.cloud.geo.v1.InternalRegionService/Update",
 		"/kacho.cloud.geo.v1.InternalRegionService/Delete",
+		"/kacho.cloud.geo.v1.InternalRegionService/GetInternal",
 		"/kacho.cloud.geo.v1.InternalZoneService/Create",
 		"/kacho.cloud.geo.v1.InternalZoneService/Update",
 		"/kacho.cloud.geo.v1.InternalZoneService/Delete",
+		"/kacho.cloud.geo.v1.InternalZoneService/GetInternal",
 	}
 	for _, m := range internalMethods {
 
