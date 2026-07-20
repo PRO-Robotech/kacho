@@ -30,7 +30,7 @@ import (
 const schema = "kacho_registry"
 
 // registryColumns — канонический порядок SELECT/RETURNING строки реестра.
-const registryColumns = `id, project_id, name, description, labels, status, created_at, default_visibility`
+const registryColumns = `id, project_id, name, description, labels, status, created_at, default_visibility, region_id, placement_type`
 
 // RegistryRepo — реализация registry.RegistryRepo поверх pgxpool.
 type RegistryRepo struct {
@@ -172,11 +172,12 @@ func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := fmt.Sprintf(`
-		INSERT INTO %s.registries (id, project_id, name, description, labels, status)
-		VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+		INSERT INTO %s.registries (id, project_id, name, description, labels, status, region_id, placement_type)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
 		RETURNING %s`, schema, registryColumns)
 	created, err := scanRegistry(tx.QueryRow(ctx, q,
-		reg.ID, reg.ProjectID, reg.Name, reg.Description, labels, statusString(reg.Status)))
+		reg.ID, reg.ProjectID, reg.Name, reg.Description, labels, statusString(reg.Status),
+		reg.RegionID, placementTypeString(reg.PlacementType)))
 	if err != nil {
 		return nil, wrapPgErr(err, "Registry", reg.ID)
 	}
@@ -378,8 +379,9 @@ func scanRegistry(row pgx.Row) (*domain.Registry, error) {
 		labelsRaw     []byte
 		statusRaw     string
 		defaultVisRaw string
+		placementRaw  string
 	)
-	if err := row.Scan(&reg.ID, &reg.ProjectID, &reg.Name, &reg.Description, &labelsRaw, &statusRaw, &reg.CreatedAt, &defaultVisRaw); err != nil {
+	if err := row.Scan(&reg.ID, &reg.ProjectID, &reg.Name, &reg.Description, &labelsRaw, &statusRaw, &reg.CreatedAt, &defaultVisRaw, &reg.RegionID, &placementRaw); err != nil {
 		return nil, err
 	}
 	labels, err := unmarshalLabels(labelsRaw)
@@ -389,6 +391,7 @@ func scanRegistry(row pgx.Row) (*domain.Registry, error) {
 	reg.Labels = labels
 	reg.Status = statusFromString(statusRaw)
 	reg.DefaultVisibility = domain.VisibilityFromString(defaultVisRaw)
+	reg.PlacementType = placementTypeFromString(placementRaw)
 	return &reg, nil
 }
 
@@ -455,6 +458,21 @@ func statusFromString(s string) domain.RegistryStatus {
 		return domain.RegistryStatusDeleting
 	}
 	return domain.RegistryStatusActive
+}
+
+// placementTypeString / placementTypeFromString — маппинг domain-enum ↔ TEXT-колонка
+// placement_type (REG-1 F4). Registry — always-REGIONAL: любой не-REGIONAL (включая
+// UNSPECIFIED) на записи схлопывается в 'REGIONAL' (DB-CHECK гарантирует домен).
+func placementTypeString(p domain.PlacementType) string {
+	_ = p // registry — always REGIONAL (const carve-out); значение не варьируется
+	return "REGIONAL"
+}
+
+func placementTypeFromString(s string) domain.PlacementType {
+	if s == "REGIONAL" {
+		return domain.PlacementTypeRegional
+	}
+	return domain.PlacementTypeUnspecified
 }
 
 // invalidFilterErr оборачивает ошибку парсинга filter в domain-sentinel

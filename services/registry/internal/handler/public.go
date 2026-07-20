@@ -79,6 +79,7 @@ func (h *RegistryHandler) Create(ctx context.Context, req *registryv1.CreateRegi
 		Name:        req.GetName(),
 		Description: req.GetDescription(),
 		Labels:      req.GetLabels(),
+		RegionID:    req.GetRegionId(),
 	})
 	if err != nil {
 		return nil, mapErr(err)

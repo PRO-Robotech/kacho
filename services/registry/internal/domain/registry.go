@@ -49,6 +49,18 @@ func (s RegistryStatus) Validate() error {
 	}
 }
 
+// PlacementType — placement-дискриминатор реестра (REG-1 F4). Registry всегда
+// REGIONAL (const carve-out — «not a choice»): OCI-контент региональный (anycast),
+// зоны не несёт. Ширина int32 совпадает с registryv1.PlacementType (UNSPECIFIED=0,
+// REGIONAL=1), поэтому конверсии domain↔proto точны.
+type PlacementType int32
+
+// Значения PlacementType (parity с proto-enum registry.v1.PlacementType).
+const (
+	PlacementTypeUnspecified PlacementType = iota // 0
+	PlacementTypeRegional                         // 1 — единственное валидное для Registry
+)
+
 // ValidateName проверяет имя реестра: непустое, в пределах длины, DNS-safe.
 // Выделено отдельно, чтобы partial-Update мог валидировать только заданное имя.
 func ValidateName(field, value string) error {
@@ -75,6 +87,12 @@ type Registry struct {
 	Labels      map[string]string
 	Status      RegistryStatus
 	CreatedAt   time.Time
+	// RegionID — REGIONAL placement-якорь (REG-1 F4). Cross-domain ref на geo.Region
+	// (TEXT, без FK). Обязателен на Create (peer-validate geo). Immutable после Create.
+	RegionID string
+	// PlacementType — always-REGIONAL const (F4). Registry — regional-anycast (zone
+	// не несёт). Immutable после Create.
+	PlacementType PlacementType
 	// DefaultVisibility — сид visibility для НОВЫХ repo реестра (RG-1, D-6). Mutable
 	// через UpdateRegistry; переход →PUBLIC подчинён any-path-to-PUBLIC admin-gate
 	// (B10/B11). Дефолт PRIVATE (fail-safe). CreateRepository без явного visibility
@@ -94,6 +112,15 @@ func (r Registry) Validate() error {
 	}
 	if err := r.Status.Validate(); err != nil {
 		return err
+	}
+	// Placement-инвариант (REG-1 F4): регион непуст, тип REGIONAL (registry — anycast).
+	// Own-field "regionId is required" отдаётся ПЕРВЫМ стейтментом в use-case (Create,
+	// REG-1-11) — этот backstop ловит прямых/будущих caller'ов.
+	if r.RegionID == "" {
+		return fmt.Errorf("registry region_id is required")
+	}
+	if r.PlacementType != PlacementTypeRegional {
+		return fmt.Errorf("registry placement_type must be REGIONAL")
 	}
 	return nil
 }

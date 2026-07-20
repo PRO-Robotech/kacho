@@ -20,15 +20,17 @@ func (u *UseCase) ProtoRegistry(r *domain.Registry) *registryv1.Registry {
 		return nil
 	}
 	return &registryv1.Registry{
-		Id:                r.ID,
-		ProjectId:         r.ProjectID,
-		CreatedAt:         prototime.Truncate(r.CreatedAt),
-		Name:              r.Name,
-		Description:       r.Description,
-		Labels:            r.Labels,
+		Id:                          r.ID,
+		ProjectId:                   r.ProjectID,
+		CreatedAt:                   prototime.Truncate(r.CreatedAt),
+		Name:                        r.Name,
+		Description:                 r.Description,
+		Labels:                      r.Labels,
 		Endpoint:                    u.EndpointFor(r.ID),
 		Status:                      registryv1.RegistryStatus(r.Status),
 		DefaultRepositoryVisibility: registryv1.Visibility(r.DefaultVisibility),
+		RegionId:                    r.RegionID,
+		PlacementType:               registryv1.PlacementType(r.PlacementType),
 	}
 }
 
