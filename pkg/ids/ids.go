@@ -248,6 +248,43 @@ func KnownPrefixes() map[string]struct{} {
 	return m
 }
 
+// hyphenFormPrefixes — going-forward hyphen-form id prefixes (B3, redesign-2026
+// governance canon). Новые ресурсы адресуются формой "<prefix>-<crockford-base32>"
+// (напр. "ins-abc…", "ns-xyz…") — в отличие от legacy слитной формы
+// "<prefix><17-base32>" ("net…"). Router (validate.ResourceID) классифицирует
+// ОБЕ формы в переходный период: каждый сервис мигрирует свой prefix по одному
+// в собственном редизайне (Phase-0 фундамент только УЧИТ router принимать
+// hyphen-форму — генерация id НЕ меняется).
+//
+// ВАЖНО: это registry КЛАССИФИКАЦИИ (router-acceptance), НЕ генерации — NewID
+// по-прежнему требует ровно 3 символа и эмитит слитную форму, пока сервис не
+// мигрировал. Значения — литералы канона §2 unified-system-design (не Prefix*-
+// константы: часть 2-символьные — `ns`/`mt`/`vt` — вне 3-char NewID-инварианта,
+// а часть — новые ресурсы редизайна, ещё без generation-константы).
+var hyphenFormPrefixes = []string{
+	// iam: Account/Project/User/ServiceAccount/Group/Role/AccessBinding/UserInvitation
+	"acc", "prj", "usr", "sva", "grp", "rol", "acb", "inv",
+	// compute: Instance/MachineType/PlacementGroup/VolumeType
+	"ins", "mt", "plg", "vt",
+	// storage: Volume/Image/Snapshot
+	"vol", "img", "snp",
+	// registry: Namespace
+	"ns",
+}
+
+// KnownHyphenPrefixes возвращает КОПИЮ множества going-forward hyphen-form
+// prefix'ов (B3). Потребитель (validate.baseHyphenPrefixes) строит свой набор
+// поверх этого + config-extra, не дублируя литералы. Как и KnownPrefixes(), это
+// ЕДИНЫЙ источник истины для hyphen-канона — чтобы router-классификатор и любой
+// будущий consumer не разошлись копиями списка.
+func KnownHyphenPrefixes() map[string]struct{} {
+	m := make(map[string]struct{}, len(hyphenFormPrefixes))
+	for _, p := range hyphenFormPrefixes {
+		m[p] = struct{}{}
+	}
+	return m
+}
+
 // HasKnownPrefix проверяет, что id имеет валидную форму ресурс-id: ровно
 // totalLen символов, 3-символьный префикс входит в множество объявленных
 // префиксов проекта (knownPrefixes), а тело — валидная crockford-base32 строка

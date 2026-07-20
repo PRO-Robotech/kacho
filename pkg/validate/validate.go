@@ -365,9 +365,73 @@ func buildResourceIDPrefixes(csv string) map[string]struct{} {
 // раз при инициализации пакета.
 var resourceIDPrefixes = buildResourceIDPrefixes(os.Getenv(EnvExtraResourceIDPrefixes))
 
+// EnvExtraResourceIDHyphenPrefixes — имя env-переменной с ДОПОЛНИТЕЛЬНЫМИ
+// hyphen-form prefix'ами (comma-separated, напр. "foo,bar" — сам prefix БЕЗ
+// дефиса). Параллель к EnvExtraResourceIDPrefixes, но для going-forward формы
+// "<prefix>-<base32>" (B3). Назначение то же: новый домен на hyphen-канон
+// маршрутизируется на authz-edge api-gateway БЕЗ релиза corelib — оператор
+// задаёт prefix через config. Канонические platform-prefix'ы (см.
+// ids.KnownHyphenPrefixes) остаются захардкожены; config-путь — только
+// расширение вперёд.
+const EnvExtraResourceIDHyphenPrefixes = "KACHO_EXTRA_RESOURCE_ID_HYPHEN_PREFIXES"
+
+// baseHyphenPrefixes — канонические going-forward hyphen-form prefix'ы Kachō
+// (B3). ЕДИНЫЙ источник — ids.KnownHyphenPrefixes() (тот же принцип, что и
+// baseResourceIDPrefixes ← ids.KnownPrefixes()): здесь НЕ дублируется список
+// литералов. Расширяется через EnvExtraResourceIDHyphenPrefixes без правки кода.
+var baseHyphenPrefixes = ids.KnownHyphenPrefixes()
+
+// parseHyphenPrefixes нормализует comma-separated env в список hyphen-form
+// prefix'ов: обрезает пробелы, приводит к нижнему регистру, отбрасывает пустые
+// и токены, СОДЕРЖАЩИЕ дефис (дефис — id-разделитель, не часть prefix'а).
+// В отличие от parseResourceIDPrefixes НЕ навязывает длину 3 — hyphen-prefix
+// бывает 2-символьным (`ns`/`mt`/`vt`).
+func parseHyphenPrefixes(csv string) []string {
+	if strings.TrimSpace(csv) == "" {
+		return nil
+	}
+	var out []string
+	for _, tok := range strings.Split(csv, ",") {
+		p := strings.ToLower(strings.TrimSpace(tok))
+		if p == "" || strings.ContainsRune(p, '-') {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// buildHyphenPrefixes копирует канонический hyphen-набор и мёржит config-extras.
+// Чистая функция — тестируется без env.
+func buildHyphenPrefixes(csv string) map[string]struct{} {
+	m := make(map[string]struct{}, len(baseHyphenPrefixes)+4)
+	for k := range baseHyphenPrefixes {
+		m[k] = struct{}{}
+	}
+	for _, p := range parseHyphenPrefixes(csv) {
+		m[p] = struct{}{}
+	}
+	return m
+}
+
+// hyphenResourceIDPrefixes — эффективный hyphen-набор (canon + config-extras),
+// собранный один раз при инициализации пакета.
+var hyphenResourceIDPrefixes = buildHyphenPrefixes(os.Getenv(EnvExtraResourceIDHyphenPrefixes))
+
 // ResourceID проверяет, что resource-id синтаксически валиден — начинается с
-// известного 3-символьного prefix Kachō (см. resourceIDPrefixes). Пустой id —
-// пропускается (required-проверка / transcoding-роутинг — отдельно).
+// известного prefix Kachō в ОДНОЙ из двух форм (B3, redesign-2026):
+//
+//   - legacy слитная форма "<prefix><17-crockford-base32>" — первые 3 символа ∈
+//     resourceIDPrefixes (`net…`, `epd…`, `acb…`);
+//   - going-forward hyphen-форма "<prefix>-<crockford-base32>" — сегмент ДО
+//     первого дефиса ∈ hyphenResourceIDPrefixes (`ins-…`, `ns-…`, `mt-…`).
+//
+// Крокфорд-тело дефис не содержит, поэтому наличие дефиса — однозначный сигнал
+// новой формы; классификация **строго аддитивна** — legacy-поведение не
+// меняется (hyphen-приём только ДОБАВЛЯЕТ acceptance, а не отзывает). Сервисы
+// мигрируют свой prefix по одному, поэтому router обязан принимать обе формы в
+// переходный период. Пустой id — пропускается (required-проверка /
+// transcoding-роутинг — отдельно).
 //
 // Контракт: на malformed / нераспознанный resource-id мутирующие и read-RPC
 // отдают sync `InvalidArgument` с flat-message `"invalid <resourceType> id '<id>'"`
@@ -393,6 +457,14 @@ func ResourceID(resourceType, expectedPrefix, id string) error {
 	if id == "" {
 		return nil
 	}
+	// Going-forward hyphen-форма (аддитивно): сегмент до первого дефиса ∈ канон.
+	// hy>0 отсекает id, начинающийся с дефиса (пустой prefix).
+	if hy := strings.IndexByte(id, '-'); hy > 0 {
+		if _, ok := hyphenResourceIDPrefixes[id[:hy]]; ok {
+			return nil
+		}
+	}
+	// Legacy слитная форма (без изменений): первые 3 символа ∈ канон.
 	if len(id) >= 3 {
 		if _, ok := resourceIDPrefixes[id[:3]]; ok {
 			return nil

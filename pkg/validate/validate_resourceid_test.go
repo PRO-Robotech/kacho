@@ -163,3 +163,87 @@ func TestResourceID_EmptyPasses(t *testing.T) {
 		t.Errorf("ResourceID(_, _, \"\") = %v, want nil", err)
 	}
 }
+
+// TestResourceID_HyphenFormClassified — B3 (redesign-2026): the router must
+// classify the going-forward hyphen form "<prefix>-<crockford-base32>"
+// (e.g. "ins-…", "ns-…") ALONGSIDE the legacy 3-char concatenated form
+// ("net…"), because services migrate their id prefix one at a time in their own
+// redesign. The crockford body never contains '-', so a hyphen is an
+// unambiguous signal of the new form; the prefix is the segment before the
+// first hyphen and MAY be 2 chars (`ns`/`mt`/`vt`) — not the fixed-3 legacy
+// shape. Acceptance is family-agnostic (prefix known ⇒ ok, body not validated
+// here).
+func TestResourceID_HyphenFormClassified(t *testing.T) {
+	body := strings.Repeat("0", 17)
+	accepted := []struct {
+		name   string
+		prefix string
+	}{
+		// compute going-forward canon
+		{"instance", "ins"},
+		{"machine type", "mt"},
+		{"placement group", "plg"},
+		{"volume type", "vt"},
+		// storage
+		{"image", "img"},
+		// registry
+		{"namespace", "ns"},
+		// iam (invitation is new; acc/prj also valid in hyphen form)
+		{"invitation", "inv"},
+		{"account", "acc"},
+	}
+	for _, tc := range accepted {
+		t.Run("accept/"+tc.name, func(t *testing.T) {
+			id := tc.prefix + "-" + body
+			if err := ResourceID(tc.name, tc.prefix, id); err != nil {
+				t.Errorf("ResourceID(%q, _, %q) = %v, want nil (well-formed hyphen-prefix id)", tc.name, id, err)
+			}
+		})
+	}
+
+	// Hyphen form with an UNKNOWN prefix segment is rejected with the flat
+	// contract message — a hyphen alone does not launder an unknown family.
+	rejected := []struct {
+		name string
+		id   string
+	}{
+		{"unknown hyphen prefix", "zzz-" + body},
+		{"leading hyphen (empty prefix)", "-" + body},
+		{"two-char unknown", "qq-" + body},
+	}
+	for _, tc := range rejected {
+		t.Run("reject/"+tc.name, func(t *testing.T) {
+			err := ResourceID("resource", "ins", tc.id)
+			if err == nil {
+				t.Fatalf("ResourceID(_, _, %q) = nil, want InvalidArgument", tc.id)
+			}
+			if got := status.Code(err); got != codes.InvalidArgument {
+				t.Fatalf("ResourceID(_, _, %q) code = %v, want InvalidArgument", tc.id, got)
+			}
+			if msg := status.Convert(err).Message(); !strings.Contains(msg, "invalid resource id") {
+				t.Errorf("ResourceID(_, _, %q) message = %q, want contains %q", tc.id, msg, "invalid resource id")
+			}
+		})
+	}
+}
+
+// TestResourceID_LegacyFormUnaffectedByHyphenSupport — regression guard: adding
+// hyphen-form acceptance must be strictly ADDITIVE. Legacy concatenated ids
+// (no hyphen) keep classifying by their first 3 chars, and a legacy-prefixed
+// string that happens to carry a hyphen still resolves via the legacy 3-char
+// fallback (no real id ever carries a hyphen, so this only affects malformed
+// probes — none regress to a false reject).
+func TestResourceID_LegacyFormUnaffectedByHyphenSupport(t *testing.T) {
+	body := strings.Repeat("0", 17)
+	for _, p := range []string{"net", "sub", "epd", "nlb", "acb"} {
+		id := p + body
+		if err := ResourceID("legacy", p, id); err != nil {
+			t.Errorf("legacy ResourceID(_, _, %q) = %v, want nil", id, err)
+		}
+	}
+	// Legacy 3-char prefix followed by a hyphen still accepted via the legacy
+	// fallback (family-agnostic, body not validated) — no regression.
+	if err := ResourceID("legacy-hyphen", "net", "net-"+body); err != nil {
+		t.Errorf("ResourceID(_, _, %q) = %v, want nil (legacy 3-char fallback)", "net-"+body, err)
+	}
+}
