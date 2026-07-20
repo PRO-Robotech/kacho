@@ -604,6 +604,97 @@ func (r *DiskTypeRepo) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+// ---- MachineTypeRepo ----
+
+// MachineTypeRepo — in-memory MachineTypeRepo (COMP-1 F7). Enforces UNIQUE(name)
+// on Insert (mirrors the DB-backstop → ports.ErrAlreadyExists) and supports the
+// name=/family=/minGpus= filters. No cursor pagination (unit-level).
+type MachineTypeRepo struct {
+	mu   sync.Mutex
+	data map[string]*domain.MachineType
+}
+
+// NewMachineTypeRepo создаёт пустой MachineTypeRepo.
+func NewMachineTypeRepo() *MachineTypeRepo {
+	return &MachineTypeRepo{data: make(map[string]*domain.MachineType)}
+}
+
+// Seed добавляет запись напрямую (для теста-фикстуры), минуя Insert-валидацию.
+func (r *MachineTypeRepo) Seed(mt *domain.MachineType) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.data[mt.ID] = mt
+}
+
+// Get возвращает machine-type по id.
+func (r *MachineTypeRepo) Get(_ context.Context, id string) (*domain.MachineType, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	mt, ok := r.data[id]
+	if !ok {
+		return nil, ports.ErrNotFound
+	}
+	return mt, nil
+}
+
+// List возвращает machine-type с whitelist-фильтрами (name=/family=/minGpus=).
+func (r *MachineTypeRepo) List(_ context.Context, f ports.MachineTypeFilter, _ ports.Pagination) ([]*domain.MachineType, string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*domain.MachineType
+	for _, mt := range r.data {
+		if f.Name != "" && mt.Name != f.Name {
+			continue
+		}
+		if f.Family != domain.MachineTypeFamilyUnspecified && mt.Family != f.Family {
+			continue
+		}
+		if f.MinGPUs > 0 && mt.EffectiveResources.GPUs < f.MinGPUs {
+			continue
+		}
+		out = append(out, mt)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, "", nil
+}
+
+// Insert вставляет machine-type (UNIQUE(name) → ErrAlreadyExists).
+func (r *MachineTypeRepo) Insert(_ context.Context, mt *domain.MachineType) (*domain.MachineType, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, existing := range r.data {
+		if existing.Name == mt.Name {
+			return nil, ports.ErrAlreadyExists
+		}
+	}
+	r.data[mt.ID] = mt
+	return mt, nil
+}
+
+// Update обновляет machine-type (id отсутствует → ErrNotFound).
+func (r *MachineTypeRepo) Update(_ context.Context, mt *domain.MachineType) (*domain.MachineType, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.data[mt.ID]; !ok {
+		return nil, ports.ErrNotFound
+	}
+	r.data[mt.ID] = mt
+	return mt, nil
+}
+
+// Delete удаляет machine-type (id отсутствует → ErrNotFound).
+func (r *MachineTypeRepo) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.data[id]; !ok {
+		return ports.ErrNotFound
+	}
+	delete(r.data, id)
+	return nil
+}
+
+var _ ports.MachineTypeRepo = (*MachineTypeRepo)(nil)
+
 // ---- ZoneRegistry ----
 
 // ZoneRegistry — in-memory ports.ZoneRegistry (zone_id existence-check для

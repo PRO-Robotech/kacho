@@ -77,11 +77,12 @@ func main() {
 
 // services — собранный набор бизнес-сервисов (composition-point).
 type services struct {
-	disk     *service.DiskService
-	image    *service.ImageService
-	snapshot *service.SnapshotService
-	diskType *service.DiskTypeService
-	instance *service.InstanceService
+	disk        *service.DiskService
+	image       *service.ImageService
+	snapshot    *service.SnapshotService
+	diskType    *service.DiskTypeService
+	machineType *service.MachineTypeService
+	instance    *service.InstanceService
 }
 
 func runServe(cfg config.Config) error {
@@ -796,14 +797,16 @@ func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZ
 	snapshotRepo := repo.NewSnapshotRepo(pool)
 	instanceRepo := repo.NewInstanceRepo(pool)
 	diskTypeRepo := repo.NewDiskTypeRepo(pool)
+	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
 	diskTypeSvc := service.NewDiskTypeService(diskTypeRepo)
 	return &services{
-		disk:     service.NewDiskService(diskRepo, imageRepo, snapshotRepo, diskTypeRepo, geoZones, projectClient, opsRepo),
-		image:    service.NewImageService(imageRepo, diskRepo, snapshotRepo, projectClient, opsRepo),
-		snapshot: service.NewSnapshotService(snapshotRepo, diskRepo, projectClient, opsRepo),
-		diskType: diskTypeSvc,
-		instance: service.NewInstanceService(instanceRepo, geoZones, projectClient, nicClient, storageClient, opsRepo),
+		disk:        service.NewDiskService(diskRepo, imageRepo, snapshotRepo, diskTypeRepo, geoZones, projectClient, opsRepo),
+		image:       service.NewImageService(imageRepo, diskRepo, snapshotRepo, projectClient, opsRepo),
+		snapshot:    service.NewSnapshotService(snapshotRepo, diskRepo, projectClient, opsRepo),
+		diskType:    diskTypeSvc,
+		machineType: service.NewMachineTypeService(machineTypeRepo, opsRepo),
+		instance:    service.NewInstanceService(instanceRepo, geoZones, projectClient, nicClient, storageClient, opsRepo),
 	}
 }
 
@@ -819,6 +822,7 @@ func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations
 	computev1.RegisterImageServiceServer(srv, handler.NewImageHandler(svcs.image, listFilter))
 	computev1.RegisterSnapshotServiceServer(srv, handler.NewSnapshotHandler(svcs.snapshot, listFilter))
 	computev1.RegisterDiskTypeServiceServer(srv, handler.NewDiskTypeHandler(svcs.diskType))
+	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
@@ -954,4 +958,5 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int) {
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams))
 	computev1.RegisterInternalDiskTypeServiceServer(srv, handler.NewInternalDiskTypeHandler(svcs.diskType))
+	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 }

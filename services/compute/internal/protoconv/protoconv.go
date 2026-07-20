@@ -97,6 +97,28 @@ func Snapshot(s *domain.Snapshot) *computev1.Snapshot {
 	}
 }
 
+// MachineType конвертирует domain.MachineType → computev1.MachineType (COMP-1 F7).
+// effective_resources / available_zones — output-only зеркала; created_at усечён
+// до секунд (конвенция Kachō).
+func MachineType(mt *domain.MachineType) *computev1.MachineType {
+	return &computev1.MachineType{
+		Id:          mt.ID,
+		Name:        mt.Name,
+		Description: mt.Description,
+		Family:      computev1.MachineType_Family(mt.Family), // #nosec G115 -- domain.MachineTypeFamily зеркалит computev1.MachineType_Family (малые константы)
+		EffectiveResources: &computev1.EffectiveResources{
+			VCpu:      mt.EffectiveResources.VCPU,
+			MemoryMib: mt.EffectiveResources.MemoryMiB,
+			Gpus:      mt.EffectiveResources.GPUs,
+			GpuType:   mt.EffectiveResources.GPUType,
+		},
+		AvailableZones: mt.AvailableZones,
+		Status:         computev1.MachineType_Status(mt.Status), // #nosec G115 -- domain.MachineTypeStatus зеркалит computev1.MachineType_Status
+		Labels:         mt.Labels,
+		CreatedAt:      ts(mt.CreatedAt),
+	}
+}
+
 // DiskType конвертирует domain.DiskType → computev1.DiskType.
 func DiskType(t *domain.DiskType) *computev1.DiskType {
 	return &computev1.DiskType{

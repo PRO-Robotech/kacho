@@ -157,6 +157,30 @@ type InstanceRepo interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// MachineTypeFilter — фильтр для списка machine-type (COMP-1 F7/F19). Ambient
+// cluster-scoped каталог: НЕТ AllowedIDs (listauthz row-filter не применяется —
+// read ambient, project-scope EXEMPT). Whitelist: name=/family=/minGpus=.
+type MachineTypeFilter struct {
+	// Name — точное имя (напр. "std-v3-2"). Пусто → без фильтра.
+	Name string
+	// Family — класс; MachineTypeFamilyUnspecified (0) → без фильтра.
+	Family domain.MachineTypeFamily
+	// MinGPUs — минимум GPU (напр. 4); 0 → без фильтра.
+	MinGPUs int32
+}
+
+// MachineTypeRepo — port-интерфейс каталога machine-type (read + admin CRUD).
+// Ambient cluster-каталог: List без AllowedIDs. Insert/Update/Delete — admin-only
+// (InternalMachineTypeService). Update принимает merged domain-объект (full-row
+// upsert, паритет с DiskType admin-каталогом — admin-only, low-concurrency).
+type MachineTypeRepo interface {
+	Get(ctx context.Context, id string) (*domain.MachineType, error)
+	List(ctx context.Context, f MachineTypeFilter, p Pagination) ([]*domain.MachineType, string, error)
+	Insert(ctx context.Context, mt *domain.MachineType) (*domain.MachineType, error)
+	Update(ctx context.Context, mt *domain.MachineType) (*domain.MachineType, error)
+	Delete(ctx context.Context, id string) error
+}
+
 // DiskTypeRepo — port-интерфейс репозитория типов дисков (read + admin CRUD).
 type DiskTypeRepo interface {
 	Get(ctx context.Context, id string) (*domain.DiskType, error)
