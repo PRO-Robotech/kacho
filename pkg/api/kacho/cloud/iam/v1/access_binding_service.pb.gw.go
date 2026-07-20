@@ -501,6 +501,51 @@ func local_request_AccessBindingService_ListOperations_0(ctx context.Context, ma
 	return msg, metadata, err
 }
 
+func request_AccessBindingService_Revoke_0(ctx context.Context, marshaler runtime.Marshaler, client AccessBindingServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq RevokeAccessBindingRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["access_binding_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "access_binding_id")
+	}
+	protoReq.AccessBindingId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "access_binding_id", err)
+	}
+	msg, err := client.Revoke(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_AccessBindingService_Revoke_0(ctx context.Context, marshaler runtime.Marshaler, server AccessBindingServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq RevokeAccessBindingRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["access_binding_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "access_binding_id")
+	}
+	protoReq.AccessBindingId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "access_binding_id", err)
+	}
+	msg, err := server.Revoke(ctx, &protoReq)
+	return msg, metadata, err
+}
+
 // RegisterAccessBindingServiceHandlerServer registers the http handlers for service AccessBindingService to "mux".
 // UnaryRPC     :call AccessBindingServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -747,6 +792,26 @@ func RegisterAccessBindingServiceHandlerServer(ctx context.Context, mux *runtime
 		}
 		forward_AccessBindingService_ListOperations_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPost, pattern_AccessBindingService_Revoke_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.AccessBindingService/Revoke", runtime.WithHTTPPathPattern("/iam/v1/accessBindings/{access_binding_id}:revoke"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_AccessBindingService_Revoke_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_AccessBindingService_Revoke_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 
 	return nil
 }
@@ -991,6 +1056,23 @@ func RegisterAccessBindingServiceHandlerClient(ctx context.Context, mux *runtime
 		}
 		forward_AccessBindingService_ListOperations_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPost, pattern_AccessBindingService_Revoke_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.AccessBindingService/Revoke", runtime.WithHTTPPathPattern("/iam/v1/accessBindings/{access_binding_id}:revoke"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_AccessBindingService_Revoke_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_AccessBindingService_Revoke_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	return nil
 }
 
@@ -1007,6 +1089,7 @@ var (
 	pattern_AccessBindingService_ExpandAccess_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"iam", "v1", "accessBindings"}, "expandAccess"))
 	pattern_AccessBindingService_ListByAccount_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"iam", "v1", "accounts", "account_id", "accessBindings"}, ""))
 	pattern_AccessBindingService_ListOperations_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"iam", "v1", "accessBindings", "access_binding_id", "operations"}, ""))
+	pattern_AccessBindingService_Revoke_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"iam", "v1", "accessBindings", "access_binding_id"}, "revoke"))
 )
 
 var (
@@ -1022,4 +1105,5 @@ var (
 	forward_AccessBindingService_ExpandAccess_0          = runtime.ForwardResponseMessage
 	forward_AccessBindingService_ListByAccount_0         = runtime.ForwardResponseMessage
 	forward_AccessBindingService_ListOperations_0        = runtime.ForwardResponseMessage
+	forward_AccessBindingService_Revoke_0                = runtime.ForwardResponseMessage
 )

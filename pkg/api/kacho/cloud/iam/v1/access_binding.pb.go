@@ -788,6 +788,61 @@ func (x *UpdateAccessBindingMetadata) GetAccountId() string {
 	return ""
 }
 
+type RevokeAccessBindingMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the AccessBinding that is being soft-revoked (status ACTIVE→REVOKED).
+	AccessBindingId string `protobuf:"bytes,1,opt,name=access_binding_id,json=accessBindingId,proto3" json:"access_binding_id,omitempty"`
+	// ID of the owning Account (denormalized; non-first, populated only for
+	// account-scoped bindings — see CreateAccessBindingMetadata).
+	AccountId     string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeAccessBindingMetadata) Reset() {
+	*x = RevokeAccessBindingMetadata{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeAccessBindingMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeAccessBindingMetadata) ProtoMessage() {}
+
+func (x *RevokeAccessBindingMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeAccessBindingMetadata.ProtoReflect.Descriptor instead.
+func (*RevokeAccessBindingMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *RevokeAccessBindingMetadata) GetAccessBindingId() string {
+	if x != nil {
+		return x.AccessBindingId
+	}
+	return ""
+}
+
+func (x *RevokeAccessBindingMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 var File_kacho_cloud_iam_v1_access_binding_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
@@ -851,6 +906,10 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\x1bUpdateAccessBindingMetadata\x12*\n" +
 	"\x11access_binding_id\x18\x01 \x01(\tR\x0faccessBindingId\x12\x1d\n" +
 	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"h\n" +
+	"\x1bRevokeAccessBindingMetadata\x12*\n" +
+	"\x11access_binding_id\x18\x01 \x01(\tR\x0faccessBindingId\x12\x1d\n" +
+	"\n" +
 	"account_id\x18\x02 \x01(\tR\taccountId*|\n" +
 	"\vSubjectType\x12\x1c\n" +
 	"\x18SUBJECT_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
@@ -871,7 +930,7 @@ func file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_access_binding_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_kacho_cloud_iam_v1_access_binding_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_kacho_cloud_iam_v1_access_binding_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_iam_v1_access_binding_proto_goTypes = []any{
 	(SubjectType)(0),                    // 0: kacho.cloud.iam.v1.SubjectType
 	(AccessBinding_Status)(0),           // 1: kacho.cloud.iam.v1.AccessBinding.Status
@@ -882,20 +941,21 @@ var file_kacho_cloud_iam_v1_access_binding_proto_goTypes = []any{
 	(*CreateAccessBindingMetadata)(nil), // 6: kacho.cloud.iam.v1.CreateAccessBindingMetadata
 	(*DeleteAccessBindingMetadata)(nil), // 7: kacho.cloud.iam.v1.DeleteAccessBindingMetadata
 	(*UpdateAccessBindingMetadata)(nil), // 8: kacho.cloud.iam.v1.UpdateAccessBindingMetadata
-	nil,                                 // 9: kacho.cloud.iam.v1.AccessBinding.LabelsEntry
-	(*timestamppb.Timestamp)(nil),       // 10: google.protobuf.Timestamp
-	(BuiltinCondition)(0),               // 11: kacho.cloud.iam.v1.BuiltinCondition
+	(*RevokeAccessBindingMetadata)(nil), // 9: kacho.cloud.iam.v1.RevokeAccessBindingMetadata
+	nil,                                 // 10: kacho.cloud.iam.v1.AccessBinding.LabelsEntry
+	(*timestamppb.Timestamp)(nil),       // 11: google.protobuf.Timestamp
+	(BuiltinCondition)(0),               // 12: kacho.cloud.iam.v1.BuiltinCondition
 }
 var file_kacho_cloud_iam_v1_access_binding_proto_depIdxs = []int32{
-	10, // 0: kacho.cloud.iam.v1.AccessBinding.created_at:type_name -> google.protobuf.Timestamp
+	11, // 0: kacho.cloud.iam.v1.AccessBinding.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: kacho.cloud.iam.v1.AccessBinding.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
-	10, // 2: kacho.cloud.iam.v1.AccessBinding.expires_at:type_name -> google.protobuf.Timestamp
-	10, // 3: kacho.cloud.iam.v1.AccessBinding.revoked_at:type_name -> google.protobuf.Timestamp
-	11, // 4: kacho.cloud.iam.v1.AccessBinding.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
+	11, // 2: kacho.cloud.iam.v1.AccessBinding.expires_at:type_name -> google.protobuf.Timestamp
+	11, // 3: kacho.cloud.iam.v1.AccessBinding.revoked_at:type_name -> google.protobuf.Timestamp
+	12, // 4: kacho.cloud.iam.v1.AccessBinding.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
 	2,  // 5: kacho.cloud.iam.v1.AccessBinding.scope:type_name -> kacho.cloud.iam.v1.AccessBinding.Scope
 	5,  // 6: kacho.cloud.iam.v1.AccessBinding.scope_ref:type_name -> kacho.cloud.iam.v1.ScopeRef
 	4,  // 7: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
-	9,  // 8: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
+	10, // 8: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
 	0,  // 9: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
 	2,  // 10: kacho.cloud.iam.v1.ScopeRef.tier:type_name -> kacho.cloud.iam.v1.AccessBinding.Scope
 	11, // [11:11] is the sub-list for method output_type
@@ -917,7 +977,7 @@ func file_kacho_cloud_iam_v1_access_binding_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_access_binding_proto_rawDesc), len(file_kacho_cloud_iam_v1_access_binding_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

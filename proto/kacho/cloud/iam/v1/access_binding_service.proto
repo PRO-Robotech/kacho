@@ -281,6 +281,38 @@ service AccessBindingService {
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
 
+  // Soft-revokes the specified access binding (redesign-2026 F10 IAM-1-28).
+  //
+  // Two distinct removal outcomes coexist (product-spine parity):
+  //   - Delete = HARD: the row is physically removed; a subsequent Get → NOT_FOUND.
+  //   - Revoke = SOFT: the row is RETAINED with status transitioned ACTIVE→REVOKED
+  //     (terminal), revoked_at / revoked_by_user_id set for audit-retention; a
+  //     subsequent Get still returns the row (status=REVOKED). Either way the
+  //     emitted FGA-tuple set (persisted access_binding_emitted_tuples ledger) is
+  //     removed in the same writer-tx, so access is denied once the Operation is
+  //     done. Re-granting the same (subject, role, scope) after a revoke yields a
+  //     NEW ACTIVE row (the partial active-grant UNIQUE excludes revoked rows).
+  //
+  // deletion_protection is honored (owner auto-binding): revoking a protected
+  // binding is rejected sync FAILED_PRECONDITION plus an atomic CAS-backstop
+  // (`UPDATE … WHERE status='ACTIVE' AND deletion_protection=false`) against
+  // TOCTOU — clear the flag via Update first, exactly like Delete.
+  // Async (returns Operation), like the other mutations.
+  rpc Revoke (RevokeAccessBindingRequest) returns (operation.Operation) {
+    option (google.api.http) = { post: "/iam/v1/accessBindings/{access_binding_id}:revoke" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "RevokeAccessBindingMetadata"
+      response: "AccessBinding"
+    };
+    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings.revoke";
+    option (kacho.iam.authz.v1.required_relation) = "v_delete";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "iam_access_binding"
+      from_request_field: "access_binding_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
 }
 
 message GetAccessBindingRequest {
@@ -372,6 +404,11 @@ message CreateAccessBindingRequest {
 
 message DeleteAccessBindingRequest {
   // ID of the AccessBinding resource to delete.
+  string access_binding_id = 1 [(required) = true, (length) = "<=20"];
+}
+
+message RevokeAccessBindingRequest {
+  // ID of the AccessBinding resource to soft-revoke (status ACTIVE→REVOKED).
   string access_binding_id = 1 [(required) = true, (length) = "<=20"];
 }
 

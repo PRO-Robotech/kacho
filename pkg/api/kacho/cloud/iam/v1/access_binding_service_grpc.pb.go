@@ -35,6 +35,7 @@ const (
 	AccessBindingService_ExpandAccess_FullMethodName          = "/kacho.cloud.iam.v1.AccessBindingService/ExpandAccess"
 	AccessBindingService_ListByAccount_FullMethodName         = "/kacho.cloud.iam.v1.AccessBindingService/ListByAccount"
 	AccessBindingService_ListOperations_FullMethodName        = "/kacho.cloud.iam.v1.AccessBindingService/ListOperations"
+	AccessBindingService_Revoke_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Revoke"
 )
 
 // AccessBindingServiceClient is the client API for AccessBindingService service.
@@ -156,6 +157,24 @@ type AccessBindingServiceClient interface {
 	ListByAccount(ctx context.Context, in *ListAccessBindingsByAccountRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(ctx context.Context, in *ListAccessBindingOperationsRequest, opts ...grpc.CallOption) (*ListAccessBindingOperationsResponse, error)
+	// Soft-revokes the specified access binding (redesign-2026 F10 IAM-1-28).
+	//
+	// Two distinct removal outcomes coexist (product-spine parity):
+	//   - Delete = HARD: the row is physically removed; a subsequent Get → NOT_FOUND.
+	//   - Revoke = SOFT: the row is RETAINED with status transitioned ACTIVE→REVOKED
+	//     (terminal), revoked_at / revoked_by_user_id set for audit-retention; a
+	//     subsequent Get still returns the row (status=REVOKED). Either way the
+	//     emitted FGA-tuple set (persisted access_binding_emitted_tuples ledger) is
+	//     removed in the same writer-tx, so access is denied once the Operation is
+	//     done. Re-granting the same (subject, role, scope) after a revoke yields a
+	//     NEW ACTIVE row (the partial active-grant UNIQUE excludes revoked rows).
+	//
+	// deletion_protection is honored (owner auto-binding): revoking a protected
+	// binding is rejected sync FAILED_PRECONDITION plus an atomic CAS-backstop
+	// (`UPDATE … WHERE status='ACTIVE' AND deletion_protection=false`) against
+	// TOCTOU — clear the flag via Update first, exactly like Delete.
+	// Async (returns Operation), like the other mutations.
+	Revoke(ctx context.Context, in *RevokeAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type accessBindingServiceClient struct {
@@ -286,6 +305,16 @@ func (c *accessBindingServiceClient) ListOperations(ctx context.Context, in *Lis
 	return out, nil
 }
 
+func (c *accessBindingServiceClient) Revoke(ctx context.Context, in *RevokeAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, AccessBindingService_Revoke_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AccessBindingServiceServer is the server API for AccessBindingService service.
 // All implementations must embed UnimplementedAccessBindingServiceServer
 // for forward compatibility.
@@ -405,6 +434,24 @@ type AccessBindingServiceServer interface {
 	ListByAccount(context.Context, *ListAccessBindingsByAccountRequest) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(context.Context, *ListAccessBindingOperationsRequest) (*ListAccessBindingOperationsResponse, error)
+	// Soft-revokes the specified access binding (redesign-2026 F10 IAM-1-28).
+	//
+	// Two distinct removal outcomes coexist (product-spine parity):
+	//   - Delete = HARD: the row is physically removed; a subsequent Get → NOT_FOUND.
+	//   - Revoke = SOFT: the row is RETAINED with status transitioned ACTIVE→REVOKED
+	//     (terminal), revoked_at / revoked_by_user_id set for audit-retention; a
+	//     subsequent Get still returns the row (status=REVOKED). Either way the
+	//     emitted FGA-tuple set (persisted access_binding_emitted_tuples ledger) is
+	//     removed in the same writer-tx, so access is denied once the Operation is
+	//     done. Re-granting the same (subject, role, scope) after a revoke yields a
+	//     NEW ACTIVE row (the partial active-grant UNIQUE excludes revoked rows).
+	//
+	// deletion_protection is honored (owner auto-binding): revoking a protected
+	// binding is rejected sync FAILED_PRECONDITION plus an atomic CAS-backstop
+	// (`UPDATE … WHERE status='ACTIVE' AND deletion_protection=false`) against
+	// TOCTOU — clear the flag via Update first, exactly like Delete.
+	// Async (returns Operation), like the other mutations.
+	Revoke(context.Context, *RevokeAccessBindingRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedAccessBindingServiceServer()
 }
 
@@ -450,6 +497,9 @@ func (UnimplementedAccessBindingServiceServer) ListByAccount(context.Context, *L
 }
 func (UnimplementedAccessBindingServiceServer) ListOperations(context.Context, *ListAccessBindingOperationsRequest) (*ListAccessBindingOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
+}
+func (UnimplementedAccessBindingServiceServer) Revoke(context.Context, *RevokeAccessBindingRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Revoke not implemented")
 }
 func (UnimplementedAccessBindingServiceServer) mustEmbedUnimplementedAccessBindingServiceServer() {}
 func (UnimplementedAccessBindingServiceServer) testEmbeddedByValue()                              {}
@@ -688,6 +738,24 @@ func _AccessBindingService_ListOperations_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AccessBindingService_Revoke_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeAccessBindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessBindingServiceServer).Revoke(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessBindingService_Revoke_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessBindingServiceServer).Revoke(ctx, req.(*RevokeAccessBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AccessBindingService_ServiceDesc is the grpc.ServiceDesc for AccessBindingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -742,6 +810,10 @@ var AccessBindingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOperations",
 			Handler:    _AccessBindingService_ListOperations_Handler,
+		},
+		{
+			MethodName: "Revoke",
+			Handler:    _AccessBindingService_Revoke_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

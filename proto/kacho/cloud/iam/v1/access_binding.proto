@@ -267,3 +267,12 @@ message UpdateAccessBindingMetadata {
   // account-scoped bindings — see CreateAccessBindingMetadata).
   string account_id = 2;
 }
+
+message RevokeAccessBindingMetadata {
+  // ID of the AccessBinding that is being soft-revoked (status ACTIVE→REVOKED).
+  string access_binding_id = 1;
+
+  // ID of the owning Account (denormalized; non-first, populated only for
+  // account-scoped bindings — see CreateAccessBindingMetadata).
+  string account_id = 2;
+}
