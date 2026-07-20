@@ -105,13 +105,13 @@ func (u *CreateLoadBalancerUseCase) Execute(
 		return nil, errInvalidArg("region_id", "required")
 	}
 
-	lbType, err := lbTypeFromPb(req.GetType())
-	if err != nil {
-		return nil, err
-	}
-
-	// placement_type ↔ type coupling.
-	placement, err := resolvePlacement(lbType, req.GetPlacementType())
+	// NLB-1b MIGRATE (F2): `placement` is the AUTHORITATIVE input driving the
+	// (type, placement_type) columns. Legacy type/placement_type inputs remain
+	// accepted as a bridge (must be consistent when co-supplied); the full
+	// output-only reject of legacy inputs lands in CONTRACT (NLB-1-08). When
+	// placement is unset the legacy inputs drive (back-compat) and placement is
+	// derived + persisted.
+	lbType, placement, placementMode, err := resolvePlacementAuthoritative(req)
 	if err != nil {
 		return nil, err
 	}
@@ -151,16 +151,8 @@ func (u *CreateLoadBalancerUseCase) Execute(
 	if as := adminStateFromPb(req.GetAdminState()); as != "" {
 		lb.AdminState = as
 	}
-	// NLB-1b EXPAND (additive): merged placement — persisted derived-consistent with
-	// the legacy (type, placement_type). If the client supplies placement it must
-	// match the derived value (in EXPAND type/placement_type stay authoritative);
-	// authority switch (placement drives, legacy inputs rejected) is NLB-1c/MIGRATE.
-	derivedPlacement := domain.PlacementFromTypeAndPlacementType(lbType, placement)
-	if in := placementModeFromPb(req.GetPlacement()); in != "" && in != derivedPlacement {
-		return nil, errInvalidArg("placement",
-			"placement is inconsistent with type/placement_type (placement is derived from type/placement_type in NLB-1b)")
-	}
-	lb.Placement = derivedPlacement
+	// NLB-1b MIGRATE (F2): placement is authoritative — persisted as resolved above.
+	lb.Placement = placementMode
 	// ip_families — заявленные семейства VIP (проставляются ДО Insert-handle:
 	// family-guard CHECK требует семейство в ip_families прежде чем persist-VIP
 	// запишет непустой address).
