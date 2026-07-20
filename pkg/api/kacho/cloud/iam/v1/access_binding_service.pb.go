@@ -537,6 +537,74 @@ func (x *UpdateAccessBindingRequest) GetLabels() map[string]string {
 	return nil
 }
 
+type ListAccessBindingsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The maximum number of results per page to return. Default 100; >1000 →
+	// INVALID_ARGUMENT (rejected, not clamped).
+	PageSize int64 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. A malformed token → INVALID_ARGUMENT (validated before the
+	// listauthz row-filter).
+	PageToken string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Optional whitelist filter expression (redesign-2026 F11). Exactly one
+	// predicate of the form `<key>="<value>"`, key ∈ {subject, role, scope, scopeId}
+	// (`scope` is the dotted scope-type `iam.account|iam.project|iam.cluster`). An
+	// unknown key → INVALID_ARGUMENT. Empty → no filter (all visible bindings).
+	Filter        string `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAccessBindingsRequest) Reset() {
+	*x = ListAccessBindingsRequest{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAccessBindingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAccessBindingsRequest) ProtoMessage() {}
+
+func (x *ListAccessBindingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAccessBindingsRequest.ProtoReflect.Descriptor instead.
+func (*ListAccessBindingsRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListAccessBindingsRequest) GetPageSize() int64 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListAccessBindingsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+func (x *ListAccessBindingsRequest) GetFilter() string {
+	if x != nil {
+		return x.Filter
+	}
+	return ""
+}
+
 type ListAccessBindingsByScopeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Тип resource'а ("account" | "project" | т.п.).
@@ -553,7 +621,7 @@ type ListAccessBindingsByScopeRequest struct {
 
 func (x *ListAccessBindingsByScopeRequest) Reset() {
 	*x = ListAccessBindingsByScopeRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -565,7 +633,7 @@ func (x *ListAccessBindingsByScopeRequest) String() string {
 func (*ListAccessBindingsByScopeRequest) ProtoMessage() {}
 
 func (x *ListAccessBindingsByScopeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -578,7 +646,7 @@ func (x *ListAccessBindingsByScopeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccessBindingsByScopeRequest.ProtoReflect.Descriptor instead.
 func (*ListAccessBindingsByScopeRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListAccessBindingsByScopeRequest) GetResourceType() string {
@@ -625,7 +693,7 @@ type ListAccessBindingsBySubjectRequest struct {
 
 func (x *ListAccessBindingsBySubjectRequest) Reset() {
 	*x = ListAccessBindingsBySubjectRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -637,7 +705,7 @@ func (x *ListAccessBindingsBySubjectRequest) String() string {
 func (*ListAccessBindingsBySubjectRequest) ProtoMessage() {}
 
 func (x *ListAccessBindingsBySubjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -650,7 +718,7 @@ func (x *ListAccessBindingsBySubjectRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ListAccessBindingsBySubjectRequest.ProtoReflect.Descriptor instead.
 func (*ListAccessBindingsBySubjectRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListAccessBindingsBySubjectRequest) GetSubjectType() string {
@@ -703,7 +771,7 @@ type ListAccessBindingsByAccountRequest struct {
 
 func (x *ListAccessBindingsByAccountRequest) Reset() {
 	*x = ListAccessBindingsByAccountRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -715,7 +783,7 @@ func (x *ListAccessBindingsByAccountRequest) String() string {
 func (*ListAccessBindingsByAccountRequest) ProtoMessage() {}
 
 func (x *ListAccessBindingsByAccountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -728,7 +796,7 @@ func (x *ListAccessBindingsByAccountRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ListAccessBindingsByAccountRequest.ProtoReflect.Descriptor instead.
 func (*ListAccessBindingsByAccountRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListAccessBindingsByAccountRequest) GetAccountId() string {
@@ -778,7 +846,7 @@ type ListAccessBindingsResponse struct {
 
 func (x *ListAccessBindingsResponse) Reset() {
 	*x = ListAccessBindingsResponse{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -790,7 +858,7 @@ func (x *ListAccessBindingsResponse) String() string {
 func (*ListAccessBindingsResponse) ProtoMessage() {}
 
 func (x *ListAccessBindingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -803,7 +871,7 @@ func (x *ListAccessBindingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccessBindingsResponse.ProtoReflect.Descriptor instead.
 func (*ListAccessBindingsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListAccessBindingsResponse) GetAccessBindings() []*AccessBinding {
@@ -834,7 +902,7 @@ type ListAccessBindingOperationsRequest struct {
 
 func (x *ListAccessBindingOperationsRequest) Reset() {
 	*x = ListAccessBindingOperationsRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -846,7 +914,7 @@ func (x *ListAccessBindingOperationsRequest) String() string {
 func (*ListAccessBindingOperationsRequest) ProtoMessage() {}
 
 func (x *ListAccessBindingOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -859,7 +927,7 @@ func (x *ListAccessBindingOperationsRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ListAccessBindingOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListAccessBindingOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListAccessBindingOperationsRequest) GetAccessBindingId() string {
@@ -895,7 +963,7 @@ type ListAccessBindingOperationsResponse struct {
 
 func (x *ListAccessBindingOperationsResponse) Reset() {
 	*x = ListAccessBindingOperationsResponse{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -907,7 +975,7 @@ func (x *ListAccessBindingOperationsResponse) String() string {
 func (*ListAccessBindingOperationsResponse) ProtoMessage() {}
 
 func (x *ListAccessBindingOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -920,7 +988,7 @@ func (x *ListAccessBindingOperationsResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ListAccessBindingOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListAccessBindingOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListAccessBindingOperationsResponse) GetOperations() []*operation.Operation {
@@ -956,7 +1024,7 @@ type ListSubjectPrivilegesRequest struct {
 
 func (x *ListSubjectPrivilegesRequest) Reset() {
 	*x = ListSubjectPrivilegesRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -968,7 +1036,7 @@ func (x *ListSubjectPrivilegesRequest) String() string {
 func (*ListSubjectPrivilegesRequest) ProtoMessage() {}
 
 func (x *ListSubjectPrivilegesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -981,7 +1049,7 @@ func (x *ListSubjectPrivilegesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubjectPrivilegesRequest.ProtoReflect.Descriptor instead.
 func (*ListSubjectPrivilegesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{11}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListSubjectPrivilegesRequest) GetSubjectType() string {
@@ -1025,7 +1093,7 @@ type ListSubjectPrivilegesResponse struct {
 
 func (x *ListSubjectPrivilegesResponse) Reset() {
 	*x = ListSubjectPrivilegesResponse{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1037,7 +1105,7 @@ func (x *ListSubjectPrivilegesResponse) String() string {
 func (*ListSubjectPrivilegesResponse) ProtoMessage() {}
 
 func (x *ListSubjectPrivilegesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1050,7 +1118,7 @@ func (x *ListSubjectPrivilegesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubjectPrivilegesResponse.ProtoReflect.Descriptor instead.
 func (*ListSubjectPrivilegesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{12}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListSubjectPrivilegesResponse) GetPrivileges() []*SubjectPrivilege {
@@ -1106,7 +1174,7 @@ type SubjectPrivilege struct {
 
 func (x *SubjectPrivilege) Reset() {
 	*x = SubjectPrivilege{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1118,7 +1186,7 @@ func (x *SubjectPrivilege) String() string {
 func (*SubjectPrivilege) ProtoMessage() {}
 
 func (x *SubjectPrivilege) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1131,7 +1199,7 @@ func (x *SubjectPrivilege) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubjectPrivilege.ProtoReflect.Descriptor instead.
 func (*SubjectPrivilege) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{13}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SubjectPrivilege) GetBindingId() string {
@@ -1230,7 +1298,7 @@ type ListAssignableRolesRequest struct {
 
 func (x *ListAssignableRolesRequest) Reset() {
 	*x = ListAssignableRolesRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1242,7 +1310,7 @@ func (x *ListAssignableRolesRequest) String() string {
 func (*ListAssignableRolesRequest) ProtoMessage() {}
 
 func (x *ListAssignableRolesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1255,7 +1323,7 @@ func (x *ListAssignableRolesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAssignableRolesRequest.ProtoReflect.Descriptor instead.
 func (*ListAssignableRolesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{14}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListAssignableRolesRequest) GetResourceType() string {
@@ -1299,7 +1367,7 @@ type ListAssignableRolesResponse struct {
 
 func (x *ListAssignableRolesResponse) Reset() {
 	*x = ListAssignableRolesResponse{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1311,7 +1379,7 @@ func (x *ListAssignableRolesResponse) String() string {
 func (*ListAssignableRolesResponse) ProtoMessage() {}
 
 func (x *ListAssignableRolesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1324,7 +1392,7 @@ func (x *ListAssignableRolesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAssignableRolesResponse.ProtoReflect.Descriptor instead.
 func (*ListAssignableRolesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{15}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListAssignableRolesResponse) GetRoles() []*AssignableRole {
@@ -1370,7 +1438,7 @@ type AssignableRole struct {
 
 func (x *AssignableRole) Reset() {
 	*x = AssignableRole{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1382,7 +1450,7 @@ func (x *AssignableRole) String() string {
 func (*AssignableRole) ProtoMessage() {}
 
 func (x *AssignableRole) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1395,7 +1463,7 @@ func (x *AssignableRole) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignableRole.ProtoReflect.Descriptor instead.
 func (*AssignableRole) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{16}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *AssignableRole) GetRoleId() string {
@@ -1459,7 +1527,7 @@ type ListAccessBindingsByRoleRequest struct {
 
 func (x *ListAccessBindingsByRoleRequest) Reset() {
 	*x = ListAccessBindingsByRoleRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1471,7 +1539,7 @@ func (x *ListAccessBindingsByRoleRequest) String() string {
 func (*ListAccessBindingsByRoleRequest) ProtoMessage() {}
 
 func (x *ListAccessBindingsByRoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1484,7 +1552,7 @@ func (x *ListAccessBindingsByRoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccessBindingsByRoleRequest.ProtoReflect.Descriptor instead.
 func (*ListAccessBindingsByRoleRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{17}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListAccessBindingsByRoleRequest) GetRoleId() string {
@@ -1540,7 +1608,7 @@ type ExpandAccessRequest struct {
 
 func (x *ExpandAccessRequest) Reset() {
 	*x = ExpandAccessRequest{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[18]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1552,7 +1620,7 @@ func (x *ExpandAccessRequest) String() string {
 func (*ExpandAccessRequest) ProtoMessage() {}
 
 func (x *ExpandAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[18]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1565,7 +1633,7 @@ func (x *ExpandAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpandAccessRequest.ProtoReflect.Descriptor instead.
 func (*ExpandAccessRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{18}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ExpandAccessRequest) GetObjectType() string {
@@ -1610,7 +1678,7 @@ type Principal struct {
 
 func (x *Principal) Reset() {
 	*x = Principal{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[19]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1622,7 +1690,7 @@ func (x *Principal) String() string {
 func (*Principal) ProtoMessage() {}
 
 func (x *Principal) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[19]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1635,7 +1703,7 @@ func (x *Principal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Principal.ProtoReflect.Descriptor instead.
 func (*Principal) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{19}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Principal) GetType() SubjectType {
@@ -1667,7 +1735,7 @@ type ExpandAccessResponse struct {
 
 func (x *ExpandAccessResponse) Reset() {
 	*x = ExpandAccessResponse{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[20]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1679,7 +1747,7 @@ func (x *ExpandAccessResponse) String() string {
 func (*ExpandAccessResponse) ProtoMessage() {}
 
 func (x *ExpandAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[20]
+	mi := &file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1692,7 +1760,7 @@ func (x *ExpandAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpandAccessResponse.ProtoReflect.Descriptor instead.
 func (*ExpandAccessResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{20}
+	return file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ExpandAccessResponse) GetPrincipals() []*Principal {
@@ -1750,7 +1818,14 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\x06labels\x18\x04 \x03(\v2:.kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd7\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x92\x01\n" +
+	"\x19ListAccessBindingsRequest\x12'\n" +
+	"\tpage_size\x18\x01 \x01(\x03B\n" +
+	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
+	"\x06filter\x18\x03 \x01(\tB\n" +
+	"\x8a\xc81\x06<=1000R\x06filter\"\xd7\x01\n" +
 	" ListAccessBindingsByScopeRequest\x121\n" +
 	"\rresource_type\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\fresourceType\x12-\n" +
 	"\vresource_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\n" +
@@ -1876,7 +1951,7 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\n" +
 	"\x06SYSTEM\x10\x01\x12\v\n" +
 	"\aACCOUNT\x10\x02\x12\v\n" +
-	"\aPROJECT\x10\x032\xc5\x1a\n" +
+	"\aPROJECT\x10\x032\x88\x1c\n" +
 	"\x14AccessBindingService\x12\xde\x01\n" +
 	"\x03Get\x12+.kacho.cloud.iam.v1.GetAccessBindingRequest\x1a!.kacho.cloud.iam.v1.AccessBinding\"\x86\x01\x8a\xb5\x18\x17iam.access_bindings.get\x92\xb5\x18\x05v_get\x9a\xb5\x18'\n" +
 	"\x12iam_access_binding\x12\x11access_binding_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02,\x12*/iam/v1/accessBindings/{access_binding_id}\x12\xb9\x01\n" +
@@ -1887,7 +1962,9 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\x1bDeleteAccessBindingMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02,**/iam/v1/accessBindings/{access_binding_id}\x12\x9c\x02\n" +
 	"\x06Update\x12..kacho.cloud.iam.v1.UpdateAccessBindingRequest\x1a .kacho.cloud.operation.Operation\"\xbf\x01\x8a\xb5\x18\x1aiam.access_bindings.update\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
 	"\x12iam_access_binding\x12\x11access_binding_id\xa2\xb5\x18\x012\xb2\xd2*,\n" +
-	"\x1bUpdateAccessBindingMetadata\x12\rAccessBinding\x82\xd3\xe4\x93\x02/:\x01*2*/iam/v1/accessBindings/{access_binding_id}\x12\x88\x02\n" +
+	"\x1bUpdateAccessBindingMetadata\x12\rAccessBinding\x82\xd3\xe4\x93\x02/:\x01*2*/iam/v1/accessBindings/{access_binding_id}\x12\xc0\x01\n" +
+	"\x04List\x12-.kacho.cloud.iam.v1.ListAccessBindingsRequest\x1a..kacho.cloud.iam.v1.ListAccessBindingsResponse\"Y\x8a\xb5\x18\x18iam.access_bindings.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x18\x12\x16/iam/v1/accessBindings\x12\x88\x02\n" +
 	"\vListByScope\x124.kacho.cloud.iam.v1.ListAccessBindingsByScopeRequest\x1a..kacho.cloud.iam.v1.ListAccessBindingsResponse\"\x92\x01\x8a\xb5\x18,iam.access_bindings_by_resources.listByScope\x92\xb5\x18\x06viewer\x9a\xb5\x18%\n" +
 	"\aproject\x12\vresource_id\x1a\rresource_type\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02$\x12\"/iam/v1/accessBindings:listByScope\x12\xf5\x01\n" +
 	"\rListBySubject\x126.kacho.cloud.iam.v1.ListAccessBindingsBySubjectRequest\x1a..kacho.cloud.iam.v1.ListAccessBindingsResponse\"|\x8a\xb5\x18-iam.access_bindings_by_subjects.listBySubject\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
@@ -1923,7 +2000,7 @@ func file_kacho_cloud_iam_v1_access_binding_service_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_access_binding_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_kacho_cloud_iam_v1_access_binding_service_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_kacho_cloud_iam_v1_access_binding_service_proto_goTypes = []any{
 	(Derivation)(0),                             // 0: kacho.cloud.iam.v1.Derivation
 	(ScopeGroup)(0),                             // 1: kacho.cloud.iam.v1.ScopeGroup
@@ -1932,84 +2009,87 @@ var file_kacho_cloud_iam_v1_access_binding_service_proto_goTypes = []any{
 	(*DeleteAccessBindingRequest)(nil),          // 4: kacho.cloud.iam.v1.DeleteAccessBindingRequest
 	(*RevokeAccessBindingRequest)(nil),          // 5: kacho.cloud.iam.v1.RevokeAccessBindingRequest
 	(*UpdateAccessBindingRequest)(nil),          // 6: kacho.cloud.iam.v1.UpdateAccessBindingRequest
-	(*ListAccessBindingsByScopeRequest)(nil),    // 7: kacho.cloud.iam.v1.ListAccessBindingsByScopeRequest
-	(*ListAccessBindingsBySubjectRequest)(nil),  // 8: kacho.cloud.iam.v1.ListAccessBindingsBySubjectRequest
-	(*ListAccessBindingsByAccountRequest)(nil),  // 9: kacho.cloud.iam.v1.ListAccessBindingsByAccountRequest
-	(*ListAccessBindingsResponse)(nil),          // 10: kacho.cloud.iam.v1.ListAccessBindingsResponse
-	(*ListAccessBindingOperationsRequest)(nil),  // 11: kacho.cloud.iam.v1.ListAccessBindingOperationsRequest
-	(*ListAccessBindingOperationsResponse)(nil), // 12: kacho.cloud.iam.v1.ListAccessBindingOperationsResponse
-	(*ListSubjectPrivilegesRequest)(nil),        // 13: kacho.cloud.iam.v1.ListSubjectPrivilegesRequest
-	(*ListSubjectPrivilegesResponse)(nil),       // 14: kacho.cloud.iam.v1.ListSubjectPrivilegesResponse
-	(*SubjectPrivilege)(nil),                    // 15: kacho.cloud.iam.v1.SubjectPrivilege
-	(*ListAssignableRolesRequest)(nil),          // 16: kacho.cloud.iam.v1.ListAssignableRolesRequest
-	(*ListAssignableRolesResponse)(nil),         // 17: kacho.cloud.iam.v1.ListAssignableRolesResponse
-	(*AssignableRole)(nil),                      // 18: kacho.cloud.iam.v1.AssignableRole
-	(*ListAccessBindingsByRoleRequest)(nil),     // 19: kacho.cloud.iam.v1.ListAccessBindingsByRoleRequest
-	(*ExpandAccessRequest)(nil),                 // 20: kacho.cloud.iam.v1.ExpandAccessRequest
-	(*Principal)(nil),                           // 21: kacho.cloud.iam.v1.Principal
-	(*ExpandAccessResponse)(nil),                // 22: kacho.cloud.iam.v1.ExpandAccessResponse
-	nil,                                         // 23: kacho.cloud.iam.v1.CreateAccessBindingRequest.LabelsEntry
-	nil,                                         // 24: kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntry
-	(BuiltinCondition)(0),                       // 25: kacho.cloud.iam.v1.BuiltinCondition
-	(*timestamppb.Timestamp)(nil),               // 26: google.protobuf.Timestamp
-	(*Subject)(nil),                             // 27: kacho.cloud.iam.v1.Subject
-	(*AccessTarget)(nil),                        // 28: kacho.cloud.iam.v1.AccessTarget
-	(*fieldmaskpb.FieldMask)(nil),               // 29: google.protobuf.FieldMask
-	(*AccessBinding)(nil),                       // 30: kacho.cloud.iam.v1.AccessBinding
-	(*operation.Operation)(nil),                 // 31: kacho.cloud.operation.Operation
-	(AccessBinding_Scope)(0),                    // 32: kacho.cloud.iam.v1.AccessBinding.Scope
-	(AccessBinding_Status)(0),                   // 33: kacho.cloud.iam.v1.AccessBinding.Status
-	(SubjectType)(0),                            // 34: kacho.cloud.iam.v1.SubjectType
+	(*ListAccessBindingsRequest)(nil),           // 7: kacho.cloud.iam.v1.ListAccessBindingsRequest
+	(*ListAccessBindingsByScopeRequest)(nil),    // 8: kacho.cloud.iam.v1.ListAccessBindingsByScopeRequest
+	(*ListAccessBindingsBySubjectRequest)(nil),  // 9: kacho.cloud.iam.v1.ListAccessBindingsBySubjectRequest
+	(*ListAccessBindingsByAccountRequest)(nil),  // 10: kacho.cloud.iam.v1.ListAccessBindingsByAccountRequest
+	(*ListAccessBindingsResponse)(nil),          // 11: kacho.cloud.iam.v1.ListAccessBindingsResponse
+	(*ListAccessBindingOperationsRequest)(nil),  // 12: kacho.cloud.iam.v1.ListAccessBindingOperationsRequest
+	(*ListAccessBindingOperationsResponse)(nil), // 13: kacho.cloud.iam.v1.ListAccessBindingOperationsResponse
+	(*ListSubjectPrivilegesRequest)(nil),        // 14: kacho.cloud.iam.v1.ListSubjectPrivilegesRequest
+	(*ListSubjectPrivilegesResponse)(nil),       // 15: kacho.cloud.iam.v1.ListSubjectPrivilegesResponse
+	(*SubjectPrivilege)(nil),                    // 16: kacho.cloud.iam.v1.SubjectPrivilege
+	(*ListAssignableRolesRequest)(nil),          // 17: kacho.cloud.iam.v1.ListAssignableRolesRequest
+	(*ListAssignableRolesResponse)(nil),         // 18: kacho.cloud.iam.v1.ListAssignableRolesResponse
+	(*AssignableRole)(nil),                      // 19: kacho.cloud.iam.v1.AssignableRole
+	(*ListAccessBindingsByRoleRequest)(nil),     // 20: kacho.cloud.iam.v1.ListAccessBindingsByRoleRequest
+	(*ExpandAccessRequest)(nil),                 // 21: kacho.cloud.iam.v1.ExpandAccessRequest
+	(*Principal)(nil),                           // 22: kacho.cloud.iam.v1.Principal
+	(*ExpandAccessResponse)(nil),                // 23: kacho.cloud.iam.v1.ExpandAccessResponse
+	nil,                                         // 24: kacho.cloud.iam.v1.CreateAccessBindingRequest.LabelsEntry
+	nil,                                         // 25: kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntry
+	(BuiltinCondition)(0),                       // 26: kacho.cloud.iam.v1.BuiltinCondition
+	(*timestamppb.Timestamp)(nil),               // 27: google.protobuf.Timestamp
+	(*Subject)(nil),                             // 28: kacho.cloud.iam.v1.Subject
+	(*AccessTarget)(nil),                        // 29: kacho.cloud.iam.v1.AccessTarget
+	(*fieldmaskpb.FieldMask)(nil),               // 30: google.protobuf.FieldMask
+	(*AccessBinding)(nil),                       // 31: kacho.cloud.iam.v1.AccessBinding
+	(*operation.Operation)(nil),                 // 32: kacho.cloud.operation.Operation
+	(AccessBinding_Scope)(0),                    // 33: kacho.cloud.iam.v1.AccessBinding.Scope
+	(AccessBinding_Status)(0),                   // 34: kacho.cloud.iam.v1.AccessBinding.Status
+	(SubjectType)(0),                            // 35: kacho.cloud.iam.v1.SubjectType
 }
 var file_kacho_cloud_iam_v1_access_binding_service_proto_depIdxs = []int32{
-	25, // 0: kacho.cloud.iam.v1.CreateAccessBindingRequest.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
-	26, // 1: kacho.cloud.iam.v1.CreateAccessBindingRequest.expires_at:type_name -> google.protobuf.Timestamp
-	27, // 2: kacho.cloud.iam.v1.CreateAccessBindingRequest.subjects:type_name -> kacho.cloud.iam.v1.Subject
-	23, // 3: kacho.cloud.iam.v1.CreateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.CreateAccessBindingRequest.LabelsEntry
-	28, // 4: kacho.cloud.iam.v1.CreateAccessBindingRequest.target:type_name -> kacho.cloud.iam.v1.AccessTarget
-	29, // 5: kacho.cloud.iam.v1.UpdateAccessBindingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	24, // 6: kacho.cloud.iam.v1.UpdateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntry
-	30, // 7: kacho.cloud.iam.v1.ListAccessBindingsResponse.access_bindings:type_name -> kacho.cloud.iam.v1.AccessBinding
-	31, // 8: kacho.cloud.iam.v1.ListAccessBindingOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	15, // 9: kacho.cloud.iam.v1.ListSubjectPrivilegesResponse.privileges:type_name -> kacho.cloud.iam.v1.SubjectPrivilege
-	32, // 10: kacho.cloud.iam.v1.SubjectPrivilege.scope:type_name -> kacho.cloud.iam.v1.AccessBinding.Scope
-	33, // 11: kacho.cloud.iam.v1.SubjectPrivilege.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
-	26, // 12: kacho.cloud.iam.v1.SubjectPrivilege.created_at:type_name -> google.protobuf.Timestamp
-	26, // 13: kacho.cloud.iam.v1.SubjectPrivilege.expires_at:type_name -> google.protobuf.Timestamp
+	26, // 0: kacho.cloud.iam.v1.CreateAccessBindingRequest.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
+	27, // 1: kacho.cloud.iam.v1.CreateAccessBindingRequest.expires_at:type_name -> google.protobuf.Timestamp
+	28, // 2: kacho.cloud.iam.v1.CreateAccessBindingRequest.subjects:type_name -> kacho.cloud.iam.v1.Subject
+	24, // 3: kacho.cloud.iam.v1.CreateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.CreateAccessBindingRequest.LabelsEntry
+	29, // 4: kacho.cloud.iam.v1.CreateAccessBindingRequest.target:type_name -> kacho.cloud.iam.v1.AccessTarget
+	30, // 5: kacho.cloud.iam.v1.UpdateAccessBindingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	25, // 6: kacho.cloud.iam.v1.UpdateAccessBindingRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntry
+	31, // 7: kacho.cloud.iam.v1.ListAccessBindingsResponse.access_bindings:type_name -> kacho.cloud.iam.v1.AccessBinding
+	32, // 8: kacho.cloud.iam.v1.ListAccessBindingOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	16, // 9: kacho.cloud.iam.v1.ListSubjectPrivilegesResponse.privileges:type_name -> kacho.cloud.iam.v1.SubjectPrivilege
+	33, // 10: kacho.cloud.iam.v1.SubjectPrivilege.scope:type_name -> kacho.cloud.iam.v1.AccessBinding.Scope
+	34, // 11: kacho.cloud.iam.v1.SubjectPrivilege.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
+	27, // 12: kacho.cloud.iam.v1.SubjectPrivilege.created_at:type_name -> google.protobuf.Timestamp
+	27, // 13: kacho.cloud.iam.v1.SubjectPrivilege.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 14: kacho.cloud.iam.v1.SubjectPrivilege.derivation:type_name -> kacho.cloud.iam.v1.Derivation
-	18, // 15: kacho.cloud.iam.v1.ListAssignableRolesResponse.roles:type_name -> kacho.cloud.iam.v1.AssignableRole
+	19, // 15: kacho.cloud.iam.v1.ListAssignableRolesResponse.roles:type_name -> kacho.cloud.iam.v1.AssignableRole
 	1,  // 16: kacho.cloud.iam.v1.AssignableRole.scope_group:type_name -> kacho.cloud.iam.v1.ScopeGroup
-	26, // 17: kacho.cloud.iam.v1.AssignableRole.created_at:type_name -> google.protobuf.Timestamp
-	34, // 18: kacho.cloud.iam.v1.Principal.type:type_name -> kacho.cloud.iam.v1.SubjectType
-	21, // 19: kacho.cloud.iam.v1.ExpandAccessResponse.principals:type_name -> kacho.cloud.iam.v1.Principal
+	27, // 17: kacho.cloud.iam.v1.AssignableRole.created_at:type_name -> google.protobuf.Timestamp
+	35, // 18: kacho.cloud.iam.v1.Principal.type:type_name -> kacho.cloud.iam.v1.SubjectType
+	22, // 19: kacho.cloud.iam.v1.ExpandAccessResponse.principals:type_name -> kacho.cloud.iam.v1.Principal
 	2,  // 20: kacho.cloud.iam.v1.AccessBindingService.Get:input_type -> kacho.cloud.iam.v1.GetAccessBindingRequest
 	3,  // 21: kacho.cloud.iam.v1.AccessBindingService.Create:input_type -> kacho.cloud.iam.v1.CreateAccessBindingRequest
 	4,  // 22: kacho.cloud.iam.v1.AccessBindingService.Delete:input_type -> kacho.cloud.iam.v1.DeleteAccessBindingRequest
 	6,  // 23: kacho.cloud.iam.v1.AccessBindingService.Update:input_type -> kacho.cloud.iam.v1.UpdateAccessBindingRequest
-	7,  // 24: kacho.cloud.iam.v1.AccessBindingService.ListByScope:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByScopeRequest
-	8,  // 25: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:input_type -> kacho.cloud.iam.v1.ListAccessBindingsBySubjectRequest
-	13, // 26: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:input_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesRequest
-	16, // 27: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:input_type -> kacho.cloud.iam.v1.ListAssignableRolesRequest
-	19, // 28: kacho.cloud.iam.v1.AccessBindingService.ListByRole:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByRoleRequest
-	20, // 29: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:input_type -> kacho.cloud.iam.v1.ExpandAccessRequest
-	9,  // 30: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByAccountRequest
-	11, // 31: kacho.cloud.iam.v1.AccessBindingService.ListOperations:input_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsRequest
-	5,  // 32: kacho.cloud.iam.v1.AccessBindingService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeAccessBindingRequest
-	30, // 33: kacho.cloud.iam.v1.AccessBindingService.Get:output_type -> kacho.cloud.iam.v1.AccessBinding
-	31, // 34: kacho.cloud.iam.v1.AccessBindingService.Create:output_type -> kacho.cloud.operation.Operation
-	31, // 35: kacho.cloud.iam.v1.AccessBindingService.Delete:output_type -> kacho.cloud.operation.Operation
-	31, // 36: kacho.cloud.iam.v1.AccessBindingService.Update:output_type -> kacho.cloud.operation.Operation
-	10, // 37: kacho.cloud.iam.v1.AccessBindingService.ListByScope:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	10, // 38: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	14, // 39: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:output_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesResponse
-	17, // 40: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:output_type -> kacho.cloud.iam.v1.ListAssignableRolesResponse
-	10, // 41: kacho.cloud.iam.v1.AccessBindingService.ListByRole:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	22, // 42: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:output_type -> kacho.cloud.iam.v1.ExpandAccessResponse
-	10, // 43: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
-	12, // 44: kacho.cloud.iam.v1.AccessBindingService.ListOperations:output_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsResponse
-	31, // 45: kacho.cloud.iam.v1.AccessBindingService.Revoke:output_type -> kacho.cloud.operation.Operation
-	33, // [33:46] is the sub-list for method output_type
-	20, // [20:33] is the sub-list for method input_type
+	7,  // 24: kacho.cloud.iam.v1.AccessBindingService.List:input_type -> kacho.cloud.iam.v1.ListAccessBindingsRequest
+	8,  // 25: kacho.cloud.iam.v1.AccessBindingService.ListByScope:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByScopeRequest
+	9,  // 26: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:input_type -> kacho.cloud.iam.v1.ListAccessBindingsBySubjectRequest
+	14, // 27: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:input_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesRequest
+	17, // 28: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:input_type -> kacho.cloud.iam.v1.ListAssignableRolesRequest
+	20, // 29: kacho.cloud.iam.v1.AccessBindingService.ListByRole:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByRoleRequest
+	21, // 30: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:input_type -> kacho.cloud.iam.v1.ExpandAccessRequest
+	10, // 31: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:input_type -> kacho.cloud.iam.v1.ListAccessBindingsByAccountRequest
+	12, // 32: kacho.cloud.iam.v1.AccessBindingService.ListOperations:input_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsRequest
+	5,  // 33: kacho.cloud.iam.v1.AccessBindingService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeAccessBindingRequest
+	31, // 34: kacho.cloud.iam.v1.AccessBindingService.Get:output_type -> kacho.cloud.iam.v1.AccessBinding
+	32, // 35: kacho.cloud.iam.v1.AccessBindingService.Create:output_type -> kacho.cloud.operation.Operation
+	32, // 36: kacho.cloud.iam.v1.AccessBindingService.Delete:output_type -> kacho.cloud.operation.Operation
+	32, // 37: kacho.cloud.iam.v1.AccessBindingService.Update:output_type -> kacho.cloud.operation.Operation
+	11, // 38: kacho.cloud.iam.v1.AccessBindingService.List:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	11, // 39: kacho.cloud.iam.v1.AccessBindingService.ListByScope:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	11, // 40: kacho.cloud.iam.v1.AccessBindingService.ListBySubject:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	15, // 41: kacho.cloud.iam.v1.AccessBindingService.ListSubjectPrivileges:output_type -> kacho.cloud.iam.v1.ListSubjectPrivilegesResponse
+	18, // 42: kacho.cloud.iam.v1.AccessBindingService.ListAssignableRoles:output_type -> kacho.cloud.iam.v1.ListAssignableRolesResponse
+	11, // 43: kacho.cloud.iam.v1.AccessBindingService.ListByRole:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	23, // 44: kacho.cloud.iam.v1.AccessBindingService.ExpandAccess:output_type -> kacho.cloud.iam.v1.ExpandAccessResponse
+	11, // 45: kacho.cloud.iam.v1.AccessBindingService.ListByAccount:output_type -> kacho.cloud.iam.v1.ListAccessBindingsResponse
+	13, // 46: kacho.cloud.iam.v1.AccessBindingService.ListOperations:output_type -> kacho.cloud.iam.v1.ListAccessBindingOperationsResponse
+	32, // 47: kacho.cloud.iam.v1.AccessBindingService.Revoke:output_type -> kacho.cloud.operation.Operation
+	34, // [34:48] is the sub-list for method output_type
+	20, // [20:34] is the sub-list for method input_type
 	20, // [20:20] is the sub-list for extension type_name
 	20, // [20:20] is the sub-list for extension extendee
 	0,  // [0:20] is the sub-list for field type_name
@@ -2028,7 +2108,7 @@ func file_kacho_cloud_iam_v1_access_binding_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   23,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

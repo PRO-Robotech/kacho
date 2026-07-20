@@ -95,6 +95,30 @@ service AccessBindingService {
     option (kacho.iam.authz.v1.required_acr_min)  = "2";
   }
 
+  // Lists access bindings (redesign-2026 F11). The single, plain List that
+  // supersedes the legacy `ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount`
+  // family: one paginated read with an OPTIONAL whitelist `filter`
+  // (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
+  // key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
+  // BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
+  // INVALID_ARGUMENT regardless of grant state. The result is the caller's
+  // `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
+  // FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+  // (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+  rpc List (ListAccessBindingsRequest) returns (ListAccessBindingsResponse) {
+    option (google.api.http) = { get: "/iam/v1/accessBindings" };
+    // Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
+    // `ListBySubject`); the precise per-object visibility (viewer ∪ v_list) is
+    // enforced authoritatively in the kacho-iam handler.
+    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
   // Lists access bindings attached to the specified scope (renamed from the
   // legacy `ListByResource`, whose wire-name is removed). The
   // `resource_type`/`resource_id` request pair names the scope anchor
@@ -430,6 +454,22 @@ message UpdateAccessBindingRequest {
   // update_mask). Аннотации (size/key/value pattern) — паритет
   // account/project/group request `labels`.
   map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+}
+
+message ListAccessBindingsRequest {
+  // The maximum number of results per page to return. Default 100; >1000 →
+  // INVALID_ARGUMENT (rejected, not clamped).
+  int64 page_size = 1 [(value) = "<=1000"];
+
+  // Page token. A malformed token → INVALID_ARGUMENT (validated before the
+  // listauthz row-filter).
+  string page_token = 2 [(length) = "<=100"];
+
+  // Optional whitelist filter expression (redesign-2026 F11). Exactly one
+  // predicate of the form `<key>="<value>"`, key ∈ {subject, role, scope, scopeId}
+  // (`scope` is the dotted scope-type `iam.account|iam.project|iam.cluster`). An
+  // unknown key → INVALID_ARGUMENT. Empty → no filter (all visible bindings).
+  string filter = 3 [(length) = "<=1000"];
 }
 
 message ListAccessBindingsByScopeRequest {

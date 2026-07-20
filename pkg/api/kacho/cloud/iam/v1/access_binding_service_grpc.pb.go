@@ -27,6 +27,7 @@ const (
 	AccessBindingService_Create_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Create"
 	AccessBindingService_Delete_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Delete"
 	AccessBindingService_Update_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Update"
+	AccessBindingService_List_FullMethodName                  = "/kacho.cloud.iam.v1.AccessBindingService/List"
 	AccessBindingService_ListByScope_FullMethodName           = "/kacho.cloud.iam.v1.AccessBindingService/ListByScope"
 	AccessBindingService_ListBySubject_FullMethodName         = "/kacho.cloud.iam.v1.AccessBindingService/ListBySubject"
 	AccessBindingService_ListSubjectPrivileges_FullMethodName = "/kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges"
@@ -64,6 +65,17 @@ type AccessBindingServiceClient interface {
 	// Delete+Create); an `update_mask` referencing any non-mutable field →
 	// INVALID_ARGUMENT. Async (returns Operation), like the other mutations.
 	Update(ctx context.Context, in *UpdateAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Lists access bindings (redesign-2026 F11). The single, plain List that
+	// supersedes the legacy `ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount`
+	// family: one paginated read with an OPTIONAL whitelist `filter`
+	// (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
+	// key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
+	// BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
+	// INVALID_ARGUMENT regardless of grant state. The result is the caller's
+	// `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
+	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+	List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists access bindings attached to the specified scope (renamed from the
 	// legacy `ListByResource`, whose wire-name is removed). The
 	// `resource_type`/`resource_id` request pair names the scope anchor
@@ -225,6 +237,16 @@ func (c *accessBindingServiceClient) Update(ctx context.Context, in *UpdateAcces
 	return out, nil
 }
 
+func (c *accessBindingServiceClient) List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAccessBindingsResponse)
+	err := c.cc.Invoke(ctx, AccessBindingService_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *accessBindingServiceClient) ListByScope(ctx context.Context, in *ListAccessBindingsByScopeRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListAccessBindingsResponse)
@@ -341,6 +363,17 @@ type AccessBindingServiceServer interface {
 	// Delete+Create); an `update_mask` referencing any non-mutable field →
 	// INVALID_ARGUMENT. Async (returns Operation), like the other mutations.
 	Update(context.Context, *UpdateAccessBindingRequest) (*operation.Operation, error)
+	// Lists access bindings (redesign-2026 F11). The single, plain List that
+	// supersedes the legacy `ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount`
+	// family: one paginated read with an OPTIONAL whitelist `filter`
+	// (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
+	// key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
+	// BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
+	// INVALID_ARGUMENT regardless of grant state. The result is the caller's
+	// `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
+	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+	List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error)
 	// Lists access bindings attached to the specified scope (renamed from the
 	// legacy `ListByResource`, whose wire-name is removed). The
 	// `resource_type`/`resource_id` request pair names the scope anchor
@@ -474,6 +507,9 @@ func (UnimplementedAccessBindingServiceServer) Delete(context.Context, *DeleteAc
 func (UnimplementedAccessBindingServiceServer) Update(context.Context, *UpdateAccessBindingRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Update not implemented")
 }
+func (UnimplementedAccessBindingServiceServer) List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+}
 func (UnimplementedAccessBindingServiceServer) ListByScope(context.Context, *ListAccessBindingsByScopeRequest) (*ListAccessBindingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListByScope not implemented")
 }
@@ -590,6 +626,24 @@ func _AccessBindingService_Update_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AccessBindingServiceServer).Update(ctx, req.(*UpdateAccessBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccessBindingService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAccessBindingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessBindingServiceServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessBindingService_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessBindingServiceServer).List(ctx, req.(*ListAccessBindingsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -778,6 +832,10 @@ var AccessBindingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Update",
 			Handler:    _AccessBindingService_Update_Handler,
+		},
+		{
+			MethodName: "List",
+			Handler:    _AccessBindingService_List_Handler,
 		},
 		{
 			MethodName: "ListByScope",
