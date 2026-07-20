@@ -62,6 +62,11 @@ type LoadBalancer struct {
 	// by the use-case ZONAL-guard + DB CHECK). REGIONAL/anycast excluded from the
 	// zonal check by construction.
 	CrossZoneEnabled bool
+	// SecurityGroupIDs — NLB-1b MIGRATE (revival): vpc SecurityGroup refs firewalling
+	// the LB VIP. Cross-service refs (TEXT, no FK); same-project existence
+	// peer-validated via vpc.SecurityGroupService.Get. LIVE-mutable (replace-whole).
+	// Valid only for INTERNAL placement (DB CHECK load_balancers_sg_internal_check).
+	SecurityGroupIDs []string
 }
 
 // Validate проверяет семантически-нагруженные поля LoadBalancer. multierr.Combine
@@ -106,7 +111,8 @@ func (lb LoadBalancer) Equal(other LoadBalancer) bool {
 		lb.DeletionProtection == other.DeletionProtection &&
 		lb.AdminState == other.AdminState &&
 		lb.Placement == other.Placement &&
-		lb.CrossZoneEnabled == other.CrossZoneEnabled
+		lb.CrossZoneEnabled == other.CrossZoneEnabled &&
+		stringsEqualOrdered(lb.SecurityGroupIDs, other.SecurityGroupIDs)
 }
 
 // ipVersionsEqual — order-insensitive equality двух наборов IPVersion (семейства

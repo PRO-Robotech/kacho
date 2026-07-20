@@ -46,7 +46,11 @@ type CreateLoadBalancerUseCase struct {
 	// вызывается BEST-EFFORT после durable commit LB. nil → только async
 	// register-drainer (dev/no-iam). См. WithRegistrar.
 	registrar Registrar
-	logger    *slog.Logger
+	// sgClient — NLB-1b MIGRATE peer-validate of security_group_ids (same-project
+	// existence via vpc). nil → SG validation skipped (DB CHECK backstop). См.
+	// WithSecurityGroupClient.
+	sgClient SecurityGroupClient
+	logger   *slog.Logger
 }
 
 // NewCreateLoadBalancerUseCase конструктор.
@@ -76,6 +80,15 @@ func NewCreateLoadBalancerUseCase(
 // для chaining в composition root.
 func (u *CreateLoadBalancerUseCase) WithRegistrar(r Registrar) *CreateLoadBalancerUseCase {
 	u.registrar = r
+	return u
+}
+
+// WithSecurityGroupClient wires the vpc SecurityGroup peer-client used to
+// peer-validate security_group_ids (same-project existence, fail-closed). nil →
+// SG validation is skipped (DB CHECK INTERNAL-only remains the backstop). Returns
+// self for chaining in the composition root.
+func (u *CreateLoadBalancerUseCase) WithSecurityGroupClient(c SecurityGroupClient) *CreateLoadBalancerUseCase {
+	u.sgClient = c
 	return u
 }
 
@@ -159,6 +172,9 @@ func (u *CreateLoadBalancerUseCase) Execute(
 		return nil, status.Error(codes.InvalidArgument, crossZoneZonalMsg)
 	}
 	lb.CrossZoneEnabled = req.GetCrossZoneEnabled()
+	// NLB-1b MIGRATE (F2/NLB-1-51): security_group_ids — vpc SecurityGroup refs
+	// firewalling the VIP (peer-validated below in the sync phase). INTERNAL-only.
+	lb.SecurityGroupIDs = req.GetSecurityGroupIds()
 	// ip_families — заявленные семейства VIP (проставляются ДО Insert-handle:
 	// family-guard CHECK требует семейство в ip_families прежде чем persist-VIP
 	// запишет непустой address).
@@ -175,6 +191,12 @@ func (u *CreateLoadBalancerUseCase) Execute(
 	// Резолв источников: placement подсети/адреса == placement LB;
 	// kind/family/ownership link'а; derived network + dualstack same-network.
 	if err := u.resolveSources(ctx, lb, specs); err != nil {
+		return nil, err
+	}
+
+	// NLB-1b MIGRATE (F2/NLB-1-51/52): security_group_ids peer-validate (INTERNAL-only
+	// + same-project existence via vpc; fail-closed). No region-coherence check.
+	if err := validateSecurityGroups(ctx, u.sgClient, lb.Type, string(lb.ProjectID), lb.SecurityGroupIDs); err != nil {
 		return nil, err
 	}
 

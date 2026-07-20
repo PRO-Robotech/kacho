@@ -98,6 +98,15 @@ func (h *Handler) WithRegistrar(r Registrar) *Handler {
 	return h
 }
 
+// WithSecurityGroupClient инжектит vpc SecurityGroup peer-client в Create + Update
+// use-case'ы (NLB-1b MIGRATE security_group_ids peer-validate). Возвращает self для
+// chaining. nil-безопасно (SG-валидация пропускается — DB CHECK backstop).
+func (h *Handler) WithSecurityGroupClient(c SecurityGroupClient) *Handler {
+	h.create.WithSecurityGroupClient(c)
+	h.update.WithSecurityGroupClient(c)
+	return h
+}
+
 // ---- 4 read RPCs (sync) ----------------------------------------------------
 
 func (h *Handler) Get(ctx context.Context, req *lbv1.GetNetworkLoadBalancerRequest) (*lbv1.NetworkLoadBalancer, error) {
