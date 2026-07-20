@@ -210,6 +210,14 @@ message CreateTargetGroupRequest {
 
   // Slow-start ramp window for added targets. Default 0 (off).
   int32 slow_start_seconds = 10 [(value) = "0-900"];
+
+  // Required — single backend port of the group (NLB-1b F6-co-req). Every
+  // target receives forwarded traffic on this port; echoed by
+  // Listener.resolved_backend_port. Range 1..65535.
+  int32 port = 11 [
+    (required) = true,
+    (value) = "1-65535"
+  ];
 }
 
 message CreateTargetGroupMetadata {

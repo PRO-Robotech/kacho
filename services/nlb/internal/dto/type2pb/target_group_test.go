@@ -43,6 +43,7 @@ func TestTargetGroup_Transfer_WithTargetsAndHC(t *testing.T) {
 			DeregistrationDelaySeconds: 60,
 			SlowStartSeconds:           10,
 			Status:                     domain.TargetGroupStatusActive,
+			Port:                       8080,
 		},
 		CreatedAt: time.Date(2026, 5, 24, 0, 0, 0, 0, time.UTC),
 	}
@@ -51,6 +52,7 @@ func TestTargetGroup_Transfer_WithTargetsAndHC(t *testing.T) {
 	require.NotNil(t, pb)
 	assert.Equal(t, "tgr01ABCDEF1234567xx", pb.Id)
 	assert.Equal(t, lbv1.TargetGroup_ACTIVE, pb.Status)
+	assert.Equal(t, int32(8080), pb.Port, "TG.port echoed on read (NLB-1-35 F6-co-req)")
 	require.Len(t, pb.Targets, 2)
 	assert.Equal(t, "epd0INST1", pb.Targets[0].GetInstanceId())
 	assert.Equal(t, "e9b0NIC1", pb.Targets[1].GetNicId())

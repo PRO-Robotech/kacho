@@ -264,6 +264,7 @@ func TestIntegration_AttachTargetGroup_RegionMismatch(t *testing.T) {
 		ProjectID: "prj-z", RegionID: "ru-central2", Name: "tg-1",
 		DeregistrationDelaySeconds: 300,
 		Status:                     domain.TargetGroupStatusActive,
+		Port:                       8080,
 		HealthCheck: domain.HealthCheck{
 			Name: "hc", Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
 			UnhealthyThreshold: domain.DefaultUnhealthyThreshold, HealthyThreshold: domain.DefaultHealthyThreshold,
@@ -304,7 +305,7 @@ func TestIntegration_AttachTargetGroup_HappyPath_AndStatusRecompute(t *testing.T
 	tg := &domain.TargetGroup{
 		ID: domain.ResourceID(tgID), ProjectID: "prj-acme", RegionID: "ru-central1",
 		Name: "tg-1", DeregistrationDelaySeconds: 300,
-		Status: domain.TargetGroupStatusActive,
+		Status: domain.TargetGroupStatusActive, Port: 8080,
 		HealthCheck: domain.HealthCheck{
 			Name: "hc", Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
 			UnhealthyThreshold: domain.DefaultUnhealthyThreshold, HealthyThreshold: domain.DefaultHealthyThreshold,
@@ -365,7 +366,7 @@ func TestIntegration_AttachTargetGroup_Concurrent_OnlyOneInsert(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.TargetGroups().Insert(context.Background(), &domain.TargetGroup{
 		ID: domain.ResourceID(tgID), ProjectID: "prj-c", RegionID: "ru-central1",
-		Name: "tg-1", DeregistrationDelaySeconds: 300, Status: domain.TargetGroupStatusActive,
+		Name: "tg-1", DeregistrationDelaySeconds: 300, Status: domain.TargetGroupStatusActive, Port: 8080,
 		HealthCheck: domain.HealthCheck{
 			Name: "hc", Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
 			UnhealthyThreshold: domain.DefaultUnhealthyThreshold, HealthyThreshold: domain.DefaultHealthyThreshold,
@@ -416,7 +417,7 @@ func TestIntegration_Move_Blocked_AttachedTG(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.TargetGroups().Insert(context.Background(), &domain.TargetGroup{
 		ID: domain.ResourceID(tgID), ProjectID: "prj-src", RegionID: "ru-central1",
-		Name: "tg-1", DeregistrationDelaySeconds: 300, Status: domain.TargetGroupStatusActive,
+		Name: "tg-1", DeregistrationDelaySeconds: 300, Status: domain.TargetGroupStatusActive, Port: 8080,
 		HealthCheck: domain.HealthCheck{
 			Name: "hc", Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
 			UnhealthyThreshold: domain.DefaultUnhealthyThreshold, HealthyThreshold: domain.DefaultHealthyThreshold,
@@ -455,7 +456,7 @@ func TestIntegration_GetTargetStates_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.TargetGroups().Insert(context.Background(), &domain.TargetGroup{
 		ID: domain.ResourceID(tgID), ProjectID: "prj-q", RegionID: "ru-central1",
-		Name: "tg-1", DeregistrationDelaySeconds: 300, Status: domain.TargetGroupStatusActive,
+		Name: "tg-1", DeregistrationDelaySeconds: 300, Status: domain.TargetGroupStatusActive, Port: 8080,
 		HealthCheck: domain.HealthCheck{
 			Name: "hc", Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
 			UnhealthyThreshold: 2, HealthyThreshold: 2,

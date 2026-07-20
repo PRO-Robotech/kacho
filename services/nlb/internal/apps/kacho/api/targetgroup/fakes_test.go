@@ -930,6 +930,7 @@ func makeTG(projectID, name string) *kachorepo.TargetGroupRecord {
 			DeregistrationDelaySeconds: 300,
 			SlowStartSeconds:           0,
 			Status:                     domain.TargetGroupStatusActive,
+			Port:                       8080,
 			HealthCheck: domain.HealthCheck{
 				Name:               "hc-tcp",
 				Interval:           domain.DefaultHealthInterval,

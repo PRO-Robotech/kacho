@@ -56,6 +56,13 @@ message TargetGroup {
   int32 slow_start_seconds = 12 [(value) = "0-900"];
 
   Status status = 13;
+
+  // port — single backend port of the group (net-new, NLB-1b F6-co-req). Every
+  // target of the group receives forwarded traffic on this port; it is the sole
+  // backend-port source echoed by Listener.resolved_backend_port (design NLB-1
+  // §Listener wiring). Required, range 1..65535. Set-at-create in NLB-1b;
+  // LIVE-mutable re-echo semantics arrive in NLB-1c.
+  int32 port = 14 [(value) = "1-65535"];
 }
 
 // Target — one backend endpoint. 4-way identity oneof (design §2.5):

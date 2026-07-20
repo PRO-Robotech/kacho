@@ -20,7 +20,7 @@ import (
 const targetGroupCols = `
     id, project_id, region_id, created_at, updated_at,
     name, description, labels, health_check,
-    deregistration_delay_seconds, slow_start_seconds, status, xmin::text`
+    deregistration_delay_seconds, slow_start_seconds, port, status, xmin::text`
 
 const targetCols = `
     id, target_group_id, created_at, updated_at,
@@ -43,14 +43,16 @@ func scanTG(row pgx.Row) (*kacho.TargetGroupRecord, error) {
 		statusStr string
 		labelsRaw []byte
 		hcRaw     []byte
+		portVal   int32
 	)
 	if err := row.Scan(
 		&idStr, &projIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
 		&nameStr, &descStr, &labelsRaw, &hcRaw,
-		&rec.DeregistrationDelaySeconds, &rec.SlowStartSeconds, &statusStr, &rec.Xmin,
+		&rec.DeregistrationDelaySeconds, &rec.SlowStartSeconds, &portVal, &statusStr, &rec.Xmin,
 	); err != nil {
 		return nil, err
 	}
+	rec.Port = domain.LbPort(portVal)
 	rec.ID = domain.ResourceID(idStr)
 	rec.ProjectID = domain.ProjectID(projIDs)
 	rec.RegionID = domain.RegionID(regionIDs)
@@ -286,13 +288,13 @@ func (w *targetGroupWriter) Insert(ctx context.Context, tg *domain.TargetGroup) 
 	q := fmt.Sprintf(`
         INSERT INTO kacho_nlb.target_groups
             (id, project_id, region_id, name, description, labels, health_check,
-             deregistration_delay_seconds, slow_start_seconds, status)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10)
+             deregistration_delay_seconds, slow_start_seconds, port, status)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11)
         RETURNING %s`, targetGroupCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(tg.ID), string(tg.ProjectID), string(tg.RegionID),
 		string(tg.Name), string(tg.Description), labelsJSON, hcJSON,
-		tg.DeregistrationDelaySeconds, tg.SlowStartSeconds, string(tg.Status),
+		tg.DeregistrationDelaySeconds, tg.SlowStartSeconds, int32(tg.Port), string(tg.Status),
 	)
 	rec, err := scanTG(row)
 	if err != nil {
