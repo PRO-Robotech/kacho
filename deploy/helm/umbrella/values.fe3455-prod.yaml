@@ -452,73 +452,53 @@ pg-registry:
 # (sslmode=require; pg server cert issued via mtls.pgTls.services above). Peer edges:
 # storage→geo (zone_id), storage→iam PUBLIC (ProjectService.Get) + INTERNAL (Check).
 storage:
-  # ⛔ ВЫКЛЮЧЕН (2026-07-15) — чарт kacho-storage НЕ ИНТЕГРИРОВАН с umbrella: fresh install
-  # никогда не поднимался и заваливал ВЕСЬ cutover — `helm upgrade --wait` висел 15m на
-  # неготовом storage → `UPGRADE FAILED: context deadline exceeded`. Контроль-плейн не
-  # должен быть заложником неработавшего fresh install → pure control-plane cutover
-  # (режим, штатно описанный в cutover-fe3455.sh).
-  #
-  # Что именно сломано (диагностика по живому кластеру, не по догадке):
-  #   1. Ключи values РАСХОДЯТСЯ с чартом. Ниже пишется `storage.db.{host,sslMode,
-  #      passwordSecretName,passwordSecretKey}`, а чарт читает `config.{dbHost,dbPort,dbUser,
-  #      dbName,dbSslMode,dbPassword}` (deploy/templates/configmap.yaml). Неизвестные ключи
-  #      helm молча игнорирует → применялся ДЕФОЛТ `dbHost: kacho-storage-postgres`. Живой CM
-  #      это подтверждал (KACHO_STORAGE_DB_HOST=kacho-storage-postgres), migrator падал
-  #      `lookup kacho-storage-postgres: no such host` (реальный Service — kacho-umbrella-pg-storage).
-  #   2. Пароль БД. `passwordSecretName` в чарте НЕ СУЩЕСТВУЕТ: secret.yaml рендерит СВОЙ
-  #      Secret из `config.dbPassword | default "changeme"` → даже с верным хостом storage шёл
-  #      бы в БД с плейсхолдером. Комментарий ниже про «renders no Secret of its own» неверен:
-  #      живой kacho-umbrella-storage-secret отрендерил именно чарт.
-  #
-  # Почему не чинится здесь: класть пароль в `config.dbPassword` нельзя (values в git) → чарту
-  # нужна поддержка existingSecret (ссылка на bitnami-provisioned kacho-umbrella-pg-storage,
-  # ключ password), как у остальных сервисов. Это PR в kacho-storage/deploy, не строчка в оверлее.
-  #
-  # Включить обратно: (1) PR в kacho-storage — existingSecret + сверка ключей с чартом;
-  # (2) переписать блок ниже на реальные ключи; (3) enabled: true + pg-storage.enabled: true.
-  # Образ CS-1 уже собран и ждёт: main-a185fa07 (multiarch).
-  enabled: false
+  # ✅ ВКЛЮЧЁН (2026-07-20) — чарт kacho-storage интегрирован с umbrella
+  # (services/storage/deploy: fullnameOverride kacho-storage, certificate.yaml +
+  # mtls.*, db.* existingSecret, storage→iam fga-register). Три блокера прошлой
+  # попытки закрыты в чарте, не оверлее:
+  #   1. Ключи выровнены: чарт читает config.{authMode,geo/iam/authzIamGrpcAddr,
+  #      fgaRegisterDrainerEnabled} + db.{host,port,user,name,sslMode,
+  #      passwordSecretName,passwordSecretKey} — ровно то, что пишется ниже (раньше
+  #      чарт читал config.dbHost и молча дефолтил kacho-storage-postgres → migrator
+  #      `no such host`).
+  #   2. Пароль БД — existingSecret через secretKeyRef на bitnami-provisioned
+  #      kacho-umbrella-pg-storage (ключ password); chart-rendered placeholder-Secret
+  #      удалён (secret.yaml). Пароль НЕ в git.
+  #   3. Имя ресурсов — fullnameOverride kacho-storage → Service/Deployment/DNS =
+  #      kacho-storage (SAN server-cert'а + compute→storage dial-host совпадают).
+  # fga-register (SEC-D / CS-1 GAP-D): storage→iam RegisterResource owner-tuple
+  # (KACHO_STORAGE_IAM_CLIENT_MTLS_* + fgaRegisterDrainerEnabled) + iam-seed
+  # 0057_storage_sa_least_priv (sva(md5("kacho-storage"))#fga_writer@iam_fgaproxy:
+  # system) → gateway scope_extractors {storage_volume,volume_id}/
+  # {storage_snapshot,snapshot_id} резолвят target→project (анти-BOLA), SEC-A
+  # parity с vpc/compute.
+  enabled: true
   image:
-    # main-a185fa07 — kacho-storage origin/main HEAD ("[CS-1] storage network-disk —
-    # attach zone/project split, auto-device retry, listauthz gate, snapshot name", #4),
-    # multiarch (amd64+arm64), Docker Hub-verified 2026-07-15T17:41. Supersedes
-    # main-e6d67c8d (2026-07-14, deps-only, amd64-only, PRE-CS-1) — installing that tag
-    # would have shipped storage WITHOUT any CS-1 network-disk functionality.
-    #
-    # This is a FRESH install (kacho-storage is NOT yet on the cluster), so it neither
-    # reverts nor disrupts any live workload; --wait installs it as the storage-split's
-    # first rollout. repository comes qualified from the umbrella base values.yaml
-    # (docker.io/prorobotech/kacho-storage); the tag drives storage + kacho-migrator both.
-    #
-    # Why the image was missing until now: every kacho-storage docker-build run had failed
-    # with `invalid tag "/kacho-storage:main-a185fa07": invalid reference format` — the
-    # workflow interpolated an EMPTY secrets.DOCKERHUB_USERNAME (kacho-storage was private
-    # and thus outside the org secrets' visibility). Making the repo public restored the
-    # secrets → rerun of run 29417934635 published the image. kacho-storage#5 additionally
-    # hardens the workflow so an unset secret yields a green build-only run instead of a
-    # hard failure.
-    #
-    # ⚠ FOLLOW-UP (does NOT block this cutover — storage is isolated from the registry):
-    #   fga-register drainer — the storage deploy chart wires NO storage→iam
-    #   RegisterResource (fgaproxy owner-tuple outbox drainer) edge, and kacho-iam carries
-    #   no storage-SA `fga_writer` ReBAC tuple seed (highest iam migration is 0052; the
-    #   pattern to mirror is 0044_registry_sa_least_priv.sql). Until both land, owner-tuples
-    #   for storage resources are not written to FGA, so the gateway scope_extractors
-    #   {storage_volume,volume_id}/{storage_snapshot,snapshot_id} cannot resolve
-    #   target→project. Track as SEC-A parity with vpc/compute.
+    # kacho-storage image (docker.io/prorobotech/kacho-storage from base values.yaml);
+    # tag drives storage + kacho-migrator both. main-b622b388 — coherent with the
+    # vpc/compute/nlb release SHA pinned above.
     tag: main-b622b388
   config:
     authMode: production
+    # storage→geo (zone_id) + storage→iam PUBLIC (ProjectService.Get, :9090) +
+    # INTERNAL (Check + RegisterResource fga-register, :9091).
     geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090
     iamGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
     authzIamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    # fga-register drainer (SEC-D / CS-1 GAP-D). Chart default already true; restated
+    # for prod-explicitness. Requires authzIamGrpcAddr (set) + mtls.edges.iam (below).
+    fgaRegisterDrainerEnabled: true
   db:
     host: kacho-umbrella-pg-storage
     sslMode: require
     # operator-/bitnami-provisioned Secret (pg-storage.auth.existingSecret below);
-    # the storage chart references it (renders no Secret of its own).
+    # the storage chart references it via secretKeyRef (renders no Secret of its own).
     passwordSecretName: kacho-umbrella-pg-storage
     passwordSecretKey: password
+  # server-mTLS on both listeners + per-edge client-mTLS storage→{geo,iam}. Один
+  # client-leaf (kacho-storage-client-tls) на все storage→iam-дозвоны; serverName
+  # default kacho-iam.kacho.svc.cluster.local ∈ iam server-cert SAN (валиден и для
+  # :9090, и для internal :9091).
   mtls:
     enable: true
     edges:
@@ -528,9 +508,8 @@ storage:
 # pg-storage — greenfield bitnamilegacy image + operator secret + cert-manager TLS
 # (server cert kacho-umbrella-pg-storage-server-tls issued via mtls.pgTls.services).
 pg-storage:
-  # ⛔ Выключен вместе со `storage` (см. блок storage выше) — БД без потребителя не нужна.
-  # Включать ОДНОВРЕМЕННО со storage.enabled после интеграции чарта.
-  enabled: false
+  # ✅ Включён вместе со `storage` (см. блок storage выше) — БД потребителя storage.
+  enabled: true
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
   auth: { existingSecret: kacho-umbrella-pg-storage, username: storage, database: kacho_storage }
