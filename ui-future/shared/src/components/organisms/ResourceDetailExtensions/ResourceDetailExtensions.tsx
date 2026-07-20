@@ -22,6 +22,7 @@ import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { SgRulesPanel, type SgRule } from "@shared/components/organisms/SgRulesPanel";
 import { RoutesPanel } from "@shared/components/organisms/RoutesPanel";
 import { SubnetCidrPanel } from "@shared/components/organisms/SubnetCidrPanel";
+import { NetworkCidrManager } from "@shared/components/organisms/NetworkCidrManager";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { api } from "@shared/api/client";
@@ -179,6 +180,7 @@ function AddressRefTags({ ids, projectId }: { ids: string[] | undefined; project
 
 export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   networks: {
+    // VPC-1: system-provisioned default-SG + default-RT (echoed on create).
     overviewExtra: ({ data }) => [
       {
         label: "Группа безопасности по умолчанию",
@@ -190,34 +192,80 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
           />
         ),
       },
-    ],
-  },
-
-  subnets: {
-    overviewExtra: ({ data }) => [
-      { label: "Зона", value: mono(getByPath<string>(data, "zone_id")) },
       {
-        label: "Сеть",
-        value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} maxChars={42} />,
-      },
-      {
-        label: "Таблица маршрутизации",
-        value: getByPath<string>(data, "route_table_id") ? (
-          <RefNameLink specId="route-tables" refId={getByPath<string>(data, "route_table_id")} maxChars={42} />
+        label: "Таблица маршрутизации по умолчанию",
+        value: getByPath<string>(data, "default_route_table_id") ? (
+          <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} maxChars={42} />
         ) : (
           dash
         ),
       },
-      // CIDR-блоки (IPv4/IPv6) — НЕ в таблице Обзора: они управляются отдельными
-      // RPC (:add/:remove-cidr-blocks) и показаны отдельной панелью ниже.
     ],
-    // CIDR-блоки — отдельная панель управления под Обзором (как «Статические
-    // маршруты» у route-tables). Мутируются :add/:remove-cidr-blocks, не PATCH.
+    // VPC-1: declared supernet — managed via :add/:remove-cidr-blocks (immutable
+    // through Update). Панель под Обзором, как CIDR у подсети.
+    overviewBelow: ({ data }) => {
+      const networkId = getByPath<string>(data, "id") ?? "";
+      const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
+      const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+      return (
+        <div style={{ marginTop: 24, maxWidth: 760 }}>
+          <NetworkCidrManager networkId={networkId} v4Blocks={v4} v6Blocks={v6} />
+        </div>
+      );
+    },
+  },
+
+  subnets: {
+    // VPC-1: derived placement (ZONAL zone / REGIONAL region) + primary anchor.
+    overviewExtra: ({ data }) => {
+      const region = getByPath<string>(data, "region_id") ?? "";
+      const zone = getByPath<string>(data, "zone_id") ?? "";
+      const pt = getByPath<string>(data, "placement_type") ?? "";
+      const isRegional = pt === "REGIONAL" || (!zone && !!region);
+      return [
+        {
+          label: "Размещение",
+          value: (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
+              {mono(isRegional ? region : zone)}
+            </span>
+          ),
+        },
+        {
+          label: "Сеть",
+          value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} maxChars={42} />,
+        },
+        {
+          label: "Таблица маршрутизации",
+          value: getByPath<string>(data, "route_table_id") ? (
+            <RefNameLink specId="route-tables" refId={getByPath<string>(data, "route_table_id")} maxChars={42} />
+          ) : (
+            dash
+          ),
+        },
+        // CIDR (primary + доп.) — НЕ в таблице Обзора: доп. диапазоны управляются
+        // отдельными RPC (:add/:remove-cidr-blocks), показаны панелью ниже.
+      ];
+    },
+    // CIDR — отдельная панель управления под Обзором: основной (immutable) +
+    // доп. диапазоны (:add/:remove-cidr-blocks, не PATCH).
     overviewBelow: ({ data, projectId }) => {
       const subnetId = getByPath<string>(data, "id") ?? "";
-      const v4 = (getByPath<string[]>(data, "v4_cidr_blocks") ?? []) as string[];
-      const v6 = (getByPath<string[]>(data, "v6_cidr_blocks") ?? []) as string[];
-      return <SubnetCidrPanel subnetId={subnetId} v4Blocks={v4} v6Blocks={v6} projectId={projectId} />;
+      const v4Primary = getByPath<string>(data, "ipv4_cidr_primary") ?? "";
+      const v6Primary = getByPath<string>(data, "ipv6_cidr_primary") ?? "";
+      const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
+      const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+      return (
+        <SubnetCidrPanel
+          subnetId={subnetId}
+          v4Primary={v4Primary}
+          v6Primary={v6Primary}
+          v4Blocks={v4}
+          v6Blocks={v6}
+          projectId={projectId}
+        />
+      );
     },
   },
 

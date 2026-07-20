@@ -1,23 +1,24 @@
 // InlineSubnetCreateForm — inline-форма создания подсети, встраиваемая в правую
 // панель Network detail вместо "Общее"-Descriptions. Раскладка повторяет
-// 2-column horizontal layout (label-left / input-right) с custom-
-// виджетами под CIDR, метки и DHCP-collapse.
+// 2-column horizontal layout (label-left / input-right) с полями размещения
+// (ZONAL зона / REGIONAL регион), основного CIDR (IPv4/IPv6) и меток.
 //
-// Wire-format submission ровно как у public AddressService.Create:
-//   { project_id, network_id, zone_id, name, description?, labels?,
-//     v4_cidr_blocks: [string], v6_cidr_blocks: [string], route_table_id?, dhcp_options? }
+// VPC-1 wire-format (SubnetService.Create):
+//   { project_id, network_id, name, description?, labels?,
+//     zone_id XOR region_id,               // placement_type° server-derived
+//     ipv4_cidr_primary?, ipv6_cidr_primary?,  // immutable anchor, ≥1 required
+//     route_table_id? }                    // auto = network.defaultRouteTableId°
 //
-// v6_cidr_blocks (KAC-68): аналогично v4, но prefix-варианты /48..../128;
-// в большинстве случаев /64 (RFC-default для subnet). Оба поля optional —
-// допустима v4-only / v6-only / dual-stack подсеть.
+// placement_type is NOT sent (server rejects it; derived from zone/region).
+// Additional CIDR ranges are added post-create via :add-cidr-blocks on the
+// subnet detail page. DhcpOptions retired by design.
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Collapse, Form, Input, Select, Space, Tooltip, Typography } from "antd";
+import { Form, Input, Select, Space, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { ApiError, api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
-import { CidrSection } from "@shared/components/molecules/SubnetCidrChips";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { REGISTRY } from "@shared/lib/resource-registry";
@@ -80,13 +81,10 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
   const [placementType, setPlacementType] = useState<"ZONAL" | "REGIONAL">("ZONAL");
   const [regionId, setRegionId] = useState<string | undefined>(undefined);
   const [routeTableId, setRouteTableId] = useState<string | undefined>(undefined);
-  // CIDR-блоки храним как массив готовых строк "10.0.0.0/24" (как в edit-вью);
-  // визуально — chip-list через SubnetCidrChips (visual parity с SubnetCidrManager).
-  const [v4Blocks, setV4Blocks] = useState<string[]>([]);
-  const [v6Blocks, setV6Blocks] = useState<string[]>([]);
-  const [dhcpDomainName, setDhcpDomainName] = useState("");
-  const [dhcpDns, setDhcpDns] = useState<string[]>([]);
-  const [dhcpNtp, setDhcpNtp] = useState<string[]>([]);
+  // VPC-1: single immutable primary CIDR anchor per family (≥1 required).
+  // Additional ranges are added post-create via :add-cidr-blocks.
+  const [v4Primary, setV4Primary] = useState("");
+  const [v6Primary, setV6Primary] = useState("");
 
   // Зоны: глобальный admin-ресурс, без project_id.
   const { data: zoneData } = useQuery({
@@ -205,35 +203,37 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
       toast.error("Выберите регион.");
       return;
     }
-    // CIDR-строки уже валидированы и добавлены через SubnetCidrChips —
-    // используем как есть. Хотя бы одно семейство (v4 / v6 / оба) обязательно.
-    if (v4Blocks.length === 0 && v6Blocks.length === 0) {
-      toast.error("Добавьте хотя бы один CIDR (IPv4 или IPv6).");
+    // VPC-1: ≥1 primary CIDR anchor required (v4 / v6 / both). Additional
+    // ranges are added post-create via :add-cidr-blocks.
+    const v4 = v4Primary.trim();
+    const v6 = v6Primary.trim();
+    if (!v4 && !v6) {
+      toast.error("Укажите основной CIDR (IPv4 или IPv6).");
+      return;
+    }
+    if (v4 && !v4.includes("/")) {
+      toast.error("Основной IPv4 CIDR должен содержать префикс, например 10.20.0.0/24.");
+      return;
+    }
+    if (v6 && !(v6.includes("/") && v6.includes(":"))) {
+      toast.error("Основной IPv6 CIDR должен содержать префикс, например fd00:20::/64.");
       return;
     }
     const labelMap = labelsFromEntries(labels);
-    const dhcp =
-      dhcpDomainName || dhcpDns.length > 0 || dhcpNtp.length > 0
-        ? {
-            domain_name: dhcpDomainName || undefined,
-            domain_name_servers: dhcpDns.length > 0 ? dhcpDns : undefined,
-            ntp_servers: dhcpNtp.length > 0 ? dhcpNtp : undefined,
-          }
-        : undefined;
 
+    // placement_type НЕ отправляется — сервер выводит его из zone_id XOR
+    // region_id. DhcpOptions сняты by design.
     const payload: Record<string, unknown> = {
       project_id: projectId,
       network_id: networkId,
-      placement_type: placementType,
       zone_id: placementType === "ZONAL" ? zoneId : undefined,
       region_id: placementType === "REGIONAL" ? regionId : undefined,
       name,
       description: description || undefined,
       labels: Object.keys(labelMap).length > 0 ? labelMap : undefined,
-      v4_cidr_blocks: v4Blocks.length > 0 ? v4Blocks : undefined,
-      v6_cidr_blocks: v6Blocks.length > 0 ? v6Blocks : undefined,
+      ipv4_cidr_primary: v4 || undefined,
+      ipv6_cidr_primary: v6 || undefined,
       route_table_id: routeTableId || undefined,
-      dhcp_options: dhcp,
     };
 
     mutation.mutate(payload);
@@ -304,75 +304,45 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
           />
         </Form.Item>
 
-        {/* IPv4 и IPv6 CIDR — ДВА отдельных поля (как в edit). Хотя бы одно
-            семейство обязательно (v4-only / v6-only / dual-stack). */}
+        {/* VPC-1: единственный immutable основной CIDR на семейство (≥1 обязателен).
+            Доп. диапазоны добавляются после создания на странице подсети. */}
         <Form.Item
           label={
             <Space size={4}>
-              IPv4 CIDR
-              <Tooltip title="IPv4 CIDR-блоки подсети. Введите CIDR с префиксом, например 10.0.0.0/24, и нажмите Add. Можно оставить пустым для IPv6-only подсети.">
+              Основной IPv4 CIDR
+              <Tooltip title="Неизменяемый основной IPv4 CIDR подсети (⊆ одного супернет-блока сети), например 10.20.0.0/24. Можно оставить пустым для IPv6-only подсети. Доп. диапазоны добавляются позже.">
                 <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
             </Space>
           }
           required
         >
-          <CidrSection kind="v4" blocks={v4Blocks} onChange={setV4Blocks} hideTitle />
+          <Input
+            value={v4Primary}
+            onChange={(e) => setV4Primary(e.target.value)}
+            placeholder="10.20.0.0/24"
+            style={{ fontFamily: "monospace" }}
+          />
         </Form.Item>
 
         <Form.Item
           label={
             <Space size={4}>
-              IPv6 CIDR
-              <Tooltip title="IPv6 CIDR-блоки подсети. Введите CIDR с префиксом, например 2001:db8::/64, и нажмите Add. Можно оставить пустым для IPv4-only подсети.">
+              Основной IPv6 CIDR
+              <Tooltip title="Опционально. Неизменяемый основной IPv6 CIDR подсети (⊆ IPv6-супернета сети), например fd00:20::/64.">
                 <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
             </Space>
           }
         >
-          <CidrSection kind="v6" blocks={v6Blocks} onChange={setV6Blocks} hideTitle />
+          <Input
+            value={v6Primary}
+            onChange={(e) => setV6Primary(e.target.value)}
+            placeholder="fd00:20::/64"
+            style={{ fontFamily: "monospace" }}
+          />
         </Form.Item>
 
-        <div style={{ margin: "16px 0" }}>
-          <Collapse
-            ghost
-            items={[
-              {
-                key: "dhcp",
-                label: <Typography.Text strong>Настройки DHCP</Typography.Text>,
-                children: (
-                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                    <Form.Item label="Domain name" style={{ marginBottom: 0 }}>
-                      <Input
-                        value={dhcpDomainName}
-                        onChange={(e) => setDhcpDomainName(e.target.value)}
-                        placeholder="<domain>"
-                      />
-                    </Form.Item>
-                    <Form.Item label="DNS servers" style={{ marginBottom: 0 }}>
-                      <Select
-                        mode="tags"
-                        value={dhcpDns}
-                        onChange={setDhcpDns}
-                        tokenSeparators={[",", " "]}
-                        placeholder="<ip-адреса DNS>"
-                      />
-                    </Form.Item>
-                    <Form.Item label="NTP servers" style={{ marginBottom: 0 }}>
-                      <Select
-                        mode="tags"
-                        value={dhcpNtp}
-                        onChange={setDhcpNtp}
-                        tokenSeparators={[",", " "]}
-                        placeholder="<NTP-серверы>"
-                      />
-                    </Form.Item>
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        </div>
         <FormFooter
           submitLabel="Создать подсеть"
           submitting={mutation.isPending || pendingOpId !== null}
