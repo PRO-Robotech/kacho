@@ -358,10 +358,11 @@ message CreateAccessBindingRequest {
   // held the earlier per-object target machinery; tag 10 (`ScopeRef scope_ref`) held
   // the canonical scope pair now flattened into `scope_type`/`scope_id`
   // (redesign-2026 F7). Tags 9/10/11 and names `target`/`target_ref`/`scope_ref` are
-  // RESERVED tombstones — never reused (append-only). F8 REINTRODUCES `target` at a
-  // NEW tag (`target = 15`).
+  // RESERVED tombstones — tags 9/10/11 never reused as tag numbers (append-only).
+  // F8 REINTRODUCES `target` at a NEW tag (`target = 15`); the NAME `target` is reused
+  // at the new tag (tag-tombstone, not name-tombstone).
   reserved 9, 10, 11;
-  reserved "target", "target_ref", "scope_ref";
+  reserved "target_ref", "scope_ref";
 
   // Multi-subject set. 1..32
   // subjects; each yields an INDEPENDENT FGA tuple-set + emitted-tuple ledger
@@ -385,9 +386,16 @@ message CreateAccessBindingRequest {
 
   // Tenant-facing метки самого ресурса AccessBinding (делают binding
   // label-selectable наравне с account/project). Аннотации (size/key/value
-  // pattern) — паритет account/project/group request `labels`. Tags 9/11
-  // зарезервированы (target/target_ref tombstone) — 14 первый свободный.
+  // pattern) — паритет account/project/group request `labels`. Tags 9/10/11
+  // зарезервированы (target/target_ref/scope_ref tombstone) — 14 первый свободный.
   map<string, string> labels = 14 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+
+  // Which objects UNDER the scope-anchor the grant applies to (redesign-2026 F8,
+  // least-privilege spine). REQUIRED — a Create with no `target` (neither
+  // `resources` nor `allInScope`) → sync INVALID_ARGUMENT
+  // "target is required; use target.allInScope{} to grant all objects under the
+  // anchor". NEW tag (tags 9/11 stay tombstoned).
+  AccessTarget target = 15;
 }
 
 message DeleteAccessBindingRequest {

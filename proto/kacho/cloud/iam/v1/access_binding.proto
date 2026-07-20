@@ -6,6 +6,7 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/iam/v1/authorize_service.proto";
 import "kacho/cloud/iam/v1/builtin_condition.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -121,9 +122,11 @@ message AccessBinding {
   //
   // Tags 16/18 held the earlier `target`/`target_ref`/`selector` object-selection
   // machinery (dropped in a prior clean-cut); F8 REINTRODUCES `target` at a NEW tag
-  // (`target = 22`) — tags 16/18 stay tombstoned, never reused.
+  // (`target = 22`) — tags 16/18 stay tombstoned (never reused as tag numbers), while
+  // the NAME `target` is reused at the new tag (append-only: tag-tombstone, not
+  // name-tombstone).
   reserved 15, 16, 17, 18;
-  reserved "scope", "scope_ref", "target", "target_ref", "selector";
+  reserved "scope", "scope_ref", "target_ref", "selector";
 
   // Multi-subject set. A binding may
   // grant the same role+scope to 1..32 subjects at once. Each subject yields an
@@ -163,7 +166,37 @@ message AccessBinding {
   // `labels @> matchLabels` (iam-direct same-DB), а List фильтрует через
   // `viewer ∪ v_list`. Mutable через Update (`labels` в update_mask).
   map<string, string> labels = 21;
+
+  // Which objects UNDER the scope-anchor the grant applies to (redesign-2026 F8,
+  // least-privilege spine). REQUIRED on Create — the broadest grant (all objects
+  // under the anchor, including future) is reachable ONLY via explicit
+  // `target.allInScope{}` opt-in; there is no default sentinel. NEW tag — the
+  // earlier target/target_ref (tags 16/18) stay tombstoned.
+  AccessTarget target = 22;
 }
+
+// AccessTarget selects which objects, under the binding's scope-anchor, the grant
+// applies to (redesign-2026 F8). Exactly one arm is set.
+message AccessTarget {
+  oneof target {
+    // Per-object grant: a closed set of ResourceRef{type,id}.
+    AccessTargetResources resources = 1;
+
+    // Explicit opt-in: the grant applies to ALL objects under the anchor,
+    // including future ones — the broadest grant, never a default.
+    AccessTargetAllInScope all_in_scope = 2;
+  }
+}
+
+// AccessTargetResources is the per-object arm of AccessTarget: a closed set of
+// polymorphic ResourceRef{type,id} (graceful-dangling; `type` is dotted from the
+// closed type-registry, e.g. `compute.instance`).
+message AccessTargetResources {
+  repeated ResourceRef resources = 1;
+}
+
+// AccessTargetAllInScope is the whole-anchor arm of AccessTarget (empty payload).
+message AccessTargetAllInScope {}
 
 // Subject is one grantee of an AccessBinding. `type` is the closed
 // `SubjectType` (USER / SERVICE_ACCOUNT /

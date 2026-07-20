@@ -299,7 +299,13 @@ type AccessBinding struct {
 	// ARM_LABELS-грант на iam.accessBinding материализует v_list по совпадению
 	// `labels @> matchLabels` (iam-direct same-DB), а List фильтрует через
 	// `viewer ∪ v_list`. Mutable через Update (`labels` в update_mask).
-	Labels        map[string]string `protobuf:"bytes,21,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Labels map[string]string `protobuf:"bytes,21,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Which objects UNDER the scope-anchor the grant applies to (redesign-2026 F8,
+	// least-privilege spine). REQUIRED on Create — the broadest grant (all objects
+	// under the anchor, including future) is reachable ONLY via explicit
+	// `target.allInScope{}` opt-in; there is no default sentinel. NEW tag — the
+	// earlier target/target_ref (tags 16/18) stay tombstoned.
+	Target        *AccessTarget `protobuf:"bytes,22,opt,name=target,proto3" json:"target,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -453,6 +459,184 @@ func (x *AccessBinding) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *AccessBinding) GetTarget() *AccessTarget {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+// AccessTarget selects which objects, under the binding's scope-anchor, the grant
+// applies to (redesign-2026 F8). Exactly one arm is set.
+type AccessTarget struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Target:
+	//
+	//	*AccessTarget_Resources
+	//	*AccessTarget_AllInScope
+	Target        isAccessTarget_Target `protobuf_oneof:"target"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccessTarget) Reset() {
+	*x = AccessTarget{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccessTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccessTarget) ProtoMessage() {}
+
+func (x *AccessTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccessTarget.ProtoReflect.Descriptor instead.
+func (*AccessTarget) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *AccessTarget) GetTarget() isAccessTarget_Target {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+func (x *AccessTarget) GetResources() *AccessTargetResources {
+	if x != nil {
+		if x, ok := x.Target.(*AccessTarget_Resources); ok {
+			return x.Resources
+		}
+	}
+	return nil
+}
+
+func (x *AccessTarget) GetAllInScope() *AccessTargetAllInScope {
+	if x != nil {
+		if x, ok := x.Target.(*AccessTarget_AllInScope); ok {
+			return x.AllInScope
+		}
+	}
+	return nil
+}
+
+type isAccessTarget_Target interface {
+	isAccessTarget_Target()
+}
+
+type AccessTarget_Resources struct {
+	// Per-object grant: a closed set of ResourceRef{type,id}.
+	Resources *AccessTargetResources `protobuf:"bytes,1,opt,name=resources,proto3,oneof"`
+}
+
+type AccessTarget_AllInScope struct {
+	// Explicit opt-in: the grant applies to ALL objects under the anchor,
+	// including future ones — the broadest grant, never a default.
+	AllInScope *AccessTargetAllInScope `protobuf:"bytes,2,opt,name=all_in_scope,json=allInScope,proto3,oneof"`
+}
+
+func (*AccessTarget_Resources) isAccessTarget_Target() {}
+
+func (*AccessTarget_AllInScope) isAccessTarget_Target() {}
+
+// AccessTargetResources is the per-object arm of AccessTarget: a closed set of
+// polymorphic ResourceRef{type,id} (graceful-dangling; `type` is dotted from the
+// closed type-registry, e.g. `compute.instance`).
+type AccessTargetResources struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Resources     []*ResourceRef         `protobuf:"bytes,1,rep,name=resources,proto3" json:"resources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccessTargetResources) Reset() {
+	*x = AccessTargetResources{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccessTargetResources) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccessTargetResources) ProtoMessage() {}
+
+func (x *AccessTargetResources) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccessTargetResources.ProtoReflect.Descriptor instead.
+func (*AccessTargetResources) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AccessTargetResources) GetResources() []*ResourceRef {
+	if x != nil {
+		return x.Resources
+	}
+	return nil
+}
+
+// AccessTargetAllInScope is the whole-anchor arm of AccessTarget (empty payload).
+type AccessTargetAllInScope struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccessTargetAllInScope) Reset() {
+	*x = AccessTargetAllInScope{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccessTargetAllInScope) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccessTargetAllInScope) ProtoMessage() {}
+
+func (x *AccessTargetAllInScope) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccessTargetAllInScope.ProtoReflect.Descriptor instead.
+func (*AccessTargetAllInScope) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{3}
+}
+
 // Subject is one grantee of an AccessBinding. `type` is the closed
 // `SubjectType` (USER / SERVICE_ACCOUNT /
 // GROUP); `id` is the subject id whose prefix matches the type (`usr…` /
@@ -472,7 +656,7 @@ type Subject struct {
 
 func (x *Subject) Reset() {
 	*x = Subject{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -484,7 +668,7 @@ func (x *Subject) String() string {
 func (*Subject) ProtoMessage() {}
 
 func (x *Subject) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -497,7 +681,7 @@ func (x *Subject) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Subject.ProtoReflect.Descriptor instead.
 func (*Subject) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Subject) GetType() SubjectType {
@@ -532,7 +716,7 @@ type CreateAccessBindingMetadata struct {
 
 func (x *CreateAccessBindingMetadata) Reset() {
 	*x = CreateAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -544,7 +728,7 @@ func (x *CreateAccessBindingMetadata) String() string {
 func (*CreateAccessBindingMetadata) ProtoMessage() {}
 
 func (x *CreateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -557,7 +741,7 @@ func (x *CreateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*CreateAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CreateAccessBindingMetadata) GetAccessBindingId() string {
@@ -587,7 +771,7 @@ type DeleteAccessBindingMetadata struct {
 
 func (x *DeleteAccessBindingMetadata) Reset() {
 	*x = DeleteAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -599,7 +783,7 @@ func (x *DeleteAccessBindingMetadata) String() string {
 func (*DeleteAccessBindingMetadata) ProtoMessage() {}
 
 func (x *DeleteAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -612,7 +796,7 @@ func (x *DeleteAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{3}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteAccessBindingMetadata) GetAccessBindingId() string {
@@ -642,7 +826,7 @@ type UpdateAccessBindingMetadata struct {
 
 func (x *UpdateAccessBindingMetadata) Reset() {
 	*x = UpdateAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -654,7 +838,7 @@ func (x *UpdateAccessBindingMetadata) String() string {
 func (*UpdateAccessBindingMetadata) ProtoMessage() {}
 
 func (x *UpdateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -667,7 +851,7 @@ func (x *UpdateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{4}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpdateAccessBindingMetadata) GetAccessBindingId() string {
@@ -697,7 +881,7 @@ type RevokeAccessBindingMetadata struct {
 
 func (x *RevokeAccessBindingMetadata) Reset() {
 	*x = RevokeAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -709,7 +893,7 @@ func (x *RevokeAccessBindingMetadata) String() string {
 func (*RevokeAccessBindingMetadata) ProtoMessage() {}
 
 func (x *RevokeAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -722,7 +906,7 @@ func (x *RevokeAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*RevokeAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RevokeAccessBindingMetadata) GetAccessBindingId() string {
@@ -743,7 +927,7 @@ var File_kacho_cloud_iam_v1_access_binding_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\"\xba\b\n" +
+	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/authorize_service.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\"\xec\b\n" +
 	"\rAccessBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fsubject_type\x18\x02 \x01(\tR\vsubjectType\x12\x1d\n" +
@@ -767,7 +951,8 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\x11builtin_condition\x18\x0e \x01(\x0e2$.kacho.cloud.iam.v1.BuiltinConditionR\x10builtinCondition\x127\n" +
 	"\bsubjects\x18\x13 \x03(\v2\x1b.kacho.cloud.iam.v1.SubjectR\bsubjects\x12/\n" +
 	"\x13deletion_protection\x18\x14 \x01(\bR\x12deletionProtection\x12E\n" +
-	"\x06labels\x18\x15 \x03(\v2-.kacho.cloud.iam.v1.AccessBinding.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\x15 \x03(\v2-.kacho.cloud.iam.v1.AccessBinding.LabelsEntryR\x06labels\x128\n" +
+	"\x06target\x18\x16 \x01(\v2 .kacho.cloud.iam.v1.AccessTargetR\x06target\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"F\n" +
@@ -781,8 +966,16 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\x11SCOPE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aCLUSTER\x10\x01\x12\v\n" +
 	"\aACCOUNT\x10\x02\x12\v\n" +
-	"\aPROJECT\x10\x03J\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13R\x05scopeR\tscope_refR\x06targetR\n" +
-	"target_refR\bselector\"N\n" +
+	"\aPROJECT\x10\x03J\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13R\x05scopeR\tscope_refR\n" +
+	"target_refR\bselector\"\xb3\x01\n" +
+	"\fAccessTarget\x12I\n" +
+	"\tresources\x18\x01 \x01(\v2).kacho.cloud.iam.v1.AccessTargetResourcesH\x00R\tresources\x12N\n" +
+	"\fall_in_scope\x18\x02 \x01(\v2*.kacho.cloud.iam.v1.AccessTargetAllInScopeH\x00R\n" +
+	"allInScopeB\b\n" +
+	"\x06target\"V\n" +
+	"\x15AccessTargetResources\x12=\n" +
+	"\tresources\x18\x01 \x03(\v2\x1f.kacho.cloud.iam.v1.ResourceRefR\tresources\"\x18\n" +
+	"\x16AccessTargetAllInScope\"N\n" +
 	"\aSubject\x123\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1f.kacho.cloud.iam.v1.SubjectTypeR\x04type\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"h\n" +
@@ -821,35 +1014,43 @@ func file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_access_binding_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_kacho_cloud_iam_v1_access_binding_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_kacho_cloud_iam_v1_access_binding_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_kacho_cloud_iam_v1_access_binding_proto_goTypes = []any{
 	(SubjectType)(0),                    // 0: kacho.cloud.iam.v1.SubjectType
 	(AccessBinding_Status)(0),           // 1: kacho.cloud.iam.v1.AccessBinding.Status
 	(AccessBinding_Scope)(0),            // 2: kacho.cloud.iam.v1.AccessBinding.Scope
 	(*AccessBinding)(nil),               // 3: kacho.cloud.iam.v1.AccessBinding
-	(*Subject)(nil),                     // 4: kacho.cloud.iam.v1.Subject
-	(*CreateAccessBindingMetadata)(nil), // 5: kacho.cloud.iam.v1.CreateAccessBindingMetadata
-	(*DeleteAccessBindingMetadata)(nil), // 6: kacho.cloud.iam.v1.DeleteAccessBindingMetadata
-	(*UpdateAccessBindingMetadata)(nil), // 7: kacho.cloud.iam.v1.UpdateAccessBindingMetadata
-	(*RevokeAccessBindingMetadata)(nil), // 8: kacho.cloud.iam.v1.RevokeAccessBindingMetadata
-	nil,                                 // 9: kacho.cloud.iam.v1.AccessBinding.LabelsEntry
-	(*timestamppb.Timestamp)(nil),       // 10: google.protobuf.Timestamp
-	(BuiltinCondition)(0),               // 11: kacho.cloud.iam.v1.BuiltinCondition
+	(*AccessTarget)(nil),                // 4: kacho.cloud.iam.v1.AccessTarget
+	(*AccessTargetResources)(nil),       // 5: kacho.cloud.iam.v1.AccessTargetResources
+	(*AccessTargetAllInScope)(nil),      // 6: kacho.cloud.iam.v1.AccessTargetAllInScope
+	(*Subject)(nil),                     // 7: kacho.cloud.iam.v1.Subject
+	(*CreateAccessBindingMetadata)(nil), // 8: kacho.cloud.iam.v1.CreateAccessBindingMetadata
+	(*DeleteAccessBindingMetadata)(nil), // 9: kacho.cloud.iam.v1.DeleteAccessBindingMetadata
+	(*UpdateAccessBindingMetadata)(nil), // 10: kacho.cloud.iam.v1.UpdateAccessBindingMetadata
+	(*RevokeAccessBindingMetadata)(nil), // 11: kacho.cloud.iam.v1.RevokeAccessBindingMetadata
+	nil,                                 // 12: kacho.cloud.iam.v1.AccessBinding.LabelsEntry
+	(*timestamppb.Timestamp)(nil),       // 13: google.protobuf.Timestamp
+	(BuiltinCondition)(0),               // 14: kacho.cloud.iam.v1.BuiltinCondition
+	(*ResourceRef)(nil),                 // 15: kacho.cloud.iam.v1.ResourceRef
 }
 var file_kacho_cloud_iam_v1_access_binding_proto_depIdxs = []int32{
-	10, // 0: kacho.cloud.iam.v1.AccessBinding.created_at:type_name -> google.protobuf.Timestamp
+	13, // 0: kacho.cloud.iam.v1.AccessBinding.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: kacho.cloud.iam.v1.AccessBinding.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
-	10, // 2: kacho.cloud.iam.v1.AccessBinding.expires_at:type_name -> google.protobuf.Timestamp
-	10, // 3: kacho.cloud.iam.v1.AccessBinding.revoked_at:type_name -> google.protobuf.Timestamp
-	11, // 4: kacho.cloud.iam.v1.AccessBinding.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
-	4,  // 5: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
-	9,  // 6: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
-	0,  // 7: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
-	8,  // [8:8] is the sub-list for method output_type
-	8,  // [8:8] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	13, // 2: kacho.cloud.iam.v1.AccessBinding.expires_at:type_name -> google.protobuf.Timestamp
+	13, // 3: kacho.cloud.iam.v1.AccessBinding.revoked_at:type_name -> google.protobuf.Timestamp
+	14, // 4: kacho.cloud.iam.v1.AccessBinding.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
+	7,  // 5: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
+	12, // 6: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
+	4,  // 7: kacho.cloud.iam.v1.AccessBinding.target:type_name -> kacho.cloud.iam.v1.AccessTarget
+	5,  // 8: kacho.cloud.iam.v1.AccessTarget.resources:type_name -> kacho.cloud.iam.v1.AccessTargetResources
+	6,  // 9: kacho.cloud.iam.v1.AccessTarget.all_in_scope:type_name -> kacho.cloud.iam.v1.AccessTargetAllInScope
+	15, // 10: kacho.cloud.iam.v1.AccessTargetResources.resources:type_name -> kacho.cloud.iam.v1.ResourceRef
+	0,  // 11: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_access_binding_proto_init() }
@@ -857,14 +1058,19 @@ func file_kacho_cloud_iam_v1_access_binding_proto_init() {
 	if File_kacho_cloud_iam_v1_access_binding_proto != nil {
 		return
 	}
+	file_kacho_cloud_iam_v1_authorize_service_proto_init()
 	file_kacho_cloud_iam_v1_builtin_condition_proto_init()
+	file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[1].OneofWrappers = []any{
+		(*AccessTarget_Resources)(nil),
+		(*AccessTarget_AllInScope)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_access_binding_proto_rawDesc), len(file_kacho_cloud_iam_v1_access_binding_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   7,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
