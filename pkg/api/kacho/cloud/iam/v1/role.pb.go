@@ -114,8 +114,28 @@ type Role struct {
 	// AccessBinding anchor. `is_system` (tag 6) is DERIVED from the tier
 	// (tier_type == `iam.cluster`), not an independently stored provenance flag.
 	DefinitionTier *DefinitionTier `protobuf:"bytes,16,opt,name=definition_tier,json=definitionTier,proto3" json:"definition_tier,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Authored verb set (redesign-2026 F6) — the DEDUPED, canonically-ordered union
+	// of the verbs the role's `rules[]` grant (output-only derived preview; `*`
+	// expands to full CRUD). Empty for a label-only role.
+	AuthoredVerbs []string `protobuf:"bytes,17,rep,name=authored_verbs,json=authoredVerbs,proto3" json:"authored_verbs,omitempty"`
+	// Effective verb set (redesign-2026 F6) — the HONEST co-materialized preview of
+	// what the role actually grants. It equals `authored_verbs` PLUS, for an
+	// editor-tier role (grants `update` but not `delete`/`*`), the `delete*`
+	// qualifier: an editor may delete the in-scope leaf objects it edits (but NOT
+	// the account/project anchor). Output-only derived.
+	EffectiveVerbs []string `protobuf:"bytes,18,rep,name=effective_verbs,json=effectiveVerbs,proto3" json:"effective_verbs,omitempty"`
+	// Per-verb notes (redesign-2026 F6) — clarifies the derived preview. Keyed by
+	// the verb; e.g. `verb_notes["delete*"]` explains the editor delete-qualifier.
+	// Output-only derived.
+	VerbNotes map[string]string `protobuf:"bytes,19,rep,name=verb_notes,json=verbNotes,proto3" json:"verb_notes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Human-facing display name (redesign-2026 F6) — the friendly catalog label
+	// (e.g. "Viewer"). Output-only; for a custom role it defaults to `name`.
+	DisplayName string `protobuf:"bytes,20,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// Human-facing purpose (redesign-2026 F6) — a one-line description of what the
+	// role is for. Output-only; empty for a custom role.
+	Purpose       string `protobuf:"bytes,21,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Role) Reset() {
@@ -252,6 +272,41 @@ func (x *Role) GetDefinitionTier() *DefinitionTier {
 		return x.DefinitionTier
 	}
 	return nil
+}
+
+func (x *Role) GetAuthoredVerbs() []string {
+	if x != nil {
+		return x.AuthoredVerbs
+	}
+	return nil
+}
+
+func (x *Role) GetEffectiveVerbs() []string {
+	if x != nil {
+		return x.EffectiveVerbs
+	}
+	return nil
+}
+
+func (x *Role) GetVerbNotes() map[string]string {
+	if x != nil {
+		return x.VerbNotes
+	}
+	return nil
+}
+
+func (x *Role) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *Role) GetPurpose() string {
+	if x != nil {
+		return x.Purpose
+	}
+	return ""
 }
 
 // DefinitionTier is the hierarchy tier a Role is defined at (redesign-2026 F4):
@@ -553,7 +608,7 @@ var File_kacho_cloud_iam_v1_role_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xd1\x05\n" +
+	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xe4\a\n" +
 	"\x04Role\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -575,8 +630,17 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12<\n" +
 	"\x06labels\x18\x0f \x03(\v2$.kacho.cloud.iam.v1.Role.LabelsEntryR\x06labels\x12K\n" +
-	"\x0fdefinition_tier\x18\x10 \x01(\v2\".kacho.cloud.iam.v1.DefinitionTierR\x0edefinitionTier\x1a9\n" +
+	"\x0fdefinition_tier\x18\x10 \x01(\v2\".kacho.cloud.iam.v1.DefinitionTierR\x0edefinitionTier\x12%\n" +
+	"\x0eauthored_verbs\x18\x11 \x03(\tR\rauthoredVerbs\x12'\n" +
+	"\x0feffective_verbs\x18\x12 \x03(\tR\x0eeffectiveVerbs\x12F\n" +
+	"\n" +
+	"verb_notes\x18\x13 \x03(\v2'.kacho.cloud.iam.v1.Role.VerbNotesEntryR\tverbNotes\x12!\n" +
+	"\fdisplay_name\x18\x14 \x01(\tR\vdisplayName\x12\x18\n" +
+	"\apurpose\x18\x15 \x01(\tR\apurpose\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a<\n" +
+	"\x0eVerbNotesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
 	"R\x0forganization_id\"F\n" +
@@ -611,7 +675,7 @@ func file_kacho_cloud_iam_v1_role_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_role_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_kacho_cloud_iam_v1_role_proto_goTypes = []any{
 	(*Role)(nil),                  // 0: kacho.cloud.iam.v1.Role
 	(*DefinitionTier)(nil),        // 1: kacho.cloud.iam.v1.DefinitionTier
@@ -620,21 +684,23 @@ var file_kacho_cloud_iam_v1_role_proto_goTypes = []any{
 	(*UpdateRoleMetadata)(nil),    // 4: kacho.cloud.iam.v1.UpdateRoleMetadata
 	(*DeleteRoleMetadata)(nil),    // 5: kacho.cloud.iam.v1.DeleteRoleMetadata
 	nil,                           // 6: kacho.cloud.iam.v1.Role.LabelsEntry
-	nil,                           // 7: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+	nil,                           // 7: kacho.cloud.iam.v1.Role.VerbNotesEntry
+	nil,                           // 8: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_role_proto_depIdxs = []int32{
-	8, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
+	9, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
 	2, // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
-	8, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
+	9, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
 	6, // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
 	1, // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
-	7, // 5: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	7, // 5: kacho.cloud.iam.v1.Role.verb_notes:type_name -> kacho.cloud.iam.v1.Role.VerbNotesEntry
+	8, // 6: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_role_proto_init() }
@@ -648,7 +714,7 @@ func file_kacho_cloud_iam_v1_role_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_role_proto_rawDesc), len(file_kacho_cloud_iam_v1_role_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
