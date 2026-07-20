@@ -196,7 +196,7 @@ func mapImageErr(err error, c imgErrCtx) error {
 				return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, c.volumeID)
 			}
 			return fmt.Errorf("%w: image violates a reference constraint", ports.ErrFailedPrecondition)
-		case "23514": // check_violation (source exactly-one / name / description / format / size / labels)
+		case "23514": // check_violation (source at-most-one mutual-exclusion / name / description / format / size / labels)
 			return fmt.Errorf("%w: Illegal argument", ports.ErrInvalidArg)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",

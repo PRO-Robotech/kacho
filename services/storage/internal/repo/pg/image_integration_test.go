@@ -169,30 +169,34 @@ func TestImageSourceFKNotFound(t *testing.T) {
 	require.Equal(t, "Volume vol00000000000000000 not found", err.Error()[len("failed precondition: "):])
 }
 
-// TestImageSourceExactlyOneDBCheck — F12 backstop: DB CHECK images_source_exactly_one
-// отвергает оба-непусты И ни-одного (23514). Прямой SQL-insert (обходит sync-validate),
-// чтобы лочить именно DB-инвариант.
-func TestImageSourceExactlyOneDBCheck(t *testing.T) {
+// TestImageSourceMutualExclusionDBCheck — F12 backstop (STOR-1-28/F5): DB CHECK
+// images_source_at_most_one — mutual-exclusion, отвергает ТОЛЬКО оба-непусты (23514).
+// Zero источников DB ДОПУСКАЕТ — это валидное source-less состояние после provenance
+// SET NULL (удаление источника, засевшего Image). At-least-one на Create энфорсит
+// domain-слой sync-validate (both/none → InvalidArgument, см. service/image
+// TestCreateSourceExactlyOne), а НЕ DB-CHECK — иначе SET NULL ронял бы 23514 на
+// source-delete. Прямой SQL-insert (обходит sync-validate), чтобы лочить именно DB-инвариант.
+func TestImageSourceMutualExclusionDBCheck(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-x", 1<<30)
 	v := mkVolume(t, pg.NewVolumeRepo(pool), "prj-1", "vol-x", 1<<30)
 
-	// оба источника → CHECK 23514.
+	// оба источника → CHECK 23514 (единственный инвариант, который SET NULL нарушить не может).
 	_, err := pool.Exec(ctx, `INSERT INTO images
 		(id, project_id, region_id, source_snapshot_id, source_volume_id, format, state)
 		VALUES ($1,'prj-1','ru-central1',$2,$3,'STANDARD','READY')`,
 		ids.NewID(domain.PrefixImage), snapID, v.ID)
-	require.Error(t, err, "both sources must violate images_source_exactly_one CHECK")
-	require.Contains(t, err.Error(), "images_source_exactly_one")
+	require.Error(t, err, "both sources must violate images_source_at_most_one CHECK")
+	require.Contains(t, err.Error(), "images_source_at_most_one")
 
-	// ни одного источника → CHECK 23514.
+	// ни одного источника → DB ДОПУСКАЕТ (source-less — валидное пост-SET-NULL состояние;
+	// at-least-one на Create — забота domain.Validate(), не DB-CHECK).
 	_, err = pool.Exec(ctx, `INSERT INTO images
 		(id, project_id, region_id, format, state)
 		VALUES ($1,'prj-1','ru-central1','STANDARD','READY')`,
 		ids.NewID(domain.PrefixImage))
-	require.Error(t, err, "no source must violate images_source_exactly_one CHECK")
-	require.Contains(t, err.Error(), "images_source_exactly_one")
+	require.NoError(t, err, "zero sources is a valid DB state (post SET-NULL); at-least-one enforced in domain sync-validate")
 }
 
 // TestImageListCursorFilter — STOR-1-33/32: cursor (created_at,id) ASC, project-scope,

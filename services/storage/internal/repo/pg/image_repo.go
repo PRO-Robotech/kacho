@@ -22,9 +22,9 @@ import (
 )
 
 // ImageRepo — реализация image.Reader/Writer поверх pgxpool (handwritten pgx, БЕЗ
-// ORM). Within-service инварианты — на DB (source exactly-one CHECK, source FK SET
-// NULL, partial UNIQUE(name)); мутации пишут storage_outbox + fga_register_outbox в
-// той же writer-TX (атомарно, один commit).
+// ORM). Within-service инварианты — на DB (source at-most-one mutual-exclusion CHECK,
+// source FK SET NULL — provenance, partial UNIQUE(name)); мутации пишут storage_outbox
+// + fga_register_outbox в той же writer-TX (атомарно, один commit).
 type ImageRepo struct {
 	pool *pgxpool.Pool
 }
@@ -136,8 +136,9 @@ func (r *ImageRepo) List(ctx context.Context, p image.Pagination) ([]*domain.Ima
 
 // Insert реализует image.Writer: state=READY сразу; size_bytes/min_disk_bytes derived
 // из размера источника (snapshot ЛИБО volume) на INSERT; source_* ”→NULL. source FK
-// (23503) / source exactly-one CHECK (23514) / partial UNIQUE(name) (23505) →
-// контрактные sentinel'ы. storage_outbox CREATED + fga_register_outbox (owner-tuple
+// (23503) / source at-most-one mutual-exclusion CHECK (23514) / partial UNIQUE(name)
+// (23505) → контрактные sentinel'ы. exactly-one на Create — domain.Validate() (sync).
+// storage_outbox CREATED + fga_register_outbox (owner-tuple
 // storage_image) — та же writer-TX (один commit).
 func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image) (*domain.Image, error) {
 	labels, err := json.Marshal(nonNilLabels(i.Labels))
