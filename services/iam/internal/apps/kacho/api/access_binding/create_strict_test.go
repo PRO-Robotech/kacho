@@ -211,6 +211,9 @@ type strictDupABReader struct{}
 func (r *strictDupABReader) Get(ctx context.Context, id domain.AccessBindingID) (domain.AccessBinding, error) {
 	return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrNotFound, "AccessBinding %s not found", id)
 }
+func (r *strictDupABReader) List(context.Context, repoab.ListFilter) ([]domain.AccessBinding, string, error) {
+	return nil, "", nil
+}
 func (r *strictDupABReader) ListByScope(context.Context, domain.ResourceType, string, repoab.PageFilter) ([]domain.AccessBinding, string, error) {
 	return nil, "", nil
 }
@@ -258,6 +261,9 @@ func (w *strictDupABWriter) Delete(ctx context.Context, id domain.AccessBindingI
 }
 func (w *strictDupABWriter) DeleteGuarded(ctx context.Context, id domain.AccessBindingID) error {
 	return stderrors.New("not stubbed")
+}
+func (w *strictDupABWriter) RevokeGuarded(ctx context.Context, id domain.AccessBindingID, _ domain.UserID) (domain.AccessBinding, error) {
+	return domain.AccessBinding{}, stderrors.New("not stubbed")
 }
 func (w *strictDupABWriter) SetDeletionProtection(ctx context.Context, id domain.AccessBindingID, protected bool) (domain.AccessBinding, error) {
 	return domain.AccessBinding{}, stderrors.New("not stubbed")

@@ -27,6 +27,7 @@ const (
 	AccessBindingService_Create_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Create"
 	AccessBindingService_Delete_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Delete"
 	AccessBindingService_Update_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Update"
+	AccessBindingService_List_FullMethodName                  = "/kacho.cloud.iam.v1.AccessBindingService/List"
 	AccessBindingService_ListByScope_FullMethodName           = "/kacho.cloud.iam.v1.AccessBindingService/ListByScope"
 	AccessBindingService_ListBySubject_FullMethodName         = "/kacho.cloud.iam.v1.AccessBindingService/ListBySubject"
 	AccessBindingService_ListSubjectPrivileges_FullMethodName = "/kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges"
@@ -35,6 +36,7 @@ const (
 	AccessBindingService_ExpandAccess_FullMethodName          = "/kacho.cloud.iam.v1.AccessBindingService/ExpandAccess"
 	AccessBindingService_ListByAccount_FullMethodName         = "/kacho.cloud.iam.v1.AccessBindingService/ListByAccount"
 	AccessBindingService_ListOperations_FullMethodName        = "/kacho.cloud.iam.v1.AccessBindingService/ListOperations"
+	AccessBindingService_Revoke_FullMethodName                = "/kacho.cloud.iam.v1.AccessBindingService/Revoke"
 )
 
 // AccessBindingServiceClient is the client API for AccessBindingService service.
@@ -50,8 +52,8 @@ type AccessBindingServiceClient interface {
 	// Returns the specified AccessBinding resource.
 	Get(ctx context.Context, in *GetAccessBindingRequest, opts ...grpc.CallOption) (*AccessBinding, error)
 	// Creates an access binding.
-	// Идемпотентный INSERT — дубль (subject_type, subject_id, role_id, resource_type,
-	// resource_id) возвращает existing.
+	// Strict INSERT — дубль активного гранта (subject, role_id, scope_type,
+	// scope_id) → ALREADY_EXISTS (partial UNIQUE WHERE revoked_at IS NULL).
 	Create(ctx context.Context, in *CreateAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified access binding.
 	Delete(ctx context.Context, in *DeleteAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
@@ -63,6 +65,17 @@ type AccessBindingServiceClient interface {
 	// Delete+Create); an `update_mask` referencing any non-mutable field →
 	// INVALID_ARGUMENT. Async (returns Operation), like the other mutations.
 	Update(ctx context.Context, in *UpdateAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Lists access bindings (redesign-2026 F11). The single, plain List that
+	// supersedes the legacy `ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount`
+	// family: one paginated read with an OPTIONAL whitelist `filter`
+	// (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
+	// key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
+	// BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
+	// INVALID_ARGUMENT regardless of grant state. The result is the caller's
+	// `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
+	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+	List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists access bindings attached to the specified scope (renamed from the
 	// legacy `ListByResource`, whose wire-name is removed). The
 	// `resource_type`/`resource_id` request pair names the scope anchor
@@ -156,6 +169,24 @@ type AccessBindingServiceClient interface {
 	ListByAccount(ctx context.Context, in *ListAccessBindingsByAccountRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(ctx context.Context, in *ListAccessBindingOperationsRequest, opts ...grpc.CallOption) (*ListAccessBindingOperationsResponse, error)
+	// Soft-revokes the specified access binding (redesign-2026 F10 IAM-1-28).
+	//
+	// Two distinct removal outcomes coexist (product-spine parity):
+	//   - Delete = HARD: the row is physically removed; a subsequent Get → NOT_FOUND.
+	//   - Revoke = SOFT: the row is RETAINED with status transitioned ACTIVE→REVOKED
+	//     (terminal), revoked_at / revoked_by_user_id set for audit-retention; a
+	//     subsequent Get still returns the row (status=REVOKED). Either way the
+	//     emitted FGA-tuple set (persisted access_binding_emitted_tuples ledger) is
+	//     removed in the same writer-tx, so access is denied once the Operation is
+	//     done. Re-granting the same (subject, role, scope) after a revoke yields a
+	//     NEW ACTIVE row (the partial active-grant UNIQUE excludes revoked rows).
+	//
+	// deletion_protection is honored (owner auto-binding): revoking a protected
+	// binding is rejected sync FAILED_PRECONDITION plus an atomic CAS-backstop
+	// (`UPDATE … WHERE status='ACTIVE' AND deletion_protection=false`) against
+	// TOCTOU — clear the flag via Update first, exactly like Delete.
+	// Async (returns Operation), like the other mutations.
+	Revoke(ctx context.Context, in *RevokeAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type accessBindingServiceClient struct {
@@ -200,6 +231,16 @@ func (c *accessBindingServiceClient) Update(ctx context.Context, in *UpdateAcces
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
 	err := c.cc.Invoke(ctx, AccessBindingService_Update_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accessBindingServiceClient) List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAccessBindingsResponse)
+	err := c.cc.Invoke(ctx, AccessBindingService_List_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -286,6 +327,16 @@ func (c *accessBindingServiceClient) ListOperations(ctx context.Context, in *Lis
 	return out, nil
 }
 
+func (c *accessBindingServiceClient) Revoke(ctx context.Context, in *RevokeAccessBindingRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, AccessBindingService_Revoke_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AccessBindingServiceServer is the server API for AccessBindingService service.
 // All implementations must embed UnimplementedAccessBindingServiceServer
 // for forward compatibility.
@@ -299,8 +350,8 @@ type AccessBindingServiceServer interface {
 	// Returns the specified AccessBinding resource.
 	Get(context.Context, *GetAccessBindingRequest) (*AccessBinding, error)
 	// Creates an access binding.
-	// Идемпотентный INSERT — дубль (subject_type, subject_id, role_id, resource_type,
-	// resource_id) возвращает existing.
+	// Strict INSERT — дубль активного гранта (subject, role_id, scope_type,
+	// scope_id) → ALREADY_EXISTS (partial UNIQUE WHERE revoked_at IS NULL).
 	Create(context.Context, *CreateAccessBindingRequest) (*operation.Operation, error)
 	// Deletes the specified access binding.
 	Delete(context.Context, *DeleteAccessBindingRequest) (*operation.Operation, error)
@@ -312,6 +363,17 @@ type AccessBindingServiceServer interface {
 	// Delete+Create); an `update_mask` referencing any non-mutable field →
 	// INVALID_ARGUMENT. Async (returns Operation), like the other mutations.
 	Update(context.Context, *UpdateAccessBindingRequest) (*operation.Operation, error)
+	// Lists access bindings (redesign-2026 F11). The single, plain List that
+	// supersedes the legacy `ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount`
+	// family: one paginated read with an OPTIONAL whitelist `filter`
+	// (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
+	// key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
+	// BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
+	// INVALID_ARGUMENT regardless of grant state. The result is the caller's
+	// `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
+	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+	List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error)
 	// Lists access bindings attached to the specified scope (renamed from the
 	// legacy `ListByResource`, whose wire-name is removed). The
 	// `resource_type`/`resource_id` request pair names the scope anchor
@@ -405,6 +467,24 @@ type AccessBindingServiceServer interface {
 	ListByAccount(context.Context, *ListAccessBindingsByAccountRequest) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(context.Context, *ListAccessBindingOperationsRequest) (*ListAccessBindingOperationsResponse, error)
+	// Soft-revokes the specified access binding (redesign-2026 F10 IAM-1-28).
+	//
+	// Two distinct removal outcomes coexist (product-spine parity):
+	//   - Delete = HARD: the row is physically removed; a subsequent Get → NOT_FOUND.
+	//   - Revoke = SOFT: the row is RETAINED with status transitioned ACTIVE→REVOKED
+	//     (terminal), revoked_at / revoked_by_user_id set for audit-retention; a
+	//     subsequent Get still returns the row (status=REVOKED). Either way the
+	//     emitted FGA-tuple set (persisted access_binding_emitted_tuples ledger) is
+	//     removed in the same writer-tx, so access is denied once the Operation is
+	//     done. Re-granting the same (subject, role, scope) after a revoke yields a
+	//     NEW ACTIVE row (the partial active-grant UNIQUE excludes revoked rows).
+	//
+	// deletion_protection is honored (owner auto-binding): revoking a protected
+	// binding is rejected sync FAILED_PRECONDITION plus an atomic CAS-backstop
+	// (`UPDATE … WHERE status='ACTIVE' AND deletion_protection=false`) against
+	// TOCTOU — clear the flag via Update first, exactly like Delete.
+	// Async (returns Operation), like the other mutations.
+	Revoke(context.Context, *RevokeAccessBindingRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedAccessBindingServiceServer()
 }
 
@@ -426,6 +506,9 @@ func (UnimplementedAccessBindingServiceServer) Delete(context.Context, *DeleteAc
 }
 func (UnimplementedAccessBindingServiceServer) Update(context.Context, *UpdateAccessBindingRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Update not implemented")
+}
+func (UnimplementedAccessBindingServiceServer) List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method List not implemented")
 }
 func (UnimplementedAccessBindingServiceServer) ListByScope(context.Context, *ListAccessBindingsByScopeRequest) (*ListAccessBindingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListByScope not implemented")
@@ -450,6 +533,9 @@ func (UnimplementedAccessBindingServiceServer) ListByAccount(context.Context, *L
 }
 func (UnimplementedAccessBindingServiceServer) ListOperations(context.Context, *ListAccessBindingOperationsRequest) (*ListAccessBindingOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
+}
+func (UnimplementedAccessBindingServiceServer) Revoke(context.Context, *RevokeAccessBindingRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Revoke not implemented")
 }
 func (UnimplementedAccessBindingServiceServer) mustEmbedUnimplementedAccessBindingServiceServer() {}
 func (UnimplementedAccessBindingServiceServer) testEmbeddedByValue()                              {}
@@ -540,6 +626,24 @@ func _AccessBindingService_Update_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AccessBindingServiceServer).Update(ctx, req.(*UpdateAccessBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccessBindingService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAccessBindingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessBindingServiceServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessBindingService_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessBindingServiceServer).List(ctx, req.(*ListAccessBindingsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -688,6 +792,24 @@ func _AccessBindingService_ListOperations_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AccessBindingService_Revoke_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeAccessBindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessBindingServiceServer).Revoke(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessBindingService_Revoke_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessBindingServiceServer).Revoke(ctx, req.(*RevokeAccessBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AccessBindingService_ServiceDesc is the grpc.ServiceDesc for AccessBindingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -710,6 +832,10 @@ var AccessBindingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Update",
 			Handler:    _AccessBindingService_Update_Handler,
+		},
+		{
+			MethodName: "List",
+			Handler:    _AccessBindingService_List_Handler,
 		},
 		{
 			MethodName: "ListByScope",
@@ -742,6 +868,10 @@ var AccessBindingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOperations",
 			Handler:    _AccessBindingService_ListOperations_Handler,
+		},
+		{
+			MethodName: "Revoke",
+			Handler:    _AccessBindingService_Revoke_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

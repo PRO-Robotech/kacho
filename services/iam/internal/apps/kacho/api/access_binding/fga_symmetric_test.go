@@ -316,8 +316,12 @@ type abFakeRepo struct {
 	// seedABListByAccount; used by ListByAccountUseCase unit tests.
 	lbaRows []domain.AccessBinding
 	// lbsRows — fixture rows returned by ListByScope. Seed via seedABListByScope;
-	// used by the viewer ∪ v_list union-floor unit tests.
+	// used by the viewer ∪ v_list union-floor unit tests. Also the source rows for
+	// the unified List fake.
 	lbsRows []domain.AccessBinding
+	// lastListFilter — the ListFilter the unified List last received (F11 tests
+	// assert the use-case's VisibleIDs push-down + predicate mapping).
+	lastListFilter ab_repo.ListFilter
 	// reconcileObjs — object ids for which a reconcile-event was emitted in the
 	// writer-tx (labels co-commit). Drained via drainReconcileObjects.
 	reconcileObjs []string
@@ -618,6 +622,35 @@ func (a *fakeABRdr) Get(_ context.Context, id domain.AccessBindingID) (domain.Ac
 	}
 	return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrNotFound, "AccessBinding %s not found", id)
 }
+func (a *fakeABRdr) List(_ context.Context, f ab_repo.ListFilter) ([]domain.AccessBinding, string, error) {
+	a.repo.mu.Lock()
+	defer a.repo.mu.Unlock()
+	a.repo.lastListFilter = f
+	vis := map[string]bool{}
+	for _, id := range f.VisibleIDs {
+		vis[id] = true
+	}
+	var out []domain.AccessBinding
+	for _, b := range a.repo.lbsRows {
+		if f.VisibleIDs != nil && !vis[string(b.ID)] {
+			continue
+		}
+		if f.SubjectID != "" && string(b.SubjectID) != f.SubjectID {
+			continue
+		}
+		if f.RoleID != "" && string(b.RoleID) != f.RoleID {
+			continue
+		}
+		if f.ScopeType != "" && string(b.ResourceType) != f.ScopeType {
+			continue
+		}
+		if f.ScopeID != "" && b.ResourceID != f.ScopeID {
+			continue
+		}
+		out = append(out, b)
+	}
+	return out, "", nil
+}
 func (a *fakeABRdr) ListByScope(_ context.Context, _ domain.ResourceType, _ string, _ ab_repo.PageFilter) ([]domain.AccessBinding, string, error) {
 	a.repo.mu.Lock()
 	defer a.repo.mu.Unlock()
@@ -776,6 +809,28 @@ func (w *fakeABWtr) DeleteGuarded(_ context.Context, id domain.AccessBindingID) 
 		return nil
 	}
 	return iamerr.Wrapf(iamerr.ErrNotFound, "AccessBinding %s not found", id)
+}
+
+func (w *fakeABWtr) RevokeGuarded(_ context.Context, id domain.AccessBindingID, revokedBy domain.UserID) (domain.AccessBinding, error) {
+	w.repo.mu.Lock()
+	defer w.repo.mu.Unlock()
+	if w.repo.ab == nil || w.repo.ab.ID != id {
+		return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrNotFound, "AccessBinding %s not found", id)
+	}
+	if w.repo.ab.DeletionProtection {
+		return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrFailedPrecondition,
+			"access binding %s has deletion_protection enabled; clear it via Update before revoke", id)
+	}
+	if w.repo.ab.Status != domain.AccessBindingStatusActive {
+		return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrFailedPrecondition,
+			"access binding %s is not active (status %s); cannot revoke", id, w.repo.ab.Status)
+	}
+	now := time.Now().UTC()
+	rb := revokedBy
+	w.repo.ab.Status = domain.AccessBindingStatusRevoked
+	w.repo.ab.RevokedAt = &now
+	w.repo.ab.RevokedByUserID = &rb
+	return *w.repo.ab, nil
 }
 
 func (w *fakeABWtr) SetDeletionProtection(_ context.Context, id domain.AccessBindingID, protected bool) (domain.AccessBinding, error) {

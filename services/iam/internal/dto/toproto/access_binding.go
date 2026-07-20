@@ -22,20 +22,17 @@ func (abObj) toPb(b domain.AccessBinding) (*iamv1.AccessBinding, error) {
 		createdAt = timestamppb.New(b.CreatedAt.Truncate(tsTruncate))
 	}
 	return &iamv1.AccessBinding{
-		Id:           string(b.ID),
-		SubjectType:  string(b.SubjectType),
-		SubjectId:    string(b.SubjectID),
-		RoleId:       string(b.RoleID),
-		ResourceType: string(b.ResourceType),
-		ResourceId:   b.ResourceID,
-		CreatedAt:    createdAt,
-		// RBAC v2 — surface the anchor tier on every response.
-		Scope: domainScopeToProto(b.Scope),
-		// Canonical scope representation derived from the SAME domain row. The
-		// RBAC rules-model clean-cut removed the resource-scoped target dimension
-		// entirely (the "what object" decision lives on role.rules now), so
-		// AccessBinding no longer carries target/target_ref.
-		ScopeRef: domainScopeToScopeRef(b.Scope, b.ResourceID),
+		Id:          string(b.ID),
+		SubjectType: string(b.SubjectType),
+		SubjectId:   string(b.SubjectID),
+		RoleId:      string(b.RoleID),
+		// redesign-2026 F7: the scope-anchor is projected as the flattened dotted
+		// scopeType/scopeId (the sole scope projection; «resource» freed for
+		// target). Within-service storage keeps the bare kind; ScopeTypeToDotted
+		// maps it at the API boundary.
+		ScopeType: domain.ScopeTypeToDotted(string(b.ResourceType)),
+		ScopeId:   b.ResourceID,
+		CreatedAt: createdAt,
 		// RBAC rules-model: fill the canonical
 		// subjects[] AND the legacy single subject_type/subject_id (above) — two
 		// views of one model. When the read-side loaded the multi-subject set it
@@ -44,6 +41,10 @@ func (abObj) toPb(b domain.AccessBinding) (*iamv1.AccessBinding, error) {
 		// legacy single subject, so subjects[] is ALWAYS populated (paritet
 		// new←legacy). The legacy single = subjects[0] holds reciprocally.
 		Subjects: domainSubjectsToProto(b),
+		// F8: surface the object-selection under the anchor on every read
+		// (allInScope | per-object resources). Legacy / whole-anchor rows project
+		// as allInScope.
+		Target: domainTargetToProto(b.Target),
 		// RBAC explicit-model — surface deletion_protection on
 		// every read so clients can see / clear it before Delete.
 		DeletionProtection: b.DeletionProtection,
@@ -89,27 +90,23 @@ func subjectTypeToProtoDTO(t domain.SubjectType) iamv1.SubjectType {
 	}
 }
 
-// domainScopeToScopeRef builds the canonical ScopeRef{tier, id} from the same
-// domain fields the legacy projection uses. The id is the legacy
-// resource_id; the tier reuses the enum mapping. An existing binding's row
-// supplies these directly — no backfill.
-func domainScopeToScopeRef(s domain.Scope, resourceID string) *iamv1.ScopeRef {
-	return &iamv1.ScopeRef{
-		Tier: domainScopeToProto(s),
-		Id:   resourceID,
+// domainTargetToProto projects the domain target onto the proto AccessTarget oneof
+// (F8). A per-object set → resources; AllInScope OR the empty/legacy whole-anchor
+// zero value → allInScope (so every read carries an explicit target arm).
+func domainTargetToProto(t domain.AccessTarget) *iamv1.AccessTarget {
+	if len(t.Resources) > 0 {
+		refs := make([]*iamv1.ResourceRef, 0, len(t.Resources))
+		for _, r := range t.Resources {
+			refs = append(refs, &iamv1.ResourceRef{Type: r.Type, Id: r.ID})
+		}
+		return &iamv1.AccessTarget{
+			Target: &iamv1.AccessTarget_Resources{
+				Resources: &iamv1.AccessTargetResources{Resources: refs},
+			},
+		}
 	}
-}
-
-func domainScopeToProto(s domain.Scope) iamv1.AccessBinding_Scope {
-	switch s {
-	case domain.ScopeCluster:
-		return iamv1.AccessBinding_CLUSTER
-	case domain.ScopeAccount:
-		return iamv1.AccessBinding_ACCOUNT
-	case domain.ScopeProject:
-		return iamv1.AccessBinding_PROJECT
-	default:
-		return iamv1.AccessBinding_SCOPE_UNSPECIFIED
+	return &iamv1.AccessTarget{
+		Target: &iamv1.AccessTarget_AllInScope{AllInScope: &iamv1.AccessTargetAllInScope{}},
 	}
 }
 

@@ -1325,6 +1325,108 @@ func (x *PollSubjectChangesResponse) GetHeadId() int64 {
 	return 0
 }
 
+// GetRoleCompiledRequest — the role whose compiled permissions to read (F5).
+type GetRoleCompiledRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Role.
+	RoleId        string `protobuf:"bytes,1,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRoleCompiledRequest) Reset() {
+	*x = GetRoleCompiledRequest{}
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRoleCompiledRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRoleCompiledRequest) ProtoMessage() {}
+
+func (x *GetRoleCompiledRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRoleCompiledRequest.ProtoReflect.Descriptor instead.
+func (*GetRoleCompiledRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *GetRoleCompiledRequest) GetRoleId() string {
+	if x != nil {
+		return x.RoleId
+	}
+	return ""
+}
+
+// GetRoleCompiledResponse — the Internal-only compiled permission projection (F5).
+type GetRoleCompiledResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Role.
+	RoleId string `protobuf:"bytes,1,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
+	// Compiled permission set (`module.resource.resourceName.verb` 4-segment form)
+	// backing FGA emission. Empty for a label-only role (all rules ARM_LABELS).
+	Permissions   []string `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRoleCompiledResponse) Reset() {
+	*x = GetRoleCompiledResponse{}
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRoleCompiledResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRoleCompiledResponse) ProtoMessage() {}
+
+func (x *GetRoleCompiledResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRoleCompiledResponse.ProtoReflect.Descriptor instead.
+func (*GetRoleCompiledResponse) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *GetRoleCompiledResponse) GetRoleId() string {
+	if x != nil {
+		return x.RoleId
+	}
+	return ""
+}
+
+func (x *GetRoleCompiledResponse) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
 var File_kacho_cloud_iam_v1_internal_iam_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
@@ -1418,7 +1520,12 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x02op\x18\x03 \x01(\tR\x02op\"r\n" +
 	"\x1aPollSubjectChangesResponse\x12;\n" +
 	"\achanges\x18\x01 \x03(\v2!.kacho.cloud.iam.v1.SubjectChangeR\achanges\x12\x17\n" +
-	"\ahead_id\x18\x02 \x01(\x03R\x06headId2\xaf\b\n" +
+	"\ahead_id\x18\x02 \x01(\x03R\x06headId\"?\n" +
+	"\x16GetRoleCompiledRequest\x12%\n" +
+	"\arole_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\"T\n" +
+	"\x17GetRoleCompiledResponse\x12\x17\n" +
+	"\arole_id\x18\x01 \x01(\tR\x06roleId\x12 \n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions2\xa9\t\n" +
 	"\x12InternalIAMService\x12\x9f\x01\n" +
 	"\rLookupSubject\x12(.kacho.cloud.iam.v1.LookupSubjectRequest\x1a).kacho.cloud.iam.v1.LookupSubjectResponse\"9\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02':\x01*\"\"/iam/v1/internal/iam:lookupSubject\x12\x7f\n" +
 	"\x05Check\x12 .kacho.cloud.iam.v1.CheckRequest\x1a!.kacho.cloud.iam.v1.CheckResponse\"1\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/iam/v1/internal/iam:check\x12~\n" +
@@ -1428,7 +1535,8 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x13ForceLogoutMetadata\x12\x11ForceLogoutResult\x12\x81\x01\n" +
 	"\x12PollSubjectChanges\x12-.kacho.cloud.iam.v1.PollSubjectChangesRequest\x1a..kacho.cloud.iam.v1.PollSubjectChangesResponse\"\f\x8a\xb5\x18\b<exempt>\x12{\n" +
 	"\x10RegisterResource\x12+.kacho.cloud.iam.v1.RegisterResourceRequest\x1a,.kacho.cloud.iam.v1.RegisterResourceResponse\"\f\x8a\xb5\x18\b<exempt>\x12\x81\x01\n" +
-	"\x12UnregisterResource\x12-.kacho.cloud.iam.v1.UnregisterResourceRequest\x1a..kacho.cloud.iam.v1.UnregisterResourceResponse\"\f\x8a\xb5\x18\b<exempt>B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\x12UnregisterResource\x12-.kacho.cloud.iam.v1.UnregisterResourceRequest\x1a..kacho.cloud.iam.v1.UnregisterResourceResponse\"\f\x8a\xb5\x18\b<exempt>\x12x\n" +
+	"\x0fGetRoleCompiled\x12*.kacho.cloud.iam.v1.GetRoleCompiledRequest\x1a+.kacho.cloud.iam.v1.GetRoleCompiledResponse\"\f\x8a\xb5\x18\b<exempt>B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescOnce sync.Once
@@ -1443,7 +1551,7 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_goTypes = []any{
 	(CheckRequest_Consistency)(0),      // 0: kacho.cloud.iam.v1.CheckRequest.Consistency
 	(*LookupSubjectRequest)(nil),       // 1: kacho.cloud.iam.v1.LookupSubjectRequest
@@ -1464,43 +1572,47 @@ var file_kacho_cloud_iam_v1_internal_iam_service_proto_goTypes = []any{
 	(*PollSubjectChangesRequest)(nil),  // 16: kacho.cloud.iam.v1.PollSubjectChangesRequest
 	(*SubjectChange)(nil),              // 17: kacho.cloud.iam.v1.SubjectChange
 	(*PollSubjectChangesResponse)(nil), // 18: kacho.cloud.iam.v1.PollSubjectChangesResponse
-	nil,                                // 19: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	nil,                                // 20: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	(*User)(nil),                       // 21: kacho.cloud.iam.v1.User
-	(*ServiceAccount)(nil),             // 22: kacho.cloud.iam.v1.ServiceAccount
-	(*timestamppb.Timestamp)(nil),      // 23: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),              // 24: google.protobuf.Empty
-	(*operation.Operation)(nil),        // 25: kacho.cloud.operation.Operation
+	(*GetRoleCompiledRequest)(nil),     // 19: kacho.cloud.iam.v1.GetRoleCompiledRequest
+	(*GetRoleCompiledResponse)(nil),    // 20: kacho.cloud.iam.v1.GetRoleCompiledResponse
+	nil,                                // 21: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	nil,                                // 22: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	(*User)(nil),                       // 23: kacho.cloud.iam.v1.User
+	(*ServiceAccount)(nil),             // 24: kacho.cloud.iam.v1.ServiceAccount
+	(*timestamppb.Timestamp)(nil),      // 25: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 26: google.protobuf.Empty
+	(*operation.Operation)(nil),        // 27: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_depIdxs = []int32{
-	21, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
-	22, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
+	23, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
+	24, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
 	0,  // 2: kacho.cloud.iam.v1.CheckRequest.consistency:type_name -> kacho.cloud.iam.v1.CheckRequest.Consistency
-	19, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	23, // 4: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
-	20, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	23, // 6: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	21, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	25, // 4: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	22, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	25, // 6: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
 	12, // 7: kacho.cloud.iam.v1.JWKSStatusResponse.algorithms:type_name -> kacho.cloud.iam.v1.JWKSAlgStatus
-	23, // 8: kacho.cloud.iam.v1.JWKSAlgStatus.current_created_at:type_name -> google.protobuf.Timestamp
+	25, // 8: kacho.cloud.iam.v1.JWKSAlgStatus.current_created_at:type_name -> google.protobuf.Timestamp
 	17, // 9: kacho.cloud.iam.v1.PollSubjectChangesResponse.changes:type_name -> kacho.cloud.iam.v1.SubjectChange
 	1,  // 10: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:input_type -> kacho.cloud.iam.v1.LookupSubjectRequest
 	3,  // 11: kacho.cloud.iam.v1.InternalIAMService.Check:input_type -> kacho.cloud.iam.v1.CheckRequest
 	5,  // 12: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:input_type -> kacho.cloud.iam.v1.WriteCreatorTupleRequest
-	24, // 13: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:input_type -> google.protobuf.Empty
+	26, // 13: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:input_type -> google.protobuf.Empty
 	13, // 14: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:input_type -> kacho.cloud.iam.v1.ForceLogoutRequest
 	16, // 15: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:input_type -> kacho.cloud.iam.v1.PollSubjectChangesRequest
 	7,  // 16: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:input_type -> kacho.cloud.iam.v1.RegisterResourceRequest
 	9,  // 17: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:input_type -> kacho.cloud.iam.v1.UnregisterResourceRequest
-	2,  // 18: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
-	4,  // 19: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
-	6,  // 20: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:output_type -> kacho.cloud.iam.v1.WriteCreatorTupleResponse
-	11, // 21: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:output_type -> kacho.cloud.iam.v1.JWKSStatusResponse
-	25, // 22: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
-	18, // 23: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
-	8,  // 24: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
-	10, // 25: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
-	18, // [18:26] is the sub-list for method output_type
-	10, // [10:18] is the sub-list for method input_type
+	19, // 18: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:input_type -> kacho.cloud.iam.v1.GetRoleCompiledRequest
+	2,  // 19: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
+	4,  // 20: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
+	6,  // 21: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:output_type -> kacho.cloud.iam.v1.WriteCreatorTupleResponse
+	11, // 22: kacho.cloud.iam.v1.InternalIAMService.GetJWKSStatus:output_type -> kacho.cloud.iam.v1.JWKSStatusResponse
+	27, // 23: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
+	18, // 24: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
+	8,  // 25: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
+	10, // 26: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
+	20, // 27: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:output_type -> kacho.cloud.iam.v1.GetRoleCompiledResponse
+	19, // [19:28] is the sub-list for method output_type
+	10, // [10:19] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -1528,7 +1640,7 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

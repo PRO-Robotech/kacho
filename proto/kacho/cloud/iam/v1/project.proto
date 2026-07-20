@@ -13,8 +13,11 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 //
 // Project — заменитель Folder из kacho-resource-manager в IAM-модели.
 //
-// Constraint: (account_id, name) — UNIQUE. Project можно Move в другой Account
-// (см. ProjectService.Move) — DB-level атомарный CAS.
+// Строго два уровня аренды: Account → Project (Project — leaf-workspace, без
+// вложенности). Constraint: (account_id, name) — UNIQUE per-account.
+// `account_id` — hard-immutable после Create: НЕТ ProjectService.Move RPC
+// (cross-account перенос сломал бы scope-координату всех downstream-ресурсов,
+// держащих projectId) — Update отвергает account_id в update_mask.
 //
 // Resource id prefix: `prj-`.
 message Project {
@@ -22,7 +25,8 @@ message Project {
   string id = 1;
 
   // ID of the Account that this Project belongs to.
-  // Changes via ProjectService.Move (not via Update).
+  // Immutable after Project.Create (no Move RPC; Update rejects account_id in
+  // update_mask with "accountId is immutable after Project.Create").
   string account_id = 2;
 
   // Name of the project. Unique within an Account. 3-63 characters long.

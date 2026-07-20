@@ -111,6 +111,53 @@ message Role {
   // (iam-direct same-DB), а List фильтрует через `viewer ∪ v_list`. Mutable
   // через Update (`labels` в update_mask).
   map<string, string> labels = 15;
+
+  // Definition tier (redesign-2026 F4) — the hierarchy tier this role is DEFINED
+  // at, dotted (`iam.cluster` | `iam.account` | `iam.project`) + the anchor id.
+  // Output projection over the within-service typed scope columns
+  // (cluster_id / account_id / project_id); the word "scope" is reserved for the
+  // AccessBinding anchor. `is_system` (tag 6) is DERIVED from the tier
+  // (tier_type == `iam.cluster`), not an independently stored provenance flag.
+  DefinitionTier definition_tier = 16;
+
+  // Authored verb set (redesign-2026 F6) — the DEDUPED, canonically-ordered union
+  // of the verbs the role's `rules[]` grant (output-only derived preview; `*`
+  // expands to full CRUD). Empty for a label-only role.
+  repeated string authored_verbs = 17;
+
+  // Effective verb set (redesign-2026 F6) — the HONEST co-materialized preview of
+  // what the role actually grants. It equals `authored_verbs` PLUS, for an
+  // editor-tier role (grants `update` but not `delete`/`*`), the `delete*`
+  // qualifier: an editor may delete the in-scope leaf objects it edits (but NOT
+  // the account/project anchor). Output-only derived.
+  repeated string effective_verbs = 18;
+
+  // Per-verb notes (redesign-2026 F6) — clarifies the derived preview. Keyed by
+  // the verb; e.g. `verb_notes["delete*"]` explains the editor delete-qualifier.
+  // Output-only derived.
+  map<string, string> verb_notes = 19;
+
+  // Human-facing display name (redesign-2026 F6) — the friendly catalog label
+  // (e.g. "Viewer"). Output-only; for a custom role it defaults to `name`.
+  string display_name = 20;
+
+  // Human-facing purpose (redesign-2026 F6) — a one-line description of what the
+  // role is for. Output-only; empty for a custom role.
+  string purpose = 21;
+}
+
+// DefinitionTier is the hierarchy tier a Role is defined at (redesign-2026 F4):
+// `tier_type` dotted (`iam.cluster` | `iam.account` | `iam.project`) + `tier_id`
+// the anchor object id. A projection over the within-service typed scope columns
+// (cluster_id / account_id / project_id). `is_system` is derived
+// (tier_type == `iam.cluster`), never a stored provenance flag (roles_definition_tier_xor
+// DB CHECK keeps exactly one tier anchor non-null).
+message DefinitionTier {
+  // Dotted tier type: `iam.cluster` | `iam.account` | `iam.project`.
+  string tier_type = 1;
+
+  // Anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+  string tier_id = 2;
 }
 
 // Rule — один однородный грант: `{verbs}` над `{module} × resources` (ровно

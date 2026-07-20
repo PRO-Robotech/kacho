@@ -21,7 +21,9 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/filter"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
@@ -36,6 +38,7 @@ type Handler struct {
 	update                *UpdateAccessBindingUseCase
 	delete                *DeleteAccessBindingUseCase
 	get                   *GetAccessBindingUseCase
+	list                  *ListUseCase
 	listByScope           *ListByScopeUseCase
 	listBySubject         *ListBySubjectUseCase
 	listByAccount         *ListByAccountUseCase
@@ -46,6 +49,9 @@ type Handler struct {
 	// ListByRole audit + ExpandAccess effective-principal audit.
 	listByRole   *ListByRoleUseCase
 	expandAccess *ExpandAccessUseCase
+
+	// revoke — soft-revoke (F10 IAM-1-28), contrast with hard delete.
+	revoke *RevokeAccessBindingUseCase
 }
 
 func NewHandler(c *CreateAccessBindingUseCase, d *DeleteAccessBindingUseCase, g *GetAccessBindingUseCase,
@@ -66,6 +72,12 @@ func (h *Handler) WithUpdate(uc *UpdateAccessBindingUseCase) *Handler {
 
 // WithListOperations wires the per-resource operation-listing use-case.
 // Mirrors the core resources.
+// WithList wires the unified List use-case (redesign-2026 F11).
+func (h *Handler) WithList(uc *ListUseCase) *Handler {
+	h.list = uc
+	return h
+}
+
 func (h *Handler) WithListOperations(uc *shared.ListOperationsUseCase) *Handler {
 	h.listOp = uc
 	return h
@@ -89,6 +101,12 @@ func (h *Handler) WithExpandAccess(uc *ExpandAccessUseCase) *Handler {
 	return h
 }
 
+// WithRevoke wires the soft-revoke use-case (F10 IAM-1-28).
+func (h *Handler) WithRevoke(uc *RevokeAccessBindingUseCase) *Handler {
+	h.revoke = uc
+	return h
+}
+
 // ListOperations — sync read of the operations recorded for the access binding
 // (resource_id=acb-…: Create + Delete ops). Malformed id → InvalidArgument
 // (first statement); well-formed-but-no-ops → empty list, not NotFound (parity).
@@ -109,14 +127,20 @@ func (h *Handler) ListOperations(ctx context.Context, req *iamv1.ListAccessBindi
 }
 
 func (h *Handler) Create(ctx context.Context, req *iamv1.CreateAccessBindingRequest) (*operationpb.Operation, error) {
-	// Two-way input normalization of the scope dimension: the request may carry
-	// the legacy flat scope (resource_type/resource_id) OR the canonical
-	// scope_ref{tier,id}. The canonical form has priority only when the legacy
-	// form is absent; both-and-conflicting → sync INVALID_ARGUMENT before any
-	// Operation. The resource-scoped target dimension was removed entirely (the
-	// "what object" decision lives on role.rules now) — Create no longer accepts
-	// a target/target_ref.
-	rt, rid, err := normalizeScopeInput(req.GetResourceType(), req.GetResourceId(), req.GetScopeRef())
+	// redesign-2026 F7: the scope-anchor is the dotted scopeType (iam.cluster |
+	// iam.account | iam.project) + scopeId. Pre-Phase-0 the scopeType is REQUIRED
+	// (explicit — prefix-derivation is B3-gated). scopeTypeToBare rejects an empty /
+	// non-dotted / unknown value sync (INVALID_ARGUMENT, first statement) and maps
+	// the dotted wire form to the bare within-service anchor kind.
+	rt, err := scopeTypeToBare(req.GetScopeType())
+	if err != nil {
+		return nil, err
+	}
+	rid := req.GetScopeId()
+	// F8: target is REQUIRED (least-privilege). A missing/empty target → sync
+	// INVALID_ARGUMENT first statement; an unknown per-object type → sync
+	// INVALID_ARGUMENT (closed-table). Before any Operation is minted.
+	tgt, err := targetFromProto(req.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +154,7 @@ func (h *Handler) Create(ctx context.Context, req *iamv1.CreateAccessBindingRequ
 		RoleID:       domain.RoleID(req.GetRoleId()),
 		ResourceType: domain.ResourceType(rt),
 		ResourceID:   rid,
-		// Derive Scope from resource_type. The migration 0005 BEFORE INSERT
+		// Derive Scope from the bare anchor kind. The migration 0005 BEFORE INSERT
 		// trigger applies the same mapping if Scope is SCOPE_UNSPECIFIED at the
 		// SQL layer; setting it here lets domain Validate() cross-check (rt, rid)
 		// consistency before the request reaches the writer.
@@ -141,6 +165,8 @@ func (h *Handler) Create(ctx context.Context, req *iamv1.CreateAccessBindingRequ
 		// labels — own-resource tenant-facing метки самого binding-ресурса,
 		// делают AccessBinding label-selectable (catalog-видимость).
 		Labels: labelsFromProto(req.GetLabels()),
+		// F8: object-selection under the anchor (allInScope | per-object resources).
+		Target: tgt,
 	}
 	op, err := h.create.Execute(ctx, b)
 	if err != nil {
@@ -151,6 +177,17 @@ func (h *Handler) Create(ctx context.Context, req *iamv1.CreateAccessBindingRequ
 
 func (h *Handler) Delete(ctx context.Context, req *iamv1.DeleteAccessBindingRequest) (*operationpb.Operation, error) {
 	op, err := h.delete.Execute(ctx, domain.AccessBindingID(req.GetAccessBindingId()))
+	if err != nil {
+		return nil, err
+	}
+	return shared.OperationToProto(op), nil
+}
+
+// Revoke — soft-revoke of the binding (F10 IAM-1-28): the row is retained with
+// status ACTIVE→REVOKED (audit-retention), the emitted FGA-tuple set is removed.
+// Contrast with Delete (hard row-removal). Thin transport: parse → use-case → format.
+func (h *Handler) Revoke(ctx context.Context, req *iamv1.RevokeAccessBindingRequest) (*operationpb.Operation, error) {
+	op, err := h.revoke.Execute(ctx, domain.AccessBindingID(req.GetAccessBindingId()))
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +225,68 @@ func (h *Handler) Get(ctx context.Context, req *iamv1.GetAccessBindingRequest) (
 		return nil, status.Error(codes.Internal, "marshal access binding")
 	}
 	return pb, nil
+}
+
+// List — the unified read (redesign-2026 F11). Page format is validated FIRST
+// (page_size + page_token), BEFORE the use-case's listauthz visibility short-circuit,
+// so a garbage token / page_size>1000 is INVALID_ARGUMENT regardless of grant state.
+// Then the optional whitelist filter is parsed (unknown key → INVALID_ARGUMENT).
+func (h *Handler) List(ctx context.Context, req *iamv1.ListAccessBindingsRequest) (*iamv1.ListAccessBindingsResponse, error) {
+	// (1) page_size: >1000 → InvalidArgument (no silent clamp), as the FIRST check.
+	if _, err := corevalidate.PageSize("page_size", req.GetPageSize()); err != nil {
+		return nil, err
+	}
+	// (2) page_token format: garbage → InvalidArgument, BEFORE listauthz.
+	if err := shared.ValidatePageToken("page_token", req.GetPageToken()); err != nil {
+		return nil, err
+	}
+	// (3) whitelist filter: subject/role/scope/scopeId; unknown key → InvalidArgument.
+	f, err := parseABListFilter(req.GetFilter())
+	if err != nil {
+		return nil, err
+	}
+	f.PageSize = safeconv.ClampNonNegInt32(req.GetPageSize())
+	f.PageToken = req.GetPageToken()
+
+	rows, next, err := h.list.Execute(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	return listToProto(rows, next)
+}
+
+// abListFilterFields — the closed whitelist of List filter keys (F11).
+var abListFilterFields = []string{"subject", "role", "scope", "scopeId"}
+
+// parseABListFilter parses the optional single-predicate whitelist filter into the
+// repo ListFilter. An unknown key or malformed expression → INVALID_ARGUMENT. The
+// `scope` value is the dotted scope-type (iam.account|iam.project|iam.cluster),
+// mapped to the bare within-service anchor kind; an unknown dotted scope →
+// INVALID_ARGUMENT.
+func parseABListFilter(expr string) (repoab.ListFilter, error) {
+	ast, err := filter.Parse(expr, abListFilterFields)
+	if err != nil {
+		return repoab.ListFilter{}, shared.InvalidArg("filter", err.Error())
+	}
+	var f repoab.ListFilter
+	if ast == nil {
+		return f, nil // empty filter → no predicate
+	}
+	switch ast.Field {
+	case "subject":
+		f.SubjectID = ast.Value
+	case "role":
+		f.RoleID = ast.Value
+	case "scope":
+		bare, ok := domain.ScopeTypeFromDotted(ast.Value)
+		if !ok {
+			return repoab.ListFilter{}, shared.InvalidArg("filter", "Illegal argument scope")
+		}
+		f.ScopeType = bare
+	case "scopeId":
+		f.ScopeID = ast.Value
+	}
+	return f, nil
 }
 
 func (h *Handler) ListByScope(ctx context.Context, req *iamv1.ListAccessBindingsByScopeRequest) (*iamv1.ListAccessBindingsResponse, error) {

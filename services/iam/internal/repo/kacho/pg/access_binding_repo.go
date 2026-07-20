@@ -61,12 +61,13 @@ type abReader struct {
 	tx pgx.Tx
 }
 
-// abCols — 15 колонок access_bindings (RBAC v2 + scope + deletion_protection).
-// Order parity между SELECT (scanAB) и RETURNING (Insert/TransitionStatus/
-// SetDeletionProtection/DeleteGuarded).
+// abCols — access_bindings columns (RBAC v2 + scope + deletion_protection + F8
+// target). Order parity между SELECT (scanAB) и RETURNING (Insert/TransitionStatus/
+// SetDeletionProtection/DeleteGuarded). `target_digest` is write-only (index key,
+// computed on Insert) — NOT scanned, so it is deliberately absent here.
 const abCols = "id, subject_type, subject_id, role_id, resource_type, resource_id, " +
 	"status, condition_id, expires_at, granted_by_user_id, revoked_at, revoked_by_user_id, created_at, scope, " +
-	"deletion_protection, labels"
+	"deletion_protection, labels, target"
 
 func (r *abReader) Get(ctx context.Context, id domain.AccessBindingID) (domain.AccessBinding, error) {
 	row := r.tx.QueryRow(ctx,
@@ -100,6 +101,89 @@ func (r *abReader) GetForUpdate(ctx context.Context, id domain.AccessBindingID) 
 		return domain.AccessBinding{}, mapErr(err, "", string(id))
 	}
 	return out, nil
+}
+
+// List — the unified read (redesign-2026 F11). Builds the WHERE from whatever
+// optional predicates the filter carries (subject/role/scope-type/scope-id) plus
+// the FGA viewer∪v_list VisibleIDs push-down, then keyset-paginates by
+// (created_at, id) ASC. A non-nil VisibleIDs (incl. empty) constrains
+// `id = ANY($n)`; nil disables it. The page_token decode is the authoritative
+// format backstop (garbage → InvalidArgument), independent of the handler pre-check.
+func (r *abReader) List(ctx context.Context, f access_binding.ListFilter) ([]domain.AccessBinding, string, error) {
+	pageSize := int64(f.PageSize)
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > 1000 {
+		pageSize = 1000
+	}
+
+	conditions := []string{}
+	args := []any{}
+	argIdx := 1
+	addEq := func(col, val string) {
+		conditions = append(conditions, fmt.Sprintf("%s = $%d", col, argIdx))
+		args = append(args, val)
+		argIdx++
+	}
+	if f.SubjectID != "" {
+		addEq("subject_id", f.SubjectID)
+	}
+	if f.RoleID != "" {
+		addEq("role_id", f.RoleID)
+	}
+	if f.ScopeType != "" {
+		addEq("resource_type", f.ScopeType)
+	}
+	if f.ScopeID != "" {
+		addEq("resource_id", f.ScopeID)
+	}
+	if f.VisibleIDs != nil {
+		conditions = append(conditions, fmt.Sprintf("id = ANY($%d)", argIdx))
+		args = append(args, f.VisibleIDs)
+		argIdx++
+	}
+	if f.PageToken != "" {
+		ts, id, err := decodePageToken(f.PageToken)
+		if err != nil {
+			return nil, "", iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument page_token")
+		}
+		conditions = append(conditions, fmt.Sprintf("(created_at, id) > ($%d, $%d)", argIdx, argIdx+1))
+		args = append(args, ts, id)
+		argIdx += 2
+	}
+	where := ""
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+	q := fmt.Sprintf(`SELECT %s FROM access_bindings %s ORDER BY created_at ASC, id ASC LIMIT $%d`,
+		abCols, where, argIdx)
+	args = append(args, pageSize+1)
+
+	rows, err := r.tx.Query(ctx, q, args...)
+	if err != nil {
+		return nil, "", mapErr(err, "", "")
+	}
+	defer rows.Close()
+
+	var out []domain.AccessBinding
+	for rows.Next() {
+		ab, serr := scanAB(rows)
+		if serr != nil {
+			return nil, "", mapErr(serr, "", "")
+		}
+		out = append(out, ab)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", mapErr(err, "", "")
+	}
+	var nextToken string
+	if int64(len(out)) > pageSize {
+		last := out[pageSize-1]
+		nextToken = encodePageToken(last.CreatedAt, string(last.ID))
+		out = out[:pageSize]
+	}
+	return out, nextToken, nil
 }
 
 func (r *abReader) ListByScope(ctx context.Context, resourceType domain.ResourceType, resourceID string, f access_binding.PageFilter) ([]domain.AccessBinding, string, error) {
@@ -425,16 +509,24 @@ func (w *abWriter) Insert(ctx context.Context, b domain.AccessBinding) (domain.A
 	if err != nil {
 		return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument labels: %s", err.Error())
 	}
+	// F8: persist the object-selection (target) + its set-based digest. The digest
+	// is a key column of the active-grant partial UNIQUE (identical target →
+	// collision, distinct per-object targets coexist). Empty/whole-anchor → "all".
+	targetJSON, err := marshalTarget(b.Target)
+	if err != nil {
+		return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument target: %s", err.Error())
+	}
+	targetDigest := b.Target.Digest()
 	q := fmt.Sprintf(`
 		INSERT INTO access_bindings (
 			id, subject_type, subject_id, role_id, resource_type, resource_id,
 			status, condition_id, expires_at, granted_by_user_id, revoked_at, revoked_by_user_id, created_at, scope,
-			deletion_protection, labels
+			deletion_protection, labels, target, target_digest
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6,
 			COALESCE(NULLIF($7, ''), 'ACTIVE'),
-			$8, $9, $10, $11, $12, $13, $14, $15, $16
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
 		)
 		RETURNING %s`, abCols)
 	var scopeArg any
@@ -456,6 +548,8 @@ func (w *abWriter) Insert(ctx context.Context, b domain.AccessBinding) (domain.A
 		scopeArg,
 		b.DeletionProtection,
 		labelsJSON,
+		targetJSON,
+		targetDigest,
 	)
 	out, err := scanAB(row)
 	if err != nil {
@@ -464,6 +558,54 @@ func (w *abWriter) Insert(ctx context.Context, b domain.AccessBinding) (domain.A
 		return domain.AccessBinding{}, mapErr(err, "", idHint)
 	}
 	return out, nil
+}
+
+// targetPersistJSON is the JSONB persistence shape of AccessBinding.target (F8).
+type targetPersistJSON struct {
+	AllInScope bool                    `json:"allInScope,omitempty"`
+	Resources  []targetResourceRefJSON `json:"resources,omitempty"`
+}
+
+type targetResourceRefJSON struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+// marshalTarget serializes the domain target to its JSONB persistence shape. A
+// per-object set is written as {"resources":[…]}; AllInScope OR the empty
+// whole-anchor zero value is written as {"allInScope":true}.
+func marshalTarget(t domain.AccessTarget) ([]byte, error) {
+	tj := targetPersistJSON{}
+	if len(t.Resources) > 0 {
+		tj.Resources = make([]targetResourceRefJSON, 0, len(t.Resources))
+		for _, r := range t.Resources {
+			tj.Resources = append(tj.Resources, targetResourceRefJSON{Type: r.Type, ID: r.ID})
+		}
+	} else {
+		tj.AllInScope = true
+	}
+	return json.Marshal(tj)
+}
+
+// unmarshalTarget parses the JSONB persistence shape back to the domain target.
+// An empty/NULL column (defensive — every row is backfilled by migration 0055) →
+// the whole-anchor AllInScope grant.
+func unmarshalTarget(b []byte) (domain.AccessTarget, error) {
+	if len(b) == 0 {
+		return domain.AccessTarget{AllInScope: true}, nil
+	}
+	var tj targetPersistJSON
+	if err := json.Unmarshal(b, &tj); err != nil {
+		return domain.AccessTarget{}, err
+	}
+	if len(tj.Resources) > 0 {
+		out := make([]domain.ResourceRef, 0, len(tj.Resources))
+		for _, r := range tj.Resources {
+			out = append(out, domain.ResourceRef{Type: r.Type, ID: r.ID})
+		}
+		return domain.AccessTarget{Resources: out}, nil
+	}
+	return domain.AccessTarget{AllInScope: true}, nil
 }
 
 // Delete — простой DELETE. 0 rows → NotFound. Used by paths that have already
@@ -506,6 +648,54 @@ func (w *abWriter) DeleteGuarded(ctx context.Context, id domain.AccessBindingID)
 	}
 	// Row exists, unprotected, yet 0 rows deleted → concurrent delete won the race.
 	return iamerr.Wrapf(iamerr.ErrNotFound, "AccessBinding %s not found", id)
+}
+
+// RevokeGuarded — atomic CAS soft-revoke (redesign-2026 F10 IAM-1-28). Mirror of
+// DeleteGuarded's protection-CAS + TransitionStatus's REVOKED move, but RETAINS the
+// row: single-statement `UPDATE … SET status='REVOKED', revoked_at=now(),
+// revoked_by_user_id=$2 WHERE id=$1 AND status='ACTIVE' AND deletion_protection=false
+// RETURNING …` takes a row-lock, so exactly one revoke wins under concurrency (the
+// loser waits the commit, its WHERE status='ACTIVE' no longer matches → 0 rows, ban
+// #10 — no software TOCTOU). 0 rows → re-read on this tx disambiguates: absent →
+// NotFound; protected → FailedPrecondition; non-ACTIVE (terminal REVOKED / PENDING or
+// a concurrent revoke that won) → FailedPrecondition. revoked_at is stamped so the
+// partial active-grant UNIQUE (WHERE revoked_at IS NULL) frees the slot for re-grant.
+func (w *abWriter) RevokeGuarded(ctx context.Context, id domain.AccessBindingID, revokedBy domain.UserID) (domain.AccessBinding, error) {
+	if revokedBy == "" {
+		// CHECK access_bindings_revoked_consistency_ck requires revoked_at to move
+		// with status='REVOKED'; a REVOKED row without a revoker is not allowed.
+		return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrInvalidArg,
+			"revoked_by_user_id is required for REVOKED transition")
+	}
+	now := time.Now().UTC()
+	row := w.tx.QueryRow(ctx, fmt.Sprintf(`
+		UPDATE access_bindings
+		   SET status             = 'REVOKED',
+		       revoked_at         = $2,
+		       revoked_by_user_id = $3
+		 WHERE id = $1
+		   AND status = 'ACTIVE'
+		   AND deletion_protection = false
+		RETURNING %s`, abCols), string(id), now, string(revokedBy))
+	out, err := scanAB(row)
+	if err == nil {
+		return out, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return domain.AccessBinding{}, mapErr(err, "AccessBinding.RevokeGuarded", string(id))
+	}
+	// 0 rows updated — re-read on this tx to disambiguate the CAS miss.
+	cur, gerr := w.Get(ctx, id)
+	if gerr != nil {
+		return domain.AccessBinding{}, gerr // ErrNotFound (or a transient fault)
+	}
+	if cur.DeletionProtection {
+		return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrFailedPrecondition,
+			"access binding %s has deletion_protection enabled; clear it via Update before revoke", id)
+	}
+	// Not-active (already REVOKED / PENDING, or a concurrent revoke won the row-lock).
+	return domain.AccessBinding{}, iamerr.Wrapf(iamerr.ErrFailedPrecondition,
+		"access binding %s is not active (status %s); cannot revoke", id, cur.Status)
 }
 
 // SetDeletionProtection — atomic CAS UPDATE of the deletion_protection flag.
@@ -641,8 +831,9 @@ func scanABWithVersion(row scanner, versionOut ...*string) (domain.AccessBinding
 		revokedByUID sql.NullString
 		scopeI       int16
 		labelsJSON   []byte
+		targetJSON   []byte
 	)
-	dest := make([]any, 0, 17)
+	dest := make([]any, 0, 18)
 	if len(versionOut) > 0 {
 		dest = append(dest, versionOut[0])
 	}
@@ -663,12 +854,17 @@ func scanABWithVersion(row scanner, versionOut ...*string) (domain.AccessBinding
 		&scopeI,
 		&ab.DeletionProtection,
 		&labelsJSON,
+		&targetJSON,
 	)
 	err := row.Scan(dest...)
 	if err != nil {
 		return domain.AccessBinding{}, err
 	}
 	ab.Labels, err = unmarshalLabels(labelsJSON)
+	if err != nil {
+		return domain.AccessBinding{}, err
+	}
+	ab.Target, err = unmarshalTarget(targetJSON)
 	if err != nil {
 		return domain.AccessBinding{}, err
 	}

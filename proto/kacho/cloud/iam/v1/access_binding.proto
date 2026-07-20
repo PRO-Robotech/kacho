@@ -6,12 +6,14 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/iam/v1/authorize_service.proto";
 import "kacho/cloud/iam/v1/builtin_condition.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
 // An AccessBinding resource. Связывает (subject_type, subject_id) с (role_id) на
-// (resource_type, resource_id).
+// scope-anchor (scope_type, scope_id) — redesign-2026 F7 rename (было
+// resource_type/resource_id; слово «resource» отдано target'у).
 //
 // NB: это канонический AccessBinding из kacho.cloud.iam.v1 — единственный
 // источник истины для grant-привязок домена IAM.
@@ -51,22 +53,17 @@ message AccessBinding {
   // ID of the Role assigned to the subject.
   string role_id = 4;
 
-  // Тип resource'а, на который binding применен ("account" | "project" | т.п.).
-  // Произвольная строка, кодирующая kind ресурса; OpenFGA tuple-store
-  // определяет допустимые значения.
-  //
-  // DEPRECATED-in-favour-of `scope_ref`. The canonical
-  // scope dimension is now the nested `ScopeRef scope_ref = 17` ({tier, id}); this
-  // flat field is the deprecated, derived-equivalent legacy projection. The server
-  // accepts either form on input and fills BOTH on read (two-way projection).
-  // Not annotated `[deprecated=true]` (field is still populated on every response
-  // for pre-existing clients); physical removal is a future major bump.
-  string resource_type = 5;
+  // Scope-anchor TYPE — the hierarchy tier this binding anchors at, in dotted
+  // form: `iam.cluster` | `iam.account` | `iam.project` (redesign-2026 F7). The
+  // word "resource" is reserved for the `target` (F8); the anchor the grant applies
+  // AT is the scope. The within-service storage keeps the bare kind
+  // (cluster/account/project); the dotted form is the API projection. Immutable
+  // after Create.
+  string scope_type = 5;
 
-  // ID resource'а.
-  //
-  // DEPRECATED-in-favour-of `scope_ref.id`. See `resource_type` above.
-  string resource_id = 6;
+  // Scope-anchor ID — the anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+  // Immutable after Create.
+  string scope_id = 6;
 
   // Creation timestamp.
   google.protobuf.Timestamp created_at = 7;
@@ -106,50 +103,30 @@ message AccessBinding {
   // unconditional).
   BuiltinCondition builtin_condition = 14;
 
-  // Scope tier of the binding — the level of the cluster ▶ account ▶ project
-  // hierarchy at which the binding anchors. Wildcard-resourceName permissions
-  // in the role fan out under this anchor; concrete-resourceName permissions
-  // emit direct per-object FGA tuples and use the scope as a sanity guard.
-  //
-  // Validation (service-layer + DB CHECK):
-  //   CLUSTER  ⇒ resource_type='cluster',  resource_id='cluster_kacho_root'
-  //   ACCOUNT  ⇒ resource_type='account',  resource_id starts with 'acc'
-  //   PROJECT  ⇒ resource_type='project',  resource_id starts with 'prj'
-  //
-  // Backfill default for legacy rows comes from migration 0025 (rbac-v2
-  // grammar + scope). SCOPE_UNSPECIFIED is rejected on new writes once
-  // backfill is in place.
+  // Scope tier enum — the level of the cluster ▶ account ▶ project hierarchy at
+  // which a binding anchors. Retained as the projection type of
+  // `SubjectPrivilege.scope`; the AccessBinding itself now carries the flattened
+  // dotted `scope_type`/`scope_id` (redesign-2026 F7) instead of a separate tier
+  // field.
   enum Scope {
     SCOPE_UNSPECIFIED = 0;
     CLUSTER           = 1;
     ACCOUNT           = 2;
     PROJECT           = 3;
   }
-  // DEPRECATED-in-favour-of `scope_ref.tier`. This
-  // enum is the deprecated derived-equivalent of `ScopeRef.tier`; the server
-  // fills both on read. NOT `[deprecated=true]` — still populated for pre-existing
-  // clients; removal is a future major bump.
-  Scope scope = 15;
 
-  // TOMBSTONE. The legacy `target`/`selector` object-selection machinery
-  // (`AccessTarget` oneof `all_in_scope`/`resources`/`selector`, tag 16,
-  // and its canonical alias `AccessTargetRef target_ref`, tag 18) is REMOVED:
-  // object-selection now lives entirely in `role.rules` (the single source of
-  // truth — ARM_ANCHOR / ARM_NAMES / ARM_LABELS). Tags 16/18 and names
-  // `target`/`target_ref`/`selector` are RESERVED tombstones — NOT reused
-  // (append-only / buf-breaking discipline). Removal is an INTENTIONAL
-  // breaking change, valid on pre-prod with no live data / external clients.
-  reserved 16, 18;
-  reserved "target", "target_ref", "selector";
-
-  // Canonical scope dimension. The {tier, id} pair
-  // that groups "hierarchy level + anchor id" into one concept, replacing the
-  // triple-redundant `resource_type`/`resource_id`/enum `scope`. On read
-  // the server fills this AND the legacy fields, derived-consistently from the
-  // single DB row. On Create, either `scope_ref` or the legacy
-  // `resource_type`/`resource_id` may be set; if both are set they MUST be
-  // derived-equivalent, otherwise INVALID_ARGUMENT.
-  ScopeRef scope_ref = 17;
+  // TOMBSTONE. Tag 15 (`Scope scope`) and tag 17 (`ScopeRef scope_ref`) held the
+  // legacy triple-redundant scope projection; redesign-2026 F7 flattens them into
+  // `scope_type` (tag 5, dotted) + `scope_id` (tag 6). Tags 15/17 and names
+  // `scope`/`scope_ref` are RESERVED tombstones — never reused (append-only).
+  //
+  // Tags 16/18 held the earlier `target`/`target_ref`/`selector` object-selection
+  // machinery (dropped in a prior clean-cut); F8 REINTRODUCES `target` at a NEW tag
+  // (`target = 22`) — tags 16/18 stay tombstoned (never reused as tag numbers), while
+  // the NAME `target` is reused at the new tag (append-only: tag-tombstone, not
+  // name-tombstone).
+  reserved 15, 16, 17, 18;
+  reserved "scope", "scope_ref", "target_ref", "selector";
 
   // Multi-subject set. A binding may
   // grant the same role+scope to 1..32 subjects at once. Each subject yields an
@@ -189,7 +166,37 @@ message AccessBinding {
   // `labels @> matchLabels` (iam-direct same-DB), а List фильтрует через
   // `viewer ∪ v_list`. Mutable через Update (`labels` в update_mask).
   map<string, string> labels = 21;
+
+  // Which objects UNDER the scope-anchor the grant applies to (redesign-2026 F8,
+  // least-privilege spine). REQUIRED on Create — the broadest grant (all objects
+  // under the anchor, including future) is reachable ONLY via explicit
+  // `target.allInScope{}` opt-in; there is no default sentinel. NEW tag — the
+  // earlier target/target_ref (tags 16/18) stay tombstoned.
+  AccessTarget target = 22;
 }
+
+// AccessTarget selects which objects, under the binding's scope-anchor, the grant
+// applies to (redesign-2026 F8). Exactly one arm is set.
+message AccessTarget {
+  oneof target {
+    // Per-object grant: a closed set of ResourceRef{type,id}.
+    AccessTargetResources resources = 1;
+
+    // Explicit opt-in: the grant applies to ALL objects under the anchor,
+    // including future ones — the broadest grant, never a default.
+    AccessTargetAllInScope all_in_scope = 2;
+  }
+}
+
+// AccessTargetResources is the per-object arm of AccessTarget: a closed set of
+// polymorphic ResourceRef{type,id} (graceful-dangling; `type` is dotted from the
+// closed type-registry, e.g. `compute.instance`).
+message AccessTargetResources {
+  repeated ResourceRef resources = 1;
+}
+
+// AccessTargetAllInScope is the whole-anchor arm of AccessTarget (empty payload).
+message AccessTargetAllInScope {}
 
 // Subject is one grantee of an AccessBinding. `type` is the closed
 // `SubjectType` (USER / SERVICE_ACCOUNT /
@@ -218,24 +225,6 @@ enum SubjectType {
   SUBJECT_TYPE_GROUP             = 3;
 }
 
-// ScopeRef is the canonical, nested scope dimension of an AccessBinding.
-// It groups the hierarchy `tier` and its anchor
-// `id` into one concept, replacing the historically triple-redundant
-// `resource_type`/`resource_id`/enum `scope`. `tier` reuses the existing closed
-// `AccessBinding.Scope` enum (CLUSTER/ACCOUNT/PROJECT); `id` is the anchor id
-// (`cluster_kacho_root` | `acc…` | `prj…`). The legacy projection is
-// derived-equivalent: tier=PROJECT ⟺ resource_type='project' ∧ resource_id
-// starts 'prj', and so on — re-using the same predicate the server already
-// enforces.
-message ScopeRef {
-  // Hierarchy tier of the scope anchor (reuses the AccessBinding.Scope enum).
-  AccessBinding.Scope tier = 1;
-
-  // Anchor id (`cluster_kacho_root` | `acc…` | `prj…`). Derived-equivalent of
-  // the legacy `resource_id`.
-  string id = 2;
-}
-
 message CreateAccessBindingMetadata {
   // ID of the AccessBinding that is being created.
   string access_binding_id = 1;
@@ -261,6 +250,15 @@ message DeleteAccessBindingMetadata {
 
 message UpdateAccessBindingMetadata {
   // ID of the AccessBinding that is being updated.
+  string access_binding_id = 1;
+
+  // ID of the owning Account (denormalized; non-first, populated only for
+  // account-scoped bindings — see CreateAccessBindingMetadata).
+  string account_id = 2;
+}
+
+message RevokeAccessBindingMetadata {
+  // ID of the AccessBinding that is being soft-revoked (status ACTIVE→REVOKED).
   string access_binding_id = 1;
 
   // ID of the owning Account (denormalized; non-first, populated only for

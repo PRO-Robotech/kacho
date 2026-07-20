@@ -61,8 +61,7 @@ func TestCreate_Sync_InvalidName(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			uc := NewCreateAccountUseCase(newFakeRepo(), newFakeOpsRepo())
 			a := domain.Account{
-				Name:        tc.val,
-				OwnerUserID: "usr00000000000000abcd",
+				Name: tc.val, // F1: owner derived from principal, not body
 			}
 			op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
 			require.Error(t, err)
@@ -74,17 +73,21 @@ func TestCreate_Sync_InvalidName(t *testing.T) {
 	}
 }
 
-// ── owner_user_id required → sync InvalidArgument ───────────────────────────
-func TestCreate_Sync_RequireOwner(t *testing.T) {
+// ── F1: ownerUserId in Create-body → sync InvalidArgument (was: required) ────
+// redesign-2026 inverts the AS-IS "owner_user_id required" contract: the field
+// is output-only derived-from-caller, so supplying it in the body is rejected.
+// (Comprehensive coverage in TestAccount_IAM_1_02_OwnerInBody_Reject.)
+func TestCreate_Sync_RejectOwnerInBody(t *testing.T) {
 	uc := NewCreateAccountUseCase(newFakeRepo(), newFakeOpsRepo())
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), domain.Account{
-		Name: "acme",
+		Name:        "acme",
+		OwnerUserID: "usr00000000000000abcd",
 	})
 	require.Error(t, err)
 	assert.Nil(t, op)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, err.Error(), "owner_user_id")
+	assert.Equal(t, "Illegal argument ownerUserId (derived from caller)", st.Message())
 }
 
 // ── happy path: sync OK → Operation возвращен ───────────────────────────────
@@ -97,9 +100,8 @@ func TestCreate_Sync_OK_OpReturned(t *testing.T) {
 		Name:        "acme-ok",
 		Description: "happy",
 		Labels:      domain.Labels{"env": "prod"},
-		OwnerUserID: "usr00000000000000abcd",
+		// F1: ownerUserId° is derived from the authenticated principal, not body.
 	}
-	// Anti-hijacking: principal.ID must == OwnerUserID.
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
 	require.NoError(t, err)
 	require.NotNil(t, op)
@@ -156,7 +158,7 @@ func TestCreate_SECL_EmitsOwnerAndClusterTupleInTx(t *testing.T) {
 	fga := &spyFGA{}
 	uc := NewCreateAccountUseCase(repo, opsRepo).WithRelationStore(fga, nil)
 
-	a := domain.Account{Name: "acme-secl", OwnerUserID: "usr00000000000000abcd"}
+	a := domain.Account{Name: "acme-secl"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
 	require.NoError(t, err)
@@ -201,7 +203,7 @@ func TestCreate_EmitsOwnerBindingHierarchyTuple(t *testing.T) {
 	opsRepo := newFakeOpsRepo()
 	uc := NewCreateAccountUseCase(repo, opsRepo)
 
-	a := domain.Account{Name: "acme-owner-hier", OwnerUserID: "usr00000000000000abcd"}
+	a := domain.Account{Name: "acme-owner-hier"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
 	require.NoError(t, err)
@@ -251,7 +253,7 @@ func TestCreate_RecordsOwnerBindingTuplesInLedger(t *testing.T) {
 	opsRepo := newFakeOpsRepo()
 	uc := NewCreateAccountUseCase(repo, opsRepo)
 
-	a := domain.Account{Name: "acme-owner-ledger", OwnerUserID: "usr00000000000000abcd"}
+	a := domain.Account{Name: "acme-owner-ledger"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
 	require.NoError(t, err)
@@ -305,7 +307,7 @@ func TestCreate_OwnerBindingIsSelfValidating(t *testing.T) {
 	opsRepo := newFakeOpsRepo()
 	uc := NewCreateAccountUseCase(repo, opsRepo)
 
-	a := domain.Account{Name: "acme-owner-valid", OwnerUserID: "usr00000000000000abcd"}
+	a := domain.Account{Name: "acme-owner-valid"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
 	require.NoError(t, err)
@@ -341,6 +343,18 @@ type fakeRepo struct {
 	// emittedTuples records the emitted-tuple LEDGER rows co-committed by
 	// Account.Create (symmetric revoke). Keyed by binding id.
 	emittedTuples []access_binding.RelationTuple
+	// projectInserts records the Project(s) co-committed by the Account.Create
+	// one-shot saga (F2 — the default "default" project).
+	projectInserts []domain.Project
+}
+
+// projectInsertsSnapshot — snapshot of Project rows co-committed by Account.Create.
+func (f *fakeRepo) projectInsertsSnapshot() []domain.Project {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := make([]domain.Project, len(f.projectInserts))
+	copy(cp, f.projectInserts)
+	return cp
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{} }
@@ -422,7 +436,7 @@ func (w *fakeWriter) EmitFGARelationDelete(context.Context, []service.RelationTu
 func (w *fakeWriter) AccountsW() account.WriterIface {
 	return &fakeAcctWriter{parent: w.repo}
 }
-func (w *fakeWriter) ProjectsW() project.WriterIface                { return nil }
+func (w *fakeWriter) ProjectsW() project.WriterIface                { return &fakeAcctProjWriter{parent: w.repo} }
 func (w *fakeWriter) UsersW() user.WriterIface                      { return nil }
 func (w *fakeWriter) ServiceAccountsW() service_account.WriterIface { return nil }
 func (w *fakeWriter) GroupsW() group.WriterIface                    { return nil }
@@ -509,6 +523,22 @@ func (w *fakeAccountABWriter) InsertEmittedTuples(_ context.Context, _ domain.Ac
 func (w *fakeAccountABWriter) EmitAuditEvent(context.Context, access_binding.AuditEvent) error {
 	return nil
 }
+
+// fakeAcctProjWriter — minimal project.WriterIface for the F2 one-shot saga:
+// records the default "default" Project co-committed by Account.Create.
+type fakeAcctProjWriter struct{ parent *fakeRepo }
+
+func (w *fakeAcctProjWriter) Insert(_ context.Context, p domain.Project) (domain.Project, error) {
+	w.parent.mu.Lock()
+	w.parent.projectInserts = append(w.parent.projectInserts, p)
+	w.parent.mu.Unlock()
+	p.CreatedAt = time.Now().UTC()
+	return p, nil
+}
+func (w *fakeAcctProjWriter) Update(_ context.Context, p domain.Project, _ []string) (domain.Project, error) {
+	return p, nil
+}
+func (w *fakeAcctProjWriter) Delete(context.Context, domain.ProjectID) error { return nil }
 
 // ── fake operations.Repo ────────────────────────────────────────────────────
 

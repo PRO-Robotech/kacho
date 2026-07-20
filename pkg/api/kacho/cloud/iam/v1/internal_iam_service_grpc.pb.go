@@ -32,6 +32,7 @@ const (
 	InternalIAMService_PollSubjectChanges_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges"
 	InternalIAMService_RegisterResource_FullMethodName   = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
 	InternalIAMService_UnregisterResource_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/UnregisterResource"
+	InternalIAMService_GetRoleCompiled_FullMethodName    = "/kacho.cloud.iam.v1.InternalIAMService/GetRoleCompiled"
 )
 
 // InternalIAMServiceClient is the client API for InternalIAMService service.
@@ -113,6 +114,14 @@ type InternalIAMServiceClient interface {
 	// `iam_fgaproxy:system` (см. RegisterResource). cluster-internal :9091 only,
 	// нет google.api.http.
 	UnregisterResource(ctx context.Context, in *UnregisterResourceRequest, opts ...grpc.CallOption) (*UnregisterResourceResponse, error)
+	// GetRoleCompiled — Internal two-projection read (redesign-2026 F5): returns a
+	// Role's COMPILED permission set (`module.resource.resourceName.verb` 4-segment
+	// form) that backs FGA emission. This authz-topology projection is Internal-ONLY
+	// (:9091) — the public RoleService.Get/List never carry compiled `permissions`
+	// (they expose only authored `rules[]`). A label-only role compiles to an empty
+	// set (all rules ARM_LABELS are not compiled). cluster-internal listener only —
+	// no google.api.http; admin-UI authz gating happens at the internal mux layer.
+	GetRoleCompiled(ctx context.Context, in *GetRoleCompiledRequest, opts ...grpc.CallOption) (*GetRoleCompiledResponse, error)
 }
 
 type internalIAMServiceClient struct {
@@ -203,6 +212,16 @@ func (c *internalIAMServiceClient) UnregisterResource(ctx context.Context, in *U
 	return out, nil
 }
 
+func (c *internalIAMServiceClient) GetRoleCompiled(ctx context.Context, in *GetRoleCompiledRequest, opts ...grpc.CallOption) (*GetRoleCompiledResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetRoleCompiledResponse)
+	err := c.cc.Invoke(ctx, InternalIAMService_GetRoleCompiled_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InternalIAMServiceServer is the server API for InternalIAMService service.
 // All implementations must embed UnimplementedInternalIAMServiceServer
 // for forward compatibility.
@@ -282,6 +301,14 @@ type InternalIAMServiceServer interface {
 	// `iam_fgaproxy:system` (см. RegisterResource). cluster-internal :9091 only,
 	// нет google.api.http.
 	UnregisterResource(context.Context, *UnregisterResourceRequest) (*UnregisterResourceResponse, error)
+	// GetRoleCompiled — Internal two-projection read (redesign-2026 F5): returns a
+	// Role's COMPILED permission set (`module.resource.resourceName.verb` 4-segment
+	// form) that backs FGA emission. This authz-topology projection is Internal-ONLY
+	// (:9091) — the public RoleService.Get/List never carry compiled `permissions`
+	// (they expose only authored `rules[]`). A label-only role compiles to an empty
+	// set (all rules ARM_LABELS are not compiled). cluster-internal listener only —
+	// no google.api.http; admin-UI authz gating happens at the internal mux layer.
+	GetRoleCompiled(context.Context, *GetRoleCompiledRequest) (*GetRoleCompiledResponse, error)
 	mustEmbedUnimplementedInternalIAMServiceServer()
 }
 
@@ -315,6 +342,9 @@ func (UnimplementedInternalIAMServiceServer) RegisterResource(context.Context, *
 }
 func (UnimplementedInternalIAMServiceServer) UnregisterResource(context.Context, *UnregisterResourceRequest) (*UnregisterResourceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UnregisterResource not implemented")
+}
+func (UnimplementedInternalIAMServiceServer) GetRoleCompiled(context.Context, *GetRoleCompiledRequest) (*GetRoleCompiledResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRoleCompiled not implemented")
 }
 func (UnimplementedInternalIAMServiceServer) mustEmbedUnimplementedInternalIAMServiceServer() {}
 func (UnimplementedInternalIAMServiceServer) testEmbeddedByValue()                            {}
@@ -481,6 +511,24 @@ func _InternalIAMService_UnregisterResource_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalIAMService_GetRoleCompiled_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRoleCompiledRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalIAMServiceServer).GetRoleCompiled(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalIAMService_GetRoleCompiled_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalIAMServiceServer).GetRoleCompiled(ctx, req.(*GetRoleCompiledRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalIAMService_ServiceDesc is the grpc.ServiceDesc for InternalIAMService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -519,6 +567,10 @@ var InternalIAMService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnregisterResource",
 			Handler:    _InternalIAMService_UnregisterResource_Handler,
+		},
+		{
+			MethodName: "GetRoleCompiled",
+			Handler:    _InternalIAMService_GetRoleCompiled_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

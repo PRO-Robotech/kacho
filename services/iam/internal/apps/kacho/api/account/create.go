@@ -158,17 +158,25 @@ func (u *CreateAccountUseCase) Execute(ctx context.Context, a domain.Account) (*
 	if err := authzguard.RequireAuthenticated(ctx); err != nil {
 		return nil, err
 	}
-	// Sync 1: required fields.
-	if a.OwnerUserID == "" {
-		return nil, shared.InvalidArg("owner_user_id", "owner_user_id required")
+	// F1 (redesign-2026): ownerUserId° is OUTPUT-ONLY, derived-from-caller. It is
+	// NOT accepted in the Create body — supplying ANY value (even the caller's own
+	// id) is a sync INVALID_ARGUMENT, first statement, before the Operation is
+	// minted. This removes BOTH the AS-IS required-branch AND the anti-hijack
+	// branch: the field is output-only by construction, so there is nothing to
+	// hijack and nothing to require.
+	if a.OwnerUserID != "" {
+		return nil, shared.InvalidArg("ownerUserId", "Illegal argument ownerUserId (derived from caller)")
 	}
-	// Anti-hijacking: principal must == owner_user_id.
-	// Authenticated user может создать Account ТОЛЬКО с самим собой как owner.
-	// Cluster-admin tooling должно ходить через internal listener (bypass guard).
-	if err := authzguard.RequireOwnerMatchesPrincipal(ctx, string(a.OwnerUserID)); err != nil {
-		return nil, err
+	// Derive owner° from the authenticated caller (never a body field —
+	// anti-spoofing). The verified principal becomes the account owner and the
+	// subject of the owner AccessBinding co-committed by the saga.
+	principalID := authzguard.PrincipalUserID(ctx)
+	if principalID == "" {
+		return nil, shared.InvalidArg("ownerUserId", "Illegal argument ownerUserId (derived from caller)")
 	}
-	// Sync 2: full domain validation (name regex + description length + labels).
+	a.OwnerUserID = domain.UserID(principalID)
+	// Sync 2: full domain validation (name regex + description length + labels;
+	// owner° now populated from caller).
 	if err := a.Validate(); err != nil {
 		return nil, shared.MapValidationErr(err)
 	}
@@ -177,11 +185,15 @@ func (u *CreateAccountUseCase) Execute(ctx context.Context, a domain.Account) (*
 	// Future: переключиться на `ids.PrefixAccount` после его добавления
 	// в kacho-corelib/ids.
 	accID := ids.NewID(domain.PrefixAccount)
+	// F2: pre-allocate the default Project id so CreateAccountMetadata carries
+	// BOTH accountId AND defaultProjectId before the Operation is done — the
+	// client never has to List the default project.
+	defaultProjID := ids.NewID(domain.PrefixProject)
 
 	op, err := operations.NewFromContext(ctx,
 		domain.PrefixOperationIAM,
 		fmt.Sprintf("Create account %s", a.Name),
-		&iamv1.CreateAccountMetadata{AccountId: accID},
+		&iamv1.CreateAccountMetadata{AccountId: accID, DefaultProjectId: defaultProjID},
 	)
 	if err != nil {
 		return nil, err
@@ -197,7 +209,7 @@ func (u *CreateAccountUseCase) Execute(ctx context.Context, a domain.Account) (*
 
 	a.ID = domain.AccountID(accID)
 	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
-		return u.doCreate(ctx, a, actor)
+		return u.doCreate(ctx, a, domain.ProjectID(defaultProjID), actor)
 	})
 	return &op, nil
 }
@@ -209,7 +221,7 @@ func (u *CreateAccountUseCase) Execute(ctx context.Context, a domain.Account) (*
 // binding'а (scope-self verb-bearing tuples на account:<A> + ARM_ANCHOR forward
 // над содержимым — C-01/C-01b; единый materialization-путь). Возвращает anypb с
 // финальным state Account'а.
-func (u *CreateAccountUseCase) doCreate(ctx context.Context, a domain.Account, actor string) (*anypb.Any, error) {
+func (u *CreateAccountUseCase) doCreate(ctx context.Context, a domain.Account, defaultProjID domain.ProjectID, actor string) (*anypb.Any, error) {
 	w, err := u.repo.Writer(ctx)
 	if err != nil {
 		return nil, shared.MapRepoErr(err)
@@ -228,6 +240,36 @@ func (u *CreateAccountUseCase) doCreate(ctx context.Context, a domain.Account, a
 	inserted, ierr := w.AccountsW().Insert(ctx, a)
 	if ierr != nil {
 		return nil, shared.MapRepoErr(ierr)
+	}
+
+	// F2 one-shot saga: co-commit the default "default" Project in the SAME
+	// writer-tx (ban #10 — either Account+Project+owner-binding all commit, or
+	// nothing; no phantom Account). FK projects_account_fk resolves against the
+	// account inserted just above (same tx). The project is wired into the FGA
+	// hierarchy exactly as ProjectService.Create does (account→project + cluster
+	// pointer + reconcile event) so the owner `*.*` ARM_ANCHOR forward
+	// (ReconcileBinding post-commit) materializes access to it.
+	defaultProject := domain.Project{
+		ID:        defaultProjID,
+		AccountID: inserted.ID,
+		Name:      domain.ProjectName("default"),
+		Labels:    domain.Labels{},
+	}
+	if verr := defaultProject.Validate(); verr != nil {
+		return nil, shared.MapValidationErr(verr)
+	}
+	insertedProj, perr := w.ProjectsW().Insert(ctx, defaultProject)
+	if perr != nil {
+		return nil, shared.MapRepoErr(perr)
+	}
+	if ferr := w.EmitFGARelationWrite(ctx, []service.RelationTuple{
+		{User: "account:" + string(insertedProj.AccountID), Relation: "account", Object: "project:" + string(insertedProj.ID)},
+		{User: "cluster:cluster_kacho_root", Relation: "cluster", Object: "project:" + string(insertedProj.ID)},
+	}); ferr != nil {
+		return nil, shared.MapRepoErr(ferr)
+	}
+	if rerr := w.EmitReconcileEvent(ctx, shared.ReconcileEventUpsert, "iam.project", string(insertedProj.ID)); rerr != nil {
+		return nil, shared.MapRepoErr(rerr)
 	}
 	// Durable audit_outbox compliance row in the SAME writer-tx (запрет #10).
 	if aerr := w.EmitAuditEvent(ctx, service.AuditEvent{
@@ -271,6 +313,10 @@ func (u *CreateAccountUseCase) doCreate(ctx context.Context, a domain.Account, a
 		GrantedByUserID:    domain.UserID(actor),
 		DeletionProtection: true,
 		Subjects:           []domain.Subject{{Type: domain.SubjectTypeUser, ID: domain.SubjectID(inserted.OwnerUserID)}},
+		// F8: the owner grant is whole-account (all objects under the account
+		// anchor, incl. future) — the explicit allInScope opt-in, mirroring the
+		// public AccessBinding.Create least-priv contract.
+		Target: domain.AccessTarget{AllInScope: true},
 	}
 	// Self-validating-domain: assert the internally-built
 	// owner-binding is well-formed BEFORE Insert — parity with the public
