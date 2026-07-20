@@ -134,9 +134,13 @@ func (x *Account) GetCreatedAt() *timestamppb.Timestamp {
 type CreateAccountMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Account that is being created.
-	AccountId     string `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AccountId string `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// ID of the default Project ("default") co-created by the one-shot Create saga
+	// (redesign-2026 F2). Available before the Operation is done, so the client
+	// does not have to List the default project. Append-only tag.
+	DefaultProjectId string `protobuf:"bytes,2,opt,name=default_project_id,json=defaultProjectId,proto3" json:"default_project_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateAccountMetadata) Reset() {
@@ -172,6 +176,13 @@ func (*CreateAccountMetadata) Descriptor() ([]byte, []int) {
 func (x *CreateAccountMetadata) GetAccountId() string {
 	if x != nil {
 		return x.AccountId
+	}
+	return ""
+}
+
+func (x *CreateAccountMetadata) GetDefaultProjectId() string {
+	if x != nil {
+		return x.DefaultProjectId
 	}
 	return ""
 }
@@ -281,10 +292,11 @@ const file_kacho_cloud_iam_v1_account_proto_rawDesc = "" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bR\x0forganization_id\"6\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bR\x0forganization_id\"d\n" +
 	"\x15CreateAccountMetadata\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"6\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12,\n" +
+	"\x12default_project_id\x18\x02 \x01(\tR\x10defaultProjectId\"6\n" +
 	"\x15UpdateAccountMetadata\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\"6\n" +

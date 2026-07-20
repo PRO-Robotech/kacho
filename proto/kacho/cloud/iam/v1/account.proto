@@ -56,6 +56,11 @@ message Account {
 message CreateAccountMetadata {
   // ID of the Account that is being created.
   string account_id = 1;
+
+  // ID of the default Project ("default") co-created by the one-shot Create saga
+  // (redesign-2026 F2). Available before the Operation is done, so the client
+  // does not have to List the default project. Append-only tag.
+  string default_project_id = 2;
 }
 
 message UpdateAccountMetadata {
