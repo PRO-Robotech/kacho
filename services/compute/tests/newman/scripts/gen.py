@@ -51,6 +51,13 @@ class Step:
     #   "anonymous"       — Authorization header снимается перед запросом
     #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (значение читается из env при выполнении)
     auth: Optional[str] = None
+    # internal=True — запрос идёт на api-gateway cluster-internal REST listener
+    # ({{internalBaseUrl}}, :8081 → port-forward :18081), НЕ на публичный mux
+    # ({{baseUrl}}, :8080). Internal*-RPC (InternalMachineTypeService admin-CRUD,
+    # COMP-1 F7 seed) живут ТОЛЬКО там (ban #6) — на публичном :8080 их нет by design.
+    # CI-драйвер (deploy/scripts/newman-e2e.sh) прокидывает --env-var internalBaseUrl;
+    # PRE_GLOBAL даёт fallback-деривацию из baseUrl для standalone-прогона.
+    internal: bool = False
 
 
 @dataclass
@@ -76,6 +83,14 @@ PRE_GLOBAL = [
     "}",
     "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
     "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+    "// internalBaseUrl fallback: CI-драйвер (newman-e2e.sh) прокидывает --env-var,",
+    "// но для standalone-прогона деривируем cluster-internal listener из baseUrl",
+    "// (публичный :8080/:18080 → internal-rest :8081/:18081). Internal*-шаги",
+    "// (InternalMachineTypeService seed, COMP-1 F7) идут на {{internalBaseUrl}}.",
+    "if (!pm.environment.get('internalBaseUrl') || pm.environment.get('internalBaseUrl') === '') {",
+    "  const __b = pm.environment.get('baseUrl') || 'http://localhost:18080';",
+    "  pm.environment.set('internalBaseUrl', __b.replace(/:(1?)8080(\\b|$)/, ':$18081'));",
+    "}",
     "// Дефолтный Bearer (bootstrap cluster-admin) для шагов с auth=None: без него все",
     "// запросы анонимны → IAM authn-gate 401 fail-closed. Per-step auth ('anonymous'",
     "// снимает, '<envVar>' переопределяет) идёт в item-pre-request ПОСЛЕ collection-",
@@ -697,8 +712,10 @@ def step_to_postman(step: Step) -> Dict:
             "method": step.method,
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "url": {
-                "raw": "{{baseUrl}}" + step.path,
-                "host": ["{{baseUrl}}"],
+                # internal=True → cluster-internal REST listener ({{internalBaseUrl}},
+                # :8081) для Internal*-RPC (ban #6); иначе публичный mux ({{baseUrl}}).
+                "raw": ("{{internalBaseUrl}}" if step.internal else "{{baseUrl}}") + step.path,
+                "host": ["{{internalBaseUrl}}" if step.internal else "{{baseUrl}}"],
                 "path": [p for p in step.path.strip("/").split("/") if p],
             },
         },
