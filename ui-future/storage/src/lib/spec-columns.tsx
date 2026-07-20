@@ -12,6 +12,11 @@ import { StatusBadge } from "@/components/atoms/StatusBadge";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { getByPath, type ResourceColumn, type ResourceSpec } from "@/lib/resource-registry";
 import { formatDateTime } from "@/lib/datetime";
+import { referrerHref, referrerMeta } from "@/lib/referrer";
+
+// Ре-экспорт для стабильности публичного API @/lib/spec-columns (route/label
+// логика вынесена в чистый ./referrer для unit-тестируемости без antd-графа).
+export { referrerHref, referrerMeta } from "@/lib/referrer";
 
 // Маппинг kacho.cloud.reference.Reference.referrer.type → registry specId, чтобы
 // рендерить потребителя как единую ссылку «иконка + имя» (RefNameLink) и иметь
@@ -33,49 +38,6 @@ const REFERRER_SPEC: Record<string, string> = {
 // "references" (used_by → /projects/<projectId>/compute/instances/<id> и т.п.).
 export interface FormatCellOpts {
   projectId?: string | null;
-}
-
-// referrerHref — маппинг kacho.cloud.reference.Reference.referrer → SPA-route.
-// Структурирован как switch по `referrer.type`, чтобы при появлении новых
-// referrer-типов (compute_disk, nlb_target_group, ...) дописывать один case.
-// Возвращает `null` если projectId не известен или тип не поддерживается —
-// caller тогда рендерит plain-текст (forward-compat fallback).
-export function referrerHref(
-  projectId: string | null | undefined,
-  referrer: { type?: string; id?: string } | undefined,
-): string | null {
-  if (!projectId) return null;
-  const t = referrer?.type;
-  const id = referrer?.id;
-  if (!t || !id) return null;
-  switch (t) {
-    case "compute_instance":
-      return `/projects/${projectId}/compute/instances/${id}`;
-    default:
-      return null;
-  }
-}
-
-// referrerMeta — human-readable label + цвет текста для типа referrer'а.
-// Известные типы получают короткие user-facing метки ("VM", "Disk", ...) и
-// семантический цвет; unknown — fallback на сам `type` без цвета (neutral),
-// чтобы forward-compat при появлении новых referrer-типов работал визуально.
-// Цвета — hex'ы из стандартной палитры antd (https://ant.design/docs/spec/colors).
-export function referrerMeta(type: string | undefined): { label: string; color?: string } {
-  switch (type) {
-    case "compute_instance":
-      return { label: "VM", color: "#1677ff" };
-    case "compute_disk":
-      return { label: "Disk", color: "#13c2c2" };
-    case "compute_image":
-      return { label: "Image", color: "#2f54eb" };
-    case "compute_snapshot":
-      return { label: "Snapshot", color: "#722ed1" };
-    case "nlb_target_group":
-      return { label: "NLB TG", color: "#faad14" };
-    default:
-      return { label: type || "?" };
-  }
 }
 
 // ReferrerLink — общий рендер одного referrer'а как «{label} {id}» (plain text,
