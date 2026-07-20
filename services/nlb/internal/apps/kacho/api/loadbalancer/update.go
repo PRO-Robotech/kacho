@@ -49,6 +49,8 @@ var knownUpdateFields = map[string]bool{
 	"disabled_announce_zones": true,
 	// NLB-1b EXPAND (additive): admin_state is LIVE-mutable.
 	"admin_state": true,
+	// NLB-1b MIGRATE (revival): cross_zone_enabled is LIVE-mutable (REGIONAL-only).
+	"cross_zone_enabled": true,
 }
 
 // immutableUpdateFields — hard-immutable; в mask → InvalidArgument.
@@ -100,6 +102,13 @@ func (u *UpdateLoadBalancerUseCase) Execute(
 	updated := applyUpdateMask(cur.LoadBalancer, req, mask)
 	if err := updated.Validate(); err != nil {
 		return nil, mapDomainErr(err)
+	}
+
+	// NLB-1b MIGRATE (F3/NLB-1-16): cross_zone_enabled is REGIONAL-only. placement_type
+	// is immutable, so guard the merged value against the LB's placement — true on a
+	// ZONAL LB → InvalidArgument (verbatim contract tone).
+	if updated.CrossZoneEnabled && !domain.CrossZoneApplicable(updated.PlacementType) {
+		return nil, status.Error(codes.InvalidArgument, crossZoneZonalMsg)
 	}
 
 	// disabled_announce_zones — перевалидируется только когда mask её трогает
@@ -242,6 +251,11 @@ func applyUpdateMask(
 		if as := adminStateFromPb(req.GetAdminState()); as != "" {
 			out.AdminState = as
 		}
+	}
+	// NLB-1b MIGRATE (revival): cross_zone_enabled LIVE-mutable (REGIONAL-only; the
+	// ZONAL-guard runs in Execute after the merge).
+	if apply("cross_zone_enabled") {
+		out.CrossZoneEnabled = req.GetCrossZoneEnabled()
 	}
 	return out
 }

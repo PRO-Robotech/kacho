@@ -62,6 +62,8 @@ func (networkLoadBalancer) toPb(rec kachorepo.LoadBalancerRecord) (*lbv1.Network
 		// derived-authority direction lands in MIGRATE/NLB-1c).
 		Placement:  lbPlacementModeToPb(placementModeForRec(rec)),
 		AdminState: lbAdminStateToPb(rec.AdminState),
+		// NLB-1b MIGRATE (revival): REGIONAL-only cross-zone toggle.
+		CrossZoneEnabled: rec.CrossZoneEnabled,
 	}, nil
 }
 

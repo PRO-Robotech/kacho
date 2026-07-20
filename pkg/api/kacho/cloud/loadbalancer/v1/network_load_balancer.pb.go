@@ -508,9 +508,15 @@ type NetworkLoadBalancer struct {
 	Placement NetworkLoadBalancer_Placement `protobuf:"varint,40,opt,name=placement,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Placement" json:"placement,omitempty"`
 	// admin_state — NLB-1b EXPAND (additive, output + Create/Update input).
 	// LIVE-mutable desired administrative state (ENABLED|DISABLED).
-	AdminState    NetworkLoadBalancer_AdminState `protobuf:"varint,41,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AdminState NetworkLoadBalancer_AdminState `protobuf:"varint,41,opt,name=admin_state,json=adminState,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_AdminState" json:"admin_state,omitempty"`
+	// cross_zone_enabled — NLB-1b MIGRATE (revival, output + Create/Update input).
+	// REGIONAL-only cross-zone load-balancing toggle; inapplicable to ZONAL placement
+	// (a ZONAL LB serves a single zone) — setting it true on ZONAL → InvalidArgument.
+	// LIVE-mutable for REGIONAL. REGIONAL/anycast is excluded from the zonal check by
+	// construction.
+	CrossZoneEnabled bool `protobuf:"varint,42,opt,name=cross_zone_enabled,json=crossZoneEnabled,proto3" json:"cross_zone_enabled,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *NetworkLoadBalancer) Reset() {
@@ -668,6 +674,13 @@ func (x *NetworkLoadBalancer) GetAdminState() NetworkLoadBalancer_AdminState {
 		return x.AdminState
 	}
 	return NetworkLoadBalancer_ADMIN_STATE_UNSPECIFIED
+}
+
+func (x *NetworkLoadBalancer) GetCrossZoneEnabled() bool {
+	if x != nil {
+		return x.CrossZoneEnabled
+	}
+	return false
 }
 
 // PublicVip — parameterless marker платформенного public-источника VIP
@@ -944,7 +957,7 @@ var File_kacho_cloud_loadbalancer_v1_network_load_balancer_proto protoreflect.Fi
 
 const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xaa\x0f\n" +
+	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xc4\x0f\n" +
 	"\x13NetworkLoadBalancer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -967,7 +980,8 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\x17disabled_announce_zones\x18\x1c \x03(\tR\x15disabledAnnounceZones\x12X\n" +
 	"\tplacement\x18( \x01(\x0e2:.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementR\tplacement\x12\\\n" +
 	"\vadmin_state\x18) \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
-	"adminState\x1a9\n" +
+	"adminState\x12,\n" +
+	"\x12cross_zone_enabled\x18* \x01(\bR\x10crossZoneEnabled\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x7f\n" +
@@ -1003,7 +1017,7 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\x15PLACEMENT_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11EXTERNAL_REGIONAL\x10\x01\x12\x15\n" +
 	"\x11INTERNAL_REGIONAL\x10\x02\x12\x12\n" +
-	"\x0eINTERNAL_ZONAL\x10\x03J\x04\b\b\x10\tJ\x04\b\f\x10\rJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b\x1e\x10(R\tlistenersR\x11allow_zonal_shiftR\x15disable_zone_statusesR\x12cross_zone_enabledR\n" +
+	"\x0eINTERNAL_ZONAL\x10\x03J\x04\b\b\x10\tJ\x04\b\f\x10\rJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b\x1e\x10(R\tlistenersR\x11allow_zonal_shiftR\x15disable_zone_statusesR\n" +
 	"network_idR\x12security_group_idsR\n" +
 	"address_v4R\n" +
 	"address_v6R\vip_families\"\v\n" +

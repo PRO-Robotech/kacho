@@ -153,6 +153,12 @@ func (u *CreateLoadBalancerUseCase) Execute(
 	}
 	// NLB-1b MIGRATE (F2): placement is authoritative — persisted as resolved above.
 	lb.Placement = placementMode
+	// NLB-1b MIGRATE (F3/NLB-1-16): cross_zone_enabled is REGIONAL-only — reject it
+	// on ZONAL placement (a ZONAL LB serves a single zone). REGIONAL/anycast passes.
+	if req.GetCrossZoneEnabled() && !domain.CrossZoneApplicable(placement) {
+		return nil, status.Error(codes.InvalidArgument, crossZoneZonalMsg)
+	}
+	lb.CrossZoneEnabled = req.GetCrossZoneEnabled()
 	// ip_families — заявленные семейства VIP (проставляются ДО Insert-handle:
 	// family-guard CHECK требует семейство в ip_families прежде чем persist-VIP
 	// запишет непустой address).

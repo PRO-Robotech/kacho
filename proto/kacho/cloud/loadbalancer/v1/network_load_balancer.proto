@@ -34,7 +34,7 @@ message NetworkLoadBalancer {
   reserved 8, 12, 15, 16, 17, 18;
   reserved 19, 20, 21, 22, 23, 26;
   reserved "listeners", "allow_zonal_shift", "disable_zone_statuses";
-  reserved "cross_zone_enabled", "network_id", "security_group_ids";
+  reserved "network_id", "security_group_ids";
   reserved "address_v4", "address_v6", "ip_families";
   reserved 30 to 39;
 
@@ -144,6 +144,13 @@ message NetworkLoadBalancer {
   // admin_state — NLB-1b EXPAND (additive, output + Create/Update input).
   // LIVE-mutable desired administrative state (ENABLED|DISABLED).
   AdminState admin_state = 41;
+
+  // cross_zone_enabled — NLB-1b MIGRATE (revival, output + Create/Update input).
+  // REGIONAL-only cross-zone load-balancing toggle; inapplicable to ZONAL placement
+  // (a ZONAL LB serves a single zone) — setting it true on ZONAL → InvalidArgument.
+  // LIVE-mutable for REGIONAL. REGIONAL/anycast is excluded from the zonal check by
+  // construction.
+  bool cross_zone_enabled = 42;
 }
 
 // PublicVip — parameterless marker платформенного public-источника VIP
