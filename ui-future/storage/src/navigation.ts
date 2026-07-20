@@ -18,9 +18,9 @@ export interface RemoteNavSection {
   items: RemoteNavItem[];
 }
 
-// Storage — домен блочного хранилища: Тома / Снимки / Типы дисков. Секция монтируется
-// под /projects/:projectId/storage/*. DiskTypes — cluster-scoped справочник, но
-// показывается внутри проектного контекста (список игнорирует project_id).
+// Storage — домен блочного хранилища: Тома / Снимки / Образы / Типы дисков. Секция
+// монтируется под /projects/:projectId/storage/*. DiskTypes — cluster-scoped
+// справочник, но показывается внутри проектного контекста (список игнорирует project_id).
 export const STORAGE_NAVIGATION: RemoteNavSection[] = [
   {
     key: "storage",
@@ -32,6 +32,9 @@ export const STORAGE_NAVIGATION: RemoteNavSection[] = [
     items: [
       { key: "storage-volumes", icon: "hard-drive", label: "Тома", path: "storage/volumes", requiresProject: true },
       { key: "storage-snapshots", icon: "camera", label: "Снимки", path: "storage/snapshots", requiresProject: true },
+      // Образ (boot-image, STOR-1) — иконка в рейле резолвится по specId "images"
+      // (antdIconBySpec → FileImageOutlined); item.icon — host-валидный fallback.
+      { key: "storage-images", icon: "layers", label: "Образы", path: "storage/images", requiresProject: true },
       {
         key: "storage-disk-types",
         icon: "layers",

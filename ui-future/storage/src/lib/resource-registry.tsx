@@ -153,6 +153,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Тип диска", path: "disk_type_id", format: "text" },
       { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
       { header: "Статус", path: "status", format: "status" },
+      // used_by° — output-only зеркало attachments (кто использует том). Generic
+      // "references"-рендер (spec-columns): показывает первого потребителя + «+N».
+      { header: "Используется", path: "used_by", format: "references" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",
@@ -170,7 +173,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "zones",
         required: true,
         immutable: true,
-        description: "Зона размещения тома (immutable после Create). Cross-service ref → geo.Zone.",
+        description: "Зона размещения тома (ZONAL placement, immutable после Create). Cross-service ref → geo.Zone.",
       },
       {
         name: "disk_type_id",
@@ -307,6 +310,143 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 
+  // ====== storage: Image (STOR-1 — boot-image ресурс) ======
+  // proto: kacho.cloud.storage.v1.ImageService (/storage/v1/images). REGIONAL/anycast
+  // (region_id). Создаётся РОВНО из одного источника — Snapshot XOR Volume (immutable).
+  // Mutable: name/description/labels. size/min_disk/format/status — output-only.
+  images: {
+    id: "images",
+    route: "images",
+    apiPath: "/storage/v1/images",
+    payloadKey: "images",
+    singular: "Образ",
+    plural: "Образы",
+    genitive: "Образа",
+    serviceTitle: "Storage",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    docs: [
+      { label: "Образы (boot-image)", href: "#" },
+      { label: "Тома (block storage)", href: "#" },
+    ],
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      { header: "Регион", path: "region_id", format: "text" },
+      {
+        header: "Источник",
+        path: "source_snapshot_id",
+        render: (row) => {
+          const snap = row.source_snapshot_id as string | undefined;
+          const vol = row.source_volume_id as string | undefined;
+          if (snap) return <RefNameLink specId="snapshots" refId={snap} maxChars={28} />;
+          if (vol) return <RefNameLink specId="volumes" refId={vol} maxChars={28} />;
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        },
+      },
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: [
+      FIELD_NAME,
+      FIELD_DESCRIPTION,
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        description: "Регион размещения образа (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
+      },
+      {
+        // Дискриминатор источника (form-only): образ создаётся РОВНО из одного —
+        // снимок XOR том. sanitize срезает `_source_kind` и неактивную ветку.
+        name: "_source_kind",
+        label: "Источник образа",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "snapshot",
+        options: [
+          { value: "snapshot", label: "Из снимка (Snapshot)" },
+          { value: "volume", label: "Из тома (Volume)" },
+        ],
+        description: "Образ создаётся РОВНО из одного источника: снимок ИЛИ том (взаимоисключающе).",
+      },
+      {
+        name: "source_snapshot_id",
+        label: "Снимок-источник",
+        type: "ref",
+        refResource: "snapshots",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        visibleWhen: { field: "_source_kind", equals: "snapshot" },
+        description: "Снимок, из которого создаётся образ (immutable). Same-DB ref → Snapshot.",
+      },
+      {
+        name: "source_volume_id",
+        label: "Том-источник",
+        type: "ref",
+        refResource: "volumes",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        visibleWhen: { field: "_source_kind", equals: "volume" },
+        description: "Том, из которого создаётся образ (immutable). Same-DB ref → Volume.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      region_id: "",
+      _source_kind: "snapshot",
+      source_snapshot_id: "",
+      source_volume_id: "",
+      labels: {},
+    }),
+    // Ровно один источник по _source_kind; form-only дискриминатор срезаем.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const kind = out._source_kind;
+      delete out._source_kind;
+      if (kind === "volume") {
+        delete out.source_snapshot_id;
+        if (!out.source_volume_id) delete out.source_volume_id;
+      } else {
+        delete out.source_volume_id;
+        if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      }
+      return out;
+    },
+    // Клиент-валидация ДО submit: активный источник должен быть выбран.
+    validate: (obj) => {
+      const kind = obj._source_kind;
+      const chosen = kind === "volume" ? obj.source_volume_id : obj.source_snapshot_id;
+      if (!chosen) return "Выберите источник образа (снимок или том).";
+      return null;
+    },
+    emptyState: {
+      title: "Создайте первый образ",
+      body: "Образ — это boot-seed для тома: том с указанным образом материализуется из него. Образ REGIONAL (anycast) и создаётся из снимка или тома проекта.",
+      docs: ["Образы (boot-image)"],
+    },
+  },
+
   // ====== storage: DiskType (read-only catalog) ======
   // proto: kacho.cloud.storage.v1.DiskTypeService (/storage/v1/diskTypes). Public
   // read-only; admin-CRUD — Internal* API (:9091). Cluster-scoped (без project).
@@ -336,9 +476,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 
-  // ====== geo (read-only ref-цель для zone_id) ======
-  // Zone — cross-service ref-цель (owner geo). Read-only registry-запись нужна
-  // RefSelect'у для резолва apiPath/payloadKey/имени в dropdown'е zone_id.
+  // ====== geo (read-only ref-цели) ======
+  // Zone — cross-service ref-цель (owner geo) для Volume/Snapshot.zone_id. Read-only
+  // registry-запись нужна RefSelect'у для резолва apiPath/payloadKey/имени в dropdown'е.
   zones: {
     id: "zones",
     route: "zones",
@@ -346,6 +486,21 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "zones",
     singular: "Зона",
     plural: "Зоны",
+    serviceTitle: "Geography",
+    scope: "global",
+    ops: { create: false, update: false, delete: false },
+    columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
+    template: () => ({}),
+  },
+
+  // Region — cross-service ref-цель (owner geo) для Image.region_id (REGIONAL/anycast).
+  regions: {
+    id: "regions",
+    route: "regions",
+    apiPath: "/geo/v1/regions",
+    payloadKey: "regions",
+    singular: "Регион",
+    plural: "Регионы",
     serviceTitle: "Geography",
     scope: "global",
     ops: { create: false, update: false, delete: false },
