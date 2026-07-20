@@ -146,6 +146,7 @@ func newTG(projectID, name string) *domain.TargetGroup {
 		DeregistrationDelaySeconds: 300,
 		SlowStartSeconds:           0,
 		Status:                     domain.TargetGroupStatusActive,
+		Port:                       8080,
 	}
 }
 
