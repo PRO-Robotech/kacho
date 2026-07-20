@@ -125,14 +125,51 @@ func NewID(prefix string) string {
 	if len(prefix) != 3 {
 		panic("ids.NewID: prefix must be exactly 3 chars, got " + prefix)
 	}
+	var sb strings.Builder
+	sb.Grow(totalLen)
+	sb.WriteString(prefix)
+	sb.Write(idBody())
+	return sb.String()
+}
 
+// NewHyphenID возвращает going-forward hyphen-form идентификатор
+// "<prefix>-<17-char crockford-base32>" (B3-канон, §2 unified-system-design).
+// В отличие от NewID (слитная 3-char форма) — prefix здесь 2..3 символа
+// (`mt`/`ins`/…), а тело отделено дефисом. Источник энтропии — crypto/rand
+// (то же тело, что у NewID: idBodyLen символов).
+//
+// Каждый сервис мигрирует свой prefix на hyphen-генерацию в собственном
+// редизайне (router validate.ResourceID уже принимает hyphen-форму с Phase-0 B3);
+// COMP-1 — точка миграции compute для новых/редизайнутых ресурсов (MachineType
+// `mt-`, Instance `ins-`). prefix обязан входить в KnownHyphenPrefixes(), иначе
+// validate.ResourceID отвергнет сгенерированный id.
+//
+// prefix вне диапазона 2..3 символов → panic (programmer error: prefix приходит
+// из package-level константы).
+func NewHyphenID(prefix string) string {
+	if n := len(prefix); n < 2 || n > 3 {
+		panic("ids.NewHyphenID: prefix must be 2..3 chars, got " + prefix)
+	}
+	var sb strings.Builder
+	sb.Grow(len(prefix) + 1 + idBodyLen)
+	sb.WriteString(prefix)
+	sb.WriteByte('-')
+	sb.Write(idBody())
+	return sb.String()
+}
+
+// idBody генерирует тело id — idBodyLen символов crockford-base32 (85 бит
+// энтропии из 11 crypto/rand-байт, читаемых по 5 бит из big-endian потока).
+// Общий для NewID (слитная форма) и NewHyphenID (hyphen-форма) — единственная
+// точка генерации энтропии, чтобы обе формы делили одинаковую крипто-стойкость.
+func idBody() []byte {
 	// 17 символов crockford-base32 = 85 бит энтропии. Берем 11 случайных
 	// байт (88 бит) и читаем по 5 бит на символ из big-endian потока.
 	var raw [11]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		// crypto/rand.Read не должен fail-ить на linux/macOS;
 		// если он fail-ит — система сломана, panic корректно.
-		panic("ids.NewID: crypto/rand failed: " + err.Error())
+		panic("ids.idBody: crypto/rand failed: " + err.Error())
 	}
 
 	// Преобразуем 11 байт в uint64+uint64 (88 бит ⊂ 128 бит) и читаем по
@@ -168,12 +205,7 @@ func NewID(prefix string) string {
 		}
 		body[i] = crockfordAlphabet[val]
 	}
-
-	var sb strings.Builder
-	sb.Grow(totalLen)
-	sb.WriteString(prefix)
-	sb.Write(body)
-	return sb.String()
+	return body
 }
 
 // IsValid проверяет, что id соответствует формату "<prefix><17 lowercase
@@ -248,6 +280,22 @@ func KnownPrefixes() map[string]struct{} {
 	return m
 }
 
+// Going-forward hyphen-form prefix КОНСТАНТЫ (B3-канон, redesign-2026). В отличие
+// от legacy 3-char Prefix* (слитная форма, эмитится NewID) — эти адресуют
+// hyphen-форму "<prefix>-<crockford-base32>", генерируемую NewHyphenID. Часть
+// 2-символьные (`mt`) — вне 3-char NewID-инварианта by construction. Каждая
+// ОБЯЗАНА входить в hyphenFormPrefixes (guard-тест TestHyphenPrefixConstants_InCanon),
+// иначе validate.ResourceID отвергнет well-formed id, который NewHyphenID произвёл.
+const (
+	// PrefixMachineTypeHyphen — compute MachineType (`mt-…`, 2-char prefix;
+	// COMP-1 F7). NewHyphenID("mt") → "mt-<17-base32>".
+	PrefixMachineTypeHyphen = "mt"
+	// PrefixInstanceHyphen — compute Instance редизайна (`ins-…`, COMP-1 F8);
+	// замещает legacy слитный PrefixInstance (`epd`, делит с Disk) для новых
+	// инстансов монорепо project/kacho. NewHyphenID("ins") → "ins-<17-base32>".
+	PrefixInstanceHyphen = "ins"
+)
+
 // hyphenFormPrefixes — going-forward hyphen-form id prefixes (B3, redesign-2026
 // governance canon). Новые ресурсы адресуются формой "<prefix>-<crockford-base32>"
 // (напр. "ins-abc…", "ns-xyz…") — в отличие от legacy слитной формы
@@ -264,8 +312,9 @@ func KnownPrefixes() map[string]struct{} {
 var hyphenFormPrefixes = []string{
 	// iam: Account/Project/User/ServiceAccount/Group/Role/AccessBinding/UserInvitation
 	"acc", "prj", "usr", "sva", "grp", "rol", "acb", "inv",
-	// compute: Instance/MachineType/PlacementGroup/VolumeType
-	"ins", "mt", "plg", "vt",
+	// compute: Instance/MachineType/PlacementGroup/VolumeType (ins/mt — именованные
+	// константы: единый источник истины с NewHyphenID-генерацией).
+	PrefixInstanceHyphen, PrefixMachineTypeHyphen, "plg", "vt",
 	// storage: Volume/Image/Snapshot
 	"vol", "img", "snp",
 	// registry: Namespace (Repository/Tag/Image — natural/content-key, без prefix)
