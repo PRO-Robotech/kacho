@@ -268,8 +268,19 @@ var hyphenFormPrefixes = []string{
 	"ins", "mt", "plg", "vt",
 	// storage: Volume/Image/Snapshot
 	"vol", "img", "snp",
-	// registry: Namespace
+	// registry: Namespace (Repository/Tag/Image — natural/content-key, без prefix)
 	"ns",
+	// vpc: Network/Subnet/SecurityGroup/RouteTable/Gateway/NetworkInterface/Address/AddressPool.
+	// Значения — текущий legacy-канон; VPC-редизайн §2 предлагает mnemonic-рейнейм
+	// SecurityGroup sgr→scg и Gateway gtw→gwy — reconcile при VPC-1 prefix-миграции
+	// (тогда добавить scg/gwy сюда; router аддитивен, старые остаются валидны).
+	"net", "sub", "sgr", "rtb", "gtw", "nic", "adr", "apl",
+	// nlb: LoadBalancer/Listener/TargetGroup
+	"nlb", "lst", "tgr",
+	// geo — НАМЕРЕННО отсутствует: Region/Zone используют human-slug (ru-central1,
+	// ru-central1-a), THE ONE документированный carve-out из <prefix>-<base32> (B3).
+	// per-domain Operation-prefix'ы (sop/enp/iop/rop/aop/epd) — тоже legacy-concat,
+	// маршрутизируются opsproxy, НЕ hyphen-канон.
 }
 
 // KnownHyphenPrefixes возвращает КОПИЮ множества going-forward hyphen-form
