@@ -100,6 +100,11 @@ spec:
             # PUBLIC (:9090): ProjectService.Get existence-validation on Create.
             - name: KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR
               value: "{{ .Values.authz.iamProjectGrpcAddr }}"
+            # registry→geo (REG-1 F4): RegionService.Get existence-validation of
+            # Registry.region_id on Create (public :9090, separate conn — geo leaf).
+            # Empty → geo-client nil → Create fail-closed (RegionExists Unavailable).
+            - name: KACHO_REGISTRY_GEO_GRPC_ADDR
+              value: "{{ .Values.authz.geoGrpcAddr }}"
             - name: KACHO_REGISTRY_AUTHZ_BREAKGLASS
               value: "{{ .Values.authz.breakglass }}"
             # ─── zot OCI backend (cluster-internal, never public) ───
@@ -188,6 +193,20 @@ spec:
               value: {{ printf "%s/ca.crt" $cli | quote }}
             - name: KACHO_REGISTRY_IAM_PROJECT_MTLS_SERVERNAME
               value: {{ .Values.mtls.serverName.iamProject | quote }}
+            {{- end }}
+            {{- if .Values.mtls.edges.geo }}
+            # registry→geo RegionService.Get (public :9090) client-creds — same
+            # client leaf as the iam edges, ServerName = kacho-geo (∈ geo server-SAN).
+            - name: KACHO_REGISTRY_GEO_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_REGISTRY_GEO_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_GEO_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_REGISTRY_GEO_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_GEO_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.geo | quote }}
             {{- end }}
             {{- end }}
             {{- range $k, $v := .Values.env }}
