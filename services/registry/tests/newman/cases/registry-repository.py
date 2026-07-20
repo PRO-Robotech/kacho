@@ -43,7 +43,9 @@ def _reg_base():
 
 def _create_registry(name_expr, id_var):
     """Setup: Create registry (async Op) → poll → capture id into id_var."""
-    body = {"name": name_expr, "projectId": "{{existingProjectId}}", "description": "RG-1 overlay CI"}
+    # regionId обязателен на Create (REG-1 F4, peer-validate geo) — иначе sync 400.
+    body = {"name": name_expr, "projectId": "{{existingProjectId}}",
+            "regionId": "{{existingRegionId}}", "description": "RG-1 overlay CI"}
     return [
         Step(name="reg-create", method="POST", path=REG, body=body,
              test_script=[*assert_status(200), *assert_operation_envelope("^(rop|reo)[a-z0-9]+$"),

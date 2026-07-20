@@ -131,12 +131,24 @@ python3 scripts/gen.py
 # 3) run against the live stack (fe3455)
 ./scripts/run.sh --env environments/fe3455.postman_environment.json --service registry
 
-# once cases/registry-authz.py lands, it generates a second collection:
-./scripts/run.sh --env environments/fe3455.postman_environment.json --service registry-authz
+# REG-1 redesign surface (regional placement / defaultRepositoryVisibility / lifecycle / id-lock):
+./scripts/run.sh --env environments/fe3455.postman_environment.json --service registry-redesign
 
-# kind-stand CI env:
-./scripts/run.sh --env environments/kind-stand.postman_environment.json --service registry
+# authz + config-overlay Repository collections:
+./scripts/run.sh --env environments/fe3455.postman_environment.json --service registry-authz
+./scripts/run.sh --env environments/fe3455.postman_environment.json --service registry-repository
+
+# all registry collections (no --service): registry, registry-redesign, registry-repository, registry-authz
+./scripts/run.sh --env environments/kind-stand.postman_environment.json
 ```
+
+> **REG-1 redesign coverage** — `cases/registry-redesign.py` (17 cases, verifies
+> `REG-1-01..31`) locks the REG-1 production increment: `regionId` peer-validate geo +
+> `placementType` REGIONAL const (F4), `defaultRepositoryVisibility` seed + admin-gate (F5),
+> `Repository.lifecycle` DURABLE/EPHEMERAL output-only (F7), and identity-lock (id immutable,
+> rename-name-preserves-id, field-absence). Requires geo seeded with `existingRegionId`
+> (kacho-deploy geo fixture, shared with nlb/compute). Acceptance:
+> `docs/specs/sub-phase-REG-1-registry-repository-acceptance.md`.
 
 `run.sh` writes `out/<service>.json` (newman JSON reporter), `out/<service>.cli`, and
 `out/summary.txt`. Use `--delay <ms>` to give async Operation workers time; use

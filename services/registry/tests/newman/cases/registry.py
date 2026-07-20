@@ -45,7 +45,9 @@ def _create_registry(name_expr, id_var, project="{{existingProjectId}}",
     asserts the operation succeeded (ACTIVE, prefix `reg`, endpoint) and saves the
     resource id into env var `id_var` from the operation response. Returns list[Step].
     """
-    body = {"name": name_expr, "projectId": project,
+    # regionId — REGIONAL placement-якорь, обязателен на Create (REG-1 F4, peer-validate
+    # geo). existingRegionId сидится kacho-deploy (та же geo-фикстура, что nlb/compute).
+    body = {"name": name_expr, "projectId": project, "regionId": "{{existingRegionId}}",
             "description": description, "labels": ({"env": "prod"} if labels is None else labels)}
     return [
         Step(name="create-" + id_var, method="POST", path=REG, body=body,
@@ -115,10 +117,10 @@ CASES.append(Case(
     classes=["NEG", "VAL"], priority="P0",
     steps=[
         Step(name="create-uppercase", method="POST", path=REG,
-             body={"name": "TeamImages", "projectId": "{{existingProjectId}}"},
+             body={"name": "TeamImages", "projectId": "{{existingProjectId}}", "regionId": "{{existingRegionId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         Step(name="create-underscore", method="POST", path=REG,
-             body={"name": "team_images", "projectId": "{{existingProjectId}}"},
+             body={"name": "team_images", "projectId": "{{existingProjectId}}", "regionId": "{{existingRegionId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
     ],
 ))
@@ -130,7 +132,7 @@ CASES.append(Case(
     title="Create with unknown projectId → 400 INVALID_ARGUMENT (\"project ... not found\")",
     classes=["NEG"], priority="P1",
     steps=[Step(name="create-nopr", method="POST", path=REG,
-                body={"name": "x-{{runId}}", "projectId": "{{garbageProjectId}}"},
+                body={"name": "x-{{runId}}", "projectId": "{{garbageProjectId}}", "regionId": "{{existingRegionId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              "pm.test('not found text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));"])],
 ))
@@ -145,6 +147,7 @@ CASES.append(Case(
         *_create_registry("dup-images-{{runId}}", "dupRegId"),
         Step(name="create-dup", method="POST", path=REG,
              body={"name": "dup-images-{{runId}}", "projectId": "{{existingProjectId}}",
+                   "regionId": "{{existingRegionId}}",
                    "description": "duplicate attempt", "labels": {"env": "prod"}},
              test_script=[
                  "pm.test('duplicate rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
@@ -180,7 +183,7 @@ CASES.append(Case(
     title="Create with no name field → 400 INVALID_ARGUMENT (name required)",
     classes=["NEG", "VAL"], priority="P1",
     steps=[Step(name="create-noname", method="POST", path=REG,
-                body={"projectId": "{{existingProjectId}}", "description": "no name"},
+                body={"projectId": "{{existingProjectId}}", "regionId": "{{existingRegionId}}", "description": "no name"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -367,15 +370,29 @@ CASES.append(Case(
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
-# Update immutable name in mask → 400 INVALID_ARGUMENT ("name is immutable after Registry.Create").
+# Update name via mask → mutable косметический label (REG-1 F2, был immutable до REG-1).
+# name — не идентичность (её несёт immutable id, F1); смена name — обычный Update под
+# update_mask-дисциплиной. Deep-инвариант «rename name НЕ ломает id/endpoint/pull-URL»
+# (REG-1-07) локается в cases/registry-redesign.py (REG-RD-F2-RENAME-STABLE-ID).
 CASES.append(Case(
-    id="REG-UPD-NEG-IMMUTABLE-NAME",
-    title="Update updateMask=name → 400 INVALID_ARGUMENT (name immutable)",
-    classes=["NEG", "CONF"], priority="P1",
-    steps=[Step(name="update-name", method="PATCH", path=REG + "/{{regId}}",
-                body={"updateMask": "name"},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('immutable text', () => pm.expect((pm.response.json().message||'')).to.include('immutable'));"])],
+    id="REG-UPD-CRUD-RENAME-NAME",  # index: REG-36
+    title="Update updateMask=name → Operation → Get reflects new name (REG-1 F2: name mutable, id stable)",
+    classes=["CRUD"], priority="P1",
+    steps=[
+        Step(name="update-name", method="PATCH", path=REG + "/{{regId}}",
+             body={"updateMask": "name", "name": "team-images-r-{{runId}}"},
+             test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
+                          *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        Step(name="get-renamed", method="GET", path=REG + "/{{regId}}",
+             test_script=[
+                 "pm.test('rename op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
+                 *assert_status(200),
+                 "const j = pm.response.json();",
+                 "pm.test('name mutated', () => pm.expect(j.name).to.eql('team-images-r-'+pm.environment.get('runId')));",
+                 "pm.test('id unchanged (identity stable across rename)', () => pm.expect(j.id).to.eql(pm.environment.get('regId')));",
+             ]),
+    ],
 ))
 
 # Update immutable projectId in mask → 400 INVALID_ARGUMENT ("projectId is immutable after Registry.Create").

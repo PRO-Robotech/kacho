@@ -100,7 +100,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-fixture", method="POST", path=REG,
              body={"name": "az-fixture-{{runId}}", "projectId": "{{existingProjectId}}",
-                   "description": "authz coverage fixture"},
+                   "regionId": "{{existingRegionId}}", "description": "authz coverage fixture"},
              test_script=[*assert_status(200), *assert_operation_envelope(_OP_PREFIX),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -199,7 +199,8 @@ CASES.append(Case(
     title="Create as jwtStranger in existingProjectId → denied (200/401/403/404); no deny_reasons (gated !=401)",
     classes=["AZD", "NEG"], priority="P0",
     steps=[Step(name="create-stranger", method="POST", path=REG, auth="jwtStranger",
-                body={"name": "az-intruder-{{runId}}", "projectId": "{{existingProjectId}}"},
+                body={"name": "az-intruder-{{runId}}", "projectId": "{{existingProjectId}}",
+                      "regionId": "{{existingRegionId}}"},
                 test_script=[*_assert_denied_or_empty(), *_deny_leak_gated()])],
 ))
 

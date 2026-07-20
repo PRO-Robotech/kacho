@@ -12,6 +12,33 @@
 | Control-plane authz | `cases/registry-authz.py` | 9 | all executed | 0 | **GREEN on fe3455** (3 viewer-tier cases fixture-gated → console-only SKIP, no green assertion) |
 | Data-plane OCI proxy + token-exchange | `scripts/dataplane-e2e.sh` | full handshake→push→pull→delete flow | all hard assertions | 0 | **ALL hard assertions GREEN on fe3455** |
 
+## REG-1 redesign surface (`cases/registry-redesign.py`, 17 cases) — authored, pending CI
+
+Production-инкремент **REG-1** (regional placement, `defaultRepositoryVisibility`, explicit
+`Repository.lifecycle`, identity-lock) — 17 black-box кейсов, verifies `REG-1-01/02/04/06/07/
+10/11/12/14/15/16/19/21/22/24/28/31`. Grounded против landed proto+use-case на этой ветке
+(`region_id`/`placement_type`/`default_repository_visibility`/`Repository.lifecycle` присутствуют;
+exact error-texts сверены с `internal/apps/kacho/api/registry/{create,validate,create_repository,
+update_repository}.go` и handler admin-gate `internal/handler/{public,listauthz}.go`).
+
+- **Product bugs: НЕ найдено.** Наблюдаемое поведение use-case/handler соответствует APPROVED
+  acceptance-контракту (`docs/specs/sub-phase-REG-1-registry-repository-acceptance.md`) — все 17
+  кейсов ожидаются GREEN после прогона на стенде с REG-1-образом. **Known-failing (product bug)
+  деклараций нет.**
+- **Suite brought to REG-1 (test-only):** `regionId={{existingRegionId}}` добавлен во ВСЕ
+  registry-create тела (F4 делает regionId обязательным — иначе базовый suite ловил бы sync
+  400); `REG-UPD-NEG-IMMUTABLE-NAME` конвертирован в `REG-UPD-CRUD-RENAME-NAME` (REG-1 F2: `name`
+  теперь **mutable** через Update — прежний «name immutable»-негатив стал контрактно неверным).
+- **Локальный прогон не выполнялся** (env-blocked, `.claude` MEMORY «local newman env blocked»):
+  авторинг + `validate-cases.py` (74 unique, all catalogued) + `gen.py` (74 cases) зелёные;
+  исполнение — CI-раннер.
+- **Not black-box-testable via control-plane newman** (по конструкции, покрыто integration
+  `internal/repo/kacho/pg/*_integration_test.go`): `REG-1-13` geo-down `UNAVAILABLE` (нельзя
+  погасить geo из black-box); `REG-1-23` auto-promote *register-on-first-push* ephemeral
+  (overlay-less repo требует data-plane push); `REG-1-25` concurrent lifecycle-CAS (concurrency);
+  `REG-1-30` INTERNAL-no-leak → фикс. `"internal database error"` (симуляция DB-ошибки);
+  `REG-1-20` ACTIVE-guard DELETING (racy окно). Отмечено в CASES-INDEX §1c.
+
 ### Control-plane CRUD (`cases/registry.py`, 30 cases) — 150 assertions GREEN
 
 All 8 `RegistryService` RPCs exercised black-box through api-gateway REST

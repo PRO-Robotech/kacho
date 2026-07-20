@@ -1,7 +1,7 @@
 {
   "info": {
-    "_postman_id": "b6830118-e78f-4661-9608-25873b876fa4",
-    "name": "kacho-nlb / newman / registry",
+    "_postman_id": "41cd56d0-c07b-472a-ae33-b3dd98423a08",
+    "name": "kacho-registry / newman / registry",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -57,7 +57,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"team-images-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
+              "raw": "{\"name\": \"team-images-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -248,7 +248,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"TeamImages\", \"projectId\": \"{{existingProjectId}}\"}",
+              "raw": "{\"name\": \"TeamImages\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -295,7 +295,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"team_images\", \"projectId\": \"{{existingProjectId}}\"}",
+              "raw": "{\"name\": \"team_images\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -348,7 +348,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"x-{{runId}}\", \"projectId\": \"{{garbageProjectId}}\"}",
+              "raw": "{\"name\": \"x-{{runId}}\", \"projectId\": \"{{garbageProjectId}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -402,7 +402,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"dup-images-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
+              "raw": "{\"name\": \"dup-images-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -548,7 +548,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"dup-images-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"description\": \"duplicate attempt\", \"labels\": {\"env\": \"prod\"}}",
+              "raw": "{\"name\": \"dup-images-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"description\": \"duplicate attempt\", \"labels\": {\"env\": \"prod\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -786,7 +786,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{existingProjectId}}\", \"description\": \"no name\"}",
+              "raw": "{\"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"description\": \"no name\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1460,8 +1460,8 @@
       ]
     },
     {
-      "name": "REG-UPD-NEG-IMMUTABLE-NAME — Update updateMask=name → 400 INVALID_ARGUMENT (name immutable)",
-      "description": "class:NEG | class:CONF | priority:P1",
+      "name": "REG-UPD-CRUD-RENAME-NAME — Update updateMask=name → Operation → Get reflects new name (REG-1 F2: name mutable, id stable)",
+      "description": "class:CRUD | priority:P1",
       "item": [
         {
           "name": "update-name",
@@ -1487,7 +1487,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"name\"}",
+              "raw": "{\"updateMask\": \"name\", \"name\": \"team-images-r-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1501,12 +1501,106 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
-                  "pm.test('immutable text', () => pm.expect((pm.response.json().message||'')).to.include('immutable'));"
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-6",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-renamed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rename op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('name mutated', () => pm.expect(j.name).to.eql('team-images-r-'+pm.environment.get('runId')));",
+                  "pm.test('id unchanged (identity stable across rename)', () => pm.expect(j.id).to.eql(pm.environment.get('regId')));"
                 ]
               }
             }
@@ -1628,7 +1722,7 @@
           ]
         },
         {
-          "name": "poll-op-6",
+          "name": "poll-op-7",
           "request": {
             "method": "GET",
             "header": [
@@ -1772,7 +1866,7 @@
           ]
         },
         {
-          "name": "poll-op-7",
+          "name": "poll-op-8",
           "request": {
             "method": "GET",
             "header": [
@@ -2275,7 +2369,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"del-me-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
+              "raw": "{\"name\": \"del-me-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2306,7 +2400,7 @@
           ]
         },
         {
-          "name": "poll-op-8",
+          "name": "poll-op-9",
           "request": {
             "method": "GET",
             "header": [
@@ -2444,7 +2538,7 @@
           ]
         },
         {
-          "name": "poll-op-9",
+          "name": "poll-op-10",
           "request": {
             "method": "GET",
             "header": [
@@ -2580,7 +2674,7 @@
           ]
         },
         {
-          "name": "poll-op-10",
+          "name": "poll-op-11",
           "request": {
             "method": "GET",
             "header": [
@@ -2692,7 +2786,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"dd-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
+              "raw": "{\"name\": \"dd-{{runId}}\", \"projectId\": \"{{existingProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"description\": \"CI images\", \"labels\": {\"env\": \"prod\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2723,7 +2817,7 @@
           ]
         },
         {
-          "name": "poll-op-11",
+          "name": "poll-op-12",
           "request": {
             "method": "GET",
             "header": [
@@ -2861,7 +2955,7 @@
           ]
         },
         {
-          "name": "poll-op-12",
+          "name": "poll-op-13",
           "request": {
             "method": "GET",
             "header": [
@@ -2993,7 +3087,7 @@
           ]
         },
         {
-          "name": "poll-op-13",
+          "name": "poll-op-14",
           "request": {
             "method": "GET",
             "header": [
