@@ -165,9 +165,26 @@ func (c *subnetClient) Get(ctx context.Context, subnetID string) (*Subnet, error
 		ZoneID:        resp.GetZoneId(),
 		RegionID:      regionID,
 		PlacementType: resp.GetPlacementType().String(),
-		V4CIDRBlocks:  append([]string(nil), resp.GetV4CidrBlocks()...),
-		V6CIDRBlocks:  append([]string(nil), resp.GetV6CidrBlocks()...),
+		// VPC-1 F7: vpc.Subnet split its flat CIDR array into an immutable
+		// primary anchor + additional ranges. The consumer needs the full block
+		// set for target containment, so recombine primary+additional per family.
+		V4CIDRBlocks: allSubnetCIDRs(resp.GetIpv4CidrPrimary(), resp.GetIpv4CidrBlocks()),
+		V6CIDRBlocks: allSubnetCIDRs(resp.GetIpv6CidrPrimary(), resp.GetIpv6CidrBlocks()),
 	}, nil
+}
+
+// allSubnetCIDRs восстанавливает полный набор CIDR-блоков подсети из redesign-формы
+// vpc.Subnet (primary-anchor + additional ranges). Пустой primary (v-only family) →
+// только additional; всё пусто → nil (back-compat со старым append([]string(nil),…)).
+func allSubnetCIDRs(primary string, additional []string) []string {
+	if primary == "" && len(additional) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(additional)+1)
+	if primary != "" {
+		out = append(out, primary)
+	}
+	return append(out, additional...)
 }
 
 // resolveRegion — регион подсети для denormalised Subnet.RegionID: REGIONAL несёт

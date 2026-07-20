@@ -58,7 +58,9 @@ func newNetworkHandler(t *testing.T, pool *pgxpool.Pool) (*networkapp.Handler, *
 	listRT := networkapp.NewListRouteTablesUseCase(r, nil)
 	listOps := networkapp.NewListOperationsUseCase(or)
 	del := networkapp.NewDeleteNetworkUseCase(r, nil, nil, nil, or)
-	h := networkapp.NewHandler(create, update, del, get, list, listSub, listSG, listRT, listOps)
+	addCidr := networkapp.NewAddCidrBlocksUseCase(r, or)
+	removeCidr := networkapp.NewRemoveCidrBlocksUseCase(r, or)
+	h := networkapp.NewHandler(create, update, del, get, list, addCidr, removeCidr, listSub, listSG, listRT, listOps)
 	return h, or
 }
 

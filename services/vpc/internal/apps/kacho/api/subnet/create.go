@@ -83,13 +83,15 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	if s.NetworkID == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	// Placement: дискриминатор обязателен (UNSPECIFIED → InvalidArgument). ZONAL —
-	// zone_id required + existence (geo), region_id запрещен; REGIONAL — region_id
-	// required + existence (geo), zone_id запрещен. Существование валидируется у
-	// owner-домена Geography (kacho-geo), без hardcoded whitelist.
-	if err := validatePlacement(ctx, u.zoneReg, u.regionReg, s); err != nil {
+	// Placement (F6): placementType° **server-derived, unwritable** из zoneId XOR
+	// regionId. placementType в теле → explicit reject; оба/ни одного → reject;
+	// иначе выводим дискриминатор и записываем его в domain (Insert → placement_type-
+	// колонка). Существование zone/region валидируется у owner-домена geo (fail-closed).
+	placement, err := resolvePlacement(ctx, u.zoneReg, u.regionReg, s)
+	if err != nil {
 		return nil, err
 	}
+	s.PlacementType = placement
 	// Proto contract: v4_cidr_blocks НЕ required — подсеть может быть создана без
 	// IPv4-диапазона. Пустой список легален; переданные CIDR'ы все равно
 	// валидируются (host-bits=0, /16../28).
@@ -110,9 +112,7 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	if err := serviceerr.FromValidation(s.Validate()); err != nil {
 		return nil, err
 	}
-	if err := validateDhcpOptions(s.DhcpOptions); err != nil {
-		return nil, err
-	}
+	// VPC-1-43: dhcp_options снят by design — на Create не принимается/не валидируется.
 
 	// Sync project.Exists precheck убран — он race-prone: между sync-проверкой и
 	// async-частью project может быть удален peer-сервисом, и second-writer-wins
@@ -141,6 +141,13 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	if parentNet.ProjectID != s.ProjectID {
 		_ = rd.Close()
 		return nil, status.Errorf(codes.NotFound, "Network %s not found", s.NetworkID)
+	}
+	// F7: каждый CIDR подсети обязан лежать в объявленном супернете сети
+	// (within-service, против только что прочитанной network-строки). Пустой
+	// супернет (legacy) → skip. Нарушение → InvalidArgument (format-класс), sync.
+	if err := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
+		_ = rd.Close()
+		return nil, err
 	}
 	name := string(s.Name)
 	if name != "" {
@@ -177,9 +184,11 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
 	// материализуется eventually-consistent (sync-registrar + drainer/reconciler
 	// backstop), а не гейтит done.
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doCreate(ctx, subID, s)
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return &op, nil
 }
@@ -214,6 +223,11 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	// вызывающего — тот же NotFound, что для отсутствующей сети (без oracle).
 	if parentNet.ProjectID != s.ProjectID {
 		return nil, status.Errorf(codes.NotFound, "Network %s not found", s.NetworkID)
+	}
+	// F7 backstop (writer-TX): супернет-принадлежность против актуальной
+	// network-строки (супернет мог сузиться между sync-read и Insert).
+	if err := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
+		return nil, err
 	}
 
 	// Пересечения v4 CIDR в рамках одной сети ловятся атомарно DB-level EXCLUDE

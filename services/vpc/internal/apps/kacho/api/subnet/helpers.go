@@ -84,6 +84,66 @@ func validateCIDRPrefix(field, value string) error {
 	return nil
 }
 
+// validateSubnetWithinSupernet проверяет, что каждый CIDR-блок подсети (v4 и v6)
+// — подмножество одного из объявленных супернет-блоков сети соответствующего
+// семейства (redesign VPC-1 F7: Subnet.ipv4CidrPrimary ⊆ network.ipv4CidrBlocks).
+// Валидируется within-service против network-строки в той же БД.
+//
+// Back-compat: если сеть НЕ объявила супернет данного семейства (legacy/пустой
+// набор) — проверка этого семейства пропускается (существующие сети без
+// объявленного адресного пространства не ломаются). Нарушение → INVALID_ARGUMENT
+// с редизайн-текстом "subnet CIDR %s is not within any network CIDR block".
+func validateSubnetWithinSupernet(netV4, netV6, subV4, subV6 []string) error {
+	if err := eachWithinSupernet(netV4, subV4); err != nil {
+		return err
+	}
+	return eachWithinSupernet(netV6, subV6)
+}
+
+// eachWithinSupernet — общая проверка одного семейства: каждый блок из blocks
+// обязан лежать внутри одного из supernet-блоков. Пустой supernet → skip.
+func eachWithinSupernet(supernet, blocks []string) error {
+	if len(supernet) == 0 {
+		return nil // сеть не объявила супернет этого семейства → не ограничиваем (back-compat)
+	}
+	supers := make([]netip.Prefix, 0, len(supernet))
+	for _, s := range supernet {
+		p, perr := netip.ParsePrefix(s)
+		if perr != nil {
+			continue // malformed supernet-блок сети (валидируется на Network.Create) — не учитываем
+		}
+		supers = append(supers, p.Masked())
+	}
+	if len(supers) == 0 {
+		return nil
+	}
+	for _, b := range blocks {
+		inner, perr := netip.ParsePrefix(b)
+		if perr != nil {
+			continue // CIDR-формат блока подсети валидируется выше по стеку
+		}
+		if !prefixWithinAny(inner.Masked(), supers) {
+			return status.Errorf(codes.InvalidArgument,
+				"subnet CIDR %s is not within any network CIDR block", b)
+		}
+	}
+	return nil
+}
+
+// prefixWithinAny — true, если inner ⊆ хотя бы одного outer того же семейства.
+// inner ⊆ outer ⟺ outer не длиннее inner И outer содержит сетевой адрес inner.
+func prefixWithinAny(inner netip.Prefix, supers []netip.Prefix) bool {
+	for _, outer := range supers {
+		if outer.Addr().Is4() != inner.Addr().Is4() {
+			continue
+		}
+		if outer.Bits() <= inner.Bits() && outer.Contains(inner.Addr()) {
+			return true
+		}
+	}
+	return false
+}
+
 // prefixesOverlap возвращает true если два CIDR-блока пересекаются.
 func prefixesOverlap(a, b netip.Prefix) bool {
 	if a.Addr().Is4() != b.Addr().Is4() {
@@ -151,30 +211,6 @@ func subtractCIDRs(existing, remove []string) ([]string, int) {
 	return remaining, removed
 }
 
-// validateDhcpOptions — валидация DHCP-опций:
-//   - domainName: RFC 1123 DNS name либо empty.
-//   - domainNameServers[]: каждый элемент — IP-адрес.
-//   - ntpServers[]: каждый элемент — IP-адрес.
-func validateDhcpOptions(d *domain.DhcpOptions) error {
-	if d == nil {
-		return nil
-	}
-	if err := corevalidate.DhcpDomainName("dhcp_options.domain_name", d.DomainName); err != nil {
-		return err
-	}
-	for _, ns := range d.DomainNameServers {
-		if err := corevalidate.IPAddress("dhcp_options.domain_name_servers", ns); err != nil {
-			return err
-		}
-	}
-	for _, ntp := range d.NtpServers {
-		if err := corevalidate.IPAddress("dhcp_options.ntp_servers", ntp); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // validateZoneID — sync-валидация zone_id: required + existence у владельца.
 //
 // Возвращает gRPC InvalidArgument с FieldViolation для пустого значения; для
@@ -223,26 +259,37 @@ func validateRegionID(ctx context.Context, rr RegionRegistry, field, regionID st
 	return serviceerr.MapRepoErr(err)
 }
 
-// validatePlacement — дискриминатор размещения подсети + согласованность пары
-// zone_id/region_id. placement_type обязателен (UNSPECIFIED → InvalidArgument).
+// resolvePlacement выводит placementType° подсети (F6, redesign VPC-1): дискриминатор
+// **server-derived, unwritable** из непустого zoneId XOR regionId. Возвращает выведенный
+// дискриминатор (для записи в placement_type-колонку) либо sync-InvalidArgument.
 //
-//   - ZONAL    — zone_id required + existence (geo); region_id должен быть пуст.
-//   - REGIONAL — region_id required + existence (geo); zone_id должен быть пуст.
+//   - placementType задан клиентом (не UNSPECIFIED) → explicit reject (server-derived,
+//     не silent-ignore — даже если значение «совпало бы» с выводимым);
+//   - ровно один из zoneId/regionId непуст → derive ZONAL(zone)/REGIONAL(region) +
+//     existence-валидация у owner-домена Geography (kacho-geo, fail-closed);
+//   - оба заданы ИЛИ ни одного → InvalidArgument "exactly one of zone_id, region_id must be set".
 //
-// Та же форма дублируется DB-CHECK subnets_placement_payload_chk (backstop).
-func validatePlacement(ctx context.Context, zr ZoneRegistry, rr RegionRegistry, s domain.Subnet) error {
-	switch s.PlacementType {
-	case domain.PlacementZonal:
-		if s.RegionID != "" {
-			return serviceerr.InvalidArg("region_id", "region_id must be empty for ZONAL placement")
-		}
-		return validateZoneID(ctx, zr, "zone_id", s.ZoneID)
-	case domain.PlacementRegional:
-		if s.ZoneID != "" {
-			return serviceerr.InvalidArg("zone_id", "zone_id must be empty for REGIONAL placement")
-		}
-		return validateRegionID(ctx, rr, "region_id", s.RegionID)
-	default:
-		return serviceerr.InvalidArg("placement_type", "placement_type is required (ZONAL or REGIONAL)")
+// Та же биусловная форма закреплена DB-CHECK subnets_placement_payload_chk (backstop).
+// Тексты — часть контракта (api-conventions §Error-format): field-refs в snake_case,
+// как во всём vpc-сервисе (nlb/addresspool/routetable) — см. VPC-1 acceptance NB.
+func resolvePlacement(ctx context.Context, zr ZoneRegistry, rr RegionRegistry, s domain.Subnet) (domain.SubnetPlacementType, error) {
+	if s.PlacementType != domain.PlacementUnspecified {
+		return "", status.Error(codes.InvalidArgument,
+			"placement_type is server-derived; set zone_id or region_id instead")
 	}
+	hasZone := s.ZoneID != ""
+	hasRegion := s.RegionID != ""
+	if hasZone == hasRegion { // оба заданы ИЛИ ни одного
+		return "", status.Error(codes.InvalidArgument, "exactly one of zone_id, region_id must be set")
+	}
+	if hasZone {
+		if err := validateZoneID(ctx, zr, "zone_id", s.ZoneID); err != nil {
+			return "", err
+		}
+		return domain.PlacementZonal, nil
+	}
+	if err := validateRegionID(ctx, rr, "region_id", s.RegionID); err != nil {
+		return "", err
+	}
+	return domain.PlacementRegional, nil
 }

@@ -36,12 +36,11 @@ func (f *fakeSubnetService) Get(_ context.Context, _ *vpcpb.GetSubnetRequest) (*
 
 func TestSubnetClient_Get_HappyPath(t *testing.T) {
 	conn := startFakeVPC(t, &fakeSubnetService{resp: &vpcpb.Subnet{
-		Id:           "e9b-1",
-		ProjectId:    "prj-1",
-		NetworkId:    "enp-1",
-		ZoneId:       "ru-central1-a",
-		V4CidrBlocks: []string{"10.128.0.0/24"},
-		V6CidrBlocks: nil,
+		Id:              "e9b-1",
+		ProjectId:       "prj-1",
+		NetworkId:       "enp-1",
+		ZoneId:          "ru-central1-a",
+		Ipv4CidrPrimary: "10.128.0.0/24",
 	}}, nil, nil, nil, nil)
 	c := NewSubnetClient(conn)
 	require.NotNil(t, c)

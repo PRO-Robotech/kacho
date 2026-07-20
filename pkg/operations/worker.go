@@ -609,6 +609,67 @@ func RunWithWorker(w *Worker, callerCtx context.Context, repo Repo, opID string,
 	w.runOn(callerCtx, repo, opID, fn)
 }
 
+// RunSync исполняет fn СИНХРОННО (op-in-response / statusless config-durable
+// класс) и отражает терминальный результат в op — caller возвращает уже
+// завершённую Operation (done=true) в том же ответе, без async-poll и follow-up
+// GET. В отличие от Run (fire-and-trigger, worker в фоне), RunSync — для мутаций,
+// чей предмет durable сразу после единственной writer-TX (config-INSERT, без саги).
+//
+// Контракт зеркалит терминальную семантику async-worker'а (worker.execute):
+//   - fn success → repo.MarkDone(response); op.Done=true, op.Response=response.
+//   - fn error   → маппится в терминальный google.rpc.Status (unwrapped/panic →
+//     фиксированный codes.Internal "internal worker error", raw driver-текст не
+//     течёт); repo.MarkError; op.Done=true, op.Error=st.Proto(). Бизнес-ошибка
+//     НЕ возвращается наружу — она живёт в Operation.result.error (durability =
+//     commit предмета мутации, ban #9; клиент читает исход из Operation).
+//   - panic в fn → recover → INTERNAL (как async-worker).
+//
+// Sync-валидация (malformed id, формат, immutable, exactly-one placement) обязана
+// произойти ДО op-create в Execute и вернуться там обычной gRPC-ошибкой (без
+// Operation). RunSync отражает ТОЛЬКО исход worker-fn.
+//
+// callerCtx применяется напрямую (в отличие от async-worker'а, где ctx detach'ится
+// через baggage.Extract): клиент синхронно ждёт, поэтому его deadline/cancel
+// уместны на fn. Сбой durable терминальной записи (сам MarkDone/MarkError вернул
+// ошибку) → codes.Internal, чтобы Execute его вынес (строка op остаётся
+// reconcilable). ErrAlreadyDone (строку уже разрешил Cancel/reconciler) —
+// идемпотентный no-op.
+func RunSync(ctx context.Context, repo Repo, op *Operation, fn func(context.Context) (*anypb.Any, error)) error {
+	resp, ferr := func() (r *anypb.Any, e error) {
+		defer func() {
+			if p := recover(); p != nil {
+				e = errWorkerPanic
+			}
+		}()
+		return fn(ctx)
+	}()
+
+	now := time.Now().UTC()
+	if ferr != nil {
+		st, ok := status.FromError(ferr)
+		if !ok || st.Code() == codes.Unknown {
+			// panic / unwrapped — фиксированный INTERNAL, raw-text наружу не течёт.
+			st = status.New(codes.Internal, "internal worker error")
+		}
+		if werr := repo.MarkError(ctx, op.ID, st.Proto()); werr != nil && !errors.Is(werr, ErrAlreadyDone) {
+			return status.Error(codes.Internal, "operation terminal write failed")
+		}
+		op.Done = true
+		op.ModifiedAt = now
+		op.Error = st.Proto()
+		op.Response = nil
+		return nil
+	}
+
+	if werr := repo.MarkDone(ctx, op.ID, resp); werr != nil && !errors.Is(werr, ErrAlreadyDone) {
+		return status.Error(codes.Internal, "operation terminal write failed")
+	}
+	op.Done = true
+	op.ModifiedAt = now
+	op.Response = resp
+	return nil
+}
+
 // ConfigureDefault применяет опции к package-level default-registry ДО старта его
 // dispatcher-loop. Composition root зовет ConfigureDefault(WithRecorder(promRec),
 // WithLogger(logger)) на boot — это подключает live-worker метрики (terminal-write

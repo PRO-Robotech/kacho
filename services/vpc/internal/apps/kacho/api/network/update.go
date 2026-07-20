@@ -51,6 +51,21 @@ func (u *UpdateNetworkUseCase) Execute(ctx context.Context, in UpdateInput) (*op
 	if in.NetworkID == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
+	// Immutable-switch ДО corevalidate.UpdateMask (api-conventions gotcha): known-set
+	// маски НЕ содержит immutable-полей, поэтому без этого switch они отверглись бы
+	// generic "unknown field" вместо конвенционного immutable-текста.
+	//   - project_id — Move снят целиком, hard-immutable (VPC-1-20).
+	//   - ipv4/ipv6_cidr_blocks — declared супернет: immutable через Update, мутируется
+	//     ТОЛЬКО через verb-pair :add-cidr-blocks / :remove-cidr-blocks (VPC-1-07).
+	//   - default_security_group_id / default_route_table_id — server-derived °
+	//     (system-provisioned), на вход Update не принимаются.
+	for _, field := range in.UpdateMask {
+		switch field {
+		case "project_id", "ipv4_cidr_blocks", "ipv6_cidr_blocks",
+			"default_security_group_id", "default_route_table_id":
+			return nil, serviceerr.InvalidArg(field, field+" is immutable after Network.Create")
+		}
+	}
 	if err := serviceerr.FromValidation(validateNetworkUpdate(in)); err != nil {
 		return nil, err
 	}
@@ -68,9 +83,11 @@ func (u *UpdateNetworkUseCase) Execute(ctx context.Context, in UpdateInput) (*op
 		return nil, err
 	}
 
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doUpdate(ctx, in)
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return &op, nil
 }

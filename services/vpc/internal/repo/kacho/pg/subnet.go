@@ -66,7 +66,7 @@ func (r *subnetReader) List(ctx context.Context, f kacho.SubnetFilter, p kacho.P
 		argIdx++
 	}
 	if f.Filter != "" {
-		ast, perr := filter.Parse(f.Filter, []string{"name", "placement_type"})
+		ast, perr := filter.Parse(f.Filter, []string{"name", "placement_type", "zone_id", "network_id"})
 		if perr != nil {
 			return nil, "", helpers.InvalidFilterErr(perr)
 		}
@@ -155,7 +155,7 @@ func (r *subnetReader) ListByIDs(ctx context.Context, f kacho.SubnetFilter, allo
 		argIdx++
 	}
 	if f.Filter != "" {
-		ast, perr := filter.Parse(f.Filter, []string{"name", "placement_type"})
+		ast, perr := filter.Parse(f.Filter, []string{"name", "placement_type", "zone_id", "network_id"})
 		if perr != nil {
 			return nil, "", helpers.InvalidFilterErr(perr)
 		}

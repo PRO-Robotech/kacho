@@ -11,13 +11,26 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/PRO-Robotech/kacho/pkg/filter"
+	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
+
+// textArray кодирует []string в непустой (Valid) text[]-параметр — nil/пустой
+// слайс → SQL `'{}'`, а не NULL (колонки ipv4_cidr_blocks/ipv6_cidr_blocks
+// объявлены NOT NULL). Зеркалит паттерн subnetWriter.Insert.
+func textArray(v []string) pgtype.Array[string] {
+	return pgtype.Array[string]{
+		Elements: v,
+		Valid:    true,
+		Dims:     []pgtype.ArrayDimension{{Length: safeconv.IntToInt32(len(v)), LowerBound: 1}},
+	}
+}
 
 // networkReader — Get/List поверх произвольной pgx.Tx (read-only или RW).
 // Не имеет своего state кроме tx.
@@ -218,13 +231,15 @@ func (w *networkWriter) Insert(ctx context.Context, n *domain.Network) (*kacho.N
 
 	now := time.Now().UTC()
 	q := fmt.Sprintf(`
-		INSERT INTO networks (id, project_id, created_at, name, description, labels, default_security_group_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO networks (id, project_id, created_at, name, description, labels, default_security_group_id, ipv4_cidr_blocks, ipv6_cidr_blocks, default_route_table_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING %s`, helpers.NetworkCols)
 
 	row := w.tx.QueryRow(ctx, q,
 		// default_security_group_id nullable (0005, FK): '' → NULL.
 		n.ID, n.ProjectID, now, string(n.Name), string(n.Description), labelsJSON, helpers.NullableStr(n.DefaultSecurityGroupID),
+		// declared супернет + default RT id (0015). text[] NOT NULL → textArray (nil → '{}').
+		textArray(n.IPv4CidrBlocks), textArray(n.IPv6CidrBlocks), n.DefaultRouteTableID,
 	)
 	result, err := helpers.ScanNetwork(row)
 	if err != nil {
@@ -288,6 +303,28 @@ func (w *networkWriter) SetDefaultSGID(ctx context.Context, id, sgID string) (*k
 				return nil, fmt.Errorf("%w: Network %s not found", helpers.ErrNotFound, id)
 			}
 			return nil, fmt.Errorf("%w: network %s already has a different default_security_group_id", helpers.ErrFailedPrecondition, id)
+		}
+		return nil, helpers.WrapPgErr(err, "Network", id)
+	}
+	return result, nil
+}
+
+// SetCidrBlocks атомарно перезаписывает declared-супернет
+// ipv4_cidr_blocks / ipv6_cidr_blocks — узкий column-update для
+// AddCidrBlocks/RemoveCidrBlocks, не трогающий name/description/labels/default_*.
+// Caller собрал merged/remaining наборы под network row-lock (GetForUpdate),
+// поэтому здесь безусловный UPDATE (сериализация — на row-lock'е). text[] NOT NULL
+// → textArray (nil → '{}').
+func (w *networkWriter) SetCidrBlocks(ctx context.Context, id string, v4, v6 []string) (*kacho.NetworkRecord, error) {
+	q := fmt.Sprintf(`
+		UPDATE networks SET ipv4_cidr_blocks = $2, ipv6_cidr_blocks = $3
+		WHERE id = $1
+		RETURNING %s`, helpers.NetworkCols)
+	row := w.tx.QueryRow(ctx, q, id, textArray(v4), textArray(v6))
+	result, err := helpers.ScanNetwork(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: Network %s not found", helpers.ErrNotFound, id)
 		}
 		return nil, helpers.WrapPgErr(err, "Network", id)
 	}

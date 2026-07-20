@@ -33,6 +33,8 @@ type Handler struct {
 	delete            *DeleteNetworkUseCase
 	get               *GetNetworkUseCase
 	list              *ListNetworksUseCase
+	addCidrBlocks     *AddCidrBlocksUseCase
+	removeCidrBlocks  *RemoveCidrBlocksUseCase
 	listSubnets       *ListSubnetsUseCase
 	listSecurityGroup *ListSecurityGroupsUseCase
 	listRouteTables   *ListRouteTablesUseCase
@@ -48,6 +50,8 @@ func NewHandler(
 	deleteUC *DeleteNetworkUseCase,
 	get *GetNetworkUseCase,
 	list *ListNetworksUseCase,
+	addCidr *AddCidrBlocksUseCase,
+	removeCidr *RemoveCidrBlocksUseCase,
 	listSubnets *ListSubnetsUseCase,
 	listSG *ListSecurityGroupsUseCase,
 	listRT *ListRouteTablesUseCase,
@@ -59,6 +63,8 @@ func NewHandler(
 		delete:            deleteUC,
 		get:               get,
 		list:              list,
+		addCidrBlocks:     addCidr,
+		removeCidrBlocks:  removeCidr,
 		listSubnets:       listSubnets,
 		listSecurityGroup: listSG,
 		listRouteTables:   listRT,
@@ -119,10 +125,12 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateNetworkRequest) (
 		return nil, err
 	}
 	n := domain.Network{
-		ProjectID:   req.ProjectId,
-		Name:        domain.RcNameVPC(req.Name),
-		Description: domain.RcDescription(req.Description),
-		Labels:      domain.LabelsFromMap(req.Labels),
+		ProjectID:      req.ProjectId,
+		Name:           domain.RcNameVPC(req.Name),
+		Description:    domain.RcDescription(req.Description),
+		Labels:         domain.LabelsFromMap(req.Labels),
+		IPv4CidrBlocks: req.Ipv4CidrBlocks,
+		IPv6CidrBlocks: req.Ipv6CidrBlocks,
 	}
 	op, err := h.create.Execute(ctx, n)
 	if err != nil {
@@ -157,6 +165,47 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateNetworkRequest) (
 		UpdateMask: mask,
 	}
 	op, err := h.update.Execute(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return pbconv.OperationToProto(op), nil
+}
+
+// AddCidrBlocks — verb-action: расширяет declared-супернет сети. Тонкий transport:
+// ownership-check (get network → AssertProjectOwnership) → use-case.Execute. Малформед
+// id ловится first-statement внутри use-case (corevalidate.ResourceID).
+func (h *Handler) AddCidrBlocks(ctx context.Context, req *vpcv1.AddNetworkCidrBlocksRequest) (*operationpb.Operation, error) {
+	if req.NetworkId == "" {
+		return nil, status.Error(codes.InvalidArgument, "network_id required")
+	}
+	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	if err != nil {
+		return nil, err
+	}
+	if err := tenant.AssertProjectOwnership(ctx, n.ProjectID); err != nil {
+		return nil, err
+	}
+	op, err := h.addCidrBlocks.Execute(ctx, req.NetworkId, req.GetIpv4CidrBlocks(), req.GetIpv6CidrBlocks())
+	if err != nil {
+		return nil, err
+	}
+	return pbconv.OperationToProto(op), nil
+}
+
+// RemoveCidrBlocks — verb-action: сужает declared-супернет сети (∉-guard на живые
+// подсети — в use-case). Тонкий transport (ownership-check → use-case.Execute).
+func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveNetworkCidrBlocksRequest) (*operationpb.Operation, error) {
+	if req.NetworkId == "" {
+		return nil, status.Error(codes.InvalidArgument, "network_id required")
+	}
+	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	if err != nil {
+		return nil, err
+	}
+	if err := tenant.AssertProjectOwnership(ctx, n.ProjectID); err != nil {
+		return nil, err
+	}
+	op, err := h.removeCidrBlocks.Execute(ctx, req.NetworkId, req.GetIpv4CidrBlocks(), req.GetIpv6CidrBlocks())
 	if err != nil {
 		return nil, err
 	}

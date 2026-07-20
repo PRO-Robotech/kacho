@@ -878,13 +878,16 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// listFilter == nil → passthrough (выключен / dev).
 	netGetUC := networkapp.NewGetNetworkUseCase(kachoRepo, listFilter)
 	netListUC := networkapp.NewListNetworksUseCase(kachoRepo, listFilter)
+	netAddCidrUC := networkapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo)
+	netRemoveCidrUC := networkapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo)
 	netListSubUC := networkapp.NewListSubnetsUseCase(kachoRepo, subnetAdapter)
 	netListSGUC := networkapp.NewListSecurityGroupsUseCase(kachoRepo, sgAdapter)
 	netListRTUC := networkapp.NewListRouteTablesUseCase(kachoRepo, routeTableAdapter)
 	netListOpsUC := networkapp.NewListOperationsUseCase(opsRepo)
 	netHandler := networkapp.NewHandler(
 		netCreateUC, netUpdateUC, netDeleteUC,
-		netGetUC, netListUC, netListSubUC, netListSGUC, netListRTUC, netListOpsUC,
+		netGetUC, netListUC, netAddCidrUC, netRemoveCidrUC,
+		netListSubUC, netListSGUC, netListRTUC, netListOpsUC,
 	)
 
 	// Gateway use-case'ы работают через CQRS-Repository (kachoRepo) — конструктор

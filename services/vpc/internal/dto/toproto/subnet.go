@@ -20,29 +20,44 @@ func (subnet) toPb(rec kachorepo.SubnetRecord) (*vpcv1.Subnet, error) {
 	if err != nil {
 		return nil, err
 	}
+	// VPC-1 F7: the flat repo array splits into the redesign proto shape —
+	// ipv4_cidr_primary = blocks[0] (immutable placement anchor), ipv4_cidr_blocks =
+	// blocks[1:] (additional ranges added via AddCidrBlocks). Same split for v6.
+	v4Primary, v4Additional := splitCidrPrimary(rec.V4CidrBlocks)
+	v6Primary, v6Additional := splitCidrPrimary(rec.V6CidrBlocks)
 	p := &vpcv1.Subnet{
-		Id:            rec.ID,
-		ProjectId:     rec.ProjectID,
-		CreatedAt:     ts,
-		Name:          string(rec.Name),
-		Description:   string(rec.Description),
-		Labels:        domain.LabelsToMap(rec.Labels),
-		NetworkId:     rec.NetworkID,
-		PlacementType: placementToPb(rec.PlacementType),
-		ZoneId:        rec.ZoneID,
-		RegionId:      rec.RegionID,
-		V4CidrBlocks:  rec.V4CidrBlocks,
-		V6CidrBlocks:  rec.V6CidrBlocks,
-		RouteTableId:  rec.RouteTableID,
+		Id:              rec.ID,
+		ProjectId:       rec.ProjectID,
+		CreatedAt:       ts,
+		Name:            string(rec.Name),
+		Description:     string(rec.Description),
+		Labels:          domain.LabelsToMap(rec.Labels),
+		NetworkId:       rec.NetworkID,
+		PlacementType:   placementToPb(rec.PlacementType),
+		ZoneId:          rec.ZoneID,
+		RegionId:        rec.RegionID,
+		Ipv4CidrPrimary: v4Primary,
+		Ipv4CidrBlocks:  v4Additional,
+		Ipv6CidrPrimary: v6Primary,
+		Ipv6CidrBlocks:  v6Additional,
+		RouteTableId:    rec.RouteTableID,
 	}
-	if rec.DhcpOptions != nil {
-		p.DhcpOptions = &vpcv1.DhcpOptions{
-			DomainNameServers: rec.DhcpOptions.DomainNameServers,
-			DomainName:        rec.DhcpOptions.DomainName,
-			NtpServers:        rec.DhcpOptions.NtpServers,
-		}
-	}
+	// VPC-1-43: DhcpOptions dropped by design — no dhcp_options on the public
+	// Subnet contract (Network-level DHCP/DNS-resolver knobs absent).
 	return p, nil
+}
+
+// splitCidrPrimary разбивает плоский repo-массив CIDR-блоков на primary-anchor
+// (blocks[0], immutable) + additional (blocks[1:], мутируется через verb-pair).
+// Пустой массив → пустой primary и nil additional (v-only subnet: primary="").
+func splitCidrPrimary(blocks []string) (primary string, additional []string) {
+	if len(blocks) == 0 {
+		return "", nil
+	}
+	if len(blocks) == 1 {
+		return blocks[0], nil
+	}
+	return blocks[0], blocks[1:]
 }
 
 // placementToPb — domain-дискриминатор → proto-enum. Пустое (UNSPECIFIED)

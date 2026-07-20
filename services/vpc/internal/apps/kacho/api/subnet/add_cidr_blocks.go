@@ -84,7 +84,7 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 	if err := u.opsRepo.Create(ctx, op); err != nil {
 		return nil, err
 	}
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (*anypb.Any, error) {
 		w, werr := u.repo.Writer(ctx)
 		if werr != nil {
 			return nil, serviceerr.MapRepoErr(werr)
@@ -121,6 +121,8 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 			return nil, serviceerr.MapRepoErr(err)
 		}
 		return marshalSubnetRecord(updated)
-	})
+	}); err != nil {
+		return nil, err
+	}
 	return &op, nil
 }

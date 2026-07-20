@@ -103,9 +103,11 @@ func (u *DeleteSubnetUseCase) Execute(ctx context.Context, id string) (*operatio
 		return nil, err
 	}
 
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doDelete(ctx, id)
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return &op, nil
 }

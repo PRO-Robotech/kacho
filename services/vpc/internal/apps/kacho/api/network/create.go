@@ -97,6 +97,11 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 	if err := serviceerr.FromValidation(n.Validate()); err != nil {
 		return nil, err
 	}
+	// F2: объявленный супернет валидируется по формату (canonical CIDR,
+	// host-bits=0, корректное семейство) sync, ДО создания Operation.
+	if err := validateNetworkSupernet(n.IPv4CidrBlocks, n.IPv6CidrBlocks); err != nil {
+		return nil, err
+	}
 	// Sync project.Exists precheck не делаем — он race-prone: между sync-проверкой
 	// и async-частью project может быть удален peer-сервисом, и second-writer-wins
 	// безусловно создавал бы ресурс. NotFound возвращается через `operation.error`
@@ -134,7 +139,7 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 	// Create — durable commit → op done сразу после worker-fn. Owner-tuple
 	// материализуется eventually-consistent (sync-registrar после commit +
 	// register-drainer/reconciler backstop), а не гейтит done.
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (res *anypb.Any, derr error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (res *anypb.Any, derr error) {
 		// Поднимаем наружу диагностику падений async-worker'а. operations.Run
 		// маскирует любую не-gRPC-status ошибку (и panic) как Operation `INTERNAL
 		// "internal worker error"` и НЕ логирует ее — упавший Network.Create
@@ -159,7 +164,9 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 				"err", derr.Error())
 		}
 		return res, derr
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return &op, nil
 }

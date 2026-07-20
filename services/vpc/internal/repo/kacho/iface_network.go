@@ -57,6 +57,11 @@ type NetworkWriterIface interface {
 	// writer-TX), без верхнеуровневого `UPDATE networks SET name=…, …`, который
 	// перезаписывал бы immutable-поля.
 	SetDefaultSGID(ctx context.Context, id, sgID string) (*NetworkRecord, error)
+	// SetCidrBlocks атомарно перезаписывает declared-супернет
+	// ipv4_cidr_blocks / ipv6_cidr_blocks (для AddCidrBlocks/RemoveCidrBlocks) —
+	// узкий UPDATE, не трогающий immutable-колонки. Мутирует ТОЛЬКО супернет-массивы;
+	// caller уже собрал merged/remaining наборы под network row-lock (GetForUpdate).
+	SetCidrBlocks(ctx context.Context, id string, v4, v6 []string) (*NetworkRecord, error)
 	// GetForUpdate — Get с `SELECT ... FOR UPDATE` (row-lock) внутри writer-TX.
 	// Сериализует конкурентный read-modify-write в Update (Get → applyMask →
 	// UPDATE всех mutable-колонок): без него две Update с disjoint update_mask

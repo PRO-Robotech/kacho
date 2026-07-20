@@ -59,11 +59,13 @@ func makeHandler(t *testing.T,
 	deleteUC := NewDeleteNetworkUseCase(kr, sReader, rtReader, sgRepoIface, or)
 	get := NewGetNetworkUseCase(kr, nil)
 	list := NewListNetworksUseCase(kr, nil) // authz nil → unfiltered list path
+	addCidr := NewAddCidrBlocksUseCase(kr, or)
+	removeCidr := NewRemoveCidrBlocksUseCase(kr, or)
 	listSub := NewListSubnetsUseCase(kr, sReader)
 	listSG := NewListSecurityGroupsUseCase(kr, sgRepoIface)
 	listRT := NewListRouteTablesUseCase(kr, rtReader)
 	listOps := NewListOperationsUseCase(or)
-	return NewHandler(create, update, deleteUC, get, list, listSub, listSG, listRT, listOps)
+	return NewHandler(create, update, deleteUC, get, list, addCidr, removeCidr, listSub, listSG, listRT, listOps)
 }
 
 // project ok / ops repo / network repo с минимальной wiring — для тестов где

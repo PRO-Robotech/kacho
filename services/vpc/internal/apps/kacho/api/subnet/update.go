@@ -26,10 +26,9 @@ import (
 // domain.Subnet (с заявленными полями), и UpdateMask, поэтому используется
 // отдельный input-тип.
 type UpdateInput struct {
-	SubnetID     string
-	Subnet       domain.Subnet // несет Name/Description/Labels/RouteTableID/DhcpOptions/V4CidrBlocks; остальные не используются
-	V4CidrBlocks []string      // soft-immutable: принимаем, но не пишем
-	UpdateMask   []string
+	SubnetID   string
+	Subnet     domain.Subnet // несет Name/Description/Labels/RouteTableID; остальные не используются
+	UpdateMask []string
 }
 
 // UpdateSubnetUseCase — sync-валидация update_mask + значений, затем создание
@@ -37,10 +36,9 @@ type UpdateInput struct {
 //
 // network_id / zone_id — hard-immutable: явное указание в update_mask →
 // InvalidArgument; присланное в body без mask — silently игнорируется
-// (full-object PATCH из UI). v4_cidr_blocks / v6_cidr_blocks в mask запрос не
-// отвергают, но репозиторный Update не перезаписывает CIDR-колонки (defensive
-// depth) — т.е. изменение CIDR через Update это no-op; правят их через
-// :add/:removeCidrBlocks.
+// (full-object PATCH из UI). VPC-1 F7: CIDR immutable через Update —
+// ipv4_cidr_primary / ipv4_cidr_blocks (и v6) в mask → immutable-reject; правят
+// их через :add/:removeCidrBlocks (primary-anchor не меняется вовсе).
 //
 // Worker открывает Writer-TX и делает Get+Update+outbox атомарно.
 type UpdateSubnetUseCase struct {
@@ -61,10 +59,20 @@ func (u *UpdateSubnetUseCase) Execute(ctx context.Context, in UpdateInput) (*ope
 	if in.SubnetID == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
+	// Immutable-switch ДО corevalidate.UpdateMask (api-conventions): known-set маски
+	// НЕ содержит immutable-полей, поэтому без этого switch они отверглись бы generic
+	// "unknown field" вместо конвенционного immutable/derived-текста.
+	// network_id/zone_id/region_id — hard-immutable (VRF-scoping + placement-coherence
+	// всех размещённых ресурсов). placement_type — server-derived (F6): даже в mask
+	// это не «immutable value», а «нельзя писать» → derive-reject текст.
 	for _, field := range in.UpdateMask {
 		switch field {
-		case "network_id", "zone_id":
+		case "network_id", "zone_id", "region_id",
+			"ipv4_cidr_primary", "ipv6_cidr_primary", "ipv4_cidr_blocks", "ipv6_cidr_blocks":
 			return nil, serviceerr.InvalidArg(field, field+" is immutable after Subnet.Create")
+		case "placement_type":
+			return nil, status.Error(codes.InvalidArgument,
+				"placement_type is server-derived; set zone_id or region_id instead")
 		}
 	}
 	if err := serviceerr.FromValidation(validateSubnetUpdate(in)); err != nil {
@@ -84,9 +92,11 @@ func (u *UpdateSubnetUseCase) Execute(ctx context.Context, in UpdateInput) (*ope
 		return nil, err
 	}
 
-	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+	if err := operations.RunSync(ctx, u.opsRepo, &op, func(ctx context.Context) (*anypb.Any, error) {
 		return u.doUpdate(ctx, in)
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return &op, nil
 }
@@ -133,17 +143,17 @@ func (u *UpdateSubnetUseCase) doUpdate(ctx context.Context, in UpdateInput) (*an
 	return marshalSubnetRecord(updated)
 }
 
-// validateSubnetUpdate проверяет name/description/labels/dhcp_options в Update.
+// validateSubnetUpdate проверяет name/description/labels в Update.
 // Валидация идет через domain-newtypes (self-validating domain).
 //
-// Immutable-поля (v4_cidr_blocks, v6_cidr_blocks, network_id, zone_id) известны
-// маску-валидатору (чтобы пройти check на unknown), а сама immutability ловится
-// выше в Execute() (network_id/zone_id) либо игнорируется silently (v4/v6_cidr).
+// Immutable-поля (network_id, zone_id, region_id, ipv4/ipv6_cidr_primary/_blocks)
+// ловятся раньше в Execute() immutable-switch (до UpdateMask) → сюда не доходят;
+// known-set содержит только mutable-поля. VPC-1-43: dhcp_options снят by design —
+// в known-set его нет, поэтому dhcp_options в update_mask → InvalidArgument (unknown).
 func validateSubnetUpdate(in UpdateInput) error {
 	known := map[string]struct{}{
 		"name": {}, "description": {}, "labels": {},
-		"route_table_id": {}, "dhcp_options": {},
-		"v4_cidr_blocks": {}, "v6_cidr_blocks": {}, "network_id": {}, "zone_id": {},
+		"route_table_id": {},
 	}
 	if err := corevalidate.UpdateMask("update_mask", in.UpdateMask, known); err != nil {
 		return err
@@ -167,16 +177,6 @@ func validateSubnetUpdate(in UpdateInput) error {
 			if err := domain.ValidateLabels(in.Subnet.Labels); err != nil {
 				return err
 			}
-		case "dhcp_options":
-			if err := validateDhcpOptions(in.Subnet.DhcpOptions); err != nil {
-				return err
-			}
-		}
-	}
-	// Полный апдейт (без update_mask) — DhcpOptions тоже валидируются.
-	if len(in.UpdateMask) == 0 {
-		if err := validateDhcpOptions(in.Subnet.DhcpOptions); err != nil {
-			return err
 		}
 	}
 	return nil
@@ -200,10 +200,11 @@ func labelsInMask(updateMask []string) bool {
 
 // applySubnetMask применяет mutable-поля из in к sub.
 //
-// Immutable-поля (v4_cidr_blocks, v6_cidr_blocks, network_id, zone_id) НЕ
-// применяются никогда — даже если клиент прислал их в body без mask. Sync-check
-// в Execute() уже отверг бы попытку явно указать их в update_mask
-// (network_id/zone_id) или silently-игнор для v4/v6_cidr_blocks.
+// Immutable-поля (ipv4/ipv6_cidr_primary/_blocks, network_id, zone_id, region_id)
+// НЕ применяются никогда — даже если клиент прислал их в body без mask; sync-check
+// в Execute() отвергает попытку указать их в update_mask. VPC-1-43: dhcp_options
+// снят by design — Update его не трогает (mutable-набор: name/description/labels/
+// route_table_id).
 func applySubnetMask(sub *domain.Subnet, in UpdateInput) {
 	if len(in.UpdateMask) == 0 {
 		// Полный update — только mutable-поля.
@@ -211,7 +212,6 @@ func applySubnetMask(sub *domain.Subnet, in UpdateInput) {
 		sub.Description = in.Subnet.Description
 		sub.Labels = in.Subnet.Labels
 		sub.RouteTableID = in.Subnet.RouteTableID
-		sub.DhcpOptions = in.Subnet.DhcpOptions
 		return
 	}
 	for _, field := range in.UpdateMask {
@@ -224,8 +224,6 @@ func applySubnetMask(sub *domain.Subnet, in UpdateInput) {
 			sub.Labels = in.Subnet.Labels
 		case "route_table_id":
 			sub.RouteTableID = in.Subnet.RouteTableID
-		case "dhcp_options":
-			sub.DhcpOptions = in.Subnet.DhcpOptions
 		}
 	}
 }

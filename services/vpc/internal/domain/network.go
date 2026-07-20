@@ -20,6 +20,16 @@ type Network struct {
 	Description            RcDescription
 	Labels                 RcLabels
 	DefaultSecurityGroupID string
+	// IPv4CidrBlocks / IPv6CidrBlocks — объявленный супернет сети (declared
+	// supernet). У Network НЕТ primary-блока: это чистый набор супернет-блоков,
+	// из которых нарезаются подсети. Каждый Subnet.ipv4CidrPrimary обязан быть
+	// подмножеством одного из них (валидация на Subnet.Create). Мутируются только
+	// через :add-cidr-blocks / :remove-cidr-blocks, не через Update (immutable).
+	IPv4CidrBlocks []string
+	IPv6CidrBlocks []string
+	// DefaultRouteTableID — id system-provisioned default RouteTable сети (°),
+	// создаётся при Network.Create, авто-ассоциируется к новым подсетям. Output-only.
+	DefaultRouteTableID string
 	// VRFID — SRv6 VRF tenancy id, аллоцируется control-plane'ом (sequence).
 	// Output-only/инфра-чувствительное: отдается ТОЛЬКО через
 	// InternalNetworkService.GetNetwork, не валидируется (не пользовательский ввод).
@@ -50,5 +60,8 @@ func (n Network) Equal(other Network) bool {
 		n.Name == other.Name &&
 		n.Description == other.Description &&
 		LabelsEqual(n.Labels, other.Labels) &&
-		n.DefaultSecurityGroupID == other.DefaultSecurityGroupID
+		n.DefaultSecurityGroupID == other.DefaultSecurityGroupID &&
+		n.DefaultRouteTableID == other.DefaultRouteTableID &&
+		stringSlicesEqual(n.IPv4CidrBlocks, other.IPv4CidrBlocks) &&
+		stringSlicesEqual(n.IPv6CidrBlocks, other.IPv6CidrBlocks)
 }
