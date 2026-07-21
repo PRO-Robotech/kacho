@@ -388,6 +388,27 @@ func PermissionMap() authz.RPCMap {
 			Extract:  staticClusterCatalog(),
 		},
 
+		// InternalMachineTypeService — kacho-only sizing-catalog admin CRUD
+		// (Create/Update/Delete) on :9091, exact same pattern as
+		// InternalDiskTypeService above (proto required_relation=system_admin,
+		// object_type=cluster in internal_machine_type_service.proto). Omitted at
+		// COMP-1: since the pinned corelib authz.Interceptor has NO methodIsInternal
+		// fallback, an unmapped internal RPC fails closed PermissionDenied ("rpc not
+		// mapped") — MachineType admin-seed 403'd and cascaded (Instance/list-filter
+		// reference machineTypeId). system_admin @ cluster:cluster_kacho_root.
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Create": {
+			Relation: relationSystemAdmin,
+			Extract:  staticClusterCatalog(),
+		},
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Update": {
+			Relation: relationSystemAdmin,
+			Extract:  staticClusterCatalog(),
+		},
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Delete": {
+			Relation: relationSystemAdmin,
+			Extract:  staticClusterCatalog(),
+		},
+
 		// InternalWatchService/Watch — internal server-stream over compute_outbox
 		// (LISTEN/NOTIFY; see internal/handler/internal_watch_handler.go), registered
 		// on the same internal :9091 listener/authzIntr.Stream() chain as the
