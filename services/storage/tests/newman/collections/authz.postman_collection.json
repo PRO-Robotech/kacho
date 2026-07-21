@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a6805c56-a4da-4d10-ac07-8661759bc44c",
+    "_postman_id": "84d673b1-fe69-4ff4-86cd-70240ddf3102",
     "name": "kacho-storage / newman / authz",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -17,7 +17,11 @@
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
           "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));"
+          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+          "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
+          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+          "}"
         ]
       }
     }

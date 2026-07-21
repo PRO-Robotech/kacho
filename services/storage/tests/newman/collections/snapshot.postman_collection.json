@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9ad93fdd-ce9a-4f45-bf6c-400f052c4b3f",
+    "_postman_id": "bb5b1c4d-bde7-4037-8130-a8d75b521864",
     "name": "kacho-storage / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -17,7 +17,11 @@
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
           "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));"
+          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+          "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
+          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+          "}"
         ]
       }
     }
