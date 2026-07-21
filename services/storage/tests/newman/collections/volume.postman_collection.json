@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "0a22529b-ea97-4517-bc6f-bb8d345bcc1f",
+    "_postman_id": "4a9f6789-bf37-4664-a975-04778a6230e4",
     "name": "kacho-storage / newman / volume",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -364,7 +364,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid volume id 'not-a-vol-id'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid volume id 'not-a-vol-id''));"
+                  "pm.test('message includes \"invalid volume id \\'not-a-vol-id\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid volume id \\'not-a-vol-id\\''));"
                 ]
               }
             }
@@ -844,7 +844,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-grow-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240, \"size_bytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-grow-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -944,7 +944,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"size_bytes\", \"sizeBytes\": 21474836480}",
+              "raw": "{\"updateMask\": \"sizeBytes\", \"sizeBytes\": 21474836480}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1215,7 +1215,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-shrink-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240, \"size_bytes\": 21474836480}",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-shrink-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1315,7 +1315,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"size_bytes\", \"sizeBytes\": 5368709120}",
+              "raw": "{\"updateMask\": \"sizeBytes\", \"sizeBytes\": 5368709120}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1536,7 +1536,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-equal-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240, \"size_bytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-equal-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1636,7 +1636,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"size_bytes\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"updateMask\": \"sizeBytes\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2232,7 +2232,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"zone_id\", \"zoneId\": \"{{existingZoneAltId}}\"}",
+              "raw": "{\"updateMask\": \"zoneId\", \"zoneId\": \"{{existingZoneAltId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2287,7 +2287,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"disk_type_id\", \"diskTypeId\": \"block-fast\"}",
+              "raw": "{\"updateMask\": \"diskTypeId\", \"diskTypeId\": \"block-fast\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3622,7 +3622,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"unknown zone id 'region-9-z'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('unknown zone id 'region-9-z''));"
+                  "pm.test('message includes \"unknown zone id \\'region-9-z\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('unknown zone id \\'region-9-z\\''));"
                 ]
               }
             }
@@ -4646,7 +4646,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid volume id 'not-a-vol'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid volume id 'not-a-vol''));"
+                  "pm.test('message includes \"invalid volume id \\'not-a-vol\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid volume id \\'not-a-vol\\''));"
                 ]
               }
             }
@@ -5328,7 +5328,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"block_size\"}",
+              "raw": "{\"updateMask\": \"blockSize\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5383,7 +5383,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"source_snapshot_id\"}",
+              "raw": "{\"updateMask\": \"sourceSnapshotId\"}",
               "options": {
                 "raw": {
                   "language": "json"

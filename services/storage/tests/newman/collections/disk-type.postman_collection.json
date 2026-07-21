@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "007e39c5-bf43-432e-9316-ef03924d2678",
+    "_postman_id": "2cb3b366-782a-47ff-a07f-ad17b4072d8a",
     "name": "kacho-storage / newman / disk-type",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -209,7 +209,7 @@
       ]
     },
     {
-      "name": "DT-CR-NEG-EXTERNAL-ABSENT — POST /storage/v1/diskTypes на external → route absent (admin Create Internal-only :9091, ban #6) → 404/405/501",
+      "name": "DT-CR-NEG-EXTERNAL-ABSENT — POST /storage/v1/diskTypes empty-id на external → rejected (admin Create Internal-only, ban #6): 400/403/404 — НИКОГДА 200-mutation",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -235,7 +235,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"block-newman-fake\", \"name\": \"block-newman-fake\", \"performanceTier\": \"balanced\"}",
+              "raw": "{\"id\": \"\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -249,7 +249,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Create not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"
+                  "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
+                  "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"
                 ]
               }
             }
@@ -258,7 +259,7 @@
       ]
     },
     {
-      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/block-balanced на external → route absent (admin Update Internal-only) → 404/405/501",
+      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 400/403/404 — НИКОГДА 200/мутация seed",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -272,7 +273,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/diskTypes/block-balanced",
+              "raw": "{{baseUrl}}/storage/v1/diskTypes/block-newman-nx-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -280,7 +281,7 @@
                 "storage",
                 "v1",
                 "diskTypes",
-                "block-balanced"
+                "block-newman-nx-{{runId}}"
               ]
             },
             "body": {
@@ -299,7 +300,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Update not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"
+                  "pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"
                 ]
               }
             }
@@ -308,7 +309,7 @@
       ]
     },
     {
-      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/block-balanced на external → route absent (admin Delete Internal-only) → 404/405/501",
+      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 400/403/404 — НИКОГДА 200/удаление seed",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -322,7 +323,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/diskTypes/block-balanced",
+              "raw": "{{baseUrl}}/storage/v1/diskTypes/block-newman-nx-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -330,7 +331,7 @@
                 "storage",
                 "v1",
                 "diskTypes",
-                "block-balanced"
+                "block-newman-nx-{{runId}}"
               ]
             }
           },
@@ -340,7 +341,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Delete not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"
+                  "pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"
                 ]
               }
             }

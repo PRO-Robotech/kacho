@@ -47,8 +47,12 @@ _BOOT_SIZE = 21474836480  # 20 GiB — boot-Volume, материализован
 
 def _assert_msg(substr):
     """Assert точного (case-sensitive) вхождения нормативного текста в message."""
-    return [f"pm.test('message includes \"{substr}\"', "
-            f"() => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('{substr}'));"]
+    # substr вставляется в single-quoted JS-строку — экранируем backslash и '
+    # (контракт-тексты вида "invalid image id 'x'" несут одинарные кавычки, иначе
+    # ломают pm.test → "missing ) after argument list").
+    _esc = substr.replace("\\", "\\\\").replace("'", "\\'")
+    return [f"pm.test('message includes \"{_esc}\"', "
+            f"() => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('{_esc}'));"]
 
 
 def _img_body(suffix, **over):
@@ -418,7 +422,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies STOR-1-22
     steps=[Step(name="patch-imm-region", method="PATCH", path=f"{IMG}/{{{{garbageImageId}}}}",
-                body={"updateMask": "region_id", "regionId": "{{existingRegionId}}"},
+                body={"updateMask": "regionId", "regionId": "{{existingRegionId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("region_id is immutable after Image.Create")])],
 ))
@@ -429,7 +433,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies STOR-1-22
     steps=[Step(name="patch-imm-src", method="PATCH", path=f"{IMG}/{{{{garbageImageId}}}}",
-                body={"updateMask": "source_snapshot_id", "sourceSnapshotId": "{{garbageSnapshotId}}"},
+                body={"updateMask": "sourceSnapshotId", "sourceSnapshotId": "{{garbageSnapshotId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("source_snapshot_id is immutable after Image.Create")])],
 ))
