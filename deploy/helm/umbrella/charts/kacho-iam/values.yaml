@@ -33,6 +33,15 @@ kacho:
     # in-cluster) → CreateOAuthClient fails → SAKey.Issue op errors ("internal worker error").
     # Every deployed profile MUST point this at the cluster-internal hydra-admin Service.
     hydraAdminUrl: ""
+    # Bootstrap-token (#58) — non-interactive production-seed entry point
+    # (InternalBootstrapTokenService.MintBootstrapToken, :9091). The signing key is
+    # an ES256 (P-256, PKCS#8) private-key PEM held in a Secret; empty secret name →
+    # the env is not emitted → MintBootstrapToken fails closed (mint disabled). The
+    # requested token audience defaults to https://{kacho.domain} (exactly what the
+    # gateway's ExpectedAudience accepts).
+    bootstrapToken:
+      signingKeySecretName: ""
+      signingKeySecretKey: private_key_pem
     jwks:
       enabled: true
       schedule: "0 2 * * *"

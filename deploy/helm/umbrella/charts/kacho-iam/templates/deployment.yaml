@@ -318,6 +318,21 @@ spec:
               value: {{ .Values.kacho.domain | quote }}
             - name: KACHO_IAM_HYDRA_ISSUER
               value: {{ printf "https://%s.%s" .Values.kacho.subdomains.hydra .Values.kacho.domain | quote }}
+            # Bootstrap-token (#58) — requested token audience the gateway accepts
+            # (ExpectedAudience = https://{APIDomain}); signing key from a Secret
+            # (optional — empty ⇒ env absent ⇒ MintBootstrapToken fails closed).
+            - name: KACHO_IAM_BOOTSTRAP_TOKEN_AUDIENCE
+              value: {{ printf "https://%s" .Values.kacho.domain | quote }}
+            {{- with .Values.kacho.iam.bootstrapToken }}
+            {{- if .signingKeySecretName }}
+            - name: KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .signingKeySecretName }}
+                  key: {{ .signingKeySecretKey | default "private_key_pem" }}
+                  optional: true
+            {{- end }}
+            {{- end }}
             {{- with .Values.kacho.iam.hydraTokenURL }}
             # In-cluster Hydra token-эндпоинт для client_credentials-обмена в
             # registry `/iam/token` shim. Без него ResolveHydraTokenURL() падает на
