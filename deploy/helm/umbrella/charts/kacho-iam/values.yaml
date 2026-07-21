@@ -26,6 +26,13 @@ kacho:
     # hydra-public base so the iam→Hydra fetch stays inside the cluster. Hydra remains
     # the token signer/issuer — iam only proxies its JWKS (the served kids are Hydra's).
     hydraJwksUrl: ""
+    # In-cluster Hydra ADMIN URL (POST /admin/clients + jwt-bearer trust-grants) used by
+    # sa_keys (SAKeyService.Issue/Revoke) and user_tokens (env KACHO_IAM_HYDRA_ADMIN_URL).
+    # Empty → ResolveHydraAdminURL() derives `https://hydra-admin.<domain>` from the issuer,
+    # which is UNREACHABLE from inside the cluster (public ingress hostname does not resolve
+    # in-cluster) → CreateOAuthClient fails → SAKey.Issue op errors ("internal worker error").
+    # Every deployed profile MUST point this at the cluster-internal hydra-admin Service.
+    hydraAdminUrl: ""
     jwks:
       enabled: true
       schedule: "0 2 * * *"

@@ -256,6 +256,13 @@ kacho-iam:
       # base so the iam→Hydra JWKS fetch never leaves the cluster; iam re-serves it to
       # the registry data-plane over one-way server-TLS. Hydra stays signer/issuer.
       hydraJwksUrl: http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json
+      # In-cluster Hydra ADMIN endpoint для sa_keys (SAKeyService.Issue/Revoke) +
+      # user_tokens (POST /admin/clients + jwt-bearer trust-grants). Без него
+      # ResolveHydraAdminURL() падает на внешний `https://hydra-admin.<domain>`,
+      # недостижимый изнутри кластера → CreateOAuthClient fails → SAKey.Issue
+      # завершается ошибкой ("internal worker error"). Admin API НИКОГДА не
+      # публикуется наружу — только cluster-internal Service (Ory split public/admin).
+      hydraAdminUrl: http://kacho-umbrella-hydra-admin.kacho.svc:4445
 kacho-nlb:
   image:
     tag: main-b622b388

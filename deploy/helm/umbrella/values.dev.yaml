@@ -1082,6 +1082,14 @@ openfga:
 kacho-iam:
   name: kacho-iam
   replicas: 1
+  # In-cluster Hydra ADMIN URL override (deep-merges over the sub-chart's kacho.iam
+  # defaults). Without it ResolveHydraAdminURL() derives `https://hydra-admin.api.kacho.cloud`
+  # from the issuer — a public ingress host that does NOT resolve in-cluster → sa_keys
+  # CreateOAuthClient fails → SAKeyService.Issue op finishes with error ("internal worker
+  # error"). Point it at the cluster-internal hydra-admin Service (Ory split public/admin).
+  kacho:
+    iam:
+      hydraAdminUrl: "http://kacho-umbrella-hydra-admin:4445"
   # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam over mTLS).
   mtls:
     enable: true
