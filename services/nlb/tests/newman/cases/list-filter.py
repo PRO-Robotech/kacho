@@ -78,7 +78,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-tg", method="POST", path=_TGR, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "lf-tg-own-{{runId}}",
+                   "name": "lf-tg-own-{{runId}}", "port": 8080,
                    # Full HealthCheck: interval/timeout/thresholds are required by the TG
                    # create validation (an incomplete HC → InvalidArgument, which cascaded
                    # to an unset {{lfTgId}} → del-tg "invalid resource id" + list-miss).

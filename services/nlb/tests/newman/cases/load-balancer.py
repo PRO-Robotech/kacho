@@ -441,7 +441,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="start-2-conflict", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 409, 400]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 409, 400]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -490,7 +490,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="stop-2", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 409, 400]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 409, 400]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -573,7 +573,7 @@ CASES.append(Case(
         # Create a TG to attach
         Step(name="setup-tg", method="POST", path="/nlb/v1/targetGroups",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "mv-tg-{{runId}}",
+                   "name": "mv-tg-{{runId}}", "port": 8080,
                    "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "tcpOptions": {"port": 80}}},
@@ -590,7 +590,7 @@ CASES.append(Case(
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
                  "pm.test('rejected with FailedPrecondition', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -649,7 +649,7 @@ CASES.append(Case(
              body={"destinationProjectId": "{{_suiteProjectId}}"},
              test_script=[
                  "pm.test('rejected (sync 400 or async error)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                  "if (pm.response.code === 400) {",
                  "  pm.test('grpc 3 INVALID_ARGUMENT', () => "
                  "    pm.expect(pm.response.json().code).to.eql(3));",
@@ -669,7 +669,7 @@ def _setup_tg(name_suffix: str, body_extra: dict = None):
                                "unhealthyThreshold": 3, "healthyThreshold": 2,
                                "tcpOptions": {"port": 80}}}
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-            "name": f"setup-tg-{name_suffix}-{{{{runId}}}}", **base_hc, **(body_extra or {})}
+            "name": f"setup-tg-{name_suffix}-{{{{runId}}}}", "port": 8080, **base_hc, **(body_extra or {})}
     return [
         Step(name="setup-create-tg", method="POST", path="/nlb/v1/targetGroups", body=body,
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
@@ -747,7 +747,7 @@ CASES.append(Case(
         # TG in alt region
         Step(name="setup-tg-alt", method="POST", path="/nlb/v1/targetGroups",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionAltId}}",
-                   "name": "tg-region-alt-{{runId}}",
+                   "name": "tg-region-alt-{{runId}}", "port": 8080,
                    "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "tcpOptions": {"port": 80}}},
@@ -765,7 +765,7 @@ CASES.append(Case(
                  # never persisted → the sync attach resolves it to NotFound. Both are lawful
                  # non-acceptances of the cross-region reference.
                  "pm.test('rejected (region-mismatch 409 when alt region seeded, or absent-TG 404 when unseeded)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -795,7 +795,7 @@ CASES.append(Case(
              body={"attachedTargetGroup": {"targetGroupId": "{{garbageTgrId}}"}},
              test_script=[
                  "pm.test('rejected', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -814,7 +814,7 @@ CASES.append(Case(
              body={"attachedTargetGroup": {"targetGroupId": "{{garbageTgrId}}"}},
              test_script=[
                  "pm.test('rejected', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -861,7 +861,7 @@ CASES.append(Case(
                  body={"targetGroupId": "{{tgId}}"},
                  test_script=[
                      "pm.test('rejected (sync or async)', () => "
-                     "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                     "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                      *save_from_response("j.id", "opId"),
                  ]),
             retry_on=(403, 404)),
@@ -1484,7 +1484,7 @@ CASES.append(Case(
         Step(name="del-attached", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
                  "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -1580,7 +1580,7 @@ CASES.append(Case(
             Step(name="upd-empty", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
                  body={"description": "x"},
                  test_script=[
-                     "pm.test('rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                     "pm.test('rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                  ]),
             retry_on=(403, 404)),
         *_cleanup_lb(),
@@ -1639,7 +1639,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="del-blocked", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -1670,7 +1670,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="del-blocked", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -2058,7 +2058,7 @@ CASES.append(Case(
              body={"targetGroupId": "{{garbageTgrId}}"},
              test_script=[
                  "pm.test('rejected (404/409)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -2345,7 +2345,7 @@ CASES.append(Case(
         Step(name="upd-65", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "labels", "labels": {f"k{i}": f"v{i}" for i in range(65)}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),

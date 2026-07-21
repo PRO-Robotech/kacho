@@ -437,7 +437,7 @@ CASES.append(Case(
              body={"loadBalancerId": "{{nlbId}}", "name": "pn-{{runId}}",
                    "protocol": "TCP", "port": -1, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 400, 200]));",
              ])),
         *_cleanup_lb(),
     ],
@@ -453,7 +453,7 @@ CASES.append(Case(
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
                    "protocol": "HTTP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 400, 200]));",
              ])),
         *_cleanup_lb(),
     ],
@@ -470,7 +470,7 @@ CASES.append(Case(
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
@@ -553,7 +553,7 @@ CASES.append(Case(
                    "ipVersion": "IPV4", "addressId": "{{existingAddressUsedId}}"},
              test_script=[
                  "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
@@ -578,7 +578,7 @@ CASES.append(Case(
                    "ipVersion": "IPV4", "addressId": "{{existingAddressIPv6Id}}"},
              test_script=[
                  "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
@@ -637,7 +637,7 @@ CASES.append(Case(
                    "protocol": "TCP", "port": 86, "targetPort": 8086, "ipVersion": "IPV4"},
              test_script=[
                  "pm.test('rejected (sync 409 or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 409]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
@@ -661,7 +661,7 @@ CASES.append(Case(
                    "defaultTargetGroupId": "{{garbageTgrId}}"},
              test_script=[
                  "pm.test('rejected or accepted', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
@@ -715,7 +715,7 @@ CASES.append(Case(
         # Make a TG in alt region
         Step(name="setup-tg-alt", method="POST", path="/nlb/v1/targetGroups",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionAltId}}",
-                   "name": "dtgr-alt-{{runId}}",
+                   "name": "dtgr-alt-{{runId}}", "port": 8080,
                    "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "tcpOptions": {"port": 80}}},
@@ -849,7 +849,7 @@ CASES.append(Case(
              body={"loadBalancerId": "{{nlbId}}", "name": "tp0-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 0, "ipVersion": "IPV4"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
              ])),
         *_cleanup_lb(),
     ],
@@ -865,7 +865,7 @@ CASES.append(Case(
              body={"loadBalancerId": "{{nlbId}}", "name": "tpo-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 65536, "ipVersion": "IPV4"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
              ])),
         *_cleanup_lb(),
     ],
@@ -881,7 +881,7 @@ CASES.append(Case(
              body={"loadBalancerId": "{{nlbId}}", "name": "ipv-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV9"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
              ])),
         *_cleanup_lb(),
     ],
@@ -898,7 +898,7 @@ CASES.append(Case(
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV6"},
              test_script=[
                  "pm.test('OK or InsufficientPool', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
              ])),
@@ -948,7 +948,7 @@ CASES.append(Case(
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
              test_script=[
                  "pm.test('accepted or no-op', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),

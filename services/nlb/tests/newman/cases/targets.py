@@ -19,6 +19,8 @@ _HC = {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
        "unhealthyThreshold": 3, "healthyThreshold": 2, "tcpOptions": {"port": 80}}
 
 _TG_BODY = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+            # Required top-level backend port (NLB-1b F6-co-req, CreateTargetGroupRequest.port).
+            "port": 8080,
             "healthCheck": _HC, "deregistrationDelaySeconds": 300,
             "slowStartSeconds": 30}
 
