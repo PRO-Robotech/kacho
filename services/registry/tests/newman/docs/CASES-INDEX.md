@@ -266,7 +266,7 @@ the data-plane per-request Check.
 
 | Surface | Module | Status | Cases / scenarios | Acceptance |
 |---|---|---|---|---|
-| Control-plane CRUD | `cases/registry.py` | present | 34 | REG-01/02/03/05/06/07/36 (+ ListRepositories/ListTags pageSize BVA) |
+| Control-plane CRUD | `cases/registry.py` | present | 38 | REG-01/02/03/05/06/07/36 (+ ListRepositories/ListTags/ListOperations pageSize BVA; ListOperations happy+neg) |
 | Redesign surface (REG-1) | `cases/registry-redesign.py` | present | 17 | REG-1-01/02/04/06/07/10/11/12/14/15/16/19/21/22/24/28/31 |
 | Config-overlay Repository (RG-1) | `cases/registry-repository.py` | present | 24 | RG-1-A01..C04 + A02/A05/A06/A10/A17/A19/C02/X01 parity |
 | Control-plane authz | `cases/registry-authz.py` | present | 18 | REG-01a/05/06/07/26/28/29/30/36 + per-repo v_* (RG-1 A06/A08/A15/X04) + hide-existence byte-identity |

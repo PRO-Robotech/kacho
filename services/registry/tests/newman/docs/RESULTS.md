@@ -39,7 +39,7 @@ update_repository}.go` и handler admin-gate `internal/handler/{public,listauthz
   `REG-1-30` INTERNAL-no-leak → фикс. `"internal database error"` (симуляция DB-ошибки);
   `REG-1-20` ACTIVE-guard DELETING (racy окно). Отмечено в CASES-INDEX §1c.
 
-## Parity dobor (negatives + edge) — +19 cases, authored, pending CI
+## Parity dobor (negatives + edge) — +23 cases, authored, pending CI
 
 Доводит суиту до parity iam/vpc поверх happy-каркаса Repository config-overlay. Разбивка:
 
@@ -50,9 +50,11 @@ update_repository}.go` и handler admin-gate `internal/handler/{public,listauthz
   (A19 "invalid repository name"), `REPO-REN-CROSS-REGISTRY-STRUCTURAL` (D-5 smuggle ignored),
   `REPO-REF-NEG-ABSENT` (C02), `REPO-EXISTENCE-HIDING-PARITY` (security.md #6 — byte-identical
   "repository not found" через Get/Delete/ListReferrers), `REPO-GET-NO-INFRA-LEAK` (X01 two-projection).
-- **`cases/registry.py` (+2):** `REG-LSTREPO-NEG-PAGESIZE-OVERMAX`, `REG-LSTTAGS-NEG-PAGESIZE-OVERMAX`
+- **`cases/registry.py` (+6):** `REG-LSTREPO-NEG-PAGESIZE-OVERMAX`, `REG-LSTTAGS-NEG-PAGESIZE-OVERMAX`
   (BVA `pageSize=1001` > max → 400, rejected-not-clamped; parity с `REG-RD-F8-NEG-PAGESIZE-OVERMAX`
-  для ListRegistries).
+  для ListRegistries); **ListOperations RPC** (ранее без newman-покрытия) — `REG-LSTOPS-CRUD-OK`
+  (happy, grant-latency-толерантно), `REG-LSTOPS-NEG-BAD-TOKEN`, `REG-LSTOPS-NEG-MALFORMED-ID`,
+  `REG-LSTOPS-NEG-PAGESIZE-OVERMAX`.
 - **`cases/registry-authz.py` (+7):** per-repo authz-матрица на config-overlay Repository —
   `REPO-AZ-SETUP` (durable repo под regIdAz), `REPO-AZ-GET-STRANGER-HIDDEN`, `REPO-AZ-GET-VIEWER-OK`
   (positive control, fixture-gated), `REPO-AZ-UPDATE-VIEWER-DENY` (v_get без v_update → existence-hidden),
