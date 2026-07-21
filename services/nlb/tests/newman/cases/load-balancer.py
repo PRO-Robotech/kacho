@@ -2186,13 +2186,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-CR-CRUD-REMOVED-FIELDS-IGNORED",
-    title="Create carrying removed fields (crossZoneEnabled/securityGroupIds/networkId) → "
-          "silently ignored by grpc-gateway; not echoed on Get (Verifies 8.1-32)",
+    title="Create carrying fields absent from the Create proto (networkId/anycastPoolId) → "
+          "silently dropped by grpc-gateway; not echoed on Get (Verifies 8.1-32)",
     classes=["CRUD", "CONF"], priority="P2",
+    # NLB-1b/1c: only networkId + anycastPoolId are absent from CreateNetworkLoadBalancerRequest
+    # (grpc-gateway drops unknown JSON keys). crossZoneEnabled (REGIONAL-only) and
+    # securityGroupIds (INTERNAL-only, revived NLB-1-51) are LIVE fields that ARE validated —
+    # sending them on this EXTERNAL LB is a 400 ("... only valid for INTERNAL"/ZONAL-guard),
+    # not a silent-drop. Those live-field validations are covered elsewhere; here we assert
+    # only the genuinely-removed keys are dropped.
     steps=[
         Step(name="cr-removed", method="POST", path=_CREATE_BASE,
              body={**_LB_BODY, "name": "removed-{{runId}}",
-                   "crossZoneEnabled": True, "securityGroupIds": ["sgpx00000000000000000"],
                    "networkId": "{{existingNetworkId}}", "anycastPoolId": "aap00000000000000000"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
@@ -2200,14 +2205,12 @@ CASES.append(Case(
         retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('created despite removed fields', () => "
+                          "pm.test('created despite dropped fields', () => "
                           "  pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
-                          "pm.test('output does not echo crossZoneEnabled (field removed)', () => "
-                          "  pm.expect(j).to.not.have.property('crossZoneEnabled'));",
-                          "pm.test('output does not echo securityGroupIds (field removed)', () => "
-                          "  pm.expect(j).to.not.have.property('securityGroupIds'));",
-                          "pm.test('output does not echo networkId (derived, not tenant-facing)', () => "
-                          "  pm.expect(j).to.not.have.property('networkId'));"])),
+                          "pm.test('output does not echo networkId (absent from Create proto)', () => "
+                          "  pm.expect(j).to.not.have.property('networkId'));",
+                          "pm.test('output does not echo anycastPoolId (absent from Create proto)', () => "
+                          "  pm.expect(j).to.not.have.property('anycastPoolId'));"])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

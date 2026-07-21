@@ -282,33 +282,32 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="XRES-E2E-DEFAULT-TG-UNATTACHED-FP",
-    title="UC-1 negative: set listener default_target_group_id to an un-attached TG "
-          "→ FAILED_PRECONDITION (composite FK) (Verifies 6.0-34/6.0-02)",
+    id="XRES-E2E-DEFAULT-TG-ABSENT-REJECTED",
+    title="UC-1 negative: set listener default_target_group_id to a well-formed ABSENT TG → "
+          "sync reject (existence precheck); default stays empty (Verifies 6.0-34/6.0-02)",
     classes=["NEG", "STATE"], priority="P1",
+    # NLB-1c removed the M:N attach-pivot + AttachTargetGroup composite-FK: default_target_group_id
+    # is now the single authoritative FK-RESTRICT ref, validated by a SYNC existence + same-region
+    # precheck (listener/update.go) BEFORE the Operation. So "un-attached TG" is no longer a
+    # rejection trigger (an existing same-region TG is accepted without prior attach); the valid
+    # negative now is a well-formed but ABSENT TG → rejected (NOT_FOUND / authz-first), never
+    # silently applied. Prev premise (un-attached → FAILED_PRECONDITION composite FK) was stale.
     steps=[
-        *_create_external_lb("def-unatt"),
+        *_create_external_lb("def-absent"),
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "def-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
-        # TG exists but is intentionally NOT attached to the LB.
-        *_create_tg("def-unatt"),
-        Step(name="set-default-unattached", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
+        # Point default at a well-formed but ABSENT target_group_id → the sync existence precheck
+        # rejects it (NOT_FOUND, or authz-first 403 when the scope_extractor cannot resolve the
+        # target→project). Never a 200-apply. NOT wrapped in retry (negative — a poll would mask).
+        Step(name="set-default-absent", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{garbageTgrId}}"},
              test_script=[
-                 "pm.test('accepted as Operation or sync-rejected', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 404, 200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('FAILED_PRECONDITION (default TG not attached)', () => "
-                 "  pm.expect(j.error.code).to.eql(9));",
+                 "pm.test('absent default TG rejected (never 200-apply)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
              ]),
         retry_until_authorized(Step(name="verify-listener-unchanged", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
@@ -317,7 +316,6 @@ CASES.append(Case(
                           "  pm.expect(j.defaultTargetGroupId || '').to.eql(''));"])),
         *_cleanup_lst(),
         *_cleanup_lb(),
-        *_cleanup_tg(),
     ],
 ))
 
@@ -541,29 +539,24 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="XRES-E2E-INTERNAL-SG-FOREIGN-REJECTED",
-    title="EXTERNAL LB carrying a removed securityGroupIds field + valid public source → "
-          "created (LB-level SG was removed in 8.1; grpc-gateway ignores it) (Verifies 8.1-32)",
-    classes=["CRUD", "CONF"], priority="P2",
+    title="EXTERNAL LB carrying securityGroupIds → sync 400 INVALID_ARGUMENT "
+          "'security_group_ids is only valid for INTERNAL load balancer' (Verifies NLB-1-51/52)",
+    classes=["NEG", "VAL", "CONF"], priority="P2",
+    # NLB-1b revived securityGroupIds as a LIVE NetworkLoadBalancer field (VIP firewall,
+    # NLB-1-51), valid ONLY on INTERNAL (subnet-sourced) LBs — sg_validate.go rejects it on an
+    # EXTERNAL public-VIP LB with a sync InvalidArgument BEFORE the Operation. The previous suite
+    # premise ("securityGroupIds removed in 8.1, silently ignored → 200") was stale: the field is
+    # not removed, it is INTERNAL-scoped and validated. Reject fires before SG existence is peer-
+    # checked, so garbage vs real SG id is immaterial here.
     steps=[
         Step(name="create-with-removed-sg", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "type": "EXTERNAL", "name": "ext-sg-{{runId}}",
                    "securityGroupIds": ["{{garbageSecurityGroupId}}"], "v4Source": {"public": {}}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-no-sg", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
-             # Same EXTERNAL auto-VIP alloc-phantom tolerance as get-no-network above
-             # (kacho#11): assert the removed-securityGroupIds conformance only when the
-             # LB actually materialised (200, no lastOpError). Serial run exercises it.
-             test_script=[
-                 "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                 "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  pm.test('output does not echo the removed securityGroupIds', () => "
-                 "    pm.expect(pm.response.json()).to.not.have.property('securityGroupIds'));",
-                 "}",
-             ])),
-        *_cleanup_lb(),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('securityGroupIds rejected on EXTERNAL (INTERNAL-only field)', () => "
+                          "  pm.expect((pm.response.json().message || '').toLowerCase())"
+                          "    .to.include('security_group_ids is only valid for internal'));"]),
     ],
 ))
 

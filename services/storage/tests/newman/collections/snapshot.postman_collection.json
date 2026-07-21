@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f81b5726-e620-44fa-93cd-cc5189ae3cfc",
+    "_postman_id": "5734e89c-c5f7-4d28-bc66-96231baa8625",
     "name": "kacho-storage / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -948,7 +948,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid snapshot id 'nope'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid snapshot id 'nope''));"
+                  "pm.test('message includes \"invalid snapshot id \\'nope\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid snapshot id \\'nope\\''));"
                 ]
               }
             }
@@ -1159,7 +1159,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"source_volume_id\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"updateMask\": \"sourceVolumeId\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
