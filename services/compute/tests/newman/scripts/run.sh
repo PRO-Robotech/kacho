@@ -68,9 +68,14 @@ mkdir -p out
 if [[ -n "$SERVICE" ]]; then
   run_one "$SERVICE"
 else
-  # ВСЕ 9 коллекций — иначе assert-suites-green.sh (грейдит collections/*.json
+  # ВСЕ 10 коллекций — иначе assert-suites-green.sh (грейдит collections/*.json
   # глобом) видит authz-deny/sec-d без отчёта → "(no-report)" → phantom FAIL.
-  for res in disk image snapshot instance instance-redesign machine-type disk-type operation list-filter authz-deny sec-d; do
+  # NB: the legacy `instance` suite is RETIRED — superseded by `instance-redesign`
+  # (COMP-1 Instance core: instanceKind/machineTypeId/bootSource/vm|container spec).
+  # The legacy suite was built entirely on the tombstoned platformId/resourcesSpec/
+  # bootDiskSpec create surface (RESERVED in CreateInstanceRequest, ban #2) and could
+  # never pass; instance-redesign is the authoritative Instance coverage.
+  for res in disk image snapshot instance-redesign machine-type disk-type operation list-filter authz-deny sec-d; do
     run_one "$res"
   done
 fi

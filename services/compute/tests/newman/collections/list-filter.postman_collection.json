@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "fb29e62f-3f82-4e14-a907-8bc1ee3e318a",
+    "_postman_id": "97a9fb9f-4de7-40f2-91be-95e9a1e4e652",
     "name": "kacho-compute / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -42,6 +42,141 @@
       "description": "class:AUTHZ | class:POS | class:LST | priority:P0",
       "item": [
         {
+          "name": "lf-seed-mt-own",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"lfmtown{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-159",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "create-own",
           "request": {
             "method": "POST",
@@ -64,7 +199,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"lf-inst-own-{{runId}}\", \"zoneId\": \"ru-central1-a\", \"platformId\": \"standard-v3\", \"resourcesSpec\": {\"memory\": \"1073741824\", \"cores\": 2}, \"bootDiskSpec\": {\"diskSpec\": {\"size\": \"8589934592\", \"typeId\": \"network-ssd\"}}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"lf-inst-own-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey lf@team\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -110,7 +245,7 @@
           ]
         },
         {
-          "name": "poll-op-286",
+          "name": "poll-op-160",
           "request": {
             "method": "GET",
             "header": [
@@ -221,7 +356,7 @@
           ]
         },
         {
-          "name": "list-own",
+          "name": "list-own-lst44",
           "request": {
             "method": "GET",
             "header": [
@@ -263,6 +398,23 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfInstanceId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const insts = pm.response.json().instances || [];",
                   "pm.test('[D-45] filtered List returns 200 (not 503/InvalidArgument from broken verb)', () => pm.expect(pm.response.code).to.eql(200));",
@@ -329,7 +481,7 @@
           ]
         },
         {
-          "name": "poll-op-287",
+          "name": "poll-op-161",
           "request": {
             "method": "GET",
             "header": [
@@ -365,6 +517,92 @@
                 ]
               }
             },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "lf-cleanup-mt-own",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-162",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
             {
               "listen": "test",
               "script": {
@@ -457,6 +695,141 @@
       "description": "class:AUTHZ | class:NEG | class:LST | priority:P0",
       "item": [
         {
+          "name": "lf-seed-mt-leak",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"lfmtleak{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-163",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "create-a1-pa1",
           "request": {
             "method": "POST",
@@ -479,7 +852,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"lf-inst-leak-{{runId}}\", \"zoneId\": \"ru-central1-a\", \"platformId\": \"standard-v3\", \"resourcesSpec\": {\"memory\": \"1073741824\", \"cores\": 2}, \"bootDiskSpec\": {\"diskSpec\": {\"size\": \"8589934592\", \"typeId\": \"network-ssd\"}}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"lf-inst-leak-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey lf@team\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -525,7 +898,7 @@
           ]
         },
         {
-          "name": "poll-op-288",
+          "name": "poll-op-164",
           "request": {
             "method": "GET",
             "header": [
@@ -742,7 +1115,7 @@
           ]
         },
         {
-          "name": "poll-op-289",
+          "name": "poll-op-165",
           "request": {
             "method": "GET",
             "header": [
@@ -801,6 +1174,92 @@
               }
             }
           ]
+        },
+        {
+          "name": "lf-cleanup-mt-leak",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-166",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -808,6 +1267,141 @@
       "name": "LF-INST-LST-CROSS-ACCOUNT-NO-LEAK — [D-44] AAB List instances project-B1 → instance проекта A1 не виден (per-object изоляция)",
       "description": "class:AUTHZ | class:NEG | class:LST | priority:P1",
       "item": [
+        {
+          "name": "lf-seed-mt-xacct",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"lfmtxacct{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-167",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "create-a1",
           "request": {
@@ -831,7 +1425,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"lf-inst-xacct-{{runId}}\", \"zoneId\": \"ru-central1-a\", \"platformId\": \"standard-v3\", \"resourcesSpec\": {\"memory\": \"1073741824\", \"cores\": 2}, \"bootDiskSpec\": {\"diskSpec\": {\"size\": \"8589934592\", \"typeId\": \"network-ssd\"}}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"lf-inst-xacct-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey lf@team\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -877,7 +1471,7 @@
           ]
         },
         {
-          "name": "poll-op-290",
+          "name": "poll-op-168",
           "request": {
             "method": "GET",
             "header": [
@@ -1094,7 +1688,7 @@
           ]
         },
         {
-          "name": "poll-op-291",
+          "name": "poll-op-169",
           "request": {
             "method": "GET",
             "header": [
@@ -1130,6 +1724,92 @@
                 ]
               }
             },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "lf-cleanup-mt-xacct",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-170",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
             {
               "listen": "test",
               "script": {
