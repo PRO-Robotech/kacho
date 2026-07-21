@@ -342,19 +342,18 @@ pg-storage:
 # server-creds on both listeners + the geo→iam Check client edge are enabled
 # (mirrors compute/vpc). authzIam stays wired at iam-internal :9091.
 kacho-geo:
-  # Branch build (`make build-services` → kacho-geo:dev, kind-loaded), NOT the pinned
-  # external main-<sha>. geo was the ONLY service still pinned to an external main image
-  # while every other service runs its :dev branch build — so dev/CI ran STALE pre-GEO-1
-  # geo (GetInternal unimplemented, op-id==resourceId, no sync Operation{done:true},
-  # malformed-id→404), masking the GEO-1 redesign from the geo newman suite.
-  image: kacho-geo:dev
+  # NB: kept pinned to the known-good published image. Unpinning to the branch
+  # kacho-geo:dev build (attempted 9ed4135) CRASH-LOOPS on the dev/CI stand
+  # (CrashLoopBackOff → dev-up "context deadline exceeded" → whole e2e produces no
+  # reports) — the same runtime-broken condition this pin originally guarded against
+  # ("building from OSS HEAD produced a runtime-broken geo"). geo:dev must be made
+  # dev-stand-bootable (needs a live geo-pod debug, not doable in the ephemeral CI
+  # fragment) BEFORE unpinning — tracked as a geo deploy follow-up. The GEO-1
+  # backend fixes (GetInternal PermissionMap, 9ed4135) + newman path-reconcile stay
+  # in source for when the branch image boots. Secure forwarder-allow-list env kept
+  # (harmless, mirrors prod) so re-unpinning later doesn't reintroduce the boot-guard gap.
+  image: docker.io/prorobotech/kacho-geo:main-84d9d68f
   imagePullPolicy: IfNotPresent
-  # GEO-1 serve.go added a secure-by-default boot-guard: with mTLS on, an EMPTY
-  # trusted-forwarder allow-list refuses to start. Supply the api-gateway SA SPIFFE
-  # allow-list (the ONE legitimate end-user-principal forwarder) — SAME secure posture
-  # as values.fe3455-prod.yaml, NOT a trust-any bypass (KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER
-  # would violate security.md "Internal=trusted forbidden"; trust-any is also unhonored
-  # in production-mode by construction). mTLS-verified forwarder identity is enforced.
   env:
     KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   mtls:
