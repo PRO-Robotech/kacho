@@ -73,7 +73,12 @@ type MintBootstrapTokenRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Requested token lifetime in seconds. Optional: `0` → server default. The
 	// value is CLAMPED to a server hard-max (the bootstrap token is deliberately
-	// short-lived, IBT-09) — a larger request never widens the lifetime.
+	// short-lived, IBT-09) — a larger request never widens the lifetime, so only
+	// the lower bound is a contract constraint; the upper bound is server-clamped
+	// (a large request like 86400 is accepted, then clamped — IBT-09).
+	//
+	// `(value)` (numeric bound), NOT `(length)` (string char-length) — the latter
+	// is a no-op on an int64 and would leave a negative ttl unenforced.
 	TtlSeconds    int64 `protobuf:"varint,1,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -215,7 +220,7 @@ const file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDesc = "
 	"\n" +
 	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"E\n" +
 	"\x19MintBootstrapTokenRequest\x12(\n" +
-	"\vttl_seconds\x18\x01 \x01(\x03B\a\x8a\xc81\x03>=0R\n" +
+	"\vttl_seconds\x18\x01 \x01(\x03B\a\xfa\xc71\x03>=0R\n" +
 	"ttlSeconds\"\x94\x02\n" +
 	"\x1aMintBootstrapTokenResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12\x1d\n" +
