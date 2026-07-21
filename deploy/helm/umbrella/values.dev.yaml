@@ -342,8 +342,23 @@ pg-storage:
 # server-creds on both listeners + the geo→iam Check client edge are enabled
 # (mirrors compute/vpc). authzIam stays wired at iam-internal :9091.
 kacho-geo:
-  image: docker.io/prorobotech/kacho-geo:main-84d9d68f
+  # Use the branch build (`make build-services` → kacho-geo:dev, kind-loaded), NOT a
+  # pinned external main-<sha> image. geo was the ONLY service still pinned to an
+  # external main image (docker.io/prorobotech/kacho-geo:main-84d9d68f) while every
+  # other service runs its :dev branch build — so the dev/CI stand ran STALE geo
+  # (pre-GEO-1 internal admin: GetInternal unimplemented, op-id==resourceId, no
+  # sync Operation{done:true}, malformed-id→404). That masked the GEO-1 redesign
+  # from the geo newman suite. Point at the branch build so GEO-1 is exercised.
+  image: kacho-geo:dev
   imagePullPolicy: IfNotPresent
+  # GEO-1 serve.go added a dev-fatal secure-by-default boot-guard: an EMPTY
+  # trusted-forwarder allow-list refuses to start UNLESS the dev opt-in is set
+  # (services/geo/cmd/kacho-geo/serve.go validateSecurityConfig). The dev stand
+  # runs auth.mode=dev with an empty forwarder SAN list (trust-any is the dev
+  # posture), so the opt-in is required or the new geo binary CrashLoopBackOffs.
+  # Prod profiles instead pin trustedForwarderSANs (values.*-prod.yaml).
+  env:
+    KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER: "true"
   mtls:
     enable: true
     edges:
