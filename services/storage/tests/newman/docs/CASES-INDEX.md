@@ -57,6 +57,14 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | VOL-LOP-CRUD-OK | CS1-S1-15 | happy |
 | VOL-LOP-NEG-MALFORMED-ID | CS1-S1-15 | negative (sync) |
 | VOL-LIFECYCLE-CONF | CS1-S1-01/04/07 | conformance |
+| VOL-CR-BVA-NAME-OVER-64 | CS1-S1-12 | negative (BVA) |
+| VOL-CR-VAL-NAME-DIGIT-START | CS1-S1-12 | negative (sync) |
+| VOL-CR-VAL-NAME-HYPHEN-START | CS1-S1-12 | negative (sync) |
+| VOL-UPD-MASK-IMMUTABLE-BLOCKSIZE | CS1-S1-05 | negative (sync) |
+| VOL-UPD-MASK-IMMUTABLE-SOURCESNAPSHOT | CS1-S1-05 | negative (sync) |
+| VOL-UPD-MASK-EMPTY-FULL-PATCH-OK | CS1-S1-05 | happy (full-PATCH) |
+| VOL-CR-SEC-NAME-INJECTION | CS1-S1-11 | negative (SEC no-leak) |
+| VOL-LST-SEC-FILTER-SQLI | CS1-S1-03 | negative (SEC no-leak) |
 
 ## Snapshot (`cases/snapshot.py`) — stage S3
 
@@ -78,6 +86,11 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | SNP-UPD-CRUD-NAME-LABELS-OK | CS1-S3-05 | happy |
 | SNP-DEL-CRUD-OK | CS1-S3-06 | happy |
 | SNP-DEL-NEG-NOTFOUND | CS1-S3-06 | negative (op-error) |
+| SNP-LST-BVA-PAGESIZE-OVER-MAX | CS1-S3-04 | negative (BVA) |
+| SNP-UPD-MASK-UNKNOWN-FIELD | CS1-S3-05 | negative (sync) |
+| SNP-UPD-MASK-IMMUTABLE-PROJECT | CS1-S3-05 | negative (sync) |
+| SNP-UPD-MASK-IMMUTABLE-SIZE | CS1-S3-05 | negative (sync) |
+| SNP-CR-BVA-NAME-OVER-64 | CS1-S3-03 | negative (BVA) |
 
 ## Image (`cases/image.py`) — redesign STOR-1 (NET-NEW ресурс `img-`)
 
@@ -131,6 +144,7 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | DT-GET-CRUD-OK | CS1-S2-01 | happy |
 | DT-GET-NEG-NOTFOUND | CS1-S2-01 | negative |
 | DT-LST-BVA-PAGESIZE-OVER-MAX | CS1-S2-01 | negative (BVA) |
+| DT-LST-PAGE-TOKEN-GARBAGE | CS1-S2-01 | negative (PAGE) |
 | DT-CR-NEG-EXTERNAL-ABSENT | CS1-S2-04 | negative (INV-7a) |
 | DT-UPD-NEG-EXTERNAL-ABSENT | CS1-S2-04 | negative (INV-7a) |
 | DT-DEL-NEG-EXTERNAL-ABSENT | CS1-S2-04 | negative (INV-7a) |

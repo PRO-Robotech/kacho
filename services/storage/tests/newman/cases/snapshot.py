@@ -299,3 +299,76 @@ CASES.append(Case(
         assert_op_error(5, "NOT_FOUND", msg_substr="not found"),
     ],
 ))
+
+# ---------------------------------------------------------------------------
+# CS1-S3-04 (add) — List pageSize BVA parity (validate.PageSize, > max 1000).
+#   Существующий SNP-LST-PAGE-TOKEN-GARBAGE есть, но pageSize-over-max отсутствовал
+#   (Volume/Image его несут). Техника BVA (верхняя граница page_size).
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="SNP-LST-BVA-PAGESIZE-OVER-MAX",
+    title="List snapshots pageSize=5000 (> max 1000) -> 400 INVALID_ARGUMENT (validate.PageSize; парити с Volume/Image)",
+    classes=["BVA", "VAL", "PAGE", "NEG"], priority="P1",
+    # verifies CS1-S3-04
+    steps=[Step(name="ps-over", method="GET", path=f"{SNP}?projectId={{{{_suiteFolderId}}}}&pageSize=5000",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+# ---------------------------------------------------------------------------
+# CS1-S3-05 (add) — Update mask parity: unknown-field (known-set) + immutable
+#   project_id / size_bytes. immutable-switch snapshot {source_volume_id (есть),
+#   project_id, size_bytes}; existing покрывает только source_volume_id. UpdateMask
+#   known-set отвергает unknown-field конвенц. InvalidArgument. Техника
+#   state-transition + ECP (unknown vs immutable vs mutable поле в mask).
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="SNP-UPD-MASK-UNKNOWN-FIELD",
+    title="Update mask=nonexistent_field -> sync 400 INVALID_ARGUMENT (UpdateMask known-set; парити с Volume)",
+    classes=["VAL", "STATE", "NEG"], priority="P1",
+    # verifies CS1-S3-05
+    steps=[Step(name="patch-unk", method="PATCH", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
+                body={"updateMask": "nonexistent_field", "description": "x"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+CASES.append(Case(
+    id="SNP-UPD-MASK-IMMUTABLE-PROJECT",
+    title="Update mask=project_id -> sync 400 INVALID_ARGUMENT 'project_id is immutable after Snapshot.Create' (immutable-switch до UpdateMask)",
+    classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
+    # verifies CS1-S3-05
+    steps=[Step(name="patch-imm-proj", method="PATCH", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
+                body={"updateMask": "project_id"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("project_id is immutable after Snapshot.Create")])],
+))
+
+CASES.append(Case(
+    id="SNP-UPD-MASK-IMMUTABLE-SIZE",
+    title="Update mask=size_bytes -> sync 400 INVALID_ARGUMENT 'size_bytes is immutable after Snapshot.Create'",
+    classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
+    # verifies CS1-S3-05
+    steps=[Step(name="patch-imm-size", method="PATCH", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
+                body={"updateMask": "size_bytes"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("size_bytes is immutable after Snapshot.Create")])],
+))
+
+# ---------------------------------------------------------------------------
+# CS1-S3-03 (add) — name BVA parity (over-max len). Shared validateDisplayName
+#   (SnapshotName newtype, RuneCount<=63) -> "Illegal argument name". Sync до
+#   source-volume резолва (парити с существующим SNP-CR-VAL-NAME-UPPERCASE).
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="SNP-CR-BVA-NAME-OVER-64",
+    title="Create Snapshot name длиной 64 (граница 1..63 + 1) -> sync 400 INVALID_ARGUMENT 'Illegal argument name' (BVA; парити с Volume/Image)",
+    classes=["BVA", "VAL", "NEG", "CONF"], priority="P1",
+    # verifies CS1-S3-03
+    steps=[Step(name="cr-name64", method="POST", path=SNP,
+                body={"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{garbageStorageId}}",
+                      "name": "n" + "abcdefghij" * 6 + "abc"},  # 1+60+3 = 64
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("Illegal argument name")])],
+))

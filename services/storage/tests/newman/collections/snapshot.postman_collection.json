@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "bb5b1c4d-bde7-4037-8130-a8d75b521864",
+    "_postman_id": "86fb4e79-725c-44f1-85d7-c615d256eec9",
     "name": "kacho-storage / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2328,6 +2328,268 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 5 (NOT_FOUND)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
                   "pm.test('error text includes \"not found\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('not found'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SNP-LST-BVA-PAGESIZE-OVER-MAX — List snapshots pageSize=5000 (> max 1000) -> 400 INVALID_ARGUMENT (validate.PageSize; парити с Volume/Image)",
+      "description": "class:BVA | class:VAL | class:PAGE | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "ps-over",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=5000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots?projectId={{_suiteFolderId}}&pageSize=5000"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SNP-UPD-MASK-UNKNOWN-FIELD — Update mask=nonexistent_field -> sync 400 INVALID_ARGUMENT (UpdateMask known-set; парити с Volume)",
+      "description": "class:VAL | class:STATE | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "patch-unk",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots/{{garbageSnapshotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots",
+                "{{garbageSnapshotId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"nonexistent_field\", \"description\": \"x\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SNP-UPD-MASK-IMMUTABLE-PROJECT — Update mask=project_id -> sync 400 INVALID_ARGUMENT 'project_id is immutable after Snapshot.Create' (immutable-switch до UpdateMask)",
+      "description": "class:STATE | class:VAL | class:CONF | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "patch-imm-proj",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots/{{garbageSnapshotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots",
+                "{{garbageSnapshotId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"project_id\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('message includes \"project_id is immutable after Snapshot.Create\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('project_id is immutable after Snapshot.Create'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SNP-UPD-MASK-IMMUTABLE-SIZE — Update mask=size_bytes -> sync 400 INVALID_ARGUMENT 'size_bytes is immutable after Snapshot.Create'",
+      "description": "class:STATE | class:VAL | class:CONF | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "patch-imm-size",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots/{{garbageSnapshotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots",
+                "{{garbageSnapshotId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"size_bytes\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('message includes \"size_bytes is immutable after Snapshot.Create\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('size_bytes is immutable after Snapshot.Create'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SNP-CR-BVA-NAME-OVER-64 — Create Snapshot name длиной 64 (граница 1..63 + 1) -> sync 400 INVALID_ARGUMENT 'Illegal argument name' (BVA; парити с Volume/Image)",
+      "description": "class:BVA | class:VAL | class:NEG | class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "cr-name64",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/snapshots",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "snapshots"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('message includes \"Illegal argument name\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('Illegal argument name'));"
                 ]
               }
             }
