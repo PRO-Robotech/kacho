@@ -24,6 +24,14 @@ func TestPermissionMap_ScopeFiltered(t *testing.T) {
 		"/kacho.cloud.registry.v1.RegistryService/ListRepositories",
 		"/kacho.cloud.registry.v1.RegistryService/ListTags",
 		"/kacho.cloud.registry.v1.RegistryService/DeleteTag",
+		// config-overlay Repository RPCs (RG-1) — per-repo Check в handler'е;
+		// были пропущены в backend-map → "rpc not mapped" на всём overlay-suite.
+		"/kacho.cloud.registry.v1.RegistryService/GetRepository",
+		"/kacho.cloud.registry.v1.RegistryService/CreateRepository",
+		"/kacho.cloud.registry.v1.RegistryService/UpdateRepository",
+		"/kacho.cloud.registry.v1.RegistryService/DeleteRepository",
+		"/kacho.cloud.registry.v1.RegistryService/RenameRepository",
+		"/kacho.cloud.registry.v1.RegistryService/ListReferrers",
 	} {
 		e, ok := m[rpc]
 		require.True(t, ok, "%s must be mapped (fail-closed)", rpc)

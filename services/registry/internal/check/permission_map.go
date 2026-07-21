@@ -56,6 +56,9 @@ func registryObject() authz.ObjectExtractor {
 			id = r.GetRegistryId()
 		case *registryv1.GetRegistryStatsRequest:
 			id = r.GetRegistryId()
+		case *registryv1.CreateRepositoryRequest:
+			// CreateRepository — registry-scope v_create (репо ещё нет).
+			id = r.GetRegistryId()
 		default:
 			return "", "", fmt.Errorf("registry object extractor: unexpected request %T", req)
 		}
@@ -89,6 +92,16 @@ func repositoryObject() authz.ObjectExtractor {
 		case *registryv1.ListTagsRequest:
 			id, repo = r.GetRegistryId(), r.GetRepository()
 		case *registryv1.DeleteTagRequest:
+			id, repo = r.GetRegistryId(), r.GetRepository()
+		case *registryv1.GetRepositoryRequest:
+			id, repo = r.GetRegistryId(), r.GetRepository()
+		case *registryv1.UpdateRepositoryRequest:
+			id, repo = r.GetRegistryId(), r.GetRepository()
+		case *registryv1.DeleteRepositoryRequest:
+			id, repo = r.GetRegistryId(), r.GetRepository()
+		case *registryv1.RenameRepositoryRequest:
+			id, repo = r.GetRegistryId(), r.GetRepository()
+		case *registryv1.ListReferrersRequest:
 			id, repo = r.GetRegistryId(), r.GetRepository()
 		default:
 			return "", "", fmt.Errorf("repository object extractor: unexpected request %T", req)
@@ -174,6 +187,53 @@ func PermissionMap() authz.RPCMap {
 			Relation:      relVDelete,
 			Extract:       repositoryObject(),
 			Permission:    "registry.repositories.delete",
+			ScopeFiltered: true,
+		},
+
+		// ---- config-overlay Repository RPCs (RG-1) — authz В ХЕНДЛЕРЕ ----
+		// GetRepository/CreateRepository/UpdateRepository/DeleteRepository/
+		// RenameRepository/ListReferrers энфорсят per-repo (Create — registry-scope)
+		// Check В ХЕНДЛЕРЕ (handler/repository.go: checkRepository / registryGate +
+		// existence-hiding deny→NOT_FOUND), поэтому gateway `<exempt>` + backend
+		// ScopeFiltered (interceptor пропускает, handler энфорсит) — тот же паттерн,
+		// что ListRepositories/ListTags/DeleteTag. Были ПРОПУЩЕНЫ в backend-map →
+		// corelib authz fail-closed "rpc not mapped" на весь repository-overlay suite.
+		// Relation/Extract — permission-catalog документация (interceptor их не зовёт
+		// для ScopeFiltered: early-return ДО Extract).
+		"/kacho.cloud.registry.v1.RegistryService/GetRepository": {
+			Relation:      relVGet,
+			Extract:       repositoryObject(),
+			Permission:    "registry.repositories.get",
+			ScopeFiltered: true,
+		},
+		"/kacho.cloud.registry.v1.RegistryService/CreateRepository": {
+			Relation:      relVCreate,
+			Extract:       registryObject(),
+			Permission:    "registry.repositories.create",
+			ScopeFiltered: true,
+		},
+		"/kacho.cloud.registry.v1.RegistryService/UpdateRepository": {
+			Relation:      relVUpdate,
+			Extract:       repositoryObject(),
+			Permission:    "registry.repositories.update",
+			ScopeFiltered: true,
+		},
+		"/kacho.cloud.registry.v1.RegistryService/DeleteRepository": {
+			Relation:      relVDelete,
+			Extract:       repositoryObject(),
+			Permission:    "registry.repositories.delete",
+			ScopeFiltered: true,
+		},
+		"/kacho.cloud.registry.v1.RegistryService/RenameRepository": {
+			Relation:      relVUpdate,
+			Extract:       repositoryObject(),
+			Permission:    "registry.repositories.update",
+			ScopeFiltered: true,
+		},
+		"/kacho.cloud.registry.v1.RegistryService/ListReferrers": {
+			Relation:      relVGet,
+			Extract:       repositoryObject(),
+			Permission:    "registry.repositories.get",
 			ScopeFiltered: true,
 		},
 
