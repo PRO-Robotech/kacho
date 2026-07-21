@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f294dd58-caf3-43dc-930b-433940787040",
+    "_postman_id": "57667b3d-e1a1-4084-bce9-56a53e7c7b47",
     "name": "kacho-nlb / newman / load-balancer",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -145,7 +145,7 @@
           ]
         },
         {
-          "name": "get-after-create-rya499",
+          "name": "get-after-create-rya495",
           "request": {
             "method": "GET",
             "header": [
@@ -412,7 +412,7 @@
           ]
         },
         {
-          "name": "cr-int-cr500",
+          "name": "cr-int-cr496",
           "request": {
             "method": "POST",
             "header": [
@@ -531,7 +531,7 @@
           ]
         },
         {
-          "name": "get-int-rya501",
+          "name": "get-int-rya497",
           "request": {
             "method": "GET",
             "header": [
@@ -886,7 +886,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr502",
+          "name": "setup-create-lb-cr498",
           "request": {
             "method": "POST",
             "header": [
@@ -1007,7 +1007,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya503",
+          "name": "setup-materialize-lb-rya499",
           "request": {
             "method": "GET",
             "header": [
@@ -1056,7 +1056,7 @@
           ]
         },
         {
-          "name": "get-rya504",
+          "name": "get-rya500",
           "request": {
             "method": "GET",
             "header": [
@@ -1408,7 +1408,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr505",
+          "name": "setup-create-lb-cr501",
           "request": {
             "method": "POST",
             "header": [
@@ -1529,7 +1529,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya506",
+          "name": "setup-materialize-lb-rya502",
           "request": {
             "method": "GET",
             "header": [
@@ -1578,7 +1578,7 @@
           ]
         },
         {
-          "name": "patch-rya507",
+          "name": "patch-rya503",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1939,7 +1939,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr508",
+          "name": "setup-create-lb-cr504",
           "request": {
             "method": "POST",
             "header": [
@@ -2060,7 +2060,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya509",
+          "name": "setup-materialize-lb-rya505",
           "request": {
             "method": "GET",
             "header": [
@@ -2109,7 +2109,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya510",
+          "name": "patch-multi-rya506",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2469,7 +2469,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr511",
+          "name": "setup-create-lb-cr507",
           "request": {
             "method": "POST",
             "header": [
@@ -2590,7 +2590,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya512",
+          "name": "setup-materialize-lb-rya508",
           "request": {
             "method": "GET",
             "header": [
@@ -2639,7 +2639,7 @@
           ]
         },
         {
-          "name": "delete-rya513",
+          "name": "delete-rya509",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2903,7 +2903,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr514",
+          "name": "setup-create-lb-cr510",
           "request": {
             "method": "POST",
             "header": [
@@ -3024,7 +3024,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya515",
+          "name": "setup-materialize-lb-rya511",
           "request": {
             "method": "GET",
             "header": [
@@ -3073,7 +3073,7 @@
           ]
         },
         {
-          "name": "upd-bump-history-rya516",
+          "name": "upd-bump-history-rya512",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3435,7 +3435,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr517",
+          "name": "setup-create-lb-cr513",
           "request": {
             "method": "POST",
             "header": [
@@ -3556,7 +3556,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya518",
+          "name": "setup-materialize-lb-rya514",
           "request": {
             "method": "GET",
             "header": [
@@ -3605,7 +3605,7 @@
           ]
         },
         {
-          "name": "start-rya519",
+          "name": "start-rya515",
           "request": {
             "method": "POST",
             "header": [
@@ -3919,7 +3919,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr520",
+          "name": "setup-create-lb-cr516",
           "request": {
             "method": "POST",
             "header": [
@@ -4040,7 +4040,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya521",
+          "name": "setup-materialize-lb-rya517",
           "request": {
             "method": "GET",
             "header": [
@@ -4089,7 +4089,7 @@
           ]
         },
         {
-          "name": "start-1-rya522",
+          "name": "start-1-rya518",
           "request": {
             "method": "POST",
             "header": [
@@ -4574,7 +4574,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr523",
+          "name": "setup-create-lb-cr519",
           "request": {
             "method": "POST",
             "header": [
@@ -4695,7 +4695,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya524",
+          "name": "setup-materialize-lb-rya520",
           "request": {
             "method": "GET",
             "header": [
@@ -4744,7 +4744,7 @@
           ]
         },
         {
-          "name": "stop-rya525",
+          "name": "stop-rya521",
           "request": {
             "method": "POST",
             "header": [
@@ -5058,7 +5058,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr526",
+          "name": "setup-create-lb-cr522",
           "request": {
             "method": "POST",
             "header": [
@@ -5179,7 +5179,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya527",
+          "name": "setup-materialize-lb-rya523",
           "request": {
             "method": "GET",
             "header": [
@@ -5228,7 +5228,7 @@
           ]
         },
         {
-          "name": "stop-1-rya528",
+          "name": "stop-1-rya524",
           "request": {
             "method": "POST",
             "header": [
@@ -5713,7 +5713,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr529",
+          "name": "setup-create-lb-cr525",
           "request": {
             "method": "POST",
             "header": [
@@ -5834,7 +5834,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya530",
+          "name": "setup-materialize-lb-rya526",
           "request": {
             "method": "GET",
             "header": [
@@ -5883,7 +5883,7 @@
           ]
         },
         {
-          "name": "move-rya531",
+          "name": "move-rya527",
           "request": {
             "method": "POST",
             "header": [
@@ -6345,7 +6345,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr532",
+          "name": "setup-create-lb-cr528",
           "request": {
             "method": "POST",
             "header": [
@@ -6466,7 +6466,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya533",
+          "name": "setup-materialize-lb-rya529",
           "request": {
             "method": "GET",
             "header": [
@@ -6618,7 +6618,7 @@
           ]
         },
         {
-          "name": "attach-tg-rya534",
+          "name": "attach-tg-rya530",
           "request": {
             "method": "POST",
             "header": [
@@ -7373,7 +7373,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr535",
+          "name": "setup-create-lb-cr531",
           "request": {
             "method": "POST",
             "header": [
@@ -7494,7 +7494,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya536",
+          "name": "setup-materialize-lb-rya532",
           "request": {
             "method": "GET",
             "header": [
@@ -7799,7 +7799,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr537",
+          "name": "setup-create-lb-cr533",
           "request": {
             "method": "POST",
             "header": [
@@ -7920,7 +7920,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya538",
+          "name": "setup-materialize-lb-rya534",
           "request": {
             "method": "GET",
             "header": [
@@ -8072,7 +8072,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya539",
+          "name": "setup-materialize-tg-rya535",
           "request": {
             "method": "GET",
             "header": [
@@ -8121,7 +8121,7 @@
           ]
         },
         {
-          "name": "attach-rya540",
+          "name": "attach-rya536",
           "request": {
             "method": "POST",
             "header": [
@@ -8631,7 +8631,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr541",
+          "name": "setup-create-lb-cr537",
           "request": {
             "method": "POST",
             "header": [
@@ -8752,7 +8752,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya542",
+          "name": "setup-materialize-lb-rya538",
           "request": {
             "method": "GET",
             "header": [
@@ -8904,7 +8904,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya543",
+          "name": "setup-materialize-tg-rya539",
           "request": {
             "method": "GET",
             "header": [
@@ -8953,7 +8953,7 @@
           ]
         },
         {
-          "name": "att-1-rya544",
+          "name": "att-1-rya540",
           "request": {
             "method": "POST",
             "header": [
@@ -9562,7 +9562,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr545",
+          "name": "setup-create-lb-cr541",
           "request": {
             "method": "POST",
             "header": [
@@ -9683,7 +9683,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya546",
+          "name": "setup-materialize-lb-rya542",
           "request": {
             "method": "GET",
             "header": [
@@ -10266,7 +10266,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr547",
+          "name": "setup-create-lb-cr543",
           "request": {
             "method": "POST",
             "header": [
@@ -10387,7 +10387,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya548",
+          "name": "setup-materialize-lb-rya544",
           "request": {
             "method": "GET",
             "header": [
@@ -10744,7 +10744,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr549",
+          "name": "setup-create-lb-cr545",
           "request": {
             "method": "POST",
             "header": [
@@ -10865,7 +10865,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya550",
+          "name": "setup-materialize-lb-rya546",
           "request": {
             "method": "GET",
             "header": [
@@ -11222,7 +11222,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr551",
+          "name": "setup-create-lb-cr547",
           "request": {
             "method": "POST",
             "header": [
@@ -11343,7 +11343,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya552",
+          "name": "setup-materialize-lb-rya548",
           "request": {
             "method": "GET",
             "header": [
@@ -11495,7 +11495,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya553",
+          "name": "setup-materialize-tg-rya549",
           "request": {
             "method": "GET",
             "header": [
@@ -11544,7 +11544,7 @@
           ]
         },
         {
-          "name": "att-rya554",
+          "name": "att-rya550",
           "request": {
             "method": "POST",
             "header": [
@@ -12055,7 +12055,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr555",
+          "name": "setup-create-lb-cr551",
           "request": {
             "method": "POST",
             "header": [
@@ -12176,7 +12176,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya556",
+          "name": "setup-materialize-lb-rya552",
           "request": {
             "method": "GET",
             "header": [
@@ -12328,7 +12328,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya557",
+          "name": "setup-materialize-tg-rya553",
           "request": {
             "method": "GET",
             "header": [
@@ -12377,7 +12377,7 @@
           ]
         },
         {
-          "name": "det-noop-rya558",
+          "name": "det-noop-rya554",
           "request": {
             "method": "POST",
             "header": [
@@ -12789,7 +12789,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr559",
+          "name": "setup-create-lb-cr555",
           "request": {
             "method": "POST",
             "header": [
@@ -12910,7 +12910,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya560",
+          "name": "setup-materialize-lb-rya556",
           "request": {
             "method": "GET",
             "header": [
@@ -13062,7 +13062,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya561",
+          "name": "setup-materialize-tg-rya557",
           "request": {
             "method": "GET",
             "header": [
@@ -13111,7 +13111,7 @@
           ]
         },
         {
-          "name": "gts-rya562",
+          "name": "gts-rya558",
           "request": {
             "method": "GET",
             "header": [
@@ -13462,7 +13462,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr563",
+          "name": "setup-create-lb-cr559",
           "request": {
             "method": "POST",
             "header": [
@@ -13583,7 +13583,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya564",
+          "name": "setup-materialize-lb-rya560",
           "request": {
             "method": "GET",
             "header": [
@@ -13735,7 +13735,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya565",
+          "name": "setup-materialize-tg-rya561",
           "request": {
             "method": "GET",
             "header": [
@@ -13784,7 +13784,7 @@
           ]
         },
         {
-          "name": "gts-add-target-rya566",
+          "name": "gts-add-target-rya562",
           "request": {
             "method": "POST",
             "header": [
@@ -13898,7 +13898,7 @@
           ]
         },
         {
-          "name": "stop-rya567",
+          "name": "stop-rya563",
           "request": {
             "method": "POST",
             "header": [
@@ -14003,7 +14003,7 @@
           ]
         },
         {
-          "name": "gts-rya568",
+          "name": "gts-rya564",
           "request": {
             "method": "GET",
             "header": [
@@ -16153,7 +16153,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr569",
+          "name": "setup-create-lb-cr565",
           "request": {
             "method": "POST",
             "header": [
@@ -16274,7 +16274,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya570",
+          "name": "setup-materialize-lb-rya566",
           "request": {
             "method": "GET",
             "header": [
@@ -16323,7 +16323,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst571",
+          "name": "list-filtered-lst567",
           "request": {
             "method": "GET",
             "header": [
@@ -17259,7 +17259,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr572",
+          "name": "setup-create-lb-cr568",
           "request": {
             "method": "POST",
             "header": [
@@ -17380,7 +17380,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya573",
+          "name": "setup-materialize-lb-rya569",
           "request": {
             "method": "GET",
             "header": [
@@ -17429,7 +17429,7 @@
           ]
         },
         {
-          "name": "upd-1-rya574",
+          "name": "upd-1-rya570",
           "request": {
             "method": "PATCH",
             "header": [
@@ -17543,7 +17543,7 @@
           ]
         },
         {
-          "name": "upd-2-rya575",
+          "name": "upd-2-rya571",
           "request": {
             "method": "PATCH",
             "header": [
@@ -17900,7 +17900,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr576",
+          "name": "setup-create-lb-cr572",
           "request": {
             "method": "POST",
             "header": [
@@ -18021,7 +18021,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya577",
+          "name": "setup-materialize-lb-rya573",
           "request": {
             "method": "GET",
             "header": [
@@ -18173,7 +18173,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya578",
+          "name": "setup-materialize-tg-rya574",
           "request": {
             "method": "GET",
             "header": [
@@ -18222,7 +18222,7 @@
           ]
         },
         {
-          "name": "att-rya579",
+          "name": "att-rya575",
           "request": {
             "method": "POST",
             "header": [
@@ -18856,7 +18856,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr580",
+          "name": "setup-create-lb-cr576",
           "request": {
             "method": "POST",
             "header": [
@@ -18977,7 +18977,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya581",
+          "name": "setup-materialize-lb-rya577",
           "request": {
             "method": "GET",
             "header": [
@@ -19284,7 +19284,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr582",
+          "name": "setup-create-lb-cr578",
           "request": {
             "method": "POST",
             "header": [
@@ -19405,7 +19405,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya583",
+          "name": "setup-materialize-lb-rya579",
           "request": {
             "method": "GET",
             "header": [
@@ -19711,7 +19711,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr584",
+          "name": "setup-create-lb-cr580",
           "request": {
             "method": "POST",
             "header": [
@@ -19832,7 +19832,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya585",
+          "name": "setup-materialize-lb-rya581",
           "request": {
             "method": "GET",
             "header": [
@@ -20138,7 +20138,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr586",
+          "name": "setup-create-lb-cr582",
           "request": {
             "method": "POST",
             "header": [
@@ -20259,7 +20259,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya587",
+          "name": "setup-materialize-lb-rya583",
           "request": {
             "method": "GET",
             "header": [
@@ -20562,7 +20562,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr588",
+          "name": "setup-create-lb-cr584",
           "request": {
             "method": "POST",
             "header": [
@@ -20683,7 +20683,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya589",
+          "name": "setup-materialize-lb-rya585",
           "request": {
             "method": "GET",
             "header": [
@@ -20732,7 +20732,7 @@
           ]
         },
         {
-          "name": "upd-empty-rya590",
+          "name": "upd-empty-rya586",
           "request": {
             "method": "PATCH",
             "header": [
@@ -21000,7 +21000,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr591",
+          "name": "setup-create-lb-cr587",
           "request": {
             "method": "POST",
             "header": [
@@ -21121,7 +21121,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya592",
+          "name": "setup-materialize-lb-rya588",
           "request": {
             "method": "GET",
             "header": [
@@ -21170,7 +21170,7 @@
           ]
         },
         {
-          "name": "del-protected-rya593",
+          "name": "del-protected-rya589",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21618,7 +21618,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr594",
+          "name": "setup-create-lb-cr590",
           "request": {
             "method": "POST",
             "header": [
@@ -21739,7 +21739,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya595",
+          "name": "setup-materialize-lb-rya591",
           "request": {
             "method": "GET",
             "header": [
@@ -22312,7 +22312,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr596",
+          "name": "setup-create-lb-cr592",
           "request": {
             "method": "POST",
             "header": [
@@ -22433,7 +22433,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya597",
+          "name": "setup-materialize-lb-rya593",
           "request": {
             "method": "GET",
             "header": [
@@ -22585,7 +22585,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya598",
+          "name": "setup-materialize-tg-rya594",
           "request": {
             "method": "GET",
             "header": [
@@ -23207,7 +23207,7 @@
           ]
         },
         {
-          "name": "get-1-rya599",
+          "name": "get-1-rya595",
           "request": {
             "method": "GET",
             "header": [
@@ -25073,7 +25073,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr600",
+          "name": "setup-create-lb-cr596",
           "request": {
             "method": "POST",
             "header": [
@@ -25194,7 +25194,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya601",
+          "name": "setup-materialize-lb-rya597",
           "request": {
             "method": "GET",
             "header": [
@@ -25243,7 +25243,7 @@
           ]
         },
         {
-          "name": "upd-same-rya602",
+          "name": "upd-same-rya598",
           "request": {
             "method": "PATCH",
             "header": [
@@ -25772,7 +25772,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr603",
+          "name": "setup-create-lb-cr599",
           "request": {
             "method": "POST",
             "header": [
@@ -25893,7 +25893,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya604",
+          "name": "setup-materialize-lb-rya600",
           "request": {
             "method": "GET",
             "header": [
@@ -26729,7 +26729,7 @@
           ]
         },
         {
-          "name": "get-rya605",
+          "name": "get-rya601",
           "request": {
             "method": "GET",
             "header": [
@@ -26978,7 +26978,7 @@
           ]
         },
         {
-          "name": "get-rya606",
+          "name": "get-rya602",
           "request": {
             "method": "GET",
             "header": [
@@ -27120,7 +27120,7 @@
       ]
     },
     {
-      "name": "NLB-CR-CRUD-REMOVED-FIELDS-IGNORED — Create carrying removed fields (crossZoneEnabled/securityGroupIds/networkId) → silently ignored by grpc-gateway; not echoed on Get (Verifies 8.1-32)",
+      "name": "NLB-CR-CRUD-REMOVED-FIELDS-IGNORED — Create carrying fields absent from the Create proto (networkId/anycastPoolId) → silently dropped by grpc-gateway; not echoed on Get (Verifies 8.1-32)",
       "description": "class:CRUD | class:CONF | priority:P2",
       "item": [
         {
@@ -27146,7 +27146,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}, \"name\": \"removed-{{runId}}\", \"crossZoneEnabled\": true, \"securityGroupIds\": [\"sgpx00000000000000000\"], \"networkId\": \"{{existingNetworkId}}\", \"anycastPoolId\": \"aap00000000000000000\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}, \"name\": \"removed-{{runId}}\", \"networkId\": \"{{existingNetworkId}}\", \"anycastPoolId\": \"aap00000000000000000\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -27227,7 +27227,7 @@
           ]
         },
         {
-          "name": "get-rya607",
+          "name": "get-rya603",
           "request": {
             "method": "GET",
             "header": [
@@ -27272,10 +27272,9 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('created despite removed fields', () =>   pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
-                  "pm.test('output does not echo crossZoneEnabled (field removed)', () =>   pm.expect(j).to.not.have.property('crossZoneEnabled'));",
-                  "pm.test('output does not echo securityGroupIds (field removed)', () =>   pm.expect(j).to.not.have.property('securityGroupIds'));",
-                  "pm.test('output does not echo networkId (derived, not tenant-facing)', () =>   pm.expect(j).to.not.have.property('networkId'));"
+                  "pm.test('created despite dropped fields', () =>   pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
+                  "pm.test('output does not echo networkId (absent from Create proto)', () =>   pm.expect(j).to.not.have.property('networkId'));",
+                  "pm.test('output does not echo anycastPoolId (absent from Create proto)', () =>   pm.expect(j).to.not.have.property('anycastPoolId'));"
                 ]
               }
             }
@@ -27564,7 +27563,7 @@
           ]
         },
         {
-          "name": "get-rya608",
+          "name": "get-rya604",
           "request": {
             "method": "GET",
             "header": [
@@ -27924,7 +27923,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr609",
+          "name": "setup-create-lb-cr605",
           "request": {
             "method": "POST",
             "header": [
@@ -28045,7 +28044,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya610",
+          "name": "setup-materialize-lb-rya606",
           "request": {
             "method": "GET",
             "header": [
@@ -28094,7 +28093,7 @@
           ]
         },
         {
-          "name": "disable-dp-rya611",
+          "name": "disable-dp-rya607",
           "request": {
             "method": "PATCH",
             "header": [
@@ -28506,7 +28505,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr612",
+          "name": "setup-create-lb-cr608",
           "request": {
             "method": "POST",
             "header": [
@@ -28627,7 +28626,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya613",
+          "name": "setup-materialize-lb-rya609",
           "request": {
             "method": "GET",
             "header": [
@@ -28779,7 +28778,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya614",
+          "name": "setup-materialize-tg-rya610",
           "request": {
             "method": "GET",
             "header": [
@@ -28828,7 +28827,7 @@
           ]
         },
         {
-          "name": "start-rya615",
+          "name": "start-rya611",
           "request": {
             "method": "POST",
             "header": [
@@ -28933,7 +28932,7 @@
           ]
         },
         {
-          "name": "gts-rya616",
+          "name": "gts-rya612",
           "request": {
             "method": "GET",
             "header": [
@@ -29283,7 +29282,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr617",
+          "name": "setup-create-lb-cr613",
           "request": {
             "method": "POST",
             "header": [
@@ -29404,7 +29403,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya618",
+          "name": "setup-materialize-lb-rya614",
           "request": {
             "method": "GET",
             "header": [
@@ -29761,7 +29760,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr619",
+          "name": "setup-create-lb-cr615",
           "request": {
             "method": "POST",
             "header": [
@@ -29882,7 +29881,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya620",
+          "name": "setup-materialize-lb-rya616",
           "request": {
             "method": "GET",
             "header": [
@@ -30563,7 +30562,7 @@
           ]
         },
         {
-          "name": "cr-drain-all-cr621",
+          "name": "cr-drain-all-cr617",
           "request": {
             "method": "POST",
             "header": [
@@ -31040,7 +31039,7 @@
           ]
         },
         {
-          "name": "cr-mismatch-cr622",
+          "name": "cr-mismatch-cr618",
           "request": {
             "method": "POST",
             "header": [
@@ -31300,7 +31299,7 @@
           ]
         },
         {
-          "name": "cr-kind-mismatch-cr623",
+          "name": "cr-kind-mismatch-cr619",
           "request": {
             "method": "POST",
             "header": [
@@ -31686,7 +31685,7 @@
           ]
         },
         {
-          "name": "cr-internal-cr624",
+          "name": "cr-internal-cr620",
           "request": {
             "method": "POST",
             "header": [
@@ -31806,7 +31805,7 @@
           ]
         },
         {
-          "name": "get-reg-rya625",
+          "name": "get-reg-rya621",
           "request": {
             "method": "GET",
             "header": [
@@ -32164,7 +32163,7 @@
           ]
         },
         {
-          "name": "cr-internal-cr626",
+          "name": "cr-internal-cr622",
           "request": {
             "method": "POST",
             "header": [
@@ -32284,7 +32283,7 @@
           ]
         },
         {
-          "name": "get-drain-rya627",
+          "name": "get-drain-rya623",
           "request": {
             "method": "GET",
             "header": [
@@ -32735,7 +32734,7 @@
           ]
         },
         {
-          "name": "cr-link-cr628",
+          "name": "cr-link-cr624",
           "request": {
             "method": "POST",
             "header": [
@@ -32855,7 +32854,7 @@
           ]
         },
         {
-          "name": "get-link-rya629",
+          "name": "get-link-rya625",
           "request": {
             "method": "GET",
             "header": [
@@ -33278,7 +33277,7 @@
           ]
         },
         {
-          "name": "cr-ext-link-cr630",
+          "name": "cr-ext-link-cr626",
           "request": {
             "method": "POST",
             "header": [
@@ -33398,7 +33397,7 @@
           ]
         },
         {
-          "name": "get-ext-link-rya631",
+          "name": "get-ext-link-rya627",
           "request": {
             "method": "GET",
             "header": [
@@ -33750,7 +33749,7 @@
           ]
         },
         {
-          "name": "cr-dualstack-cr632",
+          "name": "cr-dualstack-cr628",
           "request": {
             "method": "POST",
             "header": [
@@ -33871,7 +33870,7 @@
           ]
         },
         {
-          "name": "get-dualstack-rya633",
+          "name": "get-dualstack-rya629",
           "request": {
             "method": "GET",
             "header": [
@@ -34223,7 +34222,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr634",
+          "name": "setup-create-lb-cr630",
           "request": {
             "method": "POST",
             "header": [
@@ -34344,7 +34343,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya635",
+          "name": "setup-materialize-lb-rya631",
           "request": {
             "method": "GET",
             "header": [
@@ -34650,7 +34649,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr636",
+          "name": "setup-create-lb-cr632",
           "request": {
             "method": "POST",
             "header": [
@@ -34771,7 +34770,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya637",
+          "name": "setup-materialize-lb-rya633",
           "request": {
             "method": "GET",
             "header": [
@@ -35125,7 +35124,7 @@
           ]
         },
         {
-          "name": "cr-internal-cr638",
+          "name": "cr-internal-cr634",
           "request": {
             "method": "POST",
             "header": [
@@ -35245,7 +35244,7 @@
           ]
         },
         {
-          "name": "upd-drain-rya639",
+          "name": "upd-drain-rya635",
           "request": {
             "method": "PATCH",
             "header": [
@@ -35789,7 +35788,7 @@
           ]
         },
         {
-          "name": "setup-create-lb-cr640",
+          "name": "setup-create-lb-cr636",
           "request": {
             "method": "POST",
             "header": [
@@ -35910,7 +35909,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya641",
+          "name": "setup-materialize-lb-rya637",
           "request": {
             "method": "GET",
             "header": [
@@ -35959,7 +35958,7 @@
           ]
         },
         {
-          "name": "get-lean-rya642",
+          "name": "get-lean-rya638",
           "request": {
             "method": "GET",
             "header": [
@@ -36220,7 +36219,7 @@
           ]
         },
         {
-          "name": "cr-linked-cr643",
+          "name": "cr-linked-cr639",
           "request": {
             "method": "POST",
             "header": [
@@ -36336,7 +36335,7 @@
           ]
         },
         {
-          "name": "del-linked-lb-rya644",
+          "name": "del-linked-lb-rya640",
           "request": {
             "method": "DELETE",
             "header": [
