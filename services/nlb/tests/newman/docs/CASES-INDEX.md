@@ -65,6 +65,7 @@ existing pattern, no separate catalogue entry needed").
 - `*-LST-BVA-PAGESIZE-ZERO` — BVA,LSG/P2 — pageSize=0 → default applied
 - `*-LST-BVA-PAGESIZE-OVER-MAX` — BVA,VAL/P2 — pageSize=10000 → InvalidArgument
 - `*-LST-PAGE-TOKEN-GARBAGE` — VAL,LSG/P1 — garbage page_token → InvalidArgument
+- `*-LST-LSG-PROJECT-SCOPED-OK` — LSG,CRUD/P1 — List project-scoped (no loadBalancerId filter) → 200 + array (KAC-229 project-scope parity)
 - `*-LST-PAGE-ROUNDTRIP` — CRUD,LSG/P2 — pagination round-trip with next_page_token
 - `*-LST-FILTER-NAME-OK` — LSG/P2 — filter by exact name returns row
 - `*-LST-FILTER-MATCH` — LSG,IDEM/P2 — create + filter sees own resource
