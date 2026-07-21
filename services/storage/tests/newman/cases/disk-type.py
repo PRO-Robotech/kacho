@@ -82,33 +82,47 @@ CASES.append(Case(
 # CS1-S2-04 — admin CRUD Internal-only: absent on external endpoint (INV-7a)
 # ---------------------------------------------------------------------------
 
+# INV-7a robust-form (парити с compute DT-CR-NEG-EMPTY-ID): InternalDiskTypeService
+# admin CRUD забриджен на публичный collection-путь /storage/v1/diskTypes (mux.go —
+# как compute /compute/v1/diskTypes), isInternalPath его НЕ ловит (не bare-gRPC
+# Internal*Service-путь) → на external он ДОСТИЖИМ и гейтится authz-каталогом
+# (system_admin), НЕ route-absent-404. Прежняя форма слала VALID body/реальный target
+# (block-balanced) → admin write УСПЕВАЛ (200) и МУТИРОВАЛ seed (del удалял block-balanced!)
+# — деструктивно и flaky. Инвариант, который реально проверяем: admin write НЕ ДОЛЖЕН
+# УСПЕТЬ (200) для external-tenant. Достигаем non-destructive input'ом (empty-id create /
+# несуществующий target для upd/del) → любой из 400(validation)/403(authz)/404(not-found|
+# route-absent), НИКОГДА 200. Compute уже поймал это (200→409 поллюция) и перешёл на empty-id.
 CASES.append(Case(
     id="DT-CR-NEG-EXTERNAL-ABSENT",
-    title="POST /storage/v1/diskTypes на external → route absent (admin Create Internal-only :9091, ban #6) → 404/405/501",
+    title="POST /storage/v1/diskTypes empty-id на external → rejected (admin Create Internal-only, ban #6): 400/403/404 — НИКОГДА 200-mutation",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
-    # verifies CS1-S2-04 (INV-7a: admin CRUD not routed on external mux)
-    steps=[Step(name="cr-external", method="POST", path=DT,
-                body={"id": "block-newman-fake", "name": "block-newman-fake", "performanceTier": "balanced"},
-                test_script=["pm.test('admin Create not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"])],
+    # verifies CS1-S2-04 (INV-7a). Non-destructive: empty id → нет insert даже если
+    #   route забриджен и authz прошёл (validation 400 до вставки).
+    steps=[Step(name="cr-external", method="POST", path=DT, body={"id": ""},
+                test_script=[
+                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
+                    "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"])],
 ))
 
 CASES.append(Case(
     id="DT-UPD-NEG-EXTERNAL-ABSENT",
-    title="PATCH /storage/v1/diskTypes/block-balanced на external → route absent (admin Update Internal-only) → 404/405/501",
+    title="PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 400/403/404 — НИКОГДА 200/мутация seed",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
-    # verifies CS1-S2-04 (INV-7a)
-    steps=[Step(name="upd-external", method="PATCH", path=f"{DT}/block-balanced",
+    # verifies CS1-S2-04 (INV-7a). Non-destructive: несуществующий target (не block-balanced)
+    #   → NOT_FOUND/403, не 200, seed не мутируется.
+    steps=[Step(name="upd-external", method="PATCH", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
                 body={"name": "block-hacked"},
-                test_script=["pm.test('admin Update not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"])],
+                test_script=["pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"])],
 ))
 
 CASES.append(Case(
     id="DT-DEL-NEG-EXTERNAL-ABSENT",
-    title="DELETE /storage/v1/diskTypes/block-balanced на external → route absent (admin Delete Internal-only) → 404/405/501",
+    title="DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 400/403/404 — НИКОГДА 200/удаление seed",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
-    # verifies CS1-S2-04 (INV-7a)
-    steps=[Step(name="del-external", method="DELETE", path=f"{DT}/block-balanced",
-                test_script=["pm.test('admin Delete not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"])],
+    # verifies CS1-S2-04 (INV-7a). Non-destructive: несуществующий target (прежняя форма
+    #   DELETE block-balanced удаляла реальный seed-тип → 200 в artifact).
+    steps=[Step(name="del-external", method="DELETE", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
+                test_script=["pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"])],
 ))
 
 # ---------------------------------------------------------------------------

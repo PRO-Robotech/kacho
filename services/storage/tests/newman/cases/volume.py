@@ -37,8 +37,12 @@ def _vol_body(suffix, **over):
 
 def _assert_msg(substr):
     """Assert точного (case-sensitive) вхождения нормативного §0.2-текста в message."""
-    return [f"pm.test('message includes \"{substr}\"', "
-            f"() => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('{substr}'));"]
+    # substr вставляется в single-quoted JS-строку — экранируем backslash и '
+    # (контракт-тексты вида "invalid volume id 'x'" несут одинарные кавычки, иначе
+    # ломают pm.test → "missing ) after argument list").
+    _esc = substr.replace("\\", "\\\\").replace("'", "\\'")
+    return [f"pm.test('message includes \"{_esc}\"', "
+            f"() => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('{_esc}'));"]
 
 
 # ---------------------------------------------------------------------------
@@ -173,12 +177,12 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     # verifies CS1-S1-04
     steps=[
-        Step(name="cr", method="POST", path=VOL, body=_vol_body("grow", size_bytes=_DEF_SIZE),
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("grow", sizeBytes=_DEF_SIZE),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-grow", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
-             body={"updateMask": "size_bytes", "sizeBytes": _GROW_SIZE},
+             body={"updateMask": "sizeBytes", "sizeBytes": _GROW_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
@@ -195,12 +199,12 @@ CASES.append(Case(
     classes=["NEG", "STATE", "VAL", "CONF"], priority="P1",
     # verifies CS1-S1-04
     steps=[
-        Step(name="cr", method="POST", path=VOL, body=_vol_body("shrink", size_bytes=_GROW_SIZE),
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("shrink", sizeBytes=_GROW_SIZE),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
         poll_operation_until_done(),
         Step(name="patch-shrink", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
-             body={"updateMask": "size_bytes", "sizeBytes": _SHRINK_SIZE},
+             body={"updateMask": "sizeBytes", "sizeBytes": _SHRINK_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         assert_op_error(3, "INVALID_ARGUMENT", msg_substr="Volume size can only be increased"),
@@ -215,12 +219,12 @@ CASES.append(Case(
     classes=["NEG", "STATE", "BVA", "CONF"], priority="P1",
     # verifies CS1-S1-04
     steps=[
-        Step(name="cr", method="POST", path=VOL, body=_vol_body("equal", size_bytes=_DEF_SIZE),
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("equal", sizeBytes=_DEF_SIZE),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
         poll_operation_until_done(),
         Step(name="patch-equal", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
-             body={"updateMask": "size_bytes", "sizeBytes": _DEF_SIZE},
+             body={"updateMask": "sizeBytes", "sizeBytes": _DEF_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         assert_op_error(3, "INVALID_ARGUMENT", msg_substr="Volume size can only be increased"),
@@ -265,7 +269,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies CS1-S1-05
     steps=[Step(name="patch-imm-zone", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
-                body={"updateMask": "zone_id", "zoneId": "{{existingZoneAltId}}"},
+                body={"updateMask": "zoneId", "zoneId": "{{existingZoneAltId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("zone_id is immutable after Volume.Create")])],
 ))
@@ -276,7 +280,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies CS1-S1-05
     steps=[Step(name="patch-imm-dt", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
-                body={"updateMask": "disk_type_id", "diskTypeId": "block-fast"},
+                body={"updateMask": "diskTypeId", "diskTypeId": "block-fast"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("disk_type_id is immutable after Volume.Create")])],
 ))
@@ -619,7 +623,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
     # verifies CS1-S1-05
     steps=[Step(name="patch-imm-bs", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
-                body={"updateMask": "block_size"},
+                body={"updateMask": "blockSize"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("block_size is immutable after Volume.Create")])],
 ))
@@ -630,7 +634,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
     # verifies CS1-S1-05
     steps=[Step(name="patch-imm-srcsnap", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
-                body={"updateMask": "source_snapshot_id"},
+                body={"updateMask": "sourceSnapshotId"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("source_snapshot_id is immutable after Volume.Create")])],
 ))

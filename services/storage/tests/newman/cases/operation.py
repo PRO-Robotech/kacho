@@ -56,10 +56,11 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="OP-GET-NEG-UNKNOWN-PREFIX",
-    title="Get opId без known 3-char prefix → 400 INVALID_ARGUMENT 'prefix' (OpsProxy отвергает неизвестный префикс)",
+    title="Get opId без known domain-prefix → 400 INVALID_ARGUMENT 'invalid operation id \"<X>\"' (OpsProxy отвергает неизвестный/malformed префикс)",
     classes=["NEG"], priority="P1",
-    # verifies §0.1 (OpsProxy prefix-routing guard — неизвестный префикс отвергается)
+    # verifies §0.1 (OpsProxy prefix-routing guard — неизвестный префикс отвергается;
+    #   контракт-текст opsproxy/proxy.go: `invalid operation id %q`, не содержит слова "prefix")
     steps=[Step(name="get-garbage-prefix", method="GET", path="/operations/{{garbageId}}",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('mentions prefix', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('prefix'));"])],
+                             "pm.test('message == invalid operation id', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"])],
 ))

@@ -139,7 +139,7 @@ INTERNAL / EXTERNAL happy source-resolution (inline vpc fixtures, tolerant):
 - `*-CR-CRUD-INTERNAL-LINK` — CRUD/P1 — INTERNAL LB linking a pre-created internal Address (8.1-04)
 - `*-CR-CRUD-EXTERNAL-LINK` — CRUD/P1 — EXTERNAL LB linking a pre-created public Address (BYO) (8.1-07)
 - `*-CR-CRUD-DUALSTACK-MIXED` — CRUD/P2 — INTERNAL REGIONAL dualstack: v4 subnet-auto + v6 address-link (8.1-05)
-- `*-CR-CRUD-REMOVED-FIELDS-IGNORED` — CRUD,CONF/P2 — removed fields ignored, not echoed on Get (8.1-32)
+- `*-CR-CRUD-REMOVED-FIELDS-IGNORED` — CRUD,CONF/P2 — fields absent from Create proto (networkId/anycastPoolId) dropped by grpc-gateway, not echoed on Get (8.1-32)
 
 Immutability + drain toggle + lean projection + delete-release:
 - `*-UPD-STATE-IMMUTABLE-PLACEMENT` — STATE,VAL/P0 — placementType immutable after Create (8.1-25)
@@ -457,14 +457,14 @@ chain on the seeded umbrella stack).
 ### UC-1 — EXTERNAL NLB from nothing to traffic-ready (6.0-34)
 - `XRES-E2E-EXTERNAL-FULL-FLOW` — CRUD,STATE/P0 — LB→listener(auto v4 VIP)→TG→addTargets→attach→default_tg→GetTargetStates; LB INACTIVE→ACTIVE on attach
 - `XRES-E2E-EXTERNAL-IPV6-VIP` — CRUD/P1 — EXTERNAL LB with auto IPv6 VIP (per-family VIP on LoadBalancer via v6Source; v6AddressId→bound vpc Address; v6-pool tolerant)
-- `XRES-E2E-DEFAULT-TG-UNATTACHED-FP` — NEG,STATE/P1 — listener default_target_group_id → un-attached TG → FAILED_PRECONDITION (composite FK)
+- `XRES-E2E-DEFAULT-TG-ABSENT-REJECTED` — NEG,STATE/P1 — listener default_target_group_id → well-formed ABSENT TG → sync reject (existence precheck), default stays empty (NLB-1c: attach-first composite-FK removed)
 - `XRES-E2E-V4-LISTENER-V6-ADDRESS-INVALID` — NEG,VAL/P1 — IPV4 listener + BYO IPv6 Address → InvalidArgument (family mismatch)
 
 ### UC-2 — INTERNAL NLB (private VIP from a subnet source) (6.0-35 → 8.1)
 - `XRES-E2E-INTERNAL-FULL-FLOW` — CRUD,STATE/P0 — INTERNAL LB(inline zonal subnet source, placementType=ZONAL, CLIENT_IP_ONLY)→listener→TG→attach→GetTargetStates
 - `XRES-E2E-INTERNAL-NO-NETWORK-INVALID` — NEG,VAL/P0 — INTERNAL LB without placementType/VIP source → InvalidArgument (8.1 replaces the network_id requirement)
 - `XRES-E2E-EXTERNAL-WITH-NETWORK-INVALID` — CRUD,CONF/P1 — EXTERNAL carrying the removed networkId + valid public source → created, field ignored (8.1-32)
-- `XRES-E2E-INTERNAL-SG-FOREIGN-REJECTED` — CRUD,CONF/P2 — LB carrying the removed securityGroupIds + valid public source → created, field ignored (8.1-32)
+- `XRES-E2E-INTERNAL-SG-FOREIGN-REJECTED` — NEG,VAL,CONF/P2 — EXTERNAL LB carrying securityGroupIds → sync 400 'security_group_ids is only valid for INTERNAL load balancer' (NLB-1b revived SG as INTERNAL-only firewall)
 
 ### UC-5 — bottom-up teardown with correct address lifecycle (6.0-36)
 - `XRES-E2E-TEARDOWN-BOTTOM-UP` — CRUD,STATE/P0 — clear default → remove target → detach → delete listener (FreeIP) → delete LB → delete TG; final 404s
