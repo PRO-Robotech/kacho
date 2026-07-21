@@ -84,6 +84,8 @@ api-gateway:
       iam: true
       nlb: true
       geo: true        # gateway→geo (+ geoInternal) mTLS; backends.geo uses chart default kacho-geo.* (geo cutover, kacho-workspace#82)
+      registry: true   # gateway→registry backend mTLS (registry.mtls.enable=true → server RequireAndVerifyClientCert)
+      storage: true    # gateway→storage backend mTLS (storage.mtls.enable=true); needs the storage edge added to the gateway chart (below)
   # KAC-NLB: pre-wire kacho-nlb public + internal endpoints so that when the
   # api-gateway proxy un-freezes the loadbalancer domain (see
   # kacho-api-gateway/internal/allowlist/list.go — `loadbalancer заморожен`),
@@ -102,6 +104,11 @@ api-gateway:
     iamInternal: kacho-iam-internal.kacho.svc.cluster.local:9091
     nlb: kacho-nlb.kacho.svc.cluster.local:9090
     nlbInternal: kacho-nlb-internal.kacho.svc.cluster.local:9091
+    # registry Service is `registry` / `registry-internal` (registry chart .Values.name),
+    # NOT `kacho-registry` — the gateway RegistryAddr default dials `kacho-registry` and
+    # would NXDOMAIN 503 every registry control-plane REST call. Override to the real name.
+    registry: registry.kacho.svc.cluster.local:9090
+    registryInternal: registry-internal.kacho.svc.cluster.local:9091
   # KAC-127 (#40): dev-mode auth-interceptor HS256 secret. Without it every
   # Bearer JWT is ignored and all principals collapse to system:bootstrap —
   # anonymous / bootstrap / per-user tokens become indistinguishable, which
@@ -131,6 +138,14 @@ api-gateway:
   authz:
     enabled: true
     failOpen: false
+    # checkTimeoutMs — per-Check hard deadline (KACHO_API_GATEWAY_AUTHZ_CHECK_TIMEOUT_MS).
+    # Default 200ms is too tight for the kind dev stand: the FIRST gateway→iam-internal
+    # Check pays a cold mTLS handshake (>200ms) → both attempts DeadlineExceeded →
+    # "authz service unavailable" (code 14) on the very first authorised mutation
+    # (seed Project.Create FATAL, and transient flakiness on cold suites). Once the
+    # gRPC connection is warm Checks are sub-ms, so this only widens the cold-start
+    # window. Prod keeps the 200ms default (values.prod.yaml unaffected).
+    checkTimeoutMs: 2000
   # KAC-127 Phase 2 — Hydra JWKS for RS256 access-token verification.
   #
   # After register+login the SPA carries a Hydra-issued RS256 access token. The
@@ -173,10 +188,14 @@ compute:
   # Attach/Detach-VOLUME кейсы (INST-AD/INST-DD) требуют ЖИВОГО storage — зелёные только
   # в umbrella-e2e со storage.enabled=true, не в этом compute-only профиле.
   # storageInternalAddr — first-class compute-chart key (deployment renders
-  # KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR from it). "" present → overrides the
-  # non-empty config.go default → NoopStorageClient (was a compute.env override before
-  # the storage edge became first-class in the chart).
-  storageInternalAddr: ""
+  # KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR from it). storage is now LIVE in the
+  # dev umbrella (storage.enabled=true below), so point compute at it instead of ""
+  # (NoopStorageClient). Enables AttachDisk/DetachDisk/ListAttachments + the
+  # Delete-instance volume-release step. The 30s-hang risk the "" guarded only
+  # applied when storage was DOWN — with storage Ready the InternalVolumeService
+  # resolves fast. serverName.storage (compute→storage mTLS) chart default
+  # kacho-storage.kacho.svc.cluster.local ∈ storage server-cert SAN.
+  storageInternalAddr: kacho-storage.kacho.svc.cluster.local:9091
   # Delete-instance сага (internal/service/instance.go) НЕ становится fast-success от
   # одного лишь storage-Noop: перед step-3 (storage volume-release) идёт step-2 —
   # NIC-release через compute→vpc InternalNetworkInterfaceService.ListByInstance на
@@ -216,7 +235,7 @@ compute:
   # production, see values.prod.yaml).
   auth:
     mode: dev
-  # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc, compute→geo).
+  # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc, compute→geo, compute→storage).
   mtls:
     enable: true
     edges:
@@ -225,6 +244,8 @@ compute:
       iamAuthz: true
       vpc: true
       geo: true        # compute→geo zone_id validation (geo cutover, kacho-workspace#82)
+      storage: true    # compute→storage InternalVolumeService (attach/detach) over mTLS;
+                       # serverName.storage chart default kacho-storage.kacho.svc.cluster.local ∈ storage SAN
   # KAC-178 follow-up: compute authzIam.grpcAddr дефолт `kacho-iam:9091` в
   # kacho-compute/deploy/values.yaml неверный — Service `kacho-iam`
   # экспонирует только port 9090 (public AuthorizeService);
@@ -248,6 +269,66 @@ compute:
       modelIdSecretName: openfga-model-id
       modelIdSecretKey: current
       timeoutMs: 2000
+
+# ─── kacho-storage — Storage control-plane (Volume/Snapshot/Image/DiskType) ───
+# Enabled for the dev/newman stand. Base values.yaml keeps it OFF and pins the
+# image to :main-latest (a documented placeholder that doesn't exist) → override
+# back to the local kind image (Makefile SERVICES builds kacho-storage:dev).
+# storage is FAIL-CLOSED on its peer edges (serve.go dialPeer + geo_client): an
+# empty geo/iam addr → Volume.Create returns Unavailable, so the geo/iam edges
+# MUST be wired. iam+geo run server-mTLS (RequireAndVerifyClientCert) → storage
+# MUST run mtls.enable=true (client-mTLS to them is coupled to server-mTLS under
+# one flag). Added to MTLS_SUBCHARTS in deploy/Makefile (phase-1 bootstrap gate).
+storage:
+  enabled: true
+  image:
+    repository: kacho-storage   # local kind image (kacho-storage:dev)
+    tag: dev
+    pullPolicy: IfNotPresent
+  config:
+    # dev relaxes the prod-guard that would force TLS-DB; service→service mTLS stays ON.
+    authMode: dev
+    geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090        # storage→geo ZoneService.Get (zone_id), :9090
+    iamGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090        # storage→iam ProjectService.Get, :9090
+    authzIamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091  # per-RPC Check + RegisterResource, :9091
+    # Materialize owner-tuples so gateway scope_extractors {storage_volume,volume_id}/
+    # {storage_snapshot,snapshot_id} resolve target→project (own-resource authz).
+    # Requires authzIamGrpcAddr + mtls.edges.iam + iam seed 0057_storage_sa_least_priv.
+    fgaRegisterDrainerEnabled: true
+  db:
+    # bitnami pg-storage Service (release alias) + its auto-provisioned Secret.
+    host: kacho-umbrella-pg-storage
+    sslMode: disable            # dev pg serves no TLS (chart default 'require' would refuse)
+    passwordSecretName: kacho-umbrella-pg-storage
+    passwordSecretKey: password
+  # server-mTLS both listeners + client-mTLS storage→{geo,iam}. serverName.geo/iam
+  # chart defaults (kacho-geo… / kacho-iam.kacho.svc.cluster.local) are in the peer SANs.
+  mtls:
+    enable: true
+    edges:
+      geo: true
+      iam: true
+
+# backing Postgres for kacho-storage (schema kacho_storage). Service
+# kacho-umbrella-pg-storage; auto-Secret kacho-umbrella-pg-storage key `password`.
+pg-storage:
+  enabled: true
+  auth:
+    username: storage
+    password: changeme-dev-storage   # NON-SECRET dev placeholder (see file header)
+    database: kacho_storage
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 1500m, memory: 1Gi }
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
 
 # ─── kacho-geo (Geography Region/Zone leaf-service) ─────────────────────────
 # geo is now an external OSS single-repo, consumed as a PUBLISHED dependency
@@ -1361,7 +1442,48 @@ kacho-nlb:
 # dev нет вовсе). Чтобы включить registry в dev: собрать образ локально (добавить
 # `registry` в SERVICES Makefile → kacho-registry:dev), переопределить image здесь,
 # добавить pg-registry с bitnamilegacy-override и завести S3 через minioDev.
+# ─── kacho-registry — OCI registry control-plane + zot blob backend ───────────
+# Enabled for the dev/newman stand. The registry APP image is built locally
+# (Makefile SERVICES → kacho-registry:dev); only the zot backend is pulled from
+# ghcr.io (dev-up pre-pulls + kind-loads it to avoid an egress race in helm --wait).
+# db.* and authz.* chart defaults are already dev-correct (pg-registry Service +
+# kacho-iam-internal:9091 / kacho-iam:9090 / kacho-geo:9090). iam/geo run
+# server-mTLS → registry MUST run mtls.enable=true (client edges to iam/geo).
+# Added to MTLS_SUBCHARTS in deploy/Makefile. Docker DATA-plane (push/pull) is
+# out-of-scope on kind (dataplaneLB disabled) — the registry newman suite is
+# control-plane REST through the gateway, which does not need the VIP.
 registry:
-  enabled: false
+  enabled: true
+  image:
+    repository: kacho-registry   # local kind image
+    tag: dev
+  imagePullPolicy: IfNotPresent
+  authMode: dev                  # relaxes issuer-pin / dataplane-TLS / https-JWKS prod guards
+  mtls:
+    enable: true
+    edges:
+      iamAuthz: true      # registry→iam Check + fga-proxy (:9091)
+      iamProject: true    # registry→iam ProjectService.Get (:9090)
+      geo: true           # registry→geo RegionService.Get (:9090)
+
+# backing Postgres for kacho-registry (schema kacho_registry). Service
+# kacho-umbrella-pg-registry; the registry chart reads its Secret via
+# db.existingSecret (chart default kacho-umbrella-pg-registry, key password).
 pg-registry:
-  enabled: false
+  enabled: true
+  auth:
+    username: registry
+    password: changeme-dev-registry   # NON-SECRET dev placeholder
+    database: kacho_registry
+  primary:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 1000m, memory: 1Gi }
+  image:
+    repository: bitnamilegacy/postgresql
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell

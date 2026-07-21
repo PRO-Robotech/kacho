@@ -15,7 +15,7 @@ CLUSTER_NAME := kacho
 # Dockerfile is `COPY . .` + `go mod download` (versioned GitHub deps), so the
 # build context is the service's OWN dir (kacho-$svc), NOT the parent — a
 # workspace-root context would `COPY . .` a rootless tree → `go: no modules`.
-SERVICES := iam vpc compute api-gateway nlb
+SERVICES := iam vpc compute api-gateway nlb geo storage registry
 build-services:
 	@for svc in $(SERVICES); do \
 	  echo "=== build kacho-$$svc:dev ==="; \
@@ -70,8 +70,15 @@ guard-kind-context:
 # Прежде здесь не хватало kacho-geo (добавлен позже, а --set-список не обновили) →
 # bootstrap с нуля был сломан. Не всплывало годами: kind-кластер переиспользовался, CRD
 # в нём уже стояли, и фаза 1 «проходила». Проверяется целью `check-mtls-off-complete`.
-MTLS_SUBCHARTS := vpc compute api-gateway kacho-nlb kacho-iam kacho-geo
-MTLS_OFF := --set mtls.enabled=false $(foreach s,$(MTLS_SUBCHARTS),--set $(s).mtls.enable=false)
+MTLS_SUBCHARTS := vpc compute api-gateway kacho-nlb kacho-iam kacho-geo storage registry
+# registry is fail-closed BY DESIGN: its control-plane refuses to start without
+# server-mTLS on both listeners UNLESS KACHO_REGISTRY_AUTHZ_BREAKGLASS=true (there is
+# no auth.mode=dev relaxation like compute/storage — control-plane w/o authz+mTLS is
+# forbidden). Phase-1 forces mtls off (Certificate-before-CRD guard), so registry
+# would CrashLoop ("mTLS required on both listeners"). Run it breakglass ONLY in
+# phase-1; phase-2 (no override) restores breakglass=false + mtls on → real authz.
+MTLS_OFF := --set mtls.enabled=false $(foreach s,$(MTLS_SUBCHARTS),--set $(s).mtls.enable=false) \
+            --set registry.authz.breakglass=true
 
 # check-mtls-off-complete — CI-гейт: MTLS_SUBCHARTS не отстаёт от values.dev.yaml.
 # Новый сервис с mtls.enable=true, забытый в MTLS_OFF, снова сломает bootstrap с нуля —

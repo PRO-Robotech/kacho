@@ -16,8 +16,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -179,12 +177,13 @@ func runServe(cfg config.Config) error {
 		grpc.ChainStreamInterceptor(streamChain(logger, forwarders, authzStream)...),
 	)
 
-	// ── регистрация сервисов по листенерам + health на обоих ───────────────
+	// ── регистрация сервисов по листенерам ─────────────────────────────────
+	// health (grpc.health.v1.Health, SERVING) + reflection уже регистрируются
+	// внутри grpcsrv.NewServer для КАЖДОГО сервера (pkg/grpcsrv/server.go) — как у
+	// vpc/compute/nlb/registry. Повторная RegisterHealthServer здесь роняла процесс
+	// на старте: "duplicate service registration for grpc.health.v1.Health".
 	opHandler := handler.NewOperationHandler(opsRepo)
 	registerServices(grpcSrv, internalSrv, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
-	healthSrv := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, healthSrv)
-	healthpb.RegisterHealthServer(internalSrv, healthSrv)
 
 	// ── listeners ──────────────────────────────────────────────────────────
 	listener, err := net.Listen("tcp", ":"+cfg.GrpcPort)
