@@ -865,6 +865,26 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 		resourceType = "project"
 	}
 
+	// redesign-2026 F4 (Role definition_tier MIGRATE): the `definition_tier`
+	// anchor is the CANONICAL authz scope and SUPERSEDES the legacy
+	// account_id/project_id catalog extraction when present + resolvable (proto
+	// precedence semantics). It resolves BOTH the FGA object type (account|project
+	// from the dotted tier_type) and the id (tier_id) — a definition_tier-only
+	// Create would otherwise leave account_id empty → `account:*` wildcard →
+	// `no path: unscoped resource` 403. Absent/unresolvable (iam.cluster / unknown)
+	// → keep the legacy scope; the iam handler surfaces the canonical
+	// INVALID_ARGUMENT. Code-driven (like the nested ResourceRef `.id` handling),
+	// so the byte-identical permission-catalog is untouched.
+	if dr.ProtoReq != nil {
+		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScope(dr.ProtoReq); ok {
+			resourceType, resourceID = ot, ResourceID(id)
+		}
+	} else if dr.HTTPReq != nil {
+		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScopeHTTP(dr.HTTPReq); ok {
+			resourceType, resourceID = ot, ResourceID(id)
+		}
+	}
+
 	// cluster — это singleton (`cluster_kacho_root`,
 	// см. kacho-iam/internal/domain/cluster.go::ClusterSingletonID).
 	// Catalog для reference-data (compute.Region/Zone, etc.) задает

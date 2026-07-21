@@ -4,8 +4,10 @@
 package middleware_test
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -181,4 +183,65 @@ func TestResourceExtractor_FromProto_NonProto_Wildcard(t *testing.T) {
 	id, ok := e.ExtractFromProto(struct{ NetworkID string }{NetworkID: "enp_x"}, entry)
 	require.True(t, ok)
 	assert.True(t, id.IsWildcard())
+}
+
+// --- redesign-2026 F4: Role definition_tier scope resolution (MIGRATE) ---
+
+func TestResourceExtractor_DefinitionTierScope_Account(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	req := &iamv1.CreateRoleRequest{
+		Name:           "reader",
+		DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.account", TierId: "acc_alpha"},
+	}
+	ot, id, ok := e.ResolveDefinitionTierScope(req)
+	require.True(t, ok)
+	assert.Equal(t, "account", ot)
+	assert.Equal(t, "acc_alpha", id)
+}
+
+func TestResourceExtractor_DefinitionTierScope_Project(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	req := &iamv1.CreateRoleRequest{
+		Name:           "reader",
+		DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.project", TierId: "prj_beta"},
+	}
+	ot, id, ok := e.ResolveDefinitionTierScope(req)
+	require.True(t, ok)
+	assert.Equal(t, "project", ot)
+	assert.Equal(t, "prj_beta", id)
+}
+
+// iam.cluster (system roles are seeded, never API-created) and unknown types are
+// NOT resolved — the caller keeps the legacy scope and the iam handler surfaces
+// the canonical INVALID_ARGUMENT.
+func TestResourceExtractor_DefinitionTierScope_ClusterAndUnknown_NotResolved(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	for _, tt := range []string{"iam.cluster", "iam.bogus", ""} {
+		req := &iamv1.CreateRoleRequest{DefinitionTier: &iamv1.DefinitionTier{TierType: tt, TierId: "x"}}
+		_, _, ok := e.ResolveDefinitionTierScope(req)
+		assert.Falsef(t, ok, "tierType %q must not resolve", tt)
+	}
+}
+
+// A legacy account_id-only request (no definition_tier) → not resolved, caller
+// falls through to the catalog's static account_id extraction.
+func TestResourceExtractor_DefinitionTierScope_LegacyNoTier_NotResolved(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	req := &iamv1.CreateRoleRequest{Name: "reader", AccountId: "acc_alpha"}
+	_, _, ok := e.ResolveDefinitionTierScope(req)
+	assert.False(t, ok)
+}
+
+func TestResourceExtractor_DefinitionTierScope_HTTP_JSONBody(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	body := `{"name":"reader","definitionTier":{"tierType":"iam.account","tierId":"acc_gamma"},"rules":[]}`
+	r := httptest.NewRequest(http.MethodPost, "/iam/v1/roles", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	ot, id, ok := e.ResolveDefinitionTierScopeHTTP(r)
+	require.True(t, ok)
+	assert.Equal(t, "account", ot)
+	assert.Equal(t, "acc_gamma", id)
+	// body restored for the downstream handler
+	rest, _ := io.ReadAll(r.Body)
+	assert.Equal(t, body, string(rest))
 }

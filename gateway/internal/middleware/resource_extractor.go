@@ -144,6 +144,145 @@ func (e *ResourceExtractor) ExtractFromHTTP(r *http.Request, fqn string, entry C
 	return ResourceID("*"), true
 }
 
+// definitionTierField is the redesign-2026 F4 scope-anchor message field
+// (`DefinitionTier{tier_type, tier_id}`) carried by CreateRoleRequest. When
+// present + resolvable it is the CANONICAL authz scope, superseding the legacy
+// account_id/project_id catalog extraction (proto precedence: "when
+// definition_tier is set it takes precedence").
+const definitionTierField = "definition_tier"
+
+// definitionTierObjectType maps a dotted definition-tier type to its FGA object
+// type: iam.account→account, iam.project→project. iam.cluster (system roles are
+// seeded, never API-created) and any unknown type → ok=false, so the caller keeps
+// the legacy scope and the iam handler surfaces the canonical INVALID_ARGUMENT
+// ("Illegal argument definitionTier"). Mirrors domain.CustomDefinitionTierToScope
+// (the gateway cannot import the iam domain; these are stable wire values).
+func definitionTierObjectType(tierType string) (string, bool) {
+	switch tierType {
+	case "iam.account":
+		return "account", true
+	case "iam.project":
+		return "project", true
+	default:
+		return "", false
+	}
+}
+
+// ResolveDefinitionTierScope inspects a typed proto request for the redesign-2026
+// F4 `definition_tier` anchor and, when present + resolvable, returns the FGA
+// (objectType, id) the authz scope MUST use — SUPERSEDING the legacy
+// account_id/project_id catalog extraction (proto precedence semantics). ok=false
+// when the message has no definition_tier field, it is empty, or its tier_type is
+// unresolvable (iam.cluster / unknown) — the caller then keeps the catalog's
+// static scope extraction (legacy account_id/project_id). Code-driven (like the
+// nested ResourceRef `.id` handling) so the byte-identical permission-catalog is
+// untouched.
+func (e *ResourceExtractor) ResolveDefinitionTierScope(req any) (objectType, id string, ok bool) {
+	msg, okp := protoMessageFromAny(req)
+	if !okp {
+		return "", "", false
+	}
+	fd := msg.Descriptor().Fields().ByName(definitionTierField)
+	if fd == nil || fd.Kind() != protoreflect.MessageKind {
+		return "", "", false
+	}
+	sub := msg.Get(fd).Message()
+	if sub == nil || !sub.IsValid() {
+		return "", "", false
+	}
+	tierType := subMessageString(sub, "tier_type")
+	tierID := subMessageString(sub, "tier_id")
+	if tierType == "" || tierID == "" {
+		return "", "", false
+	}
+	ot, mapped := definitionTierObjectType(tierType)
+	if !mapped {
+		return "", "", false
+	}
+	return ot, tierID, true
+}
+
+// ResolveDefinitionTierScopeHTTP is the REST-path analogue of
+// ResolveDefinitionTierScope: it reads the `definitionTier{tierType,tierId}`
+// object out of the JSON request body (camelCase, grpc-gateway spelling) and
+// restores the body for the downstream handler. Same precedence + resolvability
+// contract; ok=false → caller keeps the legacy static extraction.
+func (e *ResourceExtractor) ResolveDefinitionTierScopeHTTP(r *http.Request) (objectType, id string, ok bool) {
+	if r == nil {
+		return "", "", false
+	}
+	tierType, tierID := extractDefinitionTierFromJSONBody(r)
+	if tierType == "" || tierID == "" {
+		return "", "", false
+	}
+	ot, mapped := definitionTierObjectType(tierType)
+	if !mapped {
+		return "", "", false
+	}
+	return ot, tierID, true
+}
+
+// subMessageString reads a named scalar string field off a sub-message, "" when
+// absent/empty.
+func subMessageString(sub protoreflect.Message, name string) string {
+	fd := sub.Descriptor().Fields().ByName(protoreflect.Name(name))
+	if fd == nil || fd.Kind() != protoreflect.StringKind {
+		return ""
+	}
+	return sub.Get(fd).String()
+}
+
+// extractDefinitionTierFromJSONBody reads `definitionTier.{tierType,tierId}` from
+// the JSON body and restores the body. Returns ("","") when absent / not JSON.
+// Both snake_case and camelCase spellings are accepted for the object key and its
+// members (the middleware runs before grpc-gateway decodes the camelCase body).
+func extractDefinitionTierFromJSONBody(r *http.Request) (tierType, tierID string) {
+	if r.Body == nil || r.ContentLength == 0 {
+		return "", ""
+	}
+	ct := r.Header.Get("Content-Type")
+	if ct != "" && !strings.Contains(ct, "json") {
+		return "", ""
+	}
+	buf, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	_ = r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(buf))
+	r.ContentLength = int64(len(buf))
+	if err != nil || len(buf) == 0 {
+		return "", ""
+	}
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(buf, &doc) != nil {
+		return "", ""
+	}
+	var raw json.RawMessage
+	for _, key := range []string{"definition_tier", "definitionTier"} {
+		if v, present := doc[key]; present {
+			raw = v
+			break
+		}
+	}
+	if len(raw) == 0 {
+		return "", ""
+	}
+	var tier map[string]json.RawMessage
+	if json.Unmarshal(raw, &tier) != nil {
+		return "", ""
+	}
+	pick := func(keys ...string) string {
+		for _, k := range keys {
+			if v, present := tier[k]; present {
+				var s string
+				if json.Unmarshal(v, &s) == nil && s != "" {
+					return s
+				}
+			}
+		}
+		return ""
+	}
+	return pick("tier_type", "tierType"), pick("tier_id", "tierId")
+}
+
 // ScopeTypeFromProto reads the named top-level string field off a typed proto
 // request and returns its raw value, or "" when the field is absent/empty.
 //
