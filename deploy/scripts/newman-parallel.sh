@@ -28,9 +28,10 @@ set -uo pipefail
 
 # storage + registry added: their redesign was NOT under e2e coverage (artifact
 # lacked them). Their suite fixtures (isolated account+projects+grant, default-Bearer
-# prelude) are now seeded by the shared authz-fixtures. geo has no own suite (covered
-# via iam's geo-read).
-SERVICES="${SERVICES:-iam vpc compute nlb storage registry}"
+# prelude) are now seeded by the shared authz-fixtures. geo now has its OWN full suite
+# (Region/Zone public + Internal admin :9091 + authz + placement) — owner directive
+# "every module has its own complete tests"; the iam geo-read cases are superseded.
+SERVICES="${SERVICES:-iam vpc compute nlb storage registry geo}"
 NS="${SETUP_NS:-kacho}"
 DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 GW_PORT="${GW_PORT:-18080}"
