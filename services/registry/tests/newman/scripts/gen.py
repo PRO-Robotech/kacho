@@ -24,7 +24,7 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +43,13 @@ OUT_DIR = ROOT / "collections"
 # preserved. Reset to 0 at the start of every module load (load_cases_module) so
 # names are deterministic per collection.
 _poll_seq = 0
+
+# Monotonic counter for retry_until_authorized / retry_until_present wrapped steps.
+# Each wrapped step gets a globally-unique `-rya<n>`/`-lst<n>` suffix so its
+# setNextRequest(pm.info.requestName) self-retry always resolves to ITSELF (newman
+# resolves a name to the FIRST item bearing it) — same hazard poll_operation_until_done
+# avoids via unique poll-op-<n>. NOT reset per module: global uniqueness is the goal.
+_RYA_SEQ = [0]
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +198,90 @@ def poll_operation_until_done() -> Step:
             "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
         ],
     )
+
+
+def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
+                           retry_on=(403, 404)) -> Step:
+    """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
+    read-your-writes retry over the owner-tuple materialization window.
+
+    Kachō is eventually-consistent (api-conventions.md Operation.done = DURABLE, not
+    downstream side-effect visibility). A registry/repository owner-tuple materialises
+    via register-outbox → drainer → IAM RegisterResource → FGA reconciler (registry
+    `internal/clients/iam/register_applier.go`). Until it is visible, the FIRST
+    post-create Get/Update/Delete/Rename of the fresh resource can briefly return 403
+    (PERMISSION_DENIED) or 404 (existence-hiding deny) at the per-repo v_* Check /
+    gateway scope gate — a textbook read-your-writes lag; the CLIENT retries, it is
+    NOT a server barrier.
+
+    Retries the SAME request (setNextRequest -> self) while the response code is in
+    `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait — newman
+    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
+    (default 25*500ms ≈ 12s) — fail-closed: on any other code the wrapped step's real
+    test_script runs exactly once, and once the budget is spent it ALSO runs on the
+    terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions —
+    never masked, never infinite).
+
+    Use ONLY on the first access of the caller's OWN fresh resource. Do NOT wrap
+    negative / cross-account-deny / absent-id steps (a poll there would mask a real
+    deny). The counter/started env-vars are request-name-scoped (step names are
+    globally unique after serialization) so the loop never bleeds across cases/steps.
+    """
+    retry_set = ",".join(str(c) for c in retry_on)
+    guard = [
+        "// bounded read-your-writes retry over the owner-tuple materialization window",
+        "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+        "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_authRetryCount', '0');",
+        "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+        "}",
+        "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+        f"if ([{retry_set}].includes(pm.response.code) && _arc < {budget}) {{",
+        "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+        f"  const _ard = Date.now(); while (Date.now() - _ard < {interval_ms}) {{ /* owner-tuple materialization wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_authRetryCount');",
+        "pm.environment.unset('_authRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
+                        interval_ms: int = 500) -> Step:
+    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
+    the returned array (read-your-writes over the list-authz visibility window —
+    owner-tuple eventual-consistency). The list returns 200 with the id ABSENT until
+    the tuple materialises, so retry_until_authorized (403/404) does not apply — we
+    retry while the id is missing. Fail-open after budget: the real assertion then runs
+    once and FAILS if still absent (never masked, never infinite). Use ONLY on a list
+    of the caller's OWN just-created resource."""
+    guard = [
+        "// bounded read-your-writes retry until own fresh id is present in the list",
+        "// (eventual-consistency); retries SELF while id absent.",
+        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_lstRetryCount', '0');",
+        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+        "}",
+        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+        "let _present = false;",
+        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
+        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
+        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
+        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_lstRetryCount');",
+        "pm.environment.unset('_lstRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
 
 
 def http_method_not_allowed_block(prefix: str, base_path: str) -> List[Case]:
@@ -351,6 +442,8 @@ def load_cases_module(path: Path):
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response
     mod.poll_operation_until_done = poll_operation_until_done
+    mod.retry_until_authorized = retry_until_authorized
+    mod.retry_until_present = retry_until_present
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)

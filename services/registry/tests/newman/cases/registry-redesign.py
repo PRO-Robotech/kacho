@@ -76,6 +76,14 @@ def _create_registry(name_expr, id_var, region="{{existingRegionId}}"):
                  "pm.test('id prefix reg', () => pm.expect((r.id||'').startsWith('reg')).to.be.true);",
                  *save_from_response("(j.response&&j.response.id)||''", id_var),
              ]),
+        # Read-your-writes warm-up: materialize the registry owner-tuple before the case's
+        # first Update/CreateRepository under it. Update carries hide_existence + gateway
+        # scope-Check; CreateRepository does registryGate(v_create) — both deny/404 until the
+        # tuple is visible (register-outbox → drainer → IAM → FGA). Bounded-retry the
+        # GetRegistry over that EC window (own fresh resource; never negatives).
+        retry_until_authorized(
+            Step(name="warm-" + id_var, method="GET", path=REG + "/{{" + id_var + "}}",
+                 test_script=[*assert_status(200)])),
     ]
 
 
@@ -129,6 +137,17 @@ def _create_repo(reg_var, repo_expr, capture_tests, body_extra=None):
                  "const r = (pm.response.json().response) || {};",
                  *capture_tests,
              ]),
+        # Read-your-writes warm-up: materialize the per-repo owner-tuple
+        # (registry_repository:<reg>/<repo>) before a follow-up UpdateRepository negative.
+        # UpdateRepository's handler runs the per-repo v_update Check BEFORE the use-case
+        # immutable/output-only reject (handler.UpdateRepository → uc.UpdateRepository), so
+        # during the EC window a would-be sync-400 (lifecycle/registryId immutable) returns
+        # 404. A v_get warm-up covers the whole verb-set (atomic per-object FGA Write —
+        # data-integrity.md), making the later negative deterministic. Own fresh repo only.
+        retry_until_authorized(
+            Step(name="repo-warm", method="GET",
+                 path=REG + "/{{" + reg_var + "}}/repositories/" + repo_expr,
+                 test_script=[*assert_status(200)])),
     ]
 
 
@@ -253,7 +272,11 @@ CASES.append(Case(
         Step(name="post-rename-absent", method="POST", path=REG + "/{{rdRegId}}:rename",
              body={"name": "renamed-{{runId}}"},
              test_script=[
-                 "pm.test('no :rename verb on Registry (route absent, never 200 success)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404, 405, 501]));",
+                 # No :rename verb exists on RegistryService (id is immutable, ban #15). The
+                 # path resolves to no RPC — grpc-gateway returns a routing 404 (or 405/501);
+                 # a stale/variant router may 403 (authz-gate a wrong-method match). Any of
+                 # these confirms the invariant: id-rename is NEVER a successful (200) op.
+                 "pm.test('no :rename verb on Registry (never 200 success)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
              ]),
     ],
 ))
