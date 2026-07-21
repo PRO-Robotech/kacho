@@ -1,93 +1,75 @@
-# kacho-geo — Newman black-box coverage (planned)
+# kacho-geo — Newman black-box coverage
 
-Status: **coverage gap — tracked as `Tests-followup:
-[PRO-Robotech/kacho-geo#10](https://github.com/PRO-Robotech/kacho-geo/issues/10)`**
-(rule #12 exception: a concrete open ticket, authored/run against a deployed
-`kacho-deploy` stack). This repo has strong Go unit + integration (testcontainers)
-coverage, but no black-box Newman suite that traverses the api-gateway REST mux
-yet. Project rule #12 mandates, for every new RPC, at least one happy-path + one
-negative Newman case through the gateway.
+Declarative Newman regression-suite for the **public read surface** of the kacho-geo
+placement-axis catalog (Region/Zone), traversing the api-gateway REST mux. Mirrors the
+`cases/*.py` → `gen.py` → Postman-collection layout of `kacho-vpc/tests/newman`.
 
-> This is **not** an inline-skipped case: the suite lives in a tracked issue with
-> an explicit DoD, not a `pm.test.skip` / TODO. The security-critical slices are
-> independently guarded at the Go layer today (see "Why not blocking this branch"
-> below), so no security regression rides on the suite's absence.
+> Prior state: this suite did not exist (coverage gap tracked as
+> `PRO-Robotech/kacho-geo#10`). It is now authored (22 cases). It requires a deployed
+> stack (api-gateway + kacho-geo + Postgres) and is executed by CI against
+> `kacho-deploy`, not from this repo's `go test`.
 
-This note is the landing spot for that suite (mirroring the declarative
-`cases/*.py` → `gen.py` layout used by `kacho-vpc/tests/newman`). It is
-intentionally additive test tooling and requires a deployed stack
-(api-gateway + kacho-geo + Postgres), so it is authored against `kacho-deploy`
-rather than run from this repo's `go test`.
+## Layout
 
-## RPCs to cover (10)
+```
+tests/newman/
+  cases/region.py   cases/zone.py            # declarative Case/Step DSL
+  scripts/gen.py                             # cases → collections (Postman v2.1)
+  scripts/validate-cases.py                  # dup case-id + CASES-INDEX (hard-fail in CI before newman)
+  scripts/run.sh                             # newman runner (--service, --bail, --delay, --jobs)
+  collections/*.postman_collection.json      # generated (committed)
+  environments/local.postman_environment.json
+  docs/{TAXONOMY,CASES-INDEX,TEST-PLAN,RESULTS,PRODUCT-REQUIREMENTS}.md
+```
 
-Public read-only (`:9090` REST via gateway):
+## What is covered (22 cases: region ×11, zone ×11)
 
-- `RegionService.Get`  — `GET /geo/v1/regions/{regionId}`
-- `RegionService.List` — `GET /geo/v1/regions`
-- `ZoneService.Get`    — `GET /geo/v1/zones/{zoneId}`
-- `ZoneService.List`   — `GET /geo/v1/zones`
+Public sync reads — `RegionService.Get/List`, `ZoneService.Get/List`
+(`GET /geo/v1/regions[/{id}]`, `GET /geo/v1/zones[/{id}]`):
 
-Internal admin CRUD (`:9091`, internal mux only — MUST NOT be reachable on the
-public endpoint):
+- **Happy** — List → 200 non-empty well-formed items; List→capture-id→Get → 200 (self-contained).
+- **NotFound** — well-formed-absent id → 404 verbatim `"Region|Zone <id> not found"`.
+- **Malformed** — non-slug id → 400 `INVALID_ARGUMENT` first statement, no pgx/SQL leak.
+- **Pagination** — `pageSize=0`→200 default; `pageSize>1000`→400 (rejected, not clamped);
+  garbage `pageToken`→400; opaque token round-trip.
+- **authN** — anonymous → 401 `UNAUTHENTICATED` (EXEMPT removes authZ scope, never authN).
+- **Two-projection / anonymization** — public body NotContains infra / host-class /
+  placement fields (they live only in the Internal projection `:9091`).
+- **Internal-vs-external split** — admin write-verb on the public endpoint as a non-admin
+  is rejected (401/403/404/501), never 200/mutation.
 
-- `InternalRegionService.Create/Update/Delete` — `/geo/v1/regions[:verb]`
-- `InternalZoneService.Create/Update/Delete`   — `/geo/v1/zones[:verb]`
+Source of truth: APPROVED `docs/specs/sub-phase-GEO-1-region-zone-redesign-acceptance.md`
+(`# verifies GEO-1-NN` annotations) + `.claude/rules/api-conventions.md`.
 
-## Required cases
+## Deployed-contract probe & forward-compatibility (read `docs/TEST-PLAN.md`)
 
-| Case | Kind | Expectation |
-|---|---|---|
-| `REGION-GET-HAPPY` | happy | seeded region → 200 + body |
-| `REGION-GET-NEG-NOTFOUND` | negative | absent id → `NOT_FOUND` |
-| `REGION-LIST-HAPPY` | happy | pagination page_size + next_page_token |
-| `REGION-LIST-NEG-BADTOKEN` | negative | garbage `page_token` → `INVALID_ARGUMENT` |
-| `ZONE-GET-HAPPY` / `ZONE-GET-NEG-NOTFOUND` | happy/neg | mirror region |
-| `ZONE-LIST-HAPPY` / `ZONE-LIST-NEG-BADTOKEN` | happy/neg | mirror region |
-| `REGION-CREATE-HAPPY` | happy | Operation → poll `OperationService.Get` to `done=true`, response=Region |
-| `REGION-DELETE-NEG-HASZONES` | negative | delete region with zones → Operation.error `FAILED_PRECONDITION` |
-| `ZONE-CREATE-NEG-GHOSTREGION` | negative | create zone with absent region_id → Operation.error `FAILED_PRECONDITION` |
-| `ZONE-UPDATE-NEG-GHOSTREGION` | negative | re-point region_id to absent region → Operation.error `FAILED_PRECONDITION` |
-| `ADMIN-NOT-ON-PUBLIC` | security | `InternalRegionService`/`InternalZoneService` verbs unreachable on the public `:9090` REST mux |
-| `OP-GET-NEG-FOREIGN` | security | poll another principal's op-id via `OperationService.Get` → `NOT_FOUND` (BOLA owner-scope, sec-hardening-r3) |
-| `OP-CANCEL-NEG-FOREIGN` | security | cancel another principal's in-flight op via `OperationService.Cancel` → `NOT_FOUND`, op stays in-flight |
+Cases are authored against the **deployed** AS-IS contract of the branch CI runs
+(`redesign/integration @ 8f3dca1`), cross-checked against the proto/gateway/serviceerr in
+tree. The GEO-1 redesign (EXEMPT ambient-read, two-projection `status`→Internal,
+`/geo/v1/internal/…` admin paths, `countryCode°`/`openForPlacement°`, malformed-text flip)
+is **not yet landed** here — so assertions lock the invariants that are stable across the
+redesign boundary, tolerantly where the contract is mid-flight. Redesign-only scenarios
+(GEO-1-20 zero-binding→200, status field-absence, admin `/internal/` CRUD, by-lane
+reason-token) are **deferred** and enumerated in `docs/TEST-PLAN.md` §"Deferred — GEO-1
+redesign"; they are added to this suite alongside the GEO-1 PR (its DoD requires the
+matching newman case). No product-bug red cases and no known-failing cases (see
+`docs/RESULTS.md`).
 
-The `ADMIN-NOT-ON-PUBLIC` case is the black-box guard for the Internal-vs-external
-split (CLAUDE.md §Запреты #6): an api-gateway restmux misregistration that exposed
-an admin verb on the public endpoint would ship green today, because every
-existing test calls the Go handlers/use-cases directly and never crosses the
-gateway.
+## Admin-CRUD (Internal, :9091) — out of this suite
 
-## Why not blocking this branch
+`InternalRegionService`/`InternalZoneService` (Create/Update/Delete) are Internal-only
+(security.md ban #6) and gated `system_admin`; the local stand env exposes only the public
+listener, so admin-CRUD conformance stays at the Go layer
+(`cmd/kacho-geo/serve_registration_test.go` wiring guard;
+`internal/repo/kacho/pg/*_integration_test.go`; `internal/handler/*_test.go`). This suite's
+`*-CR-AUTHZ-ADMIN-NOT-PUBLIC` cases are the black-box guard that the admin surface is not
+reachable/mutating on the public endpoint.
 
-Authoring + running the suite needs the deployed stack; it cannot be verified by
-`go test` in this repo. The security-critical slice of this gap
-(`ADMIN-NOT-ON-PUBLIC`) is separately guaranteed at wiring level: admin CRUD
-(`InternalRegionService`/`InternalZoneService`) is registered ONLY on the internal
-`:9091` server in `cmd/kacho-geo/serve.go` (via `registerServices`), and that
-registration split is asserted by **`cmd/kacho-geo/serve_registration_test.go`**
-(`TestRegisterServices_InternalAdminNotOnPublic` — inspects the real
-`grpc.Server.GetServiceInfo()` of both listeners and fails if any Internal admin
-descriptor appears on the public server).
+## Run
 
-> Correction (sec-hardening-r2): earlier this note claimed the
-> `ADMIN-NOT-ON-PUBLIC` wiring was covered by `cert_bound_identity_test.go` /
-> `public_principal_test.go`. That was **false** — those tests only verify
-> principal anti-spoof trust-gating, never which service is on which listener. The
-> gap is now closed by `serve_registration_test.go` (Go wiring guard). The Newman
-> black-box case above still remains outstanding for the api-gateway REST boundary
-> (restmux verb/path mapping) — tracked in
-> [#10](https://github.com/PRO-Robotech/kacho-geo/issues/10) per rule #12; it is
-> not a substitute for the Go wiring guard and vice-versa.
-
-## OperationService owner-scoping (sec-hardening-r3)
-
-The `OP-GET-NEG-FOREIGN` / `OP-CANCEL-NEG-FOREIGN` cases exercise the BOLA gate
-added in round 3: `OperationService.Get`/`Cancel` are ReBAC-exempt (`Public:true`)
-but owner-scoped **in the handler** — a caller that is not the operation's creator
-principal gets `NOT_FOUND` (no-leak), and cannot read or cancel a foreign in-flight
-admin mutation. This is already covered at the Go layer by
-`internal/handler/operation_owner_test.go` (mock) and
-`internal/repo/kacho/pg/operation_owner_integration_test.go` (real pgRepo, SQL
-ownership predicate). The Newman cases validate the same invariant across the REST
-boundary and are enumerated in issue #10.
+```
+python3 scripts/gen.py            # regenerate collections
+python3 scripts/validate-cases.py # dup-id + CASES-INDEX gate
+./scripts/run.sh                  # full run (region + zone)
+./scripts/run.sh --service zone   # one collection
+```
