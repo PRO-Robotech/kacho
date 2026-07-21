@@ -70,7 +70,7 @@ CASES.append(Case(
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "oplistdel-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.249.7.0/24"]},
+                   "ipv4CidrPrimary": "10.249.7.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),

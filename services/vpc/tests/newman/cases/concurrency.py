@@ -116,7 +116,7 @@ def _setup_subnet(suffix, cidr="10.250.0.0/24"):
             name="setup-sub", method="POST", path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": f"conc-{suffix}-sub-{{{{runId}}}}", "zoneId": "{{existingZoneId}}",
-                  "v4CidrBlocks": [cidr]},
+                  "ipv4CidrPrimary": cidr},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
         ),
