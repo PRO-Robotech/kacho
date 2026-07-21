@@ -68,6 +68,19 @@ func PermissionMap() authz.RPCMap {
 		"/kacho.cloud.storage.v1.DiskTypeService/Get":  viewer("storage.diskTypes.get"),
 		"/kacho.cloud.storage.v1.DiskTypeService/List": viewer("storage.diskTypes.list"),
 
+		// ---- ImageService (public :9090) ----
+		// Пропущен в backend-map (был Volume/Snapshot/DiskType, не Image) → corelib
+		// authz fail-closed "rpc not mapped" на весь image-suite (108 newman-падений).
+		// Тот же класс, что compute InternalMachineType / vpc cidr-blocks / registry
+		// Repository-overlay. proto required_relation: Get/List/ListOperations=viewer,
+		// Create/Update/Delete=editor. gateway-catalog Image уже имел (6 записей).
+		"/kacho.cloud.storage.v1.ImageService/Get":            viewer("storage.images.get"),
+		"/kacho.cloud.storage.v1.ImageService/List":           viewer("storage.images.list"),
+		"/kacho.cloud.storage.v1.ImageService/ListOperations": viewer("storage.images.listOperations"),
+		"/kacho.cloud.storage.v1.ImageService/Create":         editor("storage.images.create"),
+		"/kacho.cloud.storage.v1.ImageService/Update":         editor("storage.images.update"),
+		"/kacho.cloud.storage.v1.ImageService/Delete":         editor("storage.images.delete"),
+
 		// ---- InternalVolumeService (:9091 attach-координация, writer-tier) ----
 		"/kacho.cloud.storage.v1.InternalVolumeService/Attach":          editor("storage.volumes.attach"),
 		"/kacho.cloud.storage.v1.InternalVolumeService/Detach":          editor("storage.volumes.detach"),
