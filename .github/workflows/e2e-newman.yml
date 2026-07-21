@@ -47,7 +47,11 @@ jobs:
     # волной: его full-path authz-материализация (AccessBinding CRUD, label-revoke) под
     # конкурентной нагрузкой leaf-сервисов дрейнила (get-confirms 404, revoke не залипал).
     # Цель ≤30м на leaf; iam-волна добавляет ~11м → ~40м; 55 — запас на 2-фазу.
-    timeout-minutes: 55
+    # TRANSIENT 55→90: failure-heavy прогоны (redesign-integration, retry-обёртки на
+    # 403/404 EC-окне) переваливают за 55м и job'а hard-kill'ится ДО `if:always()`
+    # upload-шага → artifact (newman-out-reports) теряется, CI-арбитр слепнет. 90 даёт
+    # прогону завершиться И загрузить отчёты. Вернуть к ~45 когда suite снова зелёный (~35м).
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -140,6 +144,11 @@ jobs:
       # ранний обрыв прогона спрятать нельзя.
       - name: newman — параллельно (iam+vpc+compute+nlb, один seed+стенд)
         working-directory: deploy
+        # Belt-and-suspenders: step-timeout < job-timeout (90) так, что даже если
+        # newman-параллель зависнет/затянется, шаг убивается САМ и pipeline доходит до
+        # `if:always()` upload — artifact есть ВСЕГДА (CI-арбитр не слепнет). `|| true`
+        # уже глотает newman-exit; step-timeout ловит именно hang/overrun.
+        timeout-minutes: 80
         env:
           DELAY: "10"   # per-request pacing (ms); parallel fan-out уже нагружает стенд
           JOBS: "2"     # per-suite collection concurrency (nlb форсированно 1)
