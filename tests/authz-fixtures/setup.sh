@@ -314,25 +314,44 @@ ensure_project() {
   local found
   found=$(find_project_by_name_account "$name" "$acct" "$owner_token")
   if [ -n "$found" ]; then echo "$found"; return; fi
-  local body op op_id attempt=0
+  local body op op_id done_op pid attempt=0
   body=$(printf '{"accountId":"%s","name":"%s","description":"%s"}' "$acct" "$name" "$desc")
-  # Bounded retry on the transient owner-binding materialization window: a FRESH
-  # account's owner AccessBinding (→ `editor` on the account, the relation
-  # iam.projects.create requires) materializes eventually-consistently, so the first
-  # Project.Create immediately after Account.Create can 403 AUTHZ_DENIED. Retry
-  # ~8×0.75s ≈ 6s; a NON-authz failure FATALs immediately (never mask a real error).
+  # Bounded retry over TWO transient cold-start windows:
+  #   (1) owner-binding materialization: a FRESH account's owner AccessBinding (→ `editor`
+  #       on the account, which iam.projects.create requires) is eventually-consistent, so
+  #       the first Project.Create right after Account.Create can 403 AUTHZ_DENIED (no op id).
+  #   (2) phantom-project: a Create can finish done:true WITH result.error (transient FGA/DB
+  #       blip at cold-start) while metadata.projectId still carries the PRE-ALLOCATED id —
+  #       the row never committed. Trusting that id yields a phantom that FGA-binds green but
+  #       fails every cross-service ProjectService.Get (NOT_FOUND cascade: "Project prj… not
+  #       found"). We MUST assert !op.error before trusting the id (vault: op.error-before-
+  #       metadata; testing.md e2e-invariant). The failed row did not commit, so re-Create
+  #       won't collide with name-UNIQUE — retry it.
+  # ~8 attempts ×0.75s ≈ 6s per window; a NON-transient failure FATALs (never mask a real error).
   while :; do
     op=$(api POST "/iam/v1/projects" "$owner_token" "$body")
     op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))')
-    [ -n "$op_id" ] && break
-    attempt=$((attempt+1))
-    if [ "$attempt" -ge 8 ] || ! echo "$op" | grep -q 'AUTHZ_DENIED\|permission denied'; then
-      echo "[setup] FATAL: Project.Create returned no id: $op" >&2; return 1
+    if [ -z "$op_id" ]; then
+      attempt=$((attempt+1))
+      if [ "$attempt" -ge 8 ] || ! echo "$op" | grep -q 'AUTHZ_DENIED\|permission denied'; then
+        echo "[setup] FATAL: Project.Create returned no id: $op" >&2; return 1
+      fi
+      sleep 0.75; continue
     fi
-    sleep 0.75
+    done_op=$(poll_op "$op_id" "$owner_token")
+    pid=$(echo "$done_op" | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("projectId",""))' 2>/dev/null)
+    # Operation oneof result.error (REST maps to top-level `error` or nested `result.error`).
+    if echo "$done_op" | python3 -c 'import sys,json
+d=json.load(sys.stdin)
+sys.exit(0 if (d.get("error") or (d.get("result") or {}).get("error")) else 1)' 2>/dev/null; then
+      attempt=$((attempt+1))
+      if [ "$attempt" -ge 8 ]; then
+        echo "[setup] FATAL: Project.Create op finished with error (phantom id $pid): $(echo "$done_op" | head -c 200)" >&2; return 1
+      fi
+      sleep 0.75; continue
+    fi
+    echo "$pid"; return
   done
-  poll_op "$op_id" "$owner_token" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("projectId",""))'
 }
 PROJECT_A1=$(ensure_project "authz-test-a1" "$ACCOUNT_A" "KAC-122 fixture (project-admin-A1 home)" "$JWT_AAA")
 PROJECT_A2=$(ensure_project "authz-test-a2" "$ACCOUNT_A" "KAC-122 fixture (cross-project in same account)" "$JWT_AAA")
