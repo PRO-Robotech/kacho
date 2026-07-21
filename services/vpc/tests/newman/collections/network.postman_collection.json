@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "7dc5e6c8-8494-4019-a95b-1377fa8b7f87",
+    "_postman_id": "7a8994d4-9a0f-478a-9632-647f8a5a5645",
     "name": "kacho-vpc / newman / network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -8615,7 +8615,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-hasub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.250.1.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-hasub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.250.1.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10613,7 +10613,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-subnic-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.248.3.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-subnic-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.248.3.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
