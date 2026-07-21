@@ -179,7 +179,12 @@ CASES.append(Case(
                         # Create отвергся бы sync 400 «exactly one of zone_id, region_id must
                         # be set» → нет Operation → burst-assert краснеет.
                         "zoneId: pm.environment.get('existingZoneId'), "
-                        "v4CidrBlocks: ['10.250.40.0/24']})"
+                        # VPC-1 F7: Create takes the immutable primary anchor
+                        # ipv4CidrPrimary (single) — identical anchor across the 3
+                        # burst creates → network-scoped overlap EXCLUDE lets exactly
+                        # one win (the retired v4_cidr_blocks key was dropped, so the
+                        # bursts previously created CIDR-less subnets that never raced).
+                        "ipv4CidrPrimary: '10.250.40.0/24'})"
                     ),
                 ),
             ],

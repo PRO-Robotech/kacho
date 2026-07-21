@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9d7cdfc5-fefd-4731-8a3e-a504fff79b2b",
+    "_postman_id": "1fa55d5e-b6d8-4f46-969c-68c03966eb09",
     "name": "kacho-vpc / newman / list-filter-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -110,7 +110,7 @@
       "description": "class:AUTHZ | class:CONF | priority:P0",
       "item": [
         {
-          "name": "List subnets as subset-viewer-rya608",
+          "name": "List subnets as subset-viewer-rya604",
           "request": {
             "method": "GET",
             "header": [
@@ -183,7 +183,7 @@
       "description": "class:AUTHZ | class:NEG | priority:P0",
       "item": [
         {
-          "name": "List subnets as subset-viewer (hidden absent)-rya609",
+          "name": "List subnets as subset-viewer (hidden absent)-rya605",
           "request": {
             "method": "GET",
             "header": [
@@ -370,7 +370,7 @@
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
-          "name": "List subnets as no-grant subject-rya610",
+          "name": "List subnets as no-grant subject-rya606",
           "request": {
             "method": "GET",
             "header": [

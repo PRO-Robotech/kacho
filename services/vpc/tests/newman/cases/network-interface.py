@@ -27,7 +27,9 @@ def _net_subnet_steps(suffix, cidr="10.60.0.0/24"):
         Step(name="pre-subnet", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": f"nic-{suffix}-sub-{{{{runId}}}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": [cidr]},
+                   # VPC-1 F7: Create takes the immutable primary anchor ipv4CidrPrimary
+                   # (single), not the retired v4_cidr_blocks array.
+                   "ipv4CidrPrimary": cidr},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -339,7 +341,7 @@ CASES.append(Case(
         Step(name="pre-subnet", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "nic-v6addr-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.61.0.0/24"], "v6CidrBlocks": ["fd00:cafe:f00d::/64"]},
+                   "ipv4CidrPrimary": "10.61.0.0/24", "ipv6CidrPrimary": "fd00:cafe:f00d::/64"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -390,7 +392,7 @@ CASES.append(Case(
         Step(name="pre-subnet", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "nic-both-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.62.0.0/24"], "v6CidrBlocks": ["fd00:cafe:b00b::/64"]},
+                   "ipv4CidrPrimary": "10.62.0.0/24", "ipv6CidrPrimary": "fd00:cafe:b00b::/64"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -618,7 +620,7 @@ CASES.append(Case(
         *_net_subnet_steps("m6"),
         # Subnet с v6-CIDR — иначе нельзя allocate v6 Address.
         retry_until_authorized(Step(name="add-v6-cidr", method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v6CidrBlocks": ["fd12:3456:78aa::/64"]},
+             body={"ipv6CidrBlocks": ["fd12:3456:78aa::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         # Два v6 Address.

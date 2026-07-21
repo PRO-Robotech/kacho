@@ -221,7 +221,10 @@ CASES.append(Case(
         poll_operation_until_done(),
         # PATCH своей свежей сети — retry на transient 403; терминальный 400 = реальный assert.
         retry_until_authorized(Step(name="patch-supernet-immutable", method="PATCH", path="/vpc/v1/networks/{{netId}}",
-            body={"updateMask": "ipv4_cidr_blocks", "ipv4CidrBlocks": ["10.99.0.0/16"]},
+            # proto3 FieldMask paths are lowerCamelCase in JSON (protojson converts to
+            # snake internally); a snake_case path with '_' fails FieldMask parse before
+            # reaching the handler immutable-switch.
+            body={"updateMask": "ipv4CidrBlocks", "ipv4CidrBlocks": ["10.99.0.0/16"]},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('immutable-text after Network.Create', () => "
                          "pm.expect(pm.response.json().message).to.match(/is immutable after Network\\.Create$/));"]),
@@ -240,7 +243,8 @@ CASES.append(Case(
         _net_create_step("pri", v4=[_SUPERNET_V4]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-project-immutable", method="PATCH", path="/vpc/v1/networks/{{netId}}",
-            body={"updateMask": "project_id", "projectId": "{{_suiteProjectCrossId}}"},
+            # FieldMask path lowerCamelCase (protojson → snake); snake_case fails parse.
+            body={"updateMask": "projectId", "projectId": "{{_suiteProjectCrossId}}"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('verbatim immutable text', () => "
                          "pm.expect(pm.response.json().message).to.eql('project_id is immutable after Network.Create'));"]),
@@ -533,7 +537,8 @@ CASES.append(Case(
         _subnet_create_step("zimm", {"zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24"}),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-zone-immutable", method="PATCH", path="/vpc/v1/subnets/{{subId}}",
-            body={"updateMask": "zone_id", "zoneId": "{{existingZoneAltId}}"},
+            # FieldMask path lowerCamelCase (protojson → snake); snake_case fails parse.
+            body={"updateMask": "zoneId", "zoneId": "{{existingZoneAltId}}"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('verbatim immutable text', () => "
                          "pm.expect(pm.response.json().message).to.eql('zone_id is immutable after Subnet.Create'));"]),
@@ -556,7 +561,8 @@ CASES.append(Case(
         _subnet_create_step("nimm", {"zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24"}),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-network-immutable", method="PATCH", path="/vpc/v1/subnets/{{subId}}",
-            body={"updateMask": "network_id", "networkId": "{{netId}}"},
+            # FieldMask path lowerCamelCase (protojson → snake); snake_case fails parse.
+            body={"updateMask": "networkId", "networkId": "{{netId}}"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('verbatim immutable text', () => "
                          "pm.expect(pm.response.json().message).to.eql('network_id is immutable after Subnet.Create'));"]),
