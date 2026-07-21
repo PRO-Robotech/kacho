@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "fe6f994b-ea59-4e4d-a9e1-7d562e1a18fe",
+    "_postman_id": "1ef34bea-94f1-44b1-a558-9157e6299f5b",
     "name": "kacho-geo / newman / internal-region",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -39,19 +39,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-crud-{{runId}}\", \"name\": \"QA Region CRUD {{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-crud-{{runId}}\", \"name\": \"QA Region CRUD {{runId}}\", \"countryCode\": \"RU\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -128,7 +129,9 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('region id materialized', () => pm.expect(j.id).to.eql('qa-reg-crud-' + pm.environment.get('runId')));",
-                  "pm.test('name persisted', () => pm.expect(j.name).to.eql('QA Region CRUD ' + pm.environment.get('runId')));"
+                  "pm.test('name persisted', () => pm.expect(j.name).to.eql('QA Region CRUD ' + pm.environment.get('runId')));",
+                  "pm.test('countryCode persisted', () => pm.expect(j.countryCode).to.eql('RU'));",
+                  "pm.test('openForPlacement true (region status UP)', () => pm.expect(j.openForPlacement).to.eql(true));"
                 ]
               }
             }
@@ -145,13 +148,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-crud-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-crud-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
                 "qa-reg-crud-{{runId}}"
               ]
@@ -191,13 +195,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
@@ -222,7 +227,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message references region id', () => pm.expect(String(pm.response.json().message)).to.include('region id'));"
+                  "pm.test('message: invalid region id', () => pm.expect(String(pm.response.json().message)).to.include('invalid region id'));"
                 ]
               }
             }
@@ -231,7 +236,7 @@
       ]
     },
     {
-      "name": "IRG-CR-VAL-EMPTY-ID — Create region with empty id → sync 400 InvalidArgument 'region id is required'",
+      "name": "IRG-CR-VAL-EMPTY-ID — Create region with empty id → sync 400 InvalidArgument \"invalid region id ''\"",
       "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
@@ -245,13 +250,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
@@ -276,7 +282,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message: region id is required', () => pm.expect(String(pm.response.json().message)).to.include('region id is required'));"
+                  "pm.test('message: invalid region id (empty)', () => pm.expect(String(pm.response.json().message)).to.include('invalid region id'));"
                 ]
               }
             }
@@ -285,7 +291,7 @@
       ]
     },
     {
-      "name": "IRG-CR-NEG-DUP-INVARIANT — Create duplicate region id twice → no phantom; region still resolves once (ALREADY_EXISTS deferred behind #55)",
+      "name": "IRG-CR-NEG-DUP-INVARIANT — Create duplicate region id twice → no phantom; region still resolves once (dup → Operation.error ALREADY_EXISTS)",
       "description": "class:NEG | class:IDM | priority:P1",
       "item": [
         {
@@ -299,13 +305,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
@@ -397,19 +404,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"QA Region Dup Again\"}",
+              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"QA Region Dup Again {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -481,13 +489,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-dup-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-dup-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
                 "qa-reg-dup-{{runId}}"
               ]
@@ -513,7 +522,7 @@
       ]
     },
     {
-      "name": "IRG-DEL-NEG-HASZONES-INVARIANT — Delete region that owns a zone → FK RESTRICT keeps it; region still resolves (FAILED_PRECONDITION deferred behind #55)",
+      "name": "IRG-DEL-NEG-HASZONES-INVARIANT — Delete region that owns a zone → FK RESTRICT keeps it; region still resolves (Operation.error FAILED_PRECONDITION)",
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
@@ -527,19 +536,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Region Del {{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Region Del {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -625,19 +635,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zon-del-{{runId}}\", \"regionId\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Child Zone\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-del-{{runId}}-z\", \"regionId\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Child Zone {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -673,7 +684,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-del-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-reg-del-{{runId}}-z",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -681,7 +692,7 @@
                 "geo",
                 "v1",
                 "zones",
-                "qa-zon-del-{{runId}}"
+                "qa-reg-del-{{runId}}-z"
               ]
             }
           },
@@ -723,13 +734,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-del-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-del-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
                 "qa-reg-del-{{runId}}"
               ]
@@ -799,15 +811,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-zon-del-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-reg-del-{{runId}}-z",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones",
-                "qa-zon-del-{{runId}}"
+                "qa-reg-del-{{runId}}-z"
               ]
             }
           },
@@ -839,13 +852,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-del-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-del-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
                 "qa-reg-del-{{runId}}"
               ]
@@ -885,19 +899,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-upd-{{runId}}\", \"name\": \"QA Region Before\"}",
+              "raw": "{\"id\": \"qa-reg-upd-{{runId}}\", \"name\": \"QA Region Before {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -983,20 +998,21 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-upd-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-upd-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
                 "qa-reg-upd-{{runId}}"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"QA Region After {{runId}}\"}",
+              "raw": "{\"name\": \"QA Region After {{runId}}\", \"updateMask\": \"name\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1078,13 +1094,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-upd-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-upd-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
                 "qa-reg-upd-{{runId}}"
               ]

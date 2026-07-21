@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "642b9df0-7d0f-4eac-bb51-a48bcb2085bc",
+    "_postman_id": "da4ceea0-0938-4636-a0c6-7ef04d4b31fc",
     "name": "kacho-geo / newman / internal-zone",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -25,7 +25,7 @@
   ],
   "item": [
     {
-      "name": "IZN-CR-CRUD-OK — InternalZoneService.Create → 200 Operation; zone materializes with regionId+status (public Get)",
+      "name": "IZN-CR-CRUD-OK — InternalZoneService.Create (region UP, zone UP) → 200 Operation; zone materializes openForPlacement=true (public Get)",
       "description": "class:CRUD | priority:P0",
       "item": [
         {
@@ -39,19 +39,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zreg-crud-{{runId}}\", \"name\": \"QA Zone-Region CRUD\"}",
+              "raw": "{\"id\": \"qa-zr-crud-{{runId}}\", \"name\": \"QA Zone-Region CRUD {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -87,7 +88,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/qa-zreg-crud-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-zr-crud-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -95,7 +96,7 @@
                 "geo",
                 "v1",
                 "regions",
-                "qa-zreg-crud-{{runId}}"
+                "qa-zr-crud-{{runId}}"
               ]
             }
           },
@@ -137,19 +138,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zon-crud-{{runId}}\", \"regionId\": \"qa-zreg-crud-{{runId}}\", \"name\": \"QA Zone CRUD {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-crud-{{runId}}-a\", \"regionId\": \"qa-zr-crud-{{runId}}\", \"name\": \"QA Zone CRUD {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -185,7 +187,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-crud-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-zr-crud-{{runId}}-a",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -193,7 +195,7 @@
                 "geo",
                 "v1",
                 "zones",
-                "qa-zon-crud-{{runId}}"
+                "qa-zr-crud-{{runId}}-a"
               ]
             }
           },
@@ -220,9 +222,11 @@
                   "pm.environment.unset('_rgfStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('zone id materialized', () => pm.expect(j.id).to.eql('qa-zon-crud-' + pm.environment.get('runId')));",
-                  "pm.test('regionId persisted', () => pm.expect(j.regionId).to.eql('qa-zreg-crud-' + pm.environment.get('runId')));",
-                  "pm.test('status UP', () => pm.expect(String(j.status)).to.include('UP'));"
+                  "pm.test('zone id materialized', () => pm.expect(j.id).to.eql('qa-zr-crud-' + pm.environment.get('runId') + '-a'));",
+                  "pm.test('regionId persisted', () => pm.expect(j.regionId).to.eql('qa-zr-crud-' + pm.environment.get('runId')));",
+                  "pm.test('openForPlacement true (zone UP && region UP)', () => pm.expect(j.openForPlacement).to.eql(true));",
+                  "pm.test('placementBlockedReason NONE', () => pm.expect(String(j.placementBlockedReason)).to.eql('NONE'));",
+                  "pm.test('public Zone carries NO raw status (two-projection)', () => pm.expect(j).to.not.have.property('status'));"
                 ]
               }
             }
@@ -239,15 +243,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-zon-crud-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-zr-crud-{{runId}}-a",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones",
-                "qa-zon-crud-{{runId}}"
+                "qa-zr-crud-{{runId}}-a"
               ]
             }
           },
@@ -279,15 +284,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-zreg-crud-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-zr-crud-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
-                "qa-zreg-crud-{{runId}}"
+                "qa-zr-crud-{{runId}}"
               ]
             }
           },
@@ -325,13 +331,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
@@ -356,7 +363,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message references zone id', () => pm.expect(String(pm.response.json().message)).to.include('zone id'));"
+                  "pm.test('message: invalid zone id', () => pm.expect(String(pm.response.json().message)).to.include('invalid zone id'));"
                 ]
               }
             }
@@ -365,7 +372,62 @@
       ]
     },
     {
-      "name": "IZN-CR-NEG-GHOST-REGION-INVARIANT — Create zone with absent regionId → FK rejects; zone not created (public Get 404) (FAILED_PRECONDITION deferred behind #55)",
+      "name": "IZN-CR-NEG-COUPLING — Create zone whose id is not prefixed by its regionId → sync 400 InvalidArgument 'must be prefixed by its regionId'",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "create-uncoupled",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-other-{{runId}}-a\", \"regionId\": \"qa-zr-x-{{runId}}\", \"name\": \"QA Uncoupled Zone {{runId}}\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('message: must be prefixed by its regionId', () => pm.expect(String(pm.response.json().message)).to.include('must be prefixed by its regionId'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IZN-CR-NEG-GHOST-REGION-INVARIANT — Create zone with absent (but coupling-valid) regionId → FK rejects; zone not created (public Get 404)",
       "description": "class:NEG | priority:P0",
       "item": [
         {
@@ -379,19 +441,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zon-ghost-{{runId}}\", \"regionId\": \"ru-ghost-region-{{runId}}\", \"name\": \"QA Ghost Zone\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-ghost-{{runId}}-a\", \"regionId\": \"qa-ghost-{{runId}}\", \"name\": \"QA Ghost Zone {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -427,7 +490,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-ghost-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-ghost-{{runId}}-a",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -435,7 +498,7 @@
                 "geo",
                 "v1",
                 "zones",
-                "qa-zon-ghost-{{runId}}"
+                "qa-ghost-{{runId}}-a"
               ]
             }
           },
@@ -450,7 +513,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('ghost-region zone never materialized', () => pm.expect(pm.response.json().message).to.eql('Zone qa-zon-ghost-' + pm.environment.get('runId') + ' not found'));"
+                  "pm.test('ghost-region zone never materialized', () => pm.expect(pm.response.json().message).to.eql('Zone qa-ghost-' + pm.environment.get('runId') + '-a not found'));"
                 ]
               }
             }
@@ -459,7 +522,7 @@
       ]
     },
     {
-      "name": "IZN-CR-CONF-STATUS-DOWN — Create zone with status=DOWN → persisted DOWN (public Get)",
+      "name": "IZN-CR-CONF-STATUS-DOWN — Create zone status=DOWN (region UP) → openForPlacement=false, placementBlockedReason=ZONE_DOWN (public Get)",
       "description": "class:CONF | class:CRUD | priority:P1",
       "item": [
         {
@@ -473,19 +536,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zreg-down-{{runId}}\", \"name\": \"QA Zone-Region Down\"}",
+              "raw": "{\"id\": \"qa-zr-down-{{runId}}\", \"name\": \"QA Zone-Region Down {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -521,7 +585,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/qa-zreg-down-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-zr-down-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -529,7 +593,7 @@
                 "geo",
                 "v1",
                 "regions",
-                "qa-zreg-down-{{runId}}"
+                "qa-zr-down-{{runId}}"
               ]
             }
           },
@@ -571,19 +635,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zon-down-{{runId}}\", \"regionId\": \"qa-zreg-down-{{runId}}\", \"name\": \"QA Zone Down\", \"status\": \"DOWN\"}",
+              "raw": "{\"id\": \"qa-zr-down-{{runId}}-a\", \"regionId\": \"qa-zr-down-{{runId}}\", \"name\": \"QA Zone Down {{runId}}\", \"status\": \"DOWN\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -619,7 +684,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-down-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-zr-down-{{runId}}-a",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -627,7 +692,7 @@
                 "geo",
                 "v1",
                 "zones",
-                "qa-zon-down-{{runId}}"
+                "qa-zr-down-{{runId}}-a"
               ]
             }
           },
@@ -653,7 +718,9 @@
                   "pm.environment.unset('_rgfCount');",
                   "pm.environment.unset('_rgfStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('status DOWN persisted', () => pm.expect(String(pm.response.json().status)).to.include('DOWN'));"
+                  "const j = pm.response.json();",
+                  "pm.test('openForPlacement false (zone DOWN)', () => pm.expect(j.openForPlacement).to.eql(false));",
+                  "pm.test('placementBlockedReason ZONE_DOWN', () => pm.expect(String(j.placementBlockedReason)).to.eql('ZONE_DOWN'));"
                 ]
               }
             }
@@ -670,15 +737,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-zon-down-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-zr-down-{{runId}}-a",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones",
-                "qa-zon-down-{{runId}}"
+                "qa-zr-down-{{runId}}-a"
               ]
             }
           },
@@ -710,15 +778,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-zreg-down-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-zr-down-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
-                "qa-zreg-down-{{runId}}"
+                "qa-zr-down-{{runId}}"
               ]
             }
           },
@@ -742,7 +811,7 @@
       ]
     },
     {
-      "name": "IZN-CR-CONF-STATUS-DEFAULT-UP — Create zone WITHOUT status → coerced to UP (AS-IS default; GEO-1 will invert to DOWN, not landed)",
+      "name": "IZN-CR-CONF-STATUS-DEFAULT-DOWN — Create zone WITHOUT status → coerced to DOWN (fail-safe); openForPlacement=false (public Get)",
       "description": "class:CONF | class:CRUD | priority:P1",
       "item": [
         {
@@ -756,19 +825,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zreg-up-{{runId}}\", \"name\": \"QA Zone-Region Up\"}",
+              "raw": "{\"id\": \"qa-zr-dflt-{{runId}}\", \"name\": \"QA Zone-Region Dflt {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -804,7 +874,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/qa-zreg-up-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-zr-dflt-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -812,7 +882,7 @@
                 "geo",
                 "v1",
                 "regions",
-                "qa-zreg-up-{{runId}}"
+                "qa-zr-dflt-{{runId}}"
               ]
             }
           },
@@ -854,19 +924,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zon-up-{{runId}}\", \"regionId\": \"qa-zreg-up-{{runId}}\", \"name\": \"QA Zone Default Status\"}",
+              "raw": "{\"id\": \"qa-zr-dflt-{{runId}}-a\", \"regionId\": \"qa-zr-dflt-{{runId}}\", \"name\": \"QA Zone Default Status {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -892,7 +963,7 @@
           ]
         },
         {
-          "name": "get-zone-up-rgf26",
+          "name": "get-zone-dflt-rgf26",
           "request": {
             "method": "GET",
             "header": [
@@ -902,7 +973,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-up-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-zr-dflt-{{runId}}-a",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -910,7 +981,7 @@
                 "geo",
                 "v1",
                 "zones",
-                "qa-zon-up-{{runId}}"
+                "qa-zr-dflt-{{runId}}-a"
               ]
             }
           },
@@ -936,7 +1007,7 @@
                   "pm.environment.unset('_rgfCount');",
                   "pm.environment.unset('_rgfStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('omitted status coerced to UP (AS-IS default)', () => pm.expect(String(pm.response.json().status)).to.include('UP'));"
+                  "pm.test('omitted status → fresh DOWN → openForPlacement false', () => pm.expect(pm.response.json().openForPlacement).to.eql(false));"
                 ]
               }
             }
@@ -953,15 +1024,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-zon-up-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-zr-dflt-{{runId}}-a",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones",
-                "qa-zon-up-{{runId}}"
+                "qa-zr-dflt-{{runId}}-a"
               ]
             }
           },
@@ -993,15 +1065,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-zreg-up-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-zr-dflt-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
-                "qa-zreg-up-{{runId}}"
+                "qa-zr-dflt-{{runId}}"
               ]
             }
           },
@@ -1025,7 +1098,7 @@
       ]
     },
     {
-      "name": "IZN-UPD-CRUD-STATUS — InternalZoneService.Update status UP→DOWN → new status materializes (public Get)",
+      "name": "IZN-UPD-CRUD-STATUS — InternalZoneService.Update status UP→DOWN → openForPlacement flips true→false (public Get)",
       "description": "class:CRUD | class:STATE | priority:P1",
       "item": [
         {
@@ -1039,19 +1112,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zreg-updst-{{runId}}\", \"name\": \"QA Zone-Region UpdSt\"}",
+              "raw": "{\"id\": \"qa-zr-upd-{{runId}}\", \"name\": \"QA Zone-Region Upd {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1087,7 +1161,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/qa-zreg-updst-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-zr-upd-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1095,7 +1169,7 @@
                 "geo",
                 "v1",
                 "regions",
-                "qa-zreg-updst-{{runId}}"
+                "qa-zr-upd-{{runId}}"
               ]
             }
           },
@@ -1137,19 +1211,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zon-updst-{{runId}}\", \"regionId\": \"qa-zreg-updst-{{runId}}\", \"name\": \"QA Zone UpdSt\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-upd-{{runId}}-a\", \"regionId\": \"qa-zr-upd-{{runId}}\", \"name\": \"QA Zone Upd {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1185,7 +1260,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-updst-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-zr-upd-{{runId}}-a",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1193,7 +1268,7 @@
                 "geo",
                 "v1",
                 "zones",
-                "qa-zon-updst-{{runId}}"
+                "qa-zr-upd-{{runId}}-a"
               ]
             }
           },
@@ -1218,7 +1293,8 @@
                   "}",
                   "pm.environment.unset('_rgfCount');",
                   "pm.environment.unset('_rgfStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('openForPlacement true before update', () => pm.expect(pm.response.json().openForPlacement).to.eql(true));"
                 ]
               }
             }
@@ -1235,20 +1311,21 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-zon-updst-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-zr-upd-{{runId}}-a",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones",
-                "qa-zon-updst-{{runId}}"
+                "qa-zr-upd-{{runId}}-a"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"status\": \"DOWN\"}",
+              "raw": "{\"status\": \"DOWN\", \"updateMask\": \"status\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1284,7 +1361,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-updst-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-zr-upd-{{runId}}-a",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1292,7 +1369,7 @@
                 "geo",
                 "v1",
                 "zones",
-                "qa-zon-updst-{{runId}}"
+                "qa-zr-upd-{{runId}}-a"
               ]
             }
           },
@@ -1303,16 +1380,16 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "const cur = String(pm.response.json().status);",
+                  "const ofp = pm.response.json().openForPlacement;",
                   "const uc = parseInt(pm.environment.get('_znUpdRetry') || '0', 10);",
-                  "if (cur.indexOf('DOWN') === -1 && uc < 20) {",
+                  "if (ofp !== false && uc < 20) {",
                   "  pm.environment.set('_znUpdRetry', String(uc + 1));",
                   "  const _d = Date.now(); while (Date.now() - _d < 500) { /* update-commit wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_znUpdRetry');",
-                  "pm.test('status updated to DOWN', () => pm.expect(cur).to.include('DOWN'));"
+                  "pm.test('status updated to DOWN → openForPlacement false', () => pm.expect(ofp).to.eql(false));"
                 ]
               }
             }
@@ -1329,15 +1406,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-zon-updst-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-zr-upd-{{runId}}-a",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones",
-                "qa-zon-updst-{{runId}}"
+                "qa-zr-upd-{{runId}}-a"
               ]
             }
           },
@@ -1369,15 +1447,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-zreg-updst-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-zr-upd-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
-                "qa-zreg-updst-{{runId}}"
+                "qa-zr-upd-{{runId}}"
               ]
             }
           },
