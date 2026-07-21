@@ -790,7 +790,7 @@ ensure_subnet() {
     | python3 -c "import sys,json; d=json.load(sys.stdin); n=[x for x in (d.get('subnets') or []) if x.get('name')=='$name']; print(n[0].get('id','') if n else '')" 2>/dev/null || true)
   if [ -n "$found" ]; then echo "$found"; return; fi
   local body op op_id
-  body=$(printf '{"projectId":"%s","networkId":"%s","name":"%s","zoneId":"%s","v4CidrBlocks":["%s"]}' \
+  body=$(printf '{"projectId":"%s","networkId":"%s","name":"%s","zoneId":"%s","ipv4CidrPrimary":"%s"}' \
     "$proj" "$net" "$name" "$zone" "$cidr")
   op=$(api POST "/vpc/v1/subnets" "$token" "$body")
   op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)

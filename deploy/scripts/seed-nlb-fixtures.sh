@@ -215,7 +215,7 @@ if [ -z "$SUBNET_ID" ]; then
   log "3/5 creating Subnet kac-nlb-seed-subnet"
   # placement_type is server-derived from zoneId (ZONAL) — do NOT send it (redesign
   # placement-coherence: sending placement_type → InvalidArgument).
-  body='{"projectId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["10.130.0.0/24"]}'
+  body='{"projectId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","ipv4CidrPrimary":"10.130.0.0/24"}'
   op=$(curl_json POST "/vpc/v1/subnets" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   SUBNET_ID=$(wait_op "$op_id" | extract "metadata.subnetId")
