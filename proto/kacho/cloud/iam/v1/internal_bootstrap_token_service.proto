@@ -1,0 +1,113 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+// InternalBootstrapTokenService — Internal-only (cluster-internal :9091, mTLS).
+// Registered EXCLUSIVELY on the api-gateway internal mux under
+// `/iam/v1/internal/bootstrapToken:mint`; never on the external TLS endpoint
+// (the `Internal…Service` name matches `HasInternalSuffix`, so the gRPC router
+// 404s it on the public listener — ban #6).
+//
+// Purpose (#58): a NON-INTERACTIVE entry point to a first real RS256 Bearer for
+// production-mode seed. Production authN (`api-gateway authn.mode=
+// production-strict`) accepts RS256 only (Hydra-signed; gateway verifies via the
+// iam JWKS-proxy :9097; requires `aud=https://{API_DOMAIN}`). Newman/e2e seed
+// mints HS256 dev JWTs → inert against a production stand, and a fresh stand has
+// zero seeded Hydra OAuth clients, so the only path to a first token is a human
+// Kratos→Hydra browser ceremony — which blocks ALL production e2e.
+//
+// This service idempotently provisions a SINGLE bootstrap-admin ServiceAccount
+// (cluster `system_admin`) + its Hydra OAuth client (client_credentials +
+// private_key_jwt) and mints a short-lived RS256 access-token for it via the
+// EXISTING Hydra client_credentials exchange (the same machinery the registry
+// `/iam/token` shim uses; only the requested `audience` differs —
+// `https://{API_DOMAIN}` vs the registry service). Hydra remains the issuer /
+// signer; iam only brokers the exchange (never re-signs).
+//
+// Principal = a ServiceAccount, NOT a User, because service principals are
+// acr-EXEMPT by design (security.md §4.1.2; iam authzguard/fgaproxy): the minted
+// token then satisfies the acr>=2-gated seed RPCs
+// (`UserTokenService.Issue` / `SAKeyService.Issue`) without any acr injection.
+//
+// Scope discipline: mints ONLY the bootstrap-admin SA. There is deliberately NO
+// subject/principal field in the request — a "mint token for any principal"
+// skeleton-key is rejected by construction (acceptance IBT-11 / D-2).
+//
+// Authorization gate: the mTLS listener boundary IS the gate
+// (`permission = "<exempt>"`, like the Hydra token-hooks). `<exempt>` bypasses
+// the per-RPC FGA Check but NOT transport authN — mTLS remains mandatory
+// ("internal = trusted" is forbidden, security.md §authN-everywhere).
+package kacho.cloud.iam.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
+
+// InternalBootstrapTokenService — mints the non-interactive bootstrap RS256
+// Bearer. See file-level comment for the provisioning + exchange contract.
+service InternalBootstrapTokenService {
+  // MintBootstrapToken idempotently provisions the singleton bootstrap-admin
+  // ServiceAccount (if absent) and mints a short-lived RS256 access-token for
+  // it via the Hydra client_credentials exchange (aud = `https://{API_DOMAIN}`).
+  //
+  // SYNCHRONOUS request/response — NOT an `Operation` (declared deviation from
+  // mutations→Operation, D-2): the mint is a read-shaped derivation (a single
+  // round-trip to Hydra → `{accessToken, expiresIn}`), exactly like the
+  // token-hooks and the registry `/iam/token` shim. The only durable part is the
+  // idempotent provisioning, which is not the subject of the mint and is safe to
+  // repeat (D-3). The token is returned in the response body, not in an
+  // `Operation.response`.
+  //
+  // Fail-closed: Hydra unreachable/misbehaving → UNAVAILABLE (no token; raw Hydra
+  // body never leaks — no auth-oracle). REST exposed ONLY on the cluster-internal
+  // listener.
+  rpc MintBootstrapToken (MintBootstrapTokenRequest) returns (MintBootstrapTokenResponse) {
+    option (google.api.http) = {
+      post: "/iam/v1/internal/bootstrapToken:mint"
+      body: "*"
+    };
+    // Listener boundary = the gate: mTLS-verified cluster-internal :9091. The
+    // catalog-gate is bypassed for `<exempt>`; transport authN (mTLS) remains
+    // mandatory.
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+}
+
+// MintBootstrapTokenRequest — inputs for MintBootstrapToken.
+//
+// There is DELIBERATELY no subject/principal field: the RPC mints exclusively
+// for the bootstrap-admin SA (IBT-11). Any unknown key a client sends is ignored
+// by grpc-gateway and cannot influence the principal.
+message MintBootstrapTokenRequest {
+  // Requested token lifetime in seconds. Optional: `0` → server default. The
+  // value is CLAMPED to a server hard-max (the bootstrap token is deliberately
+  // short-lived, IBT-09) — a larger request never widens the lifetime.
+  int64 ttl_seconds = 1 [(length) = ">=0"];
+}
+
+// MintBootstrapTokenResponse — the minted bootstrap Bearer.
+message MintBootstrapTokenResponse {
+  // The RS256 JWT access-token (Hydra-signed; `alg=RS256`, Hydra `kid`). The
+  // gateway accepts it as a valid production-mode Bearer.
+  string access_token = 1;
+
+  // OAuth2 token type — always `"Bearer"`.
+  string token_type = 2;
+
+  // Seconds until expiry (`expires_at - issued_at`), ≤ the server hard-max.
+  int64 expires_in = 3;
+
+  // Absolute expiry (truncated to seconds).
+  google.protobuf.Timestamp expires_at = 4;
+
+  // The bootstrap ServiceAccount id (`sva_…`) this token authenticates as —
+  // equals the token's `kacho_principal_id` claim.
+  string principal_id = 5;
+
+  // Absolute issuance time (truncated to seconds).
+  google.protobuf.Timestamp issued_at = 6;
+}
