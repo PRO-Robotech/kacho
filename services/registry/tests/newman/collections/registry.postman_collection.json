@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "41cd56d0-c07b-472a-ae33-b3dd98423a08",
+    "_postman_id": "b637fb78-e5d2-488c-b22a-cba98a7326ac",
     "name": "kacho-registry / newman / registry",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2084,6 +2084,52 @@
       ]
     },
     {
+      "name": "REG-LSTREPO-NEG-PAGESIZE-OVERMAX — ListRepositories pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+      "description": "class:NEG | class:BVA | class:VAL | priority:P2",
+      "item": [
+        {
+          "name": "list-repos-ps-overmax",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}/repositories?pageSize=1001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}",
+                "repositories?pageSize=1001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "REG-LSTTAGS-CRUD-OK — ListTags on own namespace → authorized read routes (200 tags[] or 404 repo-absent, not 401/403)",
       "description": "class:CRUD | priority:P1",
       "item": [
@@ -2233,6 +2279,54 @@
                   "pm.test('unauthorized -> 401/404/empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
                   "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
                   "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LSTTAGS-NEG-PAGESIZE-OVERMAX — ListTags pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+      "description": "class:NEG | class:BVA | class:VAL | priority:P2",
+      "item": [
+        {
+          "name": "list-tags-ps-overmax",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}/repositories/app-{{runId}}/tags?pageSize=1001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}",
+                "repositories",
+                "app-{{runId}}",
+                "tags?pageSize=1001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }

@@ -241,6 +241,134 @@ CASES.append(Case(
                 test_script=[*assert_status(401)])],
 ))
 
+# ===========================================================================
+# Per-repo authz на config-overlay Repository (RG-1) — existence-hiding на
+# GetRepository/UpdateRepository/DeleteRepository/CreateRepository (per-repo v_*
+# Check в handler'е; deny|absent → uniform NOT_FOUND, security.md). Переиспользует
+# {{regIdAz}}; создаёт durable overlay-repo от editor'а, гоняет его от stranger/viewer.
+# Тот же single-user-толерантный контракт, что registry-level authz выше (stranger →
+# 401 на этом стенде; multi-user CI → 404/403). Registry-cascade сносит repo при
+# удалении {{regIdAz}} (REG-AZ-CLEANUP-FIXTURE) → отдельного repo-cleanup не нужно.
+# ===========================================================================
+
+_AZ_REPO = REG + "/{{regIdAz}}/repositories"
+
+# Setup: CreateRepository durable overlay repo под {{regIdAz}} от project-editor.
+CASES.append(Case(
+    id="REPO-AZ-SETUP",
+    title="Setup: CreateRepository durable overlay repo under {{regIdAz}} (editor) → poll → capture",
+    classes=["AZD"], priority="P1",
+    steps=[
+        Step(name="repo-az-create", method="POST", path=_AZ_REPO,
+             body={"repository": "az-repo-{{runId}}", "description": "per-repo authz fixture"},
+             test_script=[*assert_status(200), *assert_operation_envelope(_OP_PREFIX),
+                          *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        Step(name="repo-az-confirm", method="GET", path="/operations/{{opId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('repo setup op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"]),
+    ],
+))
+
+# GetRepository как jwtStranger → existence-hidden. Stranger unregistered → 401 на
+# single-user стенде; multi-user CI → 404 "repository not found". Принимаем denied-
+# диапазон, но НИКОГДА 200-success (не раскрываем repo) и без deny_reasons-leak (!=401).
+CASES.append(Case(
+    id="REPO-AZ-GET-STRANGER-HIDDEN",
+    title="GetRepository as jwtStranger → denied/hidden (401/403/404), never 200-success; no leak",
+    classes=["AZD", "NEG"], priority="P0",
+    steps=[Step(name="repo-get-stranger", method="GET", path=_AZ_REPO + "/az-repo-{{runId}}", auth="jwtStranger",
+                test_script=[
+                    "pm.test('denied (401/403/404), never 200 success', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
+                    *_deny_leak_gated()])],
+))
+
+# GetRepository как jwtProjectViewerA (v_get) → 200 (positive control). Fixture-gated;
+# retry-on-404 поглощает grant-latency (FGA-пропагация ~0.6-2s).
+CASES.append(Case(
+    id="REPO-AZ-GET-VIEWER-OK",
+    title="GetRepository as jwtProjectViewerA (v_get) → 200 (positive control, fixture-gated)",
+    classes=["AZD"], priority="P1",
+    steps=[Step(name="repo-get-viewer", method="GET", path=_AZ_REPO + "/az-repo-{{runId}}", auth="jwtProjectViewerA",
+                test_script=[
+                    *_viewer_gate(),
+                    "const _n = parseInt(pm.environment.get('_azRepoViewerRetry') || '0', 10);",
+                    "if (pm.response.code === 404 && _n < 20) {",
+                    "  pm.environment.set('_azRepoViewerRetry', String(_n + 1));",
+                    "  pm.execution.setNextRequest(pm.info.requestName);",
+                    "  return;",
+                    "}",
+                    "pm.environment.unset('_azRepoViewerRetry');",
+                    *assert_status(200),
+                    "pm.test('viewer sees repo (v_get)', () => pm.expect(pm.response.json().name).to.eql('az-repo-'+pm.environment.get('runId')));"])],
+))
+
+# UpdateRepository как jwtProjectViewerA (v_get но НЕ v_update) → existence-hidden
+# NOT_FOUND (403/404, НИКОГДА 200 op-envelope). Fixture-gated.
+CASES.append(Case(
+    id="REPO-AZ-UPDATE-VIEWER-DENY",
+    title="UpdateRepository as jwtProjectViewerA (no v_update) → 403/404 (existence-hidden); no leak (fixture-gated)",
+    classes=["AZD", "NEG"], priority="P0",
+    steps=[Step(name="repo-update-viewer", method="PATCH", path=_AZ_REPO + "/az-repo-{{runId}}", auth="jwtProjectViewerA",
+                body={"updateMask": "description", "description": "viewer-edit-{{runId}}"},
+                test_script=[
+                    *_viewer_gate(),
+                    "pm.test('denied 403/404 (no v_update), never 200 op', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                    *_deny_leak_gated()])],
+))
+
+# DeleteRepository как jwtStranger → denied, НИКОГДА 200 op-success (фикстура нетронута).
+# Stranger unregistered → 401 здесь; multi-user CI → 404 existence-hidden. repo остаётся.
+CASES.append(Case(
+    id="REPO-AZ-DELETE-STRANGER-DENY",
+    title="DeleteRepository as jwtStranger → denied (401/403/404), never 200 op-success; fixture untouched",
+    classes=["AZD", "NEG"], priority="P0",
+    steps=[Step(name="repo-delete-stranger", method="DELETE", path=_AZ_REPO + "/az-repo-{{runId}}", auth="jwtStranger",
+                test_script=[
+                    "pm.test('denied (401/403/404), never 200 op-success', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
+                    *_deny_leak_gated()])],
+))
+
+# CreateRepository как jwtStranger в {{regIdAz}} (реестр stranger'у невидим) → denied
+# (namespace call-gate existence-hiding, X04). Anti-BOLA: чужой не сеет repo в твой реестр.
+CASES.append(Case(
+    id="REPO-AZ-CREATE-STRANGER-HIDDEN",
+    title="CreateRepository as jwtStranger in {{regIdAz}} → denied (401/403/404), never 200 (namespace call-gate, X04)",
+    classes=["AZD", "NEG"], priority="P1",
+    steps=[Step(name="repo-create-stranger", method="POST", path=_AZ_REPO, auth="jwtStranger",
+                body={"repository": "intruder/svc-{{runId}}"},
+                test_script=[
+                    "pm.test('denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
+                    *_deny_leak_gated()])],
+))
+
+# Registry hide-existence byte-identity (security.md #6): deny-404 текст на чужом/
+# невидимом реестре обязан быть форматно байт-в-байт настоящему well-formed-absent miss
+# (иначе existence-oracle / FGA-object-type-leak). Нормализуем id (deny несёт regIdAz,
+# miss — absent-id) → сравниваем ФОРМАТ. На single-user стенде stranger → 401 (skip
+# byte-identity); multi-user CI → 404. Locks security.md #6 без hardcode текста.
+CASES.append(Case(
+    id="REG-AZ-HIDE-EXISTENCE-BYTE-IDENTITY",
+    title="Registry deny-404 format byte-identical to absent-miss 404 (security.md #6, no existence-oracle)",
+    classes=["AZD", "NEG", "CONF"], priority="P1",
+    steps=[
+        Step(name="reg-miss-absent", method="GET", path=REG + "/reg00000000000000000",
+             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                          "pm.environment.set('regMissMsg', pm.response.json().message||'');"]),
+        Step(name="reg-deny-stranger", method="GET", path=f"{REG}/{{{{regIdAz}}}}", auth="jwtStranger",
+             test_script=[
+                 "if (pm.response.code !== 404) {",
+                 "  console.log('SKIP byte-identity: stranger not authenticated-404 on this stand (code '+pm.response.code+')');",
+                 "  return;",
+                 "}",
+                 *assert_grpc_code(5, "NOT_FOUND"),
+                 "const _absId = 'reg00000000000000000';",
+                 "const _regIdAz = pm.environment.get('regIdAz') || '';",
+                 "const _norm = (pm.response.json().message||'').split(_regIdAz).join(_absId);",
+                 "pm.test('deny-404 format byte-identical to absent-miss (no existence-oracle / no FGA-type leak)', () => pm.expect(_norm).to.eql(pm.environment.get('regMissMsg')));"]),
+    ],
+))
+
 # Cleanup: удалить фикстуру от project-editor ПОСЛЕДНИМ → poll → Get 404.
 CASES.append(Case(
     id="REG-AZ-CLEANUP-FIXTURE",

@@ -484,6 +484,19 @@ CASES.append(Case(
 ))
 
 
+# ListRepositories pageSize > max (1000) → 400 INVALID_ARGUMENT (BVA: отвергается, НЕ
+# clamp'ится). Parity с REG-RD-F8-NEG-PAGESIZE-OVERMAX (ListRegistries) — format-validate
+# ДО listauthz empty-grant short-circuit (security.md #7 / api-conventions §Pagination).
+CASES.append(Case(
+    id="REG-LSTREPO-NEG-PAGESIZE-OVERMAX",  # index: REG-22
+    title="ListRepositories pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+    classes=["NEG", "BVA", "VAL"], priority="P2",
+    steps=[Step(name="list-repos-ps-overmax", method="GET",
+                path=REG + "/{{regId}}/repositories?pageSize=1001",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+
 # ===========================================================================
 # ListTags (sync projection from zot)
 # ===========================================================================
@@ -531,6 +544,18 @@ CASES.append(Case(
                     "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
                     "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }",
                 ])],
+))
+
+
+# ListTags pageSize > max (1000) → 400 INVALID_ARGUMENT (BVA: отвергается, НЕ clamp'ится;
+# format-validate до repo-existence/authz short-circuit). Parity с ListRegistries/ListRepositories.
+CASES.append(Case(
+    id="REG-LSTTAGS-NEG-PAGESIZE-OVERMAX",  # index: REG-24
+    title="ListTags pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+    classes=["NEG", "BVA", "VAL"], priority="P2",
+    steps=[Step(name="list-tags-ps-overmax", method="GET",
+                path=REG + "/{{regId}}/repositories/app-{{runId}}/tags?pageSize=1001",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
 
