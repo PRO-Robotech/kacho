@@ -52,6 +52,35 @@ func TestPermissionMap_CatalogAdmin_SystemAdminOnCluster(t *testing.T) {
 	}
 }
 
+// catalogPublicReads — the PUBLIC read-only catalog RPCs (DiskType + MachineType
+// Get/List). These run authz Check on the public listener too; an unmapped one
+// fails closed "rpc not mapped". MachineTypeService/Get+List were omitted (only the
+// Internal admin mutations were added) → the public catalog reads used across the
+// machine-type + instance/list-filter suites (and Instance.Create machineTypeId
+// resolve) 403'd.
+var catalogPublicReads = []string{
+	"/kacho.cloud.compute.v1.DiskTypeService/Get",
+	"/kacho.cloud.compute.v1.DiskTypeService/List",
+	"/kacho.cloud.compute.v1.MachineTypeService/Get",
+	"/kacho.cloud.compute.v1.MachineTypeService/List",
+}
+
+// TestPermissionMap_CatalogReads_ViewerOnCluster — each public catalog read is
+// mapped → relation "viewer", object "cluster:cluster_kacho_root".
+func TestPermissionMap_CatalogReads_ViewerOnCluster(t *testing.T) {
+	m := check.PermissionMap()
+	for _, fullMethod := range catalogPublicReads {
+		entry, ok := m[fullMethod]
+		require.Truef(t, ok, "catalog read RPC %s must be present in PermissionMap (public listener runs authz Check)", fullMethod)
+		require.Equalf(t, "viewer", entry.Relation, "%s: required_relation must be viewer", fullMethod)
+		require.NotNilf(t, entry.Extract, "%s: must carry an ObjectExtractor", fullMethod)
+		objType, objID, err := entry.Extract(nil)
+		require.NoErrorf(t, err, "%s: cluster-scoped extractor must not error", fullMethod)
+		require.Equalf(t, "cluster", objType, "%s: object_type must be cluster", fullMethod)
+		require.Equalf(t, "cluster_kacho_root", objID, "%s: object_id must be cluster singleton", fullMethod)
+	}
+}
+
 // TestPermissionMap_CatalogAdmin_EnforcedByInterceptor — sanity at interceptor
 // level: a mapped catalog mutation routes to a real Check (system_admin on
 // cluster) rather than being skipped, and deny fail-closes with PermissionDenied.
