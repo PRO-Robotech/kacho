@@ -25,10 +25,11 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1;au
 //     option (kacho.iam.authz.v1.required_acr_min)  = "2";
 //   }
 //
-// All four options are emitted into the catalog. `permission`,
+// All options are emitted into the catalog. `permission`,
 // `required_relation`, `scope_extractor.object_type` and
 // `scope_extractor.from_request_field` are required. `required_acr_min` is
-// optional and defaults to "2".
+// optional and defaults to "2". `hide_existence` is optional and defaults to
+// false.
 //
 // Extension field numbers are inside the kacho.iam-reserved range
 // `[50000, 50999]` to avoid collision with `kacho.cloud.api` (87334) and
@@ -57,6 +58,28 @@ extend google.protobuf.MethodOptions {
 // non-numeric ACR values. Default `"2"` when not set.
 extend google.protobuf.MethodOptions {
   string required_acr_min = 50004;
+}
+
+// hide_existence — when true, the api-gateway authz middleware surfaces an
+// authenticated deny on this RPC as NotFound (gRPC 5 / HTTP 404) with NO deny
+// reasons, instead of PermissionDenied (gRPC 7 / HTTP 403 + `deny_reasons`).
+//
+// The gateway Check runs BEFORE the owning service, so a 403 here would both (a)
+// override the owner's hide-existence contract for a resource whose very
+// existence must stay hidden from an unauthorized caller and (b) echo the iam
+// enforcement-Check deny reason ("subject … lacks relation … ; current direct
+// relations: [...]") into the client response — a relations/existence oracle
+// (security.md #6, hardening-invariant #5). Enforcement is unchanged: the deny
+// still blocks the request; only the surfaced code/body differ.
+//
+// Set it on verb-bearing RPCs over a concrete per-resource scope whose owner
+// answers a denied caller with NotFound (reads AND mutations of a resource the
+// caller must not learn the existence of). Read `/Get` RPCs over a `v_get`
+// concrete scope are hidden by the gateway heuristic even without this flag; the
+// flag is required for the mutation verbs (`v_update` / `v_delete`), which the
+// heuristic deliberately does not cover. Default false (plain PermissionDenied).
+extend google.protobuf.MethodOptions {
+  bool hide_existence = 50005;
 }
 
 // ScopeExtractor describes how the kacho-iam authz middleware extracts an

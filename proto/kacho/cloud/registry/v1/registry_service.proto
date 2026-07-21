@@ -60,6 +60,12 @@ service RegistryService {
   }
 
   // Update — async, mutable labels/description (name/project immutable). v_update.
+  // hide_existence: a caller without v_update must not learn the registry exists
+  // (nor have its grants enumerated) — deny → NotFound, byte-parity with a real
+  // miss and with the v_get read-deny hide (security.md #6). The gateway echoes
+  // NO deny reason; without this the deny would surface 403 + `deny_reasons`
+  // (relations oracle). The registry backend is already opaque; this closes the
+  // gateway echo for the gated mutation.
   rpc Update(UpdateRegistryRequest) returns (operation.Operation) {
     option (google.api.http) = {
       patch: "/registry/v1/registries/{registry_id}"
@@ -76,10 +82,14 @@ service RegistryService {
       from_request_field: "registry_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.hide_existence) = true;
   }
 
   // Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
   // zot-namespace + UnregisterResource owner/repo-tuple.
+  // hide_existence: same rationale as Update — a caller without v_delete must not
+  // learn the registry exists nor have its grants enumerated; deny → NotFound,
+  // no `deny_reasons` echo (security.md #6). Mirrors the v_get read-deny hide.
   rpc Delete(DeleteRegistryRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}"};
     option (kacho.cloud.api.operation) = {
@@ -93,6 +103,7 @@ service RegistryService {
       from_request_field: "registry_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.hide_existence) = true;
   }
 
   // ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
