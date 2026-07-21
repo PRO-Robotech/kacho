@@ -336,6 +336,17 @@ spec:
             - name: KACHO_IAM_HYDRA_JWKS_URL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.kacho.iam.hydraAdminUrl }}
+            # In-cluster Hydra ADMIN endpoint (POST /admin/clients + jwt-bearer
+            # trust-grants) for sa_keys (SAKeyService.Issue/Revoke) + user_tokens.
+            # Empty → not emitted → ResolveHydraAdminURL() derives
+            # `https://hydra-admin.<domain>` from the issuer, which is UNREACHABLE
+            # in-cluster (public ingress host does not resolve) → CreateOAuthClient
+            # fails → SAKey.Issue op errors ("internal worker error"). Every deployed
+            # profile points this at the cluster-internal hydra-admin Service.
+            - name: KACHO_IAM_HYDRA_ADMIN_URL
+              value: {{ . | quote }}
+            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
