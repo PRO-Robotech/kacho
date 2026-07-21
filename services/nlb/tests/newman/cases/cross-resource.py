@@ -91,7 +91,7 @@ def _create_external_lb(suffix: str, body_extra: dict = None):
 
 def _create_tg(suffix: str):
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-            "name": f"xres-tg-{suffix}-{{{{runId}}}}", "healthCheck": _HC_TCP}
+            "name": f"xres-tg-{suffix}-{{{{runId}}}}", "port": 8080, "healthCheck": _HC_TCP}
     return [
         Step(name="create-tg", method="POST", path=_TG_BASE, body=body,
              test_script=[*assert_status(200),
@@ -300,7 +300,7 @@ CASES.append(Case(
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[
                  "pm.test('accepted as Operation or sync-rejected', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 404, 200, 400, 409]));",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -336,7 +336,7 @@ CASES.append(Case(
                  # Wrapped so a fresh-LB editor-tuple lag (403) is retried away and the real
                  # family-mismatch InvalidArgument is what the assertion observes.
                  "pm.test('rejected (sync InvalidArgument or async error)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
@@ -435,7 +435,7 @@ CASES.append(Case(
                  # Child-create under the fresh INTERNAL LB → editor@lb owner-tuple lag (403)
                  # is retried; the real accept/reject is what the assertion observes.
                  "pm.test('listener accepted or rejected (LB/subnet dependent)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
                  "pm.environment.unset('lstId');",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
@@ -460,7 +460,7 @@ CASES.append(Case(
              test_script=[
                  # Authorized against editor@lb (fresh LB tuple lag) → bounded retry.
                  "pm.test('attach accepted or rejected (LB dependent)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),

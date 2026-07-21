@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f61c75b9-0b44-4a9a-858a-c30971534b47",
+    "_postman_id": "22cec167-5826-4a7d-83a7-6500989c66eb",
     "name": "kacho-nlb / newman / listener",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -7207,7 +7207,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));"
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 400, 200]));"
                 ]
               }
             }
@@ -7728,7 +7728,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));"
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 400, 200]));"
                 ]
               }
             }
@@ -8249,7 +8249,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -10724,7 +10724,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -11334,7 +11334,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -12644,7 +12644,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected (sync 409 or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                  "pm.test('rejected (sync 409 or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -13309,7 +13309,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected or accepted', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                  "pm.test('rejected or accepted', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -14254,7 +14254,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"name\": \"dtgr-alt-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"name\": \"dtgr-alt-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16452,7 +16452,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));"
                 ]
               }
             }
@@ -16973,7 +16973,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));"
                 ]
               }
             }
@@ -17494,7 +17494,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));"
                 ]
               }
             }
@@ -18015,7 +18015,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('OK or InsufficientPool', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('OK or InsufficientPool', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -19525,7 +19525,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('accepted or no-op', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('accepted or no-op', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",

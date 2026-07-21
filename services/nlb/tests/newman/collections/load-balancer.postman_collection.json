@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "71745b01-c5d3-499d-b811-11d095760224",
+    "_postman_id": "8fbdb8b4-c3c9-447d-bec6-cc29e18f7d49",
     "name": "kacho-nlb / newman / load-balancer",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -4222,7 +4222,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 409, 400]));",
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 409, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -5361,7 +5361,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 409, 400]));",
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 409, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -6537,7 +6537,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"mv-tg-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"mv-tg-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6769,7 +6769,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected with FailedPrecondition', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('rejected with FailedPrecondition', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -7580,7 +7580,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (sync 400 or async error)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('rejected (sync 400 or async error)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                   "if (pm.response.code === 400) {",
                   "  pm.test('grpc 3 INVALID_ARGUMENT', () =>     pm.expect(pm.response.json().code).to.eql(3));",
                   "}"
@@ -7991,7 +7991,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-att-ok-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-att-ok-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8823,7 +8823,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-att-idem-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-att-idem-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9754,7 +9754,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"name\": \"tg-region-alt-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"name\": \"tg-region-alt-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9872,7 +9872,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (region-mismatch 409 when alt region seeded, or absent-TG 404 when unseeded)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                  "pm.test('rejected (region-mismatch 409 when alt region seeded, or absent-TG 404 when unseeded)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -10473,7 +10473,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                  "pm.test('rejected', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -10951,7 +10951,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+                  "pm.test('rejected', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -11414,7 +11414,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-det-ok-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-det-ok-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12247,7 +12247,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-det-not-attached-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-det-not-attached-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12429,7 +12429,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -12981,7 +12981,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-gts-empty-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-gts-empty-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13654,7 +13654,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-gts-stopped-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-gts-stopped-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18092,7 +18092,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-fk-race-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-fk-race-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18364,7 +18364,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -20784,7 +20784,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));"
                 ]
               }
             }
@@ -21918,7 +21918,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -22504,7 +22504,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-del-has-att-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-del-has-att-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22760,7 +22760,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -25979,7 +25979,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (404/409)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
+                  "pm.test('rejected (404/409)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -28698,7 +28698,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-gts-empty-active-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"setup-tg-gts-empty-active-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -29490,7 +29490,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",

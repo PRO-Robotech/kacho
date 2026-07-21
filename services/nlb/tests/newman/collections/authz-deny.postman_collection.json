@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d5ddb0b0-9203-45f5-a399-25af57a5ad30",
+    "_postman_id": "92516531-b474-4fb1-8e72-1856d3db34ee",
     "name": "kacho-nlb / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1758,7 +1758,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgr-vd-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgr-vd-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1949,7 +1949,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgrmvpc-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgrmvpc-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2011,7 +2011,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgrmv-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgrmv-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5529,7 +5529,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgr-strn-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgr-strn-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5656,7 +5656,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"anon-tgr-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"anon-tgr-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"

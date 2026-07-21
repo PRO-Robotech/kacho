@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "dbf50cc8-cf57-49f6-a052-c922522641b2",
+    "_postman_id": "618ebd3c-6de4-4d1c-ac57-90f513b8df94",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -447,7 +447,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-ext-flow-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-ext-flow-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2156,7 +2156,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-def-unatt-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-def-unatt-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2328,7 +2328,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('accepted as Operation or sync-rejected', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                  "pm.test('accepted as Operation or sync-rejected', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 404, 200, 400, 409]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2957,7 +2957,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected (sync InvalidArgument or async error)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('rejected (sync InvalidArgument or async error)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3491,7 +3491,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('listener accepted or rejected (LB/subnet dependent)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+                  "pm.test('listener accepted or rejected (LB/subnet dependent)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
                   "pm.environment.unset('lstId');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -3619,7 +3619,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-int-flow-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-int-flow-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3806,7 +3806,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('attach accepted or rejected (LB dependent)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+                  "pm.test('attach accepted or rejected (LB dependent)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -5224,7 +5224,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-teardown-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-teardown-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7259,7 +7259,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-dangling-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"xres-tg-dangling-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"

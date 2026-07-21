@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "199fa330-32e9-403b-a911-da85f36bcab6",
+    "_postman_id": "5c61ea57-f383-449f-9575-e5a408dbc8aa",
     "name": "kacho-nlb / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -373,7 +373,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-tg-own-{{runId}}\", \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-tg-own-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"name\": \"hc-tcp\", \"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcpOptions\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -21,6 +21,11 @@ _HEALTH_CHECK_DEFAULT = {
 _TG_BODY = {
     "projectId": "{{_suiteProjectId}}",
     "regionId": "{{_suiteRegionId}}",
+    # Required top-level backend port (NLB-1b F6-co-req, CreateTargetGroupRequest.port
+    # field 11, (required)=true, range 1..65535). Distinct from healthCheck.*.port and
+    # from Listener.port; echoed by Listener.resolvedBackendPort. Deployed handler
+    # rejects omission with 400 field "port" "port must be in range [1, 65535]".
+    "port": 8080,
     "healthCheck": _HEALTH_CHECK_DEFAULT,
     "deregistrationDelaySeconds": 300,
     "slowStartSeconds": 30,
@@ -482,7 +487,7 @@ CASES.append(conf_alreadyexists_block(
     prefix="TGR",
     create_path=_TG_BASE,
     name_template="tgr-dup-{{runId}}",
-    body_extra={"regionId": "{{_suiteRegionId}}", "healthCheck": _HEALTH_CHECK_DEFAULT},
+    body_extra={"regionId": "{{_suiteRegionId}}", "port": 8080, "healthCheck": _HEALTH_CHECK_DEFAULT},
 ))
 
 CASES.append(Case(
@@ -888,7 +893,8 @@ CASES.append(Case(
     steps=[
         Step(name="cr-min", method="POST", path=_TG_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "tg-min-{{runId}}",
+                   # "required fields" now include the net-new top-level port (NLB-1b F6).
+                   "name": "tg-min-{{runId}}", "port": 8080,
                    "healthCheck": _HEALTH_CHECK_DEFAULT},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
