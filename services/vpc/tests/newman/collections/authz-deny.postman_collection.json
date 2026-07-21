@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "bd4e0888-beac-4b55-8b42-5701bd89e6f8",
+    "_postman_id": "10b20e76-dff4-4209-997e-eb24fd1926e2",
     "name": "kacho-vpc / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -638,7 +638,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs539",
+          "name": "get-abs535",
           "request": {
             "method": "GET",
             "header": [
@@ -713,7 +713,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs540",
+          "name": "get-abs536",
           "request": {
             "method": "GET",
             "header": [
@@ -1160,7 +1160,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs541",
+          "name": "get-abs537",
           "request": {
             "method": "GET",
             "header": [
@@ -1607,7 +1607,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs542",
+          "name": "get-abs538",
           "request": {
             "method": "GET",
             "header": [
@@ -1999,7 +1999,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs543",
+          "name": "get-abs539",
           "request": {
             "method": "GET",
             "header": [
@@ -3267,7 +3267,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs544",
+          "name": "get-abs540",
           "request": {
             "method": "GET",
             "header": [
@@ -3342,7 +3342,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs545",
+          "name": "get-abs541",
           "request": {
             "method": "GET",
             "header": [
@@ -3789,7 +3789,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs546",
+          "name": "get-abs542",
           "request": {
             "method": "GET",
             "header": [
@@ -4236,7 +4236,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs547",
+          "name": "get-abs543",
           "request": {
             "method": "GET",
             "header": [
@@ -4628,7 +4628,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs548",
+          "name": "get-abs544",
           "request": {
             "method": "GET",
             "header": [
@@ -5896,7 +5896,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs549",
+          "name": "get-abs545",
           "request": {
             "method": "GET",
             "header": [
@@ -5971,7 +5971,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs550",
+          "name": "get-abs546",
           "request": {
             "method": "GET",
             "header": [
@@ -6418,7 +6418,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs551",
+          "name": "get-abs547",
           "request": {
             "method": "GET",
             "header": [
@@ -6865,7 +6865,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs552",
+          "name": "get-abs548",
           "request": {
             "method": "GET",
             "header": [
@@ -7257,7 +7257,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs553",
+          "name": "get-abs549",
           "request": {
             "method": "GET",
             "header": [
@@ -8525,7 +8525,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs554",
+          "name": "get-abs550",
           "request": {
             "method": "GET",
             "header": [
@@ -8600,7 +8600,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs555",
+          "name": "get-abs551",
           "request": {
             "method": "GET",
             "header": [
@@ -9047,7 +9047,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs556",
+          "name": "get-abs552",
           "request": {
             "method": "GET",
             "header": [
@@ -9494,7 +9494,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs557",
+          "name": "get-abs553",
           "request": {
             "method": "GET",
             "header": [
@@ -9886,7 +9886,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs558",
+          "name": "get-abs554",
           "request": {
             "method": "GET",
             "header": [
@@ -11154,7 +11154,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs559",
+          "name": "get-abs555",
           "request": {
             "method": "GET",
             "header": [
@@ -11229,7 +11229,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs560",
+          "name": "get-abs556",
           "request": {
             "method": "GET",
             "header": [
@@ -11676,7 +11676,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs561",
+          "name": "get-abs557",
           "request": {
             "method": "GET",
             "header": [
@@ -12123,7 +12123,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs562",
+          "name": "get-abs558",
           "request": {
             "method": "GET",
             "header": [
@@ -12515,7 +12515,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs563",
+          "name": "get-abs559",
           "request": {
             "method": "GET",
             "header": [
@@ -13783,7 +13783,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs564",
+          "name": "get-abs560",
           "request": {
             "method": "GET",
             "header": [
@@ -13858,7 +13858,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs565",
+          "name": "get-abs561",
           "request": {
             "method": "GET",
             "header": [
@@ -14305,7 +14305,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs566",
+          "name": "get-abs562",
           "request": {
             "method": "GET",
             "header": [
@@ -14752,7 +14752,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs567",
+          "name": "get-abs563",
           "request": {
             "method": "GET",
             "header": [
@@ -15144,7 +15144,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs568",
+          "name": "get-abs564",
           "request": {
             "method": "GET",
             "header": [
@@ -16412,7 +16412,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs569",
+          "name": "get-abs565",
           "request": {
             "method": "GET",
             "header": [
@@ -16487,7 +16487,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs570",
+          "name": "get-abs566",
           "request": {
             "method": "GET",
             "header": [
@@ -16934,7 +16934,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs571",
+          "name": "get-abs567",
           "request": {
             "method": "GET",
             "header": [
@@ -17381,7 +17381,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs572",
+          "name": "get-abs568",
           "request": {
             "method": "GET",
             "header": [
@@ -17773,7 +17773,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs573",
+          "name": "get-abs569",
           "request": {
             "method": "GET",
             "header": [

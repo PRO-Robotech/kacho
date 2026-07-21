@@ -253,12 +253,16 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    # v6_cidr_blocks soft-immutable: поле принимается в mask (200), но применение —
-    # no-op (CIDR меняются через :add/removeCidrBlocks). UpdateSubnetRequest несет
-    # поле v6_cidr_blocks, поэтому запрос проходит без ошибки.
+    # VPC-1 F7: CIDR is immutable via Update — the primary anchor never changes;
+    # additional ranges move only through :add/:remove-cidr-blocks. A CIDR field in
+    # update_mask is rejected SYNC by the Update immutable-switch (subnet/update.go
+    # covers ipv4/ipv6_cidr_primary + _blocks). (Pre-redesign this was a soft no-op
+    # 200; the redesign made it a hard immutable-reject.) NB: proto3 FieldMask paths
+    # are lowerCamelCase in JSON (protojson converts to snake internally) — a
+    # snake_case mask value fails FieldMask parse before reaching the handler.
     id="SUB-UPD-V6-NOOP",
-    title="Update с v6CidrBlocks в body+mask → 200, без ошибки (soft-immutable no-op)",
-    classes=["STATE", "CRUD"],
+    title="Update mask=ipv6CidrPrimary → sync 400 'ipv6_cidr_primary is immutable after Subnet.Create' (VPC-1 F7)",
+    classes=["STATE", "VAL", "NEG"],
     priority="P2",
     steps=[
         *_make_net("v6upd"),
@@ -268,7 +272,7 @@ CASES.append(Case(
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-v6upd-{{runId}}", "zoneId": "{{existingZoneId}}",
-                  "v4CidrBlocks": ["10.79.0.0/24"]},
+                  "ipv4CidrPrimary": "10.79.0.0/24"},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
         ),
@@ -277,13 +281,10 @@ CASES.append(Case(
             name="patch-v6",
             method="PATCH",
             path="/vpc/v1/subnets/{{subId}}",
-            body={"updateMask": "v6CidrBlocks", "v6CidrBlocks": ["fd00:cafe::/64"]},
-            test_script=[*assert_status(200), *save_from_response("j.id", "opId")],
+            body={"updateMask": "ipv6CidrPrimary", "ipv6CidrPrimary": "fd00:cafe::/64"},
+            test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                         "pm.test('verbatim immutable text', () => pm.expect(pm.response.json().message).to.eql('ipv6_cidr_primary is immutable after Subnet.Create'));"],
         )),
-        poll_operation_until_done(),
-        Step(name="assert-no-error", method="GET", path="/operations/{{opId}}",
-             test_script=["const j = pm.response.json();",
-                          "pm.test('update op done without error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -464,25 +465,26 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SUB-UPD-STATE-IMMUTABLE-CIDR",
-    title="Update с mask=v4_cidr_blocks → принимается (200); CIDR здесь не меняется, у нас no-op",
-    classes=["STATE", "CRUD"],
+    title="Update mask=ipv4CidrPrimary → sync 400 'ipv4_cidr_primary is immutable after Subnet.Create' (VPC-1 F7)",
+    classes=["STATE", "VAL", "NEG"],
     priority="P1",
     steps=[
         *_make_net("im"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-im-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.30.0.0/24"]},
+                   "ipv4CidrPrimary": "10.30.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
-        # v4_cidr_blocks в update_mask не отвергается — 200. repo.Update CIDR-колонки
-        # не перезаписывает, поэтому изменение CIDR через Update — no-op (диапазоны
-        # меняются через :add/removeCidrBlocks).
+        # VPC-1 F7: CIDR is immutable via Update — a CIDR field in update_mask is
+        # rejected sync by the Update immutable-switch (subnet/update.go). The primary
+        # anchor never changes; additional ranges move via :add/:remove-cidr-blocks.
+        # proto3 FieldMask paths are lowerCamelCase in JSON (protojson → snake).
         retry_until_authorized(Step(name="patch-cidr-via-mask", method="PATCH", path="/vpc/v1/subnets/{{subId}}",
-             body={"updateMask": "v4CidrBlocks", "v4CidrBlocks": ["10.31.0.0/24"]},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
+             body={"updateMask": "ipv4CidrPrimary", "ipv4CidrPrimary": "10.31.0.0/24"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('verbatim immutable text', () => pm.expect(pm.response.json().message).to.eql('ipv4_cidr_primary is immutable after Subnet.Create'));"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1319,25 +1321,34 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
+    # VPC-1 F7: ipv6CidrPrimary (blocks[0]) is an immutable anchor — Remove of the
+    # primary is rejected ("ipv6_cidr_primary is immutable after Subnet.Create").
+    # Only ADDITIONAL ranges can be removed. So create v4+v6 primaries, ADD an extra
+    # v6 range, then REMOVE that additional range; primary must remain.
     id="SUB-CIDR-REMOVE-V6-OK",
-    title="RemoveCidrBlocks с v6CidrBlocks → IPv6-блок убран",
+    title="RemoveCidrBlocks убирает дополнительный IPv6-блок (primary-anchor сохранён)",
     classes=["CRUD"], priority="P1",
     steps=[
         *_make_net("rcb6"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-rcb6-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.221.0.0/24"], "v6CidrBlocks": ["fd12:3456:789b::/64"]},
+                   "ipv4CidrPrimary": "10.221.0.0/24", "ipv6CidrPrimary": "fd12:3456:789b::/64"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
+        retry_until_authorized(Step(name="add-cidr-v6", method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
+             body={"ipv6CidrBlocks": ["fd12:3456:789c::/64"]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
         retry_until_authorized(Step(name="remove-cidr-v6", method="POST", path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
-             body={"v6CidrBlocks": ["fd12:3456:789b::/64"]},
+             body={"ipv6CidrBlocks": ["fd12:3456:789c::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('v6 cidr removed', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.not.include('fd12:3456:789b::/64'));"])),
+                          "pm.test('additional v6 cidr removed', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.not.include('fd12:3456:789c::/64'));",
+                          "pm.test('v6 primary anchor kept', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.include('fd12:3456:789b::/64'));"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1613,3 +1624,98 @@ CASES.append(Case(
              ]),
     ],
 ))
+
+
+# ===========================================================================
+# VPC-1 F7 redesign shim — align this suite with the DEPLOYED Subnet CIDR shape.
+# ===========================================================================
+# The redesign (subnet.proto / subnet_service.proto) split the retired flat
+# "all blocks" array into an immutable primary anchor + additional ranges and
+# renamed the request fields:
+#   * Subnet.Create takes ipv4CidrPrimary / ipv6CidrPrimary (single anchor,
+#     immutable) — the legacy v4_cidr_blocks/v6_cidr_blocks Create fields are
+#     RESERVED (grpc-gateway silently drops the old JSON keys → a CIDR-less
+#     subnet, which is why the pre-redesign bodies here created subnets with no
+#     CIDR and cascaded: host-bits/overlap never fired, address alloc failed).
+#   * AddCidrBlocks/RemoveCidrBlocks take ipv4CidrBlocks / ipv6CidrBlocks
+#     (AddSubnetCidrBlocksRequest fields 2/3) — the old v4/v6CidrBlocks keys map
+#     to nothing → handler 400 "v4_cidr_blocks or v6_cidr_blocks is required".
+#   * The GET/Operation Subnet projection exposes ipv4CidrPrimary (blocks[0]) +
+#     ipv4CidrBlocks (blocks[1:]); the retired .v4CidrBlocks/.v6CidrBlocks fields
+#     are gone (reads returned undefined → the assertion crashed).
+# This post-load pass (a) converts Create bodies to the primary anchor for the
+# whitelisted CIDR-dependent cases only (generated ECP/pairwise/etc. blocks are
+# left CIDR-less on purpose — converting them could newly collide the network-
+# scoped overlap EXCLUDE), (b) renames every add/remove-cidr-blocks verb body,
+# and (c) rewrites every response read of the retired arrays to the union of
+# primary+additional so an added range matches regardless of the split.
+
+# Cases whose Subnet.Create must carry a real primary CIDR anchor (they assert on
+# the CIDR, exercise CIDR validation/overlap, or allocate addresses from it).
+_CIDR_PRIMARY_CASES = {
+    "SUB-CR-CRUD-OK", "SUB-CR-V6-OK", "SUB-CR-VAL-CIDR-HOSTBITS",
+    "SUB-CR-NEG-CIDR-OVERLAP", "SUB-ACB-CRUD-OK", "SUB-RCB-CRUD-OK",
+    "SUB-RCB-CONF-STATE", "SUB-CR-BVA-CIDR-28", "SUB-CR-BVA-CIDR-29",
+    "SUB-CR-BVA-CIDR-30", "SUB-CR-BVA-CIDR-31", "SUB-DEL-NEG-HAS-ADDRESSES",
+    "SUB-DEL-NEG-HAS-V6-ADDRESS", "NET-SUBNET-ADDR-NIC-DELETE-CHAIN",
+    "SUB-DEL-NEG-HAS-NIC", "SUB-CIDR-ADD-V6-OK", "SUB-CR-NEG-DUP-CIDR-EXACT",
+    "SUB-CR-NEG-V6-OVERLAP", "SUB-LUA-CRUD-COUNT", "SUB-LUA-STATE-FRAGMENT",
+    # CIDR expand/shrink pack (gen.py) — setup-sub create carries the anchor.
+    "SUB-ACB-CRUD-ADD-ONE", "SUB-ACB-CRUD-ADD-MULTIPLE", "SUB-ACB-NEG-OVERLAP-SELF",
+    "SUB-ACB-VAL-HOST-BITS", "SUB-RCB-CRUD-REMOVE-ONE", "SUB-RCB-NEG-NOT-PRESENT",
+    "SUB-RCB-NEG-CANNOT-REMOVE-PRIMARY", "SUB-ACB-RCB-ROUNDTRIP",
+}
+
+# Union of primary anchor + additional ranges (matches an added CIDR whether it
+# landed as the primary — first block of a previously-empty family — or as an
+# additional range). JS expression, substituted for the retired array reads.
+_V4_UNION = ("([].concat(pm.response.json().ipv4CidrPrimary ? "
+             "[pm.response.json().ipv4CidrPrimary] : [], "
+             "pm.response.json().ipv4CidrBlocks || []))")
+_V6_UNION = ("([].concat(pm.response.json().ipv6CidrPrimary ? "
+             "[pm.response.json().ipv6CidrPrimary] : [], "
+             "pm.response.json().ipv6CidrBlocks || []))")
+
+
+def _create_to_primary(body):
+    nb = dict(body)
+    if "v4CidrBlocks" in nb:
+        v = nb.pop("v4CidrBlocks")
+        if v:
+            nb["ipv4CidrPrimary"] = v[0]
+    if "v6CidrBlocks" in nb:
+        v = nb.pop("v6CidrBlocks")
+        if v:
+            nb["ipv6CidrPrimary"] = v[0]
+    return nb
+
+
+def _rename_verb_blocks(body):
+    nb = {}
+    for k, v in body.items():
+        if k == "v4CidrBlocks":
+            nb["ipv4CidrBlocks"] = v
+        elif k == "v6CidrBlocks":
+            nb["ipv6CidrBlocks"] = v
+        else:
+            nb[k] = v
+    return nb
+
+
+def _apply_cidr_redesign(case):
+    for st in case.steps:
+        if (case.id in _CIDR_PRIMARY_CASES and st.method == "POST"
+                and st.path == "/vpc/v1/subnets" and st.body):
+            st.body = _create_to_primary(st.body)
+        if st.body and ("add-cidr-blocks" in st.path or "remove-cidr-blocks" in st.path):
+            st.body = _rename_verb_blocks(st.body)
+        if st.test_script:
+            st.test_script = [
+                s.replace("pm.response.json().v4CidrBlocks", _V4_UNION)
+                 .replace("pm.response.json().v6CidrBlocks", _V6_UNION)
+                for s in st.test_script
+            ]
+
+
+for _c in CASES:
+    _apply_cidr_redesign(_c)

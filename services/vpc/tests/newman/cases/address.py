@@ -18,7 +18,9 @@ def _make_net_sub(suffix="a", cidr="10.100.0.0/24"):
         Step(name="pre-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": f"adr-{suffix}-sub-{{{{runId}}}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": [cidr]},
+                   # VPC-1 F7: Subnet.Create takes the immutable primary anchor
+                   # ipv4CidrPrimary (single), not the retired v4_cidr_blocks array.
+                   "ipv4CidrPrimary": cidr},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),

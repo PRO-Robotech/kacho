@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6ad755d0-f1f9-41f5-8022-4c366bf13cb3",
+    "_postman_id": "918d9757-c47d-49a7-8df2-8241e987c75d",
     "name": "kacho-vpc / newman / address-zone-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -315,7 +315,7 @@
           ]
         },
         {
-          "name": "poll-op-900",
+          "name": "poll-op-890",
           "request": {
             "method": "GET",
             "header": [
@@ -366,7 +366,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya492",
+          "name": "get-known-zone-rya488",
           "request": {
             "method": "GET",
             "header": [
@@ -458,7 +458,7 @@
           ]
         },
         {
-          "name": "poll-op-901",
+          "name": "poll-op-891",
           "request": {
             "method": "GET",
             "header": [
@@ -568,7 +568,7 @@
           ]
         },
         {
-          "name": "poll-op-902",
+          "name": "poll-op-892",
           "request": {
             "method": "GET",
             "header": [
@@ -659,7 +659,7 @@
           ]
         },
         {
-          "name": "poll-op-903",
+          "name": "poll-op-893",
           "request": {
             "method": "GET",
             "header": [
