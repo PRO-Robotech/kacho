@@ -118,6 +118,19 @@ kacho-iam:
     repository:
       postgres:
         sslMode: require         # production-strict enforces ssl-mode ∈ {require,verify-ca,verify-full}
+  # Production-mode transport hardening for the HTTP listeners (hooks :9092 + /metrics
+  # :9095). dev.yaml sets mtls.enable=true (gRPC :9090/:9091) but leaves httpListeners
+  # OFF → :9092 stays PLAINTEXT. The dev-prod stand mirrors values.prod: wrap :9092 with
+  # server-side TLS (server-tls-only — Ory Hydra webhook client presents no client cert;
+  # X-Kacho-Hook-Token HMAC is the caller-auth). REUSES the SEC-F internal-CA server
+  # cert-trio (SAN covers kacho-iam-internal.kacho.svc.cluster.local). Without this the
+  # Hydra token_hook must speak https:// to a plaintext port and would fail — this is the
+  # peer of the Hydra CA-trust + https url override in the hydra block below.
+  mtls:
+    enable: true
+    httpListeners: true
+    hooksClientAuthMode: server-tls-only
+    metricsClientAuthMode: server-tls-only
   env:
     # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
     # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
@@ -209,27 +222,36 @@ pg-registry:
 # hook (:9092 /iam/v1/hooks/token) 401'd → Hydra 500 → EVERY client_credentials
 # exchange failed (registry SA-keys AND the #58 bootstrap-token mint), independent
 # of #58. Mirror of values.prod.yaml (the prod stand has this; the kind overlay
-# dropped it). url is https because production-mode turns on iam :9092 server-TLS;
-# Hydra trusts the kacho-iam server cert via the mounted internal-CA bundle.
+# dropped it). url is https because the iam block above flips mtls.httpListeners=true
+# → iam :9092 serves server-side TLS; Hydra trusts the kacho-iam server cert via the
+# mounted internal-CA bundle (SSL_CERT_FILE, deployment block below).
+#
+# HELM PATH: the Ory Hydra chart nests its config under its OWN `hydra:` key, and the
+# umbrella aliases the subchart as `hydra` → the effective path is hydra.hydra.config
+# (DOUBLE-nested). The `deployment` block is a TOP-LEVEL Ory chart key → hydra.deployment
+# (SINGLE-nested). Putting config at hydra.config (single) silently no-ops — the http
+# url from values.dev.yaml (hydra.hydra.config) would win and Hydra would speak http to
+# a TLS port. Keep config under hydra.hydra.config; keep deployment under hydra.deployment.
 hydra:
-  config:
-    oauth2:
-      token_hook:
-        url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/token"
-        auth:
-          type: api_key
-          config:
-            in: header
-            name: X-Kacho-Hook-Token
-            value: ${KACHO_IAM_HOOK_TOKEN}
-      refresh_token_hook:
-        url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/refresh"
-        auth:
-          type: api_key
-          config:
-            in: header
-            name: X-Kacho-Hook-Token
-            value: ${KACHO_IAM_HOOK_TOKEN}
+  hydra:
+    config:
+      oauth2:
+        token_hook:
+          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/token"
+          auth:
+            type: api_key
+            config:
+              in: header
+              name: X-Kacho-Hook-Token
+              value: ${KACHO_IAM_HOOK_TOKEN}
+        refresh_token_hook:
+          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/refresh"
+          auth:
+            type: api_key
+            config:
+              in: header
+              name: X-Kacho-Hook-Token
+              value: ${KACHO_IAM_HOOK_TOKEN}
   deployment:
     # Ory Hydra does NOT interpolate ${KACHO_IAM_HOOK_TOKEN} inside config-YAML — the
     # placeholder would ship as a literal X-Kacho-Hook-Token → HMAC verify 401. The
