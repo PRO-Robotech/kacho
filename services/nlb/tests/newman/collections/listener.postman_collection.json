@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "27a85581-2dab-4bf2-9424-e9cf400b4f20",
+    "_postman_id": "e05b1aa8-63c7-4bef-8591-370e906b6795",
     "name": "kacho-nlb / newman / listener",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -21234,6 +21234,445 @@
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-LST-LSG-PROJECT-SCOPED-OK — List listeners project-scoped (no loadBalancerId filter) → 200 + listeners array (KAC-229 project-scope parity). Technique: ECP (valid project-scoped list class)",
+      "description": "class:LSG | class:CRUD | priority:P1",
+      "item": [
+        {
+          "name": "lst-project-scoped",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners?projectId={{_suiteProjectId}}&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners?projectId={{_suiteProjectId}}&pageSize=10"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('listeners is an array', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.listeners || [], JSON.stringify(j)).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-LST-PAGE-TOKEN-GARBAGE — List listeners with garbage pageToken → 400 InvalidArgument (validated before listauthz empty-grant short-circuit). Techniques: ECP (garbage-token class) + error-guessing (pagination-validate-before-authz ordering)",
+      "description": "class:VAL | class:LSG | priority:P1",
+      "item": [
+        {
+          "name": "lst-bad-token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-LST-BVA-PAGESIZE-1001 — List listeners with pageSize=1001 (off-by-one over max) → 400 InvalidArgument (validated before empty-grant short-circuit). Technique: BVA (max+1)",
+      "description": "class:BVA | class:VAL | class:LSG | priority:P2",
+      "item": [
+        {
+          "name": "lst-1001",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners?projectId={{_suiteProjectId}}&pageSize=1001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners?projectId={{_suiteProjectId}}&pageSize=1001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-LST-BVA-PAGESIZE-1000 — List listeners with pageSize=1000 (max upper bound) → 200. Technique: BVA (max)",
+      "description": "class:BVA | class:LSG | priority:P2",
+      "item": [
+        {
+          "name": "lst-1000",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners?projectId={{_suiteProjectId}}&pageSize=1000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners?projectId={{_suiteProjectId}}&pageSize=1000"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-LST-BVA-PAGESIZE-ZERO — List listeners with pageSize=0 → 200 (server default applied). Techniques: BVA (0→default) + ECP (unset-size class)",
+      "description": "class:BVA | class:LSG | priority:P2",
+      "item": [
+        {
+          "name": "lst-zero",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners?projectId={{_suiteProjectId}}&pageSize=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners?projectId={{_suiteProjectId}}&pageSize=0"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-LST-PAGE-TOKEN-EMPTY — List listeners with pageToken=\"\" → 200 (empty token = first page). Technique: BVA (empty-string token boundary)",
+      "description": "class:LSG | class:BVA | priority:P2",
+      "item": [
+        {
+          "name": "lst-empty-token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners?projectId={{_suiteProjectId}}&pageSize=10&pageToken=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners?projectId={{_suiteProjectId}}&pageSize=10&pageToken="
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-LST-BVA-PAGESIZE-NEGATIVE — List listeners with pageSize=-1 → rejected (400) or coerced to default (200). Technique: BVA (min-1 / below-range) — mirrors NLB-LST-BVA-PAGESIZE-NEGATIVE",
+      "description": "class:BVA | class:VAL | class:LSG | priority:P2",
+      "item": [
+        {
+          "name": "lst-neg",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners?projectId={{_suiteProjectId}}&pageSize=-1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners?projectId={{_suiteProjectId}}&pageSize=-1"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected or coerced (400/200), never 5xx', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-UPD-NEG-INVALID-ID-PREFIX — Update listener with malformed id prefix → InvalidArgument (format-check first statement). Techniques: ECP (malformed-id class) + error-guessing (sync-format reject before repo.Get)",
+      "description": "class:NEG | class:VAL | priority:P0",
+      "item": [
+        {
+          "name": "upd-bad-prefix",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners/garbage-not-an-id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners",
+                "garbage-not-an-id"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"x\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected (400 InvalidArgument or 404)', () =>   pm.expect(pm.response.code).to.be.oneOf([400, 404]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-DEL-NEG-INVALID-ID-PREFIX — Delete listener with malformed id prefix → InvalidArgument (format-check first statement). Techniques: ECP (malformed-id class) + error-guessing",
+      "description": "class:NEG | class:VAL | priority:P0",
+      "item": [
+        {
+          "name": "del-bad-prefix",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners/garbage-not-an-id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners",
+                "garbage-not-an-id"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected (400 InvalidArgument or 404)', () =>   pm.expect(pm.response.code).to.be.oneOf([400, 404]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-UPD-NEG-NF-UNKNOWN — Update well-formed-but-absent listener id → rejected (NotFound / authz-first). Techniques: ECP (absent-id class) + error-guessing (authz-vs-existence ordering)",
+      "description": "class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "upd-unknown",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{garbageLstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners",
+                "{{garbageLstId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"x\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('absent-id request rejected (400/403/404)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403, 404]);",
+                  "});",
+                  "pm.test('grpc code INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED (3/5/7)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 5, 7]);",
+                  "});"
                 ]
               }
             }

@@ -1039,3 +1039,184 @@ CASES.append(Case(
         *_cleanup_lb(),
     ],
 ))
+
+
+# ===========================================================================
+# Listener List-pagination + project-scope parity (LST-LST-*) and malformed-id
+# / not-found parity (LST-UPD-*/LST-DEL-*).
+#
+# WHY (gap vs siblings): the NLB & TargetGroup List/Update/Delete suites already
+# carry the STRICT project-scoped pagination-BVA set (garbage token / pageSize
+# max / max+1 / 0 / -1 / empty token) and the FULL Get+Update+Delete malformed-id
+# trio + Update-not-found. The Listener suite historically had only a WEAK
+# garbage-parent OVER-MAX list (`?loadBalancerId={{garbageNlbId}}&pageSize=10000`,
+# tolerating 404 — the missing parent masks whether page_size was even validated)
+# and a Get-only malformed case. These cases close that asymmetry.
+#
+# Contract sources (Kachō conventions — own product, no foreign-cloud framing):
+#   * ListListenersRequest is PROJECT-scoped (`project_id` required, KAC-229 parity
+#     with NLB/TG List; `load_balancer_id` optional filter), `page_size <= 1000`,
+#     `page_token <= 100` — proto constraints IDENTICAL to the already-green NLB/TG
+#     List suites, so the strict assertions below are grounded in proven-green
+#     sibling behaviour on this build.
+#   * api-conventions.md §Pagination/filter + §Gotcha "List: валидация pagination
+#     ДО listauthz empty-grant short-circuit"; security.md hardening inv-7:
+#     page_size/page_token are validated to InvalidArgument BEFORE the listauthz
+#     empty-grant short-circuit — an authorized editor scoping their own project
+#     must get a strict 400 (never a masked 200-empty).
+#   * api-conventions.md §Error-format + §Gotcha "Malformed-id — ПЕРВЫМ стейтментом
+#     RPC": a malformed listener id on Update/Delete is rejected synchronously as
+#     InvalidArgument. Tolerant 400/404 mirrors the green NLB/TG malformed trio
+#     (`NLB-/TGR-{GET,UPD,DEL}-NEG-INVALID-ID-PREFIX`) — malformed id does not 403
+#     on this build.
+#
+# Test-design techniques (skill testing-product-coach): BVA (page_size min-1 / 0 /
+# max / max+1), ECP (valid-scope vs garbage-token vs malformed-id vs absent-id
+# input classes), error-guessing (pagination-validate-before-authz ordering;
+# authz-first-vs-existence ordering on an absent-id mutation). All cases are
+# self-contained, fixture-free, pool-independent → idempotent and parallel-safe
+# (single GET/PATCH/DELETE, no setup/cleanup, no {{runId}} resources leaked).
+# ===========================================================================
+
+CASES.append(Case(
+    # index: LST-LST-LSG-PROJECT-SCOPED-OK
+    id="LST-LST-LSG-PROJECT-SCOPED-OK",
+    title="List listeners project-scoped (no loadBalancerId filter) → 200 + listeners array "
+          "(KAC-229 project-scope parity). Technique: ECP (valid project-scoped list class)",
+    classes=["LSG", "CRUD"], priority="P1",
+    steps=[
+        Step(name="lst-project-scoped", method="GET",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=10",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('listeners is an array', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j.listeners || [], JSON.stringify(j)).to.be.an('array');",
+                 "});",
+             ]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-LST-PAGE-TOKEN-GARBAGE",
+    title="List listeners with garbage pageToken → 400 InvalidArgument (validated before "
+          "listauthz empty-grant short-circuit). Techniques: ECP (garbage-token class) + "
+          "error-guessing (pagination-validate-before-authz ordering)",
+    classes=["VAL", "LSG"], priority="P1",
+    steps=[
+        Step(name="lst-bad-token", method="GET",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=10&pageToken=not-a-real-token",
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-LST-BVA-PAGESIZE-1001",
+    title="List listeners with pageSize=1001 (off-by-one over max) → 400 InvalidArgument "
+          "(validated before empty-grant short-circuit). Technique: BVA (max+1)",
+    classes=["BVA", "VAL", "LSG"], priority="P2",
+    steps=[
+        Step(name="lst-1001", method="GET",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=1001",
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-LST-BVA-PAGESIZE-1000",
+    title="List listeners with pageSize=1000 (max upper bound) → 200. Technique: BVA (max)",
+    classes=["BVA", "LSG"], priority="P2",
+    steps=[
+        Step(name="lst-1000", method="GET",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
+             test_script=[*assert_status(200)]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-LST-BVA-PAGESIZE-ZERO",
+    title="List listeners with pageSize=0 → 200 (server default applied). "
+          "Techniques: BVA (0→default) + ECP (unset-size class)",
+    classes=["BVA", "LSG"], priority="P2",
+    steps=[
+        Step(name="lst-zero", method="GET",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=0",
+             test_script=[*assert_status(200)]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-LST-PAGE-TOKEN-EMPTY",
+    title="List listeners with pageToken=\"\" → 200 (empty token = first page). "
+          "Technique: BVA (empty-string token boundary)",
+    classes=["LSG", "BVA"], priority="P2",
+    steps=[
+        Step(name="lst-empty-token", method="GET",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=10&pageToken=",
+             test_script=[*assert_status(200)]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-LST-BVA-PAGESIZE-NEGATIVE",
+    title="List listeners with pageSize=-1 → rejected (400) or coerced to default (200). "
+          "Technique: BVA (min-1 / below-range) — mirrors NLB-LST-BVA-PAGESIZE-NEGATIVE",
+    classes=["BVA", "VAL", "LSG"], priority="P2",
+    steps=[
+        # grpc-gateway may reject a negative int64 at transcode (400) or the backend
+        # may coerce <0 like 0→default (200); both are lawful, neither is a 200-with-
+        # bad-page. Mirror of the tolerant NLB negative-pageSize case.
+        Step(name="lst-neg", method="GET",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=-1",
+             test_script=[
+                 "pm.test('rejected or coerced (400/200), never 5xx', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             ]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-UPD-NEG-INVALID-ID-PREFIX",
+    title="Update listener with malformed id prefix → InvalidArgument (format-check first "
+          "statement). Techniques: ECP (malformed-id class) + error-guessing (sync-format "
+          "reject before repo.Get)",
+    classes=["NEG", "VAL"], priority="P0",
+    steps=[
+        Step(name="upd-bad-prefix", method="PATCH", path=f"{_LST_BASE}/garbage-not-an-id",
+             body={"updateMask": "description", "description": "x"},
+             test_script=[
+                 "pm.test('rejected (400 InvalidArgument or 404)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+             ]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-DEL-NEG-INVALID-ID-PREFIX",
+    title="Delete listener with malformed id prefix → InvalidArgument (format-check first "
+          "statement). Techniques: ECP (malformed-id class) + error-guessing",
+    classes=["NEG", "VAL"], priority="P0",
+    steps=[
+        Step(name="del-bad-prefix", method="DELETE", path=f"{_LST_BASE}/garbage-not-an-id",
+             test_script=[
+                 "pm.test('rejected (400 InvalidArgument or 404)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+             ]),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-UPD-NEG-NF-UNKNOWN",
+    title="Update well-formed-but-absent listener id → rejected (NotFound / authz-first). "
+          "Techniques: ECP (absent-id class) + error-guessing (authz-vs-existence ordering)",
+    classes=["NEG"], priority="P1",
+    steps=[
+        # Mirrors LST-DEL-NEG-NF-UNKNOWN: a well-formed but non-existent listener id on a
+        # mutation is a defensible reject — 404 (repo.Get miss) OR 403 (gateway
+        # scope_extractor cannot resolve target→project for the absent id, authz-first
+        # anti-BOLA) OR 400. Tolerant per api-conventions authz-first ordering; never 200.
+        Step(name="upd-unknown", method="PATCH", path=f"{_LST_BASE}/{{{{garbageLstId}}}}",
+             body={"updateMask": "description", "description": "x"},
+             test_script=[*assert_absent_id_rejected()]),
+    ],
+))
