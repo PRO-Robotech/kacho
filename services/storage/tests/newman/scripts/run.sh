@@ -31,6 +31,11 @@ while [[ $# -gt 0 ]]; do
     --service) SERVICE="$2"; shift 2 ;;
     --bail)    BAIL="--bail"; shift ;;
     --delay)   DELAY="$2"; shift 2 ;;
+    # --jobs: принят для паритета с newman-parallel.sh (директива #1) — consume-and-
+    # ignore, НЕ пробрасывать в `newman run` (иначе `unknown option '--jobs'` →
+    # newman отвергает КАЖДУЮ коллекцию → out/ пусто → ложный GREEN). Зеркалит
+    # compute/vpc run.sh; storage отстал в миграции под --jobs (провал e2e-покрытия).
+    --jobs)    shift 2 ;;
     *)         EXTRA+=("$1"); shift ;;
   esac
 done
@@ -67,6 +72,12 @@ fi
 
 echo
 echo "===== Summary ====="
+# Ожидаемый набор коллекций (совпадает с циклом выше). false-green guard: если
+# репорт коллекции не произведён (newman не выполнился — unknown-flag/seed/env),
+# суита НЕ зелёная, а провалена. Иначе пустой out/ агрегируется в 0 failed → ложный
+# GREEN, скрывающий полное отсутствие e2e-покрытия (инцидент storage --jobs 2026-07).
+EXPECTED_COLLS=(volume image snapshot disk-type operation internal-volume authz)
+missing_reports=0
 {
   printf "%-22s %10s %10s %10s\n" "RESOURCE" "ASSERT" "FAILED" "REQUESTS"
   for f in out/*.json; do
@@ -77,3 +88,11 @@ echo "===== Summary ====="
     printf "%-22s %10s %10s %10s\n" "$name" "$1" "$2" "$3"
   done
 } | tee out/summary.txt
+for res in "${EXPECTED_COLLS[@]}"; do
+  [[ -f "collections/${res}.postman_collection.json" ]] || continue  # коллекция не сгенерирована — не ожидаем
+  if [[ ! -f "out/${res}.json" ]]; then
+    echo "FATAL: no newman report for '${res}' — collection did not execute (см. out/${res}.cli)" >&2
+    missing_reports=1
+  fi
+done
+[[ "$missing_reports" -eq 0 ]] || { echo "FATAL: storage suite produced incomplete reports — NOT green (false-green guard)" >&2; exit 1; }
