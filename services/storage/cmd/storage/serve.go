@@ -54,6 +54,24 @@ func runServe(cfg config.Config) error {
 	logger := observability.NewSlogger(os.Stdout)
 	slog.SetDefault(logger)
 
+	// ── secure-by-default boot-guard (#56) ────────────────────────────────
+	// В production/production-strict refuse-to-start при insecure-конфиге: без
+	// mTLS на обоих листенерах, без per-RPC authz Check (пустой AuthZIAMGRPCAddr)
+	// или с plaintext-DB (sslmode=disable). Ранее AuthMode был dead-code →
+	// storage единственным boot'ился insecure с одним WARN. Fail-closed ДО listen
+	// (security.md «AuthN+AuthZ ВЕЗДЕ + любой деплой — production-mode»).
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("insecure configuration refused: %w", err)
+	}
+	logger.Info("boot security posture", "auth_mode", cfg.AuthMode,
+		"db_sslmode", cfg.DBSSLMode,
+		"public_mtls", cfg.PublicServerMTLS.Enable,
+		"internal_mtls", cfg.InternalServerMTLS.Enable,
+		"authz_check", cfg.AuthZIAMGRPCAddr != "")
+	if cfg.AuthMode == "dev" && (cfg.DBSSLMode == "" || cfg.DBSSLMode == "disable") {
+		logger.Warn("KACHO_STORAGE_DB_SSLMODE=disable — DB plaintext (dev only; never on a deployed stand)")
+	}
+
 	// ── БД + LRO-стек ─────────────────────────────────────────────────────
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
