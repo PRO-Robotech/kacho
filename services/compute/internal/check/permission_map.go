@@ -388,6 +388,20 @@ func PermissionMap() authz.RPCMap {
 			Extract:  staticClusterCatalog(),
 		},
 
+		// MachineType — read-only sizing catalog (viewer on cluster singleton),
+		// PUBLIC mirror of DiskTypeService/Get+List. Was ALSO unmapped → the
+		// public Get/List used across machine-type + instance/list-filter suites
+		// (and Instance.Create's machineTypeId resolve) failed closed "rpc not
+		// mapped". Same viewer @ cluster:cluster_kacho_root as DiskType reads.
+		"/kacho.cloud.compute.v1.MachineTypeService/Get": {
+			Relation: relationViewer,
+			Extract:  staticClusterCatalog(),
+		},
+		"/kacho.cloud.compute.v1.MachineTypeService/List": {
+			Relation: relationViewer,
+			Extract:  staticClusterCatalog(),
+		},
+
 		// InternalMachineTypeService — kacho-only sizing-catalog admin CRUD
 		// (Create/Update/Delete) on :9091, exact same pattern as
 		// InternalDiskTypeService above (proto required_relation=system_admin,
