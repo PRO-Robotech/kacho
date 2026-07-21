@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "22cec167-5826-4a7d-83a7-6500989c66eb",
+    "_postman_id": "27a85581-2dab-4bf2-9424-e9cf400b4f20",
     "name": "kacho-nlb / newman / listener",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1318,7 +1318,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-int-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-int-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1988,7 +1988,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-get-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-get-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2711,7 +2711,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-list-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-list-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3209,7 +3209,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-upd-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-upd-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5126,7 +5126,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-lops-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-lops-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5849,7 +5849,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-0-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-0-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6373,7 +6373,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-over-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-over-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6898,7 +6898,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-neg-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-neg-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7419,7 +7419,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-bad-proto-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-bad-proto-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7940,7 +7940,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-int-no-subnet-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-int-no-subnet-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8550,7 +8550,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-bad-name-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-bad-name-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9075,7 +9075,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-1-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-1-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9745,7 +9745,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-max-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-port-max-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10415,7 +10415,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-byo-used-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-byo-used-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11025,7 +11025,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-byo-ipv-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-byo-ipv-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11601,7 +11601,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-byo-xprj-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-byo-xprj-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12217,7 +12217,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-dup-pp-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-dup-pp-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13000,7 +13000,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-vip-comp-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-vip-comp-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13856,7 +13856,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-def-tg-region-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-def-tg-region-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15093,7 +15093,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-name-digit-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-name-digit-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15618,7 +15618,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-name-hyp-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-name-hyp-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16143,7 +16143,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-tp-0-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-tp-0-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16664,7 +16664,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-tp-over-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-tp-over-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17185,7 +17185,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-ipv-unk-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-ipv-unk-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17706,7 +17706,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-ipv6-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-ipv6-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18376,7 +18376,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-pp2-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-pp2-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19097,7 +19097,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-def-tg-clear-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-def-tg-clear-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19962,7 +19962,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-page-rt-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-page-rt-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20598,7 +20598,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-udp-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-udp-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

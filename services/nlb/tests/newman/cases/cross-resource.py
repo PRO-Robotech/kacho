@@ -379,7 +379,7 @@ CASES.append(Case(
                  "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
              ],
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
-                   "name": "xres-int-sub-{{runId}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
+                   "name": "xres-int-sub-{{runId}}", "ipv4CidrPrimary": "{{_subnetCidr}}",
                    "zoneId": "{{existingZoneId}}"},
              test_script=[
                  "pm.environment.unset('xresSubnetId');",

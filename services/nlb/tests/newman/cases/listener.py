@@ -71,7 +71,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
             Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS,
                  pre_script=_CIDR_ALLOC_PRE,
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
-                       "name": f"lst-sub-{name_suffix}-{{{{runId}}}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
+                       "name": f"lst-sub-{name_suffix}-{{{{runId}}}}", "ipv4CidrPrimary": "{{_subnetCidr}}",
                        "zoneId": "{{existingZoneId}}"},
                  test_script=[
                      "pm.environment.unset('lstSubnetId');",

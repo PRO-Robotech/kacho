@@ -100,7 +100,7 @@ def _provision_subnet(placement, suffix, save_var="vpcSubnetId"):
         Step(name=f"provision-{placement.lower()}-subnet-{suffix}", method="POST", path=_VPC_SUBNETS,
              pre_script=_cidr_alloc_pre(),
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
-                   "name": f"nlb81-{suffix}-{{{{runId}}}}", "v4CidrBlocks": ["{{_subnetCidr}}"], **loc},
+                   "name": f"nlb81-{suffix}-{{{{runId}}}}", "ipv4CidrPrimary": "{{_subnetCidr}}", **loc},
              test_script=[
                  f"pm.environment.unset('{save_var}');",
                  "if (pm.response.code === 200) {",

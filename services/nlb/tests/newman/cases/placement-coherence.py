@@ -53,14 +53,14 @@ def _cidr_pre():
 
 def _provision_zonal_subnet(zone_var, suffix, save_var, family="v4"):
     """Provision ZONAL vpc Subnet in a given zone env-var; save its id (fixture-tolerant)."""
-    cidr_field = "v4CidrBlocks" if family == "v4" else "v6CidrBlocks"
+    cidr_field = "ipv4CidrPrimary" if family == "v4" else "ipv6CidrPrimary"
     cidr_var = "_zcV4Cidr" if family == "v4" else "_zcV6Cidr"
     return [
         Step(name=f"prov-zonal-{suffix}", method="POST", path=_VPC_SUBNETS,
              pre_script=_cidr_pre(),
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
                    "name": f"zc-{suffix}-{{{{runId}}}}",
-                   "zoneId": f"{{{{{zone_var}}}}}", cidr_field: [f"{{{{{cidr_var}}}}}"]},
+                   "zoneId": f"{{{{{zone_var}}}}}", cidr_field: f"{{{{{cidr_var}}}}}"},
              test_script=[
                  f"pm.environment.unset('{save_var}');",
                  "if (pm.response.code === 200) {",
@@ -80,7 +80,7 @@ def _provision_regional_subnet(region_var, suffix, save_var):
              pre_script=_cidr_pre(),
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
                    "name": f"zc-{suffix}-{{{{runId}}}}",
-                   "regionId": f"{{{{{region_var}}}}}", "v4CidrBlocks": ["{{_zcV4Cidr}}"]},
+                   "regionId": f"{{{{{region_var}}}}}", "ipv4CidrPrimary": "{{_zcV4Cidr}}"},
              test_script=[
                  f"pm.environment.unset('{save_var}');",
                  "if (pm.response.code === 200) {",

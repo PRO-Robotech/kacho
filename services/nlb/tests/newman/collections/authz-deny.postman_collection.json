@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "92516531-b474-4fb1-8e72-1856d3db34ee",
+    "_postman_id": "8ac702e3-8b02-4494-a124-61c78ed4c870",
     "name": "kacho-nlb / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -4089,7 +4089,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"azd-lcd-sub-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"azd-lcd-sub-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

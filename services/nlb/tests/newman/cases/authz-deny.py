@@ -786,7 +786,7 @@ CASES.append(Case(
         Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS, auth="jwtProjectEditorA",
              pre_script=list(_CIDR_ALLOC_PRE),
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
-                   "name": "azd-lcd-sub-{{runId}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
+                   "name": "azd-lcd-sub-{{runId}}", "ipv4CidrPrimary": "{{_subnetCidr}}",
                    "zoneId": "{{existingZoneId}}"},
              test_script=[
                  "pm.environment.unset('azdSubnetId');",

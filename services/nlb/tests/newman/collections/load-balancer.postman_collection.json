@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "8fbdb8b4-c3c9-447d-bec6-cc29e18f7d49",
+    "_postman_id": "9cafc12b-ef87-456f-ac7b-0d9e18d3e4e3",
     "name": "kacho-nlb / newman / load-balancer",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -320,7 +320,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-cr-int-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-cr-int-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -794,7 +794,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-get-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-get-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1316,7 +1316,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-upd-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-upd-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1847,7 +1847,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-upd-multi-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-upd-multi-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2377,7 +2377,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2811,7 +2811,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-lops-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-lops-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3343,7 +3343,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-start-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-start-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3827,7 +3827,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-start-active-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-start-active-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4482,7 +4482,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-stop-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-stop-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4966,7 +4966,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-stop-twice-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-stop-twice-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5621,7 +5621,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6253,7 +6253,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-attached-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-attached-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7281,7 +7281,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-self-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-self-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7707,7 +7707,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8539,7 +8539,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-idem-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-idem-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9470,7 +9470,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-region-mismatch-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-region-mismatch-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10174,7 +10174,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-deleting-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-deleting-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10652,7 +10652,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-tg-unknown-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-att-tg-unknown-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11130,7 +11130,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-det-ok-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-det-ok-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11963,7 +11963,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-det-not-attached-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-det-not-attached-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12697,7 +12697,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-gts-empty-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-gts-empty-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13370,7 +13370,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-gts-stopped-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-gts-stopped-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16061,7 +16061,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-flt-match-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-flt-match-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17167,7 +17167,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-occ-race-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-occ-race-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17808,7 +17808,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-fk-race-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-fk-race-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18764,7 +18764,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-type-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-type-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19192,7 +19192,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-region-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-region-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19619,7 +19619,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-proj-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-proj-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20046,7 +20046,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mask-unk-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mask-unk-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20470,7 +20470,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mask-empty-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mask-empty-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20908,7 +20908,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-prot-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-prot-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -21526,7 +21526,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-has-lst-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-has-lst-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22220,7 +22220,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-has-att-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-del-has-att-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24981,7 +24981,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-noop-upd-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-noop-upd-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -25680,7 +25680,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-det-tg-unknown-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-det-tg-unknown-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -27832,7 +27832,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-dp-toggle-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-dp-toggle-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -28414,7 +28414,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-gts-empty-active-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-gts-empty-active-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -29191,7 +29191,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-upd-lbl-over-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-upd-lbl-over-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -29669,7 +29669,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-dst-unk-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-mv-dst-unk-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -30471,7 +30471,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-drain-all-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-drain-all-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -30948,7 +30948,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-pl-mismatch-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-pl-mismatch-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -31594,7 +31594,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-int-reg-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-int-reg-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -32072,7 +32072,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-int-drain-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-int-drain-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -32545,7 +32545,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-int-link-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-int-link-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -33658,7 +33658,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-dualstack-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-dualstack-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -34131,7 +34131,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-placement-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-placement-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -34558,7 +34558,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-vipsrc-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-im-vipsrc-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -35033,7 +35033,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-drain-toggle-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-drain-toggle-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"regionId\": \"{{existingRegionId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -35697,7 +35697,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-lean-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"nlb81-setup-lean-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
