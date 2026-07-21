@@ -484,6 +484,19 @@ CASES.append(Case(
 ))
 
 
+# ListRepositories pageSize > max (1000) → 400 INVALID_ARGUMENT (BVA: отвергается, НЕ
+# clamp'ится). Parity с REG-RD-F8-NEG-PAGESIZE-OVERMAX (ListRegistries) — format-validate
+# ДО listauthz empty-grant short-circuit (security.md #7 / api-conventions §Pagination).
+CASES.append(Case(
+    id="REG-LSTREPO-NEG-PAGESIZE-OVERMAX",  # index: REG-22
+    title="ListRepositories pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+    classes=["NEG", "BVA", "VAL"], priority="P2",
+    steps=[Step(name="list-repos-ps-overmax", method="GET",
+                path=REG + "/{{regId}}/repositories?pageSize=1001",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+
 # ===========================================================================
 # ListTags (sync projection from zot)
 # ===========================================================================
@@ -531,6 +544,79 @@ CASES.append(Case(
                     "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
                     "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }",
                 ])],
+))
+
+
+# ListTags pageSize > max (1000) → 400 INVALID_ARGUMENT (BVA: отвергается, НЕ clamp'ится;
+# format-validate до repo-existence/authz short-circuit). Parity с ListRegistries/ListRepositories.
+CASES.append(Case(
+    id="REG-LSTTAGS-NEG-PAGESIZE-OVERMAX",  # index: REG-24
+    title="ListTags pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+    classes=["NEG", "BVA", "VAL"], priority="P2",
+    steps=[Step(name="list-tags-ps-overmax", method="GET",
+                path=REG + "/{{regId}}/repositories/app-{{runId}}/tags?pageSize=1001",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+
+# ===========================================================================
+# ListOperations (sync per-resource op-history; v_list@registry_registry)
+# ===========================================================================
+# RegistryService/ListOperations — история async-операций реестра, фильтр
+# resource_id=registry_id, per-resource listauthz (repo-scoped ops дропаются без
+# per-repo v_list). Scope-extractored (v_list) → gateway валидирует id + Check.
+
+# ListOperations happy — 200, operations[] array (создание {{regId}} само породило
+# op → ожидаем непустой массив, но grant-latency-толерантно: retry на 403/404 своего
+# свежего ресурса, затем 200 + array; наличие конкретной op не жёстко ассертим).
+CASES.append(Case(
+    id="REG-LSTOPS-CRUD-OK",  # index: REG-06
+    title="ListOperations for own registry → 200 operations[] array (grant-latency tolerant)",
+    classes=["CRUD"], priority="P1",
+    steps=[Step(name="list-ops", method="GET", path=REG + "/{{regId}}/operations",
+                test_script=[
+                    "const _n = parseInt(pm.environment.get('_lstOpsRetry') || '0', 10);",
+                    "if ((pm.response.code === 403 || pm.response.code === 404) && _n < 20) {",
+                    "  pm.environment.set('_lstOpsRetry', String(_n + 1));",
+                    "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* owner-tuple EC wait */ }",
+                    "  pm.execution.setNextRequest(pm.info.requestName);",
+                    "  return;",
+                    "}",
+                    "pm.environment.unset('_lstOpsRetry');",
+                    *assert_status(200),
+                    "pm.test('operations is array', () => pm.expect(pm.response.json().operations || []).to.be.an('array'));",
+                ])],
+))
+
+# ListOperations garbage page_token → 400 INVALID_ARGUMENT (format-validate).
+CASES.append(Case(
+    id="REG-LSTOPS-NEG-BAD-TOKEN",  # index: REG-06
+    title="ListOperations with garbage page_token → 400 INVALID_ARGUMENT",
+    classes=["NEG", "VAL"], priority="P2",
+    steps=[Step(name="list-ops-bad-token", method="GET",
+                path=REG + "/{{regId}}/operations?pageToken=not-a-b64-token",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+# ListOperations malformed registry id → 400 INVALID_ARGUMENT (scope-extractored →
+# gateway валидирует id первым, как Get → "invalid resource id").
+CASES.append(Case(
+    id="REG-LSTOPS-NEG-MALFORMED-ID",  # index: REG-06
+    title="ListOperations with malformed registry id → 400 INVALID_ARGUMENT (gateway id-validate)",
+    classes=["NEG", "VAL"], priority="P1",
+    steps=[Step(name="list-ops-bad-id", method="GET", path=REG + "/not-an-id/operations",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('invalid id text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('invalid'));"])],
+))
+
+# ListOperations pageSize > max (1000) → 400 (BVA: rejected not clamped).
+CASES.append(Case(
+    id="REG-LSTOPS-NEG-PAGESIZE-OVERMAX",  # index: REG-06
+    title="ListOperations pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+    classes=["NEG", "BVA", "VAL"], priority="P2",
+    steps=[Step(name="list-ops-ps-overmax", method="GET",
+                path=REG + "/{{regId}}/operations?pageSize=1001",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
 

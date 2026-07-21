@@ -71,7 +71,7 @@ matching case-id lands in `cases/registry.py`, `validate-cases.py` passes via th
 
 ---
 
-## 1b. Config-overlay Repository (RG-1) — `cases/registry-repository.py` (PRESENT — 13 cases)
+## 1b. Config-overlay Repository (RG-1) — `cases/registry-repository.py` (PRESENT — 24 cases)
 
 6 новых RegistryService RPC поверх config-overlay `repository_configs`: `GetRepository`/
 `ListReferrers` sync; `CreateRepository`/`UpdateRepository`/`DeleteRepository`/
@@ -95,6 +95,31 @@ public-mux registration (отдельный срез) — green after routes wir
 | `REPO-REF-EMPTY` | CRUD | P2 | ListReferrers subject без referrer'ов → `referrers=[]` 200 (not 404) | RG-1-C03 |
 | `REPO-REF-NEG-BADDIGEST` | NEG, VAL | P1 | ListReferrers malformed subject_digest → 400 ("invalid subject digest") | RG-1-C04 |
 | `REPO-CLEANUP` | CRUD | P3 | Cleanup: delete shared overlay registry | RG-1-A01 |
+
+### Parity dobor (negatives + edge) — `cases/registry-repository.py` (PRESENT — +10 cases)
+
+Доводит overlay-suite до parity iam/vpc: malformed-registryId first-statement, duplicate,
+empty-name, unknown-mask, rename-collision/badname/cross-registry, referrers-absent,
+uniform existence-hiding text (security.md #6), two-projection no-infra-leak.
+
+| Case id | Classes | Prio | Meaning | Verifies |
+|---|---|---|---|---|
+| `REPO-CR-NEG-DUP` | NEG, CONF, IDEM | P1 | CreateRepository duplicate `(registryId,name)` → 409 ALREADY_EXISTS "repository already exists" (DB UNIQUE; sync-409 или async-op-error) | RG-1-A02 |
+| `REPO-CR-NEG-EMPTY-NAME` | NEG, VAL | P1 | CreateRepository `repository=""` → 400 "repository is required" (ECP empty, first statement) | RG-1-A05 |
+| `REPO-NEG-BAD-REGID` | NEG, VAL | P0 | malformed `registryId` on all 6 repo RPC (Get/Create/Update/Delete/Rename/ListReferrers) → 400 "invalid registry id" first statement | RG-1-A06 |
+| `REPO-UPD-NEG-UNKNOWN-MASK` | NEG, VAL | P1 | UpdateRepository unknown `updateMask` field → 400 INVALID_ARGUMENT (known-set {description,labels,visibility}) | RG-1-A10 |
+| `REPO-REN-NEG-COLLISION` | NEG, CONF | P1 | RenameRepository into an existing repo name → 409 ALREADY_EXISTS "repository already exists" (target UNIQUE) | RG-1-A17 |
+| `REPO-REN-NEG-BADNAME` | NEG, VAL | P1 | RenameRepository malformed `newName` → 400 "invalid repository name" (ECP: distinct from A19 no-op) | RG-1-A19 |
+| `REPO-REN-CROSS-REGISTRY-STRUCTURAL` | CONF | P2 | RenameRepository smuggled target-registry body fields ignored; rename stays within same registry (D-5 inexpressible) | RG-1-A16 |
+| `REPO-REF-NEG-ABSENT` | NEG | P1 | ListReferrers on absent repo → 404 "repository not found" (existence-hiding) | RG-1-C02 |
+| `REPO-EXISTENCE-HIDING-PARITY` | CONF, NEG | P1 | Absent repo → byte-identical "repository not found" across Get/Delete/ListReferrers (uniform existence-hiding text, security.md #6) | RG-1-A08, RG-1-A15, RG-1-C02 |
+| `REPO-GET-NO-INFRA-LEAK` | CONF | P1 | GetRepository → public body carries NO infra fields (engineNamespace/bucketPrefix/numericInfraId/storageDriver, two-projection) | RG-1-X01, RG-1-A07 |
+
+> **Not black-box-testable via control-plane newman** (по конструкции — вынесено в integration):
+> `RG-1-A14` DeleteRepository reject-if-tags → FAILED_PRECONDITION "repository is not empty" (не-пустой
+> repo требует data-plane `docker push` — control-plane newman тегов не создаёт); `RG-1-A24` repo-мутация
+> в `DELETING`-реестре → FAILED_PRECONDITION (racy окно ACTIVE→DELETING в black-box); `RG-1-A04/A18` concurrent
+> Create/Rename-CAS (concurrency → testcontainers). Отмечено в RESULTS.
 
 ---
 
@@ -241,10 +266,10 @@ the data-plane per-request Check.
 
 | Surface | Module | Status | Cases / scenarios | Acceptance |
 |---|---|---|---|---|
-| Control-plane CRUD | `cases/registry.py` | present | 9 | REG-01/02/03/05/06/07/36 |
+| Control-plane CRUD | `cases/registry.py` | present | 38 | REG-01/02/03/05/06/07/36 (+ ListRepositories/ListTags/ListOperations pageSize BVA; ListOperations happy+neg) |
 | Redesign surface (REG-1) | `cases/registry-redesign.py` | present | 17 | REG-1-01/02/04/06/07/10/11/12/14/15/16/19/21/22/24/28/31 |
-| Config-overlay Repository (RG-1) | `cases/registry-repository.py` | present | 13 | RG-1-A01..C04 |
-| Control-plane authz | `cases/registry-authz.py` | **pending** | 12 intended | REG-01a/05/06/07/26/28/29/30/36 |
+| Config-overlay Repository (RG-1) | `cases/registry-repository.py` | present | 24 | RG-1-A01..C04 + A02/A05/A06/A10/A17/A19/C02/X01 parity |
+| Control-plane authz | `cases/registry-authz.py` | present | 18 | REG-01a/05/06/07/26/28/29/30/36 + per-repo v_* (RG-1 A06/A08/A15/X04) + hide-existence byte-identity |
 | Data-plane OCI proxy | `scripts/dataplane-e2e.sh` | **pending** | 18 intended | REG-10..25, 35, 37, 39 |
 | Token-exchange (Hydra) | `scripts/dataplane-e2e.sh` | **pending** | 22 intended | REG-TX-01..22 |
 
@@ -266,4 +291,11 @@ InternalRegistryService GC/Stats deep internals (integration-tested, mTLS-only).
 | `REG-AZ-UPDATE-STRANGER-DENY` | Update as stranger → 401/403/404 (never 200; no deny_reasons leak when !=401) |
 | `REG-AZ-DELETE-STRANGER-DENY` | Delete as stranger → 401/403/404 (never 200; fixture untouched; no deny_reasons leak when !=401) |
 | `REG-AZ-GET-ANON-401` | Get anonymous → 401 |
-| `REG-AZ-CLEANUP-FIXTURE` | cleanup: delete regIdAz as editor → 404 |
+| `REPO-AZ-SETUP` | fixture: CreateRepository durable overlay repo under regIdAz (editor) |
+| `REPO-AZ-GET-STRANGER-HIDDEN` | GetRepository as stranger → denied/hidden (401/403/404), never 200-success, no leak |
+| `REPO-AZ-GET-VIEWER-OK` | GetRepository as viewer (v_get) → 200 positive control (fixture-gated, retry) |
+| `REPO-AZ-UPDATE-VIEWER-DENY` | UpdateRepository as viewer (no v_update) → 403/404 existence-hidden (fixture-gated) |
+| `REPO-AZ-DELETE-STRANGER-DENY` | DeleteRepository as stranger → denied (401/403/404), never 200 op-success; fixture untouched |
+| `REPO-AZ-CREATE-STRANGER-HIDDEN` | CreateRepository as stranger in regIdAz → denied (namespace call-gate, X04); never 200 |
+| `REG-AZ-HIDE-EXISTENCE-BYTE-IDENTITY` | Registry deny-404 format byte-identical to absent-miss 404 (security.md #6; gated on stranger→404) |
+| `REG-AZ-CLEANUP-FIXTURE` | cleanup: delete regIdAz as editor → 404 (cascade drops overlay repo) |

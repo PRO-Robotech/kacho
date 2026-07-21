@@ -39,6 +39,45 @@ update_repository}.go` и handler admin-gate `internal/handler/{public,listauthz
   `REG-1-30` INTERNAL-no-leak → фикс. `"internal database error"` (симуляция DB-ошибки);
   `REG-1-20` ACTIVE-guard DELETING (racy окно). Отмечено в CASES-INDEX §1c.
 
+## Parity dobor (negatives + edge) — +23 cases, authored, pending CI
+
+Доводит суиту до parity iam/vpc поверх happy-каркаса Repository config-overlay. Разбивка:
+
+- **`cases/registry-repository.py` (+10):** `REPO-CR-NEG-DUP` (A02 ALREADY_EXISTS "repository
+  already exists"), `REPO-CR-NEG-EMPTY-NAME` (A05 "repository is required"), `REPO-NEG-BAD-REGID`
+  (A06 malformed registryId **первым стейтментом** на всех 6 repo-RPC → "invalid registry id"),
+  `REPO-UPD-NEG-UNKNOWN-MASK` (A10), `REPO-REN-NEG-COLLISION` (A17), `REPO-REN-NEG-BADNAME`
+  (A19 "invalid repository name"), `REPO-REN-CROSS-REGISTRY-STRUCTURAL` (D-5 smuggle ignored),
+  `REPO-REF-NEG-ABSENT` (C02), `REPO-EXISTENCE-HIDING-PARITY` (security.md #6 — byte-identical
+  "repository not found" через Get/Delete/ListReferrers), `REPO-GET-NO-INFRA-LEAK` (X01 two-projection).
+- **`cases/registry.py` (+6):** `REG-LSTREPO-NEG-PAGESIZE-OVERMAX`, `REG-LSTTAGS-NEG-PAGESIZE-OVERMAX`
+  (BVA `pageSize=1001` > max → 400, rejected-not-clamped; parity с `REG-RD-F8-NEG-PAGESIZE-OVERMAX`
+  для ListRegistries); **ListOperations RPC** (ранее без newman-покрытия) — `REG-LSTOPS-CRUD-OK`
+  (happy, grant-latency-толерантно), `REG-LSTOPS-NEG-BAD-TOKEN`, `REG-LSTOPS-NEG-MALFORMED-ID`,
+  `REG-LSTOPS-NEG-PAGESIZE-OVERMAX`.
+- **`cases/registry-authz.py` (+7):** per-repo authz-матрица на config-overlay Repository —
+  `REPO-AZ-SETUP` (durable repo под regIdAz), `REPO-AZ-GET-STRANGER-HIDDEN`, `REPO-AZ-GET-VIEWER-OK`
+  (positive control, fixture-gated), `REPO-AZ-UPDATE-VIEWER-DENY` (v_get без v_update → existence-hidden),
+  `REPO-AZ-DELETE-STRANGER-DENY`, `REPO-AZ-CREATE-STRANGER-HIDDEN` (namespace call-gate X04), плюс
+  `REG-AZ-HIDE-EXISTENCE-BYTE-IDENTITY` (security.md #6 — deny-404 формат байт-в-байт absent-miss).
+
+- **Product bugs: НЕ найдено.** Наблюдаемое поведение сверено с APPROVED
+  `docs/specs/sub-phase-RG-1-registry-repository-overlay-acceptance.md` (A02/A05/A06/A10/A17/A19/C02/X01,
+  D-5) и `api-conventions.md` (malformed-first, update_mask discipline, pagination BVA) + `security.md`
+  (#6 hide-existence byte-identity, §Инфра-данные two-projection). Known-failing (product-bug) деклараций нет.
+- **Стенд env-blocked** (MEMORY «local newman env blocked»; `curl localhost:18080 → 000`): авторинг +
+  `validate-cases.py` (93 unique, all catalogued) + `gen.py` (93 cases) зелёные локально; исполнение — CI-раннер.
+  Multi-user authz-кейсы single-user-толерантны (stranger → 401 здесь; 404/403 в multi-user CI), viewer/byte-identity
+  fixture-gated (SKIP без токена — console-note, НЕ false-green, ban #13), как существующие registry-authz-кейсы.
+- **Not black-box-testable via control-plane newman** (по конструкции — integration/data-plane, отмечено в
+  CASES-INDEX §1b): `RG-1-A14` DeleteRepository reject-if-tags → FAILED_PRECONDITION "repository is not empty"
+  (не-пустой repo требует data-plane `docker push` — control-plane newman тегов не создаёт → покрыто
+  `dataplane-e2e.sh` + integration); `RG-1-A24` repo-мутация в `DELETING`-реестре → FAILED_PRECONDITION (racy
+  окно ACTIVE→DELETING); `RG-1-A04/A18` concurrent Create/Rename-CAS (concurrency → testcontainers);
+  `GetRegistryStats`/`TriggerGarbageCollection` (InternalRegistryService :9091, нет `google.api.http` →
+  недостижимы на public REST — two-projection энфорсится структурно; публичный no-infra-leak локают
+  `REPO-GET-NO-INFRA-LEAK`/`REG-RD-F1-FIELD-ABSENCE`).
+
 ### Control-plane CRUD (`cases/registry.py`, 30 cases) — 150 assertions GREEN
 
 All 8 `RegistryService` RPCs exercised black-box through api-gateway REST
