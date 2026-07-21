@@ -67,10 +67,14 @@ api-gateway:
   authn:
     mode: production-strict     # Bearer REQUIRED + Hydra RS256; missing token → 401
     devSecret: ""               # HS256 dev path OFF (guard fails if non-empty in prod)
-  # Hydra JWKS / issuer inherited from values.dev.yaml (in-cluster hydra-public :4444,
-  # issuer http://localhost:28080/.ory/hydra/public/). NB: the JWKS-through-iam-:9097
-  # unification is layered separately (see scripts/dev-prod-jwks-via-iam.sh) so the
-  # secure-boot step is isolated from the verifier-routing change.
+  # UNIFICATION: verify RS256 tokens through the iam :9097 JWKS proxy, NOT Hydra :4444
+  # directly (registry-iam-jwks-unify — iam is the single JWKS facade; direct-Hydra dial
+  # is forbidden). iam :9097 is a byte-identical short-TTL mirror of Hydra's public JWKS
+  # (Hydra stays issuer/signer); it serves plain HTTP cluster-internal (jwks_proxy_mtls=
+  # false) so no CA wiring is needed. `issuer` (iss-pin) is unchanged — inherited from
+  # values.dev.yaml (Hydra self.issuer). Requires the :9097 upstream fix (kacho-iam.env).
+  hydra:
+    jwksUrl: "http://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
 vpc:
