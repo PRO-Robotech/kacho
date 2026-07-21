@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "cec60c9d-a80f-45b0-b037-75201be31a9a",
+    "_postman_id": "535b2658-dc6a-40d0-bde6-139e9674be66",
     "name": "kacho-compute / newman / sec-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -18,6 +18,14 @@
           "}",
           "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
           "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "// internalBaseUrl fallback: CI-драйвер (newman-e2e.sh) прокидывает --env-var,",
+          "// но для standalone-прогона деривируем cluster-internal listener из baseUrl",
+          "// (публичный :8080/:18080 → internal-rest :8081/:18081). Internal*-шаги",
+          "// (InternalMachineTypeService seed, COMP-1 F7) идут на {{internalBaseUrl}}.",
+          "if (!pm.environment.get('internalBaseUrl') || pm.environment.get('internalBaseUrl') === '') {",
+          "  const __b = pm.environment.get('baseUrl') || 'http://localhost:18080';",
+          "  pm.environment.set('internalBaseUrl', __b.replace(/:(1?)8080(\\b|$)/, ':$18081'));",
+          "}",
           "// Дефолтный Bearer (bootstrap cluster-admin) для шагов с auth=None: без него все",
           "// запросы анонимны → IAM authn-gate 401 fail-closed. Per-step auth ('anonymous'",
           "// снимает, '<envVar>' переопределяет) идёт в item-pre-request ПОСЛЕ collection-",
@@ -92,7 +100,7 @@
           ]
         },
         {
-          "name": "poll-op-238",
+          "name": "poll-op-309",
           "request": {
             "method": "GET",
             "header": [
@@ -173,7 +181,7 @@
           ]
         },
         {
-          "name": "get-rya49",
+          "name": "get-rya69",
           "request": {
             "method": "GET",
             "header": [
@@ -208,7 +216,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -279,7 +287,7 @@
           ]
         },
         {
-          "name": "poll-op-239",
+          "name": "poll-op-310",
           "request": {
             "method": "GET",
             "header": [

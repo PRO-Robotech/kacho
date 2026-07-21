@@ -72,7 +72,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                  pre_script=_CIDR_ALLOC_PRE,
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
                        "name": f"lst-sub-{name_suffix}-{{{{runId}}}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
-                       "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
+                       "zoneId": "{{existingZoneId}}"},
                  test_script=[
                      "pm.environment.unset('lstSubnetId');",
                      "if (pm.response.code === 200) {",

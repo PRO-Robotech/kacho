@@ -281,7 +281,11 @@ ensure_account() {
   found=$(find_account_by_name "$name" "$owner_token")
   if [ -n "$found" ]; then echo "$found"; return; fi
   local body op
-  body=$(printf '{"name":"%s","description":"%s","ownerUserId":"%s"}' "$name" "$desc" "$owner")
+  # redesign-2026 F1: ownerUserId is OUTPUT-ONLY (derived from the authenticated
+  # caller). Supplying ANY value — even the caller's own id — is rejected sync
+  # with INVALID_ARGUMENT "Illegal argument ownerUserId (derived from caller)".
+  # owner_token's principal IS $owner, so the derived owner equals $owner anyway.
+  body=$(printf '{"name":"%s","description":"%s"}' "$name" "$desc")
   op=$(api POST "/iam/v1/accounts" "$owner_token" "$body")
   local op_id; op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
   if [ -z "$op_id" ]; then echo "[setup] FATAL: Account.Create vernuli no id: $op" >&2; return 1; fi
@@ -433,8 +437,13 @@ log "5/10 ensuring access bindings"
 ensure_binding() {
   local subject_id="$1" role_id="$2" resource_type="$3" resource_id="$4" grantor_token="$5"
   local body resp op_id
-  body=$(printf '{"subjectType":"user","subjectId":"%s","roleId":"%s","resourceType":"%s","resourceId":"%s"}' \
-    "$subject_id" "$role_id" "$resource_type" "$resource_id")
+  # redesign-2026: AccessBinding.Create renamed resource_type/resource_id →
+  # scope_type/scope_id (scope_type must be DOTTED: iam.account/iam.project/
+  # iam.cluster) and added a REQUIRED `target`. Fixtures grant whole-anchor
+  # access → target.allInScope{}. Callers pass bare project/account → dot-prefix.
+  local scope_type_dotted="iam.${resource_type}"
+  body=$(printf '{"subjectType":"user","subjectId":"%s","roleId":"%s","scopeType":"%s","scopeId":"%s","target":{"allInScope":{}}}' \
+    "$subject_id" "$role_id" "$scope_type_dotted" "$resource_id")
   resp=$(api POST "/iam/v1/accessBindings" "$grantor_token" "$body")
   op_id=$(echo "$resp" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)
   if [ -z "$op_id" ]; then
@@ -645,8 +654,10 @@ log "    service accounts: A=$SVA_A NOGRANT=$SVA_NOGRANT"
 ensure_sa_binding() {
   local subject_id="$1" role_id="$2" resource_type="$3" resource_id="$4" grantor_token="$5"
   local body resp op_id
-  body=$(printf '{"subjectType":"service_account","subjectId":"%s","roleId":"%s","resourceType":"%s","resourceId":"%s"}' \
-    "$subject_id" "$role_id" "$resource_type" "$resource_id")
+  # redesign-2026 scope_type(dotted)/scope_id/target — see ensure_binding above.
+  local scope_type_dotted="iam.${resource_type}"
+  body=$(printf '{"subjectType":"service_account","subjectId":"%s","roleId":"%s","scopeType":"%s","scopeId":"%s","target":{"allInScope":{}}}' \
+    "$subject_id" "$role_id" "$scope_type_dotted" "$resource_id")
   resp=$(api POST "/iam/v1/accessBindings" "$grantor_token" "$body")
   op_id=$(echo "$resp" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)
   if [ -z "$op_id" ]; then
@@ -738,7 +749,9 @@ API_TOKEN_MALFORMED="eyJhbGciOiJIUzI1NiJ9.bm90LWEtcmVhbC10b2tlbg"
 # --- shared helpers for Phase B blocks -------------------------------------
 
 # ensure_subnet <project> <network> <name> <zone> <cidr> <token> → subnetId.
-# ZONAL placement (placement_type обязателен — иначе InvalidArgument).
+# redesign placement-coherence: placement_type is SERVER-DERIVED — set zoneId
+# (→ ZONAL) or regionId (→ REGIONAL), never placement_type itself (sending it →
+# InvalidArgument "placement_type is server-derived; set zone_id or region_id").
 ensure_subnet() {
   local proj="$1" net="$2" name="$3" zone="$4" cidr="$5" token="$6"
   local found
@@ -746,7 +759,7 @@ ensure_subnet() {
     | python3 -c "import sys,json; d=json.load(sys.stdin); n=[x for x in (d.get('subnets') or []) if x.get('name')=='$name']; print(n[0].get('id','') if n else '')" 2>/dev/null || true)
   if [ -n "$found" ]; then echo "$found"; return; fi
   local body op op_id
-  body=$(printf '{"projectId":"%s","networkId":"%s","name":"%s","zoneId":"%s","placementType":"ZONAL","v4CidrBlocks":["%s"]}' \
+  body=$(printf '{"projectId":"%s","networkId":"%s","name":"%s","zoneId":"%s","v4CidrBlocks":["%s"]}' \
     "$proj" "$net" "$name" "$zone" "$cidr")
   op=$(api POST "/vpc/v1/subnets" "$token" "$body")
   op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
@@ -948,7 +961,8 @@ if [ -n "$USER_NLB_GM" ]; then
   if [ -n "$NLB_GROUP" ]; then
     api POST "/iam/v1/groups/${NLB_GROUP}:addMember" "$JWT_AAA" "$(printf '{"groupId":"%s","memberType":"user","memberId":"%s"}' "$NLB_GROUP" "$USER_NLB_GM")" >/dev/null 2>&1 || true
     # bind the GROUP editor on project:A1 (subjectType=group).
-    api POST "/iam/v1/accessBindings" "$JWT_AAA" "$(printf '{"subjectType":"group","subjectId":"%s","roleId":"%s","resourceType":"project","resourceId":"%s"}' "$NLB_GROUP" "$ROLE_EDIT" "$NLB_PROJ")" >/dev/null 2>&1 || true
+    # redesign-2026 scope_type(dotted)/scope_id/target — see ensure_binding above.
+    api POST "/iam/v1/accessBindings" "$JWT_AAA" "$(printf '{"subjectType":"group","subjectId":"%s","roleId":"%s","scopeType":"iam.project","scopeId":"%s","target":{"allInScope":{}}}' "$NLB_GROUP" "$ROLE_EDIT" "$NLB_PROJ")" >/dev/null 2>&1 || true
   fi
 fi
 

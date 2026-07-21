@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d8a97973-e624-4fa8-be25-06f50dc94290",
+    "_postman_id": "199fa330-32e9-403b-a911-da85f36bcab6",
     "name": "kacho-nlb / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -155,7 +155,7 @@
           ]
         },
         {
-          "name": "list-own-lst381",
+          "name": "list-own-lst390",
           "request": {
             "method": "GET",
             "header": [
@@ -206,7 +206,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfNlbId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -225,7 +225,7 @@
           ]
         },
         {
-          "name": "del-own-rya382",
+          "name": "del-own-rya391",
           "request": {
             "method": "DELETE",
             "header": [
@@ -275,7 +275,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -469,7 +469,7 @@
           ]
         },
         {
-          "name": "list-tg-lst383",
+          "name": "list-tg-lst392",
           "request": {
             "method": "GET",
             "header": [
@@ -520,7 +520,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfTgId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -539,7 +539,7 @@
           ]
         },
         {
-          "name": "del-tg-rya384",
+          "name": "del-tg-rya393",
           "request": {
             "method": "DELETE",
             "header": [
@@ -589,7 +589,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -900,7 +900,7 @@
           ]
         },
         {
-          "name": "del-a-rya385",
+          "name": "del-a-rya394",
           "request": {
             "method": "DELETE",
             "header": [
@@ -950,7 +950,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

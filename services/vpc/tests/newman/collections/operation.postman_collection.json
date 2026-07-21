@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "018fa765-557d-45f1-bc1b-6e6ad9c0b49c",
+    "_postman_id": "25542748-ac96-49bc-b386-823b79aa6ad7",
     "name": "kacho-vpc / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -163,7 +163,7 @@
           ]
         },
         {
-          "name": "poll-op-1111",
+          "name": "poll-op-1203",
           "request": {
             "method": "GET",
             "header": [
@@ -437,7 +437,7 @@
           ]
         },
         {
-          "name": "poll-op-1112",
+          "name": "poll-op-1204",
           "request": {
             "method": "GET",
             "header": [
@@ -510,7 +510,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"oplistdel-sub-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.7.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"oplistdel-sub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.7.0/24\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -541,7 +541,7 @@
           ]
         },
         {
-          "name": "poll-op-1113",
+          "name": "poll-op-1205",
           "request": {
             "method": "GET",
             "header": [
@@ -670,7 +670,7 @@
           ]
         },
         {
-          "name": "poll-op-1114",
+          "name": "poll-op-1206",
           "request": {
             "method": "GET",
             "header": [
@@ -798,7 +798,7 @@
           ]
         },
         {
-          "name": "poll-op-1115",
+          "name": "poll-op-1207",
           "request": {
             "method": "GET",
             "header": [

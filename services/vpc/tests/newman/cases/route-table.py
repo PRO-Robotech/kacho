@@ -424,7 +424,7 @@ CASES.append(Case(
         # 2. Subnet (без явного route_table_id).
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "rt-autoassoc-sub-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "rt-autoassoc-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.247.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -493,7 +493,7 @@ CASES.append(Case(
         # Создаем Subnet (auto-pick RT нет, поскольку RT в этой сети еще нет).
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "rt-da-sub-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "rt-da-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.235.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),

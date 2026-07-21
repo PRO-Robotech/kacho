@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f2274355-7259-4f52-9a47-461d8be20876",
+    "_postman_id": "e281afa0-1c5b-4422-a239-8ea4603fc22f",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -168,7 +168,7 @@
           ]
         },
         {
-          "name": "poll-op-924",
+          "name": "poll-op-1016",
           "request": {
             "method": "GET",
             "header": [
@@ -219,7 +219,7 @@
           ]
         },
         {
-          "name": "get-internal-rya425",
+          "name": "get-internal-rya601",
           "request": {
             "method": "GET",
             "header": [
@@ -269,7 +269,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -436,7 +436,7 @@
           ]
         },
         {
-          "name": "poll-op-925",
+          "name": "poll-op-1017",
           "request": {
             "method": "GET",
             "header": [
@@ -487,7 +487,7 @@
           ]
         },
         {
-          "name": "list-no-vrfid-lst426",
+          "name": "list-no-vrfid-lst602",
           "request": {
             "method": "GET",
             "header": [
@@ -523,7 +523,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('createdNetworkId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -771,7 +771,7 @@
           ]
         },
         {
-          "name": "poll-op-926",
+          "name": "poll-op-1018",
           "request": {
             "method": "GET",
             "header": [
@@ -822,7 +822,7 @@
           ]
         },
         {
-          "name": "get-internal-before-rya427",
+          "name": "get-internal-before-rya603",
           "request": {
             "method": "GET",
             "header": [
@@ -872,7 +872,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -941,7 +941,7 @@
           ]
         },
         {
-          "name": "poll-op-927",
+          "name": "poll-op-1019",
           "request": {
             "method": "GET",
             "header": [
@@ -1152,7 +1152,7 @@
           ]
         },
         {
-          "name": "poll-op-928",
+          "name": "poll-op-1020",
           "request": {
             "method": "GET",
             "header": [

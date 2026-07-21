@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "b359c080-de18-457a-a568-b5109048dfb7",
+    "_postman_id": "2f8f1e6c-caac-40ca-a6c7-3e4964f3fa84",
     "name": "kacho-nlb / newman / placement-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -59,7 +59,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-z1v4-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-z1v4-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -171,7 +171,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-z2v6-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneAltId}}\", \"v6CidrBlocks\": [\"{{_zcV6Cidr}}\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-z2v6-{{runId}}\", \"zoneId\": \"{{existingZoneAltId}}\", \"v6CidrBlocks\": [\"{{_zcV6Cidr}}\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -261,7 +261,7 @@
           ]
         },
         {
-          "name": "create-cross-zone-cr627",
+          "name": "create-cross-zone-cr645",
           "request": {
             "method": "POST",
             "header": [
@@ -307,7 +307,7 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 60) {",
+                  "if (_crNotFound && _crc < 25) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
                   "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -535,7 +535,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-szv4-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-szv4-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -647,7 +647,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-szv6-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v6CidrBlocks\": [\"{{_zcV6Cidr}}\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-szv6-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v6CidrBlocks\": [\"{{_zcV6Cidr}}\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -737,7 +737,7 @@
           ]
         },
         {
-          "name": "create-same-zone-cr628",
+          "name": "create-same-zone-cr646",
           "request": {
             "method": "POST",
             "header": [
@@ -783,7 +783,7 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 60) {",
+                  "if (_crNotFound && _crc < 25) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
                   "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -1153,7 +1153,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-r2-{{runId}}\", \"placementType\": \"REGIONAL\", \"regionId\": \"{{existingRegionAltId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-r2-{{runId}}\", \"regionId\": \"{{existingRegionAltId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1243,7 +1243,7 @@
           ]
         },
         {
-          "name": "create-wrong-region-cr629",
+          "name": "create-wrong-region-cr647",
           "request": {
             "method": "POST",
             "header": [
@@ -1289,7 +1289,7 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 60) {",
+                  "if (_crNotFound && _crc < 25) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
                   "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -1428,7 +1428,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-r1-{{runId}}\", \"placementType\": \"REGIONAL\", \"regionId\": \"{{existingRegionId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"zc-r1-{{runId}}\", \"regionId\": \"{{existingRegionId}}\", \"v4CidrBlocks\": [\"{{_zcV4Cidr}}\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1518,7 +1518,7 @@
           ]
         },
         {
-          "name": "create-same-region-cr630",
+          "name": "create-same-region-cr648",
           "request": {
             "method": "POST",
             "header": [
@@ -1564,7 +1564,7 @@
                   "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
                   "let _crNotFound = false;",
                   "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 60) {",
+                  "if (_crNotFound && _crc < 25) {",
                   "  pm.environment.set('_crRetryCount', String(_crc + 1));",
                   "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

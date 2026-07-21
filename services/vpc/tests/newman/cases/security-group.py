@@ -674,7 +674,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sg-nicatt-sub-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sg-nicatt-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.249.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),

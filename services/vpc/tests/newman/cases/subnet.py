@@ -55,7 +55,7 @@ CASES.append(Case(
             path="/vpc/v1/subnets",
             body={
                 "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                "name": "sub-cr-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                "name": "sub-cr-{{runId}}", "zoneId": "{{existingZoneId}}",
                 "v4CidrBlocks": ["10.42.0.0/24"],
             },
             test_script=[*assert_status(200), *assert_operation_envelope(),
@@ -97,7 +97,7 @@ CASES.append(Case(
         # 2. Subnet без явного route_table_id — auto-pick подставит rtId.
         Step(name="cr-sub-autopick", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-autopick-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-autopick-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.246.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -136,11 +136,12 @@ CASES.append(Case(
             name="create-no-zone",
             method="POST",
             path="/vpc/v1/subnets",
-            # placementType=ZONAL присутствует, но zone_id опущен → отказ приходит
-            # именно из ZONAL-ветки validatePlacement (zone_id required), а не из
-            # discriminator-default (placement_type required). Тестируем zone-required.
+            # placement_type — server-derived (F6): в тело не передаётся. Ни zoneId,
+            # ни regionId не заданы → нет placement-anchor → server-derive отвергает
+            # sync 400 «exactly one of zone_id, region_id must be set». Тестируем
+            # anchor-required (без zoneId subnet не размещается).
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-noz-{{runId}}", "placementType": "ZONAL",
+                  "name": "sub-noz-{{runId}}",
                   "v4CidrBlocks": ["10.0.0.0/24"]},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")],
         ),
@@ -160,7 +161,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-zu-{{runId}}", "placementType": "ZONAL", "zoneId": "zone-z-fake",
+                  "name": "sub-zu-{{runId}}", "zoneId": "zone-z-fake",
                   "v4CidrBlocks": ["10.0.0.0/24"]},
             # Отказ — flat {code,message} body, не Operation.
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -184,7 +185,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-nocidr-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
+                  "name": "sub-nocidr-{{runId}}", "zoneId": "{{existingZoneId}}"},
             test_script=[*assert_status(200), *assert_operation_envelope(),
                          *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
@@ -231,7 +232,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-v6-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                  "name": "sub-v6-{{runId}}", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": ["10.78.0.0/24"], "v6CidrBlocks": ["fd00:dead:beef::/64"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
@@ -266,7 +267,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-v6upd-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                  "name": "sub-v6upd-{{runId}}", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": ["10.79.0.0/24"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
@@ -301,7 +302,7 @@ CASES.append(Case(
         *_make_net("addrcl"),
         Step(name="create-cidrless-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-addrcl-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
+                   "name": "sub-addrcl-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -329,7 +330,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-hb-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                  "name": "sub-hb-{{runId}}", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": ["10.0.0.5/24"]},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")],
         ),
@@ -348,7 +349,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
-                  "name": "sub-nf-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                  "name": "sub-nf-{{runId}}", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": ["10.10.0.0/24"]},
             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
                          "pm.test('mentions network', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('network'));"],
@@ -368,7 +369,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-ov1-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                  "name": "sub-ov1-{{runId}}", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": ["10.50.0.0/16"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId1")],
@@ -379,7 +380,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-ov2-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                  "name": "sub-ov2-{{runId}}", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": ["10.50.5.0/24"]},  # overlaps with /16
             test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                          "pm.test('overlap text', () => pm.expect(pm.response.json().message).to.eql('Subnet CIDRs can not overlap'));"],
@@ -470,7 +471,7 @@ CASES.append(Case(
         *_make_net("im"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-im-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-im-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.30.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -513,7 +514,7 @@ CASES.append(Case(
         *_make_net("acb"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-acb-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-acb-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.60.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -541,7 +542,7 @@ CASES.append(Case(
         *_make_net("lua"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-lua-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-lua-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.80.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -565,7 +566,7 @@ CASES.append(Case(
         *_make_net("lop"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-lop-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-lop-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.90.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.id", "createOpId"),
@@ -594,7 +595,7 @@ CASES.append(Case(
         *_make_net("upd"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-upd-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-upd-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.120.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -618,7 +619,7 @@ CASES.append(Case(
         *_make_net("rcb"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-rcb-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-rcb-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.140.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -659,7 +660,7 @@ CASES.append(Case(
         *_make_net("acbdj"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-acbdj-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-acbdj-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.150.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -685,7 +686,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-bad-net", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
-                   "name": "sub-confnf-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-confnf-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.170.0.0/24"]},
              test_script=[
                  *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
@@ -702,14 +703,14 @@ CASES.append(Case(
         *_make_net("dup"),
         Step(name="create-first", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-dup-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-dup-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.180.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId1")]),
         poll_operation_until_done(),
         Step(name="create-dup", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-dup-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-dup-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.181.0.0/24"]},  # другой CIDR — дубль только по name
              test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
                           "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
@@ -729,7 +730,7 @@ CASES.append(Case(
         *_make_net("delok"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-delok-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-delok-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.200.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -751,7 +752,7 @@ CASES.append(Case(
         *_make_net("acbov"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-acbov-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-acbov-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.210.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -777,7 +778,7 @@ CASES.append(Case(
         *_make_net("rcbnf"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-rcbnf-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-rcbnf-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.220.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -844,7 +845,7 @@ CASES.append(Case(
         *_make_net("rcbstate"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-rcbst-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-rcbst-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.230.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -881,7 +882,7 @@ CASES.append(Case(
 
 def _sub_body_extra():
     return {
-        "networkId": "{{netId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+        "networkId": "{{netId}}", "zoneId": "{{existingZoneId}}",
         "v4CidrBlocks": ["10.41.0.0/24"],
     }
 
@@ -918,7 +919,7 @@ CASES.append(pagination_roundtrip("SUB", "/vpc/v1/subnets"))
 # v7: update-per-field wrap'ed в network
 for c in update_happy_per_field("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.241.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.241.0.0/24"]}):
     CASES.append(_wrap_with_net("SUB", "v7", c))
 
 CASES.extend(perf_baseline_block("SUB", "/vpc/v1/subnets"))
@@ -930,14 +931,14 @@ CASES.extend(authz_caller_headers_block("SUB", "/vpc/v1/subnets"))
 CASES.append(_wrap_with_net("SUB", "v8m",
     update_happy_multi_field("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.243.0.0/24"]})))
+         "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.243.0.0/24"]})))
 CASES.append(_wrap_with_net("SUB", "v8f",
     list_filter_match_block("SUB", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.244.0.0/24"]})))
+         "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.244.0.0/24"]})))
 for c in neg_invalid_types_block("SUB", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.245.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.245.0.0/24"]}):
     CASES.append(_wrap_with_net("SUB", "v8nt", c))
 CASES.extend(http_method_not_allowed_block("SUB", "/vpc/v1/subnets"))
 CASES.extend(malformed_body_block("SUB", "/vpc/v1/subnets"))
@@ -949,18 +950,18 @@ CASES.extend(malformed_body_block("SUB", "/vpc/v1/subnets"))
 # а не ALREADY_EXISTS.
 for c in update_mask_partial_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.247.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.247.0.0/24"]}):
     CASES.append(_wrap_with_net("SUB", "v9p", c))
 CASES.append(_wrap_with_net("SUB", "v9pf",
     perf_baseline_get_block("SUB", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.248.0.0/24"]})))
+         "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.248.0.0/24"]})))
 CASES.extend(list_total_size_check_block("SUB", "/vpc/v1/subnets"))
 
 # v10: subnet-specific dhcp_options + cidr boundary
 def _sub_dhcp(opts):
     return {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-            "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.250.0.0/24"],
+            "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.250.0.0/24"],
             "dhcpOptions": opts}
 
 # DHCP options ECP
@@ -1001,7 +1002,7 @@ CASES.append(_wrap_with_net("SUB", "v10cidr28",
         steps=[
             Step(name="cr-prefix-28", method="POST", path="/vpc/v1/subnets",
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                       "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.255.0.0/28"],
+                       "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.255.0.0/28"],
                        "name": "sub-cidr-28-{{runId}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1020,7 +1021,7 @@ for _n in ("29", "30", "31"):
             steps=[
                 Step(name=f"cr-prefix-{_n}", method="POST", path="/vpc/v1/subnets",
                      body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                           "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": [f"10.255.0.0/{_n}"],
+                           "zoneId": "{{existingZoneId}}", "v4CidrBlocks": [f"10.255.0.0/{_n}"],
                            "name": f"sub-cidr-{_n}-{{{{runId}}}}"},
                      test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                                   f"pm.test('verbatim text', () => pm.expect(pm.response.json().message).to.eql('Illegal argument Invalid network prefix /{_n}'));"]),
@@ -1037,7 +1038,7 @@ CASES.append(Case(
         *_make_net("hasad"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-hasad-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-hasad-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.251.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1078,7 +1079,7 @@ CASES.append(Case(
         *_make_net("hasv6ad"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-hasv6ad-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-hasv6ad-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.249.0.0/24"], "v6CidrBlocks": ["fd34:5678:9abc::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1120,7 +1121,7 @@ CASES.append(Case(
         *_make_net("chain"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-chain-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-chain-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.248.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1178,7 +1179,7 @@ CASES.append(Case(
         *_make_net("hasnic"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-hasnic-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-hasnic-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.253.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1215,7 +1216,7 @@ CASES.append(Case(
         *_make_net("delempty"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-delempty-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-delempty-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.252.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1236,7 +1237,7 @@ CASES.append(Case(
 # Subnet нужен parent network — wrap в _wrap_with_net
 for c in required_fields_matrix("SUB", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "name": "sub-req-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+     "name": "sub-req-{{runId}}", "zoneId": "{{existingZoneId}}",
      "v4CidrBlocks": ["10.190.0.0/24"]},
     ["projectId", "networkId", "name", "zoneId", "v4CidrBlocks"]):
     CASES.append(_wrap_with_net("SUB", "req", c))
@@ -1253,7 +1254,7 @@ def _subnet_cidr_setup_teardown(case):
             *_make_net("cidrexp"),
             Step(name="setup-sub", method="POST", path="/vpc/v1/subnets",
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                       "name": "sub-cidrexp-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                       "name": "sub-cidrexp-{{runId}}", "zoneId": "{{existingZoneId}}",
                        "v4CidrBlocks": ["10.180.0.0/24"]},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.subnetId", "addedSubId")]),
@@ -1282,7 +1283,7 @@ for c in pairwise_subnet_pack():
     CASES.append(_wrap_with_net("SUB", "pw", c))
 for c in security_injection_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "placementType": "ZONAL", "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.169.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.169.0.0/24"]}):
     CASES.append(_wrap_with_net("SUB", "sec", c))
 
 # ---------------------------------------------------------------------------
@@ -1297,7 +1298,7 @@ CASES.append(Case(
         *_make_net("acb6"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-acb6-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-acb6-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.220.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1324,7 +1325,7 @@ CASES.append(Case(
         *_make_net("rcb6"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-rcb6-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-rcb6-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.221.0.0/24"], "v6CidrBlocks": ["fd12:3456:789b::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1351,7 +1352,7 @@ CASES.append(Case(
         *_make_net("acb6hb"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-acb6hb-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-acb6hb-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.222.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1383,7 +1384,7 @@ CASES.append(Case(
         *_make_net("dupCidr"),
         Step(name="sub1", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-dup1-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-dup1-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.230.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId1")]),
@@ -1394,7 +1395,7 @@ CASES.append(Case(
         # backstop; the sync precheck fires first.
         Step(name="sub2-same-cidr", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-dup2-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-dup2-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.230.0.0/24"]},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION")]),
         Step(name="cleanup-sub1", method="DELETE", path="/vpc/v1/subnets/{{subId1}}",
@@ -1414,7 +1415,7 @@ CASES.append(Case(
         *_make_net("v6ov"),
         Step(name="sub1-v6", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-v6ov1-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-v6ov1-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.231.0.0/24"], "v6CidrBlocks": ["fd12:3456:7800::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId1")]),
@@ -1422,7 +1423,7 @@ CASES.append(Case(
         # Полный overlap по v6, разные v4 — должен fail через EXCLUDE v6.
         Step(name="sub2-v6-overlap", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-v6ov2-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-v6ov2-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.231.1.0/24"], "v6CidrBlocks": ["fd12:3456:7800::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         Step(name="poll-fail-v6", method="GET", path="/operations/{{opId}}",
@@ -1459,7 +1460,7 @@ CASES.append(Case(
         *_make_net("luaCount"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-luac-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-luac-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.232.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1524,7 +1525,7 @@ CASES.append(Case(
         *_make_net("luaFrag"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-luaf-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-luaf-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.233.0.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1596,7 +1597,7 @@ CASES.append(Case(
         Step(name="create-fail", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}",
                    "networkId": "net00000000000000000",
-                   "name": "sub-rollback-{{runId}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                   "name": "sub-rollback-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "v4CidrBlocks": ["10.234.0.0/24"]},
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
         # List by project must not contain a subnet with the (unique) attempted name —

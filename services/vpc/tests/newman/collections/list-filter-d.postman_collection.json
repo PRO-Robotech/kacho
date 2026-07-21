@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "bf53173e-21a1-4a69-bedb-33d4467cc16a",
+    "_postman_id": "9d7cdfc5-fefd-4731-8a3e-a504fff79b2b",
     "name": "kacho-vpc / newman / list-filter-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -110,7 +110,7 @@
       "description": "class:AUTHZ | class:CONF | priority:P0",
       "item": [
         {
-          "name": "List subnets as subset-viewer-rya432",
+          "name": "List subnets as subset-viewer-rya608",
           "request": {
             "method": "GET",
             "header": [
@@ -159,7 +159,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -183,7 +183,7 @@
       "description": "class:AUTHZ | class:NEG | priority:P0",
       "item": [
         {
-          "name": "List subnets as subset-viewer (hidden absent)-rya433",
+          "name": "List subnets as subset-viewer (hidden absent)-rya609",
           "request": {
             "method": "GET",
             "header": [
@@ -232,7 +232,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -370,7 +370,7 @@
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
-          "name": "List subnets as no-grant subject-rya434",
+          "name": "List subnets as no-grant subject-rya610",
           "request": {
             "method": "GET",
             "header": [
@@ -419,7 +419,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "470eb8ef-e04a-4441-81cf-c1028caad3da",
+    "_postman_id": "8b4eb52a-bfeb-4e7c-b394-42411fc305e5",
     "name": "kacho-vpc / newman / internal-pool",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1789,7 +1789,7 @@
           ]
         },
         {
-          "name": "poll-op-929",
+          "name": "poll-op-1021",
           "request": {
             "method": "GET",
             "header": [
@@ -1888,7 +1888,7 @@
           ]
         },
         {
-          "name": "bind-rya428",
+          "name": "bind-rya604",
           "request": {
             "method": "POST",
             "header": [
@@ -1933,7 +1933,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -2139,7 +2139,7 @@
           ]
         },
         {
-          "name": "poll-op-930",
+          "name": "poll-op-1022",
           "request": {
             "method": "GET",
             "header": [
@@ -2408,7 +2408,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"ipl-ds-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"198.51.100.0/24\"], \"v6CidrBlocks\": [\"2001:db8:1::/64\"]}",
+              "raw": "{\"name\": \"ipl-ds-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"100.100.0.0/24\"], \"v6CidrBlocks\": [\"2001:db8:1::/64\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2424,7 +2424,7 @@
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('v4CidrBlocks echoed', () => pm.expect(j.v4CidrBlocks).to.eql(['198.51.100.0/24']));",
+                  "pm.test('v4CidrBlocks echoed', () => pm.expect(j.v4CidrBlocks).to.eql(['100.100.0.0/24']));",
                   "pm.test('v6CidrBlocks echoed', () => pm.expect(j.v6CidrBlocks).to.eql(['2001:db8:1::/64']));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -2602,7 +2602,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"ipl-add-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"198.51.100.0/24\"], \"v6CidrBlocks\": []}",
+              "raw": "{\"name\": \"ipl-add-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"100.100.0.0/24\"], \"v6CidrBlocks\": []}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2667,7 +2667,7 @@
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('both v4 cidrs present', () => pm.expect(j.v4CidrBlocks).to.have.members(['198.51.100.0/24','203.0.113.0/24']));"
+                  "pm.test('both v4 cidrs present', () => pm.expect(j.v4CidrBlocks).to.have.members(['100.100.0.0/24','203.0.113.0/24']));"
                 ]
               }
             }
@@ -2703,7 +2703,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('v4 persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.have.members(['198.51.100.0/24','203.0.113.0/24']));"
+                  "pm.test('v4 persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.have.members(['100.100.0.0/24','203.0.113.0/24']));"
                 ]
               }
             }
@@ -2818,7 +2818,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"ipl-rm-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"198.51.100.0/24\", \"203.0.113.0/24\"], \"v6CidrBlocks\": []}",
+              "raw": "{\"name\": \"ipl-rm-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"100.100.0.0/24\", \"203.0.113.0/24\"], \"v6CidrBlocks\": []}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2883,7 +2883,7 @@
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('only first cidr remains', () => pm.expect(j.v4CidrBlocks).to.eql(['198.51.100.0/24']));"
+                  "pm.test('only first cidr remains', () => pm.expect(j.v4CidrBlocks).to.eql(['100.100.0.0/24']));"
                 ]
               }
             }
@@ -2919,7 +2919,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('removal persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.eql(['198.51.100.0/24']));"
+                  "pm.test('removal persisted', () => pm.expect(pm.response.json().v4CidrBlocks).to.eql(['100.100.0.0/24']));"
                 ]
               }
             }
@@ -2949,7 +2949,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"v4CidrBlocks\": [\"198.51.100.0/24\"]}",
+              "raw": "{\"v4CidrBlocks\": [\"100.100.0.0/24\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3038,7 +3038,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"ipl-rm-inuse-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneD}}\", \"v4CidrBlocks\": [\"198.51.100.0/24\", \"203.0.113.0/24\"], \"isDefault\": true}",
+              "raw": "{\"name\": \"ipl-rm-inuse-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneD}}\", \"v4CidrBlocks\": [\"100.100.0.0/24\", \"203.0.113.0/24\"], \"isDefault\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3117,7 +3117,7 @@
           ]
         },
         {
-          "name": "poll-op-931",
+          "name": "poll-op-1023",
           "request": {
             "method": "GET",
             "header": [
@@ -3199,7 +3199,7 @@
                   "pm.test('addr alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
                   "const ip = ((op.response||{}).externalIpv4Address||{}).address || '';",
                   "pm.test('allocated ip present', () => pm.expect(ip).to.be.a('string').and.not.empty);",
-                  "pm.environment.set('rmInUseCidr', ip.indexOf('198.51.100.') === 0 ? '198.51.100.0/24' : '203.0.113.0/24');"
+                  "pm.environment.set('rmInUseCidr', ip.indexOf('100.100.0.') === 0 ? '100.100.0.0/24' : '203.0.113.0/24');"
                 ]
               }
             }
@@ -3330,7 +3330,7 @@
           ]
         },
         {
-          "name": "poll-op-932",
+          "name": "poll-op-1024",
           "request": {
             "method": "GET",
             "header": [
@@ -3952,7 +3952,7 @@
           ]
         },
         {
-          "name": "poll-op-933",
+          "name": "poll-op-1025",
           "request": {
             "method": "GET",
             "header": [
@@ -4051,7 +4051,7 @@
           ]
         },
         {
-          "name": "bind-rya429",
+          "name": "bind-rya605",
           "request": {
             "method": "POST",
             "header": [
@@ -4096,7 +4096,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -4164,7 +4164,7 @@
           ]
         },
         {
-          "name": "poll-op-934",
+          "name": "poll-op-1026",
           "request": {
             "method": "GET",
             "header": [
@@ -4361,7 +4361,7 @@
           ]
         },
         {
-          "name": "poll-op-935",
+          "name": "poll-op-1027",
           "request": {
             "method": "GET",
             "header": [
@@ -4440,7 +4440,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"ipl-ds-resolve-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneD}}\", \"v4CidrBlocks\": [\"198.51.100.0/24\"], \"v6CidrBlocks\": [\"2001:db8:ff::/64\"], \"isDefault\": true}",
+              "raw": "{\"name\": \"ipl-ds-resolve-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneD}}\", \"v4CidrBlocks\": [\"100.100.0.0/24\"], \"v6CidrBlocks\": [\"2001:db8:ff::/64\"], \"isDefault\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4519,7 +4519,7 @@
           ]
         },
         {
-          "name": "poll-op-936",
+          "name": "poll-op-1028",
           "request": {
             "method": "GET",
             "header": [
@@ -4599,7 +4599,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const op = pm.response.json();",
                   "pm.test('v4 alloc op done no error', () => pm.expect(op.done && !op.error, JSON.stringify(op)).to.eql(true));",
-                  "pm.test('v4 IP in pool v4 cidr', () => pm.expect(((op.response||{}).externalIpv4Address||{}).address || '').to.match(/^198\\.51\\.100\\./));"
+                  "pm.test('v4 IP in pool v4 cidr', () => pm.expect(((op.response||{}).externalIpv4Address||{}).address || '').to.match(/^100\\.100\\.0\\./));"
                 ]
               }
             }
@@ -4659,7 +4659,7 @@
           ]
         },
         {
-          "name": "poll-op-937",
+          "name": "poll-op-1029",
           "request": {
             "method": "GET",
             "header": [
@@ -4785,7 +4785,7 @@
           ]
         },
         {
-          "name": "poll-op-938",
+          "name": "poll-op-1030",
           "request": {
             "method": "GET",
             "header": [
@@ -4875,7 +4875,7 @@
           ]
         },
         {
-          "name": "poll-op-939",
+          "name": "poll-op-1031",
           "request": {
             "method": "GET",
             "header": [
@@ -5020,7 +5020,7 @@
           ]
         },
         {
-          "name": "poll-op-940",
+          "name": "poll-op-1032",
           "request": {
             "method": "GET",
             "header": [
@@ -5119,7 +5119,7 @@
           ]
         },
         {
-          "name": "bind-rya430",
+          "name": "bind-rya606",
           "request": {
             "method": "POST",
             "header": [
@@ -5164,7 +5164,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5290,7 +5290,7 @@
           ]
         },
         {
-          "name": "poll-op-941",
+          "name": "poll-op-1033",
           "request": {
             "method": "GET",
             "header": [
@@ -5400,7 +5400,7 @@
           ]
         },
         {
-          "name": "poll-op-942",
+          "name": "poll-op-1034",
           "request": {
             "method": "GET",
             "header": [
@@ -5473,7 +5473,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"ipl-exh-pool-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"198.51.100.252/30\"], \"v6CidrBlocks\": [], \"isDefault\": true}",
+              "raw": "{\"name\": \"ipl-exh-pool-{{runId}}\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneC}}\", \"v4CidrBlocks\": [\"100.100.0.252/30\"], \"v6CidrBlocks\": [], \"isDefault\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5499,7 +5499,7 @@
           ]
         },
         {
-          "name": "bind-rya431",
+          "name": "bind-rya607",
           "request": {
             "method": "POST",
             "header": [
@@ -5544,7 +5544,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5612,7 +5612,7 @@
           ]
         },
         {
-          "name": "poll-op-943",
+          "name": "poll-op-1035",
           "request": {
             "method": "GET",
             "header": [
@@ -5754,7 +5754,7 @@
           ]
         },
         {
-          "name": "poll-op-944",
+          "name": "poll-op-1036",
           "request": {
             "method": "GET",
             "header": [
@@ -5977,7 +5977,7 @@
           ]
         },
         {
-          "name": "poll-op-945",
+          "name": "poll-op-1037",
           "request": {
             "method": "GET",
             "header": [
@@ -6068,7 +6068,7 @@
           ]
         },
         {
-          "name": "poll-op-946",
+          "name": "poll-op-1038",
           "request": {
             "method": "GET",
             "header": [
@@ -6230,7 +6230,7 @@
           ]
         },
         {
-          "name": "poll-op-947",
+          "name": "poll-op-1039",
           "request": {
             "method": "GET",
             "header": [

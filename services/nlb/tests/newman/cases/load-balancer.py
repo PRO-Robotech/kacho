@@ -86,8 +86,12 @@ def _cidr_alloc_pre():
 
 
 def _provision_subnet(placement, suffix, save_var="vpcSubnetId"):
-    """Provision a ZONAL or REGIONAL vpc Subnet in the seeded network; save its id."""
-    loc = {"placementType": placement}
+    """Provision a ZONAL or REGIONAL vpc Subnet in the seeded network; save its id.
+
+    placement_type is server-derived (F6): the subnet body carries only the placement
+    anchor (zoneId → ZONAL, regionId → REGIONAL), never placementType.
+    """
+    loc = {}
     if placement == "ZONAL":
         loc["zoneId"] = "{{existingZoneId}}"
     else:
