@@ -387,6 +387,35 @@ CASES.append(Case(
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")])],
 ))
 
+CASES.append(Case(
+    id="IMG-UPD-MASK-EMPTY-FULL-PATCH",
+    title="Update image без update_mask → full PATCH; immutable family из body silently игнорируется",
+    # ECP: mask=empty (full-PATCH класс) · state-transition: mutable(description) применяется,
+    # immutable(family) молча игнорируется (update_mask discipline api-conventions).
+    classes=["STATE", "VAL"], priority="P2",
+    steps=[
+        *_pre_disk("empmask"),
+        Step(name="cr", method="POST", path=IMAGES,
+             body={"projectId": "{{_suiteFolderId}}", "name": "img-empm-{{runId}}",
+                   "family": "empm-fam-{{runId}}", "diskId": "{{baseDiskId}}", "description": "init"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-no-mask", method="PATCH", path=f"{IMAGES}/{{{{imageId}}}}",
+             body={"description": "full-patch-desc", "family": "changed-fam-{{runId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify", method="GET", path=f"{IMAGES}/{{{{imageId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
+                          "pm.test('family NOT changed (immutable, silently ignored)', () => pm.expect(j.family).to.match(/^empm-fam-/));"]),
+        Step(name="cleanup", method="DELETE", path=f"{IMAGES}/{{{{imageId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_base_disk(),
+    ],
+))
+
 # ---------------------------------------------------------------------------
 # IMG-DEL — Delete
 # ---------------------------------------------------------------------------
@@ -417,6 +446,29 @@ CASES.append(Case(
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")])],
 ))
 
+CASES.append(Case(
+    id="IMG-DEL-CONF-RESPONSE-EMPTY",
+    title="Delete image → Operation.response = Empty, metadata = DeleteImageMetadata{imageId}",
+    # conformance: async Delete-op завершается response=Empty (0 доменных ключей) + metadata.imageId.
+    classes=["CONF"], priority="P2",
+    steps=[
+        Step(name="cr", method="POST", path=IMAGES,
+             body={"projectId": "{{_suiteFolderId}}", "name": "img-delm-{{runId}}", "uri": _SAMPLE_URI},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{IMAGES}/{{{{imageId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          "pm.test('metadata has imageId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.imageId).to.eql(pm.environment.get('imageId')));"])),
+        poll_operation_until_done(),
+        Step(name="assert-empty", method="GET", path="/operations/{{opId}}",
+             test_script=["const j = pm.response.json();",
+                          "pm.test('done & no error', () => { pm.expect(j.done).to.eql(true); pm.expect(j.error).to.be.oneOf([undefined, null]); });",
+                          "pm.test('response is Empty-like object', () => { pm.expect(j.response).to.be.an('object'); const keys = Object.keys(j.response).filter(k => k !== '@type' && k !== 'value'); pm.expect(keys.length).to.eql(0); });",
+                          "pm.test('metadata.imageId matches', () => pm.expect(j.metadata && j.metadata.imageId).to.eql(pm.environment.get('imageId')));"]),
+    ],
+))
+
 # ---------------------------------------------------------------------------
 # IMG-LOP — ListOperations
 # ---------------------------------------------------------------------------
@@ -436,6 +488,15 @@ CASES.append(Case(
         Step(name="cleanup", method="DELETE", path=f"{IMAGES}/{{{{imageId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],
+))
+
+CASES.append(Case(
+    id="IMG-LOP-NEG-PARENT-NF",
+    title="ListOperations несуществующего image → 200 (пусто) или 404",
+    # error-guessing: parent-not-found на sub-collection — repo-фильтр по absent id → пустая страница ИЛИ 404.
+    classes=["NEG"], priority="P2",
+    steps=[Step(name="lop-nx", method="GET", path=f"{IMAGES}/{{{{garbageImageId}}}}/operations",
+                test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"])],
 ))
 
 # ---------------------------------------------------------------------------

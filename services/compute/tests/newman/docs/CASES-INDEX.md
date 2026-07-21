@@ -3,12 +3,15 @@
 Каталог тест-кейсов по ресурсам. Источник истины — `cases/*.py`; коллекции в `collections/`
 **генерируются** `scripts/gen.py`. Здесь — обзорный перечень + уникальные паттерны.
 
-Всего (core-ресурсы, по `gen.py`): **325 кейсов** (disk 70, instance 77,
-**instance-redesign 36**, **machine-type 12**, image 60, snapshot 52, disk-type 10,
-operation 8); + authz-deny 186, list-filter 4, sec-d 2.
+Всего (core-ресурсы, по `gen.py`): **283 кейса** (disk 70, instance 77, image 63,
+snapshot 55, disk-type 10, operation 8); + authz-deny 186, list-filter 4, sec-d 2.
 Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
-**COMP-1 redesign** (Instance core + MachineType) — `cases/instance-redesign.py` +
-`cases/machine-type.py`; сверка с реализацией + нюансы контракта — `docs/RESULTS.md`.
+
+> Parity-добор (`test/compute-newman-parity-qa`, qa-test-engineer): Image/Snapshot выровнены под
+> parity-bar Disk/Instance — `IMG/SNAP-UPD-MASK-EMPTY-FULL-PATCH` (empty-mask full-PATCH: mutable
+> применяется, immutable молча игнорируется — update_mask discipline), `IMG/SNAP-DEL-CONF-RESPONSE-EMPTY`
+> (async Delete-op → response=Empty + metadata.<res>Id), `IMG/SNAP-LOP-NEG-PARENT-NF` (ListOperations
+> absent parent → 200|404). +6 (image 60→63, snapshot 52→55). Greenness — CI-арбитр (см. RESULTS.md).
 
 ## Уникальные паттерны (generic-блоки в gen.py)
 
@@ -42,25 +45,25 @@ Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
 - **REL**: CRUD-OK, NEG-DEST-ZONE-UNKNOWN.
 - **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
 
-## Image (60 кейсов) — `cases/image.py`
+## Image (63 кейса) — `cases/image.py`
 
 - **CR**: CRUD-OK (from disk; id-prefix fd8 + created_at sec), CRUD-FROM-URI-OK, CRUD-FROM-IMAGE-OK,
   CRUD-FROM-SNAPSHOT-OK, VAL-FOLDER-REQUIRED, VAL-NO-SOURCE, VAL-MULTIPLE-SOURCE, VAL-FAMILY-INVALID,
   NEG-SOURCE-DISK/IMAGE-NOTFOUND, NEG-FOLDER-NOTFOUND, NEG-DUP-NAME, CONF-ID-PREFIX-FD8; + name/desc/labels/security.
 - **GLF**: CRUD-OK (2 images same family → newer wins), NEG-NOTFOUND, VAL-FOLDER-REQUIRED.
 - **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-FOLDER-REQUIRED; + блоки.
-- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-IMMUTABLE-FAMILY, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
-- **DEL**: CRUD-OK, NEG-NOTFOUND. **LOP**: CRUD-OK. **LIFECYCLE-CONF**.
+- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-EMPTY-FULL-PATCH, MASK-IMMUTABLE-FAMILY, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
+- **DEL**: CRUD-OK, CONF-RESPONSE-EMPTY, NEG-NOTFOUND. **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
 
-## Snapshot (52 кейса) — `cases/snapshot.py`
+## Snapshot (55 кейсов) — `cases/snapshot.py`
 
 - **CR**: CRUD-OK (from disk; id-prefix fd8 + created_at sec + disk_size==disk.size + source_disk_id),
   VAL-FOLDER-REQUIRED, VAL-NO-DISK, NEG-DISK-NOTFOUND, NEG-FOLDER-NOTFOUND, NEG-DUP-NAME,
   CONF-ID-PREFIX-FD8; + name/desc/labels (wrap=pre-disk) / security.
 - **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-FOLDER-REQUIRED; + блоки.
-- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-IMMUTABLE-SOURCE-DISK, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
-- **DEL**: CRUD-OK, NEG-NOTFOUND, STATE-DISK-DELETABLE-AFTER (Disk удаляем, Snapshot остаётся).
-- **LOP**: CRUD-OK. **LIFECYCLE-CONF**.
+- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-EMPTY-FULL-PATCH, MASK-IMMUTABLE-SOURCE-DISK, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
+- **DEL**: CRUD-OK, CONF-RESPONSE-EMPTY, NEG-NOTFOUND, STATE-DISK-DELETABLE-AFTER (Disk удаляем, Snapshot остаётся).
+- **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
 
 ## Instance (77 кейсов) — `cases/instance.py` *(многие требуют поднятого kacho-vpc)*
 
@@ -105,40 +108,6 @@ kacho-geo (epic kacho-workspace#82). `cases/zone.py` / `cases/region-zone.py` de
 GET-CRUD-OK (done op + response + metadata.epd), GET-CRUD-FAILED-OP (error code 5),
 GET-NEG-NOTFOUND-VALID-PREFIX, GET-CONF-NF-TEXT, GET-NEG-UNKNOWN-PREFIX (→400 "prefix"),
 CANCEL-NEG-ALREADY-DONE (→FailedPrec/idempotent), CANCEL-NEG-NOTFOUND, CANCEL-NEG-UNKNOWN-PREFIX.
-
-## MachineType (12 кейсов) — `cases/machine-type.py` *(COMP-1 F7 sync sizing-каталог)*
-
-Каталог пуст на стенде → self-seed через `InternalMachineTypeService.Create` ({{internalBaseUrl}} :8081, ban #6) + cleanup.
-- **CR (admin, Internal\*)**: `MT-CR-ADMIN-INTERNAL-CRUD-OK` (seed→public Get→internal Delete→Get 404),
-  `MT-CR-ADMIN-NEG-NO-NAME` (empty name → 400 'name is required').
-- **GET (public)**: `MT-GET-CRUD-OK` (flat: id mt-/name/family/effectiveResources° {vCpu,memoryMib MiB,gpus}/
-  availableZones°/status/createdAt° sec), `MT-GET-VAL-MALFORMED-ID` (→ 400 'invalid machine type id', malformed-first),
-  `MT-GET-NEG-NOTFOUND` (→ 404 'not found').
-- **LST (public)**: `MT-LST-CRUD-OK` (array contains seeded), `MT-LST-FILTER-FAMILY-MINGPUS-NAME`
-  (family=GPU дискаверит GPU-flavor'ы; minGpus=4 отсекает gpus<4; name= exact — GPU-count = гранулярность каталога),
-  + `list_page_block` (pageSize 0/1/1000/1001 + garbage token).
-
-## Instance redesign (36 кейсов) — `cases/instance-redesign.py` *(COMP-1 core; НЕ legacy instance.py)*
-
-Sizing self-seed'ится через internal MachineType; async Operation (epd op-prefix, `ins-` resource-prefix).
-- **CR positive**: `-CRUD-VM-OK` (kind VM + vmSpec/metadataOptions ENABLED + machineTypeId echo +
-  effectiveResources° mirror + bootSource echo + status PROVISIONING + createdAt° sec; COMP-1-01/05/09/23),
-  `-CRUD-CONTAINER-OK` (kind CONTAINER + containerSpec + guard-exempt; 02/15), `-CRUD-MACHINETYPE-BYNAME`
-  (имя→canonical mt- echo; 06), `-CRUD-UNREACHABLE-ACK` (ack снимает guard; 14), `-CRUD-USE-DEFAULT-NETWORK` (16),
-  `-CRUD-SERVICEACCOUNT` (SA Referrer echo; 12).
-- **CR sync-negative (400)**: KIND-REQUIRED / KIND-VM-WITH-CONTAINERSPEC / KIND-CONTAINER-WITH-VMSPEC (03) ·
-  MACHINETYPE-REQUIRED / RAW-SIZING-RETIRED (07) · CPU-GUARANTEE-OVER (08, BVA) · BOOTSOURCE-REQUIRED /
-  BARE-UNTAGGED / UNKNOWN-TYPE / OUTPUT-FIELDS (10/11) · SERVICEACCOUNT-MALFORMED (13) · UNREACHABLE-GUARD (14) ·
-  NO-NETWORK (16) · SECONDARY-VOLUME-SIZE (17, BVA).
-- **CR async-negative (Operation.error)**: MACHINETYPE-NOTFOUND (FailedPrecondition; 07), DUP-NAME
-  (ALREADY_EXISTS; 30), ZONE-UNKNOWN (peer-validate; 33).
-- **GET**: MALFORMED-ID (400|403 authz-first; 22), NEG-ABSENT (403|404; 22).
-- **UPD**: `-CRUD-LIVE-OK` (name/labels; 25), `-STATE-IMMUTABLE-MATRIX` (kind/zone immutable + boot Reinstall +
-  fqdn unknown-mask + machine_type_id STOPPED-gate; 04/26/27), `-CRUD-NEXTBOOT-DEFERRAL` (statusReason; 27).
-- **GET field-absence**: `-GET-CONF-FIELD-ABSENCE` (retired YC-cruft + infra-поля отсутствуют; 24/28).
-- **LST**: `-CRUD-FILTER-OK` (listauthz row-filter present + filter name=; 34/36), `-BVA-PAGESIZE-OVER-1001` /
-  `-PAGE-TOKEN-GARBAGE` (pagination-validate; 35), `-FILTER-KIND-TOLERANT` (F14 filter-whitelist gap, документ).
-- **DEL**: `-CRUD-NAME-RECYCLE` (hard-delete → 403|404 + name снова Create-able; 37), MALFORMED-ID / NEG-ABSENT (38).
 
 ## `# probe-needed:` маркеры (точный Kachō-контракт ещё не verified на стенде)
 

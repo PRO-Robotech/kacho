@@ -118,6 +118,59 @@ masking a leak**:
 | `INST-DEL-CONF-RESPONSE-EMPTY::assert-empty` | `response is Empty-like object: expected 1 to deeply equal 0` | **TEST-ASSERTION FIXED** (not whitelisted, not a product bug) — `Operation.response` is `Any(google.protobuf.Empty)`, whose canonical proto3-JSON is `{"@type":".../Empty","value":{}}`; the old assert filtered only `@type` and tripped on the `value` wrapper. Now asserts `@type`==Empty + `value` empty + no domain fields. |
 | `OP-GET-NEG-UNKNOWN-PREFIX::get-garbage-prefix` | `mentions prefix: expected 'invalid operation id "…"' to include 'prefix'` | **TEST-ASSERTION FIXED** — the product is convention-correct (api-conventions «malformed id → `invalid <res> id <X>`»); the message is `invalid operation id "<X>"`, not the internal term 'prefix'. Assert now checks the convention text; status 400 + gRPC code 3 already passed. |
 
+## Parity-добор — `test/compute-newman-parity-qa` (qa-test-engineer, 2026-07-21)
+
+**Контекст (корректировка premise).** Задача формулировалась как «compute сильно недобран — 144 RPC /
+10 cases, добрать ~30-40». Ground-truth по факту **иной**: compute-suite уже зрелая и на parity-bar
+iam/vpc — `gen.py` даёт **277 core-кейсов** (disk 70, instance 77, image 60, snapshot 52, disk-type 10,
+operation 8) + authz-deny 186 + list-filter 4 + sec-d 2. Все **wired+implemented** public RPC покрыты:
+Instance verb-actions Start/Stop/Restart/AttachDisk/DetachDisk/AttachNetworkInterface/DetachNetworkInterface/
+UpdateMetadata/GetSerialPortOutput/SimulateMaintenanceEvent/ListOperations — **уже** имеют happy + state/NF
+негативы (`INST-STATE-*`, `INST-AD/DD-*`, `INST-NIC-*`, `INST-SME/SPO/UMETA/LOP-*`). «144 RPC / MachineType /
+InternalMachineTypeService» относятся к **не-реализованному** редизайну **COMP-1** (`project/kacho` monorepo,
+acceptance `sub-phase-COMP-1-instance-machinetype-acceptance.md` — APPROVED, но код not-yet-landed:
+`ins-`-prefix/`MachineType`/`bootSource` отсутствуют в AS-IS compute). В текущем сервисе **нет** ни
+`MachineTypeService`, ни `InternalMachineTypeService` (proto/served surface проверены).
+
+**Что добавлено (genuine parity-добор, +6 cases).** Выявлены реальные асимметрии: Image/Snapshot не
+имели трёх классов, которые есть у эталона Disk/Instance. Каждый кейс — зеркало **проходящего** Disk-эталона
+(тот же handler/operations-паттерн → детерминированно GREEN):
+
+| Case-id | Класс | Техника | Зеркалит |
+|---|---|---|---|
+| `IMG-UPD-MASK-EMPTY-FULL-PATCH` | STATE/VAL | ECP(mask=empty) + state-transition (mutable applied / immutable ignored) | `DISK-UPD-MASK-EMPTY-FULL-PATCH` |
+| `SNAP-UPD-MASK-EMPTY-FULL-PATCH` | STATE/VAL | ↑ | ↑ |
+| `IMG-DEL-CONF-RESPONSE-EMPTY` | CONF | conformance (async Delete-op → response=Empty + metadata.imageId) | `DISK-DEL-CONF-RESPONSE-EMPTY` |
+| `SNAP-DEL-CONF-RESPONSE-EMPTY` | CONF | ↑ (metadata.snapshotId) | ↑ |
+| `IMG-LOP-NEG-PARENT-NF` | NEG | error-guessing (absent parent → 200\|404) | `DISK-LOP-NEG-PARENT-NF` |
+| `SNAP-LOP-NEG-PARENT-NF` | NEG | ↑ | ↑ |
+
+`*-DEL-CONF-RESPONSE-EMPTY` наследуют round-4 фикс Empty-`Any` (assert фильтрует и `@type`, и `value`-обёртку —
+proto3-JSON `{"@type":".../Empty","value":{}}` → 0 доменных ключей). Новый gen-итог: image 60→63, snapshot 52→55,
+core 277→**283**. `gen.py` зелёный (нет дублей case-id — hard-fail не сработал).
+
+**Greenness — CI-арбитр.** Локальный стенд недоступен (`/tmp/kacho.kubeconfig` — ns `kacho` без compute-подов /
+api-gateway REST не проброшен; известное ограничение харнесса, memory `local-newman-env-blocked`). Live-probe
+шести кейсов **не** выполнен → RED-фаза не наблюдалась локально. Кейсы построены как точные зеркала уже-зелёных
+Disk-эталонов на идентичном handler-паттерне; **финальная зелёность подтверждается umbrella-CI** (gate
+`iam/tests/newman/scripts/assert-suites-green.sh`) с поднятым storage/vpc/iam. Требуют `existingZoneId`
+(pre-disk) — как остальные disk-sourced кейсы.
+
+## Known coverage-gap — malformed-id → InvalidArgument (НЕ покрыт; documented deferral)
+
+Convention `api-conventions.md` требует «malformed id → sync `InvalidArgument "invalid <res> id"` первым
+стейтментом». Read/Delete-RPC compute (Disk/Image/Snapshot/DiskType.Get, *.Delete) **format-check id НЕ делают**
+(только empty-check → `repo.Get` → `NOT_FOUND`) — это **documented deferred divergence #1**
+(`docs/architecture/07-known-divergences.md` §1: «мы NotFound, контракт InvalidArgument», низкоприоритетно,
+план — prefix-check + Issue + newman-миграция). Suite намеренно использует **well-formed** garbage id
+(`epdnonexistent999999`) → корректно тестирует 404-линию; malformed→400 линия **не** покрыта.
+
+**Кейс НЕ добавлен** (осознанно, не упущение): (a) кейс, ждущий 400, был бы **RED** против уже-задокументированного
+deferral (не свежий баг → не завожу дубль-Issue); (b) кейс, локающий 404, **заблокировал бы** намеренный будущий
+фикс (COMP-1 F8/F13/F15 явно целят «malformed-id первым стейтментом» → 400). Решение — за owner: закрыть divergence
+#1 (Go-фикс prefix-check across Get/Delete) → тогда добавить `*-GET-VAL-MALFORMED-ID` (→400) как GREEN-lock.
+Attach-path уже конформен (`InstanceService.AttachDisk` вызывает `corevalidate.ResourceID` первым — sync 400).
+
 ## Эволюция
 
 | Версия | Cases | Steps | Что добавлено |
