@@ -233,6 +233,34 @@ CASES.append(Case(
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")])],
 ))
 
+CASES.append(Case(
+    id="SNAP-UPD-MASK-EMPTY-FULL-PATCH",
+    title="Update snapshot без update_mask → full PATCH; immutable source_disk_id из body silently игнорируется",
+    # ECP: mask=empty (full-PATCH класс) · state-transition: mutable(description) применяется,
+    # immutable(source_disk_id) молча игнорируется (update_mask discipline api-conventions).
+    classes=["STATE", "VAL"], priority="P2",
+    steps=[
+        *_pre_disk("empmask"),
+        Step(name="cr", method="POST", path=SNAPS,
+             body={"projectId": "{{_suiteFolderId}}", "name": "snap-empm-{{runId}}", "diskId": "{{baseDiskId}}", "description": "init"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-no-mask", method="PATCH", path=f"{SNAPS}/{{{{snapshotId}}}}",
+             body={"description": "full-patch-desc", "sourceDiskId": "{{garbageComputeId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify", method="GET", path=f"{SNAPS}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
+                          "pm.test('sourceDiskId NOT changed (immutable, silently ignored)', () => pm.expect(j.sourceDiskId).to.eql(pm.environment.get('baseDiskId')));"]),
+        Step(name="del-snap", method="DELETE", path=f"{SNAPS}/{{{{snapshotId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_base_disk(),
+    ],
+))
+
 # ---------------------------------------------------------------------------
 # SNAP-DEL — Delete
 # ---------------------------------------------------------------------------
@@ -287,6 +315,31 @@ CASES.append(Case(
     ],
 ))
 
+CASES.append(Case(
+    id="SNAP-DEL-CONF-RESPONSE-EMPTY",
+    title="Delete snapshot → Operation.response = Empty, metadata = DeleteSnapshotMetadata{snapshotId}",
+    # conformance: async Delete-op завершается response=Empty (0 доменных ключей) + metadata.snapshotId.
+    classes=["CONF"], priority="P2",
+    steps=[
+        *_pre_disk("delm"),
+        Step(name="cr", method="POST", path=SNAPS,
+             body={"projectId": "{{_suiteFolderId}}", "name": "snap-delm-{{runId}}", "diskId": "{{baseDiskId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="del", method="DELETE", path=f"{SNAPS}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          "pm.test('metadata has snapshotId', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.snapshotId).to.eql(pm.environment.get('snapshotId')));"])),
+        poll_operation_until_done(),
+        Step(name="assert-empty", method="GET", path="/operations/{{opId}}",
+             test_script=["const j = pm.response.json();",
+                          "pm.test('done & no error', () => { pm.expect(j.done).to.eql(true); pm.expect(j.error).to.be.oneOf([undefined, null]); });",
+                          "pm.test('response is Empty-like object', () => { pm.expect(j.response).to.be.an('object'); const keys = Object.keys(j.response).filter(k => k !== '@type' && k !== 'value'); pm.expect(keys.length).to.eql(0); });",
+                          "pm.test('metadata.snapshotId matches', () => pm.expect(j.metadata && j.metadata.snapshotId).to.eql(pm.environment.get('snapshotId')));"]),
+        *_cleanup_base_disk(),
+    ],
+))
+
 # ---------------------------------------------------------------------------
 # SNAP-LOP — ListOperations
 # ---------------------------------------------------------------------------
@@ -308,6 +361,15 @@ CASES.append(Case(
         poll_operation_until_done(),
         *_cleanup_base_disk(),
     ],
+))
+
+CASES.append(Case(
+    id="SNAP-LOP-NEG-PARENT-NF",
+    title="ListOperations несуществующего snapshot → 200 (пусто) или 404",
+    # error-guessing: parent-not-found на sub-collection — repo-фильтр по absent id → пустая страница ИЛИ 404.
+    classes=["NEG"], priority="P2",
+    steps=[Step(name="lop-nx", method="GET", path=f"{SNAPS}/{{{{garbageImageId}}}}/operations",
+                test_script=["pm.test('200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"])],
 ))
 
 # ---------------------------------------------------------------------------

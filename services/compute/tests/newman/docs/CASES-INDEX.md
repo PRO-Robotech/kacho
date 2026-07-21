@@ -3,9 +3,15 @@
 Каталог тест-кейсов по ресурсам. Источник истины — `cases/*.py`; коллекции в `collections/`
 **генерируются** `scripts/gen.py`. Здесь — обзорный перечень + уникальные паттерны.
 
-Всего (core-ресурсы, по `gen.py`): **277 кейсов** (disk 70, instance 77, image 60,
-snapshot 52, disk-type 10, operation 8); + authz-deny 186, list-filter 4, sec-d 2.
+Всего (core-ресурсы, по `gen.py`): **283 кейса** (disk 70, instance 77, image 63,
+snapshot 55, disk-type 10, operation 8); + authz-deny 186, list-filter 4, sec-d 2.
 Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
+
+> Parity-добор (`test/compute-newman-parity-qa`, qa-test-engineer): Image/Snapshot выровнены под
+> parity-bar Disk/Instance — `IMG/SNAP-UPD-MASK-EMPTY-FULL-PATCH` (empty-mask full-PATCH: mutable
+> применяется, immutable молча игнорируется — update_mask discipline), `IMG/SNAP-DEL-CONF-RESPONSE-EMPTY`
+> (async Delete-op → response=Empty + metadata.<res>Id), `IMG/SNAP-LOP-NEG-PARENT-NF` (ListOperations
+> absent parent → 200|404). +6 (image 60→63, snapshot 52→55). Greenness — CI-арбитр (см. RESULTS.md).
 
 ## Уникальные паттерны (generic-блоки в gen.py)
 
@@ -39,25 +45,25 @@ Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
 - **REL**: CRUD-OK, NEG-DEST-ZONE-UNKNOWN.
 - **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
 
-## Image (60 кейсов) — `cases/image.py`
+## Image (63 кейса) — `cases/image.py`
 
 - **CR**: CRUD-OK (from disk; id-prefix fd8 + created_at sec), CRUD-FROM-URI-OK, CRUD-FROM-IMAGE-OK,
   CRUD-FROM-SNAPSHOT-OK, VAL-FOLDER-REQUIRED, VAL-NO-SOURCE, VAL-MULTIPLE-SOURCE, VAL-FAMILY-INVALID,
   NEG-SOURCE-DISK/IMAGE-NOTFOUND, NEG-FOLDER-NOTFOUND, NEG-DUP-NAME, CONF-ID-PREFIX-FD8; + name/desc/labels/security.
 - **GLF**: CRUD-OK (2 images same family → newer wins), NEG-NOTFOUND, VAL-FOLDER-REQUIRED.
 - **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-FOLDER-REQUIRED; + блоки.
-- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-IMMUTABLE-FAMILY, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
-- **DEL**: CRUD-OK, NEG-NOTFOUND. **LOP**: CRUD-OK. **LIFECYCLE-CONF**.
+- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-EMPTY-FULL-PATCH, MASK-IMMUTABLE-FAMILY, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
+- **DEL**: CRUD-OK, CONF-RESPONSE-EMPTY, NEG-NOTFOUND. **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
 
-## Snapshot (52 кейса) — `cases/snapshot.py`
+## Snapshot (55 кейсов) — `cases/snapshot.py`
 
 - **CR**: CRUD-OK (from disk; id-prefix fd8 + created_at sec + disk_size==disk.size + source_disk_id),
   VAL-FOLDER-REQUIRED, VAL-NO-DISK, NEG-DISK-NOTFOUND, NEG-FOLDER-NOTFOUND, NEG-DUP-NAME,
   CONF-ID-PREFIX-FD8; + name/desc/labels (wrap=pre-disk) / security.
 - **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-FOLDER-REQUIRED; + блоки.
-- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-IMMUTABLE-SOURCE-DISK, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
-- **DEL**: CRUD-OK, NEG-NOTFOUND, STATE-DISK-DELETABLE-AFTER (Disk удаляем, Snapshot остаётся).
-- **LOP**: CRUD-OK. **LIFECYCLE-CONF**.
+- **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-EMPTY-FULL-PATCH, MASK-IMMUTABLE-SOURCE-DISK, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
+- **DEL**: CRUD-OK, CONF-RESPONSE-EMPTY, NEG-NOTFOUND, STATE-DISK-DELETABLE-AFTER (Disk удаляем, Snapshot остаётся).
+- **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
 
 ## Instance (77 кейсов) — `cases/instance.py` *(многие требуют поднятого kacho-vpc)*
 

@@ -31,9 +31,9 @@
 | GetLatestByFamily | CRUD-OK (newer wins), NEG (family-NF), VAL (folder req) | IMG-GLF-* (3) | ▣ |
 | List | CRUD, VAL (folder req), PAGE, FILTER | IMG-LST-* + блоки | ▣ |
 | Create | CRUD (from disk/uri/image/snapshot), VAL (folder req, no-source, multiple-source, family regex, name/labels/desc), NEG (source-NF disk/image, folder-NF, dup-name), CONF (id-prefix fd8, created_at sec), SEC | IMG-CR-* (~25) | ▣ |
-| Update | CRUD (name/desc/labels), STATE (immutable family, unknown-mask), NEG (sync-NF) | IMG-UPD-* (4) | ▣ |
-| Delete | CRUD, NEG (sync-NF) | IMG-DEL-* (2) | ■ |
-| ListOperations | CRUD-OK | IMG-LOP-CRUD-OK | ◐ |
+| Update | CRUD (name/desc/labels), STATE (empty-mask full-PATCH, immutable family, unknown-mask), NEG (sync-NF) | IMG-UPD-* (5) | ▣ |
+| Delete | CRUD, CONF (response=Empty), NEG (sync-NF) | IMG-DEL-* (3) | ▣ |
+| ListOperations | CRUD-OK, NEG (parent-NF) | IMG-LOP-* (2) | ▣ |
 
 **Coverage: 7/7 RPC (100%).** os_product_ids в Create — `blocked:kacho-marketplace`.
 
@@ -44,9 +44,9 @@
 | Get | NEG, CONF | SNAP-GET-* (2) | ■ |
 | List | CRUD, VAL (folder req), PAGE, FILTER | SNAP-LST-* + блоки | ▣ |
 | Create | CRUD (from disk), VAL (folder/disk req, name/labels/desc), NEG (disk-NF, folder-NF, dup-name), CONF (id-prefix fd8, created_at sec, disk_size==disk.size, source_disk_id), SEC | SNAP-CR-* (~20) | ▣ |
-| Update | CRUD (name/desc/labels), STATE (immutable source_disk_id, unknown-mask), NEG (sync-NF) | SNAP-UPD-* (4) | ▣ |
-| Delete | CRUD, NEG (sync-NF), STATE (Disk удаляем после Snapshot) | SNAP-DEL-* (3) | ▣ |
-| ListOperations | CRUD-OK | SNAP-LOP-CRUD-OK | ◐ |
+| Update | CRUD (name/desc/labels), STATE (empty-mask full-PATCH, immutable source_disk_id, unknown-mask), NEG (sync-NF) | SNAP-UPD-* (5) | ▣ |
+| Delete | CRUD, CONF (response=Empty), NEG (sync-NF), STATE (Disk удаляем после Snapshot) | SNAP-DEL-* (4) | ▣ |
+| ListOperations | CRUD-OK, NEG (parent-NF) | SNAP-LOP-* (2) | ▣ |
 
 **Coverage: 6/6 RPC (100%).**
 
@@ -105,6 +105,27 @@
 | Cancel | NEG (already-done → FailedPrec/idempotent, NotFound, unknown-prefix→400) | OP-CANCEL-* (3) | ■ |
 
 **Coverage: 2/2 RPC (100%).**
+
+## Out-of-scope до rpc-implementer (Unimplemented / unwired — grep-verified 2026-07-21)
+
+Проверено grep'ом `codes.Unimplemented` в `services/compute/internal/handler|service/*.go` + списком
+`Register*ServiceServer` в composition-root. **Newman НЕ пишется** для этого — RPC вернёт `Unimplemented`
+(impl-gap для `rpc-implementer`, НЕ test-gap):
+
+- **Unwired services** (не в `Register*ServiceServer` → gateway `unknown service`): `DiskPlacementGroupService`,
+  `FilesystemService`, `GpuClusterService`, `HostGroupService`, `HostTypeService`, `MaintenanceService`,
+  `PlacementGroupService`, `ReservedInstancePoolService`, `SnapshotScheduleService`, `InternalResourceLifecycleService`
+  (proto-only vendored stubs).
+- **Unimplemented RPC в wired-сервисах** (наследуются из `Unimplemented*ServiceServer`): `Instance.{AttachFilesystem,
+  DetachFilesystem, AddOneToOneNat, RemoveOneToOneNat, UpdateNetworkInterface, Relocate}`, `Disk.ListSnapshotSchedules`,
+  все `*.{ListAccessBindings, SetAccessBindings, UpdateAccessBindings}` (AAA-скелет). `Disk.kms_key_id` →
+  sync `Unimplemented` (`blocked:kacho-kms`). См. `docs/architecture/07-known-divergences.md`.
+- **`InternalDiskTypeService.{Create,Update,Delete}`** (:9091 admin, `system_admin`) — wired, но **cluster-internal**
+  listener, не external TLS endpoint → вне public newman-suite (`security.md` Internal-vs-external; TAXONOMY scope-cut).
+  Покрытие — unit/integration + отдельная internal-suite.
+- **`MachineTypeService` / `InternalMachineTypeService`** — **не существуют** в AS-IS compute (ни в proto, ни в
+  served surface). Появляются только в редизайне **COMP-1** (`project/kacho`, not-yet-landed) — покроются, когда
+  `rpc-implementer` их зальёт.
 
 ## Conformance-зеркало против реального YC
 
