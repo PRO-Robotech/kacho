@@ -55,6 +55,14 @@ def _create_registry(name_expr, id_var):
              test_script=[*assert_status(200),
                           "const r=(pm.response.json().response)||{};",
                           *save_from_response("(j.response&&j.response.id)||''", id_var)]),
+        # Read-your-writes warm-up: materialize the registry owner-tuple before any
+        # CreateRepository under it. CreateRepository's handler does registryGate(v_create)
+        # on the parent registry (repository.go) — the FIRST repo-create under a fresh
+        # registry denies/404s until that tuple is visible (register-outbox → drainer →
+        # IAM → FGA). Bounded-retry the GetRegistry over the EC window (own fresh resource).
+        retry_until_authorized(
+            Step(name="reg-warm", method="GET", path=REG + "/{{" + id_var + "}}",
+                 test_script=[*assert_status(200)])),
     ]
 
 
@@ -75,6 +83,19 @@ def _create_repo(repo_expr, extra_asserts=None, body_extra=None):
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="repo-capture", method="GET", path="/operations/{{opId}}", test_script=[*assert_status(200), *cap]),
+        # Read-your-writes warm-up: force the per-repo owner-tuple
+        # (registry_repository:<reg>/<repo>) to materialize — register-outbox → drainer →
+        # IAM RegisterResource → FGA reconciler — before the case's own first repo access.
+        # ALL repo RPCs run a per-repo v_* Check IN THE HANDLER (existence-hiding →
+        # NOT_FOUND on deny/absent) BEFORE the use-case immutable/mask validation
+        # (handler.UpdateRepository: checkRepository → uc.UpdateRepository), so during the
+        # EC window even a would-be sync-400 negative (immutable/unknown-mask) returns 404.
+        # A single v_get warm-up covers the whole verb-set (per-object FGA Write is atomic
+        # all-or-nothing — data-integrity.md), making every later positive read AND negative
+        # validation on this repo deterministic. Bounded-retry over own fresh resource only.
+        retry_until_authorized(
+            Step(name="repo-warm", method="GET", path=_reg_base() + "/" + repo_expr,
+                 test_script=[*assert_status(200)])),
     ]
 
 

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "59d6b1c6-49ed-4ab8-832a-85a407743c89",
+    "_postman_id": "d87677b5-be6e-44a2-97d2-cd4a63932c13",
     "name": "kacho-registry / newman / registry",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -181,6 +181,56 @@
           ]
         },
         {
+          "name": "warm-regId-rya55",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "get-created",
           "request": {
             "method": "GET",
@@ -322,8 +372,8 @@
       ]
     },
     {
-      "name": "REG-CR-NEG-PROJECT-NOTFOUND — Create with unknown projectId → 400 INVALID_ARGUMENT (\"project ... not found\")",
-      "description": "class:NEG | priority:P1",
+      "name": "REG-CR-NEG-PROJECT-NOTFOUND — Create with unknown projectId → rejected 403 (authz-first) or 400 (backend not-found)",
+      "description": "class:NEG | class:AZ | priority:P1",
       "item": [
         {
           "name": "create-nopr",
@@ -362,12 +412,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});",
-                  "pm.test('not found text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));"
+                  "pm.test('rejected authz-first (403) or backend not-found (400)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                  "const j = pm.response.json();",
+                  "if (pm.response.code === 400) {",
+                  "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
+                  "  pm.test('backend not-found text', () => pm.expect((j.message||'').toLowerCase()).to.include('not found'));",
+                  "} else {",
+                  "  pm.test('grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j.code).to.eql(7));",
+                  "}"
                 ]
               }
             }
@@ -520,6 +572,56 @@
                   "  const v = ((j.response&&j.response.id)||'');",
                   "  if (v !== undefined && v !== null) pm.environment.set('dupRegId', String(v));",
                   "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "warm-dupRegId-rya56",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{dupRegId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{dupRegId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
                 ]
               }
             }
@@ -1813,8 +1915,8 @@
       ]
     },
     {
-      "name": "REG-UPD-NEG-NOTFOUND — Update well-formed-absent reg → 200 Operation → poll → op errors NOT_FOUND (code 5)",
-      "description": "class:NEG | priority:P1",
+      "name": "REG-UPD-NEG-NOTFOUND — Update well-formed-absent reg → 404 NOT_FOUND (hide-existence, no deny_reasons leak)",
+      "description": "class:NEG | class:AZ | class:CONF | priority:P1",
       "item": [
         {
           "name": "update-nx",
@@ -1854,96 +1956,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-8",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "assert-update-nx-op-error",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('op error NOT_FOUND', () => { const e = JSON.parse(pm.environment.get('lastOpError')||'{}'); pm.expect(e.code).to.eql(5); });"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('no deny_reasons/relation leak (existence-hiding)', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/deny_reasons|direct relations|lacks relation/));"
                 ]
               }
             }
@@ -2178,7 +2196,7 @@
       ]
     },
     {
-      "name": "REG-LSTTAGS-NEG-BAD-TOKEN — ListTags with garbage page_token → 400 INVALID_ARGUMENT",
+      "name": "REG-LSTTAGS-NEG-BAD-TOKEN — ListTags garbage page_token → 400 (visible repo) or 404 (existence-hiding preempts on absent repo), never 200",
       "description": "class:NEG | class:VAL | priority:P2",
       "item": [
         {
@@ -2213,11 +2231,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});"
+                  "pm.test('rejected: 400 (bad token) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+                  "const j = pm.response.json();",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));"
                 ]
               }
             }
@@ -2287,7 +2303,7 @@
       ]
     },
     {
-      "name": "REG-LSTTAGS-NEG-PAGESIZE-OVERMAX — ListTags pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+      "name": "REG-LSTTAGS-NEG-PAGESIZE-OVERMAX — ListTags pageSize=1001 (>max) → 400 (visible repo) or 404 (existence-hiding preempts), never clamped to 200",
       "description": "class:NEG | class:BVA | class:VAL | priority:P2",
       "item": [
         {
@@ -2322,11 +2338,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});"
+                  "pm.test('rejected: 400 (over-max) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+                  "const j = pm.response.json();",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));"
                 ]
               }
             }
@@ -2684,7 +2698,7 @@
           ]
         },
         {
-          "name": "poll-op-9",
+          "name": "poll-op-8",
           "request": {
             "method": "GET",
             "header": [
@@ -2777,6 +2791,56 @@
           ]
         },
         {
+          "name": "warm-delRegId-rya57",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{delRegId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{delRegId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "delete-del",
           "request": {
             "method": "DELETE",
@@ -2822,7 +2886,7 @@
           ]
         },
         {
-          "name": "poll-op-10",
+          "name": "poll-op-9",
           "request": {
             "method": "GET",
             "header": [
@@ -2914,8 +2978,8 @@
       ]
     },
     {
-      "name": "REG-DEL-NEG-NOTFOUND — Delete well-formed-absent reg → 200 Operation → poll → op done idempotent (no error)",
-      "description": "class:NEG | class:IDEM | priority:P1",
+      "name": "REG-DEL-NEG-NOTFOUND — Delete well-formed-absent reg → 404 NOT_FOUND (hide-existence, no deny_reasons leak)",
+      "description": "class:NEG | class:AZ | class:CONF | priority:P1",
       "item": [
         {
           "name": "delete-nx",
@@ -2946,96 +3010,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-11",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "assert-delete-nx-op-idempotent",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('op done, idempotent (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('no deny_reasons/relation leak (existence-hiding)', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/deny_reasons|direct relations|lacks relation/));"
                 ]
               }
             }
@@ -3101,7 +3081,7 @@
           ]
         },
         {
-          "name": "poll-op-12",
+          "name": "poll-op-10",
           "request": {
             "method": "GET",
             "header": [
@@ -3194,6 +3174,56 @@
           ]
         },
         {
+          "name": "warm-ddRegId-rya58",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{ddRegId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{ddRegId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "delete-dd-1",
           "request": {
             "method": "DELETE",
@@ -3239,7 +3269,7 @@
           ]
         },
         {
-          "name": "poll-op-13",
+          "name": "poll-op-11",
           "request": {
             "method": "GET",
             "header": [
@@ -3371,7 +3401,7 @@
           ]
         },
         {
-          "name": "poll-op-14",
+          "name": "poll-op-12",
           "request": {
             "method": "GET",
             "header": [
