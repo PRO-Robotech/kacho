@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "bc0fef71-862b-4fff-9243-2cb3f687d2d3",
+    "_postman_id": "d7825e86-622c-40fc-b0dc-9e278ab8ee78",
     "name": "kacho-compute / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -95,7 +95,7 @@
           ]
         },
         {
-          "name": "poll-op-304",
+          "name": "poll-op-183",
           "request": {
             "method": "GET",
             "header": [
@@ -220,7 +220,7 @@
           ]
         },
         {
-          "name": "poll-op-305",
+          "name": "poll-op-184",
           "request": {
             "method": "GET",
             "header": [
@@ -320,7 +320,7 @@
           ]
         },
         {
-          "name": "poll-op-306",
+          "name": "poll-op-185",
           "request": {
             "method": "GET",
             "header": [
@@ -594,7 +594,7 @@
           ]
         },
         {
-          "name": "poll-op-307",
+          "name": "poll-op-186",
           "request": {
             "method": "GET",
             "header": [
@@ -723,7 +723,7 @@
           ]
         },
         {
-          "name": "poll-op-308",
+          "name": "poll-op-187",
           "request": {
             "method": "GET",
             "header": [

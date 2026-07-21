@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "e55fa7fd-ac33-4f45-8ec3-5a6ed93cd4c1",
+    "_postman_id": "58c05b9a-2644-45db-ac98-0863293b285a",
     "name": "kacho-compute / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -95,7 +95,7 @@
           ]
         },
         {
-          "name": "poll-op-311",
+          "name": "poll-op-190",
           "request": {
             "method": "GET",
             "header": [
@@ -199,7 +199,7 @@
           ]
         },
         {
-          "name": "poll-op-312",
+          "name": "poll-op-191",
           "request": {
             "method": "GET",
             "header": [
@@ -280,7 +280,7 @@
           ]
         },
         {
-          "name": "get-rya70",
+          "name": "get-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -382,7 +382,7 @@
           ]
         },
         {
-          "name": "poll-op-313",
+          "name": "poll-op-192",
           "request": {
             "method": "GET",
             "header": [
@@ -467,7 +467,7 @@
           ]
         },
         {
-          "name": "poll-op-314",
+          "name": "poll-op-193",
           "request": {
             "method": "GET",
             "header": [
@@ -675,7 +675,7 @@
           ]
         },
         {
-          "name": "poll-op-315",
+          "name": "poll-op-194",
           "request": {
             "method": "GET",
             "header": [
@@ -815,7 +815,7 @@
           ]
         },
         {
-          "name": "poll-op-316",
+          "name": "poll-op-195",
           "request": {
             "method": "GET",
             "header": [
@@ -909,7 +909,7 @@
           ]
         },
         {
-          "name": "poll-op-317",
+          "name": "poll-op-196",
           "request": {
             "method": "GET",
             "header": [
@@ -1030,7 +1030,7 @@
           ]
         },
         {
-          "name": "poll-op-318",
+          "name": "poll-op-197",
           "request": {
             "method": "GET",
             "header": [
@@ -1135,7 +1135,7 @@
           ]
         },
         {
-          "name": "poll-op-319",
+          "name": "poll-op-198",
           "request": {
             "method": "GET",
             "header": [
@@ -1234,7 +1234,7 @@
           ]
         },
         {
-          "name": "poll-op-320",
+          "name": "poll-op-199",
           "request": {
             "method": "GET",
             "header": [
@@ -1328,7 +1328,7 @@
           ]
         },
         {
-          "name": "poll-op-321",
+          "name": "poll-op-200",
           "request": {
             "method": "GET",
             "header": [
@@ -1448,7 +1448,7 @@
           ]
         },
         {
-          "name": "poll-op-322",
+          "name": "poll-op-201",
           "request": {
             "method": "GET",
             "header": [
@@ -1533,7 +1533,7 @@
           ]
         },
         {
-          "name": "poll-op-323",
+          "name": "poll-op-202",
           "request": {
             "method": "GET",
             "header": [
@@ -1816,7 +1816,7 @@
           ]
         },
         {
-          "name": "poll-op-324",
+          "name": "poll-op-203",
           "request": {
             "method": "GET",
             "header": [
@@ -1915,7 +1915,7 @@
           ]
         },
         {
-          "name": "poll-op-325",
+          "name": "poll-op-204",
           "request": {
             "method": "GET",
             "header": [
@@ -1961,7 +1961,7 @@
           ]
         },
         {
-          "name": "patch-rya71",
+          "name": "patch-rya51",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2025,7 +2025,7 @@
           ]
         },
         {
-          "name": "poll-op-326",
+          "name": "poll-op-205",
           "request": {
             "method": "GET",
             "header": [
@@ -2106,7 +2106,7 @@
           ]
         },
         {
-          "name": "verify-rya72",
+          "name": "verify-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -2199,7 +2199,7 @@
           ]
         },
         {
-          "name": "poll-op-327",
+          "name": "poll-op-206",
           "request": {
             "method": "GET",
             "header": [
@@ -2284,7 +2284,7 @@
           ]
         },
         {
-          "name": "poll-op-328",
+          "name": "poll-op-207",
           "request": {
             "method": "GET",
             "header": [
@@ -2544,7 +2544,7 @@
           ]
         },
         {
-          "name": "poll-op-329",
+          "name": "poll-op-208",
           "request": {
             "method": "GET",
             "header": [
@@ -2643,7 +2643,7 @@
           ]
         },
         {
-          "name": "poll-op-330",
+          "name": "poll-op-209",
           "request": {
             "method": "GET",
             "header": [
@@ -2689,7 +2689,7 @@
           ]
         },
         {
-          "name": "del-rya73",
+          "name": "del-rya53",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2744,7 +2744,7 @@
           ]
         },
         {
-          "name": "poll-op-331",
+          "name": "poll-op-210",
           "request": {
             "method": "GET",
             "header": [
@@ -2903,7 +2903,7 @@
           ]
         },
         {
-          "name": "poll-op-332",
+          "name": "poll-op-211",
           "request": {
             "method": "GET",
             "header": [
@@ -3053,7 +3053,7 @@
           ]
         },
         {
-          "name": "poll-op-333",
+          "name": "poll-op-212",
           "request": {
             "method": "GET",
             "header": [
@@ -3152,7 +3152,7 @@
           ]
         },
         {
-          "name": "poll-op-334",
+          "name": "poll-op-213",
           "request": {
             "method": "GET",
             "header": [
@@ -3198,7 +3198,7 @@
           ]
         },
         {
-          "name": "del-disk-rya74",
+          "name": "del-disk-rya54",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3253,7 +3253,7 @@
           ]
         },
         {
-          "name": "poll-op-335",
+          "name": "poll-op-214",
           "request": {
             "method": "GET",
             "header": [
@@ -3409,7 +3409,7 @@
           ]
         },
         {
-          "name": "poll-op-336",
+          "name": "poll-op-215",
           "request": {
             "method": "GET",
             "header": [
@@ -3514,7 +3514,7 @@
           ]
         },
         {
-          "name": "poll-op-337",
+          "name": "poll-op-216",
           "request": {
             "method": "GET",
             "header": [
@@ -3613,7 +3613,7 @@
           ]
         },
         {
-          "name": "poll-op-338",
+          "name": "poll-op-217",
           "request": {
             "method": "GET",
             "header": [
@@ -3659,7 +3659,7 @@
           ]
         },
         {
-          "name": "list-ops-rya75",
+          "name": "list-ops-rya55",
           "request": {
             "method": "GET",
             "header": [
@@ -3750,7 +3750,7 @@
           ]
         },
         {
-          "name": "poll-op-339",
+          "name": "poll-op-218",
           "request": {
             "method": "GET",
             "header": [
@@ -3835,7 +3835,7 @@
           ]
         },
         {
-          "name": "poll-op-340",
+          "name": "poll-op-219",
           "request": {
             "method": "GET",
             "header": [
@@ -3940,7 +3940,7 @@
           ]
         },
         {
-          "name": "poll-op-341",
+          "name": "poll-op-220",
           "request": {
             "method": "GET",
             "header": [
@@ -4039,7 +4039,7 @@
           ]
         },
         {
-          "name": "poll-op-342",
+          "name": "poll-op-221",
           "request": {
             "method": "GET",
             "header": [
@@ -4085,7 +4085,7 @@
           ]
         },
         {
-          "name": "get-1-rya76",
+          "name": "get-1-rya56",
           "request": {
             "method": "GET",
             "header": [
@@ -4136,7 +4136,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst77",
+          "name": "lst-includes-lst57",
           "request": {
             "method": "GET",
             "header": [
@@ -4238,7 +4238,7 @@
           ]
         },
         {
-          "name": "poll-op-343",
+          "name": "poll-op-222",
           "request": {
             "method": "GET",
             "header": [
@@ -4360,7 +4360,7 @@
           ]
         },
         {
-          "name": "poll-op-344",
+          "name": "poll-op-223",
           "request": {
             "method": "GET",
             "header": [
@@ -4520,7 +4520,7 @@
           ]
         },
         {
-          "name": "poll-op-345",
+          "name": "poll-op-224",
           "request": {
             "method": "GET",
             "header": [
@@ -4954,7 +4954,7 @@
           ]
         },
         {
-          "name": "poll-op-347",
+          "name": "poll-op-226",
           "request": {
             "method": "GET",
             "header": [
@@ -5048,7 +5048,7 @@
           ]
         },
         {
-          "name": "poll-op-346",
+          "name": "poll-op-225",
           "request": {
             "method": "GET",
             "header": [
@@ -5133,7 +5133,7 @@
           ]
         },
         {
-          "name": "poll-op-348",
+          "name": "poll-op-227",
           "request": {
             "method": "GET",
             "header": [
@@ -5238,7 +5238,7 @@
           ]
         },
         {
-          "name": "poll-op-350",
+          "name": "poll-op-229",
           "request": {
             "method": "GET",
             "header": [
@@ -5332,7 +5332,7 @@
           ]
         },
         {
-          "name": "poll-op-349",
+          "name": "poll-op-228",
           "request": {
             "method": "GET",
             "header": [
@@ -5417,7 +5417,7 @@
           ]
         },
         {
-          "name": "poll-op-351",
+          "name": "poll-op-230",
           "request": {
             "method": "GET",
             "header": [
@@ -5787,7 +5787,7 @@
           ]
         },
         {
-          "name": "poll-op-353",
+          "name": "poll-op-232",
           "request": {
             "method": "GET",
             "header": [
@@ -5881,7 +5881,7 @@
           ]
         },
         {
-          "name": "poll-op-352",
+          "name": "poll-op-231",
           "request": {
             "method": "GET",
             "header": [
@@ -5966,7 +5966,7 @@
           ]
         },
         {
-          "name": "poll-op-354",
+          "name": "poll-op-233",
           "request": {
             "method": "GET",
             "header": [
@@ -6230,7 +6230,7 @@
           ]
         },
         {
-          "name": "poll-op-356",
+          "name": "poll-op-235",
           "request": {
             "method": "GET",
             "header": [
@@ -6324,7 +6324,7 @@
           ]
         },
         {
-          "name": "poll-op-355",
+          "name": "poll-op-234",
           "request": {
             "method": "GET",
             "header": [
@@ -6409,7 +6409,7 @@
           ]
         },
         {
-          "name": "poll-op-357",
+          "name": "poll-op-236",
           "request": {
             "method": "GET",
             "header": [
@@ -7113,7 +7113,7 @@
           ]
         },
         {
-          "name": "poll-op-358",
+          "name": "poll-op-237",
           "request": {
             "method": "GET",
             "header": [
@@ -7215,7 +7215,7 @@
           ]
         },
         {
-          "name": "poll-op-359",
+          "name": "poll-op-238",
           "request": {
             "method": "GET",
             "header": [
@@ -7300,7 +7300,7 @@
           ]
         },
         {
-          "name": "poll-op-360",
+          "name": "poll-op-239",
           "request": {
             "method": "GET",
             "header": [
@@ -7385,7 +7385,7 @@
           ]
         },
         {
-          "name": "poll-op-361",
+          "name": "poll-op-240",
           "request": {
             "method": "GET",
             "header": [

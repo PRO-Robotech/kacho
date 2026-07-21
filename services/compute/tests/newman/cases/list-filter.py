@@ -32,16 +32,51 @@ Pre-conditions: tests/authz-fixtures/setup.sh (те же JWT/проекты, ч�
 CASES = []
 
 INSTANCES = "/compute/v1/instances"
+MT_INT = "/compute/v1/internal/machineTypes"   # admin seed (:8081, ban #6)
 
 
-def _instance_body(name_suffix, project_var):
-    # KAC-266: Instance создаётся без NIC (no auto-NIC).
+def _seed_mt(suffix, id_var="mtId"):
+    """Seed a MachineType via InternalMachineTypeService.Create (:8081) so the instance
+    Create can resolve machineTypeId in the catalog (doCreate → resolveMachineType;
+    catalog empty on the stand). Uses the DEFAULT bootstrap cluster-admin Bearer (the
+    Internal admin-CRUD is system_admin — jwtProjectAdminA1 cannot seed it), so NO per-step
+    auth override. Sets id_var to the mt- id. Mirrors instance-redesign _seed_mt (COMP-1 F7);
+    {{runId}}-unique name (UNIQUE(name) cluster-wide)."""
+    nm = f"lfmt{suffix}{{{{runId}}}}"
+    body = {"name": nm, "family": "STANDARD",
+            "effectiveResources": {"vCpu": 2, "memoryMib": 8192, "gpus": 0},
+            "availableZones": ["{{existingZoneId}}", "{{existingZoneAltId}}"], "status": "AVAILABLE"}
+    return [Step(name=f"lf-seed-mt-{suffix}", method="POST", path=MT_INT, body=body, internal=True,
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                              *save_from_response("j.metadata && j.metadata.machineTypeId", id_var)]),
+            poll_operation_until_done(), assert_op_success()]
+
+
+def _cleanup_mt(suffix, id_var="mtId"):
+    """Delete the seeded MachineType (default bootstrap admin auth, as _seed_mt)."""
+    return [Step(name=f"lf-cleanup-mt-{suffix}", method="DELETE", path=MT_INT + "/{{" + id_var + "}}",
+                 internal=True, test_script=[*save_from_response("j.id", "opId")]),
+            poll_operation_until_done()]
+
+
+def _instance_body(name_suffix, project_var, mt="{{mtId}}"):
+    # COMP-1 redesign contract (mirrors instance-redesign _vm_body happy-path):
+    #   instanceKind=VM · machineTypeId (single sizing channel) · bootSource{type,id} ·
+    #   vmSpec (kind-matching spec-arm). Legacy platformId/resourcesSpec/bootDiskSpec are
+    #   RESERVED in CreateInstanceRequest (ban #2) → the old body 400'd 'instanceKind is
+    #   required'. NIC via networkInterfaceSpecs (existence-validate → COMP-2);
+    #   sshPublicKeys lifts the F5 unreachable-guard (VM reachable).
     return {
         "projectId": f"{{{{{project_var}}}}}",
         "name": f"lf-inst-{name_suffix}-{{{{runId}}}}",
-        "zoneId": "ru-central1-a", "platformId": "standard-v3",
-        "resourcesSpec": {"memory": "1073741824", "cores": 2},
-        "bootDiskSpec": {"diskSpec": {"size": "8589934592", "typeId": "network-ssd"}},
+        "zoneId": "{{existingZoneId}}",
+        "instanceKind": "VM",
+        "machineTypeId": mt,
+        "bootSource": {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"},
+        "vmSpec": {"userData": "#cloud-config\n{}",
+                   "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
+        "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}", "securityGroupIds": ["{{existingSgId}}"]}],
+        "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey lf@team"],
     }
 
 
@@ -53,6 +88,7 @@ CASES.append(Case(
     title="[D-40/D-45] PA1 создаёт instance в project-A1 и видит его в filtered List (read==enforce, verb→viewer)",
     classes=["AUTHZ", "POS", "LST"], priority="P0",
     steps=[
+        *_seed_mt("own"),
         Step(name="create-own", method="POST", path=INSTANCES,
              body=_instance_body("own", "projectA1Id"), auth="jwtProjectAdminA1",
              test_script=[*assert_status(200),
@@ -60,7 +96,10 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.instanceId", "lfInstanceId")]),
         poll_operation_until_done(auth="jwtProjectAdminA1"), assert_op_success(auth="jwtProjectAdminA1"),
         # filtered List as the SAME (authorized) subject → 200 + own instance visible.
-        Step(name="list-own", method="GET",
+        # retry_until_present: read-your-writes over owner-tuple/list-authz materialization
+        # (opgate removed → EC); wraps ONLY the owner's positive self-list (fail-open at budget
+        # → a genuine over-hide still FAILS). Negatives below stay single-shot.
+        retry_until_present(Step(name="list-own", method="GET",
              path=f"{INSTANCES}?projectId={{{{projectA1Id}}}}&pageSize=1000",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200),
@@ -68,11 +107,13 @@ CASES.append(Case(
                           "pm.test('[D-45] filtered List returns 200 (not 503/InvalidArgument from broken verb)', () => pm.expect(pm.response.code).to.eql(200));",
                           "const mine = insts.find(x => x.id === pm.environment.get('lfInstanceId'));",
                           "pm.test('[D-40] owner sees own instance in filtered List (read==enforce)', () => pm.expect(mine, JSON.stringify(insts.map(i=>i.id))).to.be.an('object'));"]),
+            "lfInstanceId"),
         # cleanup.
         Step(name="del-own", method="DELETE", path=f"{INSTANCES}/{{{{lfInstanceId}}}}",
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(auth="jwtProjectAdminA1"),
+        *_cleanup_mt("own"),
     ],
 ))
 
@@ -109,6 +150,7 @@ CASES.append(Case(
     title="[leak] jwtPureNoBindings List project-A1 → instance PA1 не виден (subject из principal, fail-closed)",
     classes=["AUTHZ", "NEG", "LST"], priority="P0",
     steps=[
+        *_seed_mt("leak"),
         Step(name="create-a1-pa1", method="POST", path=INSTANCES,
              body=_instance_body("leak", "projectA1Id"), auth="jwtProjectAdminA1",
              test_script=[*assert_status(200),
@@ -140,6 +182,7 @@ CASES.append(Case(
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(auth="jwtProjectAdminA1"),
+        *_cleanup_mt("leak"),
     ],
 ))
 
@@ -154,6 +197,7 @@ CASES.append(Case(
     title="[D-44] AAB List instances project-B1 → instance проекта A1 не виден (per-object изоляция)",
     classes=["AUTHZ", "NEG", "LST"], priority="P1",
     steps=[
+        *_seed_mt("xacct"),
         # PA1 создаёт instance в A1.
         Step(name="create-a1", method="POST", path=INSTANCES,
              body=_instance_body("xacct", "projectA1Id"), auth="jwtProjectAdminA1",
@@ -173,5 +217,6 @@ CASES.append(Case(
              auth="jwtProjectAdminA1",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(auth="jwtProjectAdminA1"),
+        *_cleanup_mt("xacct"),
     ],
 ))

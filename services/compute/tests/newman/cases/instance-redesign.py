@@ -187,23 +187,28 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-CR-VAL-KIND-VM-WITH-CONTAINERSPEC",
-    title="COMP-1-03: Create instanceKind=VM с заполненным containerSpec → sync 400 "
-          "'containerSpec is not allowed when instanceKind is VM' (oneof XOR spoken-exclusion). "
+    title="COMP-1-03: Create instanceKind=VM с ТОЛЬКО containerSpec (wrong-arm, vmSpec опущен) → sync 400 "
+          "'containerSpec is not allowed when instanceKind is VM' (spoken-exclusion в ValidateCreateInstanceReq). "
+          "vmSpec СНЯТ из тела: proto `spec`-oneof допускает лишь одну ветку, оба arm'а разом → protojson "
+          "'oneof already set' (generic-parse), а не app-контракт — поэтому шлём только неверную ветку. "
           "[verifies COMP-1-03 · decision-table kind×spec]",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-vm-ct", method="POST", path=INSTANCES,
-                body=_vm_body("vmct", mt=_PLACEHOLDER_MT, extra={"containerSpec": {"command": ["x"]}}),
+                body={**{k: v for k, v in _vm_body("vmct", mt=_PLACEHOLDER_MT).items() if k != "vmSpec"},
+                      "containerSpec": {"command": ["x"]}},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              "pm.test('text: containerSpec not allowed when VM', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('containerspec is not allowed when instancekind is vm'));"])],
 ))
 
 CASES.append(Case(
     id="INST-RD-CR-VAL-KIND-CONTAINER-WITH-VMSPEC",
-    title="COMP-1-03: Create instanceKind=CONTAINER с заполненным vmSpec → sync 400 "
-          "'vmSpec is not allowed when instanceKind is CONTAINER'. [verifies COMP-1-03 · decision-table kind×spec]",
+    title="COMP-1-03: Create instanceKind=CONTAINER с ТОЛЬКО vmSpec (wrong-arm, containerSpec опущен) → sync 400 "
+          "'vmSpec is not allowed when instanceKind is CONTAINER'. containerSpec СНЯТ (иначе оба spec-arm'а → "
+          "protojson 'oneof already set', а не app-контракт). [verifies COMP-1-03 · decision-table kind×spec]",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-ct-vm", method="POST", path=INSTANCES,
-                body={**_container_body("ctvm", mt=_PLACEHOLDER_MT), "vmSpec": {"userData": "x"}},
+                body={**{k: v for k, v in _container_body("ctvm", mt=_PLACEHOLDER_MT).items() if k != "containerSpec"},
+                      "vmSpec": {"userData": "x"}},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              "pm.test('text: vmSpec not allowed when CONTAINER', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('vmspec is not allowed when instancekind is container'));"])],
 ))
@@ -445,14 +450,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-GET-VAL-MALFORMED-ID",
-    title="COMP-1-22: Get с malformed instanceId 'bad_instance_id' → 400 INVALID_ARGUMENT 'invalid instance id ...' "
-          "первым стейтментом (либо authz-first 403 — gateway scope_extractor на compute_instance/instance_id; "
-          "malformed-first контракт строго локнут в MT-GET-VAL-MALFORMED-ID cluster-scope). "
+    title="COMP-1-22: Get с malformed instanceId 'bad_instance_id' → 400 INVALID_ARGUMENT 'invalid resource id ...' "
+          "первым стейтментом (gateway prefix-router corevalidate.ResourceID — family-agnostic, поэтому generic "
+          "'resource', не 'instance'; либо authz-first 403 — scope_extractor на compute_instance/instance_id). "
           "[verifies COMP-1-22 · malformed-first + authz-first tolerance]",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="get-malformed", method="GET", path=f"{INSTANCES}/bad_instance_id",
                 test_script=["pm.test('rejected 400 or authz-first 403', () => pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-                             "if (pm.response.code === 400) { pm.test('code 3 + invalid instance id', () => { const j=pm.response.json(); pm.expect(j.code).to.eql(3); pm.expect((j.message||'').toLowerCase()).to.include('invalid instance id'); }); }"])],
+                             "if (pm.response.code === 400) { pm.test('code 3 + invalid resource id', () => { const j=pm.response.json(); pm.expect(j.code).to.eql(3); pm.expect((j.message||'').toLowerCase()).to.include('invalid resource id'); }); }"])],
 ))
 
 CASES.append(Case(
@@ -540,23 +545,28 @@ CASES.append(Case(
     classes=["STATE", "VAL", "NEG"], priority="P0",
     steps=[
         *_seed_instance("imm"),
+        # updateMask ДОЛЖЕН быть camelCase в JSON: google.protobuf.FieldMask сериализуется
+        # lowerCamelCase — grpc-gateway/protojson отвергает snake_case путь ('instance_kind')
+        # как "FieldMask.paths contains invalid path" ДО backend'а. camelCase → gateway
+        # конвертирует в snake-путь, и compute Update-хендлер уже кейсует на нём
+        # (instanceUpdateKnown/immutable-switch — instance.go:388/490).
         Step(name="upd-kind-immutable", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-             body={"updateMask": "instance_kind", "instanceKind": "CONTAINER"},
+             body={"updateMask": "instanceKind", "instanceKind": "CONTAINER"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('text: instanceKind is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind is immutable after instance.create'));"]),
         Step(name="upd-zone-immutable", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-             body={"updateMask": "zone_id", "zoneId": "ru-central1-c"},
+             body={"updateMask": "zoneId", "zoneId": "ru-central1-c"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('text: zoneId is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('zoneid is immutable after instance.create'));"]),
         Step(name="upd-bootsource-reinstall", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-             body={"updateMask": "boot_source", "bootSource": {"type": "storage.image", "id": "img-x:v2"}},
+             body={"updateMask": "bootSource", "bootSource": {"type": "storage.image", "id": "img-x:v2"}},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('text: bootSource cannot be changed via Update; use Reinstall', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource cannot be changed via update; use reinstall'));"]),
         Step(name="upd-unknown-mask", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "fqdn", "description": "x"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         Step(name="upd-stopped-gate", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-             body={"updateMask": "machine_type_id", "machineTypeId": "{{mtId}}"},
+             body={"updateMask": "machineTypeId", "machineTypeId": "{{mtId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                           "pm.test('text: must be STOPPED to change sizing or placement', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instance must be stopped to change sizing or placement'));"]),
         *_delete_inst(),
@@ -573,7 +583,8 @@ CASES.append(Case(
     steps=[
         *_seed_instance("nb"),
         retry_until_authorized(Step(name="patch-ssh", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-            body={"updateMask": "ssh_public_keys", "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5newkey nb@team"]},
+            # camelCase mask (см. immutable-matrix): 'ssh_public_keys' snake → protojson reject.
+            body={"updateMask": "sshPublicKeys", "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5newkey nb@team"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="get", method="GET", path=INSTANCES + "/{{instanceId}}",
@@ -698,12 +709,13 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-DEL-VAL-MALFORMED-ID",
-    title="COMP-1-38: Delete с malformed instanceId 'bad_instance_id' → 400 'invalid instance id ...' первым "
-          "стейтментом (либо authz-first 403). [verifies COMP-1-38 · malformed-first + authz-first tolerance]",
+    title="COMP-1-38: Delete с malformed instanceId 'bad_instance_id' → 400 'invalid resource id ...' первым "
+          "стейтментом (gateway prefix-router, generic 'resource'; либо authz-first 403). "
+          "[verifies COMP-1-38 · malformed-first + authz-first tolerance]",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="del-malformed", method="DELETE", path=f"{INSTANCES}/bad_instance_id",
                 test_script=["pm.test('rejected 400 or authz-first 403', () => pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-                             "if (pm.response.code === 400) { pm.test('code 3 + invalid instance id', () => { const j=pm.response.json(); pm.expect(j.code).to.eql(3); pm.expect((j.message||'').toLowerCase()).to.include('invalid instance id'); }); }"])],
+                             "if (pm.response.code === 400) { pm.test('code 3 + invalid resource id', () => { const j=pm.response.json(); pm.expect(j.code).to.eql(3); pm.expect((j.message||'').toLowerCase()).to.include('invalid resource id'); }); }"])],
 ))
 
 CASES.append(Case(
