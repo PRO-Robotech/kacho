@@ -85,3 +85,17 @@ echo "===== Summary ====="
     printf "%-25s %10s %10s %10s\n" "$name" "$1" "$2" "$3"
   done
 } | tee out/summary.txt
+
+# false-green guard: коллекция, не произведшая out/<stem>.json (краш/таймаут/unknown
+# newman-флаг вроде --jobs), НЕ зелёная — пустой/неполный out = FAIL, не GREEN. Без
+# этого `newman run … || true` глотает fail и сводка по пустому out/ печатает 0 failed
+# → ложный GREEN, скрывающий полное отсутствие e2e-покрытия (инцидент storage --jobs 2026-07).
+_missing=0
+for _res in registry registry-redesign registry-repository registry-authz; do
+  [[ -f "collections/${_res}.postman_collection.json" ]] || continue  # не сгенерирована — не ждём
+  if [[ ! -f "out/${_res}.json" ]]; then
+    echo "FATAL: no newman report for '${_res}' — collection did not execute (see out/${_res}.cli)" >&2
+    _missing=1
+  fi
+done
+[[ "$_missing" -eq 0 ]] || { echo "FATAL: registry suite produced incomplete reports — NOT green (false-green guard)" >&2; exit 1; }
