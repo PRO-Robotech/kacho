@@ -115,22 +115,32 @@ kacho-iam:
   config:
     authn:
       mode: production-strict    # Bearer required + Config.Validate requires hook/jwks secrets
+      # Hydra's advertised self.issuer on this kind stand is the localhost nodeport
+      # (hydra.config.urls.self.issuer = http://localhost:28080/.ory/hydra/public/), NOT
+      # the domain-derived https://hydra.api.kacho.cloud. Without this, the private_key_jwt
+      # client_assertion iam signs for the bootstrap-mint / registry-token exchange carries
+      # aud=<derived>/oauth2/token → Hydra rejects it ("audience must match the token
+      # endpoint http://localhost:28080/.ory/hydra/public/oauth2/token", invalid_client).
+      # Set as a CONFIG value (ResolveHydraIssuer highest precedence) — the env passthrough
+      # KACHO_IAM_HYDRA_ISSUER collides with the chart's domain-derived env of the same name
+      # and k8s dedups to the first (external) → non-deterministic. Aligns iam with the
+      # gateway (gateway.hydra.issuer already = this localhost issuer); the in-cluster POST
+      # target stays hydraTokenURL. authn.go documents this override for non-derivable issuers.
+      hydraIssuer: "http://localhost:28080/.ory/hydra/public/"
     repository:
       postgres:
         sslMode: require         # production-strict enforces ssl-mode ∈ {require,verify-ca,verify-full}
-  # Production-mode transport hardening for the HTTP listeners (hooks :9092 + /metrics
-  # :9095). dev.yaml sets mtls.enable=true (gRPC :9090/:9091) but leaves httpListeners
-  # OFF → :9092 stays PLAINTEXT. The dev-prod stand mirrors values.prod: wrap :9092 with
-  # server-side TLS (server-tls-only — Ory Hydra webhook client presents no client cert;
-  # X-Kacho-Hook-Token HMAC is the caller-auth). REUSES the SEC-F internal-CA server
-  # cert-trio (SAN covers kacho-iam-internal.kacho.svc.cluster.local). Without this the
-  # Hydra token_hook must speak https:// to a plaintext port and would fail — this is the
-  # peer of the Hydra CA-trust + https url override in the hydra block below.
-  mtls:
-    enable: true
-    httpListeners: true
-    hooksClientAuthMode: server-tls-only
-    metricsClientAuthMode: server-tls-only
+  # NB (deliberately NOT enabling mtls.httpListeners on this stand): mtls.enable=true
+  # (inherited from dev.yaml) already wraps the gRPC listeners (:9090/:9091). The
+  # httpListeners toggle would ALSO TLS-wrap the JWKS-proxy :9097 — but on this stand
+  # the api-gateway verifies RS256 tokens by fetching JWKS from iam :9097 over PLAINTEXT
+  # http (registry-iam-jwks-unify routing, gateway env KACHO_HYDRA_JWKS_URL). TLS-ing
+  # :9097 breaks that fetch ("HTTP request to an HTTPS server") → EVERY token fails
+  # validation → 401. values.prod avoids this by pointing the gateway JWKS at Hydra
+  # public directly (:4444), so httpListeners is safe there; this kind stand routes
+  # through iam :9097, so the hooks/metrics/jwks HTTP listeners stay PLAINTEXT (the
+  # template's documented dev-stand default). The Hydra token_hook reaches :9092 over
+  # http; caller-auth is the X-Kacho-Hook-Token HMAC (env-override below), not transport.
   env:
     # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
     # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
@@ -141,6 +151,26 @@ kacho-iam:
     # Service (same fix api-gateway.hydra.jwksUrl already carries). ResolveHydraJWKSURL
     # honours this explicit override ahead of the issuer-derived default.
     KACHO_IAM_HYDRA_JWKS_URL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+    # NB: the Hydra issuer override lives in config.authn.hydraIssuer above (a config
+    # value, not a KACHO_IAM_HYDRA_ISSUER env — the chart already emits that env from the
+    # domain and a duplicate dedups to the first/external on apply, non-deterministic).
+  # Bootstrap-token mint (#58) + registry /iam/token shim — the client_credentials
+  # exchange target. ResolveHydraTokenURL() honours this ahead of the issuer-derived
+  # default (https://hydra.api.kacho.cloud/oauth2/token — UNREACHABLE in-cluster). The
+  # POST target is the in-cluster Hydra PUBLIC Service; the minted token's `iss` stays
+  # Hydra's self.issuer (http://localhost:28080/.ory/hydra/public/, = the gateway's
+  # expected issuer → the RS256 token verifies). deep-merges over dev's hydraAdminUrl.
+  kacho:
+    iam:
+      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/oauth2/token"
+      # Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — signs the
+      # private_key_jwt client_assertion the mint exchanges at Hydra. Empty ⇒ env
+      # absent ⇒ MintBootstrapToken fails closed (UNAVAILABLE). Provisioned as a
+      # LOCAL kind secret by scripts/dev-prod-secrets.sh (generated fresh, NOT
+      # committed — a real cluster provisions it out-of-band / external-secrets).
+      bootstrapToken:
+        signingKeySecretName: kacho-iam-bootstrap-sa-key
+        signingKeySecretKey: private_key_pem
 
 # ─── kacho-nlb ──────────────────────────────────────────────────────────────
 kacho-nlb:
@@ -217,53 +247,39 @@ pg-registry:
     enabled: true
     autoGenerated: true
 
-# ── Hydra OAuth2 token/refresh webhooks → kacho-iam :9092 (production-mode) ──
-# WAS MISSING from this overlay → Hydra never sent X-Kacho-Hook-Token, so iam's
-# hook (:9092 /iam/v1/hooks/token) 401'd → Hydra 500 → EVERY client_credentials
-# exchange failed (registry SA-keys AND the #58 bootstrap-token mint), independent
-# of #58. Mirror of values.prod.yaml (the prod stand has this; the kind overlay
-# dropped it). url is https because the iam block above flips mtls.httpListeners=true
-# → iam :9092 serves server-side TLS; Hydra trusts the kacho-iam server cert via the
-# mounted internal-CA bundle (SSL_CERT_FILE, deployment block below).
-#
-# HELM PATH: the Ory Hydra chart nests its config under its OWN `hydra:` key, and the
-# umbrella aliases the subchart as `hydra` → the effective path is hydra.hydra.config
-# (DOUBLE-nested). The `deployment` block is a TOP-LEVEL Ory chart key → hydra.deployment
-# (SINGLE-nested). Putting config at hydra.config (single) silently no-ops — the http
-# url from values.dev.yaml (hydra.hydra.config) would win and Hydra would speak http to
-# a TLS port. Keep config under hydra.hydra.config; keep deployment under hydra.deployment.
+# ── Hydra OAuth2 token-hook auth → kacho-iam :9092 (the REAL client_credentials fix) ──
+# The token_hook URL + auth-header shape already come from values.dev.yaml (http://…:9092,
+# X-Kacho-Hook-Token). The bug: the header VALUE there is the literal YAML placeholder
+# `${KACHO_IAM_HOOK_TOKEN}` — and Ory Hydra does NOT interpolate env into config-YAML, so
+# Hydra shipped the literal string as the HMAC → iam's hook 401'd → Hydra 500 → EVERY
+# client_credentials exchange failed (registry SA-keys AND the #58 bootstrap-token mint),
+# independent of #58. FIX: the OAUTH2_*_HOOK_AUTH_CONFIG_VALUE env-overrides (Ory's
+# config-path → env-var naming) replace the placeholder with the real secret at runtime.
+# This is the ONLY thing the overlay needs — transport stays PLAINTEXT http (see the iam
+# mtls note above: TLS-ing the iam HTTP listeners would break the gateway's :9097 JWKS
+# fetch). The `deployment` block is a TOP-LEVEL Ory chart key → hydra.deployment.
 hydra:
   hydra:
     config:
-      oauth2:
-        token_hook:
-          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/token"
-          auth:
-            type: api_key
-            config:
-              in: header
-              name: X-Kacho-Hook-Token
-              value: ${KACHO_IAM_HOOK_TOKEN}
-        refresh_token_hook:
-          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/refresh"
-          auth:
-            type: api_key
-            config:
-              in: header
-              name: X-Kacho-Hook-Token
-              value: ${KACHO_IAM_HOOK_TOKEN}
+      urls:
+        self:
+          # ISSUER TRAILING-SLASH: values.dev.yaml sets self.issuer WITH a trailing
+          # slash (http://localhost:28080/.ory/hydra/public/). Hydra stamps that exact
+          # string into every token's `iss`. But the api-gateway verifier normalises its
+          # EXPECTED issuer by STRIPPING the trailing slash (config.ResolvedHydraIssuer)
+          # and then does an EXACT `iss != expected` compare (jwt_verifier.go) — so a
+          # with-slash token `iss` never matches the no-slash expected → EVERY RS256 token
+          # fails validation (401 "token validation failed"), production-newman included.
+          # Align on the gateway's canonical no-slash form: drop the trailing slash from
+          # the issuer identity (the token `iss`). `public` (browser-facing base URL, kept
+          # in dev.yaml) is a SEPARATE knob and keeps its slash for routing. iam's assertion
+          # audience (ResolveHydraTokenEndpoint = TrimRight(issuer)+"/oauth2/token") is
+          # unaffected — it already trims — so the bootstrap-mint exchange still matches
+          # Hydra's token endpoint. Scoped to the production-mode overlay (dev-mode authn
+          # accepts HS256 and never verifies the Hydra `iss`, so dev.yaml is untouched).
+          issuer: "http://localhost:28080/.ory/hydra/public"
   deployment:
-    # Ory Hydra does NOT interpolate ${KACHO_IAM_HOOK_TOKEN} inside config-YAML — the
-    # placeholder would ship as a literal X-Kacho-Hook-Token → HMAC verify 401. The
-    # OAUTH2_*_HOOK_AUTH_CONFIG_VALUE env-overrides (Ory config-path → env naming)
-    # override the YAML value with the real secret. SSL_CERT_FILE points Hydra's Go
-    # TLS client at the internal-CA bundle so it trusts the iam :9092 server cert.
     extraEnv:
-      - name: KACHO_IAM_HOOK_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: kacho-iam-hook-token
-            key: token
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
@@ -274,16 +290,3 @@ hydra:
           secretKeyRef:
             name: kacho-iam-hook-token
             key: token
-      - name: SSL_CERT_FILE
-        value: /etc/kacho-iam-ca/ca.crt
-    extraVolumes:
-      - name: kacho-iam-internal-ca
-        secret:
-          secretName: kacho-iam-server-tls
-          items:
-            - key: ca.crt
-              path: ca.crt
-    extraVolumeMounts:
-      - name: kacho-iam-internal-ca
-        mountPath: /etc/kacho-iam-ca
-        readOnly: true

@@ -59,6 +59,16 @@ data:
 
     authn:
       mode: {{ default "dev" .Values.config.authn.mode | quote }}
+      {{- with .Values.config.authn.hydraIssuer }}
+      # Explicit Hydra issuer override (ResolveHydraIssuer highest precedence, ahead of
+      # the KACHO_IAM_HYDRA_ISSUER env + the domain-derived default). Set it when Hydra
+      # advertises a self.issuer that is NOT https://hydra.<domain> — e.g. a kind stand
+      # whose issuer is http://localhost:<nodeport>/.ory/hydra/public/. The private_key_jwt
+      # client_assertion (bootstrap-mint + registry /iam/token) must carry aud=<issuer>/
+      # oauth2/token, and the minted token `iss` must equal what the gateway pins — both
+      # derive from this. A config value (not a duplicate env) so it resolves deterministically.
+      hydra-issuer: {{ . | quote }}
+      {{- end }}
 
     extapi:
       def-dial-duration: 10s
