@@ -157,6 +157,52 @@ hydra:
 # (enabled=false, failOpen=false) apply. The dev overlay enables it.
 authz: {}
 
+# ─── Deployment-environment label (KACHO_APP_ENV) ────────────────────────────
+# Cross-cutting, domain-LESS label (config.go binds `envconfig:"KACHO_APP_ENV"`,
+# NOT the per-domain KACHO_API_GATEWAY_* scheme) that keys the composition-root
+# production guards: validateProductionAuthzConfig (refuses authn.mode=dev / dev
+# HMAC secret) AND validateProductionInternalListener (refuses an insecure internal
+# :9091 listener). Secure-by-default: only the explicit dev-class labels
+# "dev"/"local"/"test" tolerate the dev auth + insecure-listener posture; every
+# other value — INCLUDING empty/unset — is production-class and fails closed, so a
+# forgotten label can never silently downgrade to dev.
+#
+# Default "" → no env emitted → the Go default "" (production-class) applies (zero
+# regression for overlays that omit it). The dev overlay sets appEnv: dev; the
+# production overlays set appEnv: production (explicit) — both first-class here,
+# replacing the earlier generic extraEnv.KACHO_APP_ENV passthrough.
+appEnv: ""
+
+# ─── cluster-internal :9091 gRPC listener security (InternalAuthzCacheService) ──
+# The dedicated internal listener hosts InternalAuthzCacheService.InvalidateSubject,
+# dialed by the kacho-iam subject-change push-drainer. security.md invariant #1/#4:
+# the internal perimeter is NOT a trusted zone → mTLS transport (AuthN) + a per-RPC
+# SPIFFE caller allow-list (AuthZ) are mandatory. In a production-class env (appEnv
+# not dev/local/test) validateProductionInternalListener FATAL-fails the boot unless
+# mtls.enable=true here — before this first-class block the only way to wire it was
+# the generic extraEnv passthrough, a dev-masked gap that crash-looped the gateway
+# under values.prod.yaml.
+#
+# Server cert: reuses the pod's already-mounted EXTERNAL TLS server secret (tls.*
+# above → /etc/api-gateway/tls) — cert-manager issues it from the internal CA on the
+# mTLS stands, so the iam push-drainer verifies it against the same internal CA it
+# dials with. Incoming client certs are verified against the internal CA
+# (KACHO_API_GATEWAY_MTLS_CA_FILE = mtls.mountPath/ca.crt), so this block REQUIRES
+# mtls.enable=true (which mounts the internal-CA bundle + sets MTLS_CA_FILE); the
+# deployment template hard-fails the render otherwise (fail-fast, not a silent
+# half-secured boot). allowedSpiffe = the verified client SANs authorised to invoke
+# the listener — the iam module identity is the ONLY legitimate caller.
+internalListener:
+  mtls:
+    enable: false
+    certFile: /etc/api-gateway/tls/tls.crt
+    keyFile: /etc/api-gateway/tls/tls.key
+  allowedSpiffe:
+    - spiffe://kacho.cloud/ns/kacho/sa/kacho-iam
+  # gRPC server-reflection on the internal listener — debug/incident only (it
+  # enumerates the internal admin surface). Default off.
+  reflection: false
+
 # ─── mTLS — per-edge backend-dial (cert-manager internal-CA) ─────────────────
 # api-gateway is a backend-dial CLIENT (it terminates EXTERNAL TLS separately via
 # `tls.*` above — that is unrelated). enable=false (default) → НИ client-cert

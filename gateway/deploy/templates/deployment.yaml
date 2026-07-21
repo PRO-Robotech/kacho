@@ -245,6 +245,37 @@ spec:
               value: "true"
             {{- end }}
             {{- end }}
+            {{- if .Values.appEnv }}
+            # Deployment-env label (domain-LESS KACHO_APP_ENV) — keys the
+            # composition-root production guards (validateProductionAuthzConfig +
+            # validateProductionInternalListener). Empty/unset ⇒ production-class
+            # (fail-closed); only dev/local/test tolerate the dev posture.
+            - name: KACHO_APP_ENV
+              value: {{ .Values.appEnv | quote }}
+            {{- end }}
+            {{- if .Values.internalListener.mtls.enable }}
+            {{- if not .Values.mtls.enable }}
+            {{- fail "internalListener.mtls.enable=true requires mtls.enable=true — the internal :9091 listener verifies incoming client certs against the internal CA (KACHO_API_GATEWAY_MTLS_CA_FILE), which the mtls block mounts. Enable mtls.enable (backend-dial mTLS) alongside it." }}
+            {{- end }}
+            # cluster-internal :9091 gRPC listener mTLS + SPIFFE caller allow-list
+            # (InternalAuthzCacheService.InvalidateSubject; the iam push-drainer is
+            # the only authorised caller). security.md: the internal perimeter is
+            # NOT trusted. Server cert reuses the mounted external TLS secret; client
+            # certs are verified against the internal CA (KACHO_API_GATEWAY_MTLS_CA_FILE
+            # set by the mtls block above → REQUIRES mtls.enable, guarded above).
+            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_CERT_FILE
+              value: {{ .Values.internalListener.mtls.certFile | quote }}
+            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE
+              value: {{ .Values.internalListener.mtls.keyFile | quote }}
+            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE
+              value: {{ join "," .Values.internalListener.allowedSpiffe | quote }}
+            {{- end }}
+            {{- if .Values.internalListener.reflection }}
+            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_REFLECTION
+              value: "true"
+            {{- end }}
             {{- range $k, $v := .Values.extraEnv }}
             - name: {{ $k }}
               value: {{ $v | quote }}
