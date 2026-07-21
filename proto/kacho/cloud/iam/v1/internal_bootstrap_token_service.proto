@@ -85,8 +85,13 @@ service InternalBootstrapTokenService {
 message MintBootstrapTokenRequest {
   // Requested token lifetime in seconds. Optional: `0` → server default. The
   // value is CLAMPED to a server hard-max (the bootstrap token is deliberately
-  // short-lived, IBT-09) — a larger request never widens the lifetime.
-  int64 ttl_seconds = 1 [(length) = ">=0"];
+  // short-lived, IBT-09) — a larger request never widens the lifetime, so only
+  // the lower bound is a contract constraint; the upper bound is server-clamped
+  // (a large request like 86400 is accepted, then clamped — IBT-09).
+  //
+  // `(value)` (numeric bound), NOT `(length)` (string char-length) — the latter
+  // is a no-op on an int64 and would leave a negative ttl unenforced.
+  int64 ttl_seconds = 1 [(value) = ">=0"];
 }
 
 // MintBootstrapTokenResponse — the minted bootstrap Bearer.
