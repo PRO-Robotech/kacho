@@ -114,6 +114,16 @@ kacho-iam:
     repository:
       postgres:
         sslMode: require         # production-strict enforces ssl-mode ∈ {require,verify-ca,verify-full}
+  env:
+    # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
+    # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
+    # derives its upstream from KACHO_IAM_HYDRA_ISSUER = https://hydra.api.kacho.cloud,
+    # the EXTERNAL ingress host that is UNREACHABLE in-cluster → the proxy fail-closes
+    # 502 and NO service can verify through it (they silently fall back to Hydra-direct,
+    # defeating the unification). Point the upstream at the in-cluster Hydra PUBLIC
+    # Service (same fix api-gateway.hydra.jwksUrl already carries). ResolveHydraJWKSURL
+    # honours this explicit override ahead of the issuer-derived default.
+    KACHO_IAM_HYDRA_JWKS_URL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
 
 # ─── kacho-nlb ──────────────────────────────────────────────────────────────
 kacho-nlb:
