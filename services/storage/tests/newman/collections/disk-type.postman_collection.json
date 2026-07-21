@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f4f248f1-4148-4ae1-890f-4ba8fca5ce73",
+    "_postman_id": "007e39c5-bf43-432e-9316-ef03924d2678",
     "name": "kacho-storage / newman / disk-type",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -341,6 +341,50 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('admin Delete not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "DT-LST-PAGE-TOKEN-GARBAGE — List diskTypes с garbage pageToken -> 400 INVALID_ARGUMENT (decodePageToken -> ErrInvalidArg; парити с Volume/Snapshot/Image)",
+      "description": "class:PAGE | class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "bad-token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/diskTypes?pageSize=10&pageToken=not-a-real-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "diskTypes?pageSize=10&pageToken=not-a-real-token"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }

@@ -110,3 +110,19 @@ CASES.append(Case(
     steps=[Step(name="del-external", method="DELETE", path=f"{DT}/block-balanced",
                 test_script=["pm.test('admin Delete not on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));"])],
 ))
+
+# ---------------------------------------------------------------------------
+# CS1-S2-01 (add) — List garbage page_token parity. DiskType.List — cursor
+#   (created_at,id) с decodePageToken -> ErrInvalidArg (400) на битом токене
+#   (парити с Volume/Snapshot/Image, у DiskType отсутствовал). Техника: negative
+#   opaque-token декод.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="DT-LST-PAGE-TOKEN-GARBAGE",
+    title="List diskTypes с garbage pageToken -> 400 INVALID_ARGUMENT (decodePageToken -> ErrInvalidArg; парити с Volume/Snapshot/Image)",
+    classes=["PAGE", "VAL", "NEG"], priority="P1",
+    # verifies CS1-S2-01
+    steps=[Step(name="bad-token", method="GET", path=f"{DT}?pageSize=10&pageToken=not-a-real-token",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))

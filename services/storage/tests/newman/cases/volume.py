@@ -564,3 +564,137 @@ CASES.append(Case(
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
 ))
+
+# ---------------------------------------------------------------------------
+# CS1-S1-12 (add) — name BVA/ECP parity (over-max len, digit-start, hyphen-start).
+#   self-validating VolumeName newtype (domain/volume.go): displayNameRe
+#   ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ + RuneCount<=63 → нарушение = фикс. текст
+#   "Illegal argument name". Техники: BVA (верхняя граница длины 63+1), ECP
+#   (недопустимый первый символ: цифра / дефис). Парити с IMG-CR-BVA-NAME-OVER-64.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="VOL-CR-BVA-NAME-OVER-64",
+    title="Create name длиной 64 (граница 1..63 + 1) -> sync 400 INVALID_ARGUMENT 'Illegal argument name' (BVA верхняя граница; domain RuneCount>63)",
+    classes=["BVA", "VAL", "NEG", "CONF"], priority="P1",
+    # verifies CS1-S1-12
+    steps=[Step(name="cr-name64", method="POST", path=VOL,
+                body=_vol_body("n64", name="n" + "abcdefghij" * 6 + "abc"),  # 1+60+3 = 64
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("Illegal argument name")])],
+))
+
+CASES.append(Case(
+    id="VOL-CR-VAL-NAME-DIGIT-START",
+    title="Create name '9data-vol' (первый символ - цифра) -> sync 400 INVALID_ARGUMENT 'Illegal argument name' (regex требует первый символ [a-z])",
+    classes=["VAL", "NEG", "CONF"], priority="P1",
+    # verifies CS1-S1-12
+    steps=[Step(name="cr-digit", method="POST", path=VOL, body=_vol_body("dg", name="9data-vol"),
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("Illegal argument name")])],
+))
+
+CASES.append(Case(
+    id="VOL-CR-VAL-NAME-HYPHEN-START",
+    title="Create name '-data-vol' (первый символ - дефис) -> sync 400 INVALID_ARGUMENT 'Illegal argument name'",
+    classes=["VAL", "NEG", "CONF"], priority="P1",
+    # verifies CS1-S1-12
+    steps=[Step(name="cr-hyphen", method="POST", path=VOL, body=_vol_body("hy", name="-data-vol"),
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("Illegal argument name")])],
+))
+
+# ---------------------------------------------------------------------------
+# CS1-S1-05 (add) — immutable-mask parity (block_size / source_snapshot_id) +
+#   пустой mask = full-PATCH. immutable-switch (ДО UpdateMask, api-conventions
+#   gotcha) для полного набора immutable-полей Volume {zone_id, disk_type_id,
+#   block_size, source_snapshot_id, used_by}; existing покрывает zone_id/disk_type_id.
+#   Техника state-transition (immutable после Create). UpdateVolumeRequest не несёт
+#   тела block_size/source_snapshot_id -> триггер именно mask-path (immutable-switch).
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="VOL-UPD-MASK-IMMUTABLE-BLOCKSIZE",
+    title="Update mask=block_size -> sync 400 INVALID_ARGUMENT 'block_size is immutable after Volume.Create' (immutable-switch до UpdateMask)",
+    classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
+    # verifies CS1-S1-05
+    steps=[Step(name="patch-imm-bs", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
+                body={"updateMask": "block_size"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("block_size is immutable after Volume.Create")])],
+))
+
+CASES.append(Case(
+    id="VOL-UPD-MASK-IMMUTABLE-SOURCESNAPSHOT",
+    title="Update mask=source_snapshot_id -> sync 400 INVALID_ARGUMENT 'source_snapshot_id is immutable after Volume.Create'",
+    classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
+    # verifies CS1-S1-05
+    steps=[Step(name="patch-imm-srcsnap", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
+                body={"updateMask": "source_snapshot_id"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("source_snapshot_id is immutable after Volume.Create")])],
+))
+
+CASES.append(Case(
+    id="VOL-UPD-MASK-EMPTY-FULL-PATCH-OK",
+    title="Update пустой updateMask -> full-object PATCH: mutable name+description применены; immutable zone не тронут; Operation ok, Get отражает (CS1-S1-05 пустой mask = full-PATCH)",
+    classes=["CRUD", "STATE", "CONF"], priority="P1",
+    # verifies CS1-S1-05
+    steps=[
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("empmask", description="init-desc"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-empty-mask", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
+             body={"updateMask": "", "name": "vol-empmask2-{{runId}}", "description": "full-patch-desc"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('name applied (full-PATCH)', () => pm.expect(j.name).to.match(/^vol-empmask2-/));",
+                          "pm.test('description applied (full-PATCH)', () => pm.expect(j.description).to.eql('full-patch-desc'));",
+                          "pm.test('zoneId unchanged (immutable, full-PATCH не трогает)', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));"]),
+        Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+    ],
+))
+
+# ---------------------------------------------------------------------------
+# CS1-S1-11 (add) — INV-8 no-leak black-box lock (error-guessing: injection).
+#   Payload в name / filter не должен вызвать 500 и НЕ должен утечь pgx/SQLSTATE/
+#   panic/goroutine наружу (фикс. INTERNAL / контрактный InvalidArgument). Парити
+#   с compute security_injection_block; фокус на observable no-leak инварианте.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="VOL-CR-SEC-NAME-INJECTION",
+    title="Security: SQL-injection payload в name -> НЕ 500; нет утечки pgx/SQLSTATE/panic/goroutine; handled (name отвергнут sync 400) [INV-8 no-leak]",
+    classes=["SEC", "VAL", "NEG"], priority="P0",
+    # verifies CS1-S1-11 (INV-8 leak-guard, behaviour-level)
+    steps=[Step(name="cr-sqli", method="POST", path=VOL,
+                body=_vol_body("sec", name="vol'; DROP TABLE volumes;--"),
+                test_script=[
+                    "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
+                    "pm.test('handled 2xx/4xx (name отвергнут)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                    "let j; try { j = pm.response.json(); } catch(e) { j = {}; }",
+                    "const body = JSON.stringify(j).toLowerCase();",
+                    "pm.test('no pgx/sqlstate/panic/goroutine leak', () => { pm.expect(body).to.not.include('sqlstate'); pm.expect(body).to.not.include('panic'); pm.expect(body).to.not.include('goroutine'); pm.expect(body).to.not.include('pgx'); });",
+                ])],
+))
+
+CASES.append(Case(
+    id="VOL-LST-SEC-FILTER-SQLI",
+    title="Security: SQL-injection в filter (List) -> НЕ 500; handled (200|400); нет утечки pgx/SQLSTATE (filter параметризован/парсится whitelist) [INV-8]",
+    classes=["SEC", "VAL", "NEG"], priority="P0",
+    # verifies CS1-S1-03 (INV-8 leak-guard на filter-пути)
+    steps=[Step(name="lst-filter-sqli", method="GET",
+                path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
+                test_script=[
+                    "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
+                    "pm.test('handled 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                    "let j; try { j = pm.response.json(); } catch(e) { j = {}; }",
+                    "const body = JSON.stringify(j).toLowerCase();",
+                    "pm.test('no pgx/sqlstate/panic leak', () => { pm.expect(body).to.not.include('sqlstate'); pm.expect(body).to.not.include('pgx'); pm.expect(body).to.not.include('panic'); });",
+                ])],
+))

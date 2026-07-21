@@ -6,16 +6,16 @@
 
 | Коллекция | Кейсов | Стадия |
 |---|---:|---|
-| volume | 30 | S1 (CS1-S1-*) |
+| volume | 38 | S1 (CS1-S1-*) |
 | **image** | **39** | **redesign STOR-1 (F9..F14, NET-NEW `img-`)** |
-| snapshot | 16 | S3 (CS1-S3-*) |
-| disk-type | 7 | S2 (CS1-S2-*) |
+| snapshot | 21 | S3 (CS1-S3-*) |
+| disk-type | 8 | S2 (CS1-S2-*) |
 | operation | 3 | OperationService (OpsProxy sop) |
 | authz | 9 | INV-10 public authz (fixture-gated) |
 | internal-volume | 4 | S4 INV-7a external-absence |
-| **Всего** | **108** | |
+| **Всего** | **122** | |
 
-`scripts/validate-cases.py` → OK (108 уникальных case-id, нет дублей, все
+`scripts/validate-cases.py` → OK (122 уникальных case-id, нет дублей, все
 каталогизированы). `python3 scripts/gen.py` → OK (7 коллекций).
 
 ## STOR-1 redesign — Image (`cases/image.py`, 39 кейсов)
@@ -89,3 +89,30 @@ fixture-минимальны (existence-non-revealing → 403 независим
 - **Snapshot:** malformed-id, not-found, source-missing (op-error), project-not-found (sync),
   uppercase/unicode name (sync), immutable source_volume_id (sync), delete-not-found (op-error).
 - **DiskType:** not-found (`DiskType <id> not found`), pageSize-over-max, admin-external-absence.
+
+## Parity-добор (qa, +14 кейсов) — Volume/Snapshot/DiskType до паритета с Image-шаблоном
+
+Добор negatives/edge-паритета (grounded в proto/domain/service — не против live-стенда;
+RED→GREEN исполняет CI-раннер, локальный newman env-blocked). Все техники в `description`
+кейсов. Ни один не требует не-READY / :9091 / attach-CAS (integration-only остаётся вне scope):
+
+- **Volume (+8):** `VOL-CR-BVA-NAME-OVER-64` (BVA len 63+1 → `Illegal argument name`,
+  domain `RuneCount>63`), `VOL-CR-VAL-NAME-{DIGIT,HYPHEN}-START` (ECP первого символа,
+  displayNameRe), `VOL-UPD-MASK-IMMUTABLE-{BLOCKSIZE,SOURCESNAPSHOT}` (immutable-switch,
+  полный набор `{zone_id,disk_type_id,block_size,source_snapshot_id,used_by}`),
+  `VOL-UPD-MASK-EMPTY-FULL-PATCH-OK` (пустой mask = full-PATCH, mutable применён, immutable
+  zone цел — CS1-S1-05 gap), `VOL-CR-SEC-NAME-INJECTION` + `VOL-LST-SEC-FILTER-SQLI`
+  (INV-8 no-leak black-box: не 500, нет pgx/SQLSTATE/panic/goroutine).
+- **Snapshot (+5):** `SNP-LST-BVA-PAGESIZE-OVER-MAX` (validate.PageSize > 1000),
+  `SNP-UPD-MASK-UNKNOWN-FIELD` (UpdateMask known-set), `SNP-UPD-MASK-IMMUTABLE-{PROJECT,SIZE}`
+  (immutable-switch `{source_volume_id,project_id,size_bytes}`), `SNP-CR-BVA-NAME-OVER-64`.
+- **DiskType (+1):** `DT-LST-PAGE-TOKEN-GARBAGE` (decodePageToken → ErrInvalidArg 400).
+
+Grounding-заметки (проверено в коде redesign/integration): нет validate-interceptor в цепочке
+(recovery→logging→principal→authz) → `description`/`labels` НЕ валидируются доменно (volume.go/
+image.go `Validate` их не проверяют) → BVA desc-257/labels-65 для Volume/Snapshot НЕ добавлены
+(были бы false-red; image.py их несёт как unverified — не реплицированы). name (regex+len) и
+size_bytes валидируются доменно → grounded. immutable-switch и page_size/page_token/update_mask —
+в service-слое (volume/snapshot/disktype UseCase), не в interceptor.
+
+**Known failing — product bugs:** нет (расхождений прода от контракта при авторинге не выявлено).
