@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "618ebd3c-6de4-4d1c-ac57-90f513b8df94",
+    "_postman_id": "c7652464-9d11-4d73-a654-9a0b72e51fab",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3170,7 +3170,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"xres-int-sub-{{runId}}\", \"v4CidrBlocks\": [\"{{_subnetCidr}}\"], \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"xres-int-sub-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
