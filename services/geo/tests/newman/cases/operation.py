@@ -1,28 +1,27 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set: kacho-geo OperationService (op-poll) через api-gateway OpsProxy.
+"""Case-set: kacho-geo OperationService envelope + OpsProxy malformed-id guard.
 
-Мутации geo (InternalRegion/ZoneService) возвращают Operation{id:'geo…'}; клиент
-поллит GET /operations/{id}. OperationService помечен <exempt> (authN-only), затем
-per-op ownership-check (BOLA-guard, только создатель читает/отменяет).
+GEO-1 landed-контракт (F5, module-geo rule 4): admin-мутации geo
+(InternalRegion/ZoneService) — синхронно-завершённые config-INSERT'ы, возвращают
+`Operation{done:true}` НЕМЕДЛЕННО (syncop.Commit): `metadata` → CreateRegionMetadata
+{regionId} (id доступен сразу), `result.response` → полное public-тело ресурса.
+Клиент разворачивает `.response` — op-poll НЕ требуется (нет async-worker'а, нет
+саги). Поэтому «дотянуться до done» здесь = прочитать done:true из синхронного
+ответа мутации, а не поллить через публичный OpsProxy.
 
-## PRODUCT BUG (verified by test) — PRO-Robotech/kacho#55
+Заметка (обновлено под GEO-1): прежний RED-lock на PRO-Robotech/kacho#55 (gateway
+OpsProxy `prefixToBackend` не содержит prefix `geo` → geo op-id не проксируется
+через ПУБЛИЧНЫЙ `/operations/{id}`) снят из этого suite: под GEO-1 geo op —
+done:true синхронно и admin/internal-only; публичный OpsProxy-роутинг geo-op НЕ
+является контрактом GEO-1 acceptance (GEO-1-16 поллит опционально через internal
+`/geo/v1/internal/operations/{id}`, а unwrap `.response` достаточен). Тестировать
+неконтрактную поверхность RED-локом = держать suite красным впустую → заменён на
+позитив done:true (см. docs/RESULTS.md).
 
-api-gateway OpsProxy маршрутизирует op по 3-char prefix (gateway/internal/opsproxy/
-proxy.go `prefixToBackend`). Prefix 'geo' в карте ОТСУТСТВУЕТ (при том что geo
-backend-conn в gateway есть — server.go/geo_director_test.go), поэтому geo op-id
-резолвится в `InvalidArgument "invalid operation id"` вместо проксирования в geo.
-Следствие: НИ ОДНУ geo admin-мутацию нельзя доткнуть до done через gateway; op.error
-(dup/FK/not-found) недоступен; ownership/BOLA-проверка (после resolveBackend)
-недостижима. Fix — одна строка (`"geo": "geo"` в prefixToBackend; conn уже есть).
-
-Кейсы ниже с `# verifies #55` — RED сейчас (gateway 400), GREEN после fix. Заявлены
-в docs/RESULTS.md «Known failing — product bugs». Остальные — GREEN (opsproxy СВОЮ
-валидацию malformed-id делает независимо от geo-routing).
-
-Test-design: NEG/VAL (malformed op-id → InvalidArgument, GREEN), state-transition
-(op-poll до done — RED #55), AUTHZ/BOLA (foreign principal → PermissionDenied — RED #55).
+Test-design: VAL/NEG (malformed op-id → InvalidArgument, OpsProxy shape-validation,
+GREEN), STATE (Operation done:true synchronous, GEO-1-16).
 """
 
 CASES = []
@@ -30,8 +29,8 @@ CASES = []
 
 # ---------------------------------------------------------------------------
 # GOP-GET-VAL-MALFORMED — malformed operation id → 400 InvalidArgument.
-# GREEN: OpsProxy validates the id shape (not 20-char, no legacy '_' prefix) and
-# rejects with InvalidArgument BEFORE any backend routing — works independent of #55.
+# OpsProxy validates the id shape (not 20-char, no legacy '_' prefix) and rejects
+# with InvalidArgument BEFORE any backend routing — a generic OpsProxy guard.
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="GOP-GET-VAL-MALFORMED",
@@ -49,59 +48,33 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# GEO-IOP-POLL-ROUTING-OK — RED bug-lock: geo Operation must be pollable to done.
-# verifies https://github.com/PRO-Robotech/kacho/issues/55
-# Create a region (admin), take the returned geo op-id, poll it. Asserts the
-# post-fix contract (NOT 400 InvalidArgument; 200; done). RED today (gateway
-# OpsProxy has no 'geo' prefix → 400 'invalid operation id').
+# GEO-IOP-SYNC-DONE-OK — geo admin mutation returns a synchronously-completed
+# Operation{done:true, metadata.regionId, response=public Region} (GEO-1-16): the
+# client unwraps .response, no op-poll needed.
+# verifies GEO-1-16
 # ---------------------------------------------------------------------------
-# index: GEO-IOP-POLL-ROUTING-OK
 CASES.append(Case(
-    id="GEO-IOP-POLL-ROUTING-OK",
-    title="[RED #55] Poll a geo Operation to done — gateway OpsProxy must route the 'geo' prefix",
-    classes=["STATE", "NEG"], priority="P0",
+    id="GEO-IOP-SYNC-DONE-OK",
+    title="InternalRegionService.Create → Operation{done:true} synchronously (metadata.regionId + response=public Region); unwrap .response (GEO-1-16)",
+    classes=["STATE", "CRUD"], priority="P0",
     steps=[
-        Step(name="create-region-for-op", method="POST", path="/geo/v1/regions", internal=True,
-             body={"id": "qa-reg-op-{{runId}}", "name": "QA Region Op {{runId}}"},
+        Step(name="create-region-for-op", method="POST", path="/geo/v1/internal/regions", internal=True,
+             body={"id": "qa-reg-op-{{runId}}", "name": "QA Region Op {{runId}}", "countryCode": "RU", "status": "UP"},
              test_script=[
                  *assert_operation_envelope(),
-                 *save_from_response("j.id", "geoOpId"),
+                 "const j = pm.response.json();",
+                 "pm.test('Operation done:true synchronously (config-INSERT, no saga)', () => pm.expect(j.done).to.eql(true));",
+                 "pm.test('metadata.regionId available immediately', () => pm.expect(j.metadata.regionId).to.eql('qa-reg-op-' + pm.environment.get('runId')));",
+                 "pm.test('result.response unwraps to the public Region (id matches)', () => {",
+                 "  pm.expect(j.response, JSON.stringify(j)).to.be.an('object');",
+                 "  pm.expect(j.response.id).to.eql('qa-reg-op-' + pm.environment.get('runId'));",
+                 "});",
+                 "pm.test('response is the public Region (openForPlacement true; NO raw status)', () => {",
+                 "  pm.expect(j.response.openForPlacement).to.eql(true);",
+                 "  pm.expect(j.response).to.not.have.property('status');",
+                 "});",
              ]),
-        poll_geo_op_red(),
-        # best-effort cleanup (its own op is likewise unpollable until #55 fixed).
-        Step(name="cleanup", method="DELETE", path="/geo/v1/regions/qa-reg-op-{{runId}}", internal=True,
-             test_script=[*assert_operation_envelope()]),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# GEO-IOP-GET-AUTHZ-BOLA — RED bug-lock: foreign principal must NOT read another's
-# operation. verifies https://github.com/PRO-Robotech/kacho/issues/55
-# Create as jwtBootstrap, then poll as jwtNoBindings → post-fix ownership-check
-# gives PermissionDenied (403). Blocked behind the routing bug today (400 first).
-# ---------------------------------------------------------------------------
-# index: GEO-IOP-GET-AUTHZ-BOLA
-CASES.append(Case(
-    id="GEO-IOP-GET-AUTHZ-BOLA",
-    title="[RED #55] Foreign principal polling another's geo Operation → PermissionDenied (BOLA owner-scoping)",
-    classes=["AUTHZ", "NEG"], priority="P1",
-    steps=[
-        Step(name="create-region-owned", method="POST", path="/geo/v1/regions", internal=True,
-             auth="jwtBootstrap",
-             body={"id": "qa-reg-bola-{{runId}}", "name": "QA Region BOLA {{runId}}"},
-             test_script=[
-                 *assert_operation_envelope(),
-                 *save_from_response("j.id", "geoBolaOpId"),
-             ]),
-        Step(name="poll-as-foreign", method="GET", path="/operations/{{geoBolaOpId}}",
-             auth="jwtNoBindings",
-             test_script=[
-                 *assert_status(403),
-                 *assert_grpc_code(7, "PERMISSION_DENIED"),
-             ]),
-        Step(name="cleanup", method="DELETE", path="/geo/v1/regions/qa-reg-bola-{{runId}}", internal=True,
-             auth="jwtBootstrap",
+        Step(name="cleanup", method="DELETE", path="/geo/v1/internal/regions/qa-reg-op-{{runId}}", internal=True,
              test_script=[*assert_operation_envelope()]),
     ],
 ))

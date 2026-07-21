@@ -3,22 +3,23 @@
 
 """Case-set: kacho-geo public ZoneService (Get/List) через api-gateway.
 
-Публичная read-only поверхность каталога зон: sync, гейтится `viewer`@cluster.
-Zone — плоский flat-resource {id, regionId, status(UP/DOWN), name, createdAt}.
+Публичная read-only поверхность каталога зон: sync, ambient-read (project-scope
+EXEMPT — любой аутентифицированный принципал читает каталог, GEO-1-20). GEO-1
+landed-контракт: Zone — плоский flat-resource {id, regionId, name, createdAt,
+openForPlacement°, placementBlockedReason°}. Сырой admin-флаг `status` вынесен в
+two-projection (InternalZone :9091, НЕ на public); единственный публичный
+placement-сигнал — derived `openForPlacement°` (= zone.status==UP && region.status==UP).
 
-AS-IS замечание (two-projection): в текущей реализации `status` присутствует на
-ПУБЛИЧНОМ Zone (GEO-1-редизайн вынесет его в Internal, но GEO-1 merge-gated и НЕ
-приземлён — см. docs/RESULTS.md). Этот суит лочит AS-IS-контракт; инвариант,
-который держится и сейчас, и после GEO-1 — отсутствие ИНФРА-полей на public
-(numericInfraId/hostClasses/...): его и асертим (ZON-GET-CONF-NO-INFRA).
+Инвариант two-projection: public Zone НЕ несёт ни `status`, ни ИНФРА-полей
+(numericInfraId/hostClasses/...) — их и асертим (ZON-GET-CONF-NO-INFRA).
 
 Источник контракта: proto/kacho/cloud/geo/v1/zone.proto + zone_service.proto +
-services/geo/internal/apps/kacho/api/zone. AS-IS ZoneService.List НЕ несёт
-regionId-фильтра (в ListZonesRequest его нет) — поэтому кейса на фильтр здесь НЕТ
-(не пишем кейсы для несуществующей поверхности).
+services/geo/internal/apps/kacho/api/zone + GEO-1 acceptance (F1/F2). ZoneService.List
+несёт фильтры `?regionId`/`?openForPlacement` (GEO-1-24/26) — здесь покрыт базовый
+list; фильтр-кейсы — расширяемая поверхность.
 
-Test-design техники: CONF (shape/verbatim-NotFound/createdAt-truncate/no-infra),
-ECP (valid/malformed/absent id), BVA (pageSize 0/1/>max, garbage token),
+Test-design техники: CONF (shape/verbatim-NotFound/createdAt-truncate/no-infra/
+no-status), ECP (valid/malformed/absent id), BVA (pageSize 0/1/>max, garbage token),
 error-guessing (503/code14 dial regression). Каждый positive → matched negative.
 """
 
@@ -45,7 +46,7 @@ def _not_no_children_503():
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="GEO-ZON-GT-CONF-OK",
-    title="GET /geo/v1/zones as jwtBootstrap → 200, zones[] non-empty + well-formed (id+status), not 503/code14",
+    title="GET /geo/v1/zones as jwtBootstrap → 200, zones[] non-empty + well-formed (id+openForPlacement), not 503/code14",
     classes=["CONF", "CRUD"], priority="P0",
     steps=[
         Step(
@@ -61,10 +62,11 @@ CASES.append(Case(
                 "  pm.expect(j.zones, JSON.stringify(j)).to.be.an('array');",
                 "  pm.expect(j.zones.length, 'zones non-empty (geography seeded)').to.be.greaterThan(0);",
                 "});",
-                "pm.test('zones are well-formed (id + status present)', () => {",
+                "pm.test('zones are well-formed (id + openForPlacement present; NO raw status)', () => {",
                 "  (pm.response.json().zones || []).forEach(z => {",
                 "    pm.expect(z.id, 'zone id: ' + JSON.stringify(z)).to.be.a('string').and.not.empty;",
-                "    pm.expect(z.status, 'zone status: ' + JSON.stringify(z)).to.not.be.undefined;",
+                "    pm.expect(z.openForPlacement, 'zone openForPlacement: ' + JSON.stringify(z)).to.be.a('boolean');",
+                "    pm.expect(z, 'zone must NOT carry raw status: ' + JSON.stringify(z)).to.not.have.property('status');",
                 "  });",
                 "});",
             ],
@@ -78,7 +80,7 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="ZON-GET-CRUD-OK",
-    title="Get existing zone (resolved from List) → 200, flat shape {id,regionId,name,status,createdAt}, createdAt truncated",
+    title="Get existing zone (resolved from List) → 200, flat shape {id,regionId,name,openForPlacement,placementBlockedReason,createdAt}, createdAt truncated",
     classes=["CRUD", "CONF"], priority="P0",
     steps=[
         Step(name="list-pick", method="GET", path="/geo/v1/zones",
@@ -94,7 +96,9 @@ CASES.append(Case(
                  "const j = pm.response.json();",
                  "pm.test('id matches resolved', () => pm.expect(j.id).to.eql(pm.environment.get('pickZoneId')));",
                  "pm.test('regionId is a non-empty string', () => pm.expect(j.regionId).to.be.a('string').and.not.empty);",
-                 "pm.test('status present', () => pm.expect(j.status).to.not.be.undefined);",
+                 "pm.test('openForPlacement is a boolean (derived signal)', () => pm.expect(j.openForPlacement).to.be.a('boolean'));",
+                 "pm.test('placementBlockedReason present', () => pm.expect(j.placementBlockedReason).to.not.be.undefined);",
+                 "pm.test('public Zone carries NO raw status (two-projection)', () => pm.expect(j).to.not.have.property('status'));",
                  *assert_createdat_truncated(),
              ]),
     ],
