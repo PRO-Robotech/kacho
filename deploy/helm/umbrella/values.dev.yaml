@@ -342,8 +342,21 @@ pg-storage:
 # server-creds on both listeners + the geo→iam Check client edge are enabled
 # (mirrors compute/vpc). authzIam stays wired at iam-internal :9091.
 kacho-geo:
-  image: docker.io/prorobotech/kacho-geo:main-84d9d68f
+  # Branch build (`make build-services` → kacho-geo:dev, kind-loaded), NOT the pinned
+  # external main-<sha>. geo was the ONLY service still pinned to an external main image
+  # while every other service runs its :dev branch build — so dev/CI ran STALE pre-GEO-1
+  # geo (GetInternal unimplemented, op-id==resourceId, no sync Operation{done:true},
+  # malformed-id→404), masking the GEO-1 redesign from the geo newman suite.
+  image: kacho-geo:dev
   imagePullPolicy: IfNotPresent
+  # GEO-1 serve.go added a secure-by-default boot-guard: with mTLS on, an EMPTY
+  # trusted-forwarder allow-list refuses to start. Supply the api-gateway SA SPIFFE
+  # allow-list (the ONE legitimate end-user-principal forwarder) — SAME secure posture
+  # as values.fe3455-prod.yaml, NOT a trust-any bypass (KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER
+  # would violate security.md "Internal=trusted forbidden"; trust-any is also unhonored
+  # in production-mode by construction). mTLS-verified forwarder identity is enforced.
+  env:
+    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   mtls:
     enable: true
     edges:

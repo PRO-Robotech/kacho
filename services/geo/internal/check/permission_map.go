@@ -83,6 +83,21 @@ func PermissionMap() authz.RPCMap {
 			Permission: "geo.zones.delete",
 		},
 
+		// GetInternal (two-projection admin read — infra°/status на :9091, system_admin).
+		// Пропущены в backend-map (были Create/Update/Delete, не GetInternal) → corelib
+		// authz fail-closed "rpc not mapped" (GEO-1 F1 registration gap; gateway-catalog
+		// их имел). Тот же класс, что compute InternalMachineType / storage ImageService.
+		"/kacho.cloud.geo.v1.InternalRegionService/GetInternal": {
+			Relation:   relationSystemAdmin,
+			Extract:    staticClusterCatalog(),
+			Permission: "geo.regions.getInternal",
+		},
+		"/kacho.cloud.geo.v1.InternalZoneService/GetInternal": {
+			Relation:   relationSystemAdmin,
+			Extract:    staticClusterCatalog(),
+			Permission: "geo.zones.getInternal",
+		},
+
 		// ---- LRO Operation-envelope (ReBAC-exempt, owner-scoped в handler) ----
 		// Все admin Region/Zone Create/Update/Delete асинхронны и возвращают
 		// Operation, который клиент поллит через OperationService.Get. Оба RPC
