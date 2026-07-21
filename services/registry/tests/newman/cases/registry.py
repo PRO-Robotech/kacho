@@ -67,6 +67,16 @@ def _create_registry(name_expr, id_var, project="{{existingProjectId}}",
                  "pm.test('endpoint reflects id', () => pm.expect(r.endpoint||'').to.include(r.id||'__no_id__'));",
                  *save_from_response("(j.response&&j.response.id)||''", id_var),
              ]),
+        # Read-your-writes warm-up: force the registry owner-tuple to materialize
+        # (register-outbox → drainer → IAM RegisterResource → FGA reconciler) before
+        # the case's own first Get/Update/Delete. GetRegistry does a gateway scope-Check
+        # (registry_registry/registry_id, hide-existence) → 404 until the tuple is
+        # visible; bounded-retry over that EC window (own fresh resource only). Once this
+        # succeeds, every subsequent access to {{id_var}} is deterministic. (e2e-inv:
+        # wrap ONLY the first self-access; never negatives/cross-account.)
+        retry_until_authorized(
+            Step(name="warm-" + id_var, method="GET", path=REG + "/{{" + id_var + "}}",
+                 test_script=[*assert_status(200)])),
     ]
 
 
@@ -125,16 +135,30 @@ CASES.append(Case(
     ],
 ))
 
-# Create with well-formed-but-absent projectId → 400 (cross-domain reject: iam
-# ProjectService.Get NotFound → InvalidArgument "project <id> not found").
+# Create into a well-formed-but-absent projectId → rejected. Two defensible codes,
+# authz-first (e2e-inv «Authz-first толерантность негативов»): the api-gateway runs the
+# project-scope FGA-Check (Create scope=project/project_id) BEFORE the backend peer-
+# validate — the caller holds no `editor` grant on a non-existent project, so it fails
+# closed with 403 (PERMISSION_DENIED) and never reaches the backend cross-domain reject
+# (iam ProjectService.Get NotFound → 400 "project ... not found"). Tolerate [400,403];
+# assert the reject is real and text-appropriate to whichever gate fired. NOT wrapped in
+# retry (a genuine deny must not be masked).
 CASES.append(Case(
     id="REG-CR-NEG-PROJECT-NOTFOUND",
-    title="Create with unknown projectId → 400 INVALID_ARGUMENT (\"project ... not found\")",
-    classes=["NEG"], priority="P1",
+    title="Create with unknown projectId → rejected 403 (authz-first) or 400 (backend not-found)",
+    classes=["NEG", "AZ"], priority="P1",
     steps=[Step(name="create-nopr", method="POST", path=REG,
                 body={"name": "x-{{runId}}", "projectId": "{{garbageProjectId}}", "regionId": "{{existingRegionId}}"},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('not found text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));"])],
+                test_script=[
+                    "pm.test('rejected authz-first (403) or backend not-found (400)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                    "const j = pm.response.json();",
+                    "if (pm.response.code === 400) {",
+                    "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
+                    "  pm.test('backend not-found text', () => pm.expect((j.message||'').toLowerCase()).to.include('not found'));",
+                    "} else {",
+                    "  pm.test('grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j.code).to.eql(7));",
+                    "}",
+                ])],
 ))
 
 # Create duplicate (project_id, name): partial UNIQUE → sync 409 ALREADY_EXISTS;
@@ -428,21 +452,22 @@ CASES.append(Case(
     ],
 ))
 
-# Update well-formed-but-absent → async: 200 Operation envelope now, NOT_FOUND surfaces in
-# the operation RESULT (existence-hidden, no synchronous 404). Poll → assert op errored code 5.
+# Update well-formed-but-absent registry → sync NOT_FOUND 404 (existence-hiding).
+# RegistryService.Update carries hide_existence=true (f06e01b, security.md #6): an
+# authenticated deny — including a non-resolvable/absent target whose owner-tuple the
+# gateway scope-Check cannot map to a project — surfaces as opaque NotFound(5)/404, NOT
+# 403+deny_reasons and NOT an async Operation. Existence indistinguishable from a real
+# miss; no relation-enumeration leak. (Parity with registry-authz update-viewer.)
 CASES.append(Case(
     id="REG-UPD-NEG-NOTFOUND",  # index: REG-36
-    title="Update well-formed-absent reg → 200 Operation → poll → op errors NOT_FOUND (code 5)",
-    classes=["NEG"], priority="P1",
+    title="Update well-formed-absent reg → 404 NOT_FOUND (hide-existence, no deny_reasons leak)",
+    classes=["NEG", "AZ", "CONF"], priority="P1",
     steps=[
         Step(name="update-nx", method="PATCH", path=REG + "/reg00000000000000000",
              body={"updateMask": "description", "description": "x"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        Step(name="assert-update-nx-op-error", method="GET", path="/operations/{{opId}}",
              test_script=[
-                 *assert_status(200),
-                 "pm.test('op error NOT_FOUND', () => { const e = JSON.parse(pm.environment.get('lastOpError')||'{}'); pm.expect(e.code).to.eql(5); });",
+                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                 "pm.test('no deny_reasons/relation leak (existence-hiding)', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/deny_reasons|direct relations|lacks relation/));",
              ]),
     ],
 ))
@@ -518,14 +543,25 @@ CASES.append(Case(
                 ])],
 ))
 
-# ListTags garbage page_token → 400.
+# ListTags garbage page_token → rejected. ListTags is EXISTENCE-HIDING (RG-1 overlay
+# A08/ListTags parity): the handler runs the per-repo v_list Check on
+# registry_repository:<reg>/<repo> (public.go:182, deny/absent → NOT_FOUND) BEFORE the
+# adapter decodes the page_token. The probe repo `app-{{runId}}` is never pushed → the
+# existence-hiding 404 preempts token-validation. On a VISIBLE repo the bad token would
+# surface as 400 INVALID_ARGUMENT. Tolerate [400,404]; invariant — a garbage token never
+# yields 200. (Unlike ListRegistries REG-1-31, ListTags is NOT a listauthz short-circuit,
+# so security.md #7 format-before-authz does not mandate 400 for a hidden repo.)
 CASES.append(Case(
     id="REG-LSTTAGS-NEG-BAD-TOKEN",  # index: REG-24
-    title="ListTags with garbage page_token → 400 INVALID_ARGUMENT",
+    title="ListTags garbage page_token → 400 (visible repo) or 404 (existence-hiding preempts on absent repo), never 200",
     classes=["NEG", "VAL"], priority="P2",
     steps=[Step(name="list-tags-bad-token", method="GET",
                 path=REG + "/{{regId}}/repositories/app-{{runId}}/tags?pageToken=not-a-b64-token",
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[
+                    "pm.test('rejected: 400 (bad token) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+                    "const j = pm.response.json();",
+                    "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));",
+                ])],
 ))
 
 # ListTags by an unauthorized subject (stranger) → existence-hiding: 404 (or 401 if
@@ -547,15 +583,22 @@ CASES.append(Case(
 ))
 
 
-# ListTags pageSize > max (1000) → 400 INVALID_ARGUMENT (BVA: отвергается, НЕ clamp'ится;
-# format-validate до repo-existence/authz short-circuit). Parity с ListRegistries/ListRepositories.
+# ListTags pageSize > max (1000) → rejected (BVA: отвергается, НЕ clamp'ится). ListTags
+# is existence-hiding: the per-repo v_list Check (public.go:182) fires BEFORE pageSize
+# validation, so on the never-pushed probe repo `app-{{runId}}` the existence-hiding 404
+# preempts. On a VISIBLE repo pageSize=1001 surfaces as 400 INVALID_ARGUMENT. Tolerate
+# [400,404]; invariant — an over-max pageSize is never clamped into a 200 window.
 CASES.append(Case(
     id="REG-LSTTAGS-NEG-PAGESIZE-OVERMAX",  # index: REG-24
-    title="ListTags pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+    title="ListTags pageSize=1001 (>max) → 400 (visible repo) or 404 (existence-hiding preempts), never clamped to 200",
     classes=["NEG", "BVA", "VAL"], priority="P2",
     steps=[Step(name="list-tags-ps-overmax", method="GET",
                 path=REG + "/{{regId}}/repositories/app-{{runId}}/tags?pageSize=1001",
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[
+                    "pm.test('rejected: 400 (over-max) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
+                    "const j = pm.response.json();",
+                    "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));",
+                ])],
 ))
 
 
@@ -683,21 +726,21 @@ CASES.append(Case(
     ],
 ))
 
-# Delete well-formed-but-absent → async 200 Operation; Delete — идемпотентная операция,
-# поэтому op завершается УСПЕШНО (done, без error, Empty response) — удаление отсутствующего
-# ресурса не ошибка (idempotent-delete-of-absent). Poll → assert op done без error.
+# Delete well-formed-but-absent registry → sync NOT_FOUND 404 (existence-hiding).
+# RegistryService.Delete carries hide_existence=true (f06e01b, security.md #6): an
+# authenticated deny — including a non-resolvable/absent target whose owner-tuple the
+# gateway scope-Check cannot map to a project — surfaces as opaque NotFound(5)/404, NOT
+# 403+deny_reasons and NOT an async Operation. Existence indistinguishable from a real
+# miss; no relation-enumeration leak. (Parity with registry-authz delete-viewer.)
 CASES.append(Case(
     id="REG-DEL-NEG-NOTFOUND",  # index: REG-07
-    title="Delete well-formed-absent reg → 200 Operation → poll → op done idempotent (no error)",
-    classes=["NEG", "IDEM"], priority="P1",
+    title="Delete well-formed-absent reg → 404 NOT_FOUND (hide-existence, no deny_reasons leak)",
+    classes=["NEG", "AZ", "CONF"], priority="P1",
     steps=[
         Step(name="delete-nx", method="DELETE", path=REG + "/reg00000000000000000",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        Step(name="assert-delete-nx-op-idempotent", method="GET", path="/operations/{{opId}}",
              test_script=[
-                 *assert_status(200),
-                 "pm.test('op done, idempotent (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
+                 *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                 "pm.test('no deny_reasons/relation leak (existence-hiding)', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/deny_reasons|direct relations|lacks relation/));",
              ]),
     ],
 ))
