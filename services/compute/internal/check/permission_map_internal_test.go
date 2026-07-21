@@ -19,12 +19,19 @@ import (
 // internal_catalog_service.proto). Эти RPC живут на internal listener'е :9091 —
 // он гоняет тот же authzIntr, что и public, поэтому каждая catalog-мутация должна
 // резолвиться в Check, а не пропускаться methodIsInternal-фолбэком.
-// Internal{Zone,Region}Service serving removed — Geography is owned by kacho-geo;
-// only InternalDiskTypeService remains compute-owned.
+// Internal{Zone,Region}Service serving removed — Geography is owned by kacho-geo.
+// InternalDiskTypeService + InternalMachineTypeService remain compute-owned
+// (COMP-1 redesign added MachineType sizing-catalog admin CRUD; every internal RPC
+// MUST be mapped or it fails closed "rpc not mapped" — MachineType was omitted,
+// 403'ing the admin-seed and cascading into instance/list-filter which reference
+// machineTypeId).
 var catalogAdminMutations = []string{
 	"/kacho.cloud.compute.v1.InternalDiskTypeService/Create",
 	"/kacho.cloud.compute.v1.InternalDiskTypeService/Update",
 	"/kacho.cloud.compute.v1.InternalDiskTypeService/Delete",
+	"/kacho.cloud.compute.v1.InternalMachineTypeService/Create",
+	"/kacho.cloud.compute.v1.InternalMachineTypeService/Update",
+	"/kacho.cloud.compute.v1.InternalMachineTypeService/Delete",
 }
 
 // TestPermissionMap_CatalogAdmin_SystemAdminOnCluster — каждая catalog-admin
