@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1c25dd4b-b671-4bc8-ad64-03e4b1f71641",
+    "_postman_id": "cbdeb05d-afdb-4755-95e5-e0bc46a9acd2",
     "name": "kacho-geo / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -133,8 +133,8 @@
       ]
     },
     {
-      "name": "GEO-REG-GT-AUTHZ-NOVIEWER-DENY — GET /geo/v1/regions as authenticated jwtNoBindings (no cluster#viewer) → 403 PERMISSION_DENIED (AS-IS; GEO-1 will exempt)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "GEO-REG-GT-AUTHZ-AMBIENT-OK — GET /geo/v1/regions as authenticated jwtNoBindings (zero-binding) → 200 (ambient read; project-scope EXEMPT, GEO-1-20)",
+      "description": "class:AUTHZ | class:CONF | priority:P1",
       "item": [
         {
           "name": "list-regions-noviewer",
@@ -179,11 +179,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
-                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
-                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
-                  "});"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('ambient read: zero-binding principal is NOT denied (no 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "pm.test('regions is an array', () => pm.expect(pm.response.json().regions).to.be.an('array'));"
                 ]
               }
             }
@@ -206,19 +204,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-deny-reg-{{runId}}\", \"name\": \"QA Deny Region\"}",
+              "raw": "{\"id\": \"qa-deny-reg-{{runId}}\", \"name\": \"QA Deny Region {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -274,19 +273,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-deny-zon-{{runId}}\", \"regionId\": \"qa-any\", \"name\": \"QA Deny Zone\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-any-{{runId}}-a\", \"regionId\": \"qa-any-{{runId}}\", \"name\": \"QA Deny Zone {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"

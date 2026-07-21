@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "3c7f6402-ec86-4e35-b36c-45d8d41e580e",
+    "_postman_id": "8582a29f-e7b2-49db-a7a9-1d9f059931b1",
     "name": "kacho-geo / newman / admin-not-on-public",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -25,7 +25,7 @@
   ],
   "item": [
     {
-      "name": "ANP-REG-CR-NOT-PUBLIC — InternalRegionService.Create is NOT on the public endpoint (POST /geo/v1/regions on baseUrl rejected; accepted on internal)",
+      "name": "ANP-REG-CR-NOT-PUBLIC — InternalRegionService.Create is NOT on the public endpoint (POST /geo/v1/regions on baseUrl rejected; accepted on internal /geo/v1/internal/regions)",
       "description": "class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -51,7 +51,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-reg-{{runId}}\", \"name\": \"QA ANP Region\"}",
+              "raw": "{\"id\": \"qa-anp-reg-{{runId}}\", \"name\": \"QA ANP Region {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -84,19 +84,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-reg-{{runId}}\", \"name\": \"QA ANP Region\"}",
+              "raw": "{\"id\": \"qa-anp-reg-{{runId}}\", \"name\": \"QA ANP Region {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -132,13 +133,14 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-anp-reg-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-anp-reg-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
                 "qa-anp-reg-{{runId}}"
               ]
@@ -164,7 +166,7 @@
       ]
     },
     {
-      "name": "ANP-ZON-CR-NOT-PUBLIC — InternalZoneService.Create is NOT on the public endpoint (POST /geo/v1/zones on baseUrl rejected; accepted on internal)",
+      "name": "ANP-ZON-CR-NOT-PUBLIC — InternalZoneService.Create is NOT on the public endpoint (POST /geo/v1/zones on baseUrl rejected; accepted on internal /geo/v1/internal/zones)",
       "description": "class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -178,19 +180,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-zreg-{{runId}}\", \"name\": \"QA ANP Zone-Region\"}",
+              "raw": "{\"id\": \"qa-anp-zr-{{runId}}\", \"name\": \"QA ANP Zone-Region {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -226,7 +229,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/qa-anp-zreg-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-anp-zr-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -234,7 +237,7 @@
                 "geo",
                 "v1",
                 "regions",
-                "qa-anp-zreg-{{runId}}"
+                "qa-anp-zr-{{runId}}"
               ]
             }
           },
@@ -288,7 +291,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-zon-{{runId}}\", \"regionId\": \"qa-anp-zreg-{{runId}}\", \"name\": \"QA ANP Zone\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-anp-zr-{{runId}}-a\", \"regionId\": \"qa-anp-zr-{{runId}}\", \"name\": \"QA ANP Zone {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -321,19 +324,20 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-zon-{{runId}}\", \"regionId\": \"qa-anp-zreg-{{runId}}\", \"name\": \"QA ANP Zone\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-anp-zr-{{runId}}-a\", \"regionId\": \"qa-anp-zr-{{runId}}\", \"name\": \"QA ANP Zone {{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -369,15 +373,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-anp-zon-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-anp-zr-{{runId}}-a",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "zones",
-                "qa-anp-zon-{{runId}}"
+                "qa-anp-zr-{{runId}}-a"
               ]
             }
           },
@@ -409,15 +414,16 @@
               }
             ],
             "url": {
-              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-anp-zreg-{{runId}}",
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-anp-zr-{{runId}}",
               "host": [
                 "{{internalBaseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
+                "internal",
                 "regions",
-                "qa-anp-zreg-{{runId}}"
+                "qa-anp-zr-{{runId}}"
               ]
             }
           },

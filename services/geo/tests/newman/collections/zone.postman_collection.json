@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "e66f2daa-3b3f-40ff-9c6b-f280f74670db",
+    "_postman_id": "cfe6cbc1-9d32-4285-afce-348f1b763d64",
     "name": "kacho-geo / newman / zone",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -25,7 +25,7 @@
   ],
   "item": [
     {
-      "name": "GEO-ZON-GT-CONF-OK — GET /geo/v1/zones as jwtBootstrap → 200, zones[] non-empty + well-formed (id+status), not 503/code14",
+      "name": "GEO-ZON-GT-CONF-OK — GET /geo/v1/zones as jwtBootstrap → 200, zones[] non-empty + well-formed (id+openForPlacement), not 503/code14",
       "description": "class:CONF | class:CRUD | priority:P0",
       "item": [
         {
@@ -86,10 +86,11 @@
                   "  pm.expect(j.zones, JSON.stringify(j)).to.be.an('array');",
                   "  pm.expect(j.zones.length, 'zones non-empty (geography seeded)').to.be.greaterThan(0);",
                   "});",
-                  "pm.test('zones are well-formed (id + status present)', () => {",
+                  "pm.test('zones are well-formed (id + openForPlacement present; NO raw status)', () => {",
                   "  (pm.response.json().zones || []).forEach(z => {",
                   "    pm.expect(z.id, 'zone id: ' + JSON.stringify(z)).to.be.a('string').and.not.empty;",
-                  "    pm.expect(z.status, 'zone status: ' + JSON.stringify(z)).to.not.be.undefined;",
+                  "    pm.expect(z.openForPlacement, 'zone openForPlacement: ' + JSON.stringify(z)).to.be.a('boolean');",
+                  "    pm.expect(z, 'zone must NOT carry raw status: ' + JSON.stringify(z)).to.not.have.property('status');",
                   "  });",
                   "});"
                 ]
@@ -100,7 +101,7 @@
       ]
     },
     {
-      "name": "ZON-GET-CRUD-OK — Get existing zone (resolved from List) → 200, flat shape {id,regionId,name,status,createdAt}, createdAt truncated",
+      "name": "ZON-GET-CRUD-OK — Get existing zone (resolved from List) → 200, flat shape {id,regionId,name,openForPlacement,placementBlockedReason,createdAt}, createdAt truncated",
       "description": "class:CRUD | class:CONF | priority:P0",
       "item": [
         {
@@ -177,7 +178,9 @@
                   "const j = pm.response.json();",
                   "pm.test('id matches resolved', () => pm.expect(j.id).to.eql(pm.environment.get('pickZoneId')));",
                   "pm.test('regionId is a non-empty string', () => pm.expect(j.regionId).to.be.a('string').and.not.empty);",
-                  "pm.test('status present', () => pm.expect(j.status).to.not.be.undefined);",
+                  "pm.test('openForPlacement is a boolean (derived signal)', () => pm.expect(j.openForPlacement).to.be.a('boolean'));",
+                  "pm.test('placementBlockedReason present', () => pm.expect(j.placementBlockedReason).to.not.be.undefined);",
+                  "pm.test('public Zone carries NO raw status (two-projection)', () => pm.expect(j).to.not.have.property('status'));",
                   "pm.test('createdAt truncated to seconds (no sub-second digits)', () => {",
                   "  const ts = String(pm.response.json().createdAt);",
                   "  pm.expect(ts, 'RFC3339 seconds ' + ts).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$/);",
