@@ -29,4 +29,22 @@ kubectl -n "$NS" create secret generic kacho-iam-hook-token \
   --from-literal=token="$HOOK_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
+# Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — the private key that
+# InternalBootstrapTokenService (#58) uses to sign the private_key_jwt
+# client_assertion it exchanges at Hydra (aud=https://{API_DOMAIN}) for the first
+# non-interactive RS256 admin Bearer. The mint use-case derives the PUBLIC JWK
+# from this key and self-registers the Hydra OAuth client on first mint — so the
+# key MUST be STABLE across re-runs (regenerating it would orphan the already-
+# registered Hydra client's JWK → assertion signature no longer verifies). Hence:
+# generate ONCE; reuse the existing secret on re-run (idempotent, NOT rotate).
+if kubectl -n "$NS" get secret kacho-iam-bootstrap-sa-key >/dev/null 2>&1; then
+  echo "kacho-iam-bootstrap-sa-key already present — reusing (stable signing key)"
+else
+  BOOTSTRAP_KEY="$(openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt)"
+  kubectl -n "$NS" create secret generic kacho-iam-bootstrap-sa-key \
+    --from-literal=private_key_pem="$BOOTSTRAP_KEY" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo "provisioned kacho-iam-bootstrap-sa-key (private_key_pem, ES256 P-256)"
+fi
+
 echo "provisioned kacho-iam-jwks-enc-key (enc_key, 32B hex) + kacho-iam-hook-token (token) in ns/$NS"
