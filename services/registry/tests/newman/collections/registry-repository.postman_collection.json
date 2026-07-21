@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "87948c3f-3fd1-415a-8c0d-59c28c3c67fc",
+    "_postman_id": "8e0d971c-2f97-4c37-8665-7b5651f5b065",
     "name": "kacho-registry / newman / registry-repository",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2353,6 +2353,2140 @@
       ]
     },
     {
+      "name": "REPO-CR-NEG-DUP — CreateRepository duplicate (registryId,name) → 409 ALREADY_EXISTS \"repository already exists\" (A02, DB UNIQUE)",
+      "description": "class:NEG | class:CONF | class:IDEM | priority:P1",
+      "item": [
+        {
+          "name": "repo-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"dup/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-14",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-dup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"dup/svc-{{runId}}\", \"description\": \"dup attempt\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('dup rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                  "const j = pm.response.json();",
+                  "if (pm.response.code === 409) {",
+                  "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(j.code).to.eql(6));",
+                  "  pm.test('repository already exists text', () => pm.expect((j.message||'').toLowerCase()).to.include('repository already exists'));",
+                  "  pm.environment.set('repoDupSync', '1');",
+                  "} else {",
+                  "  pm.environment.unset('repoDupSync');",
+                  "  if (j.id) pm.environment.set('opId', String(j.id));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-15",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-dup-async",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.environment.get('repoDupSync') === '1') {",
+                  "  pm.test('dup handled synchronously (409)', () => pm.expect(true).to.eql(true));",
+                  "} else {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "  const blob = (JSON.stringify(j.error||{}) + (pm.environment.get('lastOpError')||'')).toLowerCase();",
+                  "  pm.test('async op errored ALREADY_EXISTS', () => pm.expect(blob).to.include('exist'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-CR-NEG-EMPTY-NAME — CreateRepository empty repository → 400 INVALID_ARGUMENT \"repository is required\" (A05, ECP empty)",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "create-empty-name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"\", \"description\": \"no name\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('repository required text', () => pm.expect((pm.response.json().message||'')).to.include('repository is required'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-NEG-BAD-REGID — Repository RPCs with malformed registryId → 400 \"invalid registry id\" first statement (A06, all 6 RPC)",
+      "description": "class:NEG | class:VAL | priority:P0",
+      "item": [
+        {
+          "name": "get-bad-regid",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/not-an-id/repositories/x/y",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "not-an-id",
+                "repositories",
+                "x",
+                "y"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('GetRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-bad-regid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/not-an-id/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "not-an-id",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"x/y\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('CreateRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-bad-regid",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/not-an-id/repositories/x/y",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "not-an-id",
+                "repositories",
+                "x",
+                "y"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"x\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('UpdateRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-bad-regid",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/not-an-id/repositories/x/y",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "not-an-id",
+                "repositories",
+                "x",
+                "y"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('DeleteRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-bad-regid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/not-an-id/repositories/x/y:rename",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "not-an-id",
+                "repositories",
+                "x",
+                "y:rename"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"newName\": \"x/z\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('RenameRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "referrers-bad-regid",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/not-an-id/repositories/x/y/referrers?subjectDigest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "not-an-id",
+                "repositories",
+                "x",
+                "y",
+                "referrers?subjectDigest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('ListReferrers invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-UPD-NEG-UNKNOWN-MASK — UpdateRepository unknown updateMask field → 400 INVALID_ARGUMENT (known-set {description,labels,visibility}, A10)",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "repo-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"umask/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-16",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-unknown-mask",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/umask/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "umask",
+                "svc-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"descriptionx\", \"description\": \"ignored\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-REN-NEG-COLLISION — RenameRepository into an existing repo name → 409 ALREADY_EXISTS \"repository already exists\" (A17)",
+      "description": "class:NEG | class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "repo-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"col/src-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-17",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"col/dst-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-18",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-collision",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/col/src-{{runId}}:rename",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "col",
+                "src-{{runId}}:rename"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"newName\": \"col/dst-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('collision rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                  "const j = pm.response.json();",
+                  "if (pm.response.code === 409) {",
+                  "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(j.code).to.eql(6));",
+                  "  pm.test('repository already exists text', () => pm.expect((j.message||'').toLowerCase()).to.include('repository already exists'));",
+                  "  pm.environment.set('renColSync', '1');",
+                  "} else {",
+                  "  pm.environment.unset('renColSync');",
+                  "  if (j.id) pm.environment.set('opId', String(j.id));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-19",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-collision-async",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.environment.get('renColSync') === '1') {",
+                  "  pm.test('collision handled synchronously (409)', () => pm.expect(true).to.eql(true));",
+                  "} else {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "  const blob = (JSON.stringify(j.error||{}) + (pm.environment.get('lastOpError')||'')).toLowerCase();",
+                  "  pm.test('async op errored ALREADY_EXISTS', () => pm.expect(blob).to.include('exist'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-REN-NEG-BADNAME — RenameRepository malformed newName → 400 INVALID_ARGUMENT \"invalid repository name\" first statement (A19)",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "repo-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"renbad/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-20",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-badname",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/renbad/svc-{{runId}}:rename",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "renbad",
+                "svc-{{runId}}:rename"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"newName\": \"Bad Name!\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('invalid repository name text', () => pm.expect((pm.response.json().message||'')).to.include('invalid repository name'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-REN-CROSS-REGISTRY-STRUCTURAL — RenameRepository — smuggled target-registry body fields ignored; rename stays within same registry (D-5)",
+      "description": "class:CONF | priority:P2",
+      "item": [
+        {
+          "name": "repo-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"xreg/src-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-21",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-smuggle",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/xreg/src-{{runId}}:rename",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "xreg",
+                "src-{{runId}}:rename"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"newName\": \"xreg/dst-{{runId}}\", \"registryId\": \"reg00000000smuggled0\", \"targetRegistryId\": \"reg00000000smuggled0\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-22",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-smuggle-verify",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/xreg/dst-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "xreg",
+                "dst-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rename op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('renamed within SAME registry (smuggled registryId body-field ignored)', () => pm.expect(j.registryId).to.eql(pm.environment.get('repoRegId')));",
+                  "pm.test('new name applied', () => pm.expect(j.name).to.eql('xreg/dst-'+pm.environment.get('runId')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-REF-NEG-ABSENT — ListReferrers on absent repo → 404 \"repository not found\" (existence-hiding, C02)",
+      "description": "class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "referrers-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/ghostref/svc-{{runId}}/referrers?subjectDigest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "ghostref",
+                "svc-{{runId}}",
+                "referrers?subjectDigest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('repository not found text', () => pm.expect(pm.response.json().message).to.eql('repository not found'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-EXISTENCE-HIDING-PARITY — Absent repo → byte-identical \"repository not found\" across Get/Delete/ListReferrers (uniform existence-hiding, security.md #6)",
+      "description": "class:CONF | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "hide-get-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/hide/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "hide",
+                "svc-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.environment.set('repoMissMsg', pm.response.json().message||'');",
+                  "pm.test('Get absent → repository not found', () => pm.expect(pm.environment.get('repoMissMsg')).to.eql('repository not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "hide-delete-absent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/hide/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "hide",
+                "svc-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('Delete absent byte-identical to Get miss', () => pm.expect(pm.response.json().message).to.eql(pm.environment.get('repoMissMsg')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "hide-referrers-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/hide/svc-{{runId}}/referrers?subjectDigest=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "hide",
+                "svc-{{runId}}",
+                "referrers?subjectDigest=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('ListReferrers absent byte-identical to Get miss', () => pm.expect(pm.response.json().message).to.eql(pm.environment.get('repoMissMsg')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-GET-NO-INFRA-LEAK — GetRepository → public body carries NO infra fields (engineNamespace/bucketPrefix/numericInfraId, two-projection X01)",
+      "description": "class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "repo-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"noinfra/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-23",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-no-infra",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/noinfra/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "noinfra",
+                "svc-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('no engineNamespace (Internal* only)', () => pm.expect(j).to.not.have.property('engineNamespace'));",
+                  "pm.test('no bucketPrefix (Internal* only)', () => pm.expect(j).to.not.have.property('bucketPrefix'));",
+                  "pm.test('no numericInfraId (Internal* only)', () => pm.expect(j).to.not.have.property('numericInfraId'));",
+                  "pm.test('no storageDriver (Internal* only)', () => pm.expect(j).to.not.have.property('storageDriver'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "REPO-CLEANUP — Cleanup: delete shared overlay registry",
       "description": "class:CRUD | priority:P3",
       "item": [
@@ -2393,7 +4527,7 @@
           ]
         },
         {
-          "name": "poll-op-14",
+          "name": "poll-op-24",
           "request": {
             "method": "GET",
             "header": [

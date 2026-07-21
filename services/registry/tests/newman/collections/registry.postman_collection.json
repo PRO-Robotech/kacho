@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "41cd56d0-c07b-472a-ae33-b3dd98423a08",
+    "_postman_id": "59d6b1c6-49ed-4ab8-832a-85a407743c89",
     "name": "kacho-registry / newman / registry",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2084,6 +2084,52 @@
       ]
     },
     {
+      "name": "REG-LSTREPO-NEG-PAGESIZE-OVERMAX — ListRepositories pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+      "description": "class:NEG | class:BVA | class:VAL | priority:P2",
+      "item": [
+        {
+          "name": "list-repos-ps-overmax",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}/repositories?pageSize=1001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}",
+                "repositories?pageSize=1001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "REG-LSTTAGS-CRUD-OK — ListTags on own namespace → authorized read routes (200 tags[] or 404 repo-absent, not 401/403)",
       "description": "class:CRUD | priority:P1",
       "item": [
@@ -2233,6 +2279,244 @@
                   "pm.test('unauthorized -> 401/404/empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
                   "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
                   "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LSTTAGS-NEG-PAGESIZE-OVERMAX — ListTags pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+      "description": "class:NEG | class:BVA | class:VAL | priority:P2",
+      "item": [
+        {
+          "name": "list-tags-ps-overmax",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}/repositories/app-{{runId}}/tags?pageSize=1001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}",
+                "repositories",
+                "app-{{runId}}",
+                "tags?pageSize=1001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LSTOPS-CRUD-OK — ListOperations for own registry → 200 operations[] array (grant-latency tolerant)",
+      "description": "class:CRUD | priority:P1",
+      "item": [
+        {
+          "name": "list-ops",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}/operations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}",
+                "operations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _n = parseInt(pm.environment.get('_lstOpsRetry') || '0', 10);",
+                  "if ((pm.response.code === 403 || pm.response.code === 404) && _n < 20) {",
+                  "  pm.environment.set('_lstOpsRetry', String(_n + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* owner-tuple EC wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstOpsRetry');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('operations is array', () => pm.expect(pm.response.json().operations || []).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LSTOPS-NEG-BAD-TOKEN — ListOperations with garbage page_token → 400 INVALID_ARGUMENT",
+      "description": "class:NEG | class:VAL | priority:P2",
+      "item": [
+        {
+          "name": "list-ops-bad-token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}/operations?pageToken=not-a-b64-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}",
+                "operations?pageToken=not-a-b64-token"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LSTOPS-NEG-MALFORMED-ID — ListOperations with malformed registry id → 400 INVALID_ARGUMENT (gateway id-validate)",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "list-ops-bad-id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/not-an-id/operations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "not-an-id",
+                "operations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('invalid id text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('invalid'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LSTOPS-NEG-PAGESIZE-OVERMAX — ListOperations pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (rejected not clamped, BVA)",
+      "description": "class:NEG | class:BVA | class:VAL | priority:P2",
+      "item": [
+        {
+          "name": "list-ops-ps-overmax",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regId}}/operations?pageSize=1001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regId}}",
+                "operations?pageSize=1001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }

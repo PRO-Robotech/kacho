@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "7f86582f-2c2b-4797-a4c1-39d4c91909c1",
+    "_postman_id": "0fd1c02c-8f31-471f-a10d-1319a8b6a41b",
     "name": "kacho-registry / newman / registry-authz",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -758,6 +758,595 @@
       ]
     },
     {
+      "name": "REPO-AZ-SETUP — Setup: CreateRepository durable overlay repo under {{regIdAz}} (editor) → poll → capture",
+      "description": "class:AZD | priority:P1",
+      "item": [
+        {
+          "name": "repo-az-create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regIdAz}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regIdAz}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"az-repo-{{runId}}\", \"description\": \"per-repo authz fixture\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-az-confirm",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('repo setup op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-AZ-GET-STRANGER-HIDDEN — GetRepository as jwtStranger → denied/hidden (401/403/404), never 200-success; no leak",
+      "description": "class:AZD | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "repo-get-stranger",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regIdAz}}/repositories/az-repo-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regIdAz}}",
+                "repositories",
+                "az-repo-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtStranger'",
+                  "const __t = pm.environment.get('jwtStranger') || pm.variables.get('jwtStranger') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('denied (401/403/404), never 200 success', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
+                  "if (pm.response.code !== 401) {",
+                  "  pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-AZ-GET-VIEWER-OK — GetRepository as jwtProjectViewerA (v_get) → 200 (positive control, fixture-gated)",
+      "description": "class:AZD | priority:P1",
+      "item": [
+        {
+          "name": "repo-get-viewer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regIdAz}}/repositories/az-repo-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regIdAz}}",
+                "repositories",
+                "az-repo-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtProjectViewerA'",
+                  "const __t = pm.environment.get('jwtProjectViewerA') || pm.variables.get('jwtProjectViewerA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
+                  "if (!_viewer) {",
+                  "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+                  "  return;",
+                  "}",
+                  "const _n = parseInt(pm.environment.get('_azRepoViewerRetry') || '0', 10);",
+                  "if (pm.response.code === 404 && _n < 20) {",
+                  "  pm.environment.set('_azRepoViewerRetry', String(_n + 1));",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_azRepoViewerRetry');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('viewer sees repo (v_get)', () => pm.expect(pm.response.json().name).to.eql('az-repo-'+pm.environment.get('runId')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-AZ-UPDATE-VIEWER-DENY — UpdateRepository as jwtProjectViewerA (no v_update) → 403/404 (existence-hidden); no leak (fixture-gated)",
+      "description": "class:AZD | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "repo-update-viewer",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regIdAz}}/repositories/az-repo-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regIdAz}}",
+                "repositories",
+                "az-repo-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"viewer-edit-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtProjectViewerA'",
+                  "const __t = pm.environment.get('jwtProjectViewerA') || pm.variables.get('jwtProjectViewerA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
+                  "if (!_viewer) {",
+                  "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+                  "  return;",
+                  "}",
+                  "pm.test('denied 403/404 (no v_update), never 200 op', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                  "if (pm.response.code !== 401) {",
+                  "  pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-AZ-DELETE-STRANGER-DENY — DeleteRepository as jwtStranger → denied (401/403/404), never 200 op-success; fixture untouched",
+      "description": "class:AZD | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "repo-delete-stranger",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regIdAz}}/repositories/az-repo-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regIdAz}}",
+                "repositories",
+                "az-repo-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtStranger'",
+                  "const __t = pm.environment.get('jwtStranger') || pm.variables.get('jwtStranger') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('denied (401/403/404), never 200 op-success', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
+                  "if (pm.response.code !== 401) {",
+                  "  pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-AZ-CREATE-STRANGER-HIDDEN — CreateRepository as jwtStranger in {{regIdAz}} → denied (401/403/404), never 200 (namespace call-gate, X04)",
+      "description": "class:AZD | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "repo-create-stranger",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regIdAz}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regIdAz}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"intruder/svc-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtStranger'",
+                  "const __t = pm.environment.get('jwtStranger') || pm.variables.get('jwtStranger') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
+                  "if (pm.response.code !== 401) {",
+                  "  pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-AZ-HIDE-EXISTENCE-BYTE-IDENTITY — Registry deny-404 format byte-identical to absent-miss 404 (security.md #6, no existence-oracle)",
+      "description": "class:AZD | class:NEG | class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "reg-miss-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/reg00000000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "reg00000000000000000"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.environment.set('regMissMsg', pm.response.json().message||'');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "reg-deny-stranger",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{regIdAz}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{regIdAz}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtStranger'",
+                  "const __t = pm.environment.get('jwtStranger') || pm.variables.get('jwtStranger') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code !== 404) {",
+                  "  console.log('SKIP byte-identity: stranger not authenticated-404 on this stand (code '+pm.response.code+')');",
+                  "  return;",
+                  "}",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "const _absId = 'reg00000000000000000';",
+                  "const _regIdAz = pm.environment.get('regIdAz') || '';",
+                  "const _norm = (pm.response.json().message||'').split(_regIdAz).join(_absId);",
+                  "pm.test('deny-404 format byte-identical to absent-miss (no existence-oracle / no FGA-type leak)', () => pm.expect(_norm).to.eql(pm.environment.get('regMissMsg')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "REG-AZ-CLEANUP-FIXTURE — Cleanup: Delete fixture registry as project-editor (LAST) → Operation → poll → Get 404",
       "description": "class:AZD | priority:P2",
       "item": [
@@ -807,7 +1396,7 @@
           ]
         },
         {
-          "name": "poll-op-2",
+          "name": "poll-op-3",
           "request": {
             "method": "GET",
             "header": [
