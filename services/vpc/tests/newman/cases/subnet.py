@@ -964,33 +964,34 @@ def _sub_dhcp(opts):
             "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.250.0.0/24"],
             "dhcpOptions": opts}
 
-# DHCP options ECP
-for case_id, opts, expect_ok in [
-    ("SUB-CR-VAL-DHCP-DOMAIN-OK", {"domainName": "example.com"}, True),
-    ("SUB-CR-VAL-DHCP-DOMAIN-INVALID", {"domainName": "!!!"}, False),
-    ("SUB-CR-VAL-DHCP-NS-OK", {"domainNameServers": ["8.8.8.8", "1.1.1.1"]}, True),
-    ("SUB-CR-VAL-DHCP-NS-INVALID-IP", {"domainNameServers": ["999.999.999.999"]}, False),
-    ("SUB-CR-VAL-DHCP-NTP-OK", {"ntpServers": ["169.254.169.123"]}, True),
-    ("SUB-CR-VAL-DHCP-NTP-INVALID-IP", {"ntpServers": ["not-an-ip"]}, False),
-]:
-    inner = Case(
-        id=case_id, title=f"DHCP options: {case_id}",
-        classes=["VAL"] + (["CRUD"] if expect_ok else ["NEG"]),
-        priority="P1" if not expect_ok else "P2",
-        steps=[
-            Step(name="cr-dhcp", method="POST", path="/vpc/v1/subnets",
-                 body=dict(_sub_dhcp(opts), name=f"sub-dhcp-{case_id.lower()[-8:]}-{{{{runId}}}}"),
-                 test_script=[
-                     f"pm.test('{'200 ok' if expect_ok else '400 rejected'}', () => pm.expect(pm.response.code).to.eql({200 if expect_ok else 400}));",
-                     *(save_from_response("j.id", "opId") if expect_ok else []),
-                     *(save_from_response("j.metadata && j.metadata.subnetId", "subId") if expect_ok else []),
-                 ]),
-        ] + ([poll_operation_until_done(),
-              Step(name="cleanup", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
-                   test_script=[*save_from_response("j.id", "opId")]),
-              poll_operation_until_done()] if expect_ok else []),
-    )
-    CASES.append(_wrap_with_net("SUB", "v10dhcp" + case_id[-5:].lower(), inner))
+# VPC-1-43: dhcp_options was REMOVED from Subnet.Create BY DESIGN — the field is
+# silently IGNORED (not accepted, not validated, not persisted). A create carrying
+# dhcpOptions (even a would-be-invalid value) therefore succeeds 200 and the field
+# never appears on the resource. The old DHCP-validation ECP cases (asserting 400
+# on invalid domain/ns/ntp) tested REMOVED behaviour → dropped. Non-persistence is
+# locked at the unit level (subnet dhcp_removed_test.go); this e2e case just pins
+# that dhcp is silently ignored (accepted, NOT rejected).
+_dhcp_inner = Case(
+    id="SUB-CR-DHCP-IGNORED-VPC143",
+    title="VPC-1-43: dhcpOptions silently ignored on Create (removed field) — accepted 200, not validated/rejected",
+    classes=["VAL", "CRUD"],
+    priority="P2",
+    steps=[
+        Step(name="cr-dhcp", method="POST", path="/vpc/v1/subnets",
+             body=dict(_sub_dhcp({"domainName": "!!!", "ntpServers": ["not-an-ip"]}),
+                       name="sub-dhcp-ignored-{{runId}}"),
+             test_script=[
+                 "pm.test('accepted 200 (dhcp silently ignored, not validated/rejected)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 *save_from_response("j.id", "opId"),
+                 *save_from_response("j.metadata && j.metadata.subnetId", "subId"),
+             ]),
+        poll_operation_until_done(),
+        Step(name="cleanup", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
+             test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+    ],
+)
+CASES.append(_wrap_with_net("SUB", "v10dhcpignored", _dhcp_inner))
 
 # CIDR prefix boundary: /28 принимается; /29, /30, /31 → 400
 # "Illegal argument Invalid network prefix /N".
