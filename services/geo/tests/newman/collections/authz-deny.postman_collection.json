@@ -1,0 +1,332 @@
+{
+  "info": {
+    "_postman_id": "1c25dd4b-b671-4bc8-ad64-03e4b1f71641",
+    "name": "kacho-geo / newman / authz-deny",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
+          "}",
+          "const __jwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+          "if (__jwt && !pm.request.headers.has('Authorization')) {",
+          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __jwt});",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "GEO-REG-GT-AUTHZ-ANON-DENY — GET /geo/v1/regions as anonymous (no Bearer) → 401 UNAUTHENTICATED (authN required on every listener)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "list-regions-anon",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-GT-AUTHZ-ANON-DENY — GET /geo/v1/zones as anonymous (no Bearer) → 401 UNAUTHENTICATED",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "list-zones-anon",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-GT-AUTHZ-NOVIEWER-DENY — GET /geo/v1/regions as authenticated jwtNoBindings (no cluster#viewer) → 403 PERMISSION_DENIED (AS-IS; GEO-1 will exempt)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "list-regions-noviewer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtNoBindings'",
+                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-CR-AUTHZ-NONADMIN-DENY — InternalRegionService.Create as non-admin jwtNoBindings → 403 PERMISSION_DENIED (system_admin required)",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "create-region-nonadmin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-deny-reg-{{runId}}\", \"name\": \"QA Deny Region\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtNoBindings'",
+                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-CR-AUTHZ-NONADMIN-DENY — InternalZoneService.Create as non-admin jwtNoBindings → 403 PERMISSION_DENIED (system_admin required)",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "create-zone-nonadmin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-deny-zon-{{runId}}\", \"regionId\": \"qa-any\", \"name\": \"QA Deny Zone\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtNoBindings'",
+                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

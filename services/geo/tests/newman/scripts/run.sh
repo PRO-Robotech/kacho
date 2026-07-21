@@ -2,28 +2,29 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-# tests/newman/scripts/run.sh — прогон newman-коллекций с честным exit-кодом.
+# tests/newman/scripts/run.sh — прогон newman-коллекций kacho-geo с честным
+# exit-кодом и защитой от false-green.
 #
 # Usage:
-#   ./scripts/run.sh                          # все коллекции, сводный отчет
-#   ./scripts/run.sh --service network        # одна коллекция
-#   ./scripts/run.sh --service network --bail # прерывать после первого fail
+#   ./scripts/run.sh                          # все коллекции, сводный отчёт
+#   ./scripts/run.sh --service region         # одна коллекция
+#   ./scripts/run.sh --service region --bail   # прерывать после первого fail
 #   ./scripts/run.sh --delay 100              # задержка между запросами (ms)
-#   ./scripts/run.sh --jobs 2                 # макс. параллельных коллекций (default 4)
+#   ./scripts/run.sh --jobs 2                 # cap параллельных коллекций (default 4)
+#   ./scripts/run.sh --env-var baseUrl=http://localhost:18080  # проброс в newman
 #
-# Набор коллекций определяется автоматически: объединение source-of-truth
-# cases/*.py (gen.py делает 1:1 коллекцию на каждый case-файл) и реально
-# присутствующих collections/*.postman_collection.json. Так ни одна коллекция
-# не пропускается молча, а отсутствие ожидаемой (cases/<x>.py есть, а
-# collections/<x>.json нет) фиксируется как MISSING и валит прогон.
+# Набор коллекций = объединение source-of-truth cases/*.py (gen.py делает 1:1
+# коллекцию на каждый case-файл) и реально присутствующих collections/*.json. Так
+# ни одна коллекция не пропускается молча, а отсутствие ожидаемой (cases/<x>.py
+# есть, collections/<x>.json нет) фиксируется как MISSING и валит прогон
+# (false-green guard).
 #
-# Per-service коллекции гоняются параллельно (cap --jobs, default 4): каждая
-# коллекция изолирует свои ресурсы по {{runId}}-суффиксам внутри общего
-# existingProjectId, так что параллельный прогон безопасен.
+# --jobs НЕ пробрасывается в `newman run` (иначе `unknown option '--jobs'` →
+# коллекции без отчёта → ложный no-report/false-green, инцидент compute run.sh) —
+# он используется только как cap параллельного пула коллекций.
 #
-# Exit-код: 0 только если у каждой коллекции assertions.failed==0, exit-код
-# newman==0 и коллекция присутствует. Любой провал/краш/таймаут/отсутствие →
-# exit 1. Сводка печатается всегда (out/summary.txt).
+# Exit-код: 0 только если у КАЖДОЙ коллекции assertions.failed==0, rc newman==0 и
+# коллекция присутствует. Любой провал/краш/таймаут/отсутствие → exit 1.
 #
 # Outputs:
 #   out/<service>.json — newman JSON reporter (для агрегации)
@@ -31,8 +32,6 @@
 #   out/<service>.rc   — exit-код newman конкретной коллекции
 #   out/summary.txt    — итоговая сводка
 
-# Каталог tests/newman (на уровень выше scripts/). Считается при загрузке файла,
-# поэтому одинаково корректен и при прямом запуске, и при `source` из self-test.
 NEWMAN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # expected_stems — ожидаемый набор коллекций: basename каждого cases/*.py.
@@ -57,7 +56,6 @@ present_stems() {
 }
 
 # run_one — прогон одной коллекции. Пишет out/<svc>.json|.cli|.rc.
-# Использует глобальные ENV/DELAY/BAIL/EXTRA, выставленные в main().
 run_one() {
   local svc="$1"
   local col="collections/${svc}.postman_collection.json"
@@ -68,8 +66,7 @@ run_one() {
   fi
   echo "===== ${svc} ====="
   # Снимаем errexit вокруг пайпа, чтобы провал newman (через pipefail) не убил
-  # фоновый сабшелл до того, как мы зафиксируем его реальный exit-код. Берем
-  # именно PIPESTATUS[0] (newman), а НЕ статус tee — иначе провал маскируется.
+  # фоновый сабшелл до фиксации exit-кода. Берём PIPESTATUS[0] (newman), не tee.
   set +e
   newman run "$col" \
     -e "$ENV" \
@@ -84,10 +81,8 @@ run_one() {
   return 0
 }
 
-# aggregate_verdict — чистая, тестируемая функция вердикта.
-#   aggregate_verdict <out_dir> <stem>...
-# Печатает сводную таблицу и возвращает 1, если у любого stem: отсутствует
-# out/<stem>.json (MISSING), assertions.failed>0 или rc!=0. Иначе 0.
+# aggregate_verdict — чистый вердикт. Возвращает 1, если у любого stem: отсутствует
+# out/<stem>.json (MISSING), assertions.failed>0 или rc!=0.
 aggregate_verdict() {
   local out_dir="$1"; shift
   local bad=0 stem json rcfile rc total failed requests
@@ -132,6 +127,8 @@ main() {
       --service) SERVICE="$2"; shift 2 ;;
       --bail)    BAIL="--bail"; shift ;;
       --delay)   DELAY="$2"; shift 2 ;;
+      # --jobs: cap параллельного пула. Consume-and-ignore для `newman run` (НЕ
+      # пробрасывать — иначе unknown option → no-report → false-green).
       --jobs)    JOBS="$2"; shift 2 ;;
       *)         EXTRA+=("$1"); shift ;;
     esac
@@ -142,10 +139,9 @@ main() {
 
   mkdir -p out
   # Свежий прогон: убираем артефакты прошлого, чтобы stale-json не маскировал
-  # выпавшую коллекцию (rm -f не падает на отсутствующих файлах).
-  rm -f out/*.json out/*.cli out/*.rc out/summary.txt 2>/dev/null
+  # выпавшую коллекцию (false-green guard).
+  rm -f out/*.json out/*.cli out/*.rc out/summary.txt 2>/dev/null || true
 
-  # Набор stems для прогона и для вердикта.
   local -a stems=()
   if [[ -n "$SERVICE" ]]; then
     stems=("$SERVICE")
@@ -156,51 +152,30 @@ main() {
     done < <( { expected_stems; present_stems; } | sort -u )
   fi
 
-  # serial-collections.txt (optional, one stem per line, '#'-comments ok): коллекции,
-  # которые НЕЛЬЗЯ гонять одновременно ДРУГ С ДРУГОМ, потому что делят
-  # GLOBAL/semi-global backend-состояние, не изолируемое {{runId}}-суффиксом (напр.
-  # EXTERNAL_PUBLIC AddressPool: CIDR-EXCLUDE `(kind, block)` глобален, а
-  # is_default-partition `(zone_id, kind)` делится при zone-collapse — только 3 geo-зоны,
-  # zoneC≡zoneD). Такие коллекции гоняются ПОСЛЕ параллельного пула, строго по одной.
-  # Файла нет → поведение прежнее (весь набор параллельно). Прочие сервисы не затронуты.
-  local -a serial_list=()
-  if [[ -f "$NEWMAN_DIR/serial-collections.txt" ]]; then
-    local line
-    while IFS= read -r line; do
-      line="${line%%#*}"; line="${line//[[:space:]]/}"
-      [[ -n "$line" ]] && serial_list+=("$line")
-    done < "$NEWMAN_DIR/serial-collections.txt"
-  fi
-  _is_serial() { local x; for x in "${serial_list[@]:-}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
-
-  # Параллельный прогон с cap=$JOBS: все коллекции, КРОМЕ serial-listed. Каждая
-  # runId-scoped → safe.
+  # Параллельный прогон с cap=$JOBS. Каждая коллекция runId-scoped → safe (geo
+  # каталог глобален, но кейсы адресуют СВОИ qa-*-{{runId}} ресурсы и негативы по
+  # фиксированным absent id — общего мутабельного state между коллекциями нет).
   local svc
-  local -a deferred=()
   for svc in "${stems[@]}"; do
-    if [[ -n "${SERVICE:-}" ]]; then :; elif _is_serial "$svc"; then deferred+=("$svc"); continue; fi
-    while [[ "$(jobs -rp | wc -l)" -ge "$JOBS" ]]; do wait -n; done
-    run_one "$svc" &
+    if [[ -z "${SERVICE:-}" ]]; then
+      while [[ "$(jobs -rp | wc -l)" -ge "$JOBS" ]]; do wait -n; done
+      run_one "$svc" &
+    else
+      run_one "$svc"
+    fi
   done
   wait
-  # serial-listed коллекции — строго по одной (не конкурируют ни между собой, ни с пулом).
-  for svc in "${deferred[@]:-}"; do
-    [[ -n "$svc" ]] || continue
-    run_one "$svc"
-  done
 
   echo
   echo "===== Summary ====="
-  # pipefail прокидывает ненулевой вердикт сквозь tee — печать сводки сохранена.
   if aggregate_verdict "out" "${stems[@]}" | tee out/summary.txt; then
-    echo "OK: все коллекции зеленые."
+    echo "OK: все коллекции зелёные."
   else
     echo "FAIL: одна или несколько коллекций провалены / отсутствуют (см. таблицу выше)." >&2
     exit 1
   fi
 }
 
-# main запускается только при прямом вызове; при `source` (self-test) — нет.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   main "$@"
 fi

@@ -1,0 +1,1114 @@
+{
+  "info": {
+    "_postman_id": "fe6f994b-ea59-4e4d-a9e1-7d562e1a18fe",
+    "name": "kacho-geo / newman / internal-region",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
+          "}",
+          "const __jwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+          "if (__jwt && !pm.request.headers.has('Authorization')) {",
+          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __jwt});",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "IRG-CR-CRUD-OK — InternalRegionService.Create → 200 Operation{geo-id, metadata}; region materializes (public Get)",
+      "description": "class:CRUD | priority:P0",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-reg-crud-{{runId}}\", \"name\": \"QA Region CRUD {{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.regionId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('irgCrudRegionId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region-rgf16",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-crud-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-crud-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
+                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('region id materialized', () => pm.expect(j.id).to.eql('qa-reg-crud-' + pm.environment.get('runId')));",
+                  "pm.test('name persisted', () => pm.expect(j.name).to.eql('QA Region CRUD ' + pm.environment.get('runId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-crud-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-crud-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRG-CR-VAL-MALFORMED-ID — Create region with malformed (non-slug) id → sync 400 InvalidArgument (no Operation row written)",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "create-malformed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"9-Bad_Id!\", \"name\": \"QA Malformed\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('message references region id', () => pm.expect(String(pm.response.json().message)).to.include('region id'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRG-CR-VAL-EMPTY-ID — Create region with empty id → sync 400 InvalidArgument 'region id is required'",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "create-empty-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"\", \"name\": \"QA Empty Id\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('message: region id is required', () => pm.expect(String(pm.response.json().message)).to.include('region id is required'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRG-CR-NEG-DUP-INVARIANT — Create duplicate region id twice → no phantom; region still resolves once (ALREADY_EXISTS deferred behind #55)",
+      "description": "class:NEG | class:IDM | priority:P1",
+      "item": [
+        {
+          "name": "create-first",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"QA Region Dup {{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-after-first-rgf17",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-dup-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-dup-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
+                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-dup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"QA Region Dup Again\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-still-present",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-dup-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-dup-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('region survived dup Create (no phantom delete)', () => pm.expect(pm.response.json().id).to.eql('qa-reg-dup-' + pm.environment.get('runId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-dup-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-dup-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRG-DEL-NEG-HASZONES-INVARIANT — Delete region that owns a zone → FK RESTRICT keeps it; region still resolves (FAILED_PRECONDITION deferred behind #55)",
+      "description": "class:NEG | class:STATE | priority:P0",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Region Del {{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "confirm-region-rgf18",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-del-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-del-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
+                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-child-zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/zones",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-zon-del-{{runId}}\", \"regionId\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Child Zone\", \"status\": \"UP\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "confirm-zone-rgf19",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/qa-zon-del-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "qa-zon-del-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
+                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-region-with-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-del-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-del-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "region-survived",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-del-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-del-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('region survived delete (FK RESTRICT held)', () => pm.expect(pm.response.json().id).to.eql('qa-reg-del-' + pm.environment.get('runId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/zones/qa-zon-del-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "qa-zon-del-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-region",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-del-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-del-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRG-UPD-CRUD-OK — InternalRegionService.Update name → 200 Operation; new name materializes (public Get)",
+      "description": "class:CRUD | class:STATE | priority:P1",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-reg-upd-{{runId}}\", \"name\": \"QA Region Before\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "confirm-created-rgf20",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-upd-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-upd-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
+                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-name",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-upd-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-upd-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"QA Region After {{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "verify-name",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-upd-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-upd-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const want = 'QA Region After ' + pm.environment.get('runId');",
+                  "const cur = pm.response.json().name;",
+                  "const uc = parseInt(pm.environment.get('_updRetry') || '0', 10);",
+                  "if (cur !== want && uc < 20) {",
+                  "  pm.environment.set('_updRetry', String(uc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* update-commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_updRetry');",
+                  "pm.test('name updated', () => pm.expect(cur).to.eql(want));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/regions/qa-reg-upd-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-upd-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

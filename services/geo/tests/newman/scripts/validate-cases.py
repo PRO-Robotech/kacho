@@ -3,20 +3,23 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 """
-tests/newman/scripts/validate-cases.py — MANDATORY case-uniqueness validation
-(kacho-geo). Structurally identical to the kacho-vpc reference validator.
+tests/newman/scripts/validate-cases.py — MANDATORY case-uniqueness validation.
 
-Гоняется в CI **до** тяжелого newman-шага (pure-Python, без сети). Hard-fail
+Гоняется в CI **до** тяжёлого newman-шага (pure-Python, без сети). Hard-fail
 (exit 1), если:
 
   1. Один и тот же case-id встречается более одного раза среди всех кейсов,
-     которые генерирует `gen.py` (внутри файла, между файлами) — дубль запрещён.
-  2. Новый кейс не зафиксирован в каталоге `docs/CASES-INDEX.md`: каждый case-id
-     обязан либо
+     которые генерирует `gen.py` — дубль case-id запрещён.
+  2. Новый кейс не зафиксирован в каталоге паттернов `docs/CASES-INDEX.md`:
+     каждый case-id обязан либо
        (a) быть покрытым `CASES-INDEX.md` — суффикс-паттерн `*-<SUFFIX>` ИЛИ
            литеральный case-id присутствует в тексте `CASES-INDEX.md`, ЛИБО
-       (b) быть помеченным в case-файле тегом-комментарием `# index: <ref>`
+       (b) быть помеченным в case-файле тегом-комментарием  `# index: <ref>`
            (на строке с `id="..."`, либо на 1-2 строках выше).
+
+  Исключение: case-файлы `internal-*.py` (admin RPC) — CASES-INDEX каталогизирует
+  их отдельной заметкой, а не таблицей паттернов, поэтому от них индекс-покрытие
+  не требуется (но dup-id-проверка работает и для них).
 
 Использование:
     python3 tests/newman/scripts/validate-cases.py
@@ -66,7 +69,7 @@ def _text_tags() -> dict[str, set[str]]:
 
 
 def _all_cases() -> list[tuple[str, str]]:
-    """Импортирует case-модули как это делает gen.py → [(case_id, filename), ...]."""
+    """Импортирует case-модули как это делает gen.py → [(case_id, service_filename), ...]."""
     import gen  # noqa: E402  (lazy — sys.path подправлен выше)
 
     out: list[tuple[str, str]] = []
@@ -111,7 +114,7 @@ def main() -> int:
             continue
         checked.add(case_id)
         if INTERNAL_FILE_RE.match(fname):
-            continue
+            continue  # admin — каталогизированы заметкой
         if case_id in tagged:
             continue
         suf = _suffix(case_id)

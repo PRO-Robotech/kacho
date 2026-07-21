@@ -1,40 +1,36 @@
-# Product Requirements — kacho-geo public read (нормативный регламент)
+# kacho-geo newman — PRODUCT-REQUIREMENTS
 
-`REQ-*` — что продукт ДОЛЖЕН / НЕ ДОЛЖЕН на публичной read-поверхности каталога оси
-размещения (Region/Zone). Выведено из APPROVED acceptance GEO-1 + `api-conventions.md`.
-Каждый REQ мапится на newman-кейс(ы) (`Validated-by`).
+Требования, покрываемые geo regression-suite (AS-IS-контракт). `REQ-*` → case-id
+traceability. Источник: proto/kacho/cloud/geo/v1/* + services/geo/internal/* +
+`.claude/rules/{api-conventions,data-integrity,security}.md`.
 
-## Read (Get / List)
-
-| REQ | Требование | Validated-by |
+| REQ | требование | покрыто case-id |
 |---|---|---|
-| REQ-GEO-READ-01 | `List` возвращает `regions[]`/`zones[]` — массив плоских public-ресурсов (camelCase); seeded-каталог непуст | `REG-LST-CRUD-OK`, `ZON-LST-CRUD-OK` |
-| REQ-GEO-READ-02 | List-item несёт **полную** public-проекцию (Region: id/name; Zone: id/regionId/name), не reduced-subset | `REG-LST-CRUD-OK`, `ZON-LST-CRUD-OK` |
-| REQ-GEO-READ-03 | `Get` существующего id → 200, `id` эхо-возврат, `createdAt` присутствует (усечён до секунд на wire) | `REG-GET-CRUD-OK`, `ZON-GET-CRUD-OK` |
-| REQ-GEO-READ-04 | `Get` well-formed-но-отсутствующего id → `NOT_FOUND`, verbatim `"Region\|Zone <id> not found"` | `REG-GET-NEG-NOTFOUND`, `ZON-GET-NEG-NOTFOUND` |
-| REQ-GEO-READ-05 | `Get` malformed (non-slug) id → `INVALID_ARGUMENT` первым стейтментом; **без** утечки pgx/SQL-текста | `REG-GET-VAL-MALFORMED`, `ZON-GET-VAL-MALFORMED` |
+| REQ-GEO-01 | Public read gateway→geo достижим (mTLS/DNS), не 503/code14 | GEO-REG-GT-CONF-OK, GEO-ZON-GT-CONF-OK |
+| REQ-GEO-02 | Region/Zone — плоский flat-resource (camelCase, domain-поля верхнего уровня) | REG-GET-CRUD-OK, ZON-GET-CRUD-OK |
+| REQ-GEO-03 | `createdAt` усечён до секунд на wire | REG-GET-CRUD-OK, ZON-GET-CRUD-OK |
+| REQ-GEO-04 | Two-projection: инфра-полей на public НЕТ | REG-GET-CONF-NO-INFRA, ZON-GET-CONF-NO-INFRA |
+| REQ-GEO-05 | malformed id → sync INVALID_ARGUMENT первым стейтментом | REG-GET-VAL-MALFORMED, ZON-GET-VAL-MALFORMED, IRG-CR-VAL-MALFORMED-ID, IZN-CR-VAL-MALFORMED-ID |
+| REQ-GEO-06 | well-formed-absent id → NOT_FOUND, verbatim "<Resource> <id> not found" | REG-GET-NEG-NOTFOUND, ZON-GET-NEG-NOTFOUND |
+| REQ-GEO-07 | pageSize вне [0..1000] отвергается (не clamp); garbage token → INVALID_ARGUMENT | REG-LST-BVA-PAGESIZE-OVER-MAX, REG-LST-PAGE-TOKEN-GARBAGE, ZON-LST-* |
+| REQ-GEO-08 | pagination round-trip корректен | REG-LST-PAGE-ROUNDTRIP, ZON-LST-PAGE-ROUNDTRIP |
+| REQ-GEO-09 | required id обязателен на Create → sync INVALID_ARGUMENT "region id is required" | IRG-CR-VAL-EMPTY-ID |
+| REQ-GEO-10 | admin Create/Update/Delete → Operation envelope (async), ресурс материализуется | IRG-CR-CRUD-OK, IRG-UPD-CRUD-OK, IZN-CR-CRUD-OK, IZN-UPD-CRUD-STATUS |
+| REQ-GEO-11 | within-service FK RESTRICT: регион с зонами не удаляется | IRG-DEL-NEG-HASZONES-INVARIANT |
+| REQ-GEO-12 | zone с несуществующим regionId не создаётся (FK reject) | IZN-CR-NEG-GHOST-REGION-INVARIANT |
+| REQ-GEO-13 | zone status: explicit DOWN persists; omitted → UP (AS-IS default) | IZN-CR-CONF-STATUS-DOWN, IZN-CR-CONF-STATUS-DEFAULT-UP |
+| REQ-GEO-14 | dup id (PK) не создаёт phantom | IRG-CR-NEG-DUP-INVARIANT |
+| REQ-GEO-15 | ban #6: Internal* admin не на публичном endpoint | ANP-REG-CR-NOT-PUBLIC, ANP-ZON-CR-NOT-PUBLIC |
+| REQ-GEO-16 | public read: authN обязателен (anonymous → UNAUTHENTICATED) | GEO-REG-GT-AUTHZ-ANON-DENY, GEO-ZON-GT-AUTHZ-ANON-DENY |
+| REQ-GEO-17 | public read: authZ viewer@cluster (no-viewer → PERMISSION_DENIED, AS-IS) | GEO-REG-GT-AUTHZ-NOVIEWER-DENY |
+| REQ-GEO-18 | admin CRUD: system_admin@cluster (non-admin → PERMISSION_DENIED) | GEO-REG-CR-AUTHZ-NONADMIN-DENY, GEO-ZON-CR-AUTHZ-NONADMIN-DENY |
+| REQ-GEO-19 | Operation op-poll маршрутизируется + owner-scoping (BOLA) | GEO-IOP-POLL-ROUTING-OK*, GEO-IOP-GET-AUTHZ-BOLA*, GOP-GET-VAL-MALFORMED |
 
-## Pagination
+`*` — RED, заблокировано product-багом PRO-Robotech/kacho#55 (см. RESULTS.md).
 
-| REQ | Требование | Validated-by |
-|---|---|---|
-| REQ-GEO-PAGE-01 | `pageSize=0` → 200 (сервер применяет default) | `REG-LST-BVA-PAGESIZE-ZERO`, `ZON-LST-BVA-PAGESIZE-ZERO` |
-| REQ-GEO-PAGE-02 | `pageSize > 1000` → `INVALID_ARGUMENT` (**отвергается**, не clamp'ится), field-violation `page_size` | `REG-LST-BVA-PAGESIZE-OVER-MAX`, `ZON-LST-BVA-PAGESIZE-OVER-MAX` |
-| REQ-GEO-PAGE-03 | garbage `pageToken` → `INVALID_ARGUMENT` | `REG-LST-PAGE-BADTOKEN`, `ZON-LST-PAGE-BADTOKEN` |
-| REQ-GEO-PAGE-04 | opaque `nextPageToken` round-trip'ится без ошибки | `REG-LST-PAGE-ROUNDTRIP`, `ZON-LST-PAGE-ROUNDTRIP` |
+## Осознанно НЕ покрыто (GEO-1 redesign — не реализован)
 
-## Security / two-projection / authN
-
-| REQ | Требование | Validated-by |
-|---|---|---|
-| REQ-GEO-SEC-01 | Публичная проекция Region/Zone **НЕ** несёт инфра-полей (numericInfraId, hostClasses, underlayAnchor, capacityHint, failureDomainCount) — host-class физически не выходит на public (two-projection, `:9091`-only) | `REG-GET-CONF-NO-INFRA`, `ZON-GET-CONF-NO-INFRA` |
-| REQ-GEO-SEC-02 | Ни одна public-проекция не несёт ось-дискриминатор `placementType`/`placementScope` (derived-by-service) | `REG-GET-CONF-NO-INFRA`, `ZON-GET-CONF-NO-INFRA` |
-| REQ-GEO-SEC-03 | Public read гейтится **authN** (anonymous → `UNAUTHENTICATED`); anonymous-full-access запрещён на любом листенере | `REG-LST-AUTHZ-ANON-DENY`, `ZON-LST-AUTHZ-ANON-DENY` |
-| REQ-GEO-SEC-04 | Admin write-verb (`InternalRegion/ZoneService.Create`) на публичном endpoint для не-admin'а **никогда не мутирует** (rejected 401/403/404/501) — Internal-vs-external split (ban #6) | `REG-CR-AUTHZ-ADMIN-NOT-PUBLIC`, `ZON-CR-AUTHZ-ADMIN-NOT-PUBLIC` |
-
-## НЕ ДОЛЖЕН (invariants)
-
-- НЕ отвечать 500 / не течь SQLSTATE/pgx/goroutine на malformed id (REQ-GEO-READ-05).
-- НЕ clamp'ить `pageSize` вне `[0..1000]` (REQ-GEO-PAGE-02 — отвергать).
-- НЕ раскрывать инфра/host-class/underlay/placement на public (REQ-GEO-SEC-01/02).
-- НЕ выполнять admin-мутацию по публичному endpoint (REQ-GEO-SEC-04).
+Требования GEO-1 (openForPlacement°, two-projection-move-of-status, GetInternal,
+coupling, immutable regionId, fresh-DOWN, UNIQUE(name), countryCode°, warnings°,
+update_mask discipline, ambient-exempt read, list filters) — merge-gated, surface
+не существует. Traceability добавляется при приземлении GEO-1. См. RESULTS.md.
