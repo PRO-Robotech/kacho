@@ -60,15 +60,15 @@ api-gateway:
   # treats an EMPTY KACHO_APP_ENV as production-class and fails closed when authn.mode=dev
   # or the dev HMAC secret is set (CWE-347 symmetric-key principal forgery, CWE-1188). The
   # dev profile runs authn.mode=dev + devSecret intentionally, so it MUST label the env as
-  # dev-class here — otherwise the gateway refuses to boot. Emitted via the subchart's
-  # generic extraEnv passthrough (the fixed env block does not template APP_ENV).
+  # dev-class here — otherwise the gateway refuses to boot. This also labels the internal
+  # :9091 listener dev-class so validateProductionInternalListener tolerates the insecure
+  # dev listener (internalListener.mtls stays off — the first-class prod block, #57).
   #
-  # The var name is KACHO_APP_ENV (domain-LESS): config.go binds it via
-  # `envconfig:"KACHO_APP_ENV"` — a cross-cutting deployment-env label, NOT the
-  # per-domain KACHO_<DOMAIN>_<NAME> scheme. The earlier KACHO_API_GATEWAY_APP_ENV
-  # was read by nothing → cfg.AppEnv stayed "" → prod-guard fired anyway.
-  extraEnv:
-    KACHO_APP_ENV: dev
+  # First-class `appEnv` knob (chart values, KACHO_APP_ENV) — replaces the earlier generic
+  # extraEnv.KACHO_APP_ENV passthrough. config.go binds it via `envconfig:"KACHO_APP_ENV"`
+  # — a cross-cutting, domain-LESS deployment-env label, NOT the per-domain
+  # KACHO_<DOMAIN>_<NAME> scheme.
+  appEnv: dev
   # mTLS: backend-dial client to every backend (cert + per-edge env). Hybrid
   # external listener (cert-or-JWT). Cert config (issuer/spiffe/secret) — chart values.
   mtls:
