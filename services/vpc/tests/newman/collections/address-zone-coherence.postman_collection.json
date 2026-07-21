@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9d8addcb-6afb-43c8-b521-ec4cd23aa630",
+    "_postman_id": "6ad755d0-f1f9-41f5-8022-4c366bf13cb3",
     "name": "kacho-vpc / newman / address-zone-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -315,7 +315,7 @@
           ]
         },
         {
-          "name": "poll-op-808",
+          "name": "poll-op-900",
           "request": {
             "method": "GET",
             "header": [
@@ -366,7 +366,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya357",
+          "name": "get-known-zone-rya492",
           "request": {
             "method": "GET",
             "header": [
@@ -401,7 +401,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -458,7 +458,7 @@
           ]
         },
         {
-          "name": "poll-op-809",
+          "name": "poll-op-901",
           "request": {
             "method": "GET",
             "header": [
@@ -568,7 +568,7 @@
           ]
         },
         {
-          "name": "poll-op-810",
+          "name": "poll-op-902",
           "request": {
             "method": "GET",
             "header": [
@@ -659,7 +659,7 @@
           ]
         },
         {
-          "name": "poll-op-811",
+          "name": "poll-op-903",
           "request": {
             "method": "GET",
             "header": [

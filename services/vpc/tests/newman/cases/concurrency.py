@@ -115,7 +115,7 @@ def _setup_subnet(suffix, cidr="10.250.0.0/24"):
         Step(
             name="setup-sub", method="POST", path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": f"conc-{suffix}-sub-{{{{runId}}}}", "placementType": "ZONAL", "zoneId": "{{existingZoneId}}",
+                  "name": f"conc-{suffix}-sub-{{{{runId}}}}", "zoneId": "{{existingZoneId}}",
                   "v4CidrBlocks": [cidr]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
@@ -174,9 +174,10 @@ CASES.append(Case(
                         "({projectId: pm.environment.get('_suiteProjectId'), "
                         "networkId: pm.environment.get('netId'), "
                         "name: `conc-ov-sub-${pm.environment.get('runId')}-${i}`, "
-                        # placement_type обязателен (ZONAL|REGIONAL) — без него Create отвергается
-                        # sync 400 «placement_type is required» → нет Operation → burst-assert краснеет.
-                        "placementType: 'ZONAL', "
+                        # placement_type — server-derived (F6): в тело не передаётся. zoneId
+                        # задаёт placement-anchor → server-derives ZONAL. Без zoneId/regionId
+                        # Create отвергся бы sync 400 «exactly one of zone_id, region_id must
+                        # be set» → нет Operation → burst-assert краснеет.
                         "zoneId: pm.environment.get('existingZoneId'), "
                         "v4CidrBlocks: ['10.250.40.0/24']})"
                     ),

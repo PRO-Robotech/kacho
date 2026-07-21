@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "c6e455c8-ab82-47ab-8f07-8dbdfe755fc7",
+    "_postman_id": "bd4e0888-beac-4b55-8b42-5701bd89e6f8",
     "name": "kacho-vpc / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -540,8 +540,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -607,8 +607,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -638,7 +638,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs539",
           "request": {
             "method": "GET",
             "header": [
@@ -665,8 +665,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -680,6 +680,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NETWORK-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -694,7 +713,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs540",
           "request": {
             "method": "GET",
             "header": [
@@ -721,8 +740,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -736,6 +755,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NETWORK-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -778,8 +816,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -845,8 +883,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -904,8 +942,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -1122,7 +1160,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs541",
           "request": {
             "method": "GET",
             "header": [
@@ -1164,6 +1202,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NETWORK-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -1550,7 +1607,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs542",
           "request": {
             "method": "GET",
             "header": [
@@ -1592,6 +1649,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NETWORK-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -1923,7 +1999,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs543",
           "request": {
             "method": "GET",
             "header": [
@@ -1965,6 +2041,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NETWORK-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -3074,8 +3169,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -3141,8 +3236,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -3172,7 +3267,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs544",
           "request": {
             "method": "GET",
             "header": [
@@ -3199,8 +3294,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -3214,6 +3309,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['subnets'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SUBNET-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['subnets']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -3228,7 +3342,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs545",
           "request": {
             "method": "GET",
             "header": [
@@ -3255,8 +3369,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -3270,6 +3384,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['subnets'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SUBNET-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['subnets']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -3312,8 +3445,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -3379,8 +3512,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -3438,8 +3571,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -3656,7 +3789,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs546",
           "request": {
             "method": "GET",
             "header": [
@@ -3698,6 +3831,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['subnets'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SUBNET-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['subnets']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -4084,7 +4236,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs547",
           "request": {
             "method": "GET",
             "header": [
@@ -4126,6 +4278,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['subnets'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SUBNET-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['subnets']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -4457,7 +4628,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs548",
           "request": {
             "method": "GET",
             "header": [
@@ -4499,6 +4670,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['subnets'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SUBNET-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['subnets']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -5608,8 +5798,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -5675,8 +5865,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -5706,7 +5896,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs549",
           "request": {
             "method": "GET",
             "header": [
@@ -5733,8 +5923,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -5748,6 +5938,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['addresses'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['addresses']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -5762,7 +5971,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs550",
           "request": {
             "method": "GET",
             "header": [
@@ -5789,8 +5998,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -5804,6 +6013,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['addresses'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['addresses']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -5846,8 +6074,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -5913,8 +6141,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -5972,8 +6200,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -6190,7 +6418,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs551",
           "request": {
             "method": "GET",
             "header": [
@@ -6232,6 +6460,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['addresses'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['addresses']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -6618,7 +6865,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs552",
           "request": {
             "method": "GET",
             "header": [
@@ -6660,6 +6907,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['addresses'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['addresses']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -6991,7 +7257,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs553",
           "request": {
             "method": "GET",
             "header": [
@@ -7033,6 +7299,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['addresses'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ADDRESS-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['addresses']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -8142,8 +8427,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -8209,8 +8494,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -8240,7 +8525,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs554",
           "request": {
             "method": "GET",
             "header": [
@@ -8267,8 +8552,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -8282,6 +8567,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['routeTables'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['routeTables']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -8296,7 +8600,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs555",
           "request": {
             "method": "GET",
             "header": [
@@ -8323,8 +8627,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -8338,6 +8642,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['routeTables'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['routeTables']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -8380,8 +8703,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -8447,8 +8770,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -8506,8 +8829,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -8724,7 +9047,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs556",
           "request": {
             "method": "GET",
             "header": [
@@ -8766,6 +9089,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['routeTables'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['routeTables']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -9152,7 +9494,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs557",
           "request": {
             "method": "GET",
             "header": [
@@ -9194,6 +9536,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['routeTables'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['routeTables']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -9525,7 +9886,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs558",
           "request": {
             "method": "GET",
             "header": [
@@ -9567,6 +9928,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['routeTables'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['routeTables']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -10676,8 +11056,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -10743,8 +11123,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -10774,7 +11154,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs559",
           "request": {
             "method": "GET",
             "header": [
@@ -10801,8 +11181,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -10816,6 +11196,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['securityGroups'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['securityGroups']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -10830,7 +11229,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs560",
           "request": {
             "method": "GET",
             "header": [
@@ -10857,8 +11256,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -10872,6 +11271,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['securityGroups'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['securityGroups']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -10914,8 +11332,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -10981,8 +11399,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -11040,8 +11458,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -11258,7 +11676,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs561",
           "request": {
             "method": "GET",
             "header": [
@@ -11300,6 +11718,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['securityGroups'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['securityGroups']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -11686,7 +12123,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs562",
           "request": {
             "method": "GET",
             "header": [
@@ -11728,6 +12165,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['securityGroups'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['securityGroups']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -12059,7 +12515,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs563",
           "request": {
             "method": "GET",
             "header": [
@@ -12101,6 +12557,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['securityGroups'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['securityGroups']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -13210,8 +13685,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -13277,8 +13752,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -13308,7 +13783,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs564",
           "request": {
             "method": "GET",
             "header": [
@@ -13335,8 +13810,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -13350,6 +13825,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['gateways'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-GATEWAY-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['gateways']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -13364,7 +13858,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs565",
           "request": {
             "method": "GET",
             "header": [
@@ -13391,8 +13885,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -13406,6 +13900,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['gateways'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-GATEWAY-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['gateways']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -13448,8 +13961,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -13515,8 +14028,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -13574,8 +14087,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -13792,7 +14305,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs566",
           "request": {
             "method": "GET",
             "header": [
@@ -13834,6 +14347,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['gateways'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-GATEWAY-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['gateways']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -14220,7 +14752,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs567",
           "request": {
             "method": "GET",
             "header": [
@@ -14262,6 +14794,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['gateways'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-GATEWAY-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['gateways']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -14593,7 +15144,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs568",
           "request": {
             "method": "GET",
             "header": [
@@ -14635,6 +15186,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['gateways'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-GATEWAY-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['gateways']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -15744,8 +16314,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -15811,8 +16381,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -15842,7 +16412,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs569",
           "request": {
             "method": "GET",
             "header": [
@@ -15869,8 +16439,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -15884,6 +16454,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networkInterfaces'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NIC-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networkInterfaces']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -15898,7 +16487,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs570",
           "request": {
             "method": "GET",
             "header": [
@@ -15925,8 +16514,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -15940,6 +16529,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networkInterfaces'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NIC-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networkInterfaces']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -15982,8 +16590,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -16049,8 +16657,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -16108,8 +16716,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -16326,7 +16934,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs571",
           "request": {
             "method": "GET",
             "header": [
@@ -16368,6 +16976,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networkInterfaces'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NIC-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networkInterfaces']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -16754,7 +17381,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs572",
           "request": {
             "method": "GET",
             "header": [
@@ -16796,6 +17423,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networkInterfaces'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NIC-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networkInterfaces']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -17127,7 +17773,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs573",
           "request": {
             "method": "GET",
             "header": [
@@ -17169,6 +17815,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded retry over the revoke/contamination materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing ~interval_ms.",
+                  "// Fail-open at budget -> the real leak-guard assertion runs once and FAILS if it is STILL",
+                  "// present (a GENUINE over-show hole never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['networkInterfaces'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('[AUTHZ-NIC-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['networkInterfaces']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
@@ -18060,8 +18725,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -18128,8 +18793,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -18187,8 +18852,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -19073,8 +19738,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
@@ -19433,8 +20098,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// authz-deny: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
+                  "// authz-deny: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",

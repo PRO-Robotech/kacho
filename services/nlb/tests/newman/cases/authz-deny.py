@@ -787,7 +787,7 @@ CASES.append(Case(
              pre_script=list(_CIDR_ALLOC_PRE),
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
                    "name": "azd-lcd-sub-{{runId}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
-                   "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
+                   "zoneId": "{{existingZoneId}}"},
              test_script=[
                  "pm.environment.unset('azdSubnetId');",
                  "if (pm.response.code === 200) {",

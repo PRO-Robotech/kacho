@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "02163b5e-66bb-49fd-8c63-74ac00ac2ca2",
+    "_postman_id": "9aa86d78-f676-423e-92b2-e16d2b0d4953",
     "name": "kacho-vpc / newman / security-group",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -163,7 +163,7 @@
           ]
         },
         {
-          "name": "poll-op-1204",
+          "name": "poll-op-1296",
           "request": {
             "method": "GET",
             "header": [
@@ -267,7 +267,7 @@
           ]
         },
         {
-          "name": "poll-op-1205",
+          "name": "poll-op-1297",
           "request": {
             "method": "GET",
             "header": [
@@ -318,7 +318,7 @@
           ]
         },
         {
-          "name": "get-rya538",
+          "name": "get-rya714",
           "request": {
             "method": "GET",
             "header": [
@@ -353,7 +353,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -409,7 +409,7 @@
           ]
         },
         {
-          "name": "poll-op-1206",
+          "name": "poll-op-1298",
           "request": {
             "method": "GET",
             "header": [
@@ -460,7 +460,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya715",
           "request": {
             "method": "DELETE",
             "header": [
@@ -488,6 +488,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -613,7 +628,7 @@
           ]
         },
         {
-          "name": "poll-op-1207",
+          "name": "poll-op-1299",
           "request": {
             "method": "GET",
             "header": [
@@ -717,7 +732,7 @@
           ]
         },
         {
-          "name": "poll-op-1208",
+          "name": "poll-op-1300",
           "request": {
             "method": "GET",
             "header": [
@@ -768,7 +783,7 @@
           ]
         },
         {
-          "name": "get-with-net-rya539",
+          "name": "get-with-net-rya716",
           "request": {
             "method": "GET",
             "header": [
@@ -803,7 +818,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -858,7 +873,7 @@
           ]
         },
         {
-          "name": "poll-op-1209",
+          "name": "poll-op-1301",
           "request": {
             "method": "GET",
             "header": [
@@ -909,7 +924,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya717",
           "request": {
             "method": "DELETE",
             "header": [
@@ -937,6 +952,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -1008,7 +1038,7 @@
           ]
         },
         {
-          "name": "poll-op-1210",
+          "name": "poll-op-1302",
           "request": {
             "method": "GET",
             "header": [
@@ -1112,7 +1142,7 @@
           ]
         },
         {
-          "name": "poll-op-1211",
+          "name": "poll-op-1303",
           "request": {
             "method": "GET",
             "header": [
@@ -1216,7 +1246,7 @@
           ]
         },
         {
-          "name": "poll-op-1212",
+          "name": "poll-op-1304",
           "request": {
             "method": "GET",
             "header": [
@@ -1320,7 +1350,7 @@
           ]
         },
         {
-          "name": "poll-op-1213",
+          "name": "poll-op-1305",
           "request": {
             "method": "GET",
             "header": [
@@ -1371,7 +1401,7 @@
           ]
         },
         {
-          "name": "list-by-network-lst540",
+          "name": "list-by-network-lst718",
           "request": {
             "method": "GET",
             "header": [
@@ -1407,7 +1437,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('sgAId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -1464,7 +1494,7 @@
           ]
         },
         {
-          "name": "poll-op-1214",
+          "name": "poll-op-1306",
           "request": {
             "method": "GET",
             "header": [
@@ -1554,7 +1584,7 @@
           ]
         },
         {
-          "name": "poll-op-1215",
+          "name": "poll-op-1307",
           "request": {
             "method": "GET",
             "header": [
@@ -1644,7 +1674,7 @@
           ]
         },
         {
-          "name": "poll-op-1216",
+          "name": "poll-op-1308",
           "request": {
             "method": "GET",
             "header": [
@@ -1695,7 +1725,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya719",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1723,6 +1753,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -2030,7 +2075,7 @@
           ]
         },
         {
-          "name": "poll-op-1217",
+          "name": "poll-op-1309",
           "request": {
             "method": "GET",
             "header": [
@@ -2134,7 +2179,7 @@
           ]
         },
         {
-          "name": "poll-op-1218",
+          "name": "poll-op-1310",
           "request": {
             "method": "GET",
             "header": [
@@ -2185,7 +2230,7 @@
           ]
         },
         {
-          "name": "update-rules-rya541",
+          "name": "update-rules-rya720",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2230,7 +2275,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -2250,7 +2295,7 @@
           ]
         },
         {
-          "name": "poll-op-1219",
+          "name": "poll-op-1311",
           "request": {
             "method": "GET",
             "header": [
@@ -2301,7 +2346,7 @@
           ]
         },
         {
-          "name": "get-sg-rya542",
+          "name": "get-sg-rya721",
           "request": {
             "method": "GET",
             "header": [
@@ -2336,7 +2381,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -2392,7 +2437,7 @@
           ]
         },
         {
-          "name": "poll-op-1220",
+          "name": "poll-op-1312",
           "request": {
             "method": "GET",
             "header": [
@@ -2443,7 +2488,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya722",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2471,6 +2516,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -2542,7 +2602,7 @@
           ]
         },
         {
-          "name": "poll-op-1221",
+          "name": "poll-op-1313",
           "request": {
             "method": "GET",
             "header": [
@@ -2646,7 +2706,7 @@
           ]
         },
         {
-          "name": "poll-op-1222",
+          "name": "poll-op-1314",
           "request": {
             "method": "GET",
             "header": [
@@ -2774,7 +2834,7 @@
           ]
         },
         {
-          "name": "poll-op-1223",
+          "name": "poll-op-1315",
           "request": {
             "method": "GET",
             "header": [
@@ -2825,7 +2885,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya723",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2853,6 +2913,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -3154,7 +3229,7 @@
           ]
         },
         {
-          "name": "poll-op-1224",
+          "name": "poll-op-1316",
           "request": {
             "method": "GET",
             "header": [
@@ -3258,7 +3333,7 @@
           ]
         },
         {
-          "name": "poll-op-1225",
+          "name": "poll-op-1317",
           "request": {
             "method": "GET",
             "header": [
@@ -3400,7 +3475,7 @@
           ]
         },
         {
-          "name": "poll-op-1226",
+          "name": "poll-op-1318",
           "request": {
             "method": "GET",
             "header": [
@@ -3451,7 +3526,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya724",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3479,6 +3554,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -3550,7 +3640,7 @@
           ]
         },
         {
-          "name": "poll-op-1227",
+          "name": "poll-op-1319",
           "request": {
             "method": "GET",
             "header": [
@@ -3654,7 +3744,7 @@
           ]
         },
         {
-          "name": "poll-op-1228",
+          "name": "poll-op-1320",
           "request": {
             "method": "GET",
             "header": [
@@ -3705,7 +3795,7 @@
           ]
         },
         {
-          "name": "patch-rya543",
+          "name": "patch-rya725",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3749,7 +3839,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -3769,7 +3859,7 @@
           ]
         },
         {
-          "name": "poll-op-1229",
+          "name": "poll-op-1321",
           "request": {
             "method": "GET",
             "header": [
@@ -3860,7 +3950,7 @@
           ]
         },
         {
-          "name": "poll-op-1230",
+          "name": "poll-op-1322",
           "request": {
             "method": "GET",
             "header": [
@@ -3911,7 +4001,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya726",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3939,6 +4029,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -4264,7 +4369,7 @@
           ]
         },
         {
-          "name": "poll-op-1231",
+          "name": "poll-op-1323",
           "request": {
             "method": "GET",
             "header": [
@@ -4368,7 +4473,7 @@
           ]
         },
         {
-          "name": "poll-op-1232",
+          "name": "poll-op-1324",
           "request": {
             "method": "GET",
             "header": [
@@ -4419,7 +4524,7 @@
           ]
         },
         {
-          "name": "del-happy-rya544",
+          "name": "del-happy-rya727",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4454,7 +4559,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -4474,7 +4579,7 @@
           ]
         },
         {
-          "name": "poll-op-1233",
+          "name": "poll-op-1325",
           "request": {
             "method": "GET",
             "header": [
@@ -4525,7 +4630,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya728",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4553,6 +4658,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -4624,7 +4744,7 @@
           ]
         },
         {
-          "name": "poll-op-1234",
+          "name": "poll-op-1326",
           "request": {
             "method": "GET",
             "header": [
@@ -4728,7 +4848,7 @@
           ]
         },
         {
-          "name": "poll-op-1235",
+          "name": "poll-op-1327",
           "request": {
             "method": "GET",
             "header": [
@@ -4779,7 +4899,7 @@
           ]
         },
         {
-          "name": "add-rule-rya545",
+          "name": "add-rule-rya729",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4824,7 +4944,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -4844,7 +4964,7 @@
           ]
         },
         {
-          "name": "poll-op-1236",
+          "name": "poll-op-1328",
           "request": {
             "method": "GET",
             "header": [
@@ -4895,7 +5015,7 @@
           ]
         },
         {
-          "name": "get-sg-rule-id-rya546",
+          "name": "get-sg-rule-id-rya730",
           "request": {
             "method": "GET",
             "header": [
@@ -4930,7 +5050,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5001,7 +5121,7 @@
           ]
         },
         {
-          "name": "poll-op-1237",
+          "name": "poll-op-1329",
           "request": {
             "method": "GET",
             "header": [
@@ -5091,7 +5211,7 @@
           ]
         },
         {
-          "name": "poll-op-1238",
+          "name": "poll-op-1330",
           "request": {
             "method": "GET",
             "header": [
@@ -5142,7 +5262,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya731",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5170,6 +5290,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -5398,7 +5533,7 @@
           ]
         },
         {
-          "name": "poll-op-1239",
+          "name": "poll-op-1331",
           "request": {
             "method": "GET",
             "header": [
@@ -5492,7 +5627,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya547",
+          "name": "cleanup-net-rya732",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5527,7 +5662,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5606,7 +5741,7 @@
           ]
         },
         {
-          "name": "poll-op-1240",
+          "name": "poll-op-1332",
           "request": {
             "method": "GET",
             "header": [
@@ -5705,7 +5840,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya548",
+          "name": "cleanup-net-rya733",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5740,7 +5875,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5819,7 +5954,7 @@
           ]
         },
         {
-          "name": "poll-op-1241",
+          "name": "poll-op-1333",
           "request": {
             "method": "GET",
             "header": [
@@ -5917,7 +6052,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya549",
+          "name": "cleanup-net-rya734",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5952,7 +6087,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -6031,7 +6166,7 @@
           ]
         },
         {
-          "name": "poll-op-1242",
+          "name": "poll-op-1334",
           "request": {
             "method": "GET",
             "header": [
@@ -6125,7 +6260,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya550",
+          "name": "cleanup-net-rya735",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6160,7 +6295,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -6239,7 +6374,7 @@
           ]
         },
         {
-          "name": "poll-op-1243",
+          "name": "poll-op-1335",
           "request": {
             "method": "GET",
             "header": [
@@ -6337,7 +6472,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya551",
+          "name": "cleanup-net-rya736",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6372,7 +6507,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -6451,7 +6586,7 @@
           ]
         },
         {
-          "name": "poll-op-1244",
+          "name": "poll-op-1336",
           "request": {
             "method": "GET",
             "header": [
@@ -6549,7 +6684,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya552",
+          "name": "cleanup-net-rya737",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6584,7 +6719,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -6663,7 +6798,7 @@
           ]
         },
         {
-          "name": "poll-op-1245",
+          "name": "poll-op-1337",
           "request": {
             "method": "GET",
             "header": [
@@ -6761,7 +6896,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya553",
+          "name": "cleanup-net-rya738",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6796,7 +6931,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -6875,7 +7010,7 @@
           ]
         },
         {
-          "name": "poll-op-1246",
+          "name": "poll-op-1338",
           "request": {
             "method": "GET",
             "header": [
@@ -6974,7 +7109,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya554",
+          "name": "cleanup-net-rya739",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7009,7 +7144,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7088,7 +7223,7 @@
           ]
         },
         {
-          "name": "poll-op-1247",
+          "name": "poll-op-1339",
           "request": {
             "method": "GET",
             "header": [
@@ -7186,7 +7321,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya555",
+          "name": "cleanup-net-rya740",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7221,7 +7356,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7300,7 +7435,7 @@
           ]
         },
         {
-          "name": "poll-op-1248",
+          "name": "poll-op-1340",
           "request": {
             "method": "GET",
             "header": [
@@ -7398,7 +7533,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya556",
+          "name": "cleanup-net-rya741",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7433,7 +7568,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7512,7 +7647,7 @@
           ]
         },
         {
-          "name": "poll-op-1249",
+          "name": "poll-op-1341",
           "request": {
             "method": "GET",
             "header": [
@@ -7610,7 +7745,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya557",
+          "name": "cleanup-net-rya742",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7645,7 +7780,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7724,7 +7859,7 @@
           ]
         },
         {
-          "name": "poll-op-1250",
+          "name": "poll-op-1342",
           "request": {
             "method": "GET",
             "header": [
@@ -7823,7 +7958,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya558",
+          "name": "cleanup-net-rya743",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7858,7 +7993,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7937,7 +8072,7 @@
           ]
         },
         {
-          "name": "poll-op-1251",
+          "name": "poll-op-1343",
           "request": {
             "method": "GET",
             "header": [
@@ -8035,7 +8170,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya559",
+          "name": "cleanup-net-rya744",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8070,7 +8205,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -8459,7 +8594,7 @@
           ]
         },
         {
-          "name": "poll-op-1261",
+          "name": "poll-op-1353",
           "request": {
             "method": "GET",
             "header": [
@@ -8563,7 +8698,7 @@
           ]
         },
         {
-          "name": "poll-op-1252",
+          "name": "poll-op-1344",
           "request": {
             "method": "GET",
             "header": [
@@ -8614,7 +8749,7 @@
           ]
         },
         {
-          "name": "patch-rya560",
+          "name": "patch-rya745",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8658,7 +8793,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -8678,7 +8813,7 @@
           ]
         },
         {
-          "name": "poll-op-1253",
+          "name": "poll-op-1345",
           "request": {
             "method": "GET",
             "header": [
@@ -8729,7 +8864,7 @@
           ]
         },
         {
-          "name": "verify-rya561",
+          "name": "verify-rya746",
           "request": {
             "method": "GET",
             "header": [
@@ -8764,7 +8899,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -8780,7 +8915,7 @@
           ]
         },
         {
-          "name": "cleanup-rya562",
+          "name": "cleanup-rya747",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8815,7 +8950,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -8834,7 +8969,7 @@
           ]
         },
         {
-          "name": "poll-op-1254",
+          "name": "poll-op-1346",
           "request": {
             "method": "GET",
             "header": [
@@ -8885,7 +9020,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya569",
+          "name": "cleanup-net-rya754",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8920,7 +9055,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -8999,7 +9134,7 @@
           ]
         },
         {
-          "name": "poll-op-1262",
+          "name": "poll-op-1354",
           "request": {
             "method": "GET",
             "header": [
@@ -9103,7 +9238,7 @@
           ]
         },
         {
-          "name": "poll-op-1255",
+          "name": "poll-op-1347",
           "request": {
             "method": "GET",
             "header": [
@@ -9154,7 +9289,7 @@
           ]
         },
         {
-          "name": "patch-rya563",
+          "name": "patch-rya748",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9198,7 +9333,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -9218,7 +9353,7 @@
           ]
         },
         {
-          "name": "poll-op-1256",
+          "name": "poll-op-1348",
           "request": {
             "method": "GET",
             "header": [
@@ -9269,7 +9404,7 @@
           ]
         },
         {
-          "name": "verify-rya564",
+          "name": "verify-rya749",
           "request": {
             "method": "GET",
             "header": [
@@ -9304,7 +9439,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -9320,7 +9455,7 @@
           ]
         },
         {
-          "name": "cleanup-rya565",
+          "name": "cleanup-rya750",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9355,7 +9490,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -9374,7 +9509,7 @@
           ]
         },
         {
-          "name": "poll-op-1257",
+          "name": "poll-op-1349",
           "request": {
             "method": "GET",
             "header": [
@@ -9425,7 +9560,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya570",
+          "name": "cleanup-net-rya755",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9460,7 +9595,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -9539,7 +9674,7 @@
           ]
         },
         {
-          "name": "poll-op-1263",
+          "name": "poll-op-1355",
           "request": {
             "method": "GET",
             "header": [
@@ -9643,7 +9778,7 @@
           ]
         },
         {
-          "name": "poll-op-1258",
+          "name": "poll-op-1350",
           "request": {
             "method": "GET",
             "header": [
@@ -9694,7 +9829,7 @@
           ]
         },
         {
-          "name": "patch-rya566",
+          "name": "patch-rya751",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9738,7 +9873,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -9758,7 +9893,7 @@
           ]
         },
         {
-          "name": "poll-op-1259",
+          "name": "poll-op-1351",
           "request": {
             "method": "GET",
             "header": [
@@ -9809,7 +9944,7 @@
           ]
         },
         {
-          "name": "verify-rya567",
+          "name": "verify-rya752",
           "request": {
             "method": "GET",
             "header": [
@@ -9844,7 +9979,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -9861,7 +9996,7 @@
           ]
         },
         {
-          "name": "cleanup-rya568",
+          "name": "cleanup-rya753",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9896,7 +10031,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -9915,7 +10050,7 @@
           ]
         },
         {
-          "name": "poll-op-1260",
+          "name": "poll-op-1352",
           "request": {
             "method": "GET",
             "header": [
@@ -9966,7 +10101,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya571",
+          "name": "cleanup-net-rya756",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10001,7 +10136,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -10310,7 +10445,7 @@
           ]
         },
         {
-          "name": "poll-op-1267",
+          "name": "poll-op-1359",
           "request": {
             "method": "GET",
             "header": [
@@ -10414,7 +10549,7 @@
           ]
         },
         {
-          "name": "poll-op-1264",
+          "name": "poll-op-1356",
           "request": {
             "method": "GET",
             "header": [
@@ -10465,7 +10600,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya572",
+          "name": "patch-multi-rya757",
           "request": {
             "method": "PATCH",
             "header": [
@@ -10509,7 +10644,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -10529,7 +10664,7 @@
           ]
         },
         {
-          "name": "poll-op-1265",
+          "name": "poll-op-1357",
           "request": {
             "method": "GET",
             "header": [
@@ -10580,7 +10715,7 @@
           ]
         },
         {
-          "name": "verify-all-rya573",
+          "name": "verify-all-rya758",
           "request": {
             "method": "GET",
             "header": [
@@ -10615,7 +10750,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -10635,7 +10770,7 @@
           ]
         },
         {
-          "name": "cleanup-rya574",
+          "name": "cleanup-rya759",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10670,7 +10805,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -10689,7 +10824,7 @@
           ]
         },
         {
-          "name": "poll-op-1266",
+          "name": "poll-op-1358",
           "request": {
             "method": "GET",
             "header": [
@@ -10740,7 +10875,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya575",
+          "name": "cleanup-net-rya760",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10775,7 +10910,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -10854,7 +10989,7 @@
           ]
         },
         {
-          "name": "poll-op-1270",
+          "name": "poll-op-1362",
           "request": {
             "method": "GET",
             "header": [
@@ -10958,7 +11093,7 @@
           ]
         },
         {
-          "name": "poll-op-1268",
+          "name": "poll-op-1360",
           "request": {
             "method": "GET",
             "header": [
@@ -11009,7 +11144,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst576",
+          "name": "list-filtered-lst761",
           "request": {
             "method": "GET",
             "header": [
@@ -11045,7 +11180,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('fltId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 60) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -11062,7 +11197,7 @@
           ]
         },
         {
-          "name": "cleanup-rya577",
+          "name": "cleanup-rya762",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11097,7 +11232,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -11116,7 +11251,7 @@
           ]
         },
         {
-          "name": "poll-op-1269",
+          "name": "poll-op-1361",
           "request": {
             "method": "GET",
             "header": [
@@ -11167,7 +11302,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya578",
+          "name": "cleanup-net-rya763",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11202,7 +11337,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -11281,7 +11416,7 @@
           ]
         },
         {
-          "name": "poll-op-1271",
+          "name": "poll-op-1363",
           "request": {
             "method": "GET",
             "header": [
@@ -11375,7 +11510,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya579",
+          "name": "cleanup-net-rya764",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11410,7 +11545,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -11489,7 +11624,7 @@
           ]
         },
         {
-          "name": "poll-op-1272",
+          "name": "poll-op-1364",
           "request": {
             "method": "GET",
             "header": [
@@ -11589,7 +11724,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya580",
+          "name": "cleanup-net-rya765",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11624,7 +11759,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -11703,7 +11838,7 @@
           ]
         },
         {
-          "name": "poll-op-1273",
+          "name": "poll-op-1365",
           "request": {
             "method": "GET",
             "header": [
@@ -11803,7 +11938,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya581",
+          "name": "cleanup-net-rya766",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11838,7 +11973,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -12111,7 +12246,7 @@
           ]
         },
         {
-          "name": "poll-op-1276",
+          "name": "poll-op-1368",
           "request": {
             "method": "GET",
             "header": [
@@ -12215,7 +12350,7 @@
           ]
         },
         {
-          "name": "poll-op-1274",
+          "name": "poll-op-1366",
           "request": {
             "method": "GET",
             "header": [
@@ -12353,7 +12488,7 @@
           ]
         },
         {
-          "name": "poll-op-1275",
+          "name": "poll-op-1367",
           "request": {
             "method": "GET",
             "header": [
@@ -12404,7 +12539,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya582",
+          "name": "cleanup-net-rya767",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12439,7 +12574,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -12518,7 +12653,7 @@
           ]
         },
         {
-          "name": "poll-op-1280",
+          "name": "poll-op-1372",
           "request": {
             "method": "GET",
             "header": [
@@ -12622,7 +12757,7 @@
           ]
         },
         {
-          "name": "poll-op-1277",
+          "name": "poll-op-1369",
           "request": {
             "method": "GET",
             "header": [
@@ -12673,7 +12808,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya583",
+          "name": "patch-name-only-rya768",
           "request": {
             "method": "PATCH",
             "header": [
@@ -12717,7 +12852,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -12737,7 +12872,7 @@
           ]
         },
         {
-          "name": "poll-op-1278",
+          "name": "poll-op-1370",
           "request": {
             "method": "GET",
             "header": [
@@ -12788,7 +12923,7 @@
           ]
         },
         {
-          "name": "verify-rya584",
+          "name": "verify-rya769",
           "request": {
             "method": "GET",
             "header": [
@@ -12823,7 +12958,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -12842,7 +12977,7 @@
           ]
         },
         {
-          "name": "cleanup-rya585",
+          "name": "cleanup-rya770",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12877,7 +13012,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -12896,7 +13031,7 @@
           ]
         },
         {
-          "name": "poll-op-1279",
+          "name": "poll-op-1371",
           "request": {
             "method": "GET",
             "header": [
@@ -12947,7 +13082,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya586",
+          "name": "cleanup-net-rya771",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12982,7 +13117,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -13061,7 +13196,7 @@
           ]
         },
         {
-          "name": "poll-op-1283",
+          "name": "poll-op-1375",
           "request": {
             "method": "GET",
             "header": [
@@ -13165,7 +13300,7 @@
           ]
         },
         {
-          "name": "poll-op-1281",
+          "name": "poll-op-1373",
           "request": {
             "method": "GET",
             "header": [
@@ -13216,7 +13351,7 @@
           ]
         },
         {
-          "name": "get-timed-rya587",
+          "name": "get-timed-rya772",
           "request": {
             "method": "GET",
             "header": [
@@ -13251,7 +13386,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -13306,7 +13441,7 @@
           ]
         },
         {
-          "name": "poll-op-1282",
+          "name": "poll-op-1374",
           "request": {
             "method": "GET",
             "header": [
@@ -13357,7 +13492,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya588",
+          "name": "cleanup-net-rya773",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13392,7 +13527,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -13512,7 +13647,7 @@
           ]
         },
         {
-          "name": "poll-op-1286",
+          "name": "poll-op-1378",
           "request": {
             "method": "GET",
             "header": [
@@ -13616,7 +13751,7 @@
           ]
         },
         {
-          "name": "poll-op-1284",
+          "name": "poll-op-1376",
           "request": {
             "method": "GET",
             "header": [
@@ -13667,7 +13802,7 @@
           ]
         },
         {
-          "name": "update-rule-bad",
+          "name": "update-rule-bad-rya774",
           "request": {
             "method": "PATCH",
             "header": [
@@ -13705,6 +13840,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('rejected sync or async', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
                 ]
               }
@@ -13751,7 +13901,7 @@
           ]
         },
         {
-          "name": "poll-op-1285",
+          "name": "poll-op-1377",
           "request": {
             "method": "GET",
             "header": [
@@ -13802,7 +13952,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya589",
+          "name": "cleanup-net-rya775",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13837,7 +13987,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -13916,7 +14066,7 @@
           ]
         },
         {
-          "name": "poll-op-1289",
+          "name": "poll-op-1381",
           "request": {
             "method": "GET",
             "header": [
@@ -14020,7 +14170,7 @@
           ]
         },
         {
-          "name": "poll-op-1287",
+          "name": "poll-op-1379",
           "request": {
             "method": "GET",
             "header": [
@@ -14071,7 +14221,7 @@
           ]
         },
         {
-          "name": "update-rule-bad",
+          "name": "update-rule-bad-rya776",
           "request": {
             "method": "PATCH",
             "header": [
@@ -14109,6 +14259,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('rejected sync or async', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
                 ]
               }
@@ -14155,7 +14320,7 @@
           ]
         },
         {
-          "name": "poll-op-1288",
+          "name": "poll-op-1380",
           "request": {
             "method": "GET",
             "header": [
@@ -14206,7 +14371,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya590",
+          "name": "cleanup-net-rya777",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14241,7 +14406,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -14320,7 +14485,7 @@
           ]
         },
         {
-          "name": "poll-op-1293",
+          "name": "poll-op-1385",
           "request": {
             "method": "GET",
             "header": [
@@ -14424,7 +14589,7 @@
           ]
         },
         {
-          "name": "poll-op-1290",
+          "name": "poll-op-1382",
           "request": {
             "method": "GET",
             "header": [
@@ -14475,7 +14640,7 @@
           ]
         },
         {
-          "name": "update-rule-bad",
+          "name": "update-rule-bad-rya778",
           "request": {
             "method": "PATCH",
             "header": [
@@ -14513,6 +14678,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('200', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -14525,7 +14705,7 @@
           ]
         },
         {
-          "name": "poll-op-1291",
+          "name": "poll-op-1383",
           "request": {
             "method": "GET",
             "header": [
@@ -14615,7 +14795,7 @@
           ]
         },
         {
-          "name": "poll-op-1292",
+          "name": "poll-op-1384",
           "request": {
             "method": "GET",
             "header": [
@@ -14666,7 +14846,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya591",
+          "name": "cleanup-net-rya779",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14701,7 +14881,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -14780,7 +14960,7 @@
           ]
         },
         {
-          "name": "poll-op-1296",
+          "name": "poll-op-1388",
           "request": {
             "method": "GET",
             "header": [
@@ -14884,7 +15064,7 @@
           ]
         },
         {
-          "name": "poll-op-1294",
+          "name": "poll-op-1386",
           "request": {
             "method": "GET",
             "header": [
@@ -14935,7 +15115,7 @@
           ]
         },
         {
-          "name": "update-rule-bad",
+          "name": "update-rule-bad-rya780",
           "request": {
             "method": "PATCH",
             "header": [
@@ -14973,6 +15153,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('rejected sync or async', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
                 ]
               }
@@ -15019,7 +15214,7 @@
           ]
         },
         {
-          "name": "poll-op-1295",
+          "name": "poll-op-1387",
           "request": {
             "method": "GET",
             "header": [
@@ -15070,7 +15265,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya592",
+          "name": "cleanup-net-rya781",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15105,7 +15300,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -15184,7 +15379,7 @@
           ]
         },
         {
-          "name": "poll-op-1299",
+          "name": "poll-op-1391",
           "request": {
             "method": "GET",
             "header": [
@@ -15288,7 +15483,7 @@
           ]
         },
         {
-          "name": "poll-op-1297",
+          "name": "poll-op-1389",
           "request": {
             "method": "GET",
             "header": [
@@ -15339,7 +15534,7 @@
           ]
         },
         {
-          "name": "update-rule-bad",
+          "name": "update-rule-bad-rya782",
           "request": {
             "method": "PATCH",
             "header": [
@@ -15377,6 +15572,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('rejected sync or async', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
                 ]
               }
@@ -15423,7 +15633,7 @@
           ]
         },
         {
-          "name": "poll-op-1298",
+          "name": "poll-op-1390",
           "request": {
             "method": "GET",
             "header": [
@@ -15474,7 +15684,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya593",
+          "name": "cleanup-net-rya783",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15509,7 +15719,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -15833,7 +16043,7 @@
           ]
         },
         {
-          "name": "poll-op-1300",
+          "name": "poll-op-1392",
           "request": {
             "method": "GET",
             "header": [
@@ -15884,7 +16094,7 @@
           ]
         },
         {
-          "name": "get-default-sg-id",
+          "name": "get-default-sg-id-rya784",
           "request": {
             "method": "GET",
             "header": [
@@ -15913,6 +16123,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const def = (pm.response.json().securityGroups || []).find(s => s.defaultForNetwork === true);",
                   "pm.expect(def, 'must have default SG').to.be.an('object');",
@@ -15963,7 +16188,7 @@
           ]
         },
         {
-          "name": "poll-op-1301",
+          "name": "poll-op-1393",
           "request": {
             "method": "GET",
             "header": [
@@ -16049,7 +16274,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya785",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16077,6 +16302,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('cleanup attempted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -16089,7 +16329,7 @@
           ]
         },
         {
-          "name": "poll-op-1302",
+          "name": "poll-op-1394",
           "request": {
             "method": "GET",
             "header": [
@@ -16199,7 +16439,7 @@
           ]
         },
         {
-          "name": "poll-op-1303",
+          "name": "poll-op-1395",
           "request": {
             "method": "GET",
             "header": [
@@ -16272,7 +16512,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-nicatt-sub-{{runId}}\", \"placementType\": \"ZONAL\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.0.0/24\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-nicatt-sub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"v4CidrBlocks\": [\"10.249.0.0/24\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16303,7 +16543,7 @@
           ]
         },
         {
-          "name": "poll-op-1304",
+          "name": "poll-op-1396",
           "request": {
             "method": "GET",
             "header": [
@@ -16407,7 +16647,7 @@
           ]
         },
         {
-          "name": "poll-op-1305",
+          "name": "poll-op-1397",
           "request": {
             "method": "GET",
             "header": [
@@ -16511,7 +16751,7 @@
           ]
         },
         {
-          "name": "poll-op-1306",
+          "name": "poll-op-1398",
           "request": {
             "method": "GET",
             "header": [
@@ -16636,7 +16876,7 @@
           ]
         },
         {
-          "name": "poll-op-1307",
+          "name": "poll-op-1399",
           "request": {
             "method": "GET",
             "header": [
@@ -16774,7 +17014,7 @@
           ]
         },
         {
-          "name": "poll-op-1308",
+          "name": "poll-op-1400",
           "request": {
             "method": "GET",
             "header": [
@@ -16865,7 +17105,7 @@
           ]
         },
         {
-          "name": "poll-op-1309",
+          "name": "poll-op-1401",
           "request": {
             "method": "GET",
             "header": [
@@ -16956,7 +17196,7 @@
           ]
         },
         {
-          "name": "poll-op-1310",
+          "name": "poll-op-1402",
           "request": {
             "method": "GET",
             "header": [
@@ -17047,7 +17287,7 @@
           ]
         },
         {
-          "name": "poll-op-1311",
+          "name": "poll-op-1403",
           "request": {
             "method": "GET",
             "header": [
@@ -17138,7 +17378,7 @@
           ]
         },
         {
-          "name": "poll-op-1312",
+          "name": "poll-op-1404",
           "request": {
             "method": "GET",
             "header": [
@@ -17248,7 +17488,7 @@
           ]
         },
         {
-          "name": "poll-op-1313",
+          "name": "poll-op-1405",
           "request": {
             "method": "GET",
             "header": [
@@ -17342,7 +17582,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya594",
+          "name": "cleanup-net-rya786",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17377,7 +17617,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -17456,7 +17696,7 @@
           ]
         },
         {
-          "name": "poll-op-1314",
+          "name": "poll-op-1406",
           "request": {
             "method": "GET",
             "header": [
@@ -17550,7 +17790,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya595",
+          "name": "cleanup-net-rya787",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17585,7 +17825,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -17664,7 +17904,7 @@
           ]
         },
         {
-          "name": "poll-op-1315",
+          "name": "poll-op-1407",
           "request": {
             "method": "GET",
             "header": [
@@ -17758,7 +17998,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya596",
+          "name": "cleanup-net-rya788",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17793,7 +18033,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -17984,7 +18224,7 @@
           ]
         },
         {
-          "name": "poll-op-1316",
+          "name": "poll-op-1408",
           "request": {
             "method": "GET",
             "header": [
@@ -18086,7 +18326,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya597",
+          "name": "cleanup-net-rya789",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18121,7 +18361,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -18200,7 +18440,7 @@
           ]
         },
         {
-          "name": "poll-op-1317",
+          "name": "poll-op-1409",
           "request": {
             "method": "GET",
             "header": [
@@ -18302,7 +18542,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya598",
+          "name": "cleanup-net-rya790",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18337,7 +18577,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -18416,7 +18656,7 @@
           ]
         },
         {
-          "name": "poll-op-1318",
+          "name": "poll-op-1410",
           "request": {
             "method": "GET",
             "header": [
@@ -18518,7 +18758,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya599",
+          "name": "cleanup-net-rya791",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18553,7 +18793,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -18632,7 +18872,7 @@
           ]
         },
         {
-          "name": "poll-op-1319",
+          "name": "poll-op-1411",
           "request": {
             "method": "GET",
             "header": [
@@ -18734,7 +18974,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya600",
+          "name": "cleanup-net-rya792",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18769,7 +19009,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -18848,7 +19088,7 @@
           ]
         },
         {
-          "name": "poll-op-1320",
+          "name": "poll-op-1412",
           "request": {
             "method": "GET",
             "header": [
@@ -18950,7 +19190,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya601",
+          "name": "cleanup-net-rya793",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18985,7 +19225,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -19064,7 +19304,7 @@
           ]
         },
         {
-          "name": "poll-op-1321",
+          "name": "poll-op-1413",
           "request": {
             "method": "GET",
             "header": [
@@ -19166,7 +19406,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya602",
+          "name": "cleanup-net-rya794",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19201,7 +19441,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -19280,7 +19520,7 @@
           ]
         },
         {
-          "name": "poll-op-1322",
+          "name": "poll-op-1414",
           "request": {
             "method": "GET",
             "header": [
@@ -19382,7 +19622,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya603",
+          "name": "cleanup-net-rya795",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19417,7 +19657,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -19496,7 +19736,7 @@
           ]
         },
         {
-          "name": "poll-op-1323",
+          "name": "poll-op-1415",
           "request": {
             "method": "GET",
             "header": [
@@ -19582,7 +19822,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya604",
+          "name": "cleanup-net-rya796",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19617,7 +19857,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -19696,7 +19936,7 @@
           ]
         },
         {
-          "name": "poll-op-1324",
+          "name": "poll-op-1416",
           "request": {
             "method": "GET",
             "header": [
@@ -19805,7 +20045,7 @@
           ]
         },
         {
-          "name": "poll-op-1325",
+          "name": "poll-op-1417",
           "request": {
             "method": "GET",
             "header": [
@@ -19890,7 +20130,7 @@
           ]
         },
         {
-          "name": "get-rya605",
+          "name": "get-rya797",
           "request": {
             "method": "GET",
             "header": [
@@ -19925,7 +20165,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -19980,7 +20220,7 @@
           ]
         },
         {
-          "name": "poll-op-1326",
+          "name": "poll-op-1418",
           "request": {
             "method": "GET",
             "header": [
@@ -20031,7 +20271,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya798",
           "request": {
             "method": "DELETE",
             "header": [
@@ -20059,6 +20299,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -20184,7 +20439,7 @@
           ]
         },
         {
-          "name": "poll-op-1327",
+          "name": "poll-op-1419",
           "request": {
             "method": "GET",
             "header": [
@@ -20288,7 +20543,7 @@
           ]
         },
         {
-          "name": "poll-op-1328",
+          "name": "poll-op-1420",
           "request": {
             "method": "GET",
             "header": [
@@ -20387,7 +20642,7 @@
           ]
         },
         {
-          "name": "verify-unchanged-rya606",
+          "name": "verify-unchanged-rya799",
           "request": {
             "method": "GET",
             "header": [
@@ -20422,7 +20677,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -20477,7 +20732,7 @@
           ]
         },
         {
-          "name": "poll-op-1329",
+          "name": "poll-op-1421",
           "request": {
             "method": "GET",
             "header": [
@@ -20528,7 +20783,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya800",
           "request": {
             "method": "DELETE",
             "header": [
@@ -20556,6 +20811,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -20627,7 +20897,7 @@
           ]
         },
         {
-          "name": "poll-op-1330",
+          "name": "poll-op-1422",
           "request": {
             "method": "GET",
             "header": [
@@ -20731,7 +21001,7 @@
           ]
         },
         {
-          "name": "poll-op-1331",
+          "name": "poll-op-1423",
           "request": {
             "method": "GET",
             "header": [
@@ -20835,7 +21105,7 @@
           ]
         },
         {
-          "name": "poll-op-1332",
+          "name": "poll-op-1424",
           "request": {
             "method": "GET",
             "header": [
@@ -20980,7 +21250,7 @@
           ]
         },
         {
-          "name": "poll-op-1333",
+          "name": "poll-op-1425",
           "request": {
             "method": "GET",
             "header": [
@@ -21070,7 +21340,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya801",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21098,6 +21368,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -21169,7 +21454,7 @@
           ]
         },
         {
-          "name": "poll-op-1334",
+          "name": "poll-op-1426",
           "request": {
             "method": "GET",
             "header": [
@@ -21273,7 +21558,7 @@
           ]
         },
         {
-          "name": "poll-op-1335",
+          "name": "poll-op-1427",
           "request": {
             "method": "GET",
             "header": [
@@ -21377,7 +21662,7 @@
           ]
         },
         {
-          "name": "poll-op-1336",
+          "name": "poll-op-1428",
           "request": {
             "method": "GET",
             "header": [
@@ -21462,7 +21747,7 @@
           ]
         },
         {
-          "name": "get-rya607",
+          "name": "get-rya802",
           "request": {
             "method": "GET",
             "header": [
@@ -21497,7 +21782,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -21553,7 +21838,7 @@
           ]
         },
         {
-          "name": "poll-op-1337",
+          "name": "poll-op-1429",
           "request": {
             "method": "GET",
             "header": [
@@ -21643,7 +21928,7 @@
           ]
         },
         {
-          "name": "poll-op-1338",
+          "name": "poll-op-1430",
           "request": {
             "method": "GET",
             "header": [
@@ -21694,7 +21979,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya803",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21722,6 +22007,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -21793,7 +22093,7 @@
           ]
         },
         {
-          "name": "poll-op-1339",
+          "name": "poll-op-1431",
           "request": {
             "method": "GET",
             "header": [
@@ -21897,7 +22197,7 @@
           ]
         },
         {
-          "name": "poll-op-1340",
+          "name": "poll-op-1432",
           "request": {
             "method": "GET",
             "header": [
@@ -22001,7 +22301,7 @@
           ]
         },
         {
-          "name": "poll-op-1341",
+          "name": "poll-op-1433",
           "request": {
             "method": "GET",
             "header": [
@@ -22105,7 +22405,7 @@
           ]
         },
         {
-          "name": "poll-op-1342",
+          "name": "poll-op-1434",
           "request": {
             "method": "GET",
             "header": [
@@ -22213,7 +22513,7 @@
           ]
         },
         {
-          "name": "verify-no-rules-rya608",
+          "name": "verify-no-rules-rya804",
           "request": {
             "method": "GET",
             "header": [
@@ -22248,7 +22548,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -22303,7 +22603,7 @@
           ]
         },
         {
-          "name": "poll-op-1343",
+          "name": "poll-op-1435",
           "request": {
             "method": "GET",
             "header": [
@@ -22393,7 +22693,7 @@
           ]
         },
         {
-          "name": "poll-op-1344",
+          "name": "poll-op-1436",
           "request": {
             "method": "GET",
             "header": [
@@ -22483,7 +22783,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya805",
           "request": {
             "method": "DELETE",
             "header": [
@@ -22511,6 +22811,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -22582,7 +22897,7 @@
           ]
         },
         {
-          "name": "poll-op-1345",
+          "name": "poll-op-1437",
           "request": {
             "method": "GET",
             "header": [
@@ -22686,7 +23001,7 @@
           ]
         },
         {
-          "name": "poll-op-1346",
+          "name": "poll-op-1438",
           "request": {
             "method": "GET",
             "header": [
@@ -22790,7 +23105,7 @@
           ]
         },
         {
-          "name": "poll-op-1347",
+          "name": "poll-op-1439",
           "request": {
             "method": "GET",
             "header": [
@@ -22841,7 +23156,7 @@
           ]
         },
         {
-          "name": "update-rules-same-rya609",
+          "name": "update-rules-same-rya806",
           "request": {
             "method": "PATCH",
             "header": [
@@ -22886,7 +23201,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -22906,7 +23221,7 @@
           ]
         },
         {
-          "name": "poll-op-1348",
+          "name": "poll-op-1440",
           "request": {
             "method": "GET",
             "header": [
@@ -22991,7 +23306,7 @@
           ]
         },
         {
-          "name": "get-rya610",
+          "name": "get-rya807",
           "request": {
             "method": "GET",
             "header": [
@@ -23026,7 +23341,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 60) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -23082,7 +23397,7 @@
           ]
         },
         {
-          "name": "poll-op-1349",
+          "name": "poll-op-1441",
           "request": {
             "method": "GET",
             "header": [
@@ -23172,7 +23487,7 @@
           ]
         },
         {
-          "name": "poll-op-1350",
+          "name": "poll-op-1442",
           "request": {
             "method": "GET",
             "header": [
@@ -23223,7 +23538,7 @@
           ]
         },
         {
-          "name": "cleanup-net",
+          "name": "cleanup-net-rya808",
           "request": {
             "method": "DELETE",
             "header": [
@@ -23251,6 +23566,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",

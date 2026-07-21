@@ -380,7 +380,7 @@ CASES.append(Case(
              ],
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{existingNetworkId}}",
                    "name": "xres-int-sub-{{runId}}", "v4CidrBlocks": ["{{_subnetCidr}}"],
-                   "placementType": "ZONAL", "zoneId": "{{existingZoneId}}"},
+                   "zoneId": "{{existingZoneId}}"},
              test_script=[
                  "pm.environment.unset('xresSubnetId');",
                  "if (pm.response.code === 200) {",
