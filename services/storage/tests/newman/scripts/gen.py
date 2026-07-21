@@ -77,6 +77,18 @@ PRE_GLOBAL = [
     "}",
     "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
     "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+    # Default auth: jwtBootstrap (cluster system_admin) — mirrors the compute suite.
+    # storage.* permissions are not all covered by the project `edit` role (storage
+    # is a newer domain), so a project-editor default would 403 on volume/snapshot
+    # create; system_admin holds every permission cluster-wide (and is granted
+    # project-editor in the seed for LIST visibility). Parity with vpc/iam/compute
+    # (the storage gen.py was missing default-auth entirely → no-auth steps sent NO
+    # Authorization header → 401). Per-step auth= overrides via the item-level
+    # pre-request (runs after this collection-level one); 'anonymous' removes it.
+    "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+    "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
+    "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+    "}",
 ]
 
 

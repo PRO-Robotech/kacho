@@ -314,11 +314,23 @@ ensure_project() {
   local found
   found=$(find_project_by_name_account "$name" "$acct" "$owner_token")
   if [ -n "$found" ]; then echo "$found"; return; fi
-  local body op
+  local body op op_id attempt=0
   body=$(printf '{"accountId":"%s","name":"%s","description":"%s"}' "$acct" "$name" "$desc")
-  op=$(api POST "/iam/v1/projects" "$owner_token" "$body")
-  local op_id; op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))')
-  if [ -z "$op_id" ]; then echo "[setup] FATAL: Project.Create returned no id: $op" >&2; return 1; fi
+  # Bounded retry on the transient owner-binding materialization window: a FRESH
+  # account's owner AccessBinding (→ `editor` on the account, the relation
+  # iam.projects.create requires) materializes eventually-consistently, so the first
+  # Project.Create immediately after Account.Create can 403 AUTHZ_DENIED. Retry
+  # ~8×0.75s ≈ 6s; a NON-authz failure FATALs immediately (never mask a real error).
+  while :; do
+    op=$(api POST "/iam/v1/projects" "$owner_token" "$body")
+    op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))')
+    [ -n "$op_id" ] && break
+    attempt=$((attempt+1))
+    if [ "$attempt" -ge 8 ] || ! echo "$op" | grep -q 'AUTHZ_DENIED\|permission denied'; then
+      echo "[setup] FATAL: Project.Create returned no id: $op" >&2; return 1
+    fi
+    sleep 0.75
+  done
   poll_op "$op_id" "$owner_token" \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("projectId",""))'
 }
@@ -824,6 +836,11 @@ log "10b/13 seeding per-service isolated accounts + projects (директива
 ACCOUNT_VPC=$(ensure_account "authz-vpc" "директива #2 — vpc-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
 ACCOUNT_NLB=$(ensure_account "authz-nlb" "директива #2 — nlb-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
 ACCOUNT_CMP=$(ensure_account "authz-compute" "директива #2 — compute-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+# storage/registry accounts created HERE with the others (not inline before their
+# projects) so the owner-binding has a materialization window before ensure_project
+# needs `editor` on the account (fresh-account read-your-writes → else 403 FATAL).
+ACCOUNT_STO=$(ensure_account "authz-storage" "директива #2 — storage-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
+ACCOUNT_REG=$(ensure_account "authz-registry" "директива #2 — registry-only resource-CRUD home" "$USER_AAA" "$JWT_AAA")
 # vpc: home + cross, default suite JWT = jwtProjectAdminA1 (PA1) → grant PA1 editor
 # on BOTH so create-in-home + list-in-cross (isolation case) both authorize.
 VPC_HOME=$(ensure_project "authz-vpc-home"  "$ACCOUNT_VPC" "vpc suite home"  "$JWT_AAA")
@@ -831,6 +848,29 @@ VPC_CROSS=$(ensure_project "authz-vpc-cross" "$ACCOUNT_VPC" "vpc suite cross" "$
 [ -n "$USER_PA1" ] && [ -n "$VPC_HOME" ]  && ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$VPC_HOME"  "$JWT_AAA"
 [ -n "$USER_PA1" ] && [ -n "$VPC_CROSS" ] && ensure_binding "$USER_PA1" "$ROLE_EDIT" "project" "$VPC_CROSS" "$JWT_AAA"
 log "    vpc isolation: acct=$ACCOUNT_VPC home=$VPC_HOME cross=$VPC_CROSS (PA1 editor on both)"
+
+# storage + registry: same директива-#2 isolation. Their newman default-Bearer is
+# jwtBootstrap (system_admin — storage/registry perms aren't all in the project edit
+# role), granted project-editor here for LIST visibility (per-object list-filter needs
+# the tuple; system_admin@cluster has v_get but not project v_list). Previously these
+# two suites got NO per-service fixtures at all (env existingProjectId was a stale
+# committed placeholder, ungranted → 401/403 on every mutation).
+# Projects created + granted AS system_admin (JWT_BOOTSTRAP): iam.projects.create is
+# cluster-wide for system_admin, so it does NOT depend on the fresh account's owner
+# AccessBinding materialising `editor` on the account (which is the eventually-
+# consistent hop that 403'd the account-owner path). bootstrap thereby OWNS the
+# projects (the newman default-Bearer) and self-grants editor for LIST visibility.
+STORAGE_HOME=$(ensure_project "authz-storage-home"  "$ACCOUNT_STO" "storage suite home"  "$JWT_BOOTSTRAP")
+STORAGE_CROSS=$(ensure_project "authz-storage-cross" "$ACCOUNT_STO" "storage suite cross" "$JWT_BOOTSTRAP")
+[ -n "$USER_BOOT" ] && [ -n "$STORAGE_HOME" ]  && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$STORAGE_HOME"  "$JWT_BOOTSTRAP"
+[ -n "$USER_BOOT" ] && [ -n "$STORAGE_CROSS" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$STORAGE_CROSS" "$JWT_BOOTSTRAP"
+log "    storage isolation: acct=$ACCOUNT_STO home=$STORAGE_HOME cross=$STORAGE_CROSS (bootstrap owner+editor)"
+
+REGISTRY_HOME=$(ensure_project "authz-registry-home"  "$ACCOUNT_REG" "registry suite home"  "$JWT_BOOTSTRAP")
+REGISTRY_CROSS=$(ensure_project "authz-registry-cross" "$ACCOUNT_REG" "registry suite cross" "$JWT_BOOTSTRAP")
+[ -n "$USER_BOOT" ] && [ -n "$REGISTRY_HOME" ]  && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$REGISTRY_HOME"  "$JWT_BOOTSTRAP"
+[ -n "$USER_BOOT" ] && [ -n "$REGISTRY_CROSS" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$REGISTRY_CROSS" "$JWT_BOOTSTRAP"
+log "    registry isolation: acct=$ACCOUNT_REG home=$REGISTRY_HOME cross=$REGISTRY_CROSS (bootstrap owner+editor)"
 
 # ---------------------------------------------------------------------------
 # 11) COMPUTE — real project + cross-project + network + subnet + sg.
@@ -1119,6 +1159,28 @@ EOF
 }
 EOF
   patch_one "$OUT_DIR/vpc-listfilter-fixtures.json" "$VPC_ENV"
+
+  # storage — suite home/cross project (PA1-granted). existingZoneId (ru-central1-a)
+  # + existingDiskTypeId (block-balanced) stay committed-defaults (real geo zone +
+  # seeded storage disk-type). Only непустые ключи patched.
+  STORAGE_ENV="$WORKSPACE_DIR/services/storage/tests/newman/environments/local.postman_environment.json"
+  cat > "$OUT_DIR/storage-fixtures.json" <<EOF
+{
+  "existingProjectId": "$STORAGE_HOME",
+  "existingProjectCrossId": "$STORAGE_CROSS"
+}
+EOF
+  patch_one "$OUT_DIR/storage-fixtures.json" "$STORAGE_ENV"
+
+  # registry — suite home/cross project (PA1-granted).
+  REGISTRY_ENV="$WORKSPACE_DIR/services/registry/tests/newman/environments/local.postman_environment.json"
+  cat > "$OUT_DIR/registry-fixtures.json" <<EOF
+{
+  "existingProjectId": "$REGISTRY_HOME",
+  "existingProjectCrossId": "$REGISTRY_CROSS"
+}
+EOF
+  patch_one "$OUT_DIR/registry-fixtures.json" "$REGISTRY_ENV"
 
   # nlb subjects + existing* resources.
   cat > "$OUT_DIR/nlb-fixtures.json" <<EOF
