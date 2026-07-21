@@ -1071,6 +1071,73 @@ fi
 log "    nlb subjects: EA=$USER_NLB_EA EB=$USER_NLB_EB VA=$USER_NLB_VA OA=$USER_NLB_OA STR=$USER_NLB_STR SA=$SVA_NLB"
 log "    nlb resources: net=$NLB_NET subnet=$NLB_SUBNET instance=$NLB_INSTANCE nic=$NLB_NIC addr=$NLB_ADDR"
 
+# ---------------------------------------------------------------------------
+# 14) REGISTRY — project-scope authz subjects (REG-1-32 authz-matrix).
+#
+#     ROOT CAUSE of the 271 registry residual: the registry newman default-Bearer
+#     prelude (scripts/gen.py:93 __defaultJwt) reads `jwtProjectEditorA`, which the
+#     shared seed NEVER minted for registry → empty Bearer → every non-authz case
+#     `POST /registry/v1/registries` → 401 "subject: unauthenticated" (registry +
+#     registry-redesign + repository cascade). This block mints the registry-scoped
+#     subjects on the директива-#2-isolated ACCOUNT_REG / REGISTRY_HOME / REGISTRY_CROSS
+#     (seeded at block 10b above) and patches their JWTs into ONLY the registry env.
+#
+#     REG-1-32 (the sole registry authz scenario, acceptance
+#     sub-phase-REG-1-registry-repository-acceptance.md §575) covers PROJECT-SCOPE
+#     verb-tier authz only — editor (author/create), no-grant (deny/existence-hide),
+#     viewer (v_get 200, v_update/v_delete 403/404):
+#       jwtProjectEditorA  editor+v_create @ REGISTRY_HOME  — suite default author (unblocks 271)
+#       jwtProjectEditorB  editor+v_create @ REGISTRY_CROSS — cross-project tier
+#       jwtProjectViewerA  viewer @ REGISTRY_HOME  — v_get positive + v_update/v_delete deny
+#       jwtProjectOwnerA   admin  @ REGISTRY_HOME  — owner tier
+#       jwtStranger        UNREGISTERED sub (NOT upserted) → gateway 401 unauthenticated
+#     Group-userset + custom-role + SA registry-authz are NOT in REG-1-32 scope (§Out-of-scope
+#     l.83-105: GetEffectiveAccess / cross-module governance = REG-2/REG-3) and NO registry
+#     newman case references jwtGroupMemberEditor/jwtCustomRoleOperator/jwtCustomRoleTargetManager/
+#     jwtServiceAccountEditor (grep cases → 0 usages) → left as committed empty placeholders
+#     (NOT faked, ban #13/LEAN). Grantor = JWT_BOOTSTRAP (system_admin bypasses fresh-account
+#     owner-EC — exactly like the storage/registry isolation block that grants USER_BOOT editor).
+#
+#     VERB-BEARING AUTHZ (registry-specific, diverges from nlb editor-tier pattern): the gateway
+#     gates RegistryService.Create with required_relation `editor` on the parent project (edit-role
+#     provides it), but the registry BACKEND authz-interceptor (internal/check/permission_map.go)
+#     additionally requires the CREATE-CHILD verb `v_create` on the project. The generic edit-role
+#     deliberately does NOT materialize v_create/v_delete at hierarchy (project) scope (anti-over-
+#     grant, data-integrity.md) — so, exactly like the vpc list-filter block grants `v_list` via
+#     fga_write, the registry author gets `v_create@project` via a direct fga_outbox tuple. Without
+#     it Create → 403 "permission denied" (backend PermissionMap) despite a valid editor binding.
+log "14/14 seeding registry project-scope authz subjects (REG-1-32; unblocks jwtProjectEditorA 271)"
+USER_REG_EA=$(upsert_user_grpc "authz-registry-editor-a@example.com" "authz-registry-editor-a@example.com" "AuthZ Registry EditorA")
+USER_REG_EB=$(upsert_user_grpc "authz-registry-editor-b@example.com" "authz-registry-editor-b@example.com" "AuthZ Registry EditorB")
+USER_REG_VA=$(upsert_user_grpc "authz-registry-viewer-a@example.com" "authz-registry-viewer-a@example.com" "AuthZ Registry ViewerA")
+USER_REG_OA=$(upsert_user_grpc "authz-registry-owner-a@example.com"  "authz-registry-owner-a@example.com"  "AuthZ Registry OwnerA")
+JWT_REG_EA=$(mint_user_jwt "authz-registry-editor-a@example.com")
+JWT_REG_EB=$(mint_user_jwt "authz-registry-editor-b@example.com")
+JWT_REG_VA=$(mint_user_jwt "authz-registry-viewer-a@example.com")
+JWT_REG_OA=$(mint_user_jwt "authz-registry-owner-a@example.com")
+# stranger: a fresh HS256 token for a sub that is NEVER upserted as a User. The gateway cannot
+# resolve an unregistered sub → treats it as UNAUTHENTICATED → 401, which is exactly the
+# stranger contract registry-authz.py encodes (single-user-stand design: unregistered → 401,
+# deny-leak check gated off on 401). A registered-but-ungranted subject would 403 with the
+# backend's authz-reason detail and trip the deny-leak assertion — so it must stay unregistered.
+JWT_REG_STR=$(mint_user_jwt "authz-registry-stranger@example.com")
+# editor-a: gateway editor@project (edit-role binding) + backend v_create@project (fga_write —
+# create-child verb the edit-tier omits at project scope). Both required for Create.
+if [ -n "$USER_REG_EA" ] && [ -n "$REGISTRY_HOME" ]; then
+  ensure_binding "$USER_REG_EA" "$ROLE_EDIT" "project" "$REGISTRY_HOME" "$JWT_BOOTSTRAP"
+  fga_write "user:$USER_REG_EA" "v_create" "project:$REGISTRY_HOME"
+fi
+# editor-b: same on the cross project.
+if [ -n "$USER_REG_EB" ] && [ -n "$REGISTRY_CROSS" ]; then
+  ensure_binding "$USER_REG_EB" "$ROLE_EDIT" "project" "$REGISTRY_CROSS" "$JWT_BOOTSTRAP"
+  fga_write "user:$USER_REG_EB" "v_create" "project:$REGISTRY_CROSS"
+fi
+# viewer-a: view-role (v_get; cascades to registries-in-project via parent → viewer Get→200,
+# Update/Delete denied). owner-a: admin-role (owner tier; admin also materializes v_create).
+[ -n "$USER_REG_VA" ] && [ -n "$REGISTRY_HOME" ] && ensure_binding "$USER_REG_VA" "$ROLE_VIEW"  "project" "$REGISTRY_HOME" "$JWT_BOOTSTRAP"
+[ -n "$USER_REG_OA" ] && [ -n "$REGISTRY_HOME" ] && ensure_binding "$USER_REG_OA" "$ROLE_ADMIN" "project" "$REGISTRY_HOME" "$JWT_BOOTSTRAP"
+log "    registry subjects: EA=$USER_REG_EA EB=$USER_REG_EB VA=$USER_REG_VA OA=$USER_REG_OA (stranger=unregistered→401)"
+
 # Write authz-fixtures.json + patch env-files.
 log "writing $OUT_DIR/authz-fixtures.json"
 cat > "$OUT_DIR/authz-fixtures.json" <<EOF
@@ -1191,12 +1258,20 @@ EOF
 EOF
   patch_one "$OUT_DIR/storage-fixtures.json" "$STORAGE_ENV"
 
-  # registry — suite home/cross project (PA1-granted).
+  # registry — suite home/cross project + REG-1-32 project-scope authz subjects.
+  # jwtProjectEditorA is the gen.py default-Bearer (unblocks the 271). Group/custom-role/SA
+  # tokens are intentionally NOT emitted (out of REG-1-32 scope, 0 case usages — see block 14):
+  # they stay committed empty placeholders (not faked).
   REGISTRY_ENV="$WORKSPACE_DIR/services/registry/tests/newman/environments/local.postman_environment.json"
   cat > "$OUT_DIR/registry-fixtures.json" <<EOF
 {
   "existingProjectId": "$REGISTRY_HOME",
-  "existingProjectCrossId": "$REGISTRY_CROSS"
+  "existingProjectCrossId": "$REGISTRY_CROSS",
+  "jwtProjectEditorA": "$JWT_REG_EA",
+  "jwtProjectEditorB": "$JWT_REG_EB",
+  "jwtProjectViewerA": "$JWT_REG_VA",
+  "jwtProjectOwnerA": "$JWT_REG_OA",
+  "jwtStranger": "$JWT_REG_STR"
 }
 EOF
   patch_one "$OUT_DIR/registry-fixtures.json" "$REGISTRY_ENV"
