@@ -3,24 +3,33 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 """
-tests/newman/scripts/gen.py — генератор Postman collections из декларативных
-case-файлов kacho-geo.
+tests/newman/scripts/gen.py — генератор Postman collections для kacho-geo из
+декларативных case-файлов (Case/Step DSL, паритет с vpc/compute/iam suite'ами).
 
 Использование:
-    python3 scripts/gen.py            # все case-файлы
-    python3 scripts/gen.py region     # один (cases/region.py → collections/region.postman_collection.json)
-    python3 scripts/gen.py --validate # делегирует в validate-cases.py (dup-id + CASES-INDEX)
+    python3 scripts/gen.py             # все case-файлы
+    python3 scripts/gen.py region      # один case-файл (region.py)
+    python3 scripts/gen.py --validate  # делегирует в validate-cases.py
 
 Источник истины — модули в tests/newman/cases/<name>.py, каждый экспортирует
-переменную CASES — список объектов Case (см. ниже). Структура/DSL воспроизводят
-эталон kacho-vpc/tests/newman (тот же Step/Case + assert_*-хелперы + сериализация
-в Postman v2.1 + per-step auth-override), суженные под read-only leaf-каталог geo:
+переменную CASES — список объектов Case. gen.py делает 1:1 коллекцию на каждый
+case-файл (collections/<name>.postman_collection.json).
 
-  * geo — не project-scoped: public read (RegionService/ZoneService Get/List)
-    гейтится ambient authN (см. env jwtBootstrap); нет _suiteProjectId / zone-resolve
-    setup-item / pool-seed из vpc-варианта.
-  * poll_operation_until_done оставлен для будущего расширения на admin-CRUD
-    (InternalRegion/ZoneService на :9091) — публичные read его не используют.
+Гео-специфика (в отличие от vpc/compute):
+  * Region/Zone — ГЛОБАЛЬНЫЙ cluster-scoped каталог, НЕ project-scoped: у кейсов
+    нет projectId, нет labels/description, нет per-object list-authz. Public read
+    гейтится `viewer`@cluster (jwtBootstrap несёт system_viewer); admin-CRUD
+    гейтится `system_admin`@cluster (jwtBootstrap несёт и его).
+  * Admin-мутации живут в InternalRegion/ZoneService на cluster-internal REST
+    listener ({{internalBaseUrl}}, :8081) — на публичном {{baseUrl}} их нет by
+    design (ban #6). Помечай такие Step'ы `internal=True`.
+  * Async-форма: Internal Create/Update/Delete возвращают Operation{done:false}.
+    ВНИМАНИЕ — geo Operation-id ('geo…') сейчас НЕ маршрутизируется api-gateway
+    OpsProxy (prefix 'geo' отсутствует в prefixToBackend → InvalidArgument):
+    PRO-Robotech/kacho#55. Поэтому GREEN-кейсы НЕ поллят Operation, а подтверждают
+    материализацию мутации через ПУБЛИЧНЫЙ read (RegionService.Get/ZoneService.Get)
+    с bounded read-your-writes retry (retry_get_until_found). Явный op-poll держит
+    ОДИН RED-lock кейс (operation.py, `# verifies #55`).
 """
 from __future__ import annotations
 
@@ -29,7 +38,7 @@ import sys
 import uuid
 import importlib.util
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +48,7 @@ OUT_DIR = ROOT / "collections"
 
 
 # ---------------------------------------------------------------------------
-# Декларативные структуры (идентичны эталону kacho-vpc)
+# Декларативные структуры (паритет с vpc/compute gen.py — тот же Postman-emit)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -47,60 +56,52 @@ class Step:
     """Один HTTP-запрос внутри case."""
     name: str
     method: str
-    path: str  # относительный, {{baseUrl}} префикс автоматически
+    path: str  # относительный, {{baseUrl}}/{{internalBaseUrl}} префикс добавляется автоматически
     body: Optional[Dict] = None
     pre_script: List[str] = field(default_factory=list)
     test_script: List[str] = field(default_factory=list)
     # Per-step auth override.
-    #   None         — header не трогается (наследует collection default — jwtBootstrap)
-    #   "anonymous"  — Authorization снимается перед запросом (authN-negative)
-    #   "<envVar>"   — Authorization: Bearer {{envVar}} (значение из env при выполнении)
+    #   None          — заголовок не трогается (default — collection-level jwtBootstrap)
+    #   "anonymous"   — Authorization снимается перед запросом
+    #   "<envVar>"    — Authorization: Bearer {{envVar}} (значение из env)
     auth: Optional[str] = None
     # internal=True — запрос идёт на cluster-internal REST listener ({{internalBaseUrl}}),
-    # а НЕ на публичный ({{baseUrl}}). Public geo read его не использует; оставлен для
-    # будущего admin-CRUD (InternalRegion/ZoneService — Internal-only, security.md ban #6).
+    # а НЕ на публичный {{baseUrl}}. Internal*-RPC (InternalRegion/ZoneService) на публичном
+    # листенере ОТСУТСТВУЮТ by design (ban #6) — там 404/Unimplemented.
     internal: bool = False
 
 
 @dataclass
 class Case:
     """Один тестовый кейс — может содержать несколько шагов."""
-    id: str  # например REG-GET-CRUD-OK
-    title: str  # человеко-читаемое описание
-    classes: List[str]  # CRUD / VAL / NEG / BVA / CONF / AUTHZ / PAGE / SEC
-    priority: str  # P0 / P1 / P2 / P3
+    id: str            # напр. REG-GET-CRUD-OK
+    title: str         # человеко-читаемое описание
+    classes: List[str] # CRUD / VAL / NEG / BVA / CONF / AUTHZ / PAGE / ...
+    priority: str      # P0 / P1 / P2 / P3
     steps: List[Step]
 
 
 # ---------------------------------------------------------------------------
-# Collection-level pre-request: runId + default auth (jwtBootstrap).
-#
-# geo public read гейтится ambient authN. Дефолтный принципал — jwtBootstrap
-# (seeded admin с viewer-floor @ cluster — см. tests/authz-fixtures; тот же
-# субъект, что использует iam/geo-read.py). Per-step auth= перекрывает это
-# item-level pre-request скриптом (_auth_pre_script): "anonymous" снимает header,
-# имя env-var подставляет другой Bearer.
+# Утилиты-сниппеты pm.* (вставляются в шаги по необходимости)
 # ---------------------------------------------------------------------------
 
+# runId уникализирует ids свежесозданных Region/Zone в пределах прогона. Формат
+# строго slug-safe ([a-z0-9]) — id Region/Zone обязаны быть lowercase-slug'ами
+# (domain.ValidateID: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$). Default-auth = jwtBootstrap
+# (несёт system_viewer для public read И system_admin для internal admin-CRUD);
+# per-step auth= его переопределяет.
 PRE_GLOBAL = [
     "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
-    "  // runId формат: только [a-z0-9] — стабилен для любых суффиксов имён.",
     "  const t = Date.now().toString(36);",
     "  const r = Math.floor(Math.random() * 1e9).toString(36);",
     "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
     "}",
-    "// Default auth: jwtBootstrap (admin/viewer-floor). Per-step auth= overrides",
-    "// this via the item-level pre-request script (_auth_pre_script).",
-    "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-    "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
-    "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+    "const __jwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+    "if (__jwt && !pm.request.headers.has('Authorization')) {",
+    "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __jwt});",
     "}",
 ]
 
-
-# ---------------------------------------------------------------------------
-# Утилиты-сниппеты pm.* (вставляются в шаги по необходимости; сигнатуры — как в vpc)
-# ---------------------------------------------------------------------------
 
 def assert_status(code: int) -> List[str]:
     return [
@@ -111,26 +112,14 @@ def assert_status(code: int) -> List[str]:
 def assert_grpc_code(code: int, code_name: str) -> List[str]:
     return [
         f"pm.test('grpc code {code} ({code_name})', () => {{",
-        "  const j = pm.response.json();",
+        "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
         f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
         "});",
     ]
 
 
-def assert_field_violation(field_name: str) -> List[str]:
-    return [
-        f"pm.test('field violation on \"{field_name}\"', () => {{",
-        "  const j = pm.response.json();",
-        "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
-        "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
-        f"  const fv = (det.fieldViolations || []).find(v => v.field === '{field_name}');",
-        f"  pm.expect(fv, 'fieldViolation for {field_name}').to.be.an('object');",
-        "});",
-    ]
-
-
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
-    """Сохранить значение из response в env (для List→capture-id→Get цепочек)."""
+    """Сохранить значение из response в env (best-effort, не роняет при отсутствии)."""
     return [
         "try {",
         "  const j = pm.response.json();",
@@ -140,77 +129,149 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     ]
 
 
-def assert_body_notcontains_infra() -> List[str]:
-    """Two-projection / capacity-anonymization security-lock (GEO-1-05 / GEO-1-33):
-    публичная проекция Region/Zone НЕ несёт инфра-полей (numericInfraId, hostClasses,
-    underlayAnchor, capacityHint, failureDomainCount) и ось-дискриминатор
-    (placementType/placementScope) — эти данные живут ТОЛЬКО в Internal*-проекции
-    (:9091). Ассерт на СЕРИАЛИЗОВАННОМ теле (не только на распарсенных ключах) —
-    host-class-токен физически не выходит на public ни в каком виде.
+def assert_operation_envelope() -> List[str]:
+    """Internal Create/Update/Delete → 200 + Operation envelope с geo op-id.
 
-    Инвариант ungated (действует в GEO-1 безусловно) и стабилен через границу
-    редизайна: в AS-IS этих полей нет вовсе; после редизайна они уезжают в Internal —
-    в обоих состояниях public-тело их не содержит."""
+    geo Operation-id = ids.NewID('geo') = 'geo' + 17-char crockford-base32 (20 симв).
+    Проверяем форму синхронного ответа мутации: 200, id совпадает с /^geo[0-9a-z]/,
+    metadata — объект. Это работает НЕЗАВИСИМО от #55 (роутинг ломается только на
+    последующем op-poll, не на самой мутации)."""
     return [
-        "pm.test('two-projection: public body carries no infra/placement/host-class fields', () => {",
-        "  const raw = pm.response.text();",
-        "  const forbidden = ['numericInfraId','hostClasses','underlayAnchor','capacityHint',",
-        "                     'failureDomainCount','placementType','placementScope'];",
-        "  forbidden.forEach(k => pm.expect(raw, 'leaked ' + k + ': ' + raw).to.not.include(k));",
+        *assert_status(200),
+        "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+        "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+        "});",
+    ]
+
+
+def save_op_metadata_id(env_var: str) -> List[str]:
+    """Сохранить <resource>Id из Operation.metadata (regionId/zoneId) в env."""
+    return save_from_response(
+        "(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''",
+        env_var,
+    )
+
+
+_RETRY_SEQ = [0]
+
+
+def retry_get_until_found(step: Step, budget: int = 20, interval_ms: int = 500) -> Step:
+    """Bounded read-your-writes retry публичного GET свежесозданного СВОЕГО ресурса.
+
+    Internal Create/Update — async (worker коммитит ресурс вне синхронного ответа).
+    Op-poll недоступен (geo Operation-id не маршрутизируется, #55), поэтому
+    материализацию мутации подтверждаем публичным RegionService.Get/ZoneService.Get:
+    он кратко отдаёт 404, пока worker не закоммитил row. Ретраим СЕБЯ на 404 до
+    появления 200, spacing ~interval_ms (busy-wait — newman стреляет setNextRequest
+    до setTimeout). budget*interval покрывает async-worker tail (~10s). Fail-open по
+    budget: реальные assertions прогоняются ОДИН раз на терминальном ответе и падают,
+    если ресурс так и не появился (никогда не маскируется, не бесконечно).
+
+    Оборачивать ТОЛЬКО первый публичный read СВОЕГО свежесозданного ресурса — НЕ
+    негативы (absent/malformed/cross-principal), там ретрай маскировал бы реальный
+    отказ. Имя уникализируется (-rgf<N>), чтобы self-setNextRequest резолвился в СЕБЯ."""
+    guard = [
+        "// bounded read-your-writes retry публичного GET (async-worker commit window;",
+        "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+        "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_rgfCount', '0');",
+        "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+        "}",
+        "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+        f"if (pm.response.code === 404 && _rc < {budget}) {{",
+        "  pm.environment.set('_rgfCount', String(_rc + 1));",
+        f"  const _d = Date.now(); while (Date.now() - _d < {interval_ms}) {{ /* commit wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_rgfCount');",
+        "pm.environment.unset('_rgfStarted');",
+    ]
+    _RETRY_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-rgf{_RETRY_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def poll_geo_op_red() -> Step:
+    """RED op-poll шаг для operation.py bug-lock (`# verifies #55`).
+
+    В ОТЛИЧИЕ от штатного poll (skip-on-non-200) этот шаг ЯВНО ассертит, что
+    op-poll МАРШРУТИЗИРУЕТСЯ (не 400 InvalidArgument) и доходит до done — то есть
+    держит пост-фикс контракт. Сейчас gateway OpsProxy отвергает geo op-id с
+    400 'invalid operation id' → эти assertions КРАСНЫЕ; станут зелёными после
+    добавления geo-prefix в prefixToBackend (#55). Ретраит СЕБЯ на done:false до
+    budget (config-INSERT завершается быстро, но worker всё же async)."""
+    return Step(
+        name="poll-geo-op",
+        method="GET",
+        path="/operations/{{geoOpId}}",
+        test_script=[
+            "pm.test('op-poll routes to geo backend — NOT InvalidArgument (verifies #55)', () => {",
+            "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.eql(400);",
+            "});",
+            "pm.test('op-poll status 200 (verifies #55)', () => pm.expect(pm.response.code).to.eql(200));",
+            "if (pm.response.code !== 200) { pm.environment.unset('_geoPollCount'); return; }",
+            "const j = pm.response.json();",
+            "const pc = parseInt(pm.environment.get('_geoPollCount') || '0', 10);",
+            "if (!j.done && pc < 20) {",
+            "  pm.environment.set('_geoPollCount', String(pc + 1));",
+            "  const _d = Date.now(); while (Date.now() - _d < 500) { /* inter-poll delay */ }",
+            "  pm.execution.setNextRequest(pm.info.requestName);",
+            "  return;",
+            "}",
+            "pm.environment.unset('_geoPollCount');",
+            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+        ],
+    )
+
+
+def assert_createdat_truncated(field_expr: str = "pm.response.json().createdAt") -> List[str]:
+    """CONF: createdAt усечён до секунд на wire (api-conventions: Truncate(time.Second)).
+
+    RFC3339 без дробных секунд → 'YYYY-MM-DDTHH:MM:SSZ' (точки нет: дробные секунды —
+    единственный источник '.' в timestamp). Микросекунды из БД не текут на wire."""
+    return [
+        "pm.test('createdAt truncated to seconds (no sub-second digits)', () => {",
+        f"  const ts = String({field_expr});",
+        "  pm.expect(ts, 'RFC3339 seconds ' + ts).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$/);",
+        "});",
+    ]
+
+
+def assert_no_infra_fields(root_expr: str = "pm.response.json()") -> List[str]:
+    """Two-projection инвариант: публичная проекция НЕ несёт инфра-полей.
+
+    Region/Zone на public поверхности НИКОГДА не отдают numericInfraId / infra /
+    hostClasses / underlayAnchor / capacityHint / failureDomainCount (инфра-
+    чувствительные данные — только Internal*, security.md §Инфра-данные). В AS-IS
+    Region/Zone message'и их не несут by construction — этот кейс лочит инвариант,
+    чтобы регресс (добавление инфра-поля на public) был пойман."""
+    return [
+        "pm.test('public projection carries NO infra fields (two-projection invariant)', () => {",
+        f"  const o = {root_expr};",
+        "  const body = JSON.stringify(o).toLowerCase();",
+        "  ['numericinfraid','infra','hostclasses','underlayanchor','capacityhint','failuredomaincount'].forEach(k => {",
+        "    pm.expect(body, 'leaked infra field: ' + k + ' in ' + body).to.not.include(k);",
+        "  });",
         "});",
     ]
 
 
 # ---------------------------------------------------------------------------
-# poll_operation_until_done — reusable poll step (для будущего admin-CRUD на :9091;
-# публичные read его не используют). УНИКАЛЬНОЕ имя poll-op-<N>: setNextRequest(
-# pm.info.requestName) обязан ретраить СЕБЯ (общее имя → newman прыгает в другой
-# poll-op → пропуск setup-шагов кейсов). До 30 попыток × ~500ms (≈15s async-tail).
-# ---------------------------------------------------------------------------
-
-_POLL_SEQ = [0]
-
-
-def poll_operation_until_done() -> Step:
-    _POLL_SEQ[0] += 1
-    return Step(
-        name=f"poll-op-{_POLL_SEQ[0]}",
-        method="GET",
-        path="/operations/{{opId}}",
-        internal=True,
-        test_script=[
-            "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-            "  pm.environment.unset('_pollCount');",
-            "  return;",
-            "}",
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            "if (!j.done && pc < 30) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Сериализация в Postman v2.1 (идентична эталону kacho-vpc)
+# Сериализация в Postman v2.1 (идентична vpc/compute — тот же collection-format,
+# так что run.sh / newman-parallel.sh / assert-suites-green совместимы byte-wise)
 # ---------------------------------------------------------------------------
 
 def _auth_pre_script(auth: str) -> List[str]:
     """JS-сниппет для per-step Authorization-header.
-    "anonymous" → снимает Authorization. Имя env-переменной → Bearer <env-var>."""
+
+    "anonymous" → снимает Authorization. Имя env-переменной →
+    Authorization: Bearer <значение env-var>."""
     if auth == "anonymous":
         return [
-            "// per-step: anonymous (authN-negative)",
+            "// per-step: anonymous",
             "pm.request.headers.remove('Authorization');",
         ]
     return [
@@ -266,11 +327,11 @@ def case_to_postman(case: Case) -> Dict:
     }
 
 
-def build_collection(name: str, cases: List[Case]) -> Dict:
+def build_collection(service: str, cases: List[Case]) -> Dict:
     return {
         "info": {
             "_postman_id": str(uuid.uuid4()),
-            "name": f"kacho-geo / newman / {name}",
+            "name": f"kacho-geo / newman / {service}",
             "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         },
         "event": [
@@ -293,10 +354,13 @@ def load_cases_module(path: Path):
     mod.Case = Case
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
-    mod.assert_field_violation = assert_field_violation
     mod.save_from_response = save_from_response
-    mod.assert_body_notcontains_infra = assert_body_notcontains_infra
-    mod.poll_operation_until_done = poll_operation_until_done
+    mod.save_op_metadata_id = save_op_metadata_id
+    mod.assert_operation_envelope = assert_operation_envelope
+    mod.retry_get_until_found = retry_get_until_found
+    mod.poll_geo_op_red = poll_geo_op_red
+    mod.assert_createdat_truncated = assert_createdat_truncated
+    mod.assert_no_infra_fields = assert_no_infra_fields
     spec.loader.exec_module(mod)
     return mod
 
@@ -313,7 +377,7 @@ def _check_duplicate_ids() -> int:
             else:
                 seen[c.id] = f.name
     if dups:
-        sys.stderr.write("gen: FAIL — дубли case-id (case-id должен быть уникален):\n")
+        sys.stderr.write("gen: FAIL — дубли case-id:\n")
         sys.stderr.write("\n".join(dups) + "\n")
         return 1
     return 0
@@ -322,11 +386,10 @@ def _check_duplicate_ids() -> int:
 def main(argv: List[str]) -> int:
     args = argv[1:]
     if "--validate" in args:
-        # делегируем полную валидацию (dup-id + каталогизация в CASES-INDEX) в validate-cases.py
         import runpy
         sys.argv = [str(SCRIPTS_DIR / "validate-cases.py")]
         runpy.run_path(str(SCRIPTS_DIR / "validate-cases.py"), run_name="__main__")
-        return 0  # validate-cases.py делает sys.exit сам
+        return 0
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     want = set(args)
@@ -337,15 +400,15 @@ def main(argv: List[str]) -> int:
     if _check_duplicate_ids() != 0:
         return 1
     for f in found:
-        name = f.stem
-        if want and name not in want:
+        svc = f.stem
+        if want and svc not in want:
             continue
         mod = load_cases_module(f)
         cases = getattr(mod, "CASES", [])
-        col = build_collection(name, cases)
-        out = OUT_DIR / f"{name}.postman_collection.json"
+        col = build_collection(svc, cases)
+        out = OUT_DIR / f"{svc}.postman_collection.json"
         out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{name}] {len(cases)} cases → {out.relative_to(ROOT)}")
+        print(f"[{svc}] {len(cases)} cases → {out.relative_to(ROOT)}")
     return 0
 
 

@@ -1,79 +1,65 @@
-# Test-Plan — kacho-geo newman (public read surface)
+# kacho-geo newman — TEST-PLAN
 
-## Scope
+Black-box regression-план geo через api-gateway REST. Объект — сервис в целом
+(public gRPC/REST :9090 + cluster-internal :9091 через gateway internal mux). Код —
+только для понимания scope. Источник контракта — AS-IS implementation + acceptance
+(`docs/specs/sub-phase-GEO-1-…`, часть «AS-IS») + `.claude/rules/api-conventions.md`.
 
-Black-box regression через api-gateway public REST ({{baseUrl}}) для публичной
-read-поверхности каталога оси размещения:
+## Поверхность (10 implemented RPC)
 
-- `RegionService.Get`  — `GET /geo/v1/regions/{id}`
-- `RegionService.List` — `GET /geo/v1/regions`
-- `ZoneService.Get`    — `GET /geo/v1/zones/{id}`
-- `ZoneService.List`   — `GET /geo/v1/zones`
+| RPC | путь | вид | покрытие |
+|---|---|---|---|
+| RegionService.Get | GET /geo/v1/regions/{id} | sync | region.py |
+| RegionService.List | GET /geo/v1/regions | sync | region.py |
+| ZoneService.Get | GET /geo/v1/zones/{id} | sync | zone.py |
+| ZoneService.List | GET /geo/v1/zones | sync | zone.py |
+| InternalRegionService.Create | POST /geo/v1/regions (:9091) | async Op | internal-region.py |
+| InternalRegionService.Update | PATCH /geo/v1/regions/{id} (:9091) | async Op | internal-region.py |
+| InternalRegionService.Delete | DELETE /geo/v1/regions/{id} (:9091) | async Op | internal-region.py |
+| InternalZoneService.Create | POST /geo/v1/zones (:9091) | async Op | internal-zone.py |
+| InternalZoneService.Update | PATCH /geo/v1/zones/{id} (:9091) | async Op | internal-zone.py |
+| InternalZoneService.Delete | DELETE /geo/v1/zones/{id} (:9091) | async Op | internal-zone.py |
 
-Плюс чёрно-ящичный guard Internal-vs-external split (admin write-verb на публичном
-endpoint не мутирует).
+RPC-покрытие: **10/10 implemented**. (OperationService op-poll — cross-cutting,
+operation.py; заблокирован #55.)
 
-Источник истины — APPROVED `docs/specs/sub-phase-GEO-1-region-zone-redesign-acceptance.md`
-+ `.claude/rules/api-conventions.md`. 22 кейса (`cases/region.py` × 11, `cases/zone.py` × 11).
+## Стратегия по рискам (risk-based)
 
-## Deployed-contract probe (важно — читать перед правкой ассертов)
-
-Suite авторена против **фактически задеплоенного** контракта ветки
-`redesign/integration @ 8f3dca1` (это то, что гоняет CI), сверенного с proto/gateway
-кодом в дереве (локальный прогон newman env-blocked — авторинг + syntax-validate, исполнение в CI):
-
-| Аспект | Deployed AS-IS (8f3dca1) | GEO-1 target (redesign) |
+| зона | риск | класс кейсов |
 |---|---|---|
-| public `Region` | `{id, name, createdAt}` | `+ countryCode°, openForPlacement°, openZoneCountHint°` |
-| public `Zone` | `{id, regionId, status, name, createdAt}` | `status`/`infra°` → **Internal-only**; `+ openForPlacement°, placementBlockedReason°` |
-| public read authz | `required_relation=viewer`, `scope=cluster`, `acr_min=2` | **EXEMPT** (снят relation+extractor, authN-only) |
-| admin-CRUD REST | `POST/PATCH/DELETE /geo/v1/{regions,zones}` (InternalRegion/ZoneService, internal-mux) | `/geo/v1/internal/…` |
-| malformed-id текст | `"<field> must be a lowercase slug (…)"` | `"invalid <res> id '<X>'"` |
-| absent read | `NOT_FOUND "Region\|Zone <id> not found"` | без изменений (ungated/landed) |
+| read reachability (gateway→geo dial) | High | CONF/error-guessing (503/code14 regression, migrated) |
+| authz (anon/no-viewer/non-admin/BOLA) | Critical | AUTHZ deny matrix + ban #6 |
+| within-service invariant (FK RESTRICT zones→regions) | High | STATE/NEG (delete-non-empty, ghost-region) |
+| async op lifecycle через gateway | High | STATE (op-poll — RED #55) |
+| контракт (verbatim NotFound, timestamp-truncate, two-projection) | High | CONF |
+| pagination | Medium | BVA/PAGE |
 
-**Стратегия ассертов — forward-compatible:** там, где контракт стабилен через границу
-редизайна (grpc-код malformed/notfound/pagesize/authN, verbatim not-found текст,
-field-absence инфра/host-class/placement), ассертим точно. Там, где контракт mid-flight
-(exact malformed текст, проекция `status`), ассертим толерантно/не ассертим. Итог: suite
-зелёная и на текущем CI-стеке, и после приземления GEO-1 (кроме Deferred ниже, которые
-добавит GEO-1 PR).
+## Изоляция / идемпотентность
 
-## Traceability — покрытые GEO-1-сценарии (ungated / уже-landed части)
-
-| GEO-1 | Кейсы |
-|---|---|
-| GEO-1-21 (unauthenticated → UNAUTHENTICATED) | `REG-LST-AUTHZ-ANON-DENY`, `ZON-LST-AUTHZ-ANON-DENY` |
-| GEO-1-24/25 (List item = полная public-проекция) | `ZON-LST-CRUD-OK`, `REG-LST-CRUD-OK` |
-| GEO-1-27 (pagination-validate: pageSize>max / garbage token → INVALID_ARGUMENT) | `*-LST-BVA-PAGESIZE-OVER-MAX`, `*-LST-PAGE-BADTOKEN` |
-| GEO-1-31 (malformed slug → INVALID_ARGUMENT первым стейтментом; код) | `*-GET-VAL-MALFORMED` |
-| GEO-1-35 (geo-direct absent → NOT_FOUND "…not found"; ungated) | `*-GET-NEG-NOTFOUND` |
-| GEO-1-05 (host-class физически не на public) + GEO-1-33 (нет placementType/scope) | `*-GET-CONF-NO-INFRA` |
-| GEO-1-17/22 (Internal admin-CRUD не на external; system_admin gate) — black-box | `*-CR-AUTHZ-ADMIN-NOT-PUBLIC` |
-
-## Deferred — GEO-1 redesign (добавляется ЭТОЙ suite вместе с GEO-1 PR по DoD)
-
-Сценарии, чьё целевое поведение ещё НЕ приземлено в `redesign/integration @ 8f3dca1`.
-Не авторены сейчас как зелёные (упали бы на текущем стеке; локальный RED-verify недоступен —
-env-blocked). Каждый — прямая единица работы GEO-1-PR (DoD §newman-кейс `# verifies GEO-1-NN`):
-
-| GEO-1 | Что добавить | Блокер |
-|---|---|---|
-| GEO-1-20 | zero-binding аутентиф. tenant читает Region/Zone → **200** (EXEMPT ambient) | authz сейчас `viewer`@cluster (не EXEMPT) → zero-binding = 403; ждёт снятия relation+scope_extractor у 4 read-RPC + permission-catalog regen |
-| GEO-1-02 | public `Zone.Get` НЕ содержит `status` (field-absence) | `status` сейчас на public `Zone`-message; ждёт two-projection (отдельный `InternalZone`-message, breaking proto) |
-| GEO-1-03 | public `Region.Get` содержит `countryCode°`, НЕ содержит `infra°` | `countryCode°` ещё нет на `Region` |
-| GEO-1-06..09 | `openForPlacement°` формула во всех 4 состояниях zone×region | `openForPlacement°`/`placementBlockedReason°` ещё нет на public |
-| GEO-1-16..19 | admin Create/Delete через `/geo/v1/internal/…` (done:true, unwrap .response, delete-non-empty) | internal REST на `/geo/v1/regions` (verb-based), не `/geo/v1/internal/…`; env стенда без `internalBaseUrl` проброса |
-| GEO-1-31 (текст) | malformed текст `"invalid <res> id '<X>'"` (точный) | сейчас `"… must be a lowercase slug …"`; наш ассерт толерантен к обоим (флип не сломает) |
-| GEO-1-34/36/37 | admin Create absent-parent → NOT_FOUND+reason; dup-name → ALREADY_EXISTS; INTERNAL opaque | требует internal-mux доступа; часть `[PHASE-0-GATED]` (by-lane reason-token) |
+- geo каталог — ГЛОБАЛЬНЫЙ (cluster-scoped), не project-scoped. Кейсы адресуют СВОИ
+  `qa-*-{{runId}}` регионы/зоны (slug-safe suffix) + cleanup внутри кейса. Негативы —
+  по фиксированным absent id (`{{garbageRegionId}}`/`{{garbageZoneId}}`) и malformed
+  (`{{malformedId}}`). Общего мутабельного state между коллекциями нет → параллельно-безопасно.
+- read-your-writes: internal Create/Update async; op-poll недоступен (#55) →
+  материализация подтверждается публичным Get с bounded-retry (`retry_get_until_found`).
 
 ## Прогон
 
 ```
-python3 scripts/gen.py            # регенерация коллекций
-python3 scripts/validate-cases.py # dup-id + CASES-INDEX (hard-fail в CI до newman)
-./scripts/run.sh --service region # одна коллекция
-./scripts/run.sh                  # полный прогон (region + zone)
+python3 scripts/validate-cases.py      # dup-id + CASES-INDEX (hard-fail до newman)
+python3 scripts/gen.py                 # cases/*.py → collections/*.json
+bash scripts/run.sh                     # весь suite (false-green guard: MISSING/rc)
+bash scripts/run.sh --service region    # одна коллекция
 ```
 
-Локальный прогон в этом окружении заблокирован (харнесс убивает port-forward);
-исполнение — CI-раннер против задеплоенного `kacho-deploy`-стека.
+Umbrella (CI): `deploy/scripts/newman-parallel.sh` (geo — в PHASE2-волне,
+изолированной от leaf-resource нагрузки: geo мутирует ГЛОБАЛЬНЫЙ каталог, который
+читают vpc/compute/nlb при резолве zone/region — поэтому geo не гонится конкурентно
+с ними).
+
+## Gate-стадии
+
+1. `validate-cases.py` (unique + catalogued) — до newman.
+2. `gen.py` (регенерация коллекций).
+3. `run.sh` — целевая + полная; false-green guard роняет на MISSING/failed/rc!=0.
+4. GREEN везде, кроме RED-known-failing (#55, декларированы в RESULTS.md).

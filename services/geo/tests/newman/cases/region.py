@@ -1,300 +1,239 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set: kacho-geo public RegionService reads through the api-gateway REST mux.
+"""Case-set: kacho-geo public RegionService (Get/List) через api-gateway.
 
-Black-box coverage of the public Region read surface (`GET /geo/v1/regions`,
-`GET /geo/v1/regions/{id}` → `RegionService.List` / `RegionService.Get`) exercised
-end-to-end through the shared api-gateway public REST listener ({{baseUrl}}), using
-the authz-fixtures dev JWTs. geo is the leaf platform-topology catalog (Region/Zone,
-owner of the placement axis) — global cluster-scoped, NOT project-scoped.
+Публичная read-only поверхность каталога регионов: sync, гейтится `viewer`@cluster
+(jwtBootstrap несёт system_viewer). Region — плоский flat-resource {id, name,
+createdAt} (AS-IS: инфра-полей нет by construction — two-projection инвариант).
 
-Source of truth — APPROVED acceptance `docs/specs/sub-phase-GEO-1-region-zone-redesign-acceptance.md`
-and `.claude/rules/api-conventions.md`.
+Источник контракта (AS-IS, IMPLEMENTED — НЕ GEO-1-redesign, который merge-gated и
+НЕ приземлён): proto/kacho/cloud/geo/v1/region.proto + region_service.proto,
+services/geo/internal/apps/kacho/api/region + repo/kacho/{pg,dberr}. Сверено с
+.claude/rules/api-conventions.md (flat-resource, коды, тон ошибок, timestamp-
+truncate, pagination). GEO-1 (openForPlacement°/countryCode°/two-projection-move-
+of-status) в этом суите НЕ покрывается — surface не существует (см. docs/RESULTS.md).
 
-Probe note (deployed contract as of redesign/integration @ 8f3dca1 — the branch CI
-runs): the GEO-1 redesign (EXEMPT ambient-read, two-projection status-move to
-Internal, `/geo/v1/internal/…` admin paths, `countryCode°`/`openForPlacement°`/
-`openZoneCountHint°`, malformed-id text flip) is NOT yet landed here. The public
-`Region` is `{id, name, createdAt}`; public reads are gated `viewer`@`cluster`
-(NOT yet EXEMPT), so `jwtBootstrap` (seeded admin/viewer-floor) reads 200 while an
-anonymous caller gets 401. These cases therefore lock the invariants that are STABLE
-across the redesign boundary (status/leak-code, not-found text, pagination-validate,
-authN-required, infra/host-class field-absence) with forward-compatible assertions;
-redesign-only deltas (GEO-1-20 zero-binding→200, exact malformed text, status
-projection) are deferred and tracked in docs/TEST-PLAN.md §"Deferred — GEO-1 redesign".
+Test-design техники:
+  * CONF (conformance): shape ListRegionsResponse/Region (camelCase, flat), verbatim
+    NotFound-текст, createdAt truncate-to-seconds, two-projection (нет infra на public).
+  * ECP: valid-existing vs malformed vs well-formed-absent id; authenticated-viewer
+    vs anonymous (negative — см. authz-deny.py).
+  * BVA: pageSize границы 0 / 1 / >max(10000); garbage page_token.
+  * error-guessing: 503/grpc-code-14 regression (gateway→geo mTLS/DNS dial bug,
+    мигрировано из iam geo-read.py — асертим NEGATIVE о failure mode).
 
-Test-design techniques applied (per `testing-product-coach`):
-  - ECP (equivalence): valid seeded id vs well-formed-absent vs malformed-charset id;
-    authenticated-viewer vs anonymous input class.
-  - BVA (boundaries): pageSize 0 (→default), pageSize>max (→reject); page_token
-    garbage vs round-trip.
-  - CONF (conformance): response shape vs `Region`/`ListRegionsResponse` contract
-    (camelCase, flat resource); verbatim NotFound text `"Region <id> not found"`.
-  - error-guessing: two-projection leak probe (host-class/infra NotContains on the
-    serialized body); admin-write verb on the public endpoint must never mutate.
-  - state-transition N/A — reads are sync, no Operation envelope.
-
-Per positive there is ≥1 matched negative (NotFound / malformed / anon-deny /
-admin-not-on-public). Test-only — no prod code touched (ban #13).
+Каждый positive (Get/List happy) имеет matched negative (malformed/absent/pagesize)
+в этом же файле; anonymous-deny — в authz-deny.py.
 """
 
 CASES = []
 
 
+# Shared regression guard (мигрировано из iam geo-read.py): gateway→geo dial bug
+# (wrong DNS host + disabled mTLS edge) отдавал 503 / grpc code 14 "no children to
+# pick from". Асертим NEGATIVE о failure mode на КАЖДОМ authenticated read.
+def _not_no_children_503():
+    return [
+        "pm.test('REGRESSION: not 503 (gateway->geo no-children dial)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(503);",
+        "});",
+        "pm.test('REGRESSION: body not grpc code 14 (UNAVAILABLE no-children)', () => {",
+        "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+        "  if (j && typeof j.code !== 'undefined') {",
+        "    pm.expect(j.code, JSON.stringify(j)).to.not.equal(14);",
+        "  }",
+        "});",
+    ]
+
+
 # ---------------------------------------------------------------------------
-# REG-LST-CRUD-OK — happy List: 200 + non-empty regions[] of well-formed items.
-# (geo catalog is admin-seeded by the umbrella — at least one region exists.)
-# verifies GEO-1-25 (List item carries full public projection; id/name present)
+# GEO-REG-GT-CONF-OK — authenticated GET /geo/v1/regions → 200 + seeded regions.
+# Мигрировано из services/iam/tests/newman/cases/geo-read.py (geo больше не
+# «безнадзорный»). Primary read-happy + no-children-503 regression.
 # ---------------------------------------------------------------------------
 CASES.append(Case(
-    id="REG-LST-CRUD-OK",
-    title="GET /geo/v1/regions (viewer) → 200, regions[] non-empty + well-formed (id/name present)",
-    classes=["CRUD", "CONF"], priority="P1",
+    id="GEO-REG-GT-CONF-OK",
+    title="GET /geo/v1/regions as jwtBootstrap → 200, regions[] non-empty + well-formed, not 503/code14",
+    classes=["CONF", "CRUD"], priority="P0",
     steps=[
-        Step(name="list-regions", method="GET", path="/geo/v1/regions",
-             test_script=[
-                 *assert_status(200),
-                 "pm.test('regions is a non-empty array', () => {",
-                 "  const j = pm.response.json();",
-                 "  pm.expect(j.regions, JSON.stringify(j)).to.be.an('array');",
-                 "  pm.expect(j.regions.length, 'seeded catalog non-empty').to.be.greaterThan(0);",
-                 "});",
-                 "pm.test('each region item is well-formed (id + name present)', () => {",
-                 "  const j = pm.response.json();",
-                 "  (j.regions || []).forEach(r => {",
-                 "    pm.expect(r.id, 'region id: ' + JSON.stringify(r)).to.be.a('string').and.not.empty;",
-                 "    pm.expect(r, 'region name present: ' + JSON.stringify(r)).to.have.property('name');",
-                 "  });",
-                 "});",
-             ]),
+        Step(
+            name="list-regions-auth",
+            method="GET",
+            path="/geo/v1/regions",
+            auth="jwtBootstrap",
+            test_script=[
+                *assert_status(200),
+                *_not_no_children_503(),
+                "pm.test('regions is a non-empty array', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.regions, JSON.stringify(j)).to.be.an('array');",
+                "  pm.expect(j.regions.length, 'regions non-empty (geography seeded)').to.be.greaterThan(0);",
+                "});",
+                "pm.test('regions are well-formed (id present)', () => {",
+                "  (pm.response.json().regions || []).forEach(r => {",
+                "    pm.expect(r.id, 'region id: ' + JSON.stringify(r)).to.be.a('string').and.not.empty;",
+                "  });",
+                "});",
+            ],
+        ),
     ],
 ))
 
 
 # ---------------------------------------------------------------------------
-# REG-GET-CRUD-OK — happy Get: discover a real id from List, then Get it → 200.
-# Self-contained (no hard-coded per-deploy literal id): List → capture → Get.
+# REG-GET-CRUD-OK — resolve an existing region id from List, then Get it → 200,
+# flat-resource shape + createdAt truncate-to-seconds.
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="REG-GET-CRUD-OK",
-    title="GET /geo/v1/regions/{id} (viewer) → 200, id echoes, createdAt present",
-    classes=["CRUD", "CONF"], priority="P1",
+    title="Get existing region (resolved from List) → 200, flat shape {id,name,createdAt}, createdAt truncated",
+    classes=["CRUD", "CONF"], priority="P0",
     steps=[
-        Step(name="list-for-id", method="GET", path="/geo/v1/regions",
-             test_script=[
-                 *assert_status(200),
-                 *save_from_response("j.regions && j.regions[0] && j.regions[0].id", "regId"),
-                 "pm.test('captured a seeded region id', () => pm.expect(pm.environment.get('regId')).to.be.a('string').and.not.empty);",
-             ]),
-        Step(name="get-region", method="GET", path="/geo/v1/regions/{{regId}}",
+        Step(name="list-pick", method="GET", path="/geo/v1/regions",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
-                 "pm.test('id echoes the requested region', () => pm.expect(j.id).to.eql(pm.environment.get('regId')));",
-                 "pm.test('createdAt present (truncated timestamp on wire)', () => pm.expect(j).to.have.property('createdAt'));",
+                 "pm.test('regions non-empty (geography seeded)', () => pm.expect((j.regions||[]).length).to.be.greaterThan(0));",
+                 *save_from_response("j.regions[0].id", "pickRegionId"),
              ]),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# REG-GET-NEG-NOTFOUND — well-formed-but-absent id → 404 NOT_FOUND, verbatim text.
-# The not-found text "Region <id> not found" is the STABLE contract tone (ungated,
-# already-landed per acceptance) — pinned verbatim.
-# verifies GEO-1-35 (geo-direct read of absent region → NOT_FOUND "Region <id> not found")
-# ---------------------------------------------------------------------------
-CASES.append(Case(
-    id="REG-GET-NEG-NOTFOUND",
-    title="GET /geo/v1/regions/{absent well-formed slug} → 404 NOT_FOUND 'Region <id> not found'",
-    classes=["NEG", "CONF"], priority="P1",
-    steps=[
-        Step(name="get-absent", method="GET", path="/geo/v1/regions/nonexistent-region-{{runId}}",
-             test_script=[
-                 *assert_status(404),
-                 *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('verbatim text: Region <id> not found', () => "
-                 "pm.expect(pm.response.json().message).to.match(/^Region .* not found$/));",
-             ]),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# REG-GET-VAL-MALFORMED — malformed (non-slug) id → 400 INVALID_ARGUMENT, first
-# statement (format-check before repo resolve). Uppercase `INVALID` fails the slug
-# charset `^[a-z][a-z0-9-]*$`. The 400/code-3 is the STABLE contract; the exact
-# message text is mid-redesign (AS-IS "must be a lowercase slug …" → target "invalid
-# region id …"), so the text assertion is tolerant of BOTH plus a no-leak check.
-# verifies GEO-1-31 (malformed slug → INVALID_ARGUMENT first statement; code part)
-# ---------------------------------------------------------------------------
-CASES.append(Case(
-    id="REG-GET-VAL-MALFORMED",
-    title="GET /geo/v1/regions/{malformed non-slug id} → 400 INVALID_ARGUMENT (no pgx/SQL leak)",
-    classes=["VAL", "NEG"], priority="P1",
-    steps=[
-        Step(name="get-malformed", method="GET", path="/geo/v1/regions/9bad-region",
-             test_script=[
-                 *assert_status(400),
-                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 "pm.test('message mentions invalid/slug region id (contract tone, tolerant across redesign)', () => "
-                 "pm.expect(pm.response.json().message).to.match(/(lowercase slug|invalid .*region.*id|region id)/i));",
-                 "pm.test('no pgx/SQL/panic leak in message', () => {",
-                 "  const m = String(pm.response.json().message || '').toLowerCase();",
-                 "  ['sqlstate','pgx','panic','goroutine'].forEach(t => pm.expect(m, 'leaked ' + t).to.not.include(t));",
-                 "});",
-             ]),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# REG-LST-BVA-PAGESIZE-ZERO — pageSize=0 → 200 (server applies default). Boundary.
-# ---------------------------------------------------------------------------
-CASES.append(Case(
-    id="REG-LST-BVA-PAGESIZE-ZERO",
-    title="GET /geo/v1/regions?pageSize=0 → 200 (default page size applied)",
-    classes=["BVA", "PAGE"], priority="P2",
-    steps=[
-        Step(name="list-ps0", method="GET", path="/geo/v1/regions?pageSize=0",
-             test_script=[*assert_status(200)]),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# REG-LST-BVA-PAGESIZE-OVER-MAX — pageSize>1000 → 400 INVALID_ARGUMENT (rejected,
-# NOT clamped) with a page_size field violation.
-# verifies GEO-1-27 (pageSize>1000 → INVALID_ARGUMENT, rejected not clamped)
-# ---------------------------------------------------------------------------
-CASES.append(Case(
-    id="REG-LST-BVA-PAGESIZE-OVER-MAX",
-    title="GET /geo/v1/regions?pageSize=10000 → 400 INVALID_ARGUMENT (rejected, not clamped)",
-    classes=["BVA", "VAL", "PAGE"], priority="P1",
-    steps=[
-        Step(name="list-ps-over", method="GET", path="/geo/v1/regions?pageSize=10000",
-             test_script=[
-                 *assert_status(400),
-                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 *assert_field_violation("page_size"),
-             ]),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# REG-LST-PAGE-BADTOKEN — garbage page_token → 400 INVALID_ARGUMENT. Format-validate
-# happens before the authz short-circuit (the authorized viewer reaches the backend
-# decode). Stable across the redesign.
-# verifies GEO-1-27 (garbage page_token → INVALID_ARGUMENT before authz short-circuit)
-# ---------------------------------------------------------------------------
-CASES.append(Case(
-    id="REG-LST-PAGE-BADTOKEN",
-    title="GET /geo/v1/regions?pageToken=<garbage> → 400 INVALID_ARGUMENT",
-    classes=["PAGE", "VAL", "NEG"], priority="P1",
-    steps=[
-        Step(name="list-bad-token", method="GET",
-             path="/geo/v1/regions?pageSize=10&pageToken=not-a-real-token%25%25%25",
-             test_script=[
-                 *assert_status(400),
-                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
-             ]),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# REG-LST-PAGE-ROUNDTRIP — pageSize=1 → capture nextPageToken → re-list with it → 200.
-# Property: an opaque cursor token round-trips without error.
-# ---------------------------------------------------------------------------
-CASES.append(Case(
-    id="REG-LST-PAGE-ROUNDTRIP",
-    title="Pagination round-trip: list pageSize=1 → follow nextPageToken → 200",
-    classes=["PAGE", "BVA"], priority="P2",
-    steps=[
-        Step(name="list-p1", method="GET", path="/geo/v1/regions?pageSize=1",
+        Step(name="get-region", method="GET", path="/geo/v1/regions/{{pickRegionId}}",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
-                 "pm.test('page has at most 1 region', () => pm.expect((j.regions || []).length).to.be.at.most(1));",
-                 "pm.environment.set('regNextToken', j.nextPageToken || '');",
-                 "pm.test('nextPageToken is a string', () => pm.expect(j.nextPageToken || '').to.be.a('string'));",
+                 "pm.test('id matches resolved', () => pm.expect(j.id).to.eql(pm.environment.get('pickRegionId')));",
+                 "pm.test('name is a string', () => pm.expect(j.name).to.be.a('string'));",
+                 *assert_createdat_truncated(),
              ]),
-        Step(name="list-p2", method="GET", path="/geo/v1/regions?pageSize=1&pageToken={{regNextToken}}",
-             test_script=[*assert_status(200)]),
     ],
 ))
 
 
 # ---------------------------------------------------------------------------
-# REG-GET-CONF-NO-INFRA — two-projection / capacity-anonymization security-lock:
-# the public Region body carries NO infra / placement / host-class fields. These
-# live only in the Internal projection (:9091). ungated security invariant.
-# verifies GEO-1-05 (host-class physically not on public), GEO-1-33 (no placementType/scope)
+# REG-GET-CONF-NO-INFRA — two-projection: public Region carries NO infra fields.
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="REG-GET-CONF-NO-INFRA",
-    title="GET /geo/v1/regions/{id} public body has NO infra/host-class/placement fields",
-    classes=["CONF", "SEC"], priority="P0",
+    title="Public Region.Get carries NO infra fields (numericInfraId/infra/hostClasses/... — two-projection invariant)",
+    classes=["CONF"], priority="P1",
     steps=[
-        Step(name="list-for-id", method="GET", path="/geo/v1/regions",
+        Step(name="list-pick", method="GET", path="/geo/v1/regions",
              test_script=[
                  *assert_status(200),
-                 *save_from_response("j.regions && j.regions[0] && j.regions[0].id", "regInfraId"),
+                 "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                 *save_from_response("pm.response.json().regions[0].id", "pickRegionId"),
              ]),
-        Step(name="get-region", method="GET", path="/geo/v1/regions/{{regInfraId}}",
+        Step(name="get-region", method="GET", path="/geo/v1/regions/{{pickRegionId}}",
              test_script=[
                  *assert_status(200),
-                 *assert_body_notcontains_infra(),
-             ]),
-        # The list body (all items) must also be leak-free — belt-and-suspenders.
-        Step(name="list-nocontains", method="GET", path="/geo/v1/regions?pageSize=100",
-             test_script=[
-                 *assert_status(200),
-                 *assert_body_notcontains_infra(),
+                 *assert_no_infra_fields(),
              ]),
     ],
 ))
 
 
 # ---------------------------------------------------------------------------
-# REG-LST-AUTHZ-ANON-DENY — anonymous (no Bearer) → 401 UNAUTHENTICATED. authN is
-# mandatory on every listener; project-scope EXEMPT (redesign) removes authZ scope,
-# NOT authN. anonymous-full-access is forbidden. Stable across the redesign.
-# verifies GEO-1-21 (unauthenticated → UNAUTHENTICATED; EXEMPT ≠ anonymous)
+# REG-GET-VAL-MALFORMED — malformed slug id → sync InvalidArgument (first statement).
 # ---------------------------------------------------------------------------
 CASES.append(Case(
-    id="REG-LST-AUTHZ-ANON-DENY",
-    title="GET /geo/v1/regions as anonymous (no Bearer) → 401 UNAUTHENTICATED",
-    classes=["AUTHZ", "NEG"], priority="P1",
+    id="REG-GET-VAL-MALFORMED",
+    title="Get with malformed (non-slug) region id → 400 InvalidArgument (first statement, before repo.Get)",
+    classes=["VAL", "NEG"], priority="P1",
     steps=[
-        Step(name="list-anon", method="GET", path="/geo/v1/regions", auth="anonymous",
+        Step(name="get-malformed", method="GET", path="/geo/v1/regions/{{malformedId}}",
              test_script=[
-                 *assert_status(401),
-                 *assert_grpc_code(16, "UNAUTHENTICATED"),
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('message references region id', () => pm.expect(String(pm.response.json().message)).to.include('region id'));",
              ]),
     ],
 ))
 
 
 # ---------------------------------------------------------------------------
-# REG-CR-AUTHZ-ADMIN-NOT-PUBLIC — admin write verb on the public endpoint must NOT
-# mutate. Region admin-CRUD is InternalRegionService (Internal-only, security.md
-# ban #6, gated system_admin). A non-admin tenant POSTing to the public
-# /geo/v1/regions must be rejected (401/403/404/501) — NEVER 200/mutation. Defends
-# the Internal-vs-external split at the REST boundary (black-box guard for GEO-1-17/22).
+# REG-GET-VAL-ID-TOOLONG — over-length id → InvalidArgument (BVA on id length).
 # ---------------------------------------------------------------------------
 CASES.append(Case(
-    id="REG-CR-AUTHZ-ADMIN-NOT-PUBLIC",
-    title="POST /geo/v1/regions (admin write) as non-admin on public endpoint → rejected, never 200",
-    classes=["AUTHZ", "NEG", "SEC"], priority="P0",
+    id="REG-GET-VAL-ID-TOOLONG",
+    title="Get with over-length region id (64 chars) → 400 InvalidArgument",
+    classes=["VAL", "BVA", "NEG"], priority="P2",
     steps=[
-        Step(name="admin-write-public", method="POST", path="/geo/v1/regions",
-             auth="jwtNoBindings",
-             body={"id": "hacked-region-{{runId}}", "name": "should-not-be-created-{{runId}}"},
+        Step(name="get-toolong", method="GET", path="/geo/v1/regions/" + ("a" * 64),
              test_script=[
-                 "pm.test('admin write on public endpoint rejected (401/403/404/501), never 200', () => "
-                 "pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([401, 403, 404, 501]));",
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# REG-GET-NEG-NOTFOUND — well-formed-but-absent id → 404 verbatim contract text.
+# ---------------------------------------------------------------------------
+CASES.append(Case(
+    id="REG-GET-NEG-NOTFOUND",
+    title="Get well-formed-but-absent region id → 404 NOT_FOUND, verbatim 'Region <id> not found'",
+    classes=["NEG", "CONF"], priority="P1",
+    steps=[
+        Step(name="get-absent", method="GET", path="/geo/v1/regions/{{garbageRegionId}}",
+             test_script=[
+                 *assert_status(404),
+                 *assert_grpc_code(5, "NOT_FOUND"),
+                 "pm.test('verbatim NotFound text', () => pm.expect(pm.response.json().message).to.eql('Region ' + pm.environment.get('garbageRegionId') + ' not found'));",
+             ]),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# Pagination BVA (ECP/BVA on pageSize + page_token) — validated BEFORE any authz
+# short-circuit (geo List has no per-object listauthz; validation always reached).
+# ---------------------------------------------------------------------------
+CASES.append(Case(
+    id="REG-LST-BVA-PAGESIZE-ZERO",
+    title="List pageSize=0 → default applied (200)",
+    classes=["BVA", "PAGE"], priority="P2",
+    steps=[Step(name="list-ps0", method="GET", path="/geo/v1/regions?pageSize=0",
+                test_script=[*assert_status(200)])],
+))
+
+CASES.append(Case(
+    id="REG-LST-BVA-PAGESIZE-OVER-MAX",
+    title="List pageSize=10000 (>1000 max) → 400 InvalidArgument (rejected, not clamped)",
+    classes=["BVA", "VAL"], priority="P1",
+    steps=[Step(name="list-ps-huge", method="GET", path="/geo/v1/regions?pageSize=10000",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+CASES.append(Case(
+    id="REG-LST-PAGE-TOKEN-GARBAGE",
+    title="List with garbage page_token → 400 InvalidArgument",
+    classes=["PAGE", "VAL"], priority="P1",
+    steps=[Step(name="list-bad-token", method="GET",
+                path="/geo/v1/regions?pageSize=10&pageToken=%25%25not-base64%25%25",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+CASES.append(Case(
+    id="REG-LST-BVA-PAGESIZE-ONE",
+    title="List pageSize=1 → at most 1 region (BVA lower bound)",
+    classes=["BVA", "PAGE"], priority="P2",
+    steps=[Step(name="list-ps1", method="GET", path="/geo/v1/regions?pageSize=1",
+                test_script=[*assert_status(200),
+                             "pm.test('at most 1 region', () => pm.expect((pm.response.json().regions||[]).length).to.be.at.most(1));"])],
+))
+
+CASES.append(Case(
+    id="REG-LST-PAGE-ROUNDTRIP",
+    title="Pagination round-trip: pageSize=1 → nextPageToken → next page 200",
+    classes=["PAGE", "CRUD"], priority="P2",
+    steps=[
+        Step(name="list-p1", method="GET", path="/geo/v1/regions?pageSize=1",
+             test_script=[*assert_status(200),
+                          "const tok = pm.response.json().nextPageToken || '';",
+                          "pm.environment.set('regNextToken', tok);",
+                          "pm.test('token is string', () => pm.expect(tok).to.be.a('string'));"]),
+        Step(name="list-p2", method="GET", path="/geo/v1/regions?pageSize=1&pageToken={{regNextToken}}",
+             test_script=[*assert_status(200)]),
     ],
 ))

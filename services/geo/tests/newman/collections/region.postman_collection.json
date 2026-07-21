@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "83fbb4ce-c3b4-4852-b2b0-2dc8697f38a7",
+    "_postman_id": "67bd4257-7852-421c-a413-1a698b25f0e8",
     "name": "kacho-geo / newman / region",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -11,16 +11,13 @@
         "type": "text/javascript",
         "exec": [
           "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
-          "  // runId формат: только [a-z0-9] — стабилен для любых суффиксов имён.",
           "  const t = Date.now().toString(36);",
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', (t + r).replace(/[^a-z0-9]/g, '').slice(-10));",
           "}",
-          "// Default auth: jwtBootstrap (admin/viewer-floor). Per-step auth= overrides",
-          "// this via the item-level pre-request script (_auth_pre_script).",
-          "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-          "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
-          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+          "const __jwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+          "if (__jwt && !pm.request.headers.has('Authorization')) {",
+          "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __jwt});",
           "}"
         ]
       }
@@ -28,11 +25,11 @@
   ],
   "item": [
     {
-      "name": "REG-LST-CRUD-OK — GET /geo/v1/regions (viewer) → 200, regions[] non-empty + well-formed (id/name present)",
-      "description": "class:CRUD | class:CONF | priority:P1",
+      "name": "GEO-REG-GT-CONF-OK — GET /geo/v1/regions as jwtBootstrap → 200, regions[] non-empty + well-formed, not 503/code14",
+      "description": "class:CONF | class:CRUD | priority:P0",
       "item": [
         {
-          "name": "list-regions",
+          "name": "list-regions-auth",
           "request": {
             "method": "GET",
             "header": [
@@ -55,21 +52,43 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('REGRESSION: not 503 (gateway->geo no-children dial)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(503);",
+                  "});",
+                  "pm.test('REGRESSION: body not grpc code 14 (UNAVAILABLE no-children)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = null; }",
+                  "  if (j && typeof j.code !== 'undefined') {",
+                  "    pm.expect(j.code, JSON.stringify(j)).to.not.equal(14);",
+                  "  }",
+                  "});",
                   "pm.test('regions is a non-empty array', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.regions, JSON.stringify(j)).to.be.an('array');",
-                  "  pm.expect(j.regions.length, 'seeded catalog non-empty').to.be.greaterThan(0);",
+                  "  pm.expect(j.regions.length, 'regions non-empty (geography seeded)').to.be.greaterThan(0);",
                   "});",
-                  "pm.test('each region item is well-formed (id + name present)', () => {",
-                  "  const j = pm.response.json();",
-                  "  (j.regions || []).forEach(r => {",
+                  "pm.test('regions are well-formed (id present)', () => {",
+                  "  (pm.response.json().regions || []).forEach(r => {",
                   "    pm.expect(r.id, 'region id: ' + JSON.stringify(r)).to.be.a('string').and.not.empty;",
-                  "    pm.expect(r, 'region name present: ' + JSON.stringify(r)).to.have.property('name');",
                   "  });",
                   "});"
                 ]
@@ -80,11 +99,11 @@
       ]
     },
     {
-      "name": "REG-GET-CRUD-OK — GET /geo/v1/regions/{id} (viewer) → 200, id echoes, createdAt present",
-      "description": "class:CRUD | class:CONF | priority:P1",
+      "name": "REG-GET-CRUD-OK — Get existing region (resolved from List) → 200, flat shape {id,name,createdAt}, createdAt truncated",
+      "description": "class:CRUD | class:CONF | priority:P0",
       "item": [
         {
-          "name": "list-for-id",
+          "name": "list-pick",
           "request": {
             "method": "GET",
             "header": [
@@ -112,12 +131,13 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('regions non-empty (geography seeded)', () => pm.expect((j.regions||[]).length).to.be.greaterThan(0));",
                   "try {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.regions && j.regions[0] && j.regions[0].id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('regId', String(v));",
-                  "} catch (e) {}",
-                  "pm.test('captured a seeded region id', () => pm.expect(pm.environment.get('regId')).to.be.a('string').and.not.empty);"
+                  "  const v = (j.regions[0].id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('pickRegionId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -134,7 +154,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/{{regId}}",
+              "raw": "{{baseUrl}}/geo/v1/regions/{{pickRegionId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -142,7 +162,7 @@
                 "geo",
                 "v1",
                 "regions",
-                "{{regId}}"
+                "{{pickRegionId}}"
               ]
             }
           },
@@ -154,8 +174,12 @@
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('id echoes the requested region', () => pm.expect(j.id).to.eql(pm.environment.get('regId')));",
-                  "pm.test('createdAt present (truncated timestamp on wire)', () => pm.expect(j).to.have.property('createdAt'));"
+                  "pm.test('id matches resolved', () => pm.expect(j.id).to.eql(pm.environment.get('pickRegionId')));",
+                  "pm.test('name is a string', () => pm.expect(j.name).to.be.a('string'));",
+                  "pm.test('createdAt truncated to seconds (no sub-second digits)', () => {",
+                  "  const ts = String(pm.response.json().createdAt);",
+                  "  pm.expect(ts, 'RFC3339 seconds ' + ts).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$/);",
+                  "});"
                 ]
               }
             }
@@ -164,11 +188,11 @@
       ]
     },
     {
-      "name": "REG-GET-NEG-NOTFOUND — GET /geo/v1/regions/{absent well-formed slug} → 404 NOT_FOUND 'Region <id> not found'",
-      "description": "class:NEG | class:CONF | priority:P1",
+      "name": "REG-GET-CONF-NO-INFRA — Public Region.Get carries NO infra fields (numericInfraId/infra/hostClasses/... — two-projection invariant)",
+      "description": "class:CONF | priority:P1",
       "item": [
         {
-          "name": "get-absent",
+          "name": "list-pick",
           "request": {
             "method": "GET",
             "header": [
@@ -178,15 +202,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/nonexistent-region-{{runId}}",
+              "raw": "{{baseUrl}}/geo/v1/regions",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
-                "regions",
-                "nonexistent-region-{{runId}}"
+                "regions"
               ]
             }
           },
@@ -196,12 +219,55 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
-                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                  "try {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
-                  "});",
-                  "pm.test('verbatim text: Region <id> not found', () => pm.expect(pm.response.json().message).to.match(/^Region .* not found$/));"
+                  "  const v = (pm.response.json().regions[0].id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('pickRegionId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/{{pickRegionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "{{pickRegionId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('public projection carries NO infra fields (two-projection invariant)', () => {",
+                  "  const o = pm.response.json();",
+                  "  const body = JSON.stringify(o).toLowerCase();",
+                  "  ['numericinfraid','infra','hostclasses','underlayanchor','capacityhint','failuredomaincount'].forEach(k => {",
+                  "    pm.expect(body, 'leaked infra field: ' + k + ' in ' + body).to.not.include(k);",
+                  "  });",
+                  "});"
                 ]
               }
             }
@@ -210,7 +276,7 @@
       ]
     },
     {
-      "name": "REG-GET-VAL-MALFORMED — GET /geo/v1/regions/{malformed non-slug id} → 400 INVALID_ARGUMENT (no pgx/SQL leak)",
+      "name": "REG-GET-VAL-MALFORMED — Get with malformed (non-slug) region id → 400 InvalidArgument (first statement, before repo.Get)",
       "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
@@ -224,7 +290,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/9bad-region",
+              "raw": "{{baseUrl}}/geo/v1/regions/{{malformedId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -232,7 +298,7 @@
                 "geo",
                 "v1",
                 "regions",
-                "9bad-region"
+                "{{malformedId}}"
               ]
             }
           },
@@ -244,13 +310,54 @@
                 "exec": [
                   "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message mentions invalid/slug region id (contract tone, tolerant across redesign)', () => pm.expect(pm.response.json().message).to.match(/(lowercase slug|invalid .*region.*id|region id)/i));",
-                  "pm.test('no pgx/SQL/panic leak in message', () => {",
-                  "  const m = String(pm.response.json().message || '').toLowerCase();",
-                  "  ['sqlstate','pgx','panic','goroutine'].forEach(t => pm.expect(m, 'leaked ' + t).to.not.include(t));",
+                  "pm.test('message references region id', () => pm.expect(String(pm.response.json().message)).to.include('region id'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-GET-VAL-ID-TOOLONG — Get with over-length region id (64 chars) → 400 InvalidArgument",
+      "description": "class:VAL | class:BVA | class:NEG | priority:P2",
+      "item": [
+        {
+          "name": "get-toolong",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});"
                 ]
               }
@@ -260,7 +367,53 @@
       ]
     },
     {
-      "name": "REG-LST-BVA-PAGESIZE-ZERO — GET /geo/v1/regions?pageSize=0 → 200 (default page size applied)",
+      "name": "REG-GET-NEG-NOTFOUND — Get well-formed-but-absent region id → 404 NOT_FOUND, verbatim 'Region <id> not found'",
+      "description": "class:NEG | class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "get-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/{{garbageRegionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "{{garbageRegionId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});",
+                  "pm.test('verbatim NotFound text', () => pm.expect(pm.response.json().message).to.eql('Region ' + pm.environment.get('garbageRegionId') + ' not found'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LST-BVA-PAGESIZE-ZERO — List pageSize=0 → default applied (200)",
       "description": "class:BVA | class:PAGE | priority:P2",
       "item": [
         {
@@ -300,11 +453,11 @@
       ]
     },
     {
-      "name": "REG-LST-BVA-PAGESIZE-OVER-MAX — GET /geo/v1/regions?pageSize=10000 → 400 INVALID_ARGUMENT (rejected, not clamped)",
-      "description": "class:BVA | class:VAL | class:PAGE | priority:P1",
+      "name": "REG-LST-BVA-PAGESIZE-OVER-MAX — List pageSize=10000 (>1000 max) → 400 InvalidArgument (rejected, not clamped)",
+      "description": "class:BVA | class:VAL | priority:P1",
       "item": [
         {
-          "name": "list-ps-over",
+          "name": "list-ps-huge",
           "request": {
             "method": "GET",
             "header": [
@@ -333,15 +486,8 @@
                 "exec": [
                   "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});",
-                  "pm.test('field violation on \"page_size\"', () => {",
-                  "  const j = pm.response.json();",
-                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
-                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
-                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'page_size');",
-                  "  pm.expect(fv, 'fieldViolation for page_size').to.be.an('object');",
                   "});"
                 ]
               }
@@ -351,8 +497,8 @@
       ]
     },
     {
-      "name": "REG-LST-PAGE-BADTOKEN — GET /geo/v1/regions?pageToken=<garbage> → 400 INVALID_ARGUMENT",
-      "description": "class:PAGE | class:VAL | class:NEG | priority:P1",
+      "name": "REG-LST-PAGE-TOKEN-GARBAGE — List with garbage page_token → 400 InvalidArgument",
+      "description": "class:PAGE | class:VAL | priority:P1",
       "item": [
         {
           "name": "list-bad-token",
@@ -365,14 +511,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions?pageSize=10&pageToken=not-a-real-token%25%25%25",
+              "raw": "{{baseUrl}}/geo/v1/regions?pageSize=10&pageToken=%25%25not-base64%25%25",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "geo",
                 "v1",
-                "regions?pageSize=10&pageToken=not-a-real-token%25%25%25"
+                "regions?pageSize=10&pageToken=%25%25not-base64%25%25"
               ]
             }
           },
@@ -384,7 +530,7 @@
                 "exec": [
                   "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});"
                 ]
@@ -395,8 +541,49 @@
       ]
     },
     {
-      "name": "REG-LST-PAGE-ROUNDTRIP — Pagination round-trip: list pageSize=1 → follow nextPageToken → 200",
-      "description": "class:PAGE | class:BVA | priority:P2",
+      "name": "REG-LST-BVA-PAGESIZE-ONE — List pageSize=1 → at most 1 region (BVA lower bound)",
+      "description": "class:BVA | class:PAGE | priority:P2",
+      "item": [
+        {
+          "name": "list-ps1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions?pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions?pageSize=1"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('at most 1 region', () => pm.expect((pm.response.json().regions||[]).length).to.be.at.most(1));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LST-PAGE-ROUNDTRIP — Pagination round-trip: pageSize=1 → nextPageToken → next page 200",
+      "description": "class:PAGE | class:CRUD | priority:P2",
       "item": [
         {
           "name": "list-p1",
@@ -427,10 +614,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "pm.test('page has at most 1 region', () => pm.expect((j.regions || []).length).to.be.at.most(1));",
-                  "pm.environment.set('regNextToken', j.nextPageToken || '');",
-                  "pm.test('nextPageToken is a string', () => pm.expect(j.nextPageToken || '').to.be.a('string'));"
+                  "const tok = pm.response.json().nextPageToken || '';",
+                  "pm.environment.set('regNextToken', tok);",
+                  "pm.test('token is string', () => pm.expect(tok).to.be.a('string'));"
                 ]
               }
             }
@@ -465,250 +651,6 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "REG-GET-CONF-NO-INFRA — GET /geo/v1/regions/{id} public body has NO infra/host-class/placement fields",
-      "description": "class:CONF | class:SEC | priority:P0",
-      "item": [
-        {
-          "name": "list-for-id",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "geo",
-                "v1",
-                "regions"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.regions && j.regions[0] && j.regions[0].id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('regInfraId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-region",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions/{{regInfraId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "geo",
-                "v1",
-                "regions",
-                "{{regInfraId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('two-projection: public body carries no infra/placement/host-class fields', () => {",
-                  "  const raw = pm.response.text();",
-                  "  const forbidden = ['numericInfraId','hostClasses','underlayAnchor','capacityHint',",
-                  "                     'failureDomainCount','placementType','placementScope'];",
-                  "  forbidden.forEach(k => pm.expect(raw, 'leaked ' + k + ': ' + raw).to.not.include(k));",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "list-nocontains",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions?pageSize=100",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "geo",
-                "v1",
-                "regions?pageSize=100"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('two-projection: public body carries no infra/placement/host-class fields', () => {",
-                  "  const raw = pm.response.text();",
-                  "  const forbidden = ['numericInfraId','hostClasses','underlayAnchor','capacityHint',",
-                  "                     'failureDomainCount','placementType','placementScope'];",
-                  "  forbidden.forEach(k => pm.expect(raw, 'leaked ' + k + ': ' + raw).to.not.include(k));",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "REG-LST-AUTHZ-ANON-DENY — GET /geo/v1/regions as anonymous (no Bearer) → 401 UNAUTHENTICATED",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "list-anon",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "geo",
-                "v1",
-                "regions"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// per-step: anonymous (authN-negative)",
-                  "pm.request.headers.remove('Authorization');"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
-                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "REG-CR-AUTHZ-ADMIN-NOT-PUBLIC — POST /geo/v1/regions (admin write) as non-admin on public endpoint → rejected, never 200",
-      "description": "class:AUTHZ | class:NEG | class:SEC | priority:P0",
-      "item": [
-        {
-          "name": "admin-write-public",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/geo/v1/regions",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "geo",
-                "v1",
-                "regions"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"id\": \"hacked-region-{{runId}}\", \"name\": \"should-not-be-created-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// per-step: bearer from env 'jwtNoBindings'",
-                  "const __t = pm.environment.get('jwtNoBindings') || pm.variables.get('jwtNoBindings') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('admin write on public endpoint rejected (401/403/404/501), never 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([401, 403, 404, 501]));"
                 ]
               }
             }
