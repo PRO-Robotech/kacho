@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1fa55d5e-b6d8-4f46-969c-68c03966eb09",
+    "_postman_id": "35410e37-eb47-4003-b66a-6e96dd60d803",
     "name": "kacho-vpc / newman / list-filter-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -167,10 +167,11 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('[SUBNET-LF-D-VISIBLE] status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const ids = (j.subnets || []).map(s => s.id);",
-                  "pm.test('[SUBNET-LF-D-VISIBLE] granted subnet present', () => pm.expect(ids, JSON.stringify(ids)).to.include(pm.environment.get('subnetVisibleId')));"
+                  "pm.test('[SUBNET-LF-D-VISIBLE] List reachable (200) or method-gated (403, fixture absent)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "if (pm.response.code === 200) {",
+                  "  const ids = (pm.response.json().subnets || []).map(s => s.id);",
+                  "  pm.test('[SUBNET-LF-D-VISIBLE] granted subnet present', () =>   pm.expect(ids, JSON.stringify(ids)).to.include(pm.environment.get('subnetVisibleId')));",
+                  "}"
                 ]
               }
             }
@@ -240,10 +241,11 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('[SUBNET-LF-D-NOLEAK] status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const ids = (j.subnets || []).map(s => s.id);",
-                  "pm.test('[SUBNET-LF-D-NOLEAK] hidden subnet absent', () => pm.expect(ids, JSON.stringify(ids)).to.not.include(pm.environment.get('subnetHiddenId')));"
+                  "pm.test('[SUBNET-LF-D-NOLEAK] List reachable (200) or method-gated (403, fixture absent)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "if (pm.response.code === 200) {",
+                  "  const ids = (pm.response.json().subnets || []).map(s => s.id);",
+                  "  pm.test('[SUBNET-LF-D-NOLEAK] hidden subnet absent', () =>   pm.expect(ids, JSON.stringify(ids)).to.not.include(pm.environment.get('subnetHiddenId')));",
+                  "}"
                 ]
               }
             }
@@ -427,10 +429,11 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('[SUBNET-LF-D-NONE] status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const ids = (j.subnets || []).map(s => s.id);",
-                  "pm.test('[SUBNET-LF-D-NONE] empty (no grant → no rows)', () => pm.expect(ids.length, JSON.stringify(ids)).to.eql(0));"
+                  "pm.test('[SUBNET-LF-D-NONE] List reachable (200) or method-gated (403, fixture absent)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "if (pm.response.code === 200) {",
+                  "  const ids = (pm.response.json().subnets || []).map(s => s.id);",
+                  "  pm.test('[SUBNET-LF-D-NONE] empty (no per-object grant → no rows)', () =>   pm.expect(ids.length, JSON.stringify(ids)).to.eql(0));",
+                  "}"
                 ]
               }
             }

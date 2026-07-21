@@ -190,6 +190,7 @@
 | `*-CR-VAL-DHCP-NS-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NS-OK |
 | `*-CR-VAL-DHCP-NTP-INVALID-IP` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-INVALID-IP |
 | `*-CR-VAL-DHCP-NTP-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-OK |
+| `*-CR-DHCP-IGNORED-VPC143` | VAL,CRUD | P2 | 1 (sub) | VPC-1-43: dhcpOptions silently ignored on Create (removed field) → accepted 200 |
 | `*-CR-VAL-EMPTY-BODY` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с пустым body → 400 |
 | `*-CR-VAL-EXT-WITH-SUBNET-FK` | NEG,VAL | P1 | 1 (add) | Create external + internal со заданным subnet_id → 400 oneof |
 | `*-CR-VAL-EXTRA-FIELDS` | VAL | P3 | 1 (net) | Create Network с unknown полем в body → silent ignore (200) или 400 |
