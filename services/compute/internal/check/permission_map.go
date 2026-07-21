@@ -331,6 +331,22 @@ func PermissionMap() authz.RPCMap {
 				return req.(*computev1.UpdateInstanceNetworkInterfaceRequest).GetInstanceId(), nil
 			}),
 		},
+		// Attach/DetachNetworkInterface — NIC lifecycle verb'ы на самом Instance
+		// (proto required_relation=v_update). Были пропущены при COMP-1 (map имел
+		// UpdateNetworkInterface, но не Attach/Detach) → корелиб authz fail-closes
+		// "rpc not mapped" на :attachNetworkInterface/:detachNetworkInterface.
+		"/kacho.cloud.compute.v1.InstanceService/AttachNetworkInterface": {
+			Relation: relationVUpdate,
+			Extract: authz.StaticExtractor(objectTypeInstance, func(req any) (string, error) {
+				return req.(*computev1.AttachInstanceNetworkInterfaceRequest).GetInstanceId(), nil
+			}),
+		},
+		"/kacho.cloud.compute.v1.InstanceService/DetachNetworkInterface": {
+			Relation: relationVUpdate,
+			Extract: authz.StaticExtractor(objectTypeInstance, func(req any) (string, error) {
+				return req.(*computev1.DetachInstanceNetworkInterfaceRequest).GetInstanceId(), nil
+			}),
+		},
 		"/kacho.cloud.compute.v1.InstanceService/ListOperations": {
 			Relation: relationVList,
 			Extract: authz.StaticExtractor(objectTypeInstance, func(req any) (string, error) {

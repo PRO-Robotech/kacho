@@ -42,6 +42,8 @@ var verbUpdateRPCs = []string{
 	"/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat",
 	"/kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat",
 	"/kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface",
+	"/kacho.cloud.compute.v1.InstanceService/AttachNetworkInterface",
+	"/kacho.cloud.compute.v1.InstanceService/DetachNetworkInterface",
 	"/kacho.cloud.compute.v1.InstanceService/Relocate",
 	"/kacho.cloud.compute.v1.InstanceService/SimulateMaintenanceEvent",
 }

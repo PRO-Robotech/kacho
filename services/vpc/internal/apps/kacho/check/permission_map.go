@@ -154,6 +154,21 @@ func PermissionMap() authz.RPCMap {
 				return req.(*vpcv1.UpdateNetworkRequest).GetNetworkId(), nil
 			}),
 		},
+		// Add/RemoveCidrBlocks — CIDR-block mutation на самой Network
+		// (proto required_relation=v_update). Пропущены при VPC-1 → corelib authz
+		// fail-closes "rpc not mapped" на :add-cidr-blocks/:remove-cidr-blocks.
+		"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks": {
+			Relation: relationVUpdate,
+			Extract: authz.StaticExtractor(objectTypeNetwork, func(req any) (string, error) {
+				return req.(*vpcv1.AddNetworkCidrBlocksRequest).GetNetworkId(), nil
+			}),
+		},
+		"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks": {
+			Relation: relationVUpdate,
+			Extract: authz.StaticExtractor(objectTypeNetwork, func(req any) (string, error) {
+				return req.(*vpcv1.RemoveNetworkCidrBlocksRequest).GetNetworkId(), nil
+			}),
+		},
 		"/kacho.cloud.vpc.v1.NetworkService/Delete": {
 			Relation: relationVDelete,
 			Extract: authz.StaticExtractor(objectTypeNetwork, func(req any) (string, error) {
@@ -330,6 +345,26 @@ func PermissionMap() authz.RPCMap {
 			Relation: relationVUpdate,
 			Extract: authz.StaticExtractor(objectTypeRouteTable, func(req any) (string, error) {
 				return req.(*vpcv1.UpdateRouteTableRequest).GetRouteTableId(), nil
+			}),
+		},
+		// Add/RemoveRoutes + UpdateRoute — route mutation на самой RouteTable
+		// (proto required_relation=v_update). Пропущены при VPC-1 → "rpc not mapped".
+		"/kacho.cloud.vpc.v1.RouteTableService/AddRoutes": {
+			Relation: relationVUpdate,
+			Extract: authz.StaticExtractor(objectTypeRouteTable, func(req any) (string, error) {
+				return req.(*vpcv1.AddRouteTableRoutesRequest).GetRouteTableId(), nil
+			}),
+		},
+		"/kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes": {
+			Relation: relationVUpdate,
+			Extract: authz.StaticExtractor(objectTypeRouteTable, func(req any) (string, error) {
+				return req.(*vpcv1.RemoveRouteTableRoutesRequest).GetRouteTableId(), nil
+			}),
+		},
+		"/kacho.cloud.vpc.v1.RouteTableService/UpdateRoute": {
+			Relation: relationVUpdate,
+			Extract: authz.StaticExtractor(objectTypeRouteTable, func(req any) (string, error) {
+				return req.(*vpcv1.UpdateRouteTableRouteRequest).GetRouteTableId(), nil
 			}),
 		},
 		"/kacho.cloud.vpc.v1.RouteTableService/Delete": {

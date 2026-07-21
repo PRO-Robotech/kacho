@@ -38,11 +38,16 @@ var verbGetRPCs = []string{
 // verbUpdateRPCs — object-self mutation (Update + domain-mutate): Check → `v_update`.
 var verbUpdateRPCs = []string{
 	"/kacho.cloud.vpc.v1.NetworkService/Update",
+	"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks",
+	"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks",
 	"/kacho.cloud.vpc.v1.SubnetService/Update",
 	"/kacho.cloud.vpc.v1.SubnetService/AddCidrBlocks",
 	"/kacho.cloud.vpc.v1.SubnetService/RemoveCidrBlocks",
 	"/kacho.cloud.vpc.v1.AddressService/Update",
 	"/kacho.cloud.vpc.v1.RouteTableService/Update",
+	"/kacho.cloud.vpc.v1.RouteTableService/AddRoutes",
+	"/kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes",
+	"/kacho.cloud.vpc.v1.RouteTableService/UpdateRoute",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/Update",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/UpdateRules",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/UpdateRule",
