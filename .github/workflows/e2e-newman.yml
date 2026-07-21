@@ -195,10 +195,11 @@ jobs:
         working-directory: services/nlb/tests/newman
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
-      # storage + registry: их редизайн раньше НЕ был под e2e-покрытием (не в
+      # storage + registry + geo: их редизайн раньше НЕ был под e2e-покрытием (не в
       # newman-parallel.sh SERVICES → нет отчёта в artifact). Теперь прогоняются +
-      # гейтятся (fixtures засеяны shared authz-fixtures). geo своего suite не имеет
-      # (покрыт iam geo-read).
+      # гейтятся (fixtures засеяны shared authz-fixtures). geo получил СВОЮ полную
+      # суиту (Region/Zone public + Internal admin :9091 + authz + placement) —
+      # owner-директива «каждый модуль — свои тесты»; iam geo-read superseded.
       - name: гейт — newman зелёный (storage)
         if: always()
         working-directory: services/storage/tests/newman
@@ -207,6 +208,11 @@ jobs:
       - name: гейт — newman зелёный (registry)
         if: always()
         working-directory: services/registry/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      - name: гейт — newman зелёный (geo)
+        if: always()
+        working-directory: services/geo/tests/newman
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       # coverage-гейт: proto RPC → newman case-id. Тоже был в polyrepo и тоже потерялся.
