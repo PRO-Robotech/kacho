@@ -210,13 +210,10 @@ jobs:
         working-directory: services/registry/tests/newman
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
-      # geo gate temporarily disabled: kacho-geo:dev CrashLoopBackOffs on the dev stand
-      # (values.dev.yaml keeps the known-good pinned image). Suite is authored+committed;
-      # re-enable once geo:dev boots (geo deploy follow-up). See newman-parallel.sh.
-      # - name: гейт — newman зелёный (geo)
-      #   if: always()
-      #   working-directory: services/geo/tests/newman
-      #   run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+      - name: гейт — newman зелёный (geo)
+        if: always()
+        working-directory: services/geo/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       # coverage-гейт: proto RPC → newman case-id. Тоже был в polyrepo и тоже потерялся.
       # Порог — не «сколько получилось», а ПОЛ, ниже которого падаем: он ловит регресс
