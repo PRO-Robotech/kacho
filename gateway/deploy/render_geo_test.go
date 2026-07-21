@@ -80,6 +80,77 @@ func TestRender_GeoMTLSEdgeEnabled(t *testing.T) {
 	mustContain(t, out, "kacho-geo.kacho.svc.cluster.local:9090")
 }
 
+// TestRender_InternalListenerMTLS — #57: the chart must expose a FIRST-CLASS knob
+// for the cluster-internal :9091 gRPC listener mTLS + SPIFFE caller allow-list
+// (InternalAuthzCacheService.InvalidateSubject, dialed by the iam push-drainer).
+// In a production-class env validateProductionInternalListener FATAL-fails the boot
+// unless this is enabled; before this block the only way to wire it was the generic
+// extraEnv passthrough — a dev-masked gap that crash-looped the gateway under
+// values.prod.yaml. The server cert reuses the mounted external TLS secret; client
+// certs verify against the internal CA (KACHO_API_GATEWAY_MTLS_CA_FILE from the mtls
+// block) — hence the block requires mtls.enable=true.
+func TestRender_InternalListenerMTLS(t *testing.T) {
+	out := helmTemplate(t,
+		"mtls.enable=true",
+		"internalListener.mtls.enable=true",
+	)
+	mustContain(t, out, "KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE")
+	mustContain(t, out, "KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_CERT_FILE")
+	mustContain(t, out, "KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE")
+	mustContain(t, out, "KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE")
+	// Default allow-list = the iam module identity (the only legitimate caller of
+	// InvalidateSubject).
+	mustContain(t, out, "spiffe://kacho.cloud/ns/kacho/sa/kacho-iam")
+}
+
+// TestRender_InternalListenerDefaultOff — additive / zero-regression: with the
+// chart defaults the internal-listener mTLS env must NOT render (dev/local/test run
+// the insecure listener for back-compat). A future default flip that silently
+// requires cert material would break dev — this guard catches it.
+func TestRender_InternalListenerDefaultOff(t *testing.T) {
+	out := helmTemplate(t)
+	if strings.Contains(out, "KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE") {
+		t.Fatalf("internal-listener mTLS env must be OFF by default (dev/local back-compat)")
+	}
+}
+
+// TestRender_InternalListenerRequiresMtls — fail-fast guard: enabling the internal
+// listener mTLS WITHOUT the backend-dial mtls block must ABORT the render, not emit
+// a half-secured PodSpec. The internal listener verifies incoming client certs
+// against the internal CA (KACHO_API_GATEWAY_MTLS_CA_FILE) that only the mtls block
+// mounts; a silent render would defer the failure to a runtime Fatalf.
+func TestRender_InternalListenerRequiresMtls(t *testing.T) {
+	if _, err := exec.LookPath("helm"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("helm binary not on PATH in CI — render-guard must run, not skip")
+		}
+		t.Skip("helm binary not on PATH — skipping deploy render-guard")
+	}
+	cmd := exec.Command("helm", "template", ".", "--set", "internalListener.mtls.enable=true")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("render must abort when internalListener.mtls.enable is set without mtls.enable; got success:\n%s", out)
+	}
+	if !strings.Contains(string(out), "requires mtls.enable=true") {
+		t.Fatalf("render error must explain the mtls.enable dependency; got:\n%s", out)
+	}
+}
+
+// TestRender_AppEnv — the first-class appEnv knob drives the domain-LESS
+// KACHO_APP_ENV deployment label that keys the composition-root production guards
+// (validateProductionAuthzConfig + validateProductionInternalListener). Default ""
+// → not emitted (Go default "" is already production-class / fail-closed); an
+// explicit label renders the env so the dev overlay can opt into the dev-class
+// tolerance and prod overlays can be explicit.
+func TestRender_AppEnv(t *testing.T) {
+	if strings.Contains(helmTemplate(t), "KACHO_APP_ENV") {
+		t.Fatalf("KACHO_APP_ENV must not render when appEnv is unset (Go default '' = production-class)")
+	}
+	out := helmTemplate(t, "appEnv=prod-sentinel-42")
+	mustContain(t, out, "KACHO_APP_ENV")
+	mustContain(t, out, "prod-sentinel-42")
+}
+
 func mustContain(t *testing.T, haystack, needle string) {
 	t.Helper()
 	if !strings.Contains(haystack, needle) {
