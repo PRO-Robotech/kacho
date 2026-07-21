@@ -60,6 +60,21 @@ func (g *StepUpGate) Check(token *VerifiedToken, req PermissionRequirement) erro
 		return errors.New("stepup: token required")
 	}
 
+	// O-1 (#58): service-account principals are acr-EXEMPT by design — parity with
+	// the iam :9091 acr-floor (authzguard/acr_floor.go, fgaproxy.go; security.md
+	// §4.1.2). A service principal has no interactive MFA and can NEVER satisfy an
+	// acr>=1 floor, so gating it on ACR would permanently 401 every SA — including
+	// the bootstrap-admin SA (#58) — out of the acr-gated seed RPCs
+	// (UserTokenService.Issue / SAKeyService.Issue). The exemption is NARROW: it
+	// keys strictly on kacho_principal_type == "service_account" (a `user`
+	// principal is NEVER exempt — mechanism-lock test), and it lifts ONLY the
+	// ACR/MFA-freshness floor — the downstream FGA authz Check (authz.go) still
+	// runs, so this grants no permission, it only stops demanding an assurance
+	// level a service principal structurally cannot produce.
+	if isServiceAccountPrincipal(token) {
+		return nil
+	}
+
 	if req.RequiredACRMin != "" {
 		gotRank := acrRank(token.ACR)
 		wantRank := acrRank(req.RequiredACRMin)
@@ -78,6 +93,19 @@ func (g *StepUpGate) Check(token *VerifiedToken, req PermissionRequirement) erro
 		}
 	}
 	return nil
+}
+
+// principalTypeServiceAccount — the kacho_principal_type claim value stamped by
+// the iam token-hook for a client_credentials service-account token.
+const principalTypeServiceAccount = "service_account"
+
+// isServiceAccountPrincipal reports whether the verified token belongs to a
+// service-account principal (acr-exempt, O-1). Reads the kacho_principal_type
+// claim from the top level or the nested ext_claims (verifiedClaim). Only an
+// EXACT "service_account" match exempts — an empty/absent type or a `user` type
+// is never exempt.
+func isServiceAccountPrincipal(token *VerifiedToken) bool {
+	return verifiedClaim(token, "kacho_principal_type") == principalTypeServiceAccount
 }
 
 // acrRank maps ACR strings to a comparable integer. Unknown values resolve

@@ -84,3 +84,53 @@ func TestStepUp_UnknownACRTreatedAsZero(t *testing.T) {
 	err := g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "1"})
 	assert.ErrorIs(t, err, middleware.ErrStepUpRequired)
 }
+
+// ── O-1 (#58): service-account acr-exemption (narrow) + mechanism-lock ──────────
+
+// A service-account principal (kacho_principal_type=service_account, acr=0) is
+// EXEMPT from the acr step-up floor — parity with the iam :9091 acr-floor
+// (security.md §4.1.2). Covers the bootstrap-admin SA calling an acr>=2 RPC.
+func TestStepUp_ServiceAccountPrincipal_ExemptFromACRFloor(t *testing.T) {
+	g := middleware.NewStepUpGate(nil)
+	tok := &middleware.VerifiedToken{
+		ACR:       "0",
+		ExtClaims: map[string]any{"kacho_principal_type": "service_account"},
+	}
+	assert.NoError(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2"}),
+		"service-account principal must be exempt from the acr floor (O-1)")
+	// Also exempt from MFA-freshness (a service principal has no auth_time).
+	assert.NoError(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2", MFAMaxAge: time.Hour}))
+}
+
+// Exemption reads the top-level claim too (Hydra allowed_top_level_claims promotion).
+func TestStepUp_ServiceAccountPrincipal_TopLevelClaim_Exempt(t *testing.T) {
+	g := middleware.NewStepUpGate(nil)
+	tok := &middleware.VerifiedToken{
+		ACR:    "0",
+		Claims: map[string]any{"kacho_principal_type": "service_account"},
+	}
+	assert.NoError(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2"}))
+}
+
+// MECHANISM-LOCK: a normal (user) principal with acr < floor STILL gets step-up —
+// the SA-exemption must NOT widen into a blanket bypass (O-1 narrow-scoping).
+func TestStepUp_UserPrincipal_BelowFloor_StillStepUp(t *testing.T) {
+	g := middleware.NewStepUpGate(nil)
+	tok := &middleware.VerifiedToken{
+		ACR:       "1",
+		ExtClaims: map[string]any{"kacho_principal_type": "user"},
+	}
+	assert.ErrorIs(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2"}),
+		middleware.ErrStepUpRequired,
+		"a user principal below the acr floor must still be challenged (mechanism-lock)")
+}
+
+// MECHANISM-LOCK: an ABSENT principal type is NOT exempt (fail-closed — only an
+// exact service_account match exempts).
+func TestStepUp_NoPrincipalType_BelowFloor_StillStepUp(t *testing.T) {
+	g := middleware.NewStepUpGate(nil)
+	tok := &middleware.VerifiedToken{ACR: "0"}
+	assert.ErrorIs(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2"}),
+		middleware.ErrStepUpRequired,
+		"absent principal type must not be treated as exempt")
+}
