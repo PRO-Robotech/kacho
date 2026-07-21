@@ -64,6 +64,32 @@ func TestExtractEntry_FullyAnnotated(t *testing.T) {
 	if entry.RequiredAcrMin != "2" {
 		t.Errorf("RequiredAcrMin mismatch: %s", entry.RequiredAcrMin)
 	}
+	if entry.HideExistence {
+		t.Errorf("HideExistence must default to false when the option is unset")
+	}
+}
+
+// TestExtractEntry_HideExistence pins that the generator maps the
+// (kacho.iam.authz.v1.hide_existence) option into the catalog entry — the wiring
+// that lets a verb-bearing mutation (registry Update/Delete) opt into gateway
+// hide-existence on deny (opaque NotFound, no deny_reasons echo — security.md #6).
+func TestExtractEntry_HideExistence(t *testing.T) {
+	opts := buildOpts(t,
+		"registry.registries.update",
+		"v_update",
+		"2",
+		"registry_registry",
+		"registry_id",
+	)
+	proto.SetExtension(opts, authzv1.E_HideExistence, true)
+
+	entry, warn := extractEntry("kacho.cloud.registry.v1.RegistryService/Update", opts)
+	if warn != "" {
+		t.Fatalf("unexpected warning: %s", warn)
+	}
+	if !entry.HideExistence {
+		t.Errorf("HideExistence must be true when (kacho.iam.authz.v1.hide_existence) = true")
+	}
 }
 
 func TestExtractEntry_DefaultAcrMin(t *testing.T) {

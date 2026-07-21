@@ -53,6 +53,11 @@ type CatalogEntry struct {
 	RequiredRelation string         `json:"required_relation"`
 	ScopeExtractor   ScopeExtractor `json:"scope_extractor"`
 	RequiredAcrMin   string         `json:"required_acr_min,omitempty"`
+	// HideExistence — mirror of the (kacho.iam.authz.v1.hide_existence) option.
+	// Omitted from JSON when false so the catalog diff stays minimal (only the
+	// opted-in RPCs carry the key). The gateway authz middleware surfaces a deny
+	// on such an RPC as NotFound (no deny reasons) instead of PermissionDenied.
+	HideExistence bool `json:"hide_existence,omitempty"`
 }
 
 // ScopeExtractor mirrors authzv1.ScopeExtractor on the JSON side.
@@ -277,6 +282,7 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 	requiredRelation := getStringExt(opts, authzv1.E_RequiredRelation)
 	requiredAcrMin := getStringExt(opts, authzv1.E_RequiredAcrMin)
 	scope := getScopeExt(opts, authzv1.E_ScopeExtractor)
+	hideExistence := getBoolExt(opts, authzv1.E_HideExistence)
 
 	entry := CatalogEntry{
 		FQN:              rpcFQN,
@@ -284,6 +290,7 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		RequiredRelation: requiredRelation,
 		ScopeExtractor:   scope,
 		RequiredAcrMin:   requiredAcrMin,
+		HideExistence:    hideExistence,
 	}
 
 	if permission == ExemptSentinel {
@@ -334,6 +341,20 @@ func getStringExt(opts *descriptorpb.MethodOptions, ext protoreflect.ExtensionTy
 		return ""
 	}
 	return s
+}
+
+// getBoolExt reads a bool-typed extension off a MethodOptions, returning false
+// when the extension is not set or carries a non-bool value.
+func getBoolExt(opts *descriptorpb.MethodOptions, ext protoreflect.ExtensionType) bool {
+	if opts == nil || !proto.HasExtension(opts, ext) {
+		return false
+	}
+	v := proto.GetExtension(opts, ext)
+	b, ok := v.(bool)
+	if !ok {
+		return false
+	}
+	return b
 }
 
 // getScopeExt reads the ScopeExtractor message extension. Returns a zero

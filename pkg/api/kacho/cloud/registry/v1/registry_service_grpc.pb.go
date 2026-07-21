@@ -58,9 +58,18 @@ type RegistryServiceClient interface {
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
 	Create(ctx context.Context, in *CreateRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Update — async, mutable labels/description (name/project immutable). v_update.
+	// hide_existence: a caller without v_update must not learn the registry exists
+	// (nor have its grants enumerated) — deny → NotFound, byte-parity with a real
+	// miss and with the v_get read-deny hide (security.md #6). The gateway echoes
+	// NO deny reason; without this the deny would surface 403 + `deny_reasons`
+	// (relations oracle). The registry backend is already opaque; this closes the
+	// gateway echo for the gated mutation.
 	Update(ctx context.Context, in *UpdateRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
 	// zot-namespace + UnregisterResource owner/repo-tuple.
+	// hide_existence: same rationale as Update — a caller without v_delete must not
+	// learn the registry exists nor have its grants enumerated; deny → NotFound,
+	// no `deny_reasons` echo (security.md #6). Mirrors the v_get read-deny hide.
 	Delete(ctx context.Context, in *DeleteRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
@@ -295,9 +304,18 @@ type RegistryServiceServer interface {
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
 	Create(context.Context, *CreateRegistryRequest) (*operation.Operation, error)
 	// Update — async, mutable labels/description (name/project immutable). v_update.
+	// hide_existence: a caller without v_update must not learn the registry exists
+	// (nor have its grants enumerated) — deny → NotFound, byte-parity with a real
+	// miss and with the v_get read-deny hide (security.md #6). The gateway echoes
+	// NO deny reason; without this the deny would surface 403 + `deny_reasons`
+	// (relations oracle). The registry backend is already opaque; this closes the
+	// gateway echo for the gated mutation.
 	Update(context.Context, *UpdateRegistryRequest) (*operation.Operation, error)
 	// Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
 	// zot-namespace + UnregisterResource owner/repo-tuple.
+	// hide_existence: same rationale as Update — a caller without v_delete must not
+	// learn the registry exists nor have its grants enumerated; deny → NotFound,
+	// no `deny_reasons` echo (security.md #6). Mirrors the v_get read-deny hide.
 	Delete(context.Context, *DeleteRegistryRequest) (*operation.Operation, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
