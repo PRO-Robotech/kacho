@@ -200,6 +200,8 @@ mtls:
                       # dial-host (kacho-geo / kacho-geo-internal), both in peer SAN
     registry: false   # gateway→registry (+ registryInternal); SERVER_NAME unset →
                       # derived per dial-host (kacho-registry / kacho-registry-internal)
+    storage: false    # gateway→storage (+ storageInternal); SERVER_NAME unset →
+                      # derived per dial-host (kacho-storage), in peer SAN
 
 # Arbitrary env vars escape-hatch (key: value).
 extraEnv: {}

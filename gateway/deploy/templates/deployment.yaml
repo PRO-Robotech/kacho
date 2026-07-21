@@ -227,6 +227,14 @@ spec:
             - name: KACHO_API_GATEWAY_MTLS_REGISTRY_ENABLE
               value: "true"
             {{- end }}
+            {{- if .Values.mtls.edges.storage }}
+            # gateway→storage backend mTLS. storage.mtls.enable=true makes the storage
+            # server RequireAndVerifyClientCert on both listeners, so the gateway must
+            # present its client leaf; SERVER_NAME derives from the dial-host
+            # (kacho-storage.kacho.svc.cluster.local ∈ storage server-cert SAN).
+            - name: KACHO_API_GATEWAY_MTLS_STORAGE_ENABLE
+              value: "true"
+            {{- end }}
             {{- if .Values.mtls.hybridExternal }}
             # Hybrid external TLS listener uses VerifyClientCertIfGiven with
             # the internal CA (MTLS_CA_FILE above) as ClientCAs — a client WITH a
