@@ -628,6 +628,16 @@ func NewMux(
 			if err := iampb.RegisterInternalOperationsServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalOperationsService: %w", err)
 			}
+			// InternalBootstrapTokenService.MintBootstrapToken — non-interactive
+			// bootstrap RS256 token mint (#58) under POST
+			// /iam/v1/internal/bootstrapToken:mint. Internal-only; isInternalPath
+			// routes /iam/v1/internal/* to the internal sub-mux and the dispatcher
+			// 404s it on the external TLS listener (HasInternalSuffix also blocks the
+			// Internal* suffix on the public listener). permission="<exempt>": the
+			// mTLS listener boundary is the gate.
+			if err := iampb.RegisterInternalBootstrapTokenServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+				return nil, fmt.Errorf("register iam InternalBootstrapTokenService: %w", err)
+			}
 		}
 
 		// --- loadbalancer.v1 (kacho-nlb): NetworkLoadBalancer + Listener + TargetGroup ---

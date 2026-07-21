@@ -243,6 +243,7 @@ var generatedRestRoutes = []restRoute{
 	{Method: "POST", Template: "/iam/v1/groups/{group_id}:addMember", FQN: "kacho.cloud.iam.v1.GroupService/AddMember"},
 	{Method: "GET", Template: "/iam/v1/groups/{group_id}:listMembers", FQN: "kacho.cloud.iam.v1.GroupService/ListMembers"},
 	{Method: "POST", Template: "/iam/v1/groups/{group_id}:removeMember", FQN: "kacho.cloud.iam.v1.GroupService/RemoveMember"},
+	{Method: "POST", Template: "/iam/v1/internal/bootstrapToken:mint", FQN: "kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"},
 	{Method: "GET", Template: "/iam/v1/internal/cluster", FQN: "kacho.cloud.iam.v1.InternalClusterService/Get"},
 	{Method: "GET", Template: "/iam/v1/internal/cluster/admins", FQN: "kacho.cloud.iam.v1.InternalClusterService/ListAdmins"},
 	{Method: "POST", Template: "/iam/v1/internal/cluster/admins", FQN: "kacho.cloud.iam.v1.InternalClusterService/GrantAdmin"},
