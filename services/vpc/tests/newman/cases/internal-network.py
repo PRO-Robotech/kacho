@@ -39,13 +39,17 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "createdNetworkId")]),
         poll_operation_until_done(),
+        # budget=60: the internal projection (vrfId allocation worker) materialises
+        # eventually-consistent; under full-suite parallel load its window exceeds the
+        # default 12.5s owner-tuple budget → first internal Get briefly 404s. Widen so
+        # the read-your-writes retry covers the vrf-materialization tail (#59).
         retry_until_authorized(Step(name="get-internal", method="GET", path=NETWORKS + "/{{createdNetworkId}}:internal", auth="jwtBootstrap", internal=True,
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('network.id matches', () => pm.expect(j.network.id).to.eql(pm.environment.get('createdNetworkId')));",
                           "pm.test('vrfId is a number', () => pm.expect(j.vrfId).to.be.a('number'));",
                           "pm.test('vrfId allocated (>=1, 0 reserved)', () => pm.expect(j.vrfId).to.be.at.least(1));",
-                          "pm.test('vrfId not leaked into nested network', () => pm.expect(j.network).to.not.have.property('vrfId'));"])),
+                          "pm.test('vrfId not leaked into nested network', () => pm.expect(j.network).to.not.have.property('vrfId'));"]), budget=60),
         Step(name="get-public-no-vrfid", method="GET", path=NETWORKS + "/{{createdNetworkId}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",

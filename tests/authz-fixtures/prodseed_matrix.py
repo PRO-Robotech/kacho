@@ -200,6 +200,12 @@ fixtures = {
     "jwtProjectEditorB": tok_editorCrossA2,
     # project-owner (admin) @ A1
     "jwtProjectOwnerA": tok_ownerA,
+    # tolerant nlb subjects (cases assert oneOf): group-member behaves as editor@A1
+    # (clean 200 + cleanup); custom-role operator/targetManager are ungranted so their
+    # denial asserts (oneOf([403,404])) hold — a valid-but-ungranted SA yields 403.
+    "jwtGroupMemberEditor": tok_editorA,
+    "jwtCustomRoleOperator": tok_nogrant,
+    "jwtCustomRoleTargetManager": tok_nogrant,
     # ids
     "accountAId": acctA,
     "accountBId": acctB,
