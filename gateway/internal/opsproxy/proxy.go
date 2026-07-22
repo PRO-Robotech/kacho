@@ -17,6 +17,7 @@
 //	"nlb" → loadbalancer      (ВСЕ операции kacho-nlb: NetworkLoadBalancer/Listener/TargetGroup)
 //	"rop" → registry          (ВСЕ операции kacho-registry: Registry/DeleteTag)
 //	"sop" → storage           (ВСЕ операции kacho-storage: Volume/Snapshot)
+//	"geo" → geo               (ВСЕ операции kacho-geo: Region/Zone admin CRUD)
 //
 // Префикс заведомо стабильный: ровно 3 символа, lowercase crockford-base32-friendly.
 // Тело id (17 символов) — непрозрачно для proxy.
@@ -53,9 +54,15 @@ import (
 //   - prefixOperationIAM ("iop"): mirrors kacho-iam domain.PrefixOperationIAM;
 //     the gateway must not import kacho-iam internal packages, so it is pinned
 //     here.
+//   - prefixOperationGeo ("geo"): mirrors kacho-geo lro.OperationPrefix; geo has
+//     no exported ids.PrefixOperation* constant (its op-prefix lives as an
+//     internal lro-package literal), so it is pinned here. Without this entry
+//     every geo admin CRUD Operation.Get/Cancel routes to InvalidArgument and
+//     geo internal-admin LROs are unpollable through the gateway.
 const (
 	prefixOperationVPCSubnet = "e9b"
 	prefixOperationIAM       = "iop"
+	prefixOperationGeo       = "geo"
 )
 
 // backendCallTimeout bounds every OperationService.Get/Cancel call OpsProxy
@@ -87,6 +94,8 @@ var prefixToBackend = map[string]string{
 	ids.PrefixOperationReg: "registry", // rop: все операции kacho-registry (Registry/DeleteTag)
 	// storage domain
 	ids.PrefixOperationStorage: "storage", // sop: все операции kacho-storage (Volume/Snapshot — общий op-prefix, декаплен от ресурса)
+	// geo domain
+	prefixOperationGeo: "geo", // geo: все операции kacho-geo (Region/Zone admin CRUD — lro.OperationPrefix)
 }
 
 // legacyPrefixToBackend — старые «<service>_<uuid>» Operation.id, все еще
@@ -124,7 +133,7 @@ func New(conns map[string]*grpc.ClientConn) *OpsProxy {
 //   - legacy "<prefix>_<uuid>" с известным legacy-prefix → роутим.
 //   - все остальное (malformed, неизвестный prefix) → InvalidArgument
 //     "invalid operation id <X>" — валидные operation-id у Kachō имеют только
-//     известные domain-префиксы (enp…/e9b…/epd…/iop…/nlb…/rop…/sop…) и legacy-формы.
+//     известные domain-префиксы (enp…/e9b…/epd…/iop…/nlb…/rop…/sop…/geo…) и legacy-формы.
 func (p *OpsProxy) resolveBackend(id string) (operationpb.OperationServiceClient, error) {
 	invalid := status.Errorf(codes.InvalidArgument, "invalid operation id %q", id)
 	notFound := status.Errorf(codes.NotFound, "Operation %s not found", id)
