@@ -106,14 +106,6 @@ service RegistryService {
     option (kacho.iam.authz.v1.hide_existence) = true;
   }
 
-  // ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
-  // = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
-  // → gateway <exempt>, authz полностью в handler'е.
-  rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse) {
-    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-  }
-
   // ListOperations — sync-история async-операций реестра (per-resource, фильтр по
   // resource_id=registry_id). Interceptor-gated per-RPC Check v_list на
   // registry_registry (как Get) → в allowlist как публичный gRPC-путь.
@@ -157,6 +149,22 @@ service RegistryService {
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
   rpc GetRepository(GetRepositoryRequest) returns (Repository) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
+
+  // ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
+  // = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
+  // → gateway <exempt>, authz полностью в handler'е.
+  //
+  // ПОРЯДОК (Defect B, #64): объявлен ПОСЛЕ GetRepository catch-all'а. grpc-gateway
+  // `{repository=**}` deep-wildcard матчит и ПУСТОЙ хвост, поэтому `GET …/repositories`
+  // (без repo) иначе перехватывался бы GetRepository (repository="" → InvalidArgument
+  // "repository is required") вместо ListRepositories. mux PREPEND-ит хендлеры
+  // (later-declared пробуется ПЕРВЫМ) → List, объявленный ПОЗЖЕ Get, выигрывает точный
+  // `…/repositories`, а `…/repositories/{repo}` по-прежнему уходит в Get (List — exact,
+  // без wildcard, не матчит непустой хвост).
+  rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse) {
+    option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories"};
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 

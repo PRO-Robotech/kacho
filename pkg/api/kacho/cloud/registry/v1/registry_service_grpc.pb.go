@@ -28,9 +28,9 @@ const (
 	RegistryService_Create_FullMethodName           = "/kacho.cloud.registry.v1.RegistryService/Create"
 	RegistryService_Update_FullMethodName           = "/kacho.cloud.registry.v1.RegistryService/Update"
 	RegistryService_Delete_FullMethodName           = "/kacho.cloud.registry.v1.RegistryService/Delete"
-	RegistryService_ListRepositories_FullMethodName = "/kacho.cloud.registry.v1.RegistryService/ListRepositories"
 	RegistryService_ListOperations_FullMethodName   = "/kacho.cloud.registry.v1.RegistryService/ListOperations"
 	RegistryService_GetRepository_FullMethodName    = "/kacho.cloud.registry.v1.RegistryService/GetRepository"
+	RegistryService_ListRepositories_FullMethodName = "/kacho.cloud.registry.v1.RegistryService/ListRepositories"
 	RegistryService_CreateRepository_FullMethodName = "/kacho.cloud.registry.v1.RegistryService/CreateRepository"
 	RegistryService_UpdateRepository_FullMethodName = "/kacho.cloud.registry.v1.RegistryService/UpdateRepository"
 	RegistryService_DeleteRepository_FullMethodName = "/kacho.cloud.registry.v1.RegistryService/DeleteRepository"
@@ -71,10 +71,6 @@ type RegistryServiceClient interface {
 	// learn the registry exists nor have its grants enumerated; deny → NotFound,
 	// no `deny_reasons` echo (security.md #6). Mirrors the v_get read-deny hide.
 	Delete(ctx context.Context, in *DeleteRegistryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
-	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
-	// → gateway <exempt>, authz полностью в handler'е.
-	ListRepositories(ctx context.Context, in *ListRepositoriesRequest, opts ...grpc.CallOption) (*ListRepositoriesResponse, error)
 	// ListOperations — sync-история async-операций реестра (per-resource, фильтр по
 	// resource_id=registry_id). Interceptor-gated per-RPC Check v_list на
 	// registry_registry (как Get) → в allowlist как публичный gRPC-путь.
@@ -83,6 +79,18 @@ type RegistryServiceClient interface {
 	// survives-empty). Handler: per-repo v_get Check; unauthorized|absent → NOT_FOUND.
 	// Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
 	GetRepository(ctx context.Context, in *GetRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
+	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
+	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
+	// → gateway <exempt>, authz полностью в handler'е.
+	//
+	// ПОРЯДОК (Defect B, #64): объявлен ПОСЛЕ GetRepository catch-all'а. grpc-gateway
+	// `{repository=**}` deep-wildcard матчит и ПУСТОЙ хвост, поэтому `GET …/repositories`
+	// (без repo) иначе перехватывался бы GetRepository (repository="" → InvalidArgument
+	// "repository is required") вместо ListRepositories. mux PREPEND-ит хендлеры
+	// (later-declared пробуется ПЕРВЫМ) → List, объявленный ПОЗЖЕ Get, выигрывает точный
+	// `…/repositories`, а `…/repositories/{repo}` по-прежнему уходит в Get (List — exact,
+	// без wildcard, не матчит непустой хвост).
+	ListRepositories(ctx context.Context, in *ListRepositoriesRequest, opts ...grpc.CallOption) (*ListRepositoriesResponse, error)
 	// CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
 	// uniqueness (registry_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
 	// Handler: namespace call-gate (невидимый реестр → NOT_FOUND, X04) + v_create;
@@ -186,16 +194,6 @@ func (c *registryServiceClient) Delete(ctx context.Context, in *DeleteRegistryRe
 	return out, nil
 }
 
-func (c *registryServiceClient) ListRepositories(ctx context.Context, in *ListRepositoriesRequest, opts ...grpc.CallOption) (*ListRepositoriesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListRepositoriesResponse)
-	err := c.cc.Invoke(ctx, RegistryService_ListRepositories_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *registryServiceClient) ListOperations(ctx context.Context, in *ListRegistryOperationsRequest, opts ...grpc.CallOption) (*ListRegistryOperationsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListRegistryOperationsResponse)
@@ -210,6 +208,16 @@ func (c *registryServiceClient) GetRepository(ctx context.Context, in *GetReposi
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Repository)
 	err := c.cc.Invoke(ctx, RegistryService_GetRepository_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *registryServiceClient) ListRepositories(ctx context.Context, in *ListRepositoriesRequest, opts ...grpc.CallOption) (*ListRepositoriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRepositoriesResponse)
+	err := c.cc.Invoke(ctx, RegistryService_ListRepositories_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -317,10 +325,6 @@ type RegistryServiceServer interface {
 	// learn the registry exists nor have its grants enumerated; deny → NotFound,
 	// no `deny_reasons` echo (security.md #6). Mirrors the v_get read-deny hide.
 	Delete(context.Context, *DeleteRegistryRequest) (*operation.Operation, error)
-	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
-	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
-	// → gateway <exempt>, authz полностью в handler'е.
-	ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error)
 	// ListOperations — sync-история async-операций реестра (per-resource, фильтр по
 	// resource_id=registry_id). Interceptor-gated per-RPC Check v_list на
 	// registry_registry (как Get) → в allowlist как публичный gRPC-путь.
@@ -329,6 +333,18 @@ type RegistryServiceServer interface {
 	// survives-empty). Handler: per-repo v_get Check; unauthorized|absent → NOT_FOUND.
 	// Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
 	GetRepository(context.Context, *GetRepositoryRequest) (*Repository, error)
+	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
+	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
+	// → gateway <exempt>, authz полностью в handler'е.
+	//
+	// ПОРЯДОК (Defect B, #64): объявлен ПОСЛЕ GetRepository catch-all'а. grpc-gateway
+	// `{repository=**}` deep-wildcard матчит и ПУСТОЙ хвост, поэтому `GET …/repositories`
+	// (без repo) иначе перехватывался бы GetRepository (repository="" → InvalidArgument
+	// "repository is required") вместо ListRepositories. mux PREPEND-ит хендлеры
+	// (later-declared пробуется ПЕРВЫМ) → List, объявленный ПОЗЖЕ Get, выигрывает точный
+	// `…/repositories`, а `…/repositories/{repo}` по-прежнему уходит в Get (List — exact,
+	// без wildcard, не матчит непустой хвост).
+	ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error)
 	// CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
 	// uniqueness (registry_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
 	// Handler: namespace call-gate (невидимый реестр → NOT_FOUND, X04) + v_create;
@@ -397,14 +413,14 @@ func (UnimplementedRegistryServiceServer) Update(context.Context, *UpdateRegistr
 func (UnimplementedRegistryServiceServer) Delete(context.Context, *DeleteRegistryRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedRegistryServiceServer) ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListRepositories not implemented")
-}
 func (UnimplementedRegistryServiceServer) ListOperations(context.Context, *ListRegistryOperationsRequest) (*ListRegistryOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
 }
 func (UnimplementedRegistryServiceServer) GetRepository(context.Context, *GetRepositoryRequest) (*Repository, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetRepository not implemented")
+}
+func (UnimplementedRegistryServiceServer) ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRepositories not implemented")
 }
 func (UnimplementedRegistryServiceServer) CreateRepository(context.Context, *CreateRepositoryRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateRepository not implemented")
@@ -538,24 +554,6 @@ func _RegistryService_Delete_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RegistryService_ListRepositories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListRepositoriesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RegistryServiceServer).ListRepositories(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RegistryService_ListRepositories_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistryServiceServer).ListRepositories(ctx, req.(*ListRepositoriesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _RegistryService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListRegistryOperationsRequest)
 	if err := dec(in); err != nil {
@@ -588,6 +586,24 @@ func _RegistryService_GetRepository_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RegistryServiceServer).GetRepository(ctx, req.(*GetRepositoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RegistryService_ListRepositories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRepositoriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistryServiceServer).ListRepositories(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistryService_ListRepositories_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistryServiceServer).ListRepositories(ctx, req.(*ListRepositoriesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -746,16 +762,16 @@ var RegistryService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RegistryService_Delete_Handler,
 		},
 		{
-			MethodName: "ListRepositories",
-			Handler:    _RegistryService_ListRepositories_Handler,
-		},
-		{
 			MethodName: "ListOperations",
 			Handler:    _RegistryService_ListOperations_Handler,
 		},
 		{
 			MethodName: "GetRepository",
 			Handler:    _RegistryService_GetRepository_Handler,
+		},
+		{
+			MethodName: "ListRepositories",
+			Handler:    _RegistryService_ListRepositories_Handler,
 		},
 		{
 			MethodName: "CreateRepository",

@@ -33,6 +33,11 @@ func (s *repoRecorderSrv) GetRepository(_ context.Context, r *registrypb.GetRepo
 	return &registrypb.Repository{}, nil
 }
 
+func (s *repoRecorderSrv) ListRepositories(_ context.Context, r *registrypb.ListRepositoriesRequest) (*registrypb.ListRepositoriesResponse, error) {
+	s.called <- "ListRepositories:" + r.GetRegistryId()
+	return &registrypb.ListRepositoriesResponse{}, nil
+}
+
 func (s *repoRecorderSrv) ListReferrers(_ context.Context, r *registrypb.ListReferrersRequest) (*registrypb.ListReferrersResponse, error) {
 	s.called <- "ListReferrers:" + r.GetRepository()
 	return &registrypb.ListReferrersResponse{}, nil
@@ -100,6 +105,12 @@ func TestRegistry_RepositoryRoutes_DispatchToOwnHandler(t *testing.T) {
 	cases := []struct {
 		name, method, path, want string
 	}{
+		// Defect B (#64): the bare `…/repositories` GET must dispatch to
+		// ListRepositories, NOT be swallowed by GetRepository's `{repository=**}`
+		// catch-all (which would resolve repository="" → InvalidArgument). RED until
+		// the proto declares ListRepositories AFTER GetRepository (mux prepends →
+		// later-declared tried first, so the exact `…/repositories` route wins).
+		{"ListRepositories", "GET", "/registry/v1/registries/reg-1/repositories", "ListRepositories:reg-1"},
 		{"GetRepository", "GET", "/registry/v1/registries/reg-1/repositories/backend/api", "GetRepository:backend/api"},
 		{"ListReferrers", "GET", "/registry/v1/registries/reg-1/repositories/backend/api/referrers", "ListReferrers:backend/api"},
 		{"CreateRepository", "POST", "/registry/v1/registries/reg-1/repositories", "CreateRepository:"},
