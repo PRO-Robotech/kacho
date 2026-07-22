@@ -49,6 +49,7 @@ var allIDPrefixes = func() map[string]string {
 		"PrefixDisk":             ids.PrefixDisk,
 		"PrefixImage":            ids.PrefixImage,
 		"PrefixSnapshot":         ids.PrefixSnapshot,
+		"PrefixStorageImage":     ids.PrefixStorageImage,
 		"PrefixLoadBalancer":     ids.PrefixLoadBalancer,
 		"PrefixListener":         ids.PrefixListener,
 		"PrefixTargetGroup":      ids.PrefixTargetGroup,
@@ -112,6 +113,14 @@ func TestResourceID_KnownPrefixesAcceptValid(t *testing.T) {
 		{"load balancer", "nlb"},
 		{"listener", "lst"},
 		{"target group", "tgr"},
+		// storage — Volume/Snapshot/Image. `img` is storage's boot-image prefix
+		// (ids.PrefixStorageImage), distinct from compute's `fd8` (ids.PrefixImage).
+		// Regression #59: storage Image.Create emits `img<17>` ids but `img` was not
+		// registered in the central known-prefix set → the gateway authz edge 400'd
+		// every storage image Get/Update/Delete ("invalid resource id 'img…'").
+		{"storage volume", "vol"},
+		{"storage snapshot", "snp"},
+		{"storage image", "img"},
 		// previously known (regression)
 		{"network", "net"},
 		{"subnet", "sub"},

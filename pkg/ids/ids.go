@@ -77,6 +77,12 @@ const (
 	// читаемый slug (НЕ NewID-prefix), поэтому своей константы не требует.
 	PrefixVolume          = "vol"
 	PrefixStorageSnapshot = "snp"
+	// PrefixStorageImage — storage boot-image (`img`), отдельно от compute
+	// PrefixImage (`fd8`). storage Image.Create эмитит `img<17>` через
+	// NewID(domain.PrefixImage="img"); БЕЗ регистрации здесь well-formed `img`-id
+	// отвергался бы authz-edge api-gateway (corevalidate.ResourceID → 400 "invalid
+	// resource id 'img…'") на КАЖДОМ Get/Update/Delete образа (#59 storage-image).
+	PrefixStorageImage = "img"
 
 	// nlb: LoadBalancer/Listener/TargetGroup получают каждый свой 3-char
 	// префикс — opsproxy в api-gateway маршрутизирует по PrefixOperationNLB
@@ -251,7 +257,7 @@ func allKnownPrefixValues() []string {
 		PrefixCloud, PrefixOrganization, PrefixNetwork, PrefixSubnet, PrefixAddress,
 		PrefixRouteTable, PrefixSecurityGroup, PrefixGateway, PrefixNetworkInterface,
 		PrefixAddressPool, PrefixAnycastPool, PrefixInstance, PrefixImage,
-		PrefixVolume, PrefixStorageSnapshot,
+		PrefixVolume, PrefixStorageSnapshot, PrefixStorageImage,
 		PrefixLoadBalancer, PrefixListener, PrefixTargetGroup,
 		PrefixApplication, PrefixRegistry,
 		PrefixOperationVPC, PrefixOperationApps, PrefixOperationReg, PrefixOperationStorage,
