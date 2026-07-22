@@ -58,6 +58,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK",
+    # verifies https://github.com/PRO-Robotech/kacho/issues/62 (edit role does not materialize storage verbs — RED until iam fix)
     title="[INV-10] alice List volumes projectId=projectA1 (есть viewer) → not 403; result содержит ТОЛЬКО projectA1 (нет кросс-проектной утечки)",
     classes=["AUTHZ", "SEC", "POS"], priority="P0",
     # verifies CS1-S1-13

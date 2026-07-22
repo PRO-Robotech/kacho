@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d2d02d3a-4b0c-43fa-ab58-6b1d2549a576",
+    "_postman_id": "ab54a5d3-8fb4-4cab-b3cc-451b0d1f7e6c",
     "name": "kacho-storage / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2118,7 +2118,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid image id \\'not-an-img-id\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid image id \\'not-an-img-id\\''));"
+                  "pm.test('message includes \"invalid resource id \\'not-an-img-id\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid resource id \\'not-an-img-id\\''));"
                 ]
               }
             }
@@ -7885,7 +7885,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid image id \\'not-an-img\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid image id \\'not-an-img\\''));"
+                  "pm.test('message includes \"invalid resource id \\'not-an-img\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid resource id \\'not-an-img\\''));"
                 ]
               }
             }

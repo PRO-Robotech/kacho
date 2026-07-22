@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "17aee592-ba01-4719-9f71-6ce8b35ee249",
+    "_postman_id": "d1170552-33a8-4f02-bf9b-fb08a8c887cb",
     "name": "kacho-storage / newman / volume",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -364,7 +364,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid volume id \\'not-a-vol-id\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid volume id \\'not-a-vol-id\\''));"
+                  "pm.test('message includes \"invalid resource id \\'not-a-vol-id\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid resource id \\'not-a-vol-id\\''));"
                 ]
               }
             }
@@ -4646,7 +4646,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid volume id \\'not-a-vol\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid volume id \\'not-a-vol\\''));"
+                  "pm.test('message includes \"invalid resource id \\'not-a-vol\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid resource id \\'not-a-vol\\''));"
                 ]
               }
             }

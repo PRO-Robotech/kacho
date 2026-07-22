@@ -92,7 +92,7 @@ CASES.append(Case(
     # verifies CS1-S1-02
     steps=[Step(name="get-malformed", method="GET", path=f"{VOL}/not-a-vol-id",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             *_assert_msg("invalid volume id 'not-a-vol-id'")])],
+                             *_assert_msg("invalid resource id 'not-a-vol-id'")])],
 ))
 
 CASES.append(Case(
@@ -528,7 +528,7 @@ CASES.append(Case(
     # verifies CS1-S1-15
     steps=[Step(name="lop-malformed", method="GET", path=f"{VOL}/not-a-vol/operations",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             *_assert_msg("invalid volume id 'not-a-vol'")])],
+                             *_assert_msg("invalid resource id 'not-a-vol'")])],
 ))
 
 # ---------------------------------------------------------------------------
