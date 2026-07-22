@@ -58,8 +58,13 @@ api-gateway:
   # (/etc/api-gateway/tls, api-gateway-tls) + backend-dial CA (/etc/api-gateway/mtls/
   # ca.crt, already exported as KACHO_API_GATEWAY_MTLS_CA_FILE). Allow-list = the iam
   # module SPIFFE SAN (the only authorised caller of InvalidateSubject).
+  # appEnv (first-class knob → KACHO_APP_ENV) overrides values.dev.yaml's `dev`.
+  # MUST NOT set KACHO_APP_ENV via extraEnv here: the chart already renders a
+  # KACHO_APP_ENV env from the appEnv knob, so an extraEnv.KACHO_APP_ENV produces a
+  # DUPLICATE list key → helm strategic-merge `$setElementOrder` patch failure on
+  # `helm upgrade` (dev base appEnv=dev + extraEnv=production → two KACHO_APP_ENV).
+  appEnv: production
   extraEnv:
-    KACHO_APP_ENV: production
     KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE: "true"
     KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_CERT_FILE: /etc/api-gateway/tls/tls.crt
     KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE: /etc/api-gateway/tls/tls.key
