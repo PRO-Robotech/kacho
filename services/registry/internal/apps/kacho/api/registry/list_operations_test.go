@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
@@ -52,6 +53,23 @@ func TestListOperations_HappyPath(t *testing.T) {
 		registry.ListOperationsQuery{RegistryID: regID})
 	require.NoError(t, err)
 	require.NotEmpty(t, list)
+}
+
+// TestListOperations_GarbagePageToken_InvalidArgument — при мусорном page_token
+// operations.Repo.List возвращает gRPC InvalidArgument (см. corelib
+// pagetoken_invalidarg_test), а registry serviceerr обязан пробросить его как
+// 400, а НЕ схлопнуть в unclassified→INTERNAL (500). Регрессия на #63 (format-
+// validate → InvalidArgument, security.md #7) на границе ListOperations.
+func TestListOperations_GarbagePageToken_InvalidArgument(t *testing.T) {
+	t.Parallel()
+	ops := newMemOps()
+	ops.listErr = coreerrors.InvalidArgument().
+		AddFieldViolation("page_token", "page_token is invalid or malformed").Err()
+	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
+	_, _, err := uc.ListOperations(context.Background(),
+		registry.ListOperationsQuery{RegistryID: ids.NewID(ids.PrefixRegistry), PageToken: "!!garbage!!"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"garbage page_token must surface 400, not 500")
 }
 
 // TestListOperations_RepoError_NoLeak — сырой pgx/SQL-текст ops-репозитория

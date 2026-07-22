@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 )
 
@@ -394,7 +395,15 @@ func (r *pgRepo) listWithOwner(ctx context.Context, filter ListFilter, owner *Ow
 	if filter.PageToken != "" {
 		cursorCreatedAt, cursorID, err := decodePageToken(filter.PageToken)
 		if err != nil {
-			return nil, "", fmt.Errorf("repo.List: invalid page_token: %w", err)
+			// Garbage page_token — клиентская ошибка формата, а НЕ INTERNAL.
+			// Возвращаем полноценный gRPC InvalidArgument (симметрично
+			// validate.PageSize выше), чтобы сервисные error-mapper'ы, не
+			// узнающие сырой base64/strconv-текст, не схлопывали его в
+			// unclassified→INTERNAL (registry ListOperations #63: 500→400).
+			// security.md #7: format-validate → InvalidArgument.
+			return nil, "", coreerrors.InvalidArgument().
+				AddFieldViolation("page_token", "page_token is invalid or malformed").
+				Err()
 		}
 		conditions = append(conditions, fmt.Sprintf(
 			"(created_at, id) > ($%d, $%d)", argIdx, argIdx+1,
