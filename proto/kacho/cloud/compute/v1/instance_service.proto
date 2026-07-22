@@ -33,7 +33,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Instance resources in the specified folder.
@@ -45,7 +45,7 @@ service InstanceService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates an instance in the specified folder.
@@ -65,7 +65,7 @@ service InstanceService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified instance.
@@ -84,7 +84,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified instance.
@@ -100,7 +100,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the metadata of the specified instance. For more information on metadata, see [VM metadata](/docs/compute/concepts/vm-metadata).
@@ -119,7 +119,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Returns the serial port output of the specified Instance resource.
@@ -131,7 +131,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Stops the running instance.
@@ -149,7 +149,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Starts the stopped instance.
@@ -165,7 +165,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Restarts the running instance.
@@ -181,7 +181,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Attaches the disk to the instance.
@@ -200,7 +200,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Detaches the disk from the instance.
@@ -219,7 +219,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Attaches the filesystem to the instance.
@@ -243,7 +243,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Detaches the filesystem from the instance.
@@ -262,7 +262,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Attaches an existing kacho-vpc NetworkInterface (NIC) to the instance by id.
@@ -286,7 +286,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Detaches a network interface (NIC) from the instance, by nic_id or slot index.
@@ -308,7 +308,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Enables One-to-one NAT on the network interface.
@@ -327,7 +327,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Removes One-to-one NAT from the network interface.
@@ -346,7 +346,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified instance network interface.
@@ -365,7 +365,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified instance.
@@ -377,7 +377,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Moves the specified instance to another availability zone
@@ -398,7 +398,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // maintenance
@@ -418,7 +418,7 @@ service InstanceService {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // access
@@ -432,7 +432,7 @@ service InstanceService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Sets access bindings for the instance.

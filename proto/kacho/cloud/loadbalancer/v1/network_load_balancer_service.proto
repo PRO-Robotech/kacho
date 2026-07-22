@@ -28,7 +28,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc List(ListNetworkLoadBalancersRequest) returns (ListNetworkLoadBalancersResponse) {
@@ -55,7 +55,7 @@ service NetworkLoadBalancerService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Update(UpdateNetworkLoadBalancerRequest) returns (operation.Operation) {
@@ -73,7 +73,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Delete(DeleteNetworkLoadBalancerRequest) returns (operation.Operation) {
@@ -88,7 +88,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Start(StartNetworkLoadBalancerRequest) returns (operation.Operation) {
@@ -103,7 +103,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Stop(StopNetworkLoadBalancerRequest) returns (operation.Operation) {
@@ -118,7 +118,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Move the load balancer to another project in the same region (design §4.7).
@@ -141,7 +141,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc AttachTargetGroup(AttachNetworkLoadBalancerTargetGroupRequest) returns (operation.Operation) {
@@ -159,7 +159,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc DetachTargetGroup(DetachNetworkLoadBalancerTargetGroupRequest) returns (operation.Operation) {
@@ -177,7 +177,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // GetTargetStates — computed deterministic snapshot (design §4.6).
@@ -192,7 +192,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc ListOperations(ListNetworkLoadBalancerOperationsRequest) returns (ListNetworkLoadBalancerOperationsResponse) {
@@ -203,7 +203,7 @@ service NetworkLoadBalancerService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

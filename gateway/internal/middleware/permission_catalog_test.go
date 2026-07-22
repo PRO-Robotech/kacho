@@ -283,7 +283,8 @@ func TestPermissionCatalog_ListAssignableRoles_ScopePolymorphic(t *testing.T) {
 	assert.Equal(t, "resource_id", entry.ScopeExtractor.FromRequestField)
 	assert.Equal(t, "resource_type", entry.ScopeExtractor.ObjectTypeFromRequestField,
 		"object_type must be derived from request resource_type (scope-polymorphic, Bug A)")
-	assert.Equal(t, "2", entry.RequiredACRMin, "anti-anon ACR floor (D-5)")
+	assert.Equal(t, "1", entry.RequiredACRMin,
+		"ListAssignableRoles is a READ → routine AAL1 floor (SEC-acr-stepup-refinement, was 2)")
 }
 
 // TestPermissionCatalog_ListByScope_ScopePolymorphic — the embedded catalog
@@ -305,7 +306,8 @@ func TestPermissionCatalog_ListByScope_ScopePolymorphic(t *testing.T) {
 	assert.Equal(t, "resource_id", entry.ScopeExtractor.FromRequestField)
 	assert.Equal(t, "resource_type", entry.ScopeExtractor.ObjectTypeFromRequestField,
 		"object_type must be derived from request resource_type (scope-polymorphic, Bug A)")
-	assert.Equal(t, "2", entry.RequiredACRMin, "anti-anon ACR floor")
+	assert.Equal(t, "1", entry.RequiredACRMin,
+		"ListByScope is a READ → routine AAL1 floor (SEC-acr-stepup-refinement, was 2)")
 
 	// The removed target/selector RPCs must NOT be present.
 	for _, gone := range []string{

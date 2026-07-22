@@ -32,10 +32,19 @@ var (
 )
 
 // PermissionRequirement — per-RPC authentication policy. Resolved by the
-// permission catalog; a missing entry implies the default
-// requirement (ACR=2, no max-age).
+// permission catalog.
+//
+// An empty RequiredACRMin means NO step-up requirement: Check fails OPEN on it
+// (the `if req.RequiredACRMin != ""` guard below skips the acr floor). This is
+// intentional — catalog COMPLETENESS (every RPC has an entry) and the catalog's
+// per-RPC authz Check are enforced upstream by the authz middleware
+// ("no entry for method" → AUTHZ_DENIED), so the step-up layer need not
+// re-derive a default here. The generator injects an explicit required_acr_min
+// for every NON-exempt RPC (default "2"), so a genuine empty value at runtime is
+// either an exempt RPC (gated by in-handler ReBAC + FGA-exempt posture) or an
+// explicit routine downgrade — never an accidental un-gated privileged RPC.
 type PermissionRequirement struct {
-	RequiredACRMin string        // "" → no requirement (effectively "0")
+	RequiredACRMin string        // "" → no step-up requirement (Check fails open on it)
 	MFAMaxAge      time.Duration // 0 → no requirement
 }
 

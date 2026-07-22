@@ -1,9 +1,14 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package grpcsrv — acr.go: the SHARED ACR (Authentication Context Class
-// Reference) ranking used by BOTH the api-gateway public step-up gate and the
-// kacho-iam internal acr-floor, so the two never drift.
+// Package grpcsrv — acr.go: the ACR (Authentication Context Class Reference)
+// ranking used by the kacho-iam internal acr-floor (authzguard.ACRFloor).
+//
+// This is NOT shared with the api-gateway public step-up gate: that gate keeps
+// its OWN, functionally-identical ranking table (middleware.acrRank). Both read
+// the same catalog `required_acr_min` value, and their identical pass/deny
+// verdict is locked by a verdict-parity test (SEC-ACR-16) so the two floors
+// cannot drift — but they are two separate tables, not one shared function.
 //
 // ACR ordering (normative):
 //
@@ -24,7 +29,9 @@ const MDKeyTokenACR = "x-kacho-token-acr" // #nosec G101 -- gRPC metadata header
 
 // ACRRank maps an ACR string to a comparable integer. Unknown / malformed
 // values resolve to 0 (anonymous) — fail-closed when policy expects ≥ 1. This
-// is the single source of truth for ACR ranking across Kachō.
+// is the source of truth for ACR ranking on the iam side; the api-gateway
+// step-up gate maintains a separate, functionally-identical table (verdict
+// parity locked by SEC-ACR-16).
 func ACRRank(acr string) int {
 	switch acr {
 	case "3":

@@ -28,7 +28,7 @@ service RouteTableService {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of RouteTable resources in the specified folder.
@@ -40,7 +40,7 @@ service RouteTableService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a route table in the specified folder and network.
@@ -57,7 +57,7 @@ service RouteTableService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified route table.
@@ -74,7 +74,7 @@ service RouteTableService {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified route table.
@@ -90,7 +90,7 @@ service RouteTableService {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // List operations for the specified route table.
@@ -102,7 +102,7 @@ service RouteTableService {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Гранулярное управление маршрутами (стиль verb-RPC как Subnet
@@ -120,7 +120,7 @@ service RouteTableService {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc RemoveRoutes (RemoveRouteTableRoutesRequest) returns (operation.Operation) {
@@ -135,7 +135,7 @@ service RouteTableService {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc UpdateRoute (UpdateRouteTableRouteRequest) returns (operation.Operation) {
@@ -150,7 +150,7 @@ service RouteTableService {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

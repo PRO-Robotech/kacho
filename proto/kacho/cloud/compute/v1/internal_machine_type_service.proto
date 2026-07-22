@@ -37,7 +37,7 @@ service InternalMachineTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Update (UpdateMachineTypeRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/compute/v1/internal/machineTypes/{machine_type_id}" body: "*" };
@@ -51,7 +51,7 @@ service InternalMachineTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Delete (DeleteMachineTypeRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/compute/v1/internal/machineTypes/{machine_type_id}" };
@@ -65,7 +65,7 @@ service InternalMachineTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -25,7 +25,7 @@ service TargetGroupService {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc List(ListTargetGroupsRequest) returns (ListTargetGroupsResponse) {
@@ -52,7 +52,7 @@ service TargetGroupService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Update(UpdateTargetGroupRequest) returns (operation.Operation) {
@@ -70,7 +70,7 @@ service TargetGroupService {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Delete(DeleteTargetGroupRequest) returns (operation.Operation) {
@@ -85,7 +85,7 @@ service TargetGroupService {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Move the target group to another project. Blocked if currently attached
@@ -107,7 +107,7 @@ service TargetGroupService {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc AddTargets(AddTargetsRequest) returns (operation.Operation) {
@@ -125,7 +125,7 @@ service TargetGroupService {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc RemoveTargets(RemoveTargetsRequest) returns (operation.Operation) {
@@ -143,7 +143,7 @@ service TargetGroupService {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc ListOperations(ListTargetGroupOperationsRequest) returns (ListTargetGroupOperationsResponse) {
@@ -154,7 +154,7 @@ service TargetGroupService {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -61,7 +61,7 @@ service AuthorizeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // BatchCheck — multiple checks bundled in one RPC. Server-side fans out
@@ -81,7 +81,7 @@ service AuthorizeService {
       object_type:        "project"
       from_request_field: "scope_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ListObjects — return all `resource_type` ids the subject has `action` on.
@@ -103,7 +103,7 @@ service AuthorizeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ListSubjects — inverse of ListObjects: return all subjects with `action`
@@ -126,7 +126,7 @@ service AuthorizeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ExpandRelations — return the Zanzibar userset tree for a (resource,
@@ -149,7 +149,7 @@ service AuthorizeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // WhoAmI — return the authenticated caller's identity + a permission

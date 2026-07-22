@@ -159,6 +159,37 @@ func TestExtractEntry_ExemptSentinel(t *testing.T) {
 	}
 }
 
+// TestExtractEntry_ExemptUnannotated_NoAcrDefault — SEC-ACR-15 / R3/B-1: the
+// generator default "2" is injected ONLY for NON-exempt RPCs. An exempt RPC with
+// no explicit required_acr_min gets an EMPTY acr (the exempt short-circuit
+// early-returns BEFORE default-injection). This is the load-bearing fact behind
+// the V3 fail-safe carve-out: a future exempt RPC is covered by neither the
+// step-up backstop (fail-open on empty) nor authz-completeness (row exists, FGA
+// scope-Check is skipped for <exempt>) — so it relies on authN + in-handler
+// ReBAC + deliberate FGA-exempt posture, and adding one is high-scrutiny.
+func TestExtractEntry_ExemptUnannotated_NoAcrDefault(t *testing.T) {
+	opts := buildOpts(t, ExemptSentinel, "", "", "", "")
+	entry, _ := extractEntry("kacho.cloud.iam.v1.AccessBindingService/Create", opts)
+	if entry.RequiredAcrMin != "" {
+		t.Errorf("exempt un-annotated RPC must keep EMPTY acr (no default injection), got %q", entry.RequiredAcrMin)
+	}
+
+	// Contrast: an EXPLICIT acr on an exempt RPC is preserved (orthogonal fields —
+	// this is exactly the AccessBindingService/Create net-strengthening: exempt +
+	// acr="2").
+	optsExplicit := buildOpts(t, ExemptSentinel, "", "2", "", "")
+	entry2, warn := extractEntry("kacho.cloud.iam.v1.AccessBindingService/Create", optsExplicit)
+	if warn != "" {
+		t.Fatalf("exempt RPC with explicit acr should not warn, got: %s", warn)
+	}
+	if entry2.Permission != ExemptSentinel {
+		t.Errorf("permission must stay exempt (orthogonal to acr), got %q", entry2.Permission)
+	}
+	if entry2.RequiredAcrMin != "2" {
+		t.Errorf("explicit acr=2 on an exempt RPC must be preserved (net-strengthening), got %q", entry2.RequiredAcrMin)
+	}
+}
+
 func TestExtractEntry_NilOptions(t *testing.T) {
 	// No annotations at all → row emitted, warning emitted.
 	entry, warn := extractEntry("x.Y/Z", nil)

@@ -28,7 +28,7 @@ service AddressService {
       object_type:        "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Returns the specified Address resource by a given value.
@@ -42,7 +42,7 @@ service AddressService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Address resources in the specified folder.
@@ -54,7 +54,7 @@ service AddressService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Address resources in the specified subnet.
@@ -66,7 +66,7 @@ service AddressService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates an address in the specified folder and network.
@@ -85,7 +85,7 @@ service AddressService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified address.
@@ -104,7 +104,7 @@ service AddressService {
       object_type:        "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified address.
@@ -120,7 +120,7 @@ service AddressService {
       object_type:        "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // List operations for the specified address.
@@ -132,7 +132,7 @@ service AddressService {
       object_type:        "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

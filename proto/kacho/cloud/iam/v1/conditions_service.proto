@@ -33,7 +33,7 @@ service ConditionsService {
       object_type:        "iam_condition"
       from_request_field: "condition_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // List — page Conditions in a folder.
@@ -45,7 +45,7 @@ service ConditionsService {
       object_type:        "project"
       from_request_field: "folder_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Create — create a Condition. CEL `expression` is validated by the
@@ -63,7 +63,7 @@ service ConditionsService {
       object_type:        "project"
       from_request_field: "folder_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Update — update mutable fields (description, labels, expression,
@@ -119,7 +119,7 @@ service ConditionsService {
       object_type:        "iam_condition"
       from_request_field: "condition_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

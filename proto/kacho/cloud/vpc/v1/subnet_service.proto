@@ -29,7 +29,7 @@ service SubnetService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Subnet resources in the specified folder.
@@ -41,7 +41,7 @@ service SubnetService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a subnet in the specified folder and network.
@@ -61,7 +61,7 @@ service SubnetService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified subnet.
@@ -81,7 +81,7 @@ service SubnetService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Adds CIDR blocks to the specified subnet.
@@ -101,7 +101,7 @@ service SubnetService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Removes CIDR blocks from the specified subnet.
@@ -121,7 +121,7 @@ service SubnetService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified subnet.
@@ -137,7 +137,7 @@ service SubnetService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // List operations for the specified subnet.
@@ -149,7 +149,7 @@ service SubnetService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // List used addresses in specified subnet.
@@ -161,7 +161,7 @@ service SubnetService {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

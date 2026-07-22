@@ -31,7 +31,7 @@ service NetworkInterfaceService {
       object_type:        "vpc_network_interface"
       from_request_field: "network_interface_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of NetworkInterface resources in the specified folder,
@@ -44,7 +44,7 @@ service NetworkInterfaceService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a network interface in the specified folder.
@@ -60,7 +60,7 @@ service NetworkInterfaceService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified network interface (name/description/labels/security_group_ids).
@@ -76,7 +76,7 @@ service NetworkInterfaceService {
       object_type:        "vpc_network_interface"
       from_request_field: "network_interface_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified network interface. The primary private IPv4 address is
@@ -94,7 +94,7 @@ service NetworkInterfaceService {
       object_type:        "vpc_network_interface"
       from_request_field: "network_interface_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified network interface.
@@ -106,7 +106,7 @@ service NetworkInterfaceService {
       object_type:        "vpc_network_interface"
       from_request_field: "network_interface_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

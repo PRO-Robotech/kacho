@@ -31,7 +31,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Network resources in the specified folder.
@@ -62,7 +62,7 @@ service NetworkService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified network.
@@ -79,7 +79,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified network.
@@ -95,7 +95,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Extends the network's declared IPv4/IPv6 supernet with additional CIDR
@@ -116,7 +116,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Shrinks the network's declared supernet by removing CIDR block(s). A block
@@ -136,7 +136,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists subnets from the specified network.
@@ -148,7 +148,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists security groups from the specified network.
@@ -160,7 +160,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists route tables from the specified network.
@@ -172,7 +172,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified network.
@@ -184,7 +184,7 @@ service NetworkService {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

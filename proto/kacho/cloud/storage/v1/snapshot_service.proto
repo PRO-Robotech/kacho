@@ -28,7 +28,7 @@ service SnapshotService {
       object_type:        "storage_snapshot"
       from_request_field: "snapshot_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Snapshot resources in the specified project.
@@ -40,7 +40,7 @@ service SnapshotService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a snapshot of the specified volume.
@@ -59,7 +59,7 @@ service SnapshotService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified snapshot.
@@ -80,7 +80,7 @@ service SnapshotService {
       object_type:        "storage_snapshot"
       from_request_field: "snapshot_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified snapshot.
@@ -96,7 +96,7 @@ service SnapshotService {
       object_type:        "storage_snapshot"
       from_request_field: "snapshot_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

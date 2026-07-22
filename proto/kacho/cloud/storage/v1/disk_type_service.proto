@@ -26,7 +26,7 @@ service DiskTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of disk types.
@@ -38,7 +38,7 @@ service DiskTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 
@@ -58,7 +58,7 @@ service InternalDiskTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Update(UpdateDiskTypeRequest) returns (DiskType) {
     option (google.api.http) = {
@@ -71,7 +71,7 @@ service InternalDiskTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Delete(DeleteDiskTypeRequest) returns (DeleteDiskTypeResponse) {
     option (google.api.http) = {delete: "/storage/v1/diskTypes/{disk_type_id}"};
@@ -81,7 +81,7 @@ service InternalDiskTypeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

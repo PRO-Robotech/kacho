@@ -30,7 +30,7 @@ service FilesystemService {
       object_type:        "compute_filesystem"
       from_request_field: "filesystem_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists filesystems in the specified folder.
@@ -42,7 +42,7 @@ service FilesystemService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a filesystem in the specified folder.
@@ -58,7 +58,7 @@ service FilesystemService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified filesystem.
@@ -74,7 +74,7 @@ service FilesystemService {
       object_type:        "compute_filesystem"
       from_request_field: "filesystem_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified filesystem.
@@ -94,7 +94,7 @@ service FilesystemService {
       object_type:        "compute_filesystem"
       from_request_field: "filesystem_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified filesystem.
@@ -106,7 +106,7 @@ service FilesystemService {
       object_type:        "compute_filesystem"
       from_request_field: "filesystem_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // access
@@ -120,7 +120,7 @@ service FilesystemService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Sets access bindings for the filesystem.

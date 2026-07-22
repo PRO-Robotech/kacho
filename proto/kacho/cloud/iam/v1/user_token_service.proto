@@ -59,7 +59,7 @@ service UserTokenService {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Revoke (RevokeUserTokenRequest) returns (operation.Operation) {

@@ -33,7 +33,7 @@ service InternalRegistryService {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // GetRegistryStats — sync-статистика namespace (repo/tag count, суммарный
@@ -50,7 +50,7 @@ service InternalRegistryService {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 
