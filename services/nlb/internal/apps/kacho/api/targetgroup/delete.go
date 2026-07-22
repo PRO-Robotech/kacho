@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -71,6 +72,20 @@ func (u *DeleteTargetGroupUseCase) Execute(
 	cur, err := rd.TargetGroups().Get(ctx, id)
 	if err != nil {
 		return nil, mapDomainErr(err)
+	}
+
+	// NLB-1-41: teardown RESTRICT friendly precheck — enumerate listeners that
+	// reference this TG (listeners.default_target_group_id FK RESTRICT, 0018).
+	// Non-empty → FAILED_PRECONDITION listing the blocking ids so the order need
+	// not be guessed. The DB FK is the authoritative backstop; this precheck
+	// turns the raw 23503 into an actionable, contract-toned message.
+	lstIDs, err := rd.TargetGroups().ReferencingListenerIDs(ctx, id)
+	if err != nil {
+		return nil, mapDomainErr(err)
+	}
+	if len(lstIDs) > 0 {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"target group is referenced by listeners: [%s]", strings.Join(lstIDs, ", "))
 	}
 
 	hasLB, err := rd.TargetGroups().HasAttachedLB(ctx, id)

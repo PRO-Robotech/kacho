@@ -523,6 +523,9 @@ func (r *fakeTGReader) ListDrainingExpired(context.Context, string, int32) ([]*k
 func (r *fakeTGReader) HasAttachedLB(context.Context, string) (bool, error) {
 	return false, nil
 }
+func (r *fakeTGReader) ReferencingListenerIDs(context.Context, string) ([]string, error) {
+	return nil, nil
+}
 
 type fakeTGWriter struct{ r *fakeRepo }
 
@@ -543,6 +546,9 @@ func (w *fakeTGWriter) ListDrainingExpired(context.Context, string, int32) ([]*k
 }
 func (w *fakeTGWriter) HasAttachedLB(context.Context, string) (bool, error) {
 	return false, nil
+}
+func (w *fakeTGWriter) ReferencingListenerIDs(context.Context, string) ([]string, error) {
+	return nil, nil
 }
 func (w *fakeTGWriter) Insert(context.Context, *domain.TargetGroup) (*kachorepo.TargetGroupRecord, error) {
 	return nil, errors.New("fakeTGWriter.Insert not implemented")

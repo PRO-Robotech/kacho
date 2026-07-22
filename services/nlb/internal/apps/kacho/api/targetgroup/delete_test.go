@@ -40,6 +40,25 @@ func TestDelete_Happy(t *testing.T) {
 	assert.Equal(t, kachorepo.OutboxActionDeleted, events[0].Action)
 }
 
+// NLB-1-41: Delete fails when a listener references the TG (FK RESTRICT,
+// friendly blocker-list enumerating the referencing listener ids).
+func TestDelete_ReferencedByListener_NLB_1_41(t *testing.T) {
+	repo := newFakeRepo()
+	tg := makeTG("prj-acme", "del-ref")
+	repo.seedTG(tg)
+	repo.seedReferencingListener(string(tg.ID), "lst-7h3k9m2x4q8w1t0y")
+	uc := NewDeleteTargetGroupUseCase(repo, newFakeOpsRepo(), nil)
+
+	_, err := uc.Execute(context.Background(), &lbv1.DeleteTargetGroupRequest{
+		TargetGroupId: string(tg.ID),
+	})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	// Exact contract text — enumerates blocking listener ids so the order need
+	// not be guessed.
+	require.Contains(t, status.Convert(err).Message(),
+		"target group is referenced by listeners: [lst-7h3k9m2x4q8w1t0y]")
+}
+
 // Delete fails when attached to LB.
 func TestDelete_HasAttachedLB(t *testing.T) {
 	repo := newFakeRepo()

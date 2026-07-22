@@ -30,6 +30,12 @@ type TargetGroupReaderIface interface {
 	// HasAttachedLB — `EXISTS` для precheck в TG.Delete (нельзя удалить TG,
 	// который привязан к LB).
 	HasAttachedLB(ctx context.Context, tgID string) (bool, error)
+
+	// ReferencingListenerIDs — id листенеров, которые ссылаются на этот TG
+	// (`listeners.default_target_group_id = tgID`, FK RESTRICT из 0018). Для
+	// friendly teardown-precheck в TG.Delete (NLB-1-41): непусто → блокирующий
+	// список. ORDER BY id (детерминированный порядок в error-тексте).
+	ReferencingListenerIDs(ctx context.Context, tgID string) ([]string, error)
 }
 
 // TargetGroupWriterIface — write-операции + read.
