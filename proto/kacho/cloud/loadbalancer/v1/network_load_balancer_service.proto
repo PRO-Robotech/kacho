@@ -179,7 +179,12 @@ message CreateNetworkLoadBalancerRequest {
     (map_key).pattern = "[a-z][-_0-9a-z]*"
   ];
   string region_id = 5 [(length) = "<=50"];
-  NetworkLoadBalancer.Type type = 6 [(required) = true];
+
+  // type — DERIVED output-only (NLB CONTRACT / NLB-1-08). Retained as a request
+  // field ONLY so that a client that sets it gets an EXPLICIT InvalidArgument
+  // reject rather than a silent grpc-gateway drop; the load balancer mode is set
+  // solely by `placement` below. Setting type (or placement_type) → InvalidArgument.
+  NetworkLoadBalancer.Type type = 6;
 
   bool deletion_protection = 9;
 
@@ -187,8 +192,9 @@ message CreateNetworkLoadBalancerRequest {
   // default; FIVE_TUPLE / CLIENT_IP_ONLY are persisted verbatim.
   NetworkLoadBalancer.SessionAffinity session_affinity = 11;
 
-  // placement_type — обязателен и явен для INTERNAL (ZONAL|REGIONAL);
-  // запрещён для EXTERNAL.
+  // placement_type — DERIVED output-only (NLB CONTRACT / NLB-1-08), same as `type`:
+  // retained only for explicit-reject; setting it → InvalidArgument. The mode is set
+  // solely by `placement`.
   NetworkLoadBalancer.PlacementType placement_type = 17;
 
   // disabled_announce_zones — только для REGIONAL: зоны, из которых anycast-VIP
@@ -201,10 +207,10 @@ message CreateNetworkLoadBalancerRequest {
   VipSource v4_source = 19;
   VipSource v6_source = 20;
 
-  // placement — NLB-1b EXPAND (additive, optional): merged placement value.
-  // If set it must be consistent with type/placement_type (which stay the
-  // authoritative inputs in EXPAND); inconsistent → InvalidArgument. If unset,
-  // placement is derived from type/placement_type and persisted for read.
+  // placement — NLB CONTRACT (F2): the SOLE authoritative, REQUIRED mode input
+  // (EXTERNAL_REGIONAL | INTERNAL_REGIONAL | INTERNAL_ZONAL). Drives the derived
+  // type°/placementType° read projections. "external+zonal" is inexpressible by
+  // construction. Unset → InvalidArgument.
   NetworkLoadBalancer.Placement placement = 21;
 
   // admin_state — NLB-1b EXPAND (additive, optional). Desired administrative

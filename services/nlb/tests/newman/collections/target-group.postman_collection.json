@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5e9c1836-e65f-4a2c-b202-4e64bbf6ab06",
+    "_postman_id": "0e1d5674-b2d6-4494-929c-d6f213cb4e0d",
     "name": "kacho-nlb / newman / target-group",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -140,7 +140,7 @@
           ]
         },
         {
-          "name": "get-rya645",
+          "name": "get-rya551",
           "request": {
             "method": "GET",
             "header": [
@@ -588,7 +588,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya646",
+          "name": "setup-materialize-tg-rya552",
           "request": {
             "method": "GET",
             "header": [
@@ -637,7 +637,7 @@
           ]
         },
         {
-          "name": "get-rya647",
+          "name": "get-rya553",
           "request": {
             "method": "GET",
             "header": [
@@ -969,7 +969,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya648",
+          "name": "setup-materialize-tg-rya554",
           "request": {
             "method": "GET",
             "header": [
@@ -1018,7 +1018,7 @@
           ]
         },
         {
-          "name": "upd-rya649",
+          "name": "upd-rya555",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1330,7 +1330,7 @@
           ]
         },
         {
-          "name": "del-rya650",
+          "name": "del-rya556",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1583,7 +1583,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya651",
+          "name": "setup-materialize-tg-rya557",
           "request": {
             "method": "GET",
             "header": [
@@ -1632,7 +1632,7 @@
           ]
         },
         {
-          "name": "move-cr652",
+          "name": "move-cr558",
           "request": {
             "method": "POST",
             "header": [
@@ -2053,7 +2053,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya653",
+          "name": "setup-materialize-tg-rya559",
           "request": {
             "method": "GET",
             "header": [
@@ -2102,7 +2102,7 @@
           ]
         },
         {
-          "name": "lops-rya654",
+          "name": "lops-rya560",
           "request": {
             "method": "GET",
             "header": [
@@ -3645,7 +3645,7 @@
       ]
     },
     {
-      "name": "TGR-DEL-NEG-HAS-ATTACHED-LB — Delete TG with attached LB → FailedPrecondition (Verifies REQ-TGR-DEL-ATTACHED)",
+      "name": "TGR-DEL-NEG-HAS-ATTACHED-LB — Delete TG referenced by a listener → FailedPrecondition (Verifies REQ-TGR-DEL-ATTACHED)",
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
@@ -3752,7 +3752,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya655",
+          "name": "setup-materialize-tg-rya561",
           "request": {
             "method": "GET",
             "header": [
@@ -3823,7 +3823,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"tgr-del-lb-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"tgr-del-lb-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3904,7 +3904,7 @@
           ]
         },
         {
-          "name": "att",
+          "name": "wire-listener",
           "request": {
             "method": "POST",
             "header": [
@@ -3914,20 +3914,19 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
+              "raw": "{{baseUrl}}/nlb/v1/listeners",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "nlb",
                 "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}:attachTargetGroup"
+                "listeners"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"attachedTargetGroup\": {\"targetGroupId\": \"{{tgId}}\"}}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tgr-del-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\", \"targetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3945,6 +3944,11 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.listenerId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -4002,7 +4006,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya656",
+          "name": "del-blocked-rya562",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4107,9 +4111,9 @@
           ]
         },
         {
-          "name": "detach",
+          "name": "del-lst",
           "request": {
-            "method": "POST",
+            "method": "DELETE",
             "header": [
               {
                 "key": "Content-Type",
@@ -4117,25 +4121,16 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}:detachTargetGroup",
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "nlb",
                 "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}:detachTargetGroup"
+                "listeners",
+                "{{lstId}}"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"targetGroupId\": \"{{tgId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -4492,7 +4487,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya657",
+          "name": "del-blocked-rya563",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4893,7 +4888,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya658",
+          "name": "setup-materialize-tg-rya564",
           "request": {
             "method": "GET",
             "header": [
@@ -5319,7 +5314,7 @@
       ]
     },
     {
-      "name": "TGR-MV-NEG-ATTACHED-LB — Move TG with attached LB → FailedPrecondition",
+      "name": "TGR-MV-NEG-ATTACHED-LB — Move TG referenced by a listener → FailedPrecondition",
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
@@ -5426,7 +5421,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya659",
+          "name": "setup-materialize-tg-rya565",
           "request": {
             "method": "GET",
             "header": [
@@ -5497,7 +5492,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"tgr-mv-lb-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"tgr-mv-lb-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5578,7 +5573,7 @@
           ]
         },
         {
-          "name": "att",
+          "name": "wire-listener",
           "request": {
             "method": "POST",
             "header": [
@@ -5588,20 +5583,19 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
+              "raw": "{{baseUrl}}/nlb/v1/listeners",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "nlb",
                 "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}:attachTargetGroup"
+                "listeners"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"attachedTargetGroup\": {\"targetGroupId\": \"{{tgId}}\"}}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tgr-mv-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\", \"targetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5619,6 +5613,11 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.listenerId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -5775,9 +5774,9 @@
           ]
         },
         {
-          "name": "detach",
+          "name": "del-lst",
           "request": {
-            "method": "POST",
+            "method": "DELETE",
             "header": [
               {
                 "key": "Content-Type",
@@ -5785,25 +5784,16 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}:detachTargetGroup",
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "nlb",
                 "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}:detachTargetGroup"
+                "listeners",
+                "{{lstId}}"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"targetGroupId\": \"{{tgId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -9255,7 +9245,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya660",
+          "name": "setup-materialize-tg-rya566",
           "request": {
             "method": "GET",
             "header": [
@@ -9304,7 +9294,7 @@
           ]
         },
         {
-          "name": "lst-filt-lst661",
+          "name": "lst-filt-lst567",
           "request": {
             "method": "GET",
             "header": [

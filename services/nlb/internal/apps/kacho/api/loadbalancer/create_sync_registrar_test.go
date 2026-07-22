@@ -41,8 +41,7 @@ func (f *fakeSyncRegistrar) calls() []domain.FGARegisterIntent {
 
 func internalZonalReq() *lbv1.CreateNetworkLoadBalancerRequest {
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet(lbTestSubnetZonal)
 	return req
 }

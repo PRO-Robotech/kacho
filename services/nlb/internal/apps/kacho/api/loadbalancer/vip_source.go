@@ -44,78 +44,36 @@ type familyVIPSpec struct {
 // set true on a ZONAL placement. Part of the API contract (stable tone).
 const crossZoneZonalMsg = "crossZoneEnabled is not applicable to ZONAL placement"
 
-// resolvePlacementAuthoritative — NLB-1b MIGRATE (F2): resolve the (type,
-// placement_type, merged placement) triple with `placement` as the AUTHORITATIVE
-// input. When placement is set it drives the legacy (type, placement_type) pair;
-// co-supplied legacy inputs are a bridge and must be consistent (else reject). When
-// placement is unset the legacy type/placement_type drive (back-compat) and the
-// merged placement is derived + persisted for read.
+// resolvePlacementAuthoritative — NLB CONTRACT (F2 / NLB-1-08): `placement` is the
+// SOLE authoritative mode input. type/placement_type are derived output-only —
+// writing either in Create is an EXPLICIT reject (not silent-ignore), even when a
+// legacy value would be consistent. placement is required; it drives the derived
+// (type, placement_type) pair persisted for read. "external+zonal" is inexpressible
+// by construction (no such placement enum value).
 func resolvePlacementAuthoritative(
 	req *lbv1.CreateNetworkLoadBalancerRequest,
 ) (domain.LBType, domain.PlacementType, domain.Placement, error) {
-	mode := placementModeFromPb(req.GetPlacement())
-	if mode == "" {
-		// Bridge (placement unset): legacy type/placement_type authoritative.
-		lbType, err := lbTypeFromPb(req.GetType())
-		if err != nil {
-			return "", "", "", err
-		}
-		pt, err := resolvePlacement(lbType, req.GetPlacementType())
-		if err != nil {
-			return "", "", "", err
-		}
-		return lbType, pt, domain.PlacementFromTypeAndPlacementType(lbType, pt), nil
-	}
-	// Authoritative: placement drives the legacy (type, placement_type) pair.
-	lbType, pt := domain.TypeAndPlacementTypeFromPlacement(mode)
-	// Bridge consistency: any co-supplied legacy input must match the derived pair.
 	if req.GetType() != lbv1.NetworkLoadBalancer_TYPE_UNSPECIFIED {
-		lt, err := lbTypeFromPb(req.GetType())
-		if err != nil {
-			return "", "", "", err
-		}
-		if lt != lbType {
-			return "", "", "", placementInconsistentErr()
-		}
+		return "", "", "", derivedModeInputErr("type")
 	}
 	if req.GetPlacementType() != lbv1.NetworkLoadBalancer_PLACEMENT_TYPE_UNSPECIFIED {
-		legacyPt, err := resolvePlacement(lbType, req.GetPlacementType())
-		if err != nil {
-			return "", "", "", err
-		}
-		if legacyPt != pt {
-			return "", "", "", placementInconsistentErr()
-		}
+		return "", "", "", derivedModeInputErr("placement_type")
 	}
+	mode := placementModeFromPb(req.GetPlacement())
+	if mode == "" {
+		return "", "", "", errInvalidArg("placement",
+			"is required — the load balancer mode is set solely by placement (EXTERNAL_REGIONAL, INTERNAL_REGIONAL, or INTERNAL_ZONAL)")
+	}
+	lbType, pt := domain.TypeAndPlacementTypeFromPlacement(mode)
 	return lbType, pt, mode, nil
 }
 
-// placementInconsistentErr — canonical reject when a co-supplied legacy
-// type/placement_type contradicts the authoritative placement input.
-func placementInconsistentErr() error {
-	return errInvalidArg("placement",
-		"placement is inconsistent with type/placement_type (placement is the authoritative input in NLB-1b)")
-}
-
-// resolvePlacement — placement_type ↔ type coupling. INTERNAL требует явный
-// ZONAL|REGIONAL; EXTERNAL запрещает placement.
-func resolvePlacement(lbType domain.LBType, pb lbv1.NetworkLoadBalancer_PlacementType) (domain.PlacementType, error) {
-	set := pb != lbv1.NetworkLoadBalancer_PLACEMENT_TYPE_UNSPECIFIED
-	if lbType == domain.LBTypeInternal {
-		switch pb {
-		case lbv1.NetworkLoadBalancer_ZONAL:
-			return domain.PlacementZonal, nil
-		case lbv1.NetworkLoadBalancer_REGIONAL:
-			return domain.PlacementRegional, nil
-		}
-		return "", status.Error(codes.InvalidArgument,
-			"placement_type is required for INTERNAL load balancer")
-	}
-	if set {
-		return "", status.Error(codes.InvalidArgument,
-			"placement_type is only valid for INTERNAL load balancer")
-	}
-	return domain.PlacementUnspecified, nil
+// derivedModeInputErr — NLB-1-08 reject: type/placement_type are derived output-only;
+// the load balancer mode is set solely by the placement input. The message names
+// placement as the single source of the mode discriminator.
+func derivedModeInputErr(field string) error {
+	return errInvalidArg(field,
+		"is derived output-only; the load balancer mode is set solely by placement")
 }
 
 // resolveVipSources — VipSource v4/v6 → упорядоченный набор familyVIPSpec. ≥1

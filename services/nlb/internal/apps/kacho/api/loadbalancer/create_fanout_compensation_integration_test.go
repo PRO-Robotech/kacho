@@ -109,10 +109,9 @@ func TestIntegration_CreateLoadBalancer_FanoutCompensationOnV6Fail(t *testing.T)
 
 	req := &lbv1.CreateNetworkLoadBalancerRequest{
 		ProjectId: "prj-fanout", RegionId: "region-1", Name: "edge-ds-fail",
-		Type:          lbv1.NetworkLoadBalancer_INTERNAL,
-		PlacementType: lbv1.NetworkLoadBalancer_REGIONAL,
-		V4Source:      &lbv1.VipSource{Source: &lbv1.VipSource_SubnetId{SubnetId: "sub-1"}},
-		V6Source:      &lbv1.VipSource{Source: &lbv1.VipSource_SubnetId{SubnetId: "sub-6"}},
+		Placement: lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL,
+		V4Source:  &lbv1.VipSource{Source: &lbv1.VipSource_SubnetId{SubnetId: "sub-1"}},
+		V6Source:  &lbv1.VipSource{Source: &lbv1.VipSource_SubnetId{SubnetId: "sub-6"}},
 	}
 
 	op, err := h.Create(context.Background(), req)

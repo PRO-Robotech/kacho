@@ -118,12 +118,9 @@ func (u *CreateLoadBalancerUseCase) Execute(
 		return nil, errInvalidArg("region_id", "required")
 	}
 
-	// NLB-1b MIGRATE (F2): `placement` is the AUTHORITATIVE input driving the
-	// (type, placement_type) columns. Legacy type/placement_type inputs remain
-	// accepted as a bridge (must be consistent when co-supplied); the full
-	// output-only reject of legacy inputs lands in CONTRACT (NLB-1-08). When
-	// placement is unset the legacy inputs drive (back-compat) and placement is
-	// derived + persisted.
+	// NLB CONTRACT (F2 / NLB-1-08): `placement` is the SOLE authoritative mode input
+	// and is required; it drives the derived (type, placement_type) columns persisted
+	// for read. Writing legacy type/placement_type is an explicit reject.
 	lbType, placement, placementMode, err := resolvePlacementAuthoritative(req)
 	if err != nil {
 		return nil, err

@@ -84,8 +84,7 @@ func TestCreate_InternalZonal_SubnetAuto(t *testing.T) {
 	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: &fakeSubnetClient{placement: "ZONAL"}})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet(lbTestSubnetZonal)
 
 	op, err := uc.Execute(context.Background(), req)
@@ -105,8 +104,7 @@ func TestCreate_InternalRegional_SubnetAuto(t *testing.T) {
 	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 	uc := newCreateUC(repo, opsRepo, createDeps{})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 
 	op, err := uc.Execute(context.Background(), req)
@@ -122,8 +120,7 @@ func TestCreate_InternalRegional_Drain(t *testing.T) {
 	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 	uc := newCreateUC(repo, opsRepo, createDeps{})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 	req.DisabledAnnounceZones = []string{"region-1-b"}
 
@@ -142,8 +139,7 @@ func TestCreate_InternalRegional_AddressLink(t *testing.T) {
 		addr:   addr,
 	})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipAddress(lbTestAddrInternal)
 
 	op, err := uc.Execute(context.Background(), req)
@@ -163,8 +159,7 @@ func TestCreate_InternalRegional_Dualstack_Mixed(t *testing.T) {
 		reader: &fakeAddressReader{family: vpcclient.AddressFamilyIPv6},
 	})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 	req.V6Source = vipAddress("adr-6")
 
@@ -182,7 +177,7 @@ func TestCreate_External_Public(t *testing.T) {
 	addr := &fakeAddressClient{}
 	uc := newCreateUC(repo, opsRepo, createDeps{addr: addr})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_EXTERNAL
+	req.Placement = lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL
 	req.V4Source = vipPublic()
 
 	op, err := uc.Execute(context.Background(), req)
@@ -202,7 +197,7 @@ func TestCreate_External_AddressLink(t *testing.T) {
 		reader: &fakeAddressReader{external: true},
 	})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_EXTERNAL
+	req.Placement = lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL
 	req.V4Source = vipAddress(lbTestAddrExternal)
 
 	op, err := uc.Execute(context.Background(), req)
@@ -223,7 +218,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 		{ // 8.1-08
 			name: "subnet source on EXTERNAL",
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_EXTERNAL
+				r.Placement = lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL
 				r.V4Source = vipSubnet(lbTestSubnetRegional)
 			},
 			msg: "subnet address source is only valid for INTERNAL load balancer",
@@ -231,8 +226,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 		{ // 8.1-09
 			name: "public source on INTERNAL",
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 				r.V4Source = vipPublic()
 			},
 			msg: "public address source is only valid for EXTERNAL load balancer",
@@ -241,8 +235,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 			name: "external address linked into INTERNAL",
 			deps: createDeps{reader: &fakeAddressReader{external: true}},
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 				r.V4Source = vipAddress(lbTestAddrExternal)
 			},
 			msg: "Illegal argument addressId",
@@ -251,8 +244,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 			name: "zonal lb regional subnet",
 			deps: createDeps{subnet: &fakeSubnetClient{placement: "REGIONAL"}},
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 				r.V4Source = vipSubnet(lbTestSubnetRegional)
 			},
 			msg: "subnet placement does not match load balancer placement",
@@ -261,35 +253,16 @@ func TestCreate_SyncNegatives(t *testing.T) {
 			name: "regional lb zonal linked address",
 			deps: createDeps{subnet: &fakeSubnetClient{placement: "ZONAL"}},
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 				r.V4Source = vipAddress(lbTestAddrInternal)
 			},
 			msg: "Illegal argument addressId",
-		},
-		{ // 8.1-12a placement on EXTERNAL
-			name: "placement on external",
-			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_EXTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
-				r.V4Source = vipPublic()
-			},
-			msg: "placement_type is only valid for INTERNAL load balancer",
-		},
-		{ // 8.1-12b placement missing on INTERNAL
-			name: "placement missing on internal",
-			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.V4Source = vipSubnet(lbTestSubnetRegional)
-			},
-			msg: "placement_type is required for INTERNAL load balancer",
 		},
 		{ // 8.1-13 drain on ZONAL
 			name: "drain on zonal",
 			deps: createDeps{subnet: &fakeSubnetClient{placement: "ZONAL"}},
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 				r.V4Source = vipSubnet(lbTestSubnetZonal)
 				r.DisabledAnnounceZones = []string{"region-1-a"}
 			},
@@ -298,8 +271,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 		{ // 8.1-14 drain covers all zones
 			name: "drain covers all zones",
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 				r.V4Source = vipSubnet(lbTestSubnetRegional)
 				r.DisabledAnnounceZones = []string{"region-1-a", "region-1-b"}
 			},
@@ -308,8 +280,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 		{ // 8.1-15 drain zone not in region
 			name: "drain zone outside region",
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 				r.V4Source = vipSubnet(lbTestSubnetRegional)
 				r.DisabledAnnounceZones = []string{"region-2-a"}
 			},
@@ -319,8 +290,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 			name: "foreign project address",
 			deps: createDeps{reader: &fakeAddressReader{projectID: "prj-b"}},
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 				r.V4Source = vipAddress("adr-foreign")
 			},
 			msg: "Illegal argument addressId",
@@ -329,8 +299,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 			name: "family slot mismatch",
 			deps: createDeps{reader: &fakeAddressReader{family: vpcclient.AddressFamilyIPv6}},
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 				r.V4Source = vipAddress("adr-6only")
 			},
 			msg: "Illegal argument addressId",
@@ -338,8 +307,7 @@ func TestCreate_SyncNegatives(t *testing.T) {
 		{ // 8.1-19 no source
 			name: "no source",
 			mut: func(r *lbv1.CreateNetworkLoadBalancerRequest) {
-				r.Type = lbv1.NetworkLoadBalancer_INTERNAL
-				r.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+				r.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 			},
 			msg: "load balancer must declare a vip source for at least one ip family",
 		},
@@ -371,8 +339,7 @@ func TestCreate_Dualstack_DifferentNetworks(t *testing.T) {
 	rd := &fakeAddressReader{family: vpcclient.AddressFamilyIPv6, subnetID: "sub-net2"}
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn, reader: rd})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 	req.V6Source = vipAddress("adr-6")
 
@@ -391,8 +358,7 @@ func TestCreate_Worker_SubnetExhausted(t *testing.T) {
 	}}
 	uc := newCreateUC(repo, opsRepo, createDeps{addr: addr})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 
 	op, err := uc.Execute(context.Background(), req)
@@ -412,8 +378,7 @@ func TestCreate_Sync_SubnetUnavailable(t *testing.T) {
 	}}
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 
 	_, err := uc.Execute(context.Background(), req)
@@ -429,8 +394,7 @@ func TestCreate_Worker_AllocUnavailable(t *testing.T) {
 	}}
 	uc := newCreateUC(repo, opsRepo, createDeps{addr: addr})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 
 	op, err := uc.Execute(context.Background(), req)
@@ -450,8 +414,7 @@ func TestCreate_Worker_LinkConflict(t *testing.T) {
 	}}
 	uc := newCreateUC(repo, opsRepo, createDeps{reader: &fakeAddressReader{}, addr: addr})
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipAddress(lbTestAddrInternal)
 
 	op, err := uc.Execute(context.Background(), req)
@@ -470,8 +433,7 @@ func TestCreate_DuplicateName(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{})
 	req := baseCreateReq()
 	req.Name = "lb-dup"
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet(lbTestSubnetRegional)
 
 	_, err := uc.Execute(context.Background(), req)

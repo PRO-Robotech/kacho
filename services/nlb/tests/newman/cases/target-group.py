@@ -526,22 +526,25 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="TGR-DEL-NEG-HAS-ATTACHED-LB",
-    title="Delete TG with attached LB → FailedPrecondition (Verifies REQ-TGR-DEL-ATTACHED)",
+    title="Delete TG referenced by a listener → FailedPrecondition (Verifies REQ-TGR-DEL-ATTACHED)",
     classes=["NEG", "STATE"], priority="P0",
     steps=[
         # Setup TG
         *_setup_tg("del-has-att"),
-        # Setup LB and attach
+        # Setup LB, then wire the TG to it via a listener (default_target_group_id) — a
+        # listener referencing the TG is what now blocks the TG Delete (attach/detach removed).
         Step(name="setup-lb", method="POST", path="/nlb/v1/networkLoadBalancers",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "tgr-del-lb-{{runId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
+                   "name": "tgr-del-lb-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="att", method="POST",
-             path="/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*save_from_response("j.id", "opId")]),
+        Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
+             body={"loadBalancerId": "{{nlbId}}", "name": "tgr-del-lst-{{runId}}",
+                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4",
+                   "targetGroupId": "{{tgId}}"},
+             test_script=[*save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
         # read-your-writes: the first self-access of the fresh TG can 403/404 until the
         # owner-tuple materializes -> retry SELF; the real "blocked" assertion (200/400/409)
@@ -552,10 +555,8 @@ CASES.append(Case(
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
-        # Cleanup
-        Step(name="detach", method="POST",
-             path="/nlb/v1/networkLoadBalancers/{{nlbId}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
+        # Cleanup: delete the listener (releases the TG ref) → LB → TG
+        Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="del-lb", method="DELETE", path="/nlb/v1/networkLoadBalancers/{{nlbId}}",
@@ -625,20 +626,24 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="TGR-MV-NEG-ATTACHED-LB",
-    title="Move TG with attached LB → FailedPrecondition",
+    title="Move TG referenced by a listener → FailedPrecondition",
     classes=["NEG", "STATE"], priority="P0",
     steps=[
         *_setup_tg("mv-attached"),
         Step(name="setup-lb", method="POST", path="/nlb/v1/networkLoadBalancers",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "tgr-mv-lb-{{runId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
+                   "name": "tgr-mv-lb-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
-        Step(name="att", method="POST",
-             path="/nlb/v1/networkLoadBalancers/{{nlbId}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*save_from_response("j.id", "opId")]),
+        # Wire the TG to the LB via a listener (default_target_group_id) — a listener
+        # referencing the TG is what now blocks the TG Move (attach/detach removed).
+        Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
+             body={"loadBalancerId": "{{nlbId}}", "name": "tgr-mv-lst-{{runId}}",
+                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4",
+                   "targetGroupId": "{{tgId}}"},
+             test_script=[*save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
         Step(name="mv-blocked", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
@@ -647,9 +652,8 @@ CASES.append(Case(
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
-        Step(name="detach", method="POST",
-             path="/nlb/v1/networkLoadBalancers/{{nlbId}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
+        # Cleanup: delete the listener (releases the TG ref) → LB → TG
+        Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="del-lb", method="DELETE", path="/nlb/v1/networkLoadBalancers/{{nlbId}}",

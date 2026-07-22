@@ -339,11 +339,10 @@ func (NetworkLoadBalancer_AdminState) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{0, 4}
 }
 
-// Placement — NLB-1b EXPAND (additive): merged placement discriminator that
-// fuses type + placement_type into one value. "external+zonal" is
-// inexpressible by construction. In EXPAND it is derived-consistent with the
-// legacy type/placement_type (which remain the authoritative inputs); the
-// authority switch + write-reject of type/placement_type land in NLB-1c.
+// Placement — the merged placement discriminator that fuses type + placement_type
+// into one value. "external+zonal" is inexpressible by construction. NLB CONTRACT:
+// placement is the SOLE authoritative mode input on Create (required); type° /
+// placementType° are derived output-only projections (write-reject on input).
 type NetworkLoadBalancer_Placement int32
 
 const (
@@ -480,14 +479,15 @@ type NetworkLoadBalancer struct {
 	// кардинальность строки + CAS-attach). Сам VIP-IP — в Address (vpc.AddressService.Get).
 	V4AddressId string `protobuf:"bytes,24,opt,name=v4_address_id,json=v4AddressId,proto3" json:"v4_address_id,omitempty"`
 	V6AddressId string `protobuf:"bytes,25,opt,name=v6_address_id,json=v6AddressId,proto3" json:"v6_address_id,omitempty"`
-	// placement_type — только для INTERNAL (immutable). Для EXTERNAL пуст.
+	// placement_type — DERIVED output-only projection of `placement` (INTERNAL: ZONAL|
+	// REGIONAL; EXTERNAL: empty). Not a Create input (write-reject); read-only mirror.
 	PlacementType NetworkLoadBalancer_PlacementType `protobuf:"varint,27,opt,name=placement_type,json=placementType,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_PlacementType" json:"placement_type,omitempty"`
 	// disabled_announce_zones — только для REGIONAL (mutable): deny-list зон, из
 	// которых anycast-VIP НЕ анонсируется (drain). Пусто = анонс из всех здоровых зон.
 	// Реальный withdraw — data plane; здесь только intent.
 	DisabledAnnounceZones []string `protobuf:"bytes,28,rep,name=disabled_announce_zones,json=disabledAnnounceZones,proto3" json:"disabled_announce_zones,omitempty"`
-	// placement — NLB-1b EXPAND (additive, output + Create input). Merged
-	// placement discriminator; derived-consistent with type/placement_type.
+	// placement — the SOLE authoritative, required Create mode input (NLB CONTRACT);
+	// also echoed on read. type°/placement_type° are its derived output-only mirrors.
 	Placement NetworkLoadBalancer_Placement `protobuf:"varint,40,opt,name=placement,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Placement" json:"placement,omitempty"`
 	// admin_state — NLB-1b EXPAND (additive, output + Create/Update input).
 	// LIVE-mutable desired administrative state (ENABLED|DISABLED).

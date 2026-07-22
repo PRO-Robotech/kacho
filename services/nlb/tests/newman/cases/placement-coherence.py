@@ -130,7 +130,7 @@ CASES.append(Case(
         # the guard falls through to the strict assertion below).
         retry_create_until_present(Step(name="create-cross-zone", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
-                   "type": "INTERNAL", "placementType": "ZONAL", "name": "zc-xz-{{runId}}",
+                   "placement": "INTERNAL_ZONAL", "name": "zc-xz-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubV4Id}}"},
                    "v6Source": {"subnetId": "{{zcSubV6Id}}"}},
              test_script=[
@@ -160,7 +160,7 @@ CASES.append(Case(
         *_provision_zonal_subnet("existingZoneId", "szv6", "zcSubV6Id", family="v6"),
         retry_create_until_present(Step(name="create-same-zone", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
-                   "type": "INTERNAL", "placementType": "ZONAL", "name": "zc-sz-{{runId}}",
+                   "placement": "INTERNAL_ZONAL", "name": "zc-sz-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubV4Id}}"},
                    "v6Source": {"subnetId": "{{zcSubV6Id}}"}},
              test_script=[
@@ -203,7 +203,7 @@ CASES.append(Case(
         *_provision_regional_subnet("existingRegionAltId", "r2", "zcSubR2Id"),
         retry_create_until_present(Step(name="create-wrong-region", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
-                   "type": "INTERNAL", "placementType": "REGIONAL", "name": "zc-wr-{{runId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "zc-wr-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubR2Id}}"}},
              test_script=[
                  "if (pm.environment.get('zcSubR2Id')) {",
@@ -230,7 +230,7 @@ CASES.append(Case(
         *_provision_regional_subnet("existingRegionId", "r1", "zcSubR1Id"),
         retry_create_until_present(Step(name="create-same-region", method="POST", path=_LB,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
-                   "type": "INTERNAL", "placementType": "REGIONAL", "name": "zc-sr-{{runId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "zc-sr-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubR1Id}}"}},
              test_script=[
                  "pm.environment.unset('zcLbId');",

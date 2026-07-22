@@ -9,17 +9,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// lbTypeFromPb — proto enum → domain.LBType. UNSPECIFIED → InvalidArgument.
-func lbTypeFromPb(t lbv1.NetworkLoadBalancer_Type) (domain.LBType, error) {
-	switch t {
-	case lbv1.NetworkLoadBalancer_EXTERNAL:
-		return domain.LBTypeExternal, nil
-	case lbv1.NetworkLoadBalancer_INTERNAL:
-		return domain.LBTypeInternal, nil
-	}
-	return "", errInvalidArg("type", "type must be one of: EXTERNAL, INTERNAL")
-}
-
 // domainSessionAffinity — proto enum → domain.SessionAffinity.
 func domainSessionAffinity(a lbv1.NetworkLoadBalancer_SessionAffinity) domain.SessionAffinity {
 	switch a {
@@ -41,8 +30,7 @@ func lbSessionAffinityFromPb(a lbv1.NetworkLoadBalancer_SessionAffinity) (domain
 }
 
 // placementModeFromPb — proto enum → domain.Placement (merged). UNSPECIFIED → ""
-// (unset); the Create use-case derives the canonical value from type/placement_type
-// and, when a non-empty input is supplied, validates it for consistency.
+// (unset); the Create use-case rejects an unset placement (required, sole mode input).
 func placementModeFromPb(p lbv1.NetworkLoadBalancer_Placement) domain.Placement {
 	switch p {
 	case lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL:

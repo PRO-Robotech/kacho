@@ -17,9 +17,9 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// NLB-1-06 / NLB-1-07 (F2, EXPAND): merged placement is persisted derived-consistent
-// with the legacy (type, placement_type). In EXPAND type/placement_type stay the
-// authoritative inputs; the placement° derived read is verified in type2pb.
+// NLB-1-06 / NLB-1-07 (F2): placement is the authoritative Create input; the derived
+// (type°, placement_type°) read projections persist consistent with it. The placement°
+// round-trip itself is verified in type2pb.
 func TestLoadBalancer_NLB_1_06_07_PlacementDerivedPersisted(t *testing.T) {
 	t.Parallel()
 
@@ -28,7 +28,7 @@ func TestLoadBalancer_NLB_1_06_07_PlacementDerivedPersisted(t *testing.T) {
 		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 		uc := newCreateUC(repo, opsRepo, createDeps{addr: &fakeAddressClient{}})
 		req := baseCreateReq()
-		req.Type = lbv1.NetworkLoadBalancer_EXTERNAL
+		req.Placement = lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL
 		req.V4Source = vipPublic()
 		op, err := uc.Execute(context.Background(), req)
 		require.NoError(t, err)
@@ -43,8 +43,7 @@ func TestLoadBalancer_NLB_1_06_07_PlacementDerivedPersisted(t *testing.T) {
 		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 		uc := newCreateUC(repo, opsRepo, createDeps{subnet: &fakeSubnetClient{placement: "ZONAL"}})
 		req := baseCreateReq()
-		req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-		req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+		req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 		req.V4Source = vipSubnet(lbTestSubnetZonal)
 		op, err := uc.Execute(context.Background(), req)
 		require.NoError(t, err)
@@ -59,8 +58,7 @@ func TestLoadBalancer_NLB_1_06_07_PlacementDerivedPersisted(t *testing.T) {
 		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 		uc := newCreateUC(repo, opsRepo, createDeps{})
 		req := baseCreateReq()
-		req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-		req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+		req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 		req.V4Source = vipSubnet(lbTestSubnetRegional)
 		op, err := uc.Execute(context.Background(), req)
 		require.NoError(t, err)
@@ -127,37 +125,48 @@ func TestLoadBalancer_NLB_1_07_PlacementAuthoritative_Internal(t *testing.T) {
 	})
 }
 
-// EXPAND: an explicit placement input consistent with type/placement_type is
-// accepted; an inconsistent one is rejected (InvalidArgument). Full authority
-// (placement drives, legacy inputs rejected) is NLB-1c/MIGRATE.
-func TestLoadBalancer_Placement_InputConsistency(t *testing.T) {
+// NLB-1-08 (F2, CONTRACT): type/placement_type are derived output-only — writing
+// either in Create is an EXPLICIT reject (not silent-ignore). placement is the sole
+// authoritative mode input; even a legacy value CONSISTENT with placement is rejected.
+func TestLoadBalancer_NLB_1_08_LegacyModeInputRejected(t *testing.T) {
 	t.Parallel()
 
-	t.Run("consistent input accepted", func(t *testing.T) {
+	t.Run("type set rejected (even consistent with placement)", func(t *testing.T) {
 		t.Parallel()
 		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 		uc := newCreateUC(repo, opsRepo, createDeps{addr: &fakeAddressClient{}})
 		req := baseCreateReq()
-		req.Type = lbv1.NetworkLoadBalancer_EXTERNAL
-		req.V4Source = vipPublic()
 		req.Placement = lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL
-		op, err := uc.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Nil(t, awaitOpDone(t, opsRepo, op.ID).Error)
-		require.Equal(t, domain.PlacementExternalRegional, lbByName(t, repo, "lb-1").Placement)
-	})
-
-	t.Run("inconsistent input rejected", func(t *testing.T) {
-		t.Parallel()
-		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
-		uc := newCreateUC(repo, opsRepo, createDeps{addr: &fakeAddressClient{}})
-		req := baseCreateReq()
-		req.Type = lbv1.NetworkLoadBalancer_EXTERNAL
+		req.Type = lbv1.NetworkLoadBalancer_EXTERNAL // consistent, but still forbidden input
 		req.V4Source = vipPublic()
-		req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL // contradicts EXTERNAL
 		_, err := uc.Execute(context.Background(), req)
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
-		require.Contains(t, status.Convert(err).Message(), "inconsistent")
+		require.Contains(t, status.Convert(err).Message(), "placement")
+	})
+
+	t.Run("placement_type set rejected", func(t *testing.T) {
+		t.Parallel()
+		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
+		uc := newCreateUC(repo, opsRepo, createDeps{subnet: &fakeSubnetClient{placement: "ZONAL"}})
+		req := baseCreateReq()
+		req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
+		req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL // forbidden input
+		req.V4Source = vipSubnet(lbTestSubnetZonal)
+		_, err := uc.Execute(context.Background(), req)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Contains(t, status.Convert(err).Message(), "placement")
+	})
+
+	t.Run("placement unset rejected (required)", func(t *testing.T) {
+		t.Parallel()
+		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
+		uc := newCreateUC(repo, opsRepo, createDeps{addr: &fakeAddressClient{}})
+		req := baseCreateReq()
+		req.V4Source = vipPublic()
+		// no placement, no type
+		_, err := uc.Execute(context.Background(), req)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Contains(t, status.Convert(err).Message(), "placement")
 	})
 }
 

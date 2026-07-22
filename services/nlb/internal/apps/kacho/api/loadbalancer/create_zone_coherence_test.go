@@ -83,8 +83,7 @@ func TestCreate_ZCNLBZONE01_DualstackCrossZone_Rejected(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet("sub-v4a") // зона R1-a
 	req.V6Source = vipSubnet("sub-v6b") // зона R1-b
 
@@ -112,8 +111,7 @@ func TestCreate_ZCNLBZONE05_MixedSourceCrossZone_Rejected(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn, reader: rd})
 
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet("sub-v4a")   // зона R1-a
 	req.V6Source = vipAddress("adr-mix6") // адрес → подсеть зоны R1-b
 
@@ -135,8 +133,7 @@ func TestCreate_ZCNLBZONE02_DualstackSameZone_OK(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet("sub-v4")
 	req.V6Source = vipSubnet("sub-v6")
 
@@ -156,8 +153,7 @@ func TestCreate_ZCNLBZONE03_SingleFamily_OK(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet("sub-v4")
 
 	op, err := uc.Execute(context.Background(), req)
@@ -176,8 +172,7 @@ func TestCreate_ZCNLBZONE04_RegionalDualstackExempt_OK(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 
 	req := baseCreateReq()
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet("sub-r4")
 	req.V6Source = vipSubnet("sub-r6")
 
@@ -201,8 +196,7 @@ func TestCreate_ZCNLBREGION01_ZonalSubnetWrongRegion_Rejected(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 
 	req := baseCreateReq() // region-1
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet("sub-r2")
 
 	_, err := uc.Execute(context.Background(), req)
@@ -223,8 +217,7 @@ func TestCreate_ZCNLBREGION02_RegionalSubnetWrongRegion_Rejected(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 
 	req := baseCreateReq() // region-1
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipSubnet("sub-rr2")
 
 	_, err := uc.Execute(context.Background(), req)
@@ -245,8 +238,7 @@ func TestCreate_ZCNLBREGION03_SameRegion_OK(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn})
 
 	req := baseCreateReq() // region-1
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_ZONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_ZONAL
 	req.V4Source = vipSubnet("sub-ok")
 
 	op, err := uc.Execute(context.Background(), req)
@@ -269,8 +261,7 @@ func TestCreate_ZCNLBREGION04_LinkedAddressWrongRegion_Rejected(t *testing.T) {
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn, reader: rd})
 
 	req := baseCreateReq() // region-1
-	req.Type = lbv1.NetworkLoadBalancer_INTERNAL
-	req.PlacementType = lbv1.NetworkLoadBalancer_REGIONAL
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
 	req.V4Source = vipAddress("adr-r2")
 
 	_, err := uc.Execute(context.Background(), req)

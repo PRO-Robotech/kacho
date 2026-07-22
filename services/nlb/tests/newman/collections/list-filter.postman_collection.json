@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "ab3c5092-4b7a-4b13-9d87-332e40ebb588",
+    "_postman_id": "4ac38ae5-80d7-4eca-9047-a72991347d8e",
     "name": "kacho-nlb / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -59,7 +59,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-nlb-own-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-nlb-own-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -155,7 +155,7 @@
           ]
         },
         {
-          "name": "list-own-lst386",
+          "name": "list-own-lst336",
           "request": {
             "method": "GET",
             "header": [
@@ -225,7 +225,7 @@
           ]
         },
         {
-          "name": "del-own-rya387",
+          "name": "del-own-rya337",
           "request": {
             "method": "DELETE",
             "header": [
@@ -469,7 +469,7 @@
           ]
         },
         {
-          "name": "list-tg-lst388",
+          "name": "list-tg-lst338",
           "request": {
             "method": "GET",
             "header": [
@@ -539,7 +539,7 @@
           ]
         },
         {
-          "name": "del-tg-rya389",
+          "name": "del-tg-rya339",
           "request": {
             "method": "DELETE",
             "header": [
@@ -748,7 +748,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-nlb-xleak-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lf-nlb-xleak-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -900,7 +900,7 @@
           ]
         },
         {
-          "name": "del-a-rya390",
+          "name": "del-a-rya340",
           "request": {
             "method": "DELETE",
             "header": [

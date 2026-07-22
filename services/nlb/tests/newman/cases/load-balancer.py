@@ -47,7 +47,7 @@ _CREATE_BASE = "/nlb/v1/networkLoadBalancers"
 # (Platform allocates a public vpc Address on Create — requires the seeded external AddressPool, a
 # deploy-precondition per acceptance §6.7, the same one the prior auto-VIP listener suite relied on.)
 _LB_BODY = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-            "type": "EXTERNAL", "v4Source": {"public": {}}}
+            "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}}
 
 _VPC_SUBNETS = "/vpc/v1/subnets"
 _VPC_ADDRESSES = "/vpc/v1/addresses"
@@ -204,7 +204,7 @@ CASES.append(Case(
         *_provision_subnet("ZONAL", "cr-int"),
         retry_create_until_present(Step(name="cr-int", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "ZONAL", "name": "internal-lb-{{runId}}",
+                   "placement": "INTERNAL_ZONAL", "name": "internal-lb-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"}},
              test_script=[
                  "if (pm.environment.get('vpcSubnetId')) {",
@@ -257,7 +257,7 @@ def _setup_lb(name_suffix: str, body_extra: dict = None):
     # assert EXTERNAL-specific shape on it, so INTERNAL is a drop-in. External auto-VIP
     # semantics stay covered by the dedicated NLB-CR-CRUD-OK / EXTERNAL cases.
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-            "type": "INTERNAL", "placementType": "ZONAL",
+            "placement": "INTERNAL_ZONAL",
             "name": f"setup-{name_suffix}-{{{{runId}}}}",
             "v4Source": {"subnetId": "{{vpcSubnetId}}"}, **(body_extra or {})}
     return [
@@ -418,104 +418,6 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 
 CASES.append(Case(
-    id="NLB-START-CRUD-OK",
-    title="Start LB from INACTIVE (Verifies REQ-NLB-LIFE-01)",
-    classes=["CRUD", "STATE"], priority="P1",
-    steps=[
-        *_setup_lb("start-ok"),
-        retry_until_authorized(Step(name="start", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-START-STATE-ALREADY-ACTIVE",
-    title="Start when ACTIVE → FailedPrecondition 'not in STOPPED or INACTIVE'",
-    classes=["STATE", "NEG"], priority="P1",
-    steps=[
-        *_setup_lb("start-active"),
-        retry_until_authorized(Step(name="start-1", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        Step(name="start-2-conflict", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 409, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-error", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('error code 9 FAILED_PRECONDITION', () => "
-                 "  pm.expect(j.error.code).to.eql(9));",
-             ]),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-START-STATE-DELETING",
-    title="Start when DELETING → FailedPrecondition 'is being deleted'",
-    classes=["STATE", "NEG"], priority="P1",
-    steps=[
-        Step(name="start-deleting", method="POST",
-             path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:start",
-             test_script=[*assert_absent_id_rejected()]),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-STOP-CRUD-OK",
-    title="Stop LB from INACTIVE/ACTIVE (Verifies REQ-NLB-LIFE-02)",
-    classes=["CRUD", "STATE"], priority="P1",
-    steps=[
-        *_setup_lb("stop-ok"),
-        retry_until_authorized(Step(name="stop", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-STOP-STATE-ALREADY-STOPPED",
-    title="Stop when STOPPED → FailedPrecondition 'is already in STOPPED state'",
-    classes=["STATE", "NEG"], priority="P1",
-    steps=[
-        *_setup_lb("stop-twice"),
-        retry_until_authorized(Step(name="stop-1", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        Step(name="stop-2", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 409, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-error", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('error code 9 (FAILED_PRECONDITION)', () => "
-                 "  pm.expect(j.error.code).to.eql(9));",
-             ]),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-STOP-STATE-DELETING",
-    title="Stop while DELETING → FailedPrecondition 'is being deleted'",
-    classes=["STATE", "NEG"], priority="P1",
-    steps=[
-        Step(name="stop-deleting", method="POST",
-             path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:stop",
-             test_script=[*assert_absent_id_rejected()]),
-    ],
-))
-
-CASES.append(Case(
     id="NLB-MV-CRUD-OK",
     title="Move LB to cross-project — denormalises listeners.project_id (Verifies REQ-NLB-MV-01)",
     classes=["CRUD", "STATE"], priority="P1",
@@ -566,7 +468,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-MV-NEG-ATTACHED-TG",
-    title="Move LB with attached TG → FailedPrecondition (Verifies REQ-NLB-MV-NEG)",
+    title="Move LB with a listener-wired TG → FailedPrecondition (Verifies REQ-NLB-MV-NEG)",
     classes=["NEG", "STATE"], priority="P0",
     steps=[
         *_setup_lb("mv-attached"),
@@ -580,10 +482,15 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="attach-tg", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        # Wire the TG to the LB via a listener (attach/detach RPCs removed) — a listener
+        # referencing the TG is what now blocks the LB Move ("has a listener wired to a
+        # target group; repoint before Move").
+        retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
+             body={"loadBalancerId": "{{nlbId}}", "name": "mv-att-lst-{{runId}}",
+                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4",
+                   "targetGroupId": "{{tgId}}"},
+             test_script=[*save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         Step(name="move-rejected", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
@@ -597,15 +504,14 @@ CASES.append(Case(
         Step(name="check-fp", method="GET", path="/operations/{{opId}}",
              test_script=[
                  "const j = pm.response.json();",
-                 # 9 = attached-TG blocks the move (invariant). On a lane where
+                 # 9 = listener-wired-TG blocks the move (invariant). On a lane where
                  # _suiteProjectCrossId is unseeded the worker rejects on dst-project
                  # existence FIRST (InvalidArgument 3, "Project not found") — also lawful.
                  "if (j.error) pm.test('move rejected (FailedPrecondition 9, or dst-fixture-absent InvalidArgument 3)', () => "
                  "  pm.expect(j.error.code).to.be.oneOf([3, 9]));",
              ]),
-        # cleanup: detach + delete TG, then LB
-        Step(name="detach", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
+        # cleanup: delete listener (releases the TG ref) → delete TG → LB
+        Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="del-tg", method="DELETE", path="/nlb/v1/targetGroups/{{tgId}}",
@@ -689,188 +595,6 @@ def _cleanup_tg():
     ]
 
 
-CASES.append(Case(
-    id="NLB-ATT-CRUD-OK",
-    title="AttachTargetGroup happy path — same region, idempotent ON CONFLICT (Verifies REQ-NLB-ATT-01)",
-    classes=["CRUD", "IDEM"], priority="P1",
-    steps=[
-        *_setup_lb("att-ok"),
-        *_setup_tg("att-ok"),
-        retry_until_authorized(Step(name="attach", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        Step(name="detach", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-ATT-IDEM-REPEAT-OK",
-    title="AttachTargetGroup repeat with same priority — no duplicate row (ON CONFLICT)",
-    classes=["IDEM"], priority="P1",
-    steps=[
-        *_setup_lb("att-idem"),
-        *_setup_tg("att-idem"),
-        retry_until_authorized(Step(name="att-1", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        Step(name="att-2-repeat", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        Step(name="det", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-ATT-STATE-REGION-MISMATCH",
-    title="AttachTargetGroup with TG in different region → FailedPrecondition (Verifies REQ-NLB-SAME-REGION)",
-    classes=["STATE", "NEG"], priority="P0",
-    steps=[
-        *_setup_lb("att-region-mismatch"),
-        # TG in alt region
-        Step(name="setup-tg-alt", method="POST", path="/nlb/v1/targetGroups",
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionAltId}}",
-                   "name": "tg-region-alt-{{runId}}", "port": 8080,
-                   "healthCheck": {"interval": "2s", "timeout": "1s",
-                                   "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcp": {"port": 80}}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
-        Step(name="att-mismatch", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[
-                 # Tolerant-negative: the mismatched attach must NOT succeed-and-link. 409 =
-                 # region-mismatch invariant (alt region seeded). 404 = absent-TG NotFound:
-                 # on this stand _suiteRegionAltId=ru-central2 is unseeded, so the alt-region
-                 # TG Create Operation errors "Region not found" and tgId points at a TG that
-                 # never persisted → the sync attach resolves it to NotFound. Both are lawful
-                 # non-acceptances of the cross-region reference.
-                 "pm.test('rejected (region-mismatch 409 when alt region seeded, or absent-TG 404 when unseeded)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 # 9 = region mismatch blocks the attach (invariant). On a lane where
-                 # _suiteRegionAltId is unseeded the alt-region TG create errors first
-                 # (InvalidArgument 3, "Region not found"), so opId points at that op —
-                 # still a lawful non-acceptance of the mismatched attach.
-                 "if (j.error) pm.test('attach rejected (FailedPrecondition 9, or alt-region-fixture-absent InvalidArgument 3)', () => "
-                 "  pm.expect(j.error.code).to.be.oneOf([3, 9]));",
-             ]),
-        *_cleanup_tg(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-ATT-STATE-TG-DELETING",
-    title="AttachTargetGroup with TG status=DELETING → FailedPrecondition 'is being deleted'",
-    classes=["STATE", "NEG"], priority="P1",
-    steps=[
-        *_setup_lb("att-deleting"),
-        Step(name="att-unknown-as-deleting-proxy", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{garbageTgrId}}"}},
-             test_script=[
-                 "pm.test('rejected', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-ATT-NEG-TG-UNKNOWN",
-    title="AttachTargetGroup unknown TG id → NotFound (cross-row resolve)",
-    classes=["NEG"], priority="P1",
-    steps=[
-        *_setup_lb("att-tg-unknown"),
-        Step(name="att-nx", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{garbageTgrId}}"}},
-             test_script=[
-                 "pm.test('rejected', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-DET-CRUD-OK",
-    title="DetachTargetGroup happy path (Verifies REQ-NLB-DET-01)",
-    classes=["CRUD"], priority="P1",
-    steps=[
-        *_setup_lb("det-ok"),
-        *_setup_tg("det-ok"),
-        retry_until_authorized(Step(name="att", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        Step(name="det", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-DET-NEG-NOT-ATTACHED",
-    title="DetachTargetGroup when not attached → FailedPrecondition 'not attached'",
-    classes=["NEG", "STATE"], priority="P1",
-    steps=[
-        *_setup_lb("det-not-attached"),
-        *_setup_tg("det-not-attached"),
-        # :detachTargetGroup on the caller's OWN fresh LB — first mutating access, so its
-        # editor/owner tuple can still be draining under parallel load → gateway authz-first
-        # 403 BEFORE the detach reaches the backend. Retry SELF on 403/404 until authorized,
-        # THEN the real assertion (200 op-started | 400 | 409 no-op) runs — NOT masked.
-        retry_until_authorized(
-            Step(name="det-noop", method="POST",
-                 path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-                 body={"targetGroupId": "{{tgId}}"},
-                 test_script=[
-                     "pm.test('rejected (sync or async)', () => "
-                     "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
-                     *save_from_response("j.id", "opId"),
-                 ]),
-            retry_on=(403, 404)),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
-        *_cleanup_lb(),
-    ],
-))
-
 
 # ---------------------------------------------------------------------------
 # GetTargetStates
@@ -900,13 +624,15 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="NLB-GTS-STATE-LB-STOPPED",
-    title="GetTargetStates returns INACTIVE for every target when LB in STOPPED",
+    id="NLB-GTS-STATE-LB-DISABLED",
+    title="GetTargetStates returns INACTIVE for every target when LB adminState=DISABLED",
     classes=["STATE"], priority="P2",
     steps=[
         # target_group_id is required (per-TG query); supply a TG with one deterministic,
-        # peer-free external_ip target so the STOPPED→INACTIVE branch of computeTargetState
-        # (lbStatus==STOPPED ⇒ INACTIVE) is actually exercised, not vacuously skipped.
+        # peer-free external_ip target so the DISABLED→INACTIVE branch of computeTargetState
+        # (adminState==DISABLED ⇒ INACTIVE, get_target_states.go:128) is actually exercised,
+        # not vacuously skipped. (Admin enable/disable is now adminState via Update — the
+        # legacy Stop RPC and its lifecycle status were removed.)
         *_setup_lb("gts-stopped"),
         *_setup_tg("gts-stopped"),
         retry_until_authorized(Step(name="gts-add-target", method="POST",
@@ -914,7 +640,8 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.210"}, "weight": 100}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="stop", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:stop",
+        retry_until_authorized(Step(name="disable", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+             body={"updateMask": "adminState", "adminState": "DISABLED"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="gts", method="GET",
@@ -988,6 +715,24 @@ CASES.append(Case(
     ],
 ))
 
+# NLB-1-08 (F2, CONTRACT): the legacy mode inputs type/placementType are derived
+# output-only — writing either on Create is an EXPLICIT reject (kept in the request
+# schema ONLY so the gateway does not silently drop them; the mode is set solely by
+# placement). Black-box lock for the white-box TestLoadBalancer_NLB_1_08_LegacyModeInputRejected.
+CASES.append(Case(
+    id="NLB-CR-VAL-LEGACY-MODE-INPUT",
+    title="Create with legacy type/placementType input → InvalidArgument (Verifies NLB-1-08: mode set solely by placement)",
+    classes=["VAL"], priority="P1",
+    steps=[
+        Step(name="cr-legacy-type", method="POST", path=_CREATE_BASE,
+             body={**_LB_BODY, "type": "EXTERNAL"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+        Step(name="cr-legacy-placementtype", method="POST", path=_CREATE_BASE,
+             body={**_LB_BODY, "placementType": "REGIONAL"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+    ],
+))
+
 CASES.append(Case(
     id="NLB-CR-VAL-NAME-NULL",
     title="Create with name=null → 400",
@@ -1007,7 +752,7 @@ CASES.append(Case(
     classes=["VAL"], priority="P0",
     steps=[
         Step(name="cr-no-region", method="POST", path=_CREATE_BASE,
-             body={"projectId": "{{_suiteProjectId}}", "type": "EXTERNAL",
+             body={"projectId": "{{_suiteProjectId}}", "placement": "EXTERNAL_REGIONAL",
                    "name": "no-region-{{runId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
     ],
@@ -1019,24 +764,10 @@ CASES.append(Case(
     classes=["VAL"], priority="P0",
     steps=[
         Step(name="cr-no-project", method="POST", path=_CREATE_BASE,
-             body={"regionId": "{{_suiteRegionId}}", "type": "EXTERNAL",
+             body={"regionId": "{{_suiteRegionId}}", "placement": "EXTERNAL_REGIONAL",
                    "name": "no-project-{{runId}}"},
              test_script=[
                  "pm.test('rejected (400/403)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-             ]),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-CR-VAL-INVALID-TYPE",
-    title="Create with unknown type enum → InvalidArgument",
-    classes=["VAL"], priority="P1",
-    steps=[
-        Step(name="cr-bad-type", method="POST", path=_CREATE_BASE,
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "MAGIC_TYPE", "name": "bad-type-{{runId}}"},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
              ]),
     ],
 ))
@@ -1347,7 +1078,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-bad-region", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{garbageRegionId}}",
-                   "name": "bad-region-{{runId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
+                   "name": "bad-region-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *assert_operation_envelope(),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1371,7 +1102,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-bad-proj", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{garbageProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "bad-proj-{{runId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
+                   "name": "bad-proj-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[
                  "pm.test('rejected (404/403)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));",
@@ -1422,7 +1153,7 @@ CASES.append(conf_alreadyexists_block(
     prefix="NLB",
     create_path=_CREATE_BASE,
     name_template="conf-dup-{{runId}}",
-    body_extra={"regionId": "{{_suiteRegionId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
+    body_extra={"regionId": "{{_suiteRegionId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
 ))
 
 CASES.append(Case(
@@ -1465,41 +1196,6 @@ CASES.append(Case(
                  "if (j.error) pm.test('if ABORTED then code 10', () => "
                  "  pm.expect(j.error.code).to.be.oneOf([10, 0]));",
              ]),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-DEL-CONF-FK-RACE",
-    title="Delete during attach race → FailedPrecondition via FK 23503 fallback (Verifies REQ-NLB-DEL-RACE)",
-    classes=["CONF"], priority="P0",
-    steps=[
-        *_setup_lb("fk-race"),
-        *_setup_tg("fk-race"),
-        retry_until_authorized(Step(name="att", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        Step(name="del-attached", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('error code 9', () => pm.expect(j.error.code).to.eql(9));",
-             ]),
-        # cleanup
-        Step(name="detach", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
         *_cleanup_lb(),
     ],
 ))
@@ -1652,34 +1348,6 @@ CASES.append(Case(
         Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-DEL-STATE-HAS-ATTACHED",
-    title="Delete LB with attached TG → FailedPrecondition 'has N attached target group(s)'",
-    classes=["STATE", "NEG"], priority="P0",
-    steps=[
-        *_setup_lb("del-has-att"),
-        *_setup_tg("del-has-att"),
-        Step(name="att", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        Step(name="del-blocked", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="detach", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        *_cleanup_tg(),
         *_cleanup_lb(),
     ],
 ))
@@ -2001,71 +1669,6 @@ CASES.append(Case(
     ],
 ))
 
-CASES.append(Case(
-    id="NLB-START-NEG-NF-UNKNOWN",
-    title="Start on unknown nlbId → 404",
-    classes=["NEG"], priority="P1",
-    steps=[
-        Step(name="start-unknown", method="POST",
-             path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:start",
-             test_script=[*assert_absent_id_rejected()]),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-STOP-NEG-NF-UNKNOWN",
-    title="Stop on unknown nlbId → 404",
-    classes=["NEG"], priority="P1",
-    steps=[
-        Step(name="stop-unknown", method="POST",
-             path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:stop",
-             test_script=[*assert_absent_id_rejected()]),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-ATT-NEG-LB-UNKNOWN",
-    title="Attach to unknown LB → 404",
-    classes=["NEG"], priority="P1",
-    steps=[
-        Step(name="att-unknown-lb", method="POST",
-             path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "tgrany00000000000000"}},
-             test_script=[*assert_absent_id_rejected()]),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-DET-NEG-LB-UNKNOWN",
-    title="Detach from unknown LB → 404",
-    classes=["NEG"], priority="P1",
-    steps=[
-        Step(name="det-unknown-lb", method="POST",
-             path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "tgrany00000000000000"},
-             test_script=[*assert_absent_id_rejected()]),
-    ],
-))
-
-CASES.append(Case(
-    id="NLB-DET-NEG-TG-UNKNOWN",
-    title="Detach unknown TG → 404",
-    classes=["NEG"], priority="P1",
-    steps=[
-        *_setup_lb("det-tg-unknown"),
-        Step(name="det-tg", method="POST",
-             path=f"{_CREATE_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{garbageTgrId}}"},
-             test_script=[
-                 "pm.test('rejected (404/409)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        *_cleanup_lb(),
-    ],
-))
-
 # GetTargetStates validates its inputs in order: network_load_balancer_id
 # required → target_group_id required (get_target_states.go). target_group_id is
 # a query parameter (not in the REST path), so it MUST be supplied to exercise
@@ -2134,7 +1737,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-min", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "min-{{runId}}", "type": "EXTERNAL", "v4Source": {"public": {}}},
+                   "name": "min-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
@@ -2311,7 +1914,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P2",
     steps=[
         Step(name="cr-multi-missing", method="POST", path=_CREATE_BASE,
-             body={"projectId": "{{_suiteProjectId}}", "type": "EXTERNAL",
+             body={"projectId": "{{_suiteProjectId}}", "placement": "EXTERNAL_REGIONAL",
                    "name": "", "regionId": ""},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
     ],
@@ -2319,16 +1922,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-GTS-CRUD-EMPTY-LB-ACTIVE",
-    title="GetTargetStates for an empty TG on an ACTIVE LB → empty array",
+    title="GetTargetStates for an empty TG → empty array (LB status does not fabricate states)",
     classes=["CRUD", "STATE"], priority="P2",
     steps=[
-        # target_group_id is required (per-TG query); an empty TG on an ACTIVE LB still
-        # yields [] — LB status does not fabricate target states.
+        # target_group_id is required (per-TG query); an empty TG yields [] regardless of the
+        # LB's derived status — LB status does not fabricate target states. (The legacy Start
+        # RPC was removed; LB status is derived, not set via an explicit lifecycle call.)
         *_setup_lb("gts-empty-active"),
         *_setup_tg("gts-empty-active"),
-        retry_until_authorized(Step(name="start", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:start",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
         retry_until_authorized(Step(name="gts", method="GET",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[*assert_status(200),
@@ -2410,44 +2011,27 @@ def _sync_reject(case_id, title, verifies, body, msg_substr, priority="P1", clas
 CASES.append(_sync_reject(
     "NLB-CR-VAL-SUBNET-ON-EXTERNAL",
     "subnet_id VIP source on EXTERNAL LB → InvalidArgument", "8.1-08",
-    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "type": "EXTERNAL",
+    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "placement": "EXTERNAL_REGIONAL",
      "name": "sub-ext-{{runId}}", "v4Source": {"subnetId": "{{existingSubnetId}}"}},
     "subnet address source is only valid for internal", priority="P1"))
 
 CASES.append(_sync_reject(
     "NLB-CR-VAL-PUBLIC-ON-INTERNAL",
     "public VIP source on INTERNAL LB → InvalidArgument", "8.1-09",
-    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "type": "INTERNAL",
-     "placementType": "ZONAL", "name": "pub-int-{{runId}}", "v4Source": {"public": {}}},
+    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "placement": "INTERNAL_ZONAL", "name": "pub-int-{{runId}}", "v4Source": {"public": {}}},
     "public address source is only valid for external", priority="P1"))
-
-CASES.append(_sync_reject(
-    "NLB-CR-VAL-PLACEMENT-ON-EXTERNAL",
-    "placementType set on EXTERNAL LB → InvalidArgument", "8.1-12",
-    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "type": "EXTERNAL",
-     "placementType": "REGIONAL", "name": "pl-ext-{{runId}}", "v4Source": {"public": {}}},
-    "placement_type is only valid for internal", priority="P1"))
-
-CASES.append(_sync_reject(
-    "NLB-CR-VAL-PLACEMENT-MISSING-INTERNAL",
-    "INTERNAL LB without placementType → InvalidArgument", "8.1-12",
-    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "type": "INTERNAL",
-     "name": "pl-miss-{{runId}}", "v4Source": {"subnetId": "{{existingSubnetId}}"}},
-    "placement_type is required for internal", priority="P1"))
 
 CASES.append(_sync_reject(
     "NLB-CR-VAL-DRAIN-ON-ZONAL",
     "disabledAnnounceZones on ZONAL LB → InvalidArgument", "8.1-13",
-    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "type": "INTERNAL",
-     "placementType": "ZONAL", "name": "drain-zon-{{runId}}",
+    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "placement": "INTERNAL_ZONAL", "name": "drain-zon-{{runId}}",
      "v4Source": {"subnetId": "{{existingSubnetId}}"}, "disabledAnnounceZones": ["{{existingZoneId}}"]},
     "disabled_announce_zones is only valid for regional", priority="P1"))
 
 CASES.append(_sync_reject(
     "NLB-CR-VAL-NO-SOURCE",
     "no VIP source for any family → InvalidArgument", "8.1-19",
-    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "type": "INTERNAL",
-     "placementType": "ZONAL", "name": "nosrc-{{runId}}"},
+    {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "placement": "INTERNAL_ZONAL", "name": "nosrc-{{runId}}"},
     "must declare a vip source", priority="P0", classes=["VAL", "NEG"]))
 
 
@@ -2473,7 +2057,7 @@ CASES.append(Case(
         # straight through to the assertions below. Leak-free (a rejected create mints nothing).
         retry_create_until_present(Step(name="cr-drain-all", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "REGIONAL", "name": "drain-all-{{runId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "drain-all-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"},
                    "disabledAnnounceZones": ["{{existingZoneId}}", "{{existingZoneAltId}}"]},
              test_script=[
@@ -2510,7 +2094,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-drain-foreign-zone", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "REGIONAL", "name": "drain-fz-{{runId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "drain-fz-{{runId}}",
                    "v4Source": {"subnetId": "{{existingSubnetId}}"},
                    "disabledAnnounceZones": ["{{existingRegionAltId}}-a"]},
              test_script=[
@@ -2531,7 +2115,7 @@ CASES.append(Case(
         *_provision_subnet("REGIONAL", "pl-mismatch"),
         retry_create_until_present(Step(name="cr-mismatch", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "ZONAL", "name": "pl-mm-{{runId}}",
+                   "placement": "INTERNAL_ZONAL", "name": "pl-mm-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"}},
              test_script=[
                  "if (!pm.environment.get('vpcSubnetId')) {",
@@ -2564,7 +2148,7 @@ CASES.append(Case(
         # through so the assertion runs. Same pattern as the sibling cr-mismatch above.
         retry_create_until_present(Step(name="cr-kind-mismatch", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "REGIONAL", "name": "kind-mm-{{runId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "kind-mm-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
              test_script=[
                  "if (!pm.environment.get('vpcAddrId')) {",
@@ -2590,7 +2174,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-foreign-addr", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "EXTERNAL", "name": "foreign-adr-{{runId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "foreign-adr-{{runId}}",
                    "v4Source": {"addressId": "{{existingAddressCrossProjectId}}"}},
              test_script=[
                  "const cross = pm.environment.get('existingAddressCrossProjectId') || '';",
@@ -2614,7 +2198,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-family-slot", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "EXTERNAL", "name": "fam-slot-{{runId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "fam-slot-{{runId}}",
                    "v4Source": {"addressId": "{{existingAddressIPv6Id}}"}},
              test_script=[
                  "const v6 = pm.environment.get('existingAddressIPv6Id') || '';",
@@ -2649,8 +2233,7 @@ def _internal_happy_get_asserts(placement):
 
 
 def _internal_create_step(name, placement, extra_body=None):
-    body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "type": "INTERNAL",
-            "placementType": placement, "name": f"{name}-{{{{runId}}}}",
+    body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}", "placement": f"INTERNAL_{placement}", "name": f"{name}-{{{{runId}}}}",
             "v4Source": {"subnetId": "{{vpcSubnetId}}"}, **(extra_body or {})}
     return Step(name="cr-internal", method="POST", path=_CREATE_BASE, body=body,
                 test_script=[
@@ -2726,7 +2309,7 @@ CASES.append(Case(
         # mis-fails the `code===200` happy-path assertion.
         retry_create_until_present(Step(name="cr-link", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "REGIONAL", "name": "lb-ilink-{{runId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "lb-ilink-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
@@ -2768,7 +2351,7 @@ CASES.append(Case(
         # else. See cr-link above.
         retry_create_until_present(Step(name="cr-ext-link", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "EXTERNAL", "name": "lb-elink-{{runId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "lb-elink-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
@@ -2811,7 +2394,7 @@ CASES.append(Case(
         # stable seeded existingAddressIPv6Id — no retry needed for that leg.
         retry_create_until_present(Step(name="cr-dualstack", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "REGIONAL", "name": "lb-ds-{{runId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "lb-ds-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"},
                    "v6Source": {"addressId": "{{existingAddressIPv6Id}}"}},
              test_script=[
@@ -2962,7 +2545,7 @@ CASES.append(Case(
         # SILENTLY skip. Retry SELF only on the transient not-found so the scenario runs.
         retry_create_until_present(Step(name="cr-linked", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "EXTERNAL", "name": "lb-rel-{{runId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "lb-rel-{{runId}}",
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
