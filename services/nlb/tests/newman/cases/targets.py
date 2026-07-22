@@ -15,21 +15,21 @@ CASES = []
 
 _TG_BASE = "/nlb/v1/targetGroups"
 
-_HC = {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
-       "unhealthyThreshold": 3, "healthyThreshold": 2, "tcpOptions": {"port": 80}}
+_HC = {"interval": "2s", "timeout": "1s",
+       "unhealthyThreshold": 3, "healthyThreshold": 2, "tcp": {"port": 80}}
 
 _TG_BODY = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
             # Required top-level backend port (NLB-1b F6-co-req, CreateTargetGroupRequest.port).
             "port": 8080,
-            "healthCheck": _HC, "deregistrationDelaySeconds": 300,
-            "slowStartSeconds": 30}
+            "healthCheck": _HC, "deregistrationDelay": "300s",
+            "slowStart": "30s"}
 
 
 def _setup_tg(name_suffix: str, dereg_seconds: int = 300):
     return [
         Step(name="setup-cr-tg", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": f"tgt-{name_suffix}-{{{{runId}}}}",
-                   "deregistrationDelaySeconds": dereg_seconds},
+                   "deregistrationDelay": f"{dereg_seconds}s"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
