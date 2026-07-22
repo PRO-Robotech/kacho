@@ -865,8 +865,14 @@ hydra:
         jwt:
           scope_claim: list
       ttl:
-        # Acceptance §5.2 — TTL discipline.
-        access_token: 15m
+        # Acceptance §5.2 — TTL discipline (PRODUCTION: 15m, kept in values.prod.yaml).
+        # LOCAL TEST-STAND override (#69): e2e waves run 30-40 min serially (iam runs its
+        # ~30 collections under the EXCLUSIVE-lock rule) and outran a 15m access_token → late
+        # collections failed 401 ("expected 401 == 200") — a token-expiry ARTIFACT, not a
+        # product/authz defect. This file drives ONLY the local dev/e2e stand (production
+        # fe3455 deploys values.prod.yaml, unchanged 15m). 4h covers the longest wave with
+        # headroom so a single seed's RS256 tokens survive the whole run without re-mint.
+        access_token: 4h
         refresh_token: 720h        # 30 days
         id_token: 15m
         auth_code: 1m
