@@ -205,3 +205,43 @@ func TestMatchTemplate(t *testing.T) {
 		}
 	}
 }
+
+// TestRestRouter_Resolve_DeepWildcardRepository — regression lock for the authz
+// middleware deep-wildcard bug (#64 follow-up). A `{field=**}` template must match
+// a MULTI-segment value (e.g. repository "backend/api"), NOT just one segment. The
+// old matchTemplate required len(tparts)==len(pparts) and treated `{repo=**}` as a
+// single placeholder, so `GET …/repositories/backend/api` failed to resolve →
+// resolveRestFQN fell back to the raw path → "catalog: no entry for method" →
+// AUTHZ_DENIED for every multi-segment repository RPC. (Exposed once #64 Defect A/B +
+// geo unblocked the repository surface; the deep-wildcard resolution never fired on a
+// multi-segment repo before.)
+func TestRestRouter_Resolve_DeepWildcardRepository(t *testing.T) {
+	r := NewRestRouter()
+	const R = "/registry/v1/registries/reg-1/repositories"
+	cases := []struct{ method, path, wantFQN string }{
+		// single-segment repo (already worked)
+		{"GET", R + "/web", "kacho.cloud.registry.v1.RegistryService/GetRepository"},
+		// MULTI-segment repo — the bug
+		{"GET", R + "/backend/api", "kacho.cloud.registry.v1.RegistryService/GetRepository"},
+		{"PATCH", R + "/backend/api", "kacho.cloud.registry.v1.RegistryService/UpdateRepository"},
+		{"DELETE", R + "/backend/api", "kacho.cloud.registry.v1.RegistryService/DeleteRepository"},
+		{"GET", R + "/backend/api/referrers", "kacho.cloud.registry.v1.RegistryService/ListReferrers"},
+		{"POST", R + "/backend/api:rename", "kacho.cloud.registry.v1.RegistryService/RenameRepository"},
+		// deeper (3-segment) repo
+		{"GET", R + "/team/backend/api", "kacho.cloud.registry.v1.RegistryService/GetRepository"},
+	}
+	for _, c := range cases {
+		fqn, ok := r.Resolve(c.method, c.path)
+		if !ok {
+			t.Errorf("Resolve(%s %s): no match, want %s", c.method, c.path, c.wantFQN)
+			continue
+		}
+		if fqn != c.wantFQN {
+			t.Errorf("Resolve(%s %s) = %s, want %s", c.method, c.path, fqn, c.wantFQN)
+		}
+	}
+	// `**` must still require ≥1 segment: the bare `…/repositories` GET is ListRepositories, not GetRepository.
+	if fqn, ok := r.Resolve("GET", R); !ok || fqn != "kacho.cloud.registry.v1.RegistryService/ListRepositories" {
+		t.Errorf("Resolve(GET %s) = %q,%v; want ListRepositories — deep wildcard must not swallow the empty tail", R, fqn, ok)
+	}
+}
