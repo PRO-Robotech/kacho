@@ -154,10 +154,24 @@ boot = m.mint_bootstrap(INTERNAL)
 
 owner_a = f"prodseed-owner-a-{RID}@example.com"
 owner_b = f"prodseed-owner-b-{RID}@example.com"
-upsert_user(owner_a)
-upsert_user(owner_b)
+usr_owner_a = upsert_user(owner_a)
+usr_owner_b = upsert_user(owner_b)
 acctA, projA1 = db_lookup(owner_a)
 acctB, projB1 = db_lookup(owner_b)
+
+# AccessBinding-subject users (userNOBId/userINVId/userAAAId/userAABId/userPA1Id).
+# The iam newman cases reference these as subjectId when creating AccessBindings and
+# as ownerUserId / reviewerUserId. Migration 0049 (access_binding_subject_exists)
+# rejects a Create whose subject User does not exist → the stale hardcoded env values
+# (usr… baked into local.postman_environment.json by the dev-mode setup.sh) do NOT
+# exist in a fresh production-mode iam DB, so Create fails FAILED_PRECONDITION
+# ("referenced resource not found") and every downstream Get/Delete/revoke cascades
+# (404/403). Seed REAL users here and emit their ids so prod-mode binding cases resolve
+# a live subject. userAAAId/userAABId map to the owner users (accountAId is owned by
+# userAAAId — iam-account.py ownerUserId assertions); NOB/INV/PA1 are plain users.
+usr_nob = upsert_user(f"prodseed-nob-{RID}@example.com")
+usr_inv = upsert_user(f"prodseed-inv-{RID}@example.com")
+usr_pa1 = upsert_user(f"prodseed-pa1-{RID}@example.com")
 projA2 = _await(_curl("POST", "/iam/v1/projects", boot,
                       {"accountId": acctA, "name": f"prodseed-a2-{RID}"}), boot, "projectId")
 
@@ -217,6 +231,12 @@ fixtures = {
     "existingAccountId": acctA,
     "svaAId": sva_editorA,
     "svaNoGrantId": sva_nogrant,
+    # AccessBinding-subject / ownerUserId users (must EXIST — migration 0049).
+    "userAAAId": usr_owner_a,
+    "userAABId": usr_owner_b,
+    "userNOBId": usr_nob,
+    "userINVId": usr_inv,
+    "userPA1Id": usr_pa1,
     # zones / regions (admin-curated geo catalog)
     "existingZoneId": "ru-central1-a",
     "existingZoneAltId": "ru-central1-b",
