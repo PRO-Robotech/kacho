@@ -141,16 +141,74 @@ def sa_token(sva):
     return m.exchange(HYDRA_TOKEN, assertion, API_AUD)
 
 
+CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
+
+
+def seed_fga_cluster(fga_subject, relation):
+    """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_kacho_root)
+    deterministically via kacho_iam.fga_outbox → drainer → OpenFGA (idempotent
+    WHERE NOT EXISTS), mirroring the sanctioned dev-mode setup.sh 5a/5c seeds.
+
+    Why (cluster-viewer FLOOR, #64/#62): the admin-curated GLOBAL catalog reads —
+    compute DiskTypeService.Get/List, geo Region/Zone — gate `viewer@cluster`
+    (scope_extractor object_type=cluster). `viewer` derives from `system_viewer` /
+    `system_admin` (any_admin), NEVER from an account/project grant. A tenant SA with
+    only project/account bindings therefore fails the catalog read with
+    "get lacks relation viewer on cluster:cluster_kacho_root" — yet EVERY authenticated
+    tenant must read the catalog to launch placement-scoped resources (compute
+    authz-deny EXPECTs catalog-read = ALLOW for every non-anon subject). Grant each
+    matrix SA `system_viewer@cluster` so the floor is satisfied; it grants ONLY the
+    global-catalog read floor (no project/account resource access), so DENY matrices
+    (project-scope, cross-account, catalog-MUTATE admin-only) are unaffected."""
+    sql = (
+        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
+        "SELECT 'fga.tuple.write', jsonb_build_object("
+        f"'user','{fga_subject}','relation','{relation}','object','{CLUSTER_ROOT_OBJECT}'), now() "
+        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
+        f"WHERE payload->>'user'='{fga_subject}' AND payload->>'relation'='{relation}' "
+        f"AND payload->>'object'='{CLUSTER_ROOT_OBJECT}');"
+    )
+    args = ["kubectl", "-n", "kacho", "exec", "kacho-umbrella-pg-iam-0", "-c", "postgresql",
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+    subprocess.run(args, capture_output=True, text=True)
+
+
 def subject(account_id, name, grants=()):
     """Create an SA in account_id, apply grants [(role, scope_type, scope_id)], mint token."""
     sva = make_sa(account_id, name)
     for role_id, st, sid in grants:
         grant(sva, role_id, st, sid)
+    # cluster-viewer FLOOR: every matrix SA must satisfy `viewer@cluster` for the
+    # global-catalog reads (DiskType/geo). system_viewer → viewer via any_admin cascade.
+    seed_fga_cluster(f"service_account:{sva}", "system_viewer")
     return sva, sa_token(sva)
 
 
 # ── org structure ───────────────────────────────────────────────────────────
 boot = m.mint_bootstrap(INTERNAL)
+
+
+def _seed_bootstrap_root_cluster():
+    """Deterministic system_admin + system_viewer @cluster for the bootstrap ROOT
+    user (KACHO_IAM_BOOTSTRAP_ROOT_EMAIL, default admin@prorobotech.ru), mirroring
+    dev-mode setup.sh 5a/5c. The bootstrap SA principal already holds system_admin
+    @cluster via migration 0058 (deterministic), but the root USER's grant is
+    seeded by the ≤180s RunBootstrapAdmin reconciler (racy on a fresh stand) and it
+    never gets system_viewer. Best-effort: skip silently if the user is not yet
+    provisioned (never fails the seed run)."""
+    email = "admin@prorobotech.ru"
+    sql = f"SELECT id FROM kacho_iam.users WHERE external_id='{email}' LIMIT 1;"
+    args = ["kubectl", "-n", "kacho", "exec", "kacho-umbrella-pg-iam-0", "-c", "postgresql",
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+    out = subprocess.run(args, capture_output=True, text=True).stdout.strip()
+    uid = next((ln.strip() for ln in out.splitlines() if ln.strip().startswith("usr")), "")
+    if not uid:
+        return
+    for rel in ("system_admin", "system_viewer"):
+        seed_fga_cluster(f"user:{uid}", rel)
+
+
+_seed_bootstrap_root_cluster()
 
 owner_a = f"prodseed-owner-a-{RID}@example.com"
 owner_b = f"prodseed-owner-b-{RID}@example.com"
