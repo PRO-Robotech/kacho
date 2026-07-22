@@ -53,8 +53,17 @@ def _create_registry(name_expr, id_var):
         poll_operation_until_done(),
         Step(name="reg-capture", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
-                          "const r=(pm.response.json().response)||{};",
-                          *save_from_response("(j.response&&j.response.id)||''", id_var)]),
+                          # #73: fail LOUDLY here if the shared-registry create op phantom'd
+                          # or stalled — otherwise a bad/empty capture silently cascades into
+                          # ~23 downstream 404s on every Repository case (the "op.error before
+                          # metadata" pattern + a stale/empty repoRegId). Assert the op is DONE
+                          # and error-free, capture a durable id (response.id, then the
+                          # pre-allocated metadata.registryId), and assert it is a real reg-id.
+                          "const o=pm.response.json();",
+                          "pm.test('setup registry op done', () => pm.expect(o.done, JSON.stringify(o)).to.eql(true));",
+                          "pm.test('setup registry op succeeded (no error)', () => pm.expect(o.error||null, JSON.stringify(o.error||{})).to.eql(null));",
+                          *save_from_response("(j.response&&j.response.id)||(j.metadata&&j.metadata.registryId)||''", id_var),
+                          "pm.test('setup registryId captured (durable, not phantom)', () => pm.expect(pm.environment.get('" + id_var + "')||'', 'REPO-SETUP failed to capture a durable registryId — registry create op phantom/stalled (#73)').to.match(/^reg/));"]),
         # Read-your-writes warm-up: materialize the registry owner-tuple before any
         # CreateRepository under it. CreateRepository's handler does registryGate(v_create)
         # on the parent registry (repository.go) — the FIRST repo-create under a fresh

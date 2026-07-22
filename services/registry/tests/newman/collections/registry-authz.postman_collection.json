@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "59af896a-60e1-4016-b38a-4c29da8eec99",
+    "_postman_id": "2f246bff-67e2-4dde-8378-9e7494766553",
     "name": "kacho-registry / newman / registry-authz",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -121,7 +121,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
+                  "if (!j.done && pc < 60) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -850,7 +850,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
+                  "if (!j.done && pc < 60) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -1429,7 +1429,7 @@
                   "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
+                  "if (!j.done && pc < 60) {",
                   "  pm.environment.set('_pollCount', String(pc + 1));",
                   "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

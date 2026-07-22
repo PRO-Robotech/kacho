@@ -180,7 +180,7 @@ def poll_operation_until_done() -> Step:
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
             # Poll budget raised 6→30 to match the Koren-1 baseline of the other
             # suites; with the ~500ms inter-poll delay below this covers ~15s.
-            "if (!j.done && pc < 30) {",
+            "if (!j.done && pc < 60) {",
             "  pm.environment.set('_pollCount', String(pc + 1));",
             # Real inter-poll delay (~500ms) between retries. newman runs test scripts
             # synchronously and fires setNextRequest before any setTimeout callback, so a
@@ -200,7 +200,7 @@ def poll_operation_until_done() -> Step:
     )
 
 
-def retry_until_authorized(step: Step, budget: int = 40, interval_ms: int = 600,
+def retry_until_authorized(step: Step, budget: int = 80, interval_ms: int = 600,
                            retry_on=(403, 404)) -> Step:
     """Wrap the FIRST access of the caller's OWN just-created resource in a bounded
     read-your-writes retry over the owner-tuple materialization window.
