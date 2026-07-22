@@ -118,36 +118,6 @@ func TestListenerInsert_RejectsDeletingParent(t *testing.T) {
 		"listener insert into DELETING LB → FailedPrecondition, got %v", ierr)
 }
 
-// TestAttach_RejectsDeletingParent — DB-level guard: TG нельзя приаттачить к LB со
-// status=DELETING (симметрично листенеру — attached_target_groups тоже FK-RESTRICT
-// на load_balancers). 0 rows → FailedPrecondition.
-func TestAttach_RejectsDeletingParent(t *testing.T) {
-	repo, cleanup := newRepo(t, setupTestDB(t))
-	defer cleanup()
-	ctx := context.Background()
-
-	lb := newLB("prj0ATTDELPARENT0001", "att-del-lb")
-	tg := newTG("prj0ATTDELPARENT0001", "att-del-tg")
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().Insert(ctx, lb)
-		require.NoError(t, err)
-		_, err = w.TargetGroups().Insert(ctx, tg)
-		require.NoError(t, err)
-	})
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().MarkDeleting(ctx, string(lb.ID))
-		require.NoError(t, err)
-	})
-
-	w, err := repo.Writer(ctx)
-	require.NoError(t, err)
-	defer w.Abort()
-	_, _, aerr := w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 0)
-	require.Error(t, aerr)
-	assert.True(t, errors.Is(aerr, kacho.ErrFailedPrecondition),
-		"attach TG to DELETING LB → FailedPrecondition, got %v", aerr)
-}
-
 // TestMarkDeleting_vs_ListenerInsert_Race — start-барьерная гонка mark-DELETING vs
 // Listener.Insert на одной LB-строке. Row-lock (обе стороны берут FOR NO KEY
 // UPDATE на LB) сериализует их: ровно одна сторона коммитит, вторая получает

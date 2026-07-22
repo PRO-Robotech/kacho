@@ -154,7 +154,7 @@ func TestGetTargetStates_CheckUnavailableFailsClosed(t *testing.T) {
 
 // computeTargetState — directly test deterministic ramp matrix.
 
-func TestComputeTargetState_LBStoppedInactive(t *testing.T) {
+func TestComputeTargetState_AdminDisabledInactive(t *testing.T) {
 	t.Parallel()
 	hc := domain.HealthCheck{Interval: domain.DefaultHealthInterval, HealthyThreshold: 2}
 	tg := &kachorepo.TargetRecord{
@@ -162,7 +162,7 @@ func TestComputeTargetState_LBStoppedInactive(t *testing.T) {
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 		Target:    domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "8.8.8.8"}},
 	}
-	got := computeTargetState(domain.LBStatusStopped, hc, tg, time.Now())
+	got := computeTargetState(domain.AdminStateDisabled, hc, tg, time.Now())
 	require.Equal(t, lbv1.TargetState_INACTIVE, got.GetStatus())
 }
 
@@ -174,7 +174,7 @@ func TestComputeTargetState_TargetDraining(t *testing.T) {
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 		Target:    domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "8.8.8.8"}},
 	}
-	got := computeTargetState(domain.LBStatusActive, hc, tg, time.Now())
+	got := computeTargetState(domain.AdminStateEnabled, hc, tg, time.Now())
 	require.Equal(t, lbv1.TargetState_DRAINING, got.GetStatus())
 }
 
@@ -190,7 +190,7 @@ func TestComputeTargetState_InitialRamp(t *testing.T) {
 		CreatedAt: now.Add(-1 * time.Second), // age=1s, ramp=6s → INITIAL
 		Target:    domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "8.8.8.8"}},
 	}
-	got := computeTargetState(domain.LBStatusActive, hc, tg, now)
+	got := computeTargetState(domain.AdminStateEnabled, hc, tg, now)
 	require.Equal(t, lbv1.TargetState_INITIAL, got.GetStatus())
 }
 
@@ -206,7 +206,7 @@ func TestComputeTargetState_RampElapsedHealthy(t *testing.T) {
 		CreatedAt: now.Add(-1 * time.Hour), // ramp long over
 		Target:    domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "8.8.8.8"}},
 	}
-	got := computeTargetState(domain.LBStatusActive, hc, tg, now)
+	got := computeTargetState(domain.AdminStateEnabled, hc, tg, now)
 	require.Equal(t, lbv1.TargetState_HEALTHY, got.GetStatus())
 }
 

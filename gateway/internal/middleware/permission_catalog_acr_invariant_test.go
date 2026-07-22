@@ -199,8 +199,9 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 }
 
 // TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
-// catalog splits 41×"2" / 332×"1" / 65×"" = 438, and both embedded copies
-// (gateway + iam) are byte-identical.
+// catalog splits 41×"2" / 328×"1" / 65×"" = 434, and both embedded copies
+// (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
+// loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328.)
 func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -220,9 +221,9 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 41, n2, "sensitive count")
-	assert.Equal(t, 332, n1, "routine count")
+	assert.Equal(t, 328, n1, "routine count")
 	assert.Equal(t, 65, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 438, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 434, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

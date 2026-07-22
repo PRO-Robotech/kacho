@@ -13,8 +13,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
 // TestHandler_DispatchesAll — Handler — тонкая обёртка над use-case'ами.
@@ -58,30 +56,6 @@ func TestHandler_DispatchesAll(t *testing.T) {
 	require.NoError(t, err)
 	awaitOpDone(t, opsRepo, op2.GetId())
 
-	// Stop → Start (precondition: ACTIVE).
-	repo.lbs[lbID].Status = domain.LBStatusActive
-	opStop, err := h.Stop(ctx, &lbv1.StopNetworkLoadBalancerRequest{NetworkLoadBalancerId: lbID})
-	require.NoError(t, err)
-	awaitOpDone(t, opsRepo, opStop.GetId())
-	opStart, err := h.Start(ctx, &lbv1.StartNetworkLoadBalancerRequest{NetworkLoadBalancerId: lbID})
-	require.NoError(t, err)
-	awaitOpDone(t, opsRepo, opStart.GetId())
-
-	// AttachTG
-	opAttach, err := h.AttachTargetGroup(ctx, &lbv1.AttachNetworkLoadBalancerTargetGroupRequest{
-		NetworkLoadBalancerId: lbID,
-		AttachedTargetGroup:   &lbv1.AttachedTargetGroup{TargetGroupId: tgID},
-	})
-	require.NoError(t, err)
-	awaitOpDone(t, opsRepo, opAttach.GetId())
-
-	// DetachTG
-	opDetach, err := h.DetachTargetGroup(ctx, &lbv1.DetachNetworkLoadBalancerTargetGroupRequest{
-		NetworkLoadBalancerId: lbID, TargetGroupId: tgID,
-	})
-	require.NoError(t, err)
-	awaitOpDone(t, opsRepo, opDetach.GetId())
-
 	// GetTargetStates
 	_, err = h.GetTargetStates(ctx, &lbv1.GetTargetStatesRequest{
 		NetworkLoadBalancerId: lbID, TargetGroupId: tgID,
@@ -94,7 +68,7 @@ func TestHandler_DispatchesAll(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Move (need destination project; tg already detached)
+	// Move (need destination project; no listener wired to a TG)
 	opMove, err := h.Move(ctx, &lbv1.MoveNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lbID, DestinationProjectId: "prj-b",
 	})

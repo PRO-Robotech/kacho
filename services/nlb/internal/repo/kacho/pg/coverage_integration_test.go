@@ -47,8 +47,11 @@ func TestCoverage_ListByProject(t *testing.T) {
 	assert.Equal(t, tg.ID, tgs[0].ID)
 }
 
-// TestCoverage_HasAttachedTargetGroups — оба пути (есть / нет).
-func TestCoverage_HasAttachedTargetGroups(t *testing.T) {
+// TestCoverage_HasWiredTargetGroup — оба пути (нет wired-листенера / есть).
+// NLB CONTRACT: LB имеет wired TG, если у него есть листенер с непустым
+// default_target_group_id (M:N pivot удалён — ассоциация LB↔TG деривится из
+// wiring листенеров).
+func TestCoverage_HasWiredTargetGroup(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
 	ctx := context.Background()
@@ -63,25 +66,25 @@ func TestCoverage_HasAttachedTargetGroups(t *testing.T) {
 	})
 
 	rd, _ := repo.Reader(ctx)
-	has, err := rd.LoadBalancers().HasAttachedTargetGroups(ctx, string(lb.ID))
+	has, err := rd.LoadBalancers().HasWiredTargetGroup(ctx, string(lb.ID))
 	require.NoError(t, err)
 	assert.False(t, has)
 	_ = rd.Close()
 
+	// Wire a listener to the TG (default_target_group_id set, direct FK to
+	// target_groups(id)) — the NLB CONTRACT replacement for the pivot Attach.
+	l := newListener(lb.ID, string(lb.ProjectID), "cov2-lst", 8890)
+	l.DefaultTargetGroupID = option.MustNewOption(tg.ID)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, _, err := w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 100)
+		_, err := w.Listeners().Insert(ctx, l)
 		require.NoError(t, err)
 	})
 
 	rd2, _ := repo.Reader(ctx)
 	defer func() { _ = rd2.Close() }()
-	has2, err := rd2.LoadBalancers().HasAttachedTargetGroups(ctx, string(lb.ID))
+	has2, err := rd2.LoadBalancers().HasWiredTargetGroup(ctx, string(lb.ID))
 	require.NoError(t, err)
 	assert.True(t, has2)
-
-	hasOnTG, err := rd2.TargetGroups().HasAttachedLB(ctx, string(tg.ID))
-	require.NoError(t, err)
-	assert.True(t, hasOnTG)
 }
 
 // TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject — оставшиеся
@@ -103,11 +106,6 @@ func TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject(t *testing.T) {
 		_, err = w.TargetGroups().Insert(ctx, tg)
 		require.NoError(t, err)
 		_, err = w.Listeners().Insert(ctx, l)
-		require.NoError(t, err)
-		// NLB-1b MIGRATE: default_target_group_id references target_groups(id)
-		// directly (0018 direct FK); the pivot Attach is no longer required for
-		// wiring but remains exercised here for pivot-repo coverage.
-		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 100)
 		require.NoError(t, err)
 	})
 
@@ -186,62 +184,6 @@ func TestCoverage_TGUpdate_MoveProject_SetStatusCAS(t *testing.T) {
 		domain.TargetGroupStatusActive, domain.TargetGroupStatusDeleting)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrFailedPrecondition))
-}
-
-// TestCoverage_AttachedTG_Get — read-path для конкретной pair.
-func TestCoverage_AttachedTG_Get(t *testing.T) {
-	repo, cleanup := newRepo(t, setupTestDB(t))
-	defer cleanup()
-	ctx := context.Background()
-
-	lb := newLB("prj01CVR51234567890ll", "cov5-lb")
-	tg := newTG(string(lb.ProjectID), "cov5-tg")
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().Insert(ctx, lb)
-		require.NoError(t, err)
-		_, err = w.TargetGroups().Insert(ctx, tg)
-		require.NoError(t, err)
-		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 42)
-		require.NoError(t, err)
-	})
-
-	rd, _ := repo.Reader(ctx)
-	defer func() { _ = rd.Close() }()
-	rec, err := rd.AttachedTargetGroups().Get(ctx, string(lb.ID), string(tg.ID))
-	require.NoError(t, err)
-	assert.Equal(t, int32(42), rec.Priority)
-
-	_, err = rd.AttachedTargetGroups().Get(ctx, string(lb.ID), "tgr01NX111111111111x")
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, kacho.ErrNotFound))
-}
-
-// TestCoverage_AttachedTG_Detach_RemovesRow — после Detach Get → NotFound.
-func TestCoverage_AttachedTG_Detach_RemovesRow(t *testing.T) {
-	repo, cleanup := newRepo(t, setupTestDB(t))
-	defer cleanup()
-	ctx := context.Background()
-
-	lb := newLB("prj01CVR61234567890ll", "cov6-lb")
-	tg := newTG(string(lb.ProjectID), "cov6-tg")
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().Insert(ctx, lb)
-		require.NoError(t, err)
-		_, err = w.TargetGroups().Insert(ctx, tg)
-		require.NoError(t, err)
-		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 1)
-		require.NoError(t, err)
-	})
-
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		err := w.AttachedTargetGroups().Detach(ctx, string(lb.ID), string(tg.ID))
-		require.NoError(t, err)
-	})
-
-	rd, _ := repo.Reader(ctx)
-	defer func() { _ = rd.Close() }()
-	_, err := rd.AttachedTargetGroups().Get(ctx, string(lb.ID), string(tg.ID))
-	assert.True(t, errors.Is(err, kacho.ErrNotFound))
 }
 
 // TestCoverage_LB_Delete_Success — happy-path delete (без детей).

@@ -25,10 +25,12 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalan
 //    captured as the `InCloudIP` oneof case; the old top-level fields are
 //    `reserved` (tags 1, 2) so they cannot be reused incompatibly.
 //
-// 3. attached_target_groups[] on NetworkLoadBalancer is deprecated. Source
-//    of truth is the `attached_target_groups` DB pivot; M:N membership is
-//    managed via AttachTargetGroup / DetachTargetGroup RPCs on
-//    NetworkLoadBalancerService.
+// 3. attached_target_groups[] on NetworkLoadBalancer (tag 13) and the
+//    AttachTargetGroup / DetachTargetGroup RPCs are removed (NLB CONTRACT).
+//    A listener wires directly to one authoritative Listener.target_group_id
+//    (FK RESTRICT); the set of target groups behind an LB is the derived union
+//    of its listeners' target_group_id. Tag 13 + JSON name
+//    `attached_target_groups` are `reserved`.
 //
 // 4. Zonal-shift RPCs (DisableZones / EnableZones) and per-NLB inline
 //    AddListener / RemoveListener RPCs are removed entirely. kacho-nlb MVP

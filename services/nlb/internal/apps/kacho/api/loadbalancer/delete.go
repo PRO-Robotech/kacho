@@ -38,8 +38,8 @@ func lbUnregisterIntent(id, projectID string) domain.FGARegisterIntent {
 //
 // Sync prechecks:
 //   - lb.DeletionProtection=true → FailedPrecondition (фиксированный текст);
-//   - HasListeners > 0           → FailedPrecondition "has listener(s); delete first";
-//   - HasAttachedTargetGroups>0  → FailedPrecondition "has attached target group(s); detach first".
+//   - HasListeners > 0           → FailedPrecondition "has listener(s); delete first".
+//     (target groups wire in THROUGH listeners — no separate TG precheck.)
 //
 // Worker: Writer-TX → Delete (FK 23503 backstop → ErrFailedPrecondition) +
 // outbox-emit DELETED → Commit. Response = google.protobuf.Empty.
@@ -92,17 +92,11 @@ func (u *DeleteLoadBalancerUseCase) Execute(
 	if hasListeners {
 		// HasListeners (EXISTS) уже подтвердил наличие детей — не тянем полный
 		// список ради счётчика (лишний fetch + silent-cap на >1000). Generic-текст
-		// совпадает с repo-level backstop (load_balancer_repo.go).
+		// совпадает с repo-level backstop (load_balancer_repo.go). Target groups
+		// wire in THROUGH listeners (NLB CONTRACT — no M:N pivot), so "no listeners"
+		// already implies "no wired target group": no separate TG precheck needed.
 		return nil, status.Errorf(codes.FailedPrecondition,
 			"NetworkLoadBalancer %s has listener(s); delete first", id)
-	}
-	hasTG, err := rd.LoadBalancers().HasAttachedTargetGroups(ctx, id)
-	if err != nil {
-		return nil, mapDomainErr(err)
-	}
-	if hasTG {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"NetworkLoadBalancer %s has attached target group(s); detach first", id)
 	}
 
 	// Operation row.

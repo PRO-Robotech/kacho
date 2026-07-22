@@ -128,10 +128,7 @@ func (rd *fakeReader) LoadBalancers() kachorepo.LoadBalancerReaderIface {
 }
 func (rd *fakeReader) Listeners() kachorepo.ListenerReaderIface       { return &fakeListenerReader{r: rd.r} }
 func (rd *fakeReader) TargetGroups() kachorepo.TargetGroupReaderIface { return &fakeTGReader{r: rd.r} }
-func (rd *fakeReader) AttachedTargetGroups() kachorepo.AttachedTargetGroupReaderIface {
-	return &fakeAttachedTGReader{}
-}
-func (rd *fakeReader) Close() error { return nil }
+func (rd *fakeReader) Close() error                                   { return nil }
 
 // ---- Writer ----
 
@@ -158,10 +155,7 @@ func (w *fakeWriter) Listeners() kachorepo.ListenerWriterIface {
 	return &fakeListenerWriter{r: w.r, w: w}
 }
 func (w *fakeWriter) TargetGroups() kachorepo.TargetGroupWriterIface { return &fakeTGWriter{r: w.r} }
-func (w *fakeWriter) AttachedTargetGroups() kachorepo.AttachedTargetGroupWriterIface {
-	return &fakeAttachedTGWriter{}
-}
-func (w *fakeWriter) Outbox() kachorepo.OutboxEmitter { return &fakeOutbox{w: w} }
+func (w *fakeWriter) Outbox() kachorepo.OutboxEmitter                { return &fakeOutbox{w: w} }
 func (w *fakeWriter) FGARegisterOutbox() kachorepo.FGARegisterEmitter {
 	return &fakeFGARegisterOutbox{w: w}
 }
@@ -228,7 +222,7 @@ func (r *fakeLBReader) HasListeners(_ context.Context, lbID string) (bool, error
 	}
 	return false, nil
 }
-func (r *fakeLBReader) HasAttachedTargetGroups(context.Context, string) (bool, error) {
+func (r *fakeLBReader) HasWiredTargetGroup(context.Context, string) (bool, error) {
 	return false, nil
 }
 
@@ -246,7 +240,7 @@ func (w *fakeLBWriter) ListByProject(context.Context, string, kachorepo.Paginati
 func (w *fakeLBWriter) HasListeners(ctx context.Context, lbID string) (bool, error) {
 	return (&fakeLBReader{r: w.r}).HasListeners(ctx, lbID)
 }
-func (w *fakeLBWriter) HasAttachedTargetGroups(context.Context, string) (bool, error) {
+func (w *fakeLBWriter) HasWiredTargetGroup(context.Context, string) (bool, error) {
 	return false, nil
 }
 func (w *fakeLBWriter) Insert(_ context.Context, lb *domain.LoadBalancer) (*kachorepo.LoadBalancerRecord, error) {
@@ -520,9 +514,6 @@ func (r *fakeTGReader) ListTargets(context.Context, string) ([]*kachorepo.Target
 func (r *fakeTGReader) ListDrainingExpired(context.Context, string, int32) ([]*kachorepo.TargetRecord, error) {
 	return nil, nil
 }
-func (r *fakeTGReader) HasAttachedLB(context.Context, string) (bool, error) {
-	return false, nil
-}
 func (r *fakeTGReader) ReferencingListenerIDs(context.Context, string) ([]string, error) {
 	return nil, nil
 }
@@ -543,9 +534,6 @@ func (w *fakeTGWriter) ListTargets(context.Context, string) ([]*kachorepo.Target
 }
 func (w *fakeTGWriter) ListDrainingExpired(context.Context, string, int32) ([]*kachorepo.TargetRecord, error) {
 	return nil, nil
-}
-func (w *fakeTGWriter) HasAttachedLB(context.Context, string) (bool, error) {
-	return false, nil
 }
 func (w *fakeTGWriter) ReferencingListenerIDs(context.Context, string) ([]string, error) {
 	return nil, nil
@@ -572,29 +560,6 @@ func (w *fakeTGWriter) DeleteTargetsDrained(context.Context, string, int32) (int
 	return 0, errors.New("not implemented")
 }
 func (w *fakeTGWriter) Delete(context.Context, string) error {
-	return errors.New("not implemented")
-}
-
-// ---- AttachedTG stubs (unused in listener UseCases). ----
-
-type fakeAttachedTGReader struct{}
-
-func (fakeAttachedTGReader) Get(context.Context, string, string) (*kachorepo.AttachedTargetGroupRecord, error) {
-	return nil, errors.New("not implemented")
-}
-func (fakeAttachedTGReader) ListByLB(context.Context, string) ([]*kachorepo.AttachedTargetGroupRecord, error) {
-	return nil, nil
-}
-func (fakeAttachedTGReader) ListByTG(context.Context, string) ([]*kachorepo.AttachedTargetGroupRecord, error) {
-	return nil, nil
-}
-
-type fakeAttachedTGWriter struct{ fakeAttachedTGReader }
-
-func (fakeAttachedTGWriter) Attach(context.Context, string, string, int32) (*kachorepo.AttachedTargetGroupRecord, bool, error) {
-	return nil, false, errors.New("not implemented")
-}
-func (fakeAttachedTGWriter) Detach(context.Context, string, string) error {
 	return errors.New("not implemented")
 }
 

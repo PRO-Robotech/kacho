@@ -12,7 +12,6 @@
 //	load_balancer_repo.go         — LoadBalancer Reader+Writer impl
 //	listener_repo.go              — Listener Reader+Writer impl
 //	target_group_repo.go          — TargetGroup + Target Reader+Writer impl
-//	attached_tg_repo.go           — AttachedTargetGroup pivot Reader+Writer impl
 //
 // Все DML использует handwritten pgx (никаких ORM).
 // Writer-методы НЕ открывают свою TX и НЕ emit'ят outbox —

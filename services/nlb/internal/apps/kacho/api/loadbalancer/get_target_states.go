@@ -20,7 +20,7 @@ import (
 // Deterministic ramp без реальных
 // healthcheck probes (control-plane-only фаза):
 //
-//   - TargetHealthInactive если LB.status == STOPPED
+//   - TargetHealthInactive если LB.admin_state == DISABLED (административно выключен)
 //   - TargetHealthDraining если target.status == DRAINING
 //   - TargetHealthInitial  если age < HC.interval * HC.healthy_threshold
 //   - TargetHealthHealthy  иначе
@@ -108,14 +108,14 @@ func (u *GetTargetStatesUseCase) Execute(
 	now := u.now()
 	for _, t := range targets {
 		resp.TargetStates = append(resp.TargetStates,
-			computeTargetState(lb.Status, tg.HealthCheck, t, now))
+			computeTargetState(lb.AdminState, tg.HealthCheck, t, now))
 	}
 	return resp, nil
 }
 
 // computeTargetState — deterministic ramp formula.
 func computeTargetState(
-	lbStatus domain.LBStatus,
+	adminState domain.AdminState,
 	hc domain.HealthCheck,
 	t *kachorepo.TargetRecord,
 	now time.Time,
@@ -125,7 +125,7 @@ func computeTargetState(
 		Address:  addressOfTarget(t.Target),
 	}
 	switch {
-	case lbStatus == domain.LBStatusStopped:
+	case adminState == domain.AdminStateDisabled:
 		state.Status = lbv1.TargetState_INACTIVE
 	case t.Status == "DRAINING":
 		state.Status = lbv1.TargetState_DRAINING

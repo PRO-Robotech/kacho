@@ -12,7 +12,7 @@
 // Контракт диспетчеризации (writer-TX атомарна, частичных состояний нет):
 //   - Create-метаданные: ресурс присутствует → Done(current как Response);
 //     отсутствует → Interrupted.
-//   - Update / lifecycle-метаданные (Start/Stop/Move/Attach/Detach/AddTargets/…
+//   - Update / lifecycle-метаданные (Move/AddTargets/…
 //     существование ресурса не меняют): присутствует → Done(current);
 //     отсутствует → Interrupted.
 //   - Delete-метаданные: отсутствует → Done(Empty); присутствует → Interrupted.
@@ -126,15 +126,7 @@ func (rs *Resolver) Resolve(ctx context.Context, op operations.Operation) (opera
 		return resolveExistence(ctx, kindDelete, m.GetNetworkLoadBalancerId(), rs.r.LoadBalancer)
 
 	// ---- NetworkLoadBalancer lifecycle (existence-preserving) → reconcile к current ----
-	case *lbv1.StartNetworkLoadBalancerMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetNetworkLoadBalancerId(), rs.r.LoadBalancer)
-	case *lbv1.StopNetworkLoadBalancerMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetNetworkLoadBalancerId(), rs.r.LoadBalancer)
 	case *lbv1.MoveNetworkLoadBalancerMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetNetworkLoadBalancerId(), rs.r.LoadBalancer)
-	case *lbv1.AttachNetworkLoadBalancerTargetGroupMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetNetworkLoadBalancerId(), rs.r.LoadBalancer)
-	case *lbv1.DetachNetworkLoadBalancerTargetGroupMetadata:
 		return resolveExistence(ctx, kindUpdate, m.GetNetworkLoadBalancerId(), rs.r.LoadBalancer)
 
 	// ---- Listener: Create / Update / Delete ----

@@ -33,6 +33,21 @@ func seedLB(t *testing.T, repo *fakeRepo, projectID, name string) string {
 	return id
 }
 
+// seedTG seeds an in-memory TargetGroup (relocated from the deleted attach_test.go —
+// still used by GetTargetStates/handler dispatch tests after the NLB CONTRACT).
+func seedTG(t *testing.T, repo *fakeRepo, projectID, region, name string) string {
+	t.Helper()
+	id := ids.NewID(ids.PrefixTargetGroup)
+	repo.tgs[id] = &kachorepo.TargetGroupRecord{
+		TargetGroup: domain.TargetGroup{
+			ID: domain.ResourceID(id), ProjectID: domain.ProjectID(projectID),
+			RegionID: domain.RegionID(region), Name: domain.LbName(name),
+			Status: domain.TargetGroupStatusActive,
+		},
+	}
+	return id
+}
+
 func TestListLoadBalancers_RequiresProjectID(t *testing.T) {
 	t.Parallel()
 	uc := NewListLoadBalancersUseCase(newFakeRepo(), nil)

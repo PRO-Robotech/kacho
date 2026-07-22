@@ -59,22 +59,6 @@ func TestDelete_ReferencedByListener_NLB_1_41(t *testing.T) {
 		"target group is referenced by listeners: [lst-7h3k9m2x4q8w1t0y]")
 }
 
-// Delete fails when attached to LB.
-func TestDelete_HasAttachedLB(t *testing.T) {
-	repo := newFakeRepo()
-	tg := makeTG("prj-acme", "del-att")
-	repo.seedTG(tg)
-	repo.seedAttached("nlb-x", string(tg.ID))
-	uc := NewDeleteTargetGroupUseCase(repo, newFakeOpsRepo(), nil)
-
-	_, err := uc.Execute(context.Background(), &lbv1.DeleteTargetGroupRequest{
-		TargetGroupId: string(tg.ID),
-	})
-	require.Equal(t, codes.FailedPrecondition, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(),
-		"is attached to 1 load balancer(s); detach first")
-}
-
 // Delete fails when targets exist.
 func TestDelete_HasTargets(t *testing.T) {
 	repo := newFakeRepo()

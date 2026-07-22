@@ -26,8 +26,8 @@ import (
 //
 // Sync prechecks:
 //   - same-project ("destination project is the same as source") → InvalidArgument;
-//   - HasAttachedLB > 0 → FailedPrecondition с фиксированным текстом
-//     `"TargetGroup is attached to N load balancer(s); detach before moving"`;
+//   - ReferencingListenerIDs non-empty → FailedPrecondition с фиксированным текстом
+//     `"target group is referenced by N listener(s); repoint them before moving"`;
 //   - destination project exists (peer ProjectClient.Get) — InvalidArgument если NotFound.
 //
 // Worker:
@@ -92,19 +92,15 @@ func (u *MoveTargetGroupUseCase) Execute(
 		return nil, status.Error(codes.InvalidArgument,
 			"destination project is the same as source")
 	}
-	hasLB, err := rd.TargetGroups().HasAttachedLB(ctx, id)
+	lstIDs, err := rd.TargetGroups().ReferencingListenerIDs(ctx, id)
 	if err != nil {
 		_ = rd.Close()
 		return nil, mapDomainErr(err)
 	}
-	if hasLB {
-		atgs, lerr := rd.AttachedTargetGroups().ListByTG(ctx, id)
+	if len(lstIDs) > 0 {
 		_ = rd.Close()
-		if lerr != nil {
-			return nil, mapDomainErr(lerr)
-		}
 		return nil, status.Errorf(codes.FailedPrecondition,
-			"TargetGroup is attached to %d load balancer(s); detach before moving", len(atgs))
+			"target group is referenced by %d listener(s); repoint them before moving", len(lstIDs))
 	}
 	_ = rd.Close()
 

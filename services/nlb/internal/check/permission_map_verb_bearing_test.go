@@ -27,11 +27,7 @@ var verbGetRPCs = []string{
 
 var verbUpdateRPCs = []string{
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Update",
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start",
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop",
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move",
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup",
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/DetachTargetGroup",
 	"/kacho.cloud.loadbalancer.v1.ListenerService/Update",
 	"/kacho.cloud.loadbalancer.v1.TargetGroupService/Update",
 	"/kacho.cloud.loadbalancer.v1.TargetGroupService/Move",

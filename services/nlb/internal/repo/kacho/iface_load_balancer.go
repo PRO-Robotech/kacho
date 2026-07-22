@@ -26,9 +26,10 @@ type LoadBalancerReaderIface interface {
 	// HasListeners — `EXISTS` под FK-precheck в Delete UseCase.
 	HasListeners(ctx context.Context, lbID string) (bool, error)
 
-	// HasAttachedTargetGroups — `EXISTS` для Delete-precheck + AttachedTG
-	// pre-Move check.
-	HasAttachedTargetGroups(ctx context.Context, lbID string) (bool, error)
+	// HasWiredTargetGroup — `EXISTS` листенер этого LB, привязанный к TG
+	// (listeners.default_target_group_id set). Sync pre-Move check (LB с wired
+	// listener'ом двигать нельзя — cross-project ref).
+	HasWiredTargetGroup(ctx context.Context, lbID string) (bool, error)
 }
 
 // LoadBalancerWriterIface — write-операции + read (writer видит свои writes).
@@ -61,7 +62,7 @@ type LoadBalancerWriterIface interface {
 	AttachVIP(ctx context.Context, id string, family domain.IPVersion, address, addressID string, origin domain.VipOrigin) (*LoadBalancerRecord, error)
 
 	// SetStatusCAS — atomic compare-and-swap на status-колонке. expected — ожидаемый
-	// текущий статус (например `STOPPED`); newStatus — целевой. 0 affected
+	// текущий статус (например `CREATING`); newStatus — целевой. 0 affected
 	// (CAS-miss или row absent) → ErrFailedPrecondition. Skill workspace
 	// CLAUDE.md «Within-service refs — DB-уровень».
 	SetStatusCAS(ctx context.Context, id string, expected, newStatus domain.LBStatus) (*LoadBalancerRecord, error)
@@ -69,9 +70,9 @@ type LoadBalancerWriterIface interface {
 	// MarkDeleting — atomic guarded transition в status=DELETING, первый шаг
 	// Delete-саги ДО необратимого release cross-domain VIP. Guards прибиты на
 	// DB-уровне под row-lock: удаляемый LB не защищён (deletion_protection=false)
-	// И не имеет детей (NOT EXISTS listeners / attached_target_groups). Row-lock
-	// сериализует переход с конкурентными child-INSERT'ами (Listener.Insert /
-	// AttachedTargetGroups.Attach берут FOR NO KEY UPDATE OF lb и отвергают
+	// И не имеет детей (NOT EXISTS listeners). Row-lock
+	// сериализует переход с конкурентными child-INSERT'ами (Listener.Insert
+	// берёт FOR NO KEY UPDATE OF lb и отвергает
 	// DELETING-родителя) — окно «ребёнок появился после mark» закрыто с обеих
 	// сторон. Идемпотентно (уже DELETING → re-mark, RETURNING строку). 0 rows:
 	// различаем «LB нет» (ErrNotFound) vs «защищён / есть дети»
@@ -85,7 +86,7 @@ type LoadBalancerWriterIface interface {
 	MoveProject(ctx context.Context, id, newProjectID string) (*LoadBalancerRecord, error)
 
 	// Delete — DELETE load_balancers WHERE id=$1. FK-violation (есть дети —
-	// listeners / attached_target_groups) → ErrFailedPrecondition. row absent
+	// listeners) → ErrFailedPrecondition. row absent
 	// → ErrNotFound. Безусловный — используется для compensation-rollback в
 	// Create (там deletion_protection не может помешать откату).
 	Delete(ctx context.Context, id string) error

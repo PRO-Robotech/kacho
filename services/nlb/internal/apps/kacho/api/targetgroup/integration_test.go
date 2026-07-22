@@ -161,16 +161,19 @@ func TestIntegration_CreateTargetGroup_EndToEnd(t *testing.T) {
 	require.Contains(t, events, "nlb_target_group:CREATED")
 }
 
-// integration: Delete TG blocked when attached to LB
-// (real FK precheck via HasAttachedLB query).
-func TestIntegration_DeleteTG_BlocksOnAttached(t *testing.T) {
+// integration: Delete TG blocked when a listener references it
+// (NLB CONTRACT: real precheck via ReferencingListenerIDs, backed by the direct
+// FK RESTRICT listeners.default_target_group_id → target_groups(id); the M:N
+// pivot was dropped in migration 0022).
+func TestIntegration_DeleteTG_BlocksOnReferencingListener(t *testing.T) {
 	t.Parallel()
 	pool, repo := setupDB(t)
 	opsRepo := newOpsRepo(t, pool)
 
-	// Insert LB + TG + pivot row via raw SQL (no handlers).
+	// Insert LB + TG + a listener wired to the TG via raw SQL (no handlers).
 	lbID := ids.NewID(ids.PrefixLoadBalancer)
 	tgID := ids.NewID(ids.PrefixTargetGroup)
+	lstID := ids.NewID(ids.PrefixListener)
 	ctx := context.Background()
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.load_balancers (id, project_id, region_id, name, description, labels,
@@ -188,8 +191,11 @@ func TestIntegration_DeleteTG_BlocksOnAttached(t *testing.T) {
 	)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_nlb.attached_target_groups (load_balancer_id, target_group_id, priority)
-		VALUES ($1, $2, 0)`, lbID, tgID,
+		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
+			description, labels, protocol, port, target_port, ip_version,
+			address_id, allocated_address, subnet_id, proxy_protocol_v2, default_target_group_id, status)
+		VALUES ($1, 'prj-x', $2, 'ru-central1', 'lst-int', '', '{}', 'TCP', 8080, 80, 'IPV4',
+		        '', '203.0.113.7', '', false, $3, 'ACTIVE')`, lstID, lbID, tgID,
 	)
 	require.NoError(t, err)
 
@@ -197,7 +203,7 @@ func TestIntegration_DeleteTG_BlocksOnAttached(t *testing.T) {
 	_, err = h.Delete(ctx, &lbv1.DeleteTargetGroupRequest{TargetGroupId: tgID})
 	require.Error(t, err)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
-	assert.Contains(t, status.Convert(err).Message(), "is attached to 1 load balancer(s)")
+	assert.Contains(t, status.Convert(err).Message(), "referenced by listeners")
 }
 
 // TestIntegration_AddRemoveTargets_Lifecycle — фаза B parity integration: full

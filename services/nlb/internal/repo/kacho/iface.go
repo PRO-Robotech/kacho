@@ -14,7 +14,7 @@
 // Pagination — общий объект, разделяемый между всеми per-resource Reader'ами.
 //
 // Все CQRS port-интерфейсы per-resource (LoadBalancer / Listener / TargetGroup /
-// AttachedTargetGroup / Outbox / FGARegister) живут ЗДЕСЬ, в этом leaf-пакете —
+// Outbox / FGARegister) живут ЗДЕСЬ, в этом leaf-пакете —
 // а не в отдельных под-пакетах loadbalancer/ listener/ targetgroup/ outbox/.
 // Причина — избежать import-cycle (dto/type2pb → repo/kacho → domain) и держать
 // единую точку для port-контракта. Не заводите под-пакеты под repo-типы: новый
@@ -50,7 +50,6 @@ type RepositoryReader interface {
 	LoadBalancers() LoadBalancerReaderIface
 	Listeners() ListenerReaderIface
 	TargetGroups() TargetGroupReaderIface
-	AttachedTargetGroups() AttachedTargetGroupReaderIface
 	// Close завершает read-TX (rollback). Идемпотентно.
 	Close() error
 }
@@ -62,7 +61,6 @@ type RepositoryWriter interface {
 	LoadBalancers() LoadBalancerWriterIface
 	Listeners() ListenerWriterIface
 	TargetGroups() TargetGroupWriterIface
-	AttachedTargetGroups() AttachedTargetGroupWriterIface
 	// Outbox — emit события в `nlb_outbox` в той же tx-области writer'а.
 	Outbox() OutboxEmitter
 	// FGARegisterOutbox — emit FGA-register-intent в `fga_register_outbox` в

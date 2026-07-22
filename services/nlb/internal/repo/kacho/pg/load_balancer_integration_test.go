@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/H-BF/corlib/pkg/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -189,20 +190,20 @@ func TestLB_SetStatusCAS(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// CAS-hit: Inactive → Starting.
+	// CAS-hit: Inactive → Active (STARTING removed by NLB CONTRACT).
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		rec, err := w.LoadBalancers().SetStatusCAS(ctx, string(lb.ID),
-			domain.LBStatusInactive, domain.LBStatusStarting)
+			domain.LBStatusInactive, domain.LBStatusActive)
 		require.NoError(t, err)
-		assert.Equal(t, domain.LBStatusStarting, rec.Status)
+		assert.Equal(t, domain.LBStatusActive, rec.Status)
 	})
 
-	// CAS-miss: expected=Inactive (currently Starting) → FailedPrecondition.
+	// CAS-miss: expected=Inactive (currently Active) → FailedPrecondition.
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
 	_, err = w.LoadBalancers().SetStatusCAS(ctx, string(lb.ID),
-		domain.LBStatusInactive, domain.LBStatusActive)
+		domain.LBStatusInactive, domain.LBStatusDeleting)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrFailedPrecondition), "want ErrFailedPrecondition, got %v", err)
 }
@@ -324,8 +325,9 @@ func TestLB_List_Pagination(t *testing.T) {
 	require.Empty(t, nextToken3)
 }
 
-// TestLB_StatusRecomputeTrigger — INSERT listener + AttachTG → LB.status
-// INACTIVE → ACTIVE; DELETE listener → ACTIVE → INACTIVE.
+// TestLB_StatusRecomputeTrigger — INSERT listener wired to a TG (default_
+// target_group_id set) → LB.status INACTIVE → ACTIVE. NLB CONTRACT: the M:N
+// pivot is gone; lb_status_recompute now bases ACTIVE on a wired listener.
 func TestLB_StatusRecomputeTrigger(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
@@ -341,9 +343,8 @@ func TestLB_StatusRecomputeTrigger(t *testing.T) {
 		_, err = w.TargetGroups().Insert(ctx, tg)
 		require.NoError(t, err)
 		l := newListener(lb.ID, string(lb.ProjectID), "trig-lst", 7777)
+		l.DefaultTargetGroupID = option.MustNewOption(tg.ID)
 		_, err = w.Listeners().Insert(ctx, l)
-		require.NoError(t, err)
-		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 100)
 		require.NoError(t, err)
 	})
 
