@@ -18,6 +18,26 @@
 `scripts/validate-cases.py` → OK (122 уникальных case-id, нет дублей, все
 каталогизированы). `python3 scripts/gen.py` → OK (7 коллекций).
 
+## Production-mode прогон (#59) — 5/7 коллекций 0 failed
+
+RS256 SA-principal seed (`tests/authz-fixtures/prodseed_matrix.py`), api-gateway
+`authn.mode=production-strict`. Зелёные: **disk-type, internal-volume, operation,
+snapshot, volume** (0 failed). Прод-баг `img`-prefix (gateway authz-edge 400'ил все
+image Get/Update/Delete) — **пофикшен** (`fix(ids)`: register storage image prefix,
+gateway-only rebuild) → image get-by-id восстановлен.
+
+### Known failing — product bugs (RED до фикса прода, `verified-by:test`)
+
+| Кейс | Коллекция | Issue | Класс |
+|---|---|---|---|
+| IMG-CR-BVA-DESC-OVER-257 / IMG-CR-BVA-LABELS-OVER-65 | image | [#61](https://github.com/PRO-Robotech/kacho/issues/61) | Image.Create не валидирует `description`(>256)/`labels`(>64) синхронно (Volume — валидирует) → 200 Operation вместо 400. |
+| AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK | authz | [#62](https://github.com/PRO-Robotech/kacho/issues/62) | `edit` system-роль не материализует storage-verbs: тот же editor-principal listиет vpc (200), но storage volumes → 403 (role_rule_selectors gap). |
+
+Остальные исходные красные (malformed-id тон `invalid resource id` vs family-specific;
+internal-volume external-absence 403 fail-closed vs [404,405,501]; FieldMask snake→camel)
+были **test-staleness** — приведены к фактическому gateway-контракту (family-agnostic
+edge-message; fail-closed uncatalogued 403; camelCase FieldMask paths), см. диффы кейсов.
+
 ## STOR-1 redesign — Image (`cases/image.py`, 39 кейсов)
 
 NET-NEW ресурс `Image` (VM boot-образ, REGIONAL/anycast, `img-` prefix) + Volume↔Image

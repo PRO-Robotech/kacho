@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "c1a6fd29-a20c-4ac9-932d-8f2e89f50679",
+    "_postman_id": "0331e25a-7103-4881-a539-853e13673653",
     "name": "kacho-storage / newman / internal-volume",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -67,7 +67,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
                 ]
@@ -117,7 +117,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
                 ]
@@ -167,7 +167,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
                 ]
@@ -217,7 +217,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                  "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                   "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));"
                 ]

@@ -57,7 +57,13 @@ for _cid, _method, _body in _INTERNAL_METHODS:
         # verifies CS1-S4-11 (INV-7a: InternalVolumeService not routed on external mux)
         steps=[Step(name=_method.lower(), method="POST", path=f"{_SVC}/{_method}", body=_body,
                     test_script=[
-                        "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([404, 405, 501]));",
+                        # An Internal-only method has NO entry in the external permission
+                        # catalog, so the api-gateway authz middleware fail-closes it as
+                        # 403 PERMISSION_DENIED (uncatalogued → AUTHZ_DENIED) BEFORE any
+                        # route/backend dispatch — it never reaches storage. 403 proves
+                        # "not usable on external" exactly as 404/405/501 do (authz-first,
+                        # security.md #4). Accept it alongside route-absent codes.
+                        "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
                         "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                         "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));",
                     ])],

@@ -26,7 +26,7 @@ _VOL_SIZE = 16106127360  # 15 GiB — отличный от volume-suite default
 
 def _assert_msg(substr):
     # substr вставляется в single-quoted JS-строку — экранируем backslash и '
-    # (контракт-тексты вида "invalid snapshot id 'nope'" несут одинарные кавычки,
+    # (контракт-тексты вида "invalid resource id 'nope'" несут одинарные кавычки,
     # иначе ломают pm.test → "missing ) after argument list").
     _esc = substr.replace("\\", "\\\\").replace("'", "\\'")
     return [f"pm.test('message includes \"{_esc}\"', "
@@ -179,12 +179,12 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNP-GET-NEG-MALFORMED-ID",
-    title="Get malformed snapshotId 'nope' → sync 400 INVALID_ARGUMENT 'invalid snapshot id 'nope''",
+    title="Get malformed snapshotId 'nope' → sync 400 INVALID_ARGUMENT 'invalid resource id 'nope''",
     classes=["NEG", "VAL", "CONF"], priority="P0",
     # verifies CS1-S3-04
     steps=[Step(name="get-malformed", method="GET", path=f"{SNP}/nope",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             *_assert_msg("invalid snapshot id 'nope'")])],
+                             *_assert_msg("invalid resource id 'nope'")])],
 ))
 
 CASES.append(Case(
@@ -343,7 +343,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
     # verifies CS1-S3-05
     steps=[Step(name="patch-imm-proj", method="PATCH", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
-                body={"updateMask": "project_id"},
+                body={"updateMask": "projectId"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("project_id is immutable after Snapshot.Create")])],
 ))
@@ -354,7 +354,7 @@ CASES.append(Case(
     classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
     # verifies CS1-S3-05
     steps=[Step(name="patch-imm-size", method="PATCH", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
-                body={"updateMask": "size_bytes"},
+                body={"updateMask": "sizeBytes"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("size_bytes is immutable after Snapshot.Create")])],
 ))
