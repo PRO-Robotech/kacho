@@ -121,11 +121,11 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="VOL-LST-VAL-PROJECT-REQUIRED",
-    title="List без projectId → 400 INVALID_ARGUMENT (project_id required)",
+    title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped; #62 project-scope)",
     classes=["VAL", "NEG"], priority="P0",
     # verifies CS1-S1-03
     steps=[Step(name="list-np", method="GET", path=VOL,
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
