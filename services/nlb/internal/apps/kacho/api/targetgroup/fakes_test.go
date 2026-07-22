@@ -43,6 +43,7 @@ type fakeRepo struct {
 	tgs              map[string]*kachorepo.TargetGroupRecord
 	targets          map[string]map[string]*kachorepo.TargetRecord // tgID → target.ID → row
 	pivot            map[string]bool                               // "lbID/tgID" → attached
+	refListeners     map[string][]string                           // tgID → referencing listener ids
 	outbox           []fakeOutboxEvent
 	fga              []fgaIntentEvent // FGARegisterOutbox intents (flushed on Commit)
 	failOnInsert     error
@@ -89,6 +90,15 @@ func (r *fakeRepo) seedAttached(lbID, tgID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.pivot[lbID+"/"+tgID] = true
+}
+
+func (r *fakeRepo) seedReferencingListener(tgID, listenerID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.refListeners == nil {
+		r.refListeners = make(map[string][]string)
+	}
+	r.refListeners[tgID] = append(r.refListeners[tgID], listenerID)
 }
 
 func (r *fakeRepo) outboxEvents() []fakeOutboxEvent {
@@ -322,6 +332,12 @@ func (q *fakeTGReader) HasAttachedLB(_ context.Context, tgID string) (bool, erro
 	return false, nil
 }
 
+func (q *fakeTGReader) ReferencingListenerIDs(_ context.Context, tgID string) ([]string, error) {
+	q.r.mu.Lock()
+	defer q.r.mu.Unlock()
+	return append([]string(nil), q.r.refListeners[tgID]...), nil
+}
+
 // ---- TG writer ----
 
 type fakeTGWriter struct {
@@ -340,6 +356,9 @@ func (q *fakeTGWriter) ListByProject(ctx context.Context, projectID string, p ka
 }
 func (q *fakeTGWriter) ListTargets(ctx context.Context, tgID string) ([]*kachorepo.TargetRecord, error) {
 	return (&fakeTGReader{r: q.r}).ListTargets(ctx, tgID)
+}
+func (q *fakeTGWriter) ReferencingListenerIDs(ctx context.Context, tgID string) ([]string, error) {
+	return (&fakeTGReader{r: q.r}).ReferencingListenerIDs(ctx, tgID)
 }
 func (q *fakeTGWriter) ListDrainingExpired(ctx context.Context, tgID string, delaySeconds int32) ([]*kachorepo.TargetRecord, error) {
 	return (&fakeTGReader{r: q.r}).ListDrainingExpired(ctx, tgID, delaySeconds)
@@ -396,6 +415,7 @@ func (q *fakeTGWriter) Update(_ context.Context, tg *domain.TargetGroup, _ strin
 	updated.HealthCheck = tg.HealthCheck
 	updated.DeregistrationDelay = tg.DeregistrationDelay
 	updated.SlowStart = tg.SlowStart
+	updated.Port = tg.Port
 	updated.UpdatedAt = time.Now().UTC()
 	q.w.pendingTGs = append(q.w.pendingTGs, &updated)
 	c := updated

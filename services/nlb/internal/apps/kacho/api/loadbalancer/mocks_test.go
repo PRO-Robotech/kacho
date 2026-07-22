@@ -543,6 +543,10 @@ func (q *fakeTGReader) HasAttachedLB(ctx context.Context, tgID string) (bool, er
 	return false, nil
 }
 
+func (q *fakeTGReader) ReferencingListenerIDs(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
 type fakeTGWriter struct{ w *fakeWriter }
 
 func (q *fakeTGWriter) Get(ctx context.Context, id string) (*kachorepo.TargetGroupRecord, error) {
@@ -562,6 +566,9 @@ func (q *fakeTGWriter) ListDrainingExpired(ctx context.Context, tgID string, del
 }
 func (q *fakeTGWriter) HasAttachedLB(ctx context.Context, tgID string) (bool, error) {
 	return (&fakeTGReader{r: q.w.r}).HasAttachedLB(ctx, tgID)
+}
+func (q *fakeTGWriter) ReferencingListenerIDs(ctx context.Context, tgID string) ([]string, error) {
+	return (&fakeTGReader{r: q.w.r}).ReferencingListenerIDs(ctx, tgID)
 }
 func (q *fakeTGWriter) Insert(ctx context.Context, tg *domain.TargetGroup) (*kachorepo.TargetGroupRecord, error) {
 	return nil, errors.New("not implemented in fake")

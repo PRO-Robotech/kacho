@@ -277,6 +277,32 @@ func (r *targetGroupReader) HasAttachedLB(ctx context.Context, tgID string) (boo
 	return exists, nil
 }
 
+// ReferencingListenerIDs — id листенеров, ссылающихся на TG через
+// listeners.default_target_group_id (FK RESTRICT из 0018). ORDER BY id для
+// детерминированного порядка в teardown-precheck error-тексте (NLB-1-41).
+func (r *targetGroupReader) ReferencingListenerIDs(ctx context.Context, tgID string) ([]string, error) {
+	rows, err := r.tx.Query(ctx,
+		`SELECT id FROM kacho_nlb.listeners WHERE default_target_group_id = $1 ORDER BY id`,
+		tgID,
+	)
+	if err != nil {
+		return nil, mapPgErr(err, "TargetGroup", tgID)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, mapPgErr(err, "TargetGroup", tgID)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, mapPgErr(err, "TargetGroup", tgID)
+	}
+	return ids, nil
+}
+
 type targetGroupWriter struct {
 	targetGroupReader
 }
