@@ -1880,11 +1880,11 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"\x16UpdateRegistryMetadata\x12\bRegistry\x82\xd3\xe4\x93\x02*:\x01*2%/registry/v1/registries/{registry_id}\x12\x94\x02\n" +
 	"\x06Delete\x12..kacho.cloud.registry.v1.DeleteRegistryRequest\x1a .kacho.cloud.operation.Operation\"\xb7\x01\x8a\xb5\x18\x1aregistry.registries.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18 \n" +
 	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\xa8\xb5\x18\x01\xb2\xd2*/\n" +
-	"\x16DeleteRegistryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02'*%/registry/v1/registries/{registry_id}\x12\xbf\x01\n" +
-	"\x10ListRepositories\x120.kacho.cloud.registry.v1.ListRepositoriesRequest\x1a1.kacho.cloud.registry.v1.ListRepositoriesResponse\"F\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x024\x122/registry/v1/registries/{registry_id}/repositories\x12\x95\x02\n" +
+	"\x16DeleteRegistryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02'*%/registry/v1/registries/{registry_id}\x12\x95\x02\n" +
 	"\x0eListOperations\x126.kacho.cloud.registry.v1.ListRegistryOperationsRequest\x1a7.kacho.cloud.registry.v1.ListRegistryOperationsResponse\"\x91\x01\x8a\xb5\x18\"registry.registries.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18 \n" +
 	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/registry/v1/registries/{registry_id}/operations\x12\xbb\x01\n" +
-	"\rGetRepository\x12-.kacho.cloud.registry.v1.GetRepositoryRequest\x1a#.kacho.cloud.registry.v1.Repository\"V\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02D\x12B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xdb\x01\n" +
+	"\rGetRepository\x12-.kacho.cloud.registry.v1.GetRepositoryRequest\x1a#.kacho.cloud.registry.v1.Repository\"V\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02D\x12B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xbf\x01\n" +
+	"\x10ListRepositories\x120.kacho.cloud.registry.v1.ListRepositoriesRequest\x1a1.kacho.cloud.registry.v1.ListRepositoriesResponse\"F\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x024\x122/registry/v1/registries/{registry_id}/repositories\x12\xdb\x01\n" +
 	"\x10CreateRepository\x120.kacho.cloud.registry.v1.CreateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"s\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
 	"\x18CreateRepositoryMetadata\x12\n" +
 	"Repository\x82\xd3\xe4\x93\x027:\x01*\"2/registry/v1/registries/{registry_id}/repositories\x12\xec\x01\n" +
@@ -1977,9 +1977,9 @@ var file_kacho_cloud_registry_v1_registry_service_proto_depIdxs = []int32{
 	3,  // 17: kacho.cloud.registry.v1.RegistryService.Create:input_type -> kacho.cloud.registry.v1.CreateRegistryRequest
 	5,  // 18: kacho.cloud.registry.v1.RegistryService.Update:input_type -> kacho.cloud.registry.v1.UpdateRegistryRequest
 	7,  // 19: kacho.cloud.registry.v1.RegistryService.Delete:input_type -> kacho.cloud.registry.v1.DeleteRegistryRequest
-	9,  // 20: kacho.cloud.registry.v1.RegistryService.ListRepositories:input_type -> kacho.cloud.registry.v1.ListRepositoriesRequest
-	15, // 21: kacho.cloud.registry.v1.RegistryService.ListOperations:input_type -> kacho.cloud.registry.v1.ListRegistryOperationsRequest
-	17, // 22: kacho.cloud.registry.v1.RegistryService.GetRepository:input_type -> kacho.cloud.registry.v1.GetRepositoryRequest
+	15, // 20: kacho.cloud.registry.v1.RegistryService.ListOperations:input_type -> kacho.cloud.registry.v1.ListRegistryOperationsRequest
+	17, // 21: kacho.cloud.registry.v1.RegistryService.GetRepository:input_type -> kacho.cloud.registry.v1.GetRepositoryRequest
+	9,  // 22: kacho.cloud.registry.v1.RegistryService.ListRepositories:input_type -> kacho.cloud.registry.v1.ListRepositoriesRequest
 	18, // 23: kacho.cloud.registry.v1.RegistryService.CreateRepository:input_type -> kacho.cloud.registry.v1.CreateRepositoryRequest
 	20, // 24: kacho.cloud.registry.v1.RegistryService.UpdateRepository:input_type -> kacho.cloud.registry.v1.UpdateRepositoryRequest
 	22, // 25: kacho.cloud.registry.v1.RegistryService.DeleteRepository:input_type -> kacho.cloud.registry.v1.DeleteRepositoryRequest
@@ -1992,9 +1992,9 @@ var file_kacho_cloud_registry_v1_registry_service_proto_depIdxs = []int32{
 	37, // 32: kacho.cloud.registry.v1.RegistryService.Create:output_type -> kacho.cloud.operation.Operation
 	37, // 33: kacho.cloud.registry.v1.RegistryService.Update:output_type -> kacho.cloud.operation.Operation
 	37, // 34: kacho.cloud.registry.v1.RegistryService.Delete:output_type -> kacho.cloud.operation.Operation
-	10, // 35: kacho.cloud.registry.v1.RegistryService.ListRepositories:output_type -> kacho.cloud.registry.v1.ListRepositoriesResponse
-	16, // 36: kacho.cloud.registry.v1.RegistryService.ListOperations:output_type -> kacho.cloud.registry.v1.ListRegistryOperationsResponse
-	35, // 37: kacho.cloud.registry.v1.RegistryService.GetRepository:output_type -> kacho.cloud.registry.v1.Repository
+	16, // 35: kacho.cloud.registry.v1.RegistryService.ListOperations:output_type -> kacho.cloud.registry.v1.ListRegistryOperationsResponse
+	35, // 36: kacho.cloud.registry.v1.RegistryService.GetRepository:output_type -> kacho.cloud.registry.v1.Repository
+	10, // 37: kacho.cloud.registry.v1.RegistryService.ListRepositories:output_type -> kacho.cloud.registry.v1.ListRepositoriesResponse
 	37, // 38: kacho.cloud.registry.v1.RegistryService.CreateRepository:output_type -> kacho.cloud.operation.Operation
 	37, // 39: kacho.cloud.registry.v1.RegistryService.UpdateRepository:output_type -> kacho.cloud.operation.Operation
 	37, // 40: kacho.cloud.registry.v1.RegistryService.DeleteRepository:output_type -> kacho.cloud.operation.Operation
