@@ -90,7 +90,7 @@ type RPCEntry struct {
 	ScopeFiltered bool
 
 	// Permission — строка из permission-catalog в формате
-	// `<module>.<resource>.<verb>` (напр. `loadbalancer.networkLoadBalancers.start`),
+	// `<module>.<resource>.<verb>` (напр. `loadbalancer.networkLoadBalancers.getTargetStates`),
 	// предназначена для будущего fine-grained Check.
 	//
 	// Сейчас interceptor ее НЕ читает — Check идет по полю Relation как

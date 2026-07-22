@@ -26,12 +26,12 @@ func TestRPCEntry_PermissionZeroValue(t *testing.T) {
 func TestRPCEntry_PermissionSet(t *testing.T) {
 	e := RPCEntry{
 		Relation:   "editor",
-		Permission: "loadbalancer.networkLoadBalancers.start",
+		Permission: "loadbalancer.networkLoadBalancers.getTargetStates",
 		Extract: StaticExtractor("nlb_load_balancer", func(req any) (string, error) {
 			return "nlb00000000000000000", nil
 		}),
 	}
-	require.Equal(t, "loadbalancer.networkLoadBalancers.start", e.Permission)
+	require.Equal(t, "loadbalancer.networkLoadBalancers.getTargetStates", e.Permission)
 	require.Equal(t, "editor", e.Relation,
 		"Relation остается источником истины для текущего interceptor'а")
 }
@@ -113,12 +113,12 @@ func TestFormatObject_AcceptsValid(t *testing.T) {
 
 func TestRPCMap_LookupPreservesPermission(t *testing.T) {
 	m := RPCMap{
-		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start": {
+		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates": {
 			Relation:   "editor",
-			Permission: "loadbalancer.networkLoadBalancers.start",
+			Permission: "loadbalancer.networkLoadBalancers.getTargetStates",
 		},
 	}
-	e, ok := m.Lookup("/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start")
+	e, ok := m.Lookup("/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates")
 	require.True(t, ok)
-	require.Equal(t, "loadbalancer.networkLoadBalancers.start", e.Permission)
+	require.Equal(t, "loadbalancer.networkLoadBalancers.getTargetStates", e.Permission)
 }
