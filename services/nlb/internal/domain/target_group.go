@@ -4,6 +4,8 @@
 package domain
 
 import (
+	"time"
+
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"go.uber.org/multierr"
 )
@@ -36,16 +38,31 @@ type TargetGroup struct {
 // Validate — все семантически-нагруженные поля + cardinality лимит + bound checks.
 // Покрывает.
 func (tg TargetGroup) Validate() error {
+	// B8: durations are Duration-typed on the wire but stored as whole seconds;
+	// reject sub-second precision explicitly so there is no silent truncation /
+	// read-after-write mismatch (whole-second check BEFORE range so 1500ms gets
+	// the precise message, not a range error).
 	deregErr := error(nil)
-	if tg.DeregistrationDelay < DeregistrationDelayMin ||
-		tg.DeregistrationDelay > DeregistrationDelayMax {
+	switch {
+	case tg.DeregistrationDelay%LbDuration(time.Second) != 0:
+		deregErr = coreerrors.InvalidArgument().
+			AddFieldViolation("deregistration_delay",
+				"deregistration_delay must be a whole number of seconds").
+			Err()
+	case tg.DeregistrationDelay < DeregistrationDelayMin || tg.DeregistrationDelay > DeregistrationDelayMax:
 		deregErr = coreerrors.InvalidArgument().
 			AddFieldViolation("deregistration_delay",
 				"deregistration_delay must be in range [0s, 3600s]").
 			Err()
 	}
 	slowErr := error(nil)
-	if tg.SlowStart < SlowStartMin || tg.SlowStart > SlowStartMax {
+	switch {
+	case tg.SlowStart%LbDuration(time.Second) != 0:
+		slowErr = coreerrors.InvalidArgument().
+			AddFieldViolation("slow_start",
+				"slow_start must be a whole number of seconds").
+			Err()
+	case tg.SlowStart < SlowStartMin || tg.SlowStart > SlowStartMax:
 		slowErr = coreerrors.InvalidArgument().
 			AddFieldViolation("slow_start",
 				"slow_start must be in range [0s, 900s]").

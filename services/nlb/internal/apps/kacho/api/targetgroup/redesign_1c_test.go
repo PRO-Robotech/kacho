@@ -180,6 +180,24 @@ func TestUpdate_PortLiveMutable_NLB_1_56(t *testing.T) {
 	assert.EqualValues(t, 9090, got.Port)
 }
 
+// B8 whole-second contract: sub-second duration input is rejected (not silently
+// truncated at the int-seconds DB boundary → no read-after-write mismatch).
+func TestCreate_SubSecondDuration_Rejected_B8(t *testing.T) {
+	repo := newFakeRepo()
+	uc := NewCreateTargetGroupUseCase(repo, newFakeOpsRepo(), nil, nil, nil)
+
+	_, err := uc.Execute(context.Background(), &lbv1.CreateTargetGroupRequest{
+		ProjectId:           "prj-acme",
+		RegionId:            "ru-central1",
+		Name:                "tg-subsec",
+		Port:                8080,
+		HealthCheck:         &lbv1.HealthCheck{Interval: durationpb.New(2 * time.Second), Timeout: durationpb.New(time.Second), UnhealthyThreshold: 2, HealthyThreshold: 2, Options: &lbv1.HealthCheck_Tcp{Tcp: &lbv1.HealthCheck_TcpOptions{}}},
+		DeregistrationDelay: durationpb.New(1500 * time.Millisecond), // sub-second
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, fieldViolationsText(err), "deregistration_delay must be a whole number of seconds")
+}
+
 // NLB-1-39: probe.port override surfaces via effective_port; omitted port
 // inherits TargetGroup.port. Domain-level lock of the derivation.
 func TestHealthCheck_EffectivePort_NLB_1_39(t *testing.T) {
