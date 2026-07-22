@@ -501,11 +501,22 @@ CASES.append(Case(
 # array — Kachō existence-hiding (absent → empty projection, never a 404 leak).
 CASES.append(Case(
     id="REG-LSTREPO-NEG-NOTFOUND",  # index: REG-22
-    title="ListRepositories for absent registry → 200 empty repositories[] (existence-hiding, no 404 leak)",
+    title="ListRepositories for absent registry → 404 NotFound (existence-hiding via NotFound; namespace-scope does not resolve)",
     classes=["NEG"], priority="P2",
+    # By-design (#64): ListRepositories gates on the parent registry via namespaceGate
+    # (handler listauthz.go). An absent OR unauthorized registry does not resolve the
+    # namespace scope → errHideExistence() → NOT_FOUND (code 5). This is byte-identical
+    # for absent vs unauthorized (no existence-oracle) and is PARITY with the other
+    # registry list-of-children RPCs (ListTags / ListReferrers checkRepo→NotFound) and
+    # GetRepository (deny/absent→NotFound), unit-locked by
+    # TestHandler_REG22_ListRepositories_NamespaceDeny_NotFound. Convention: a List
+    # returns 200-empty when its parent scope RESOLVES but is empty; 404/403 when the
+    # parent scope does not resolve (authz-first). (Was 200-empty here — that expectation
+    # was masked by the pre-fix GetRepository route-shadow and is corrected to match the
+    # implemented, unit-tested contract.)
     steps=[Step(name="list-repos-nx", method="GET", path=REG + "/reg00000000000000000/repositories",
-                test_script=[*assert_status(200),
-                             "pm.test('empty repositories (existence-hiding, no 404 leak)', () => pm.expect((pm.response.json().repositories||[]).length).to.eql(0));"])],
+                test_script=[*assert_status(404),
+                             "pm.test('grpc code 5 (NOT_FOUND, hide-existence)', () => pm.expect((pm.response.json()||{}).code).to.eql(5));"])],
 ))
 
 

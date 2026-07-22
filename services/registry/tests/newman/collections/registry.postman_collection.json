@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9031838e-5a99-408d-8681-7545d7d97f82",
+    "_postman_id": "f1c9f2cc-7021-4fcc-846e-517c74eb8e81",
     "name": "kacho-registry / newman / registry",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2059,7 +2059,7 @@
       ]
     },
     {
-      "name": "REG-LSTREPO-NEG-NOTFOUND — ListRepositories for absent registry → 200 empty repositories[] (existence-hiding, no 404 leak)",
+      "name": "REG-LSTREPO-NEG-NOTFOUND — ListRepositories for absent registry → 404 NotFound (existence-hiding via NotFound; namespace-scope does not resolve)",
       "description": "class:NEG | priority:P2",
       "item": [
         {
@@ -2092,8 +2092,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('empty repositories (existence-hiding, no 404 leak)', () => pm.expect((pm.response.json().repositories||[]).length).to.eql(0));"
+                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('grpc code 5 (NOT_FOUND, hide-existence)', () => pm.expect((pm.response.json()||{}).code).to.eql(5));"
                 ]
               }
             }
