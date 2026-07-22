@@ -62,14 +62,17 @@ if [[ -f "$EXT" ]]; then
   python3 "$FIX/patch-env.py" "$EXTCACHE" "$ENVFILE" >&2
 fi
 
-# Grant-materialization settle: freshly-created AccessBindings materialize the
+# Grant-materialization drain-gate: freshly-created AccessBindings materialize the
 # subject's owner/verb FGA tuples eventually-consistent. Running collections at
-# matrix-age-0 hits that window (403 cascade in suites with thin retry coverage).
-# Wait once after a reseed so grants are visible; the run then fits the 15min token
-# window (reseed ~3min + settle + run). Not a foreground sleep (inside prodrun).
+# matrix-age-0 hits that window (403 cascade in suites with thin retry coverage —
+# the reseed-warmup race). Deterministically wait (poll healthy fga_outbox depth →
+# 0) once after a reseed so grants are visible before the first suite; adapts to the
+# burst size instead of a fixed under/over-shooting sleep, and degrades to a bounded
+# settle when the iam DB is not directly reachable. The run then fits the 15min token
+# window (reseed ~3min + drain + run).
 if [[ "$DID_RESEED" == 1 ]]; then
-  echo "[prodrun] grant-materialization settle 60s…" >&2
-  sleep 60
+  echo "[prodrun] grant-materialization drain-gate…" >&2
+  bash "$FIX/drain_fga_outbox.sh" "${DRAIN_BUDGET:-180}" || true
 fi
 
 cd "$ROOT/services/$SVC/tests/newman"
