@@ -88,7 +88,11 @@ CASES.append(Case(
                  *assert_status(200),
                  "const j = pm.response.json();",
                  "pm.test('zones non-empty (geography seeded)', () => pm.expect((j.zones||[]).length).to.be.greaterThan(0));",
-                 *save_from_response("j.zones[0].id", "pickZoneId"),
+                 # Resolve a STABLE seed zone, not an arbitrary [0]: the internal-*
+                 # admin suites create/delete transient `qa`-prefixed rows in this
+                 # GLOBAL (non-project-scoped) catalog concurrently, so [0] can be a
+                 # row that vanishes before get-zone. Prefer a non-`qa` seed row.
+                 *save_from_response("(j.zones.find(z => !String(z.id).startsWith('qa')) || j.zones[0]).id", "pickZoneId"),
              ]),
         Step(name="get-zone", method="GET", path="/geo/v1/zones/{{pickZoneId}}",
              test_script=[
@@ -118,7 +122,7 @@ CASES.append(Case(
              test_script=[
                  *assert_status(200),
                  "pm.test('zones non-empty', () => pm.expect((pm.response.json().zones||[]).length).to.be.greaterThan(0));",
-                 *save_from_response("pm.response.json().zones[0].id", "pickZoneId"),
+                 *save_from_response("(pm.response.json().zones.find(z => !String(z.id).startsWith('qa')) || pm.response.json().zones[0]).id", "pickZoneId"),
              ]),
         Step(name="get-zone", method="GET", path="/geo/v1/zones/{{pickZoneId}}",
              test_script=[

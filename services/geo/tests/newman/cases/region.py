@@ -95,7 +95,11 @@ CASES.append(Case(
                  *assert_status(200),
                  "const j = pm.response.json();",
                  "pm.test('regions non-empty (geography seeded)', () => pm.expect((j.regions||[]).length).to.be.greaterThan(0));",
-                 *save_from_response("j.regions[0].id", "pickRegionId"),
+                 # Resolve a STABLE seed region, not an arbitrary [0]: the internal-*
+                 # admin suites create/delete transient `qa`-prefixed rows in this
+                 # GLOBAL (non-project-scoped) catalog concurrently, so [0] can be a
+                 # row that vanishes before get-region. Prefer a non-`qa` seed row.
+                 *save_from_response("(j.regions.find(r => !String(r.id).startsWith('qa')) || j.regions[0]).id", "pickRegionId"),
              ]),
         Step(name="get-region", method="GET", path="/geo/v1/regions/{{pickRegionId}}",
              test_script=[
@@ -121,7 +125,7 @@ CASES.append(Case(
              test_script=[
                  *assert_status(200),
                  "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
-                 *save_from_response("pm.response.json().regions[0].id", "pickRegionId"),
+                 *save_from_response("(pm.response.json().regions.find(r => !String(r.id).startsWith('qa')) || pm.response.json().regions[0]).id", "pickRegionId"),
              ]),
         Step(name="get-region", method="GET", path="/geo/v1/regions/{{pickRegionId}}",
              test_script=[
