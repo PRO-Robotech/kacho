@@ -130,7 +130,7 @@ const file_kacho_cloud_storage_v1_internal_image_service_proto_rawDesc = "" +
 	"\x05image\x18\x01 \x01(\v2\x1d.kacho.cloud.storage.v1.ImageR\x05imageJ\x04\b\x02\x10\x102\xca\x01\n" +
 	"\x14InternalImageService\x12\xb1\x01\n" +
 	"\vGetInternal\x12/.kacho.cloud.storage.v1.GetInternalImageRequest\x1a%.kacho.cloud.storage.v1.ImageInternal\"J\x8a\xb5\x18\x1astorage.images.getInternal\x92\xb5\x18\x06viewer\x9a\xb5\x18\x19\n" +
-	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x012BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescOnce sync.Once

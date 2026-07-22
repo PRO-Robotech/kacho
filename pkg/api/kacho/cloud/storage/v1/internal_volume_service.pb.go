@@ -636,13 +636,13 @@ const file_kacho_cloud_storage_v1_internal_volume_service_proto_rawDesc = "" +
 	"\x06volume\x18\x01 \x01(\v2\x1e.kacho.cloud.storage.v1.VolumeR\x06volumeJ\x04\b\x02\x10\x102\xe9\x05\n" +
 	"\x15InternalVolumeService\x12\xad\x01\n" +
 	"\x06Attach\x12+.kacho.cloud.storage.v1.AttachVolumeRequest\x1a,.kacho.cloud.storage.v1.AttachVolumeResponse\"H\x8a\xb5\x18\x16storage.volumes.attach\x92\xb5\x18\x06editor\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x012\x12\xad\x01\n" +
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\x12\xad\x01\n" +
 	"\x06Detach\x12+.kacho.cloud.storage.v1.DetachVolumeRequest\x1a,.kacho.cloud.storage.v1.DetachVolumeResponse\"H\x8a\xb5\x18\x16storage.volumes.detach\x92\xb5\x18\x06editor\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x012\x12\xb6\x01\n" +
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\x12\xb6\x01\n" +
 	"\x0fListAttachments\x12..kacho.cloud.storage.v1.ListAttachmentsRequest\x1a/.kacho.cloud.storage.v1.ListAttachmentsResponse\"B\x8a\xb5\x18\x1fstorage.volumes.listAttachments\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x12\xb6\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xb6\x01\n" +
 	"\vGetInternal\x120.kacho.cloud.storage.v1.GetInternalVolumeRequest\x1a&.kacho.cloud.storage.v1.VolumeInternal\"M\x8a\xb5\x18\x1bstorage.volumes.getInternal\x92\xb5\x18\x06viewer\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x012BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_internal_volume_service_proto_rawDescOnce sync.Once

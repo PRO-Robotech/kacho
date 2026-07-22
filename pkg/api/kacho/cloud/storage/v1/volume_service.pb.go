@@ -815,22 +815,22 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\n" +
 	"\rVolumeService\x12\xbd\x01\n" +
 	"\x03Get\x12(.kacho.cloud.storage.v1.GetVolumeRequest\x1a\x1e.kacho.cloud.storage.v1.Volume\"l\x8a\xb5\x18\x13storage.volumes.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02!\x12\x1f/storage/v1/volumes/{volume_id}\x12\xbc\x01\n" +
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!\x12\x1f/storage/v1/volumes/{volume_id}\x12\xbc\x01\n" +
 	"\x04List\x12*.kacho.cloud.storage.v1.ListVolumesRequest\x1a+.kacho.cloud.storage.v1.ListVolumesResponse\"[\x8a\xb5\x18\x14storage.volumes.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x15\x12\x13/storage/v1/volumes\x12\xdc\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x15\x12\x13/storage/v1/volumes\x12\xdc\x01\n" +
 	"\x06Create\x12+.kacho.cloud.storage.v1.CreateVolumeRequest\x1a .kacho.cloud.operation.Operation\"\x82\x01\x8a\xb5\x18\x16storage.volumes.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*\x1e\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
 	"\x14CreateVolumeMetadata\x12\x06Volume\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/storage/v1/volumes\x12\xee\x01\n" +
 	"\x06Update\x12+.kacho.cloud.storage.v1.UpdateVolumeRequest\x1a .kacho.cloud.operation.Operation\"\x94\x01\x8a\xb5\x18\x16storage.volumes.update\x92\xb5\x18\x06editor\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x012\xb2\xd2*\x1e\n" +
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
 	"\x14UpdateVolumeMetadata\x12\x06Volume\x82\xd3\xe4\x93\x02$:\x01*2\x1f/storage/v1/volumes/{volume_id}\x12\xfa\x01\n" +
 	"\x06Delete\x12+.kacho.cloud.storage.v1.DeleteVolumeRequest\x1a .kacho.cloud.operation.Operation\"\xa0\x01\x8a\xb5\x18\x16storage.volumes.delete\x92\xb5\x18\x06editor\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x012\xb2\xd2*-\n" +
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\xb2\xd2*-\n" +
 	"\x14DeleteVolumeMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02!*\x1f/storage/v1/volumes/{volume_id}\x12\x80\x02\n" +
 	"\x0eListOperations\x123.kacho.cloud.storage.v1.ListVolumeOperationsRequest\x1a4.kacho.cloud.storage.v1.ListVolumeOperationsResponse\"\x82\x01\x8a\xb5\x18\x1estorage.volumes.listOperations\x92\xb5\x18\x06viewer\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02,\x12*/storage/v1/volumes/{volume_id}/operationsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/storage/v1/volumes/{volume_id}/operationsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_volume_service_proto_rawDescOnce sync.Once

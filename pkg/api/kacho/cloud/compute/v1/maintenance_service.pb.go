@@ -35,12 +35,12 @@ const file_kacho_cloud_compute_v1_maintenance_service_proto_rawDesc = "" +
 	"0kacho/cloud/compute/v1/maintenance_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a'kacho/cloud/maintenance/v2/common.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto2\xe0\x05\n" +
 	"\x12MaintenanceService\x12\xd1\x01\n" +
 	"\x04List\x123.kacho.cloud.maintenance.v2.ListMaintenancesRequest\x1a4.kacho.cloud.maintenance.v2.ListMaintenancesResponse\"^\x8a\xb5\x18\x1bcompute.maintenanceses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\aproject\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1a\x12\x18/compute/v1/maintenances\x12\xcf\x01\n" +
+	"\aproject\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a\x12\x18/compute/v1/maintenances\x12\xcf\x01\n" +
 	"\x03Get\x121.kacho.cloud.maintenance.v2.GetMaintenanceRequest\x1a'.kacho.cloud.maintenance.v2.Maintenance\"l\x8a\xb5\x18\x18compute.maintenances.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\aproject\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02+\x12)/compute/v1/maintenances/{maintenance_id}\x12\xa3\x02\n" +
+	"\aproject\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02+\x12)/compute/v1/maintenances/{maintenance_id}\x12\xa3\x02\n" +
 	"\n" +
 	"Reschedule\x128.kacho.cloud.maintenance.v2.RescheduleMaintenanceRequest\x1a .kacho.cloud.operation.Operation\"\xb8\x01\x8a\xb5\x18*compute.reschedule_maintenances.reschedule\x92\xb5\x18\x06editor\x9a\xb5\x18\f\n" +
-	"\aproject\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*(\x12&kacho.cloud.maintenance.v2.Maintenance\x82\xd3\xe4\x93\x029:\x01*\"4/compute/v1/maintenances/{maintenance_id}:rescheduleBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
+	"\aproject\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\x12&kacho.cloud.maintenance.v2.Maintenance\x82\xd3\xe4\x93\x029:\x01*\"4/compute/v1/maintenances/{maintenance_id}:rescheduleBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
 var file_kacho_cloud_compute_v1_maintenance_service_proto_goTypes = []any{
 	(*v2.ListMaintenancesRequest)(nil),      // 0: kacho.cloud.maintenance.v2.ListMaintenancesRequest

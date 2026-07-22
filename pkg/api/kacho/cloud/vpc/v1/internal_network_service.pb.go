@@ -231,10 +231,10 @@ const file_kacho_cloud_vpc_v1_internal_network_service_proto_rawDesc = "" +
 	"\x06vrf_id\x18\x02 \x01(\rR\x05vrfId2\xca\x03\n" +
 	"\x16InternalNetworkService\x12\xce\x01\n" +
 	"\x19SetDefaultSecurityGroupId\x124.kacho.cloud.vpc.v1.SetDefaultSecurityGroupIdRequest\x1a5.kacho.cloud.vpc.v1.SetDefaultSecurityGroupIdResponse\"D\x8a\xb5\x18\x1bvpc.networks.set_default_sg\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x12\xde\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xde\x01\n" +
 	"\n" +
 	"GetNetwork\x12-.kacho.cloud.vpc.v1.GetInternalNetworkRequest\x1a..kacho.cloud.vpc.v1.GetInternalNetworkResponse\"q\x8a\xb5\x18\x19vpc.networks.get_internal\x92\xb5\x18\rsystem_viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02(\x12&/vpc/v1/networks/{network_id}:internalB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/vpc/v1/networks/{network_id}:internalB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_internal_network_service_proto_rawDescOnce sync.Once

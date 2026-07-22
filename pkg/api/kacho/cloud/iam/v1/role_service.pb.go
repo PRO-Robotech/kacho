@@ -683,7 +683,7 @@ const file_kacho_cloud_iam_v1_role_service_proto_rawDesc = "" +
 	"\x04List\x12$.kacho.cloud.iam.v1.ListRolesRequest\x1a%.kacho.cloud.iam.v1.ListRolesResponse\"!\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x0f\x12\r/iam/v1/roles\x12\xc5\x01\n" +
 	"\x06Create\x12%.kacho.cloud.iam.v1.CreateRoleRequest\x1a .kacho.cloud.operation.Operation\"r\x8a\xb5\x18\x10iam.roles.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
-	"account_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +
+	"account_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
 	"\x12CreateRoleMetadata\x12\x04Role\x82\xd3\xe4\x93\x02\x12:\x01*\"\r/iam/v1/roles\x12\xcf\x01\n" +
 	"\x06Update\x12%.kacho.cloud.iam.v1.UpdateRoleRequest\x1a .kacho.cloud.operation.Operation\"|\x8a\xb5\x18\x10iam.roles.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
 	"\biam_role\x12\arole_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +
@@ -692,7 +692,7 @@ const file_kacho_cloud_iam_v1_role_service_proto_rawDesc = "" +
 	"\biam_role\x12\arole_id\xa2\xb5\x18\x012\xb2\xd2*+\n" +
 	"\x12DeleteRoleMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x19*\x17/iam/v1/roles/{role_id}\x12\xe9\x01\n" +
 	"\x0eListOperations\x12-.kacho.cloud.iam.v1.ListRoleOperationsRequest\x1a..kacho.cloud.iam.v1.ListRoleOperationsResponse\"x\x8a\xb5\x18$iam.role_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x13\n" +
-	"\biam_role\x12\arole_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02$\x12\"/iam/v1/roles/{role_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\biam_role\x12\arole_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02$\x12\"/iam/v1/roles/{role_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_role_service_proto_rawDescOnce sync.Once

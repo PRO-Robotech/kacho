@@ -752,7 +752,7 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x012\xb2\xd2*(\n" +
 	"\x12IssueSAKeyMetadata\x12\x12IssueSAKeyResponse\x82\xd3\xe4\x93\x026:\x01*\"1/iam/v1/serviceAccounts/{service_account_id}/keys\x12\xe4\x01\n" +
 	"\x04List\x12%.kacho.cloud.iam.v1.ListSAKeysRequest\x1a&.kacho.cloud.iam.v1.ListSAKeysResponse\"\x8c\x01\x8a\xb5\x18\x13iam.s_a_keyses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18)\n" +
-	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x023\x121/iam/v1/serviceAccounts/{service_account_id}/keys\x12\xa2\x02\n" +
+	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x023\x121/iam/v1/serviceAccounts/{service_account_id}/keys\x12\xa2\x02\n" +
 	"\x06Revoke\x12&.kacho.cloud.iam.v1.RevokeSAKeyRequest\x1a .kacho.cloud.operation.Operation\"\xcd\x01\x8a\xb5\x18\x1biam.revoke_s_a_keies.revoke\x92\xb5\x18\bv_update\x9a\xb5\x18)\n" +
 	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x012\xb2\xd2**\n" +
 	"\x13RevokeSAKeyMetadata\x12\x13RevokeSAKeyResponse\x82\xd3\xe4\x93\x02<*:/iam/v1/serviceAccounts/{service_account_id}/keys/{key_id}B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"

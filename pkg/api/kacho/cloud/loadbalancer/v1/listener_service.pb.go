@@ -819,19 +819,19 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xaf\v\n" +
 	"\x0fListenerService\x12\xd1\x01\n" +
 	"\x03Get\x12/.kacho.cloud.loadbalancer.v1.GetListenerRequest\x1a%.kacho.cloud.loadbalancer.v1.Listener\"r\x8a\xb5\x18\x1aloadbalancer.listeners.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1b\n" +
-	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02!\x12\x1f/nlb/v1/listeners/{listener_id}\x12\x94\x01\n" +
+	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!\x12\x1f/nlb/v1/listeners/{listener_id}\x12\x94\x01\n" +
 	"\x04List\x121.kacho.cloud.loadbalancer.v1.ListListenersRequest\x1a2.kacho.cloud.loadbalancer.v1.ListListenersResponse\"%\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x13\x12\x11/nlb/v1/listeners\x12\x84\x02\n" +
 	"\x06Create\x122.kacho.cloud.loadbalancer.v1.CreateListenerRequest\x1a .kacho.cloud.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1dloadbalancer.listeners.create\x92\xb5\x18\x06editor\x9a\xb5\x18-\n" +
-	"\x19nlb_network_load_balancer\x12\x10load_balancer_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
+	"\x19nlb_network_load_balancer\x12\x10load_balancer_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
 	"\x16CreateListenerMetadata\x12\bListener\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/nlb/v1/listeners\x12\x82\x02\n" +
 	"\x06Update\x122.kacho.cloud.loadbalancer.v1.UpdateListenerRequest\x1a .kacho.cloud.operation.Operation\"\xa1\x01\x8a\xb5\x18\x1dloadbalancer.listeners.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1b\n" +
-	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
+	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
 	"\x16UpdateListenerMetadata\x12\bListener\x82\xd3\xe4\x93\x02$:\x01*2\x1f/nlb/v1/listeners/{listener_id}\x12\x8c\x02\n" +
 	"\x06Delete\x122.kacho.cloud.loadbalancer.v1.DeleteListenerRequest\x1a .kacho.cloud.operation.Operation\"\xab\x01\x8a\xb5\x18\x1dloadbalancer.listeners.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1b\n" +
-	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x012\xb2\xd2*/\n" +
+	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x011\xb2\xd2*/\n" +
 	"\x16DeleteListenerMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02!*\x1f/nlb/v1/listeners/{listener_id}\x12\x95\x02\n" +
 	"\x0eListOperations\x12:.kacho.cloud.loadbalancer.v1.ListListenerOperationsRequest\x1a;.kacho.cloud.loadbalancer.v1.ListListenerOperationsResponse\"\x89\x01\x8a\xb5\x18%loadbalancer.listeners.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1b\n" +
-	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02,\x12*/nlb/v1/listeners/{listener_id}/operationsBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
+	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/nlb/v1/listeners/{listener_id}/operationsBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 
 var (
 	file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDescOnce sync.Once

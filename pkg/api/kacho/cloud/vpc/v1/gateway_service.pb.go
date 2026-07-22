@@ -866,25 +866,25 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"\x0eGatewayService\x12\xb0\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetGatewayRequest\x1a\x1b.kacho.cloud.vpc.v1.Gateway\"e\x8a\xb5\x18\x11vpc.gatewaies.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
-	"gateway_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/gateways/{gateway_id}\x12\xb2\x01\n" +
+	"gateway_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/gateways/{gateway_id}\x12\xb2\x01\n" +
 	"\x04List\x12'.kacho.cloud.vpc.v1.ListGatewaysRequest\x1a(.kacho.cloud.vpc.v1.ListGatewaysResponse\"W\x8a\xb5\x18\x13vpc.gatewayses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/gateways\x12\xd5\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/gateways\x12\xd5\x01\n" +
 	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x7f\x8a\xb5\x18\x14vpc.gatewaies.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2* \n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
 	"\x15CreateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/vpc/v1/gateways\x12\xe9\x01\n" +
 	"\x06Update\x12(.kacho.cloud.vpc.v1.UpdateGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x92\x01\x8a\xb5\x18\x14vpc.gatewaies.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
-	"gateway_id\xa2\xb5\x18\x012\xb2\xd2* \n" +
+	"gateway_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
 	"\x15UpdateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\":\x01*2\x1d/vpc/v1/gateways/{gateway_id}\x12\xf4\x01\n" +
 	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x9d\x01\x8a\xb5\x18\x14vpc.gatewaies.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
-	"gateway_id\xa2\xb5\x18\x012\xb2\xd2*.\n" +
+	"gateway_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
 	"\x15DeleteGatewayMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/gateways/{gateway_id}\x12\xff\x01\n" +
 	"\x0eListOperations\x120.kacho.cloud.vpc.v1.ListGatewayOperationsRequest\x1a1.kacho.cloud.vpc.v1.ListGatewayOperationsResponse\"\x87\x01\x8a\xb5\x18'vpc.gateway_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
-	"gateway_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/gateways/{gateway_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"gateway_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/gateways/{gateway_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescOnce sync.Once

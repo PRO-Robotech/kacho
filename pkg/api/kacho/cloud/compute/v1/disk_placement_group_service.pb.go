@@ -957,26 +957,26 @@ const file_kacho_cloud_compute_v1_disk_placement_group_service_proto_rawDesc = "
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xeb\x18\n" +
 	"\x19DiskPlacementGroupService\x12\x9a\x02\n" +
 	"\x03Get\x124.kacho.cloud.compute.v1.GetDiskPlacementGroupRequest\x1a*.kacho.cloud.compute.v1.DiskPlacementGroup\"\xb0\x01\x8a\xb5\x18!compute.disk_placement_groups.get\x92\xb5\x18\x06viewer\x9a\xb5\x187\n" +
-	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02;\x129/compute/v1/diskPlacementGroups/{disk_placement_group_id}\x12\xf0\x01\n" +
+	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02;\x129/compute/v1/diskPlacementGroups/{disk_placement_group_id}\x12\xf0\x01\n" +
 	"\x04List\x126.kacho.cloud.compute.v1.ListDiskPlacementGroupsRequest\x1a7.kacho.cloud.compute.v1.ListDiskPlacementGroupsResponse\"w\x8a\xb5\x18$compute.disk_placement_groupses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02!\x12\x1f/compute/v1/diskPlacementGroups\x12\x9a\x02\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!\x12\x1f/compute/v1/diskPlacementGroups\x12\x9a\x02\n" +
 	"\x06Create\x127.kacho.cloud.compute.v1.CreateDiskPlacementGroupRequest\x1a .kacho.cloud.operation.Operation\"\xb4\x01\x8a\xb5\x18$compute.disk_placement_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*6\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*6\n" +
 	" CreateDiskPlacementGroupMetadata\x12\x12DiskPlacementGroup\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/compute/v1/diskPlacementGroups\x12\xd6\x02\n" +
 	"\x06Update\x127.kacho.cloud.compute.v1.UpdateDiskPlacementGroupRequest\x1a .kacho.cloud.operation.Operation\"\xf0\x01\x8a\xb5\x18$compute.disk_placement_groups.update\x92\xb5\x18\x06editor\x9a\xb5\x187\n" +
-	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x012\xb2\xd2*6\n" +
+	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x011\xb2\xd2*6\n" +
 	" UpdateDiskPlacementGroupMetadata\x12\x12DiskPlacementGroup\x82\xd3\xe4\x93\x02>:\x01*29/compute/v1/diskPlacementGroups/{disk_placement_group_id}\x12\xd6\x02\n" +
 	"\x06Delete\x127.kacho.cloud.compute.v1.DeleteDiskPlacementGroupRequest\x1a .kacho.cloud.operation.Operation\"\xf0\x01\x8a\xb5\x18$compute.disk_placement_groups.delete\x92\xb5\x18\x06editor\x9a\xb5\x187\n" +
-	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x012\xb2\xd2*9\n" +
+	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x011\xb2\xd2*9\n" +
 	" DeleteDiskPlacementGroupMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02;*9/compute/v1/diskPlacementGroups/{disk_placement_group_id}\x12\xca\x02\n" +
 	"\tListDisks\x12:.kacho.cloud.compute.v1.ListDiskPlacementGroupDisksRequest\x1a;.kacho.cloud.compute.v1.ListDiskPlacementGroupDisksResponse\"\xc3\x01\x8a\xb5\x18.compute.disk_placement_group_diskses.listDisks\x92\xb5\x18\x06viewer\x9a\xb5\x187\n" +
-	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02A\x12?/compute/v1/diskPlacementGroups/{disk_placement_group_id}/disks\x12\xe8\x02\n" +
+	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02A\x12?/compute/v1/diskPlacementGroups/{disk_placement_group_id}/disks\x12\xe8\x02\n" +
 	"\x0eListOperations\x12?.kacho.cloud.compute.v1.ListDiskPlacementGroupOperationsRequest\x1a@.kacho.cloud.compute.v1.ListDiskPlacementGroupOperationsResponse\"\xd2\x01\x8a\xb5\x188compute.disk_placement_group_operationses.listOperations\x92\xb5\x18\x06viewer\x9a\xb5\x187\n" +
-	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02F\x12D/compute/v1/diskPlacementGroups/{disk_placement_group_id}/operations\x12\x8d\x02\n" +
+	"\x1ccompute_disk_placement_group\x12\x17disk_placement_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02F\x12D/compute/v1/diskPlacementGroups/{disk_placement_group_id}/operations\x12\x8d\x02\n" +
 	"\x12ListAccessBindings\x12-.kacho.cloud.access.ListAccessBindingsRequest\x1a..kacho.cloud.access.ListAccessBindingsResponse\"\x97\x01\x8a\xb5\x18,compute.access_bindingses.listAccessBindings\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\aproject\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02B\x12@/compute/v1/diskPlacementGroups/{resource_id}:listAccessBindings\x12\xca\x02\n" +
+	"\aproject\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02B\x12@/compute/v1/diskPlacementGroups/{resource_id}:listAccessBindings\x12\xca\x02\n" +
 	"\x11SetAccessBindings\x12,.kacho.cloud.access.SetAccessBindingsRequest\x1a .kacho.cloud.operation.Operation\"\xe4\x01\x8a\xb5\x18+compute.access_bindingses.setAccessBindings\x92\xb5\x18\x06editor\x9a\xb5\x18\f\n" +
 	"\aproject\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*H\n" +
 	" access.SetAccessBindingsMetadata\x12$access.AccessBindingsOperationResult\x82\xd3\xe4\x93\x02D:\x01*\"?/compute/v1/diskPlacementGroups/{resource_id}:setAccessBindings\x12\xd9\x02\n" +
