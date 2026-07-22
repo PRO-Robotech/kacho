@@ -212,6 +212,14 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	if err := v.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
 	}
+	// Sync BVA at the request edge (parity with Image, #61): reject over-limit
+	// description (>256) / labels (>64) BEFORE any peer/DB call.
+	if err := validate.Description("description", v.Description); err != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+	}
+	if err := validate.Labels("labels", v.Labels); err != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+	}
 	if err := u.geo.EnsureZoneExists(ctx, v.ZoneID); err != nil {
 		return nil, u.errStatus(err)
 	}
