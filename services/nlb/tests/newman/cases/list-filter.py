@@ -83,9 +83,9 @@ CASES.append(Case(
                    # create validation (an incomplete HC → InvalidArgument, which cascaded
                    # to an unset {{lfTgId}} → del-tg "invalid resource id" + list-miss).
                    # Mirror the working load-balancer.py::_setup_tg HC.
-                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcpOptions": {"port": 80}}},
+                                   "tcp": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "lfTgId")]),
         poll_operation_until_done(),

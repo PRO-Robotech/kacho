@@ -574,9 +574,9 @@ CASES.append(Case(
         Step(name="setup-tg", method="POST", path="/nlb/v1/targetGroups",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "mv-tg-{{runId}}", "port": 8080,
-                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcpOptions": {"port": 80}}},
+                                   "tcp": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
@@ -665,9 +665,9 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 
 def _setup_tg(name_suffix: str, body_extra: dict = None):
-    base_hc = {"healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+    base_hc = {"healthCheck": {"interval": "2s", "timeout": "1s",
                                "unhealthyThreshold": 3, "healthyThreshold": 2,
-                               "tcpOptions": {"port": 80}}}
+                               "tcp": {"port": 80}}}
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
             "name": f"setup-tg-{name_suffix}-{{{{runId}}}}", "port": 8080, **base_hc, **(body_extra or {})}
     return [
@@ -748,9 +748,9 @@ CASES.append(Case(
         Step(name="setup-tg-alt", method="POST", path="/nlb/v1/targetGroups",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionAltId}}",
                    "name": "tg-region-alt-{{runId}}", "port": 8080,
-                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcpOptions": {"port": 80}}},
+                                   "tcp": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),

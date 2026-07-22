@@ -416,8 +416,8 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-LST-FILTER-NAME` — LSG/P2 — List with filter name="X" → handled
 - `*-LST-PAGE-ROUNDTRIP` — CRUD,LSG,BVA/P2 — pagination round-trip on listeners
 - `*-CR-CRUD-UDP-PROTOCOL` — CRUD/P1 — Create Listener protocol=UDP → OK
-- `*-CR-VAL-HTTPS-PROBE-UNSUPPORTED` — VAL/P1 — Create TG with https probe → 400 (proto oneof lacks https_options; verifies #8)
-- `*-CR-VAL-GRPC-PROBE-UNSUPPORTED` — VAL/P1 — Create TG with grpc probe → 400 (proto oneof lacks grpc_options; verifies #8)
+- `*-CR-CRUD-HTTPS-PROBE` — CRUD/P1 — Create TG with https probe → OK; effectivePort reflects override (NLB-1c closes #8)
+- `*-CR-CRUD-GRPC-PROBE` — CRUD/P1 — Create TG with grpc probe (serviceName) → OK (NLB-1c closes #8)
 - `*-CR-CRUD-DEREG-MIN-0` — BVA,CRUD/P2 — deregistration_delay_seconds=0 → OK
 - `*-CR-CRUD-DEREG-MAX-3600` — BVA,CRUD/P2 — deregistration_delay_seconds=3600 → OK
 - `*-CR-CRUD-SLOW-START-MIN-0` — BVA,CRUD/P2 — slow_start_seconds=0 → OK

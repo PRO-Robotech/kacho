@@ -13,9 +13,9 @@ CASES = []
 _TG_BASE = "/nlb/v1/targetGroups"
 
 _HEALTH_CHECK_DEFAULT = {
-    "name": "hc-default", "interval": "2s", "timeout": "1s",
+    "interval": "2s", "timeout": "1s",
     "unhealthyThreshold": 3, "healthyThreshold": 2,
-    "tcpOptions": {"port": 80},
+    "tcp": {"port": 80},
 }
 
 _TG_BODY = {
@@ -27,8 +27,8 @@ _TG_BODY = {
     # rejects omission with 400 field "port" "port must be in range [1, 65535]".
     "port": 8080,
     "healthCheck": _HEALTH_CHECK_DEFAULT,
-    "deregistrationDelaySeconds": 300,
-    "slowStartSeconds": 30,
+    "deregistrationDelay": "300s",
+    "slowStart": "30s",
 }
 
 
@@ -67,10 +67,10 @@ CASES.append(Case(
         Step(name="cr", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "backend-web-{{runId}}",
                    "labels": {"tier": "web"},
-                   "healthCheck": {"name": "http-200", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "httpOptions": {"port": 8080, "path": "/healthz",
-                                            "expectedStatuses": [200]}},
+                                   "http": {"port": 8080, "path": "/healthz",
+                                            "expectedCodes": "200"}},
                    "targets": [
                        {"externalIp": {"address": "203.0.113.50"}, "weight": 50},
                    ]},
@@ -159,12 +159,13 @@ CASES.append(Case(
     steps=[
         *_setup_tg("upd-ok"),
         # updateMask paths use the JSON-canonical lowerCamelCase FieldMask form
-        # (`deregistrationDelaySeconds`) — the snake_case form was rejected by grpc-gateway's
+        # (`deregistrationDelay`) — the snake_case form was rejected by grpc-gateway's
         # protojson FieldMask codec on this multi-word field ("FieldMask.paths contains
         # invalid path"), while the JSON field name in the body is already camelCase.
+        # NLB-1c: field is now a Duration string ("600s"), not an int seconds count.
         retry_until_authorized(Step(name="upd", method="PATCH", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             body={"updateMask": "name,deregistrationDelaySeconds",
-                   "name": "tg-upd-{{runId}}", "deregistrationDelaySeconds": 600},
+             body={"updateMask": "name,deregistrationDelay",
+                   "name": "tg-upd-{{runId}}", "deregistrationDelay": "600s"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_tg(),
@@ -255,10 +256,10 @@ CASES.append(Case(
     steps=[
         Step(name="cr-multi-hc", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "hc-multi-{{runId}}",
-                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "tcpOptions": {"port": 8080},
-                                   "httpOptions": {"port": 8080, "path": "/"}}},
+                                   "tcp": {"port": 8080},
+                                   "http": {"port": 8080, "path": "/"}}},
              test_script=[
                  "pm.test('rejected (sync 400 or async error)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
@@ -275,7 +276,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-no-hc", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "hc-none-{{runId}}",
-                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2}},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
@@ -345,7 +346,7 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P1",
     steps=[
         Step(name="cr-dereg-neg", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "dereg-neg-{{runId}}", "deregistrationDelaySeconds": -1},
+             body={**_TG_BODY, "name": "dereg-neg-{{runId}}", "deregistrationDelay": "-1s"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
              ]),
@@ -358,7 +359,7 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P1",
     steps=[
         Step(name="cr-dereg-over", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "dereg-over-{{runId}}", "deregistrationDelaySeconds": 3601},
+             body={**_TG_BODY, "name": "dereg-over-{{runId}}", "deregistrationDelay": "3601s"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
              ]),
@@ -371,7 +372,7 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P2",
     steps=[
         Step(name="cr-ss-neg", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "ss-neg-{{runId}}", "slowStartSeconds": -1},
+             body={**_TG_BODY, "name": "ss-neg-{{runId}}", "slowStart": "-1s"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
              ]),
@@ -384,7 +385,7 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P2",
     steps=[
         Step(name="cr-ss-over", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "ss-over-{{runId}}", "slowStartSeconds": 901},
+             body={**_TG_BODY, "name": "ss-over-{{runId}}", "slowStart": "901s"},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
              ]),
@@ -931,47 +932,53 @@ CASES.append(Case(
 
 
 # CONTRACT LOCK (не aspirational — не positive-CRUD): proto HealthCheck.options oneof
-# (health_check.proto) выставляет ТОЛЬКО tcp_options/http_options. Domain моделирует 4
-# probe-варианта (health_check.go validateProbeOneOf), но https/grpc НЕ имеют proto-
-# эквивалента. api-gateway UnmarshalOptions{DiscardUnknown:true} (restmux/mux.go) молча
-# отбрасывает unknown `https`-объект → HealthCheck приходит без options-oneof → sync
-# TargetGroup.Create validation (create.go → tg.Validate() → validateProbeOneOf count=0)
-# → 400 INVALID_ARGUMENT + BadRequest.fieldViolations[health_check]. HTTPS-probe
-# недоступен через API до закрытия proto-gap.
-# Техники: ECP (класс «unsupported probe variant» на входе), error-guessing (proto-
-# surface ⊄ domain-surface). Negative на positive-probe-CRUD (tcp/http).
+# NLB-1c closes the proto-gap (#8): the HealthCheck oneof now carries all four
+# probe kinds (tcp/http/https/grpc). https/grpc probes are VALID config on Create;
+# the explicit probe port surfaces via effectivePort (override, not TG.port).
+# Техники: ECP (positive probe variant), effectivePort override lock.
 # verifies https://github.com/PRO-Robotech/kacho/issues/8
 CASES.append(Case(
-    id="TGR-CR-VAL-HTTPS-PROBE-UNSUPPORTED",
-    title="Create TG with health_check.https probe → 400 (https_options not in proto oneof; #8)",
-    classes=["VAL"], priority="P1",
+    id="TGR-CR-CRUD-HTTPS-PROBE",
+    title="Create TG with health_check.https probe → OK; effectivePort reflects override (#8 closed, NLB-1c)",
+    classes=["CRUD"], priority="P1",
     steps=[
-        Step(name="cr-https-unsupported", method="POST", path=_TG_BASE,
+        Step(name="cr-https", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-https-{{runId}}",
-                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "https": {"port": 8443, "path": "/healthz",
-                                             "expectedStatuses": [200]}}},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          *assert_field_violation("health_check")]),
+                                             "expectedCodes": "200-299"}}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
+        poll_operation_until_done(),
+        Step(name="get-https", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('https probe present', () => pm.expect(pm.response.json().healthCheck.https).to.be.an('object'));",
+                          "pm.test('effectivePort=8443 (override)', () => pm.expect(pm.response.json().healthCheck.effectivePort).to.eql(8443));"]),
+        *_cleanup_tg(),
     ],
 ))
 
-# CONTRACT LOCK: см. TGR-CR-VAL-HTTPS-PROBE-UNSUPPORTED — тот же proto-gap для grpc_options.
-# `grpc`-объект отбрасывается DiscardUnknown → no-probe → sync 400 INVALID_ARGUMENT.
+# NLB-1c: grpc probe is valid config; serviceName is the gRPC health service.
 # verifies https://github.com/PRO-Robotech/kacho/issues/8
 CASES.append(Case(
-    id="TGR-CR-VAL-GRPC-PROBE-UNSUPPORTED",
-    title="Create TG with health_check.grpc probe → 400 (grpc_options not in proto oneof; #8)",
-    classes=["VAL"], priority="P1",
+    id="TGR-CR-CRUD-GRPC-PROBE",
+    title="Create TG with health_check.grpc probe → OK (#8 closed, NLB-1c)",
+    classes=["CRUD"], priority="P1",
     steps=[
-        Step(name="cr-grpc-unsupported", method="POST", path=_TG_BASE,
+        Step(name="cr-grpc", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-grpc-{{runId}}",
-                   "healthCheck": {"name": "hc-tcp", "interval": "2s", "timeout": "1s",
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
-                                   "grpc": {"port": 9090, "service": "health.v1"}}},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          *assert_field_violation("health_check")]),
+                                   "grpc": {"serviceName": "grpc.health.v1.Health"}}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
+        poll_operation_until_done(),
+        Step(name="get-grpc", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('grpc probe present', () => pm.expect(pm.response.json().healthCheck.grpc).to.be.an('object'));",
+                          "pm.test('effectivePort inherits TG.port', () => pm.expect(pm.response.json().healthCheck.effectivePort).to.eql(pm.response.json().port));"]),
+        *_cleanup_tg(),
     ],
 ))
 
@@ -981,7 +988,7 @@ CASES.append(Case(
     classes=["BVA", "CRUD"], priority="P2",
     steps=[
         Step(name="cr-dereg-0", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "tg-dereg-0-{{runId}}", "deregistrationDelaySeconds": 0},
+             body={**_TG_BODY, "name": "tg-dereg-0-{{runId}}", "deregistrationDelay": "0s"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
@@ -996,7 +1003,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-dereg-3600", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "tg-dereg-max-{{runId}}",
-                   "deregistrationDelaySeconds": 3600},
+                   "deregistrationDelay": "3600s"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
@@ -1010,7 +1017,7 @@ CASES.append(Case(
     classes=["BVA", "CRUD"], priority="P2",
     steps=[
         Step(name="cr-ss-0", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "tg-ss-0-{{runId}}", "slowStartSeconds": 0},
+             body={**_TG_BODY, "name": "tg-ss-0-{{runId}}", "slowStart": "0s"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
@@ -1024,7 +1031,7 @@ CASES.append(Case(
     classes=["BVA", "CRUD"], priority="P2",
     steps=[
         Step(name="cr-ss-900", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "tg-ss-900-{{runId}}", "slowStartSeconds": 900},
+             body={**_TG_BODY, "name": "tg-ss-900-{{runId}}", "slowStart": "900s"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
