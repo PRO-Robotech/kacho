@@ -161,5 +161,8 @@ fixtures = {
     "existingZoneId": "ru-central1-a",
     "existingZoneAltId": "ru-central1-b",
     "zoneA": "ru-central1-a",
+    "zoneB": "ru-central1-b",
+    "zoneD": "ru-central1-d",
+    "baseUrl": "http://localhost:18080",
 }
 print(json.dumps(fixtures))
