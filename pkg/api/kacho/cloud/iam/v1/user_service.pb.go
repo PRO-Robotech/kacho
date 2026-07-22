@@ -568,20 +568,20 @@ const file_kacho_cloud_iam_v1_user_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x90\t\n" +
 	"\vUserService\x12\x9a\x01\n" +
 	"\x03Get\x12\".kacho.cloud.iam.v1.GetUserRequest\x1a\x18.kacho.cloud.iam.v1.User\"U\x8a\xb5\x18\riam.users.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x19\x12\x17/iam/v1/users/{user_id}\x12v\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19\x12\x17/iam/v1/users/{user_id}\x12v\n" +
 	"\x04List\x12$.kacho.cloud.iam.v1.ListUsersRequest\x1a%.kacho.cloud.iam.v1.ListUsersResponse\"!\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x0f\x12\r/iam/v1/users\x12\xcc\x01\n" +
 	"\x06Invite\x12%.kacho.cloud.iam.v1.InviteUserRequest\x1a .kacho.cloud.operation.Operation\"y\x8a\xb5\x18\x10iam.users.invite\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
-	"account_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +
+	"account_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
 	"\x12InviteUserMetadata\x12\x04User\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/iam/v1/users:invite\x12\xcf\x01\n" +
 	"\x06Update\x12%.kacho.cloud.iam.v1.UpdateUserRequest\x1a .kacho.cloud.operation.Operation\"|\x8a\xb5\x18\x10iam.users.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
 	"\x12UpdateUserMetadata\x12\x04User\x82\xd3\xe4\x93\x02\x1c:\x01*2\x17/iam/v1/users/{user_id}\x12\xde\x01\n" +
 	"\x06Delete\x12%.kacho.cloud.iam.v1.DeleteUserRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x10iam.users.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*+\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\xb2\xd2*+\n" +
 	"\x12DeleteUserMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x19*\x17/iam/v1/users/{user_id}\x12\xe9\x01\n" +
 	"\x0eListOperations\x12-.kacho.cloud.iam.v1.ListUserOperationsRequest\x1a..kacho.cloud.iam.v1.ListUserOperationsResponse\"x\x8a\xb5\x18$iam.user_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02$\x12\"/iam/v1/users/{user_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02$\x12\"/iam/v1/users/{user_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_user_service_proto_rawDescOnce sync.Once

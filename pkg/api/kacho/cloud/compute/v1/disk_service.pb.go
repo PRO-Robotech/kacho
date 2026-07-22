@@ -1185,29 +1185,29 @@ const file_kacho_cloud_compute_v1_disk_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x99\x15\n" +
 	"\vDiskService\x12\xae\x01\n" +
 	"\x03Get\x12&.kacho.cloud.compute.v1.GetDiskRequest\x1a\x1c.kacho.cloud.compute.v1.Disk\"a\x8a\xb5\x18\x11compute.disks.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x17\n" +
-	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/disks/{disk_id}\x12\xb6\x01\n" +
+	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/disks/{disk_id}\x12\xb6\x01\n" +
 	"\x04List\x12(.kacho.cloud.compute.v1.ListDisksRequest\x1a).kacho.cloud.compute.v1.ListDisksResponse\"Y\x8a\xb5\x18\x14compute.diskses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x13\x12\x11/compute/v1/disks\x12\xd1\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x13\x12\x11/compute/v1/disks\x12\xd1\x01\n" +
 	"\x06Create\x12).kacho.cloud.compute.v1.CreateDiskRequest\x1a .kacho.cloud.operation.Operation\"z\x8a\xb5\x18\x14compute.disks.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
 	"\x12CreateDiskMetadata\x12\x04Disk\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/compute/v1/disks\x12\xe0\x01\n" +
 	"\x06Update\x12).kacho.cloud.compute.v1.UpdateDiskRequest\x1a .kacho.cloud.operation.Operation\"\x88\x01\x8a\xb5\x18\x14compute.disks.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
-	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +
+	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
 	"\x12UpdateDiskMetadata\x12\x04Disk\x82\xd3\xe4\x93\x02 :\x01*2\x1b/compute/v1/disks/{disk_id}\x12\xee\x01\n" +
 	"\x06Delete\x12).kacho.cloud.compute.v1.DeleteDiskRequest\x1a .kacho.cloud.operation.Operation\"\x96\x01\x8a\xb5\x18\x14compute.disks.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x17\n" +
-	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x012\xb2\xd2*+\n" +
+	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\xb2\xd2*+\n" +
 	"\x12DeleteDiskMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1d*\x1b/compute/v1/disks/{disk_id}\x12\xfe\x01\n" +
 	"\x0eListOperations\x121.kacho.cloud.compute.v1.ListDiskOperationsRequest\x1a2.kacho.cloud.compute.v1.ListDiskOperationsResponse\"\x84\x01\x8a\xb5\x18(compute.disk_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
-	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02(\x12&/compute/v1/disks/{disk_id}/operations\x12\xf1\x01\n" +
+	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/compute/v1/disks/{disk_id}/operations\x12\xf1\x01\n" +
 	"\bRelocate\x12+.kacho.cloud.compute.v1.RelocateDiskRequest\x1a .kacho.cloud.operation.Operation\"\x95\x01\x8a\xb5\x18\x16compute.disks.relocate\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
-	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x012\xb2\xd2*\x1c\n" +
+	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\xb2\xd2*\x1c\n" +
 	"\x14RelocateDiskMetadata\x12\x04Disk\x82\xd3\xe4\x93\x02):\x01*\"$/compute/v1/disks/{disk_id}:relocate\x12\xf3\x01\n" +
 	"\x15ListSnapshotSchedules\x128.kacho.cloud.compute.v1.ListDiskSnapshotSchedulesRequest\x1a9.kacho.cloud.compute.v1.ListDiskSnapshotSchedulesResponse\"e\x8a\xb5\x187compute.disk_snapshot_scheduleses.listSnapshotSchedules\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
-	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x012\x12\xff\x01\n" +
+	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\x12\xff\x01\n" +
 	"\x12ListAccessBindings\x12-.kacho.cloud.access.ListAccessBindingsRequest\x1a..kacho.cloud.access.ListAccessBindingsResponse\"\x89\x01\x8a\xb5\x18,compute.access_bindingses.listAccessBindings\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\aproject\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x024\x122/compute/v1/disks/{resource_id}:listAccessBindings\x12\xbc\x02\n" +
+	"\aproject\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x024\x122/compute/v1/disks/{resource_id}:listAccessBindings\x12\xbc\x02\n" +
 	"\x11SetAccessBindings\x12,.kacho.cloud.access.SetAccessBindingsRequest\x1a .kacho.cloud.operation.Operation\"\xd6\x01\x8a\xb5\x18+compute.access_bindingses.setAccessBindings\x92\xb5\x18\x06editor\x9a\xb5\x18\f\n" +
 	"\aproject\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*H\n" +
 	" access.SetAccessBindingsMetadata\x12$access.AccessBindingsOperationResult\x82\xd3\xe4\x93\x026:\x01*\"1/compute/v1/disks/{resource_id}:setAccessBindings\x12\xcb\x02\n" +

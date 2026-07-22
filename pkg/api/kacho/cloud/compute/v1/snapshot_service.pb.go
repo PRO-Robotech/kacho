@@ -791,24 +791,24 @@ const file_kacho_cloud_compute_v1_snapshot_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd8\x12\n" +
 	"\x0fSnapshotService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.compute.v1.GetSnapshotRequest\x1a .kacho.cloud.compute.v1.Snapshot\"u\x8a\xb5\x18\x15compute.snapshots.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
-	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02%\x12#/compute/v1/snapshots/{snapshot_id}\x12\xc6\x01\n" +
+	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/compute/v1/snapshots/{snapshot_id}\x12\xc6\x01\n" +
 	"\x04List\x12,.kacho.cloud.compute.v1.ListSnapshotsRequest\x1a-.kacho.cloud.compute.v1.ListSnapshotsResponse\"a\x8a\xb5\x18\x18compute.snapshotses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x17\x12\x15/compute/v1/snapshots\x12\xe6\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/compute/v1/snapshots\x12\xe6\x01\n" +
 	"\x06Create\x12-.kacho.cloud.compute.v1.CreateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18compute.snapshots.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
 	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/compute/v1/snapshots\x12\x80\x02\n" +
 	"\x06Update\x12-.kacho.cloud.compute.v1.UpdateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18\x18compute.snapshots.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
-	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
+	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
 	"\x16UpdateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02(:\x01*2#/compute/v1/snapshots/{snapshot_id}\x12\x8a\x02\n" +
 	"\x06Delete\x12-.kacho.cloud.compute.v1.DeleteSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xae\x01\x8a\xb5\x18\x18compute.snapshots.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
-	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x012\xb2\xd2*/\n" +
+	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*/\n" +
 	"\x16DeleteSnapshotMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02%*#/compute/v1/snapshots/{snapshot_id}\x12\x9a\x02\n" +
 	"\x0eListOperations\x125.kacho.cloud.compute.v1.ListSnapshotOperationsRequest\x1a6.kacho.cloud.compute.v1.ListSnapshotOperationsResponse\"\x98\x01\x8a\xb5\x18,compute.snapshot_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1f\n" +
-	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x020\x12./compute/v1/snapshots/{snapshot_id}/operations\x12\x83\x02\n" +
+	"\x10compute_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x020\x12./compute/v1/snapshots/{snapshot_id}/operations\x12\x83\x02\n" +
 	"\x12ListAccessBindings\x12-.kacho.cloud.access.ListAccessBindingsRequest\x1a..kacho.cloud.access.ListAccessBindingsResponse\"\x8d\x01\x8a\xb5\x18,compute.access_bindingses.listAccessBindings\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\aproject\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x028\x126/compute/v1/snapshots/{resource_id}:listAccessBindings\x12\xc0\x02\n" +
+	"\aproject\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x028\x126/compute/v1/snapshots/{resource_id}:listAccessBindings\x12\xc0\x02\n" +
 	"\x11SetAccessBindings\x12,.kacho.cloud.access.SetAccessBindingsRequest\x1a .kacho.cloud.operation.Operation\"\xda\x01\x8a\xb5\x18+compute.access_bindingses.setAccessBindings\x92\xb5\x18\x06editor\x9a\xb5\x18\f\n" +
 	"\aproject\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*H\n" +
 	" access.SetAccessBindingsMetadata\x12$access.AccessBindingsOperationResult\x82\xd3\xe4\x93\x02::\x01*\"5/compute/v1/snapshots/{resource_id}:setAccessBindings\x12\xcf\x02\n" +

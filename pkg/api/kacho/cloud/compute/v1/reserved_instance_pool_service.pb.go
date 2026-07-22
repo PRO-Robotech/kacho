@@ -1047,24 +1047,24 @@ const file_kacho_cloud_compute_v1_reserved_instance_pool_service_proto_rawDesc =
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb3\x12\n" +
 	"\x1bReservedInstancePoolService\x12\xa8\x02\n" +
 	"\x03Get\x126.kacho.cloud.compute.v1.GetReservedInstancePoolRequest\x1a,.kacho.cloud.compute.v1.ReservedInstancePool\"\xba\x01\x8a\xb5\x18#compute.reserved_instance_pools.get\x92\xb5\x18\x06viewer\x9a\xb5\x18;\n" +
-	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02?\x12=/compute/v1/reservedInstancePools/{reserved_instance_pool_id}\x12\xf8\x01\n" +
+	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02?\x12=/compute/v1/reservedInstancePools/{reserved_instance_pool_id}\x12\xf8\x01\n" +
 	"\x04List\x128.kacho.cloud.compute.v1.ListReservedInstancePoolsRequest\x1a9.kacho.cloud.compute.v1.ListReservedInstancePoolsResponse\"{\x8a\xb5\x18&compute.reserved_instance_poolses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02#\x12!/compute/v1/reservedInstancePools\x12\xa4\x02\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02#\x12!/compute/v1/reservedInstancePools\x12\xa4\x02\n" +
 	"\x06Create\x129.kacho.cloud.compute.v1.CreateReservedInstancePoolRequest\x1a .kacho.cloud.operation.Operation\"\xbc\x01\x8a\xb5\x18&compute.reserved_instance_pools.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*:\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*:\n" +
 	"\"CreateReservedInstancePoolMetadata\x12\x14ReservedInstancePool\x82\xd3\xe4\x93\x02&:\x01*\"!/compute/v1/reservedInstancePools\x12\xe6\x02\n" +
 	"\x06Update\x129.kacho.cloud.compute.v1.UpdateReservedInstancePoolRequest\x1a .kacho.cloud.operation.Operation\"\xfe\x01\x8a\xb5\x18&compute.reserved_instance_pools.update\x92\xb5\x18\x06editor\x9a\xb5\x18;\n" +
-	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x012\xb2\xd2*:\n" +
+	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x011\xb2\xd2*:\n" +
 	"\"UpdateReservedInstancePoolMetadata\x12\x14ReservedInstancePool\x82\xd3\xe4\x93\x02B:\x01*2=/compute/v1/reservedInstancePools/{reserved_instance_pool_id}\x12\xf1\x02\n" +
 	"\x06Delete\x129.kacho.cloud.compute.v1.DeleteReservedInstancePoolRequest\x1a .kacho.cloud.operation.Operation\"\x89\x02\x8a\xb5\x18&compute.reserved_instance_pools.delete\x92\xb5\x18\x06editor\x9a\xb5\x18;\n" +
-	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x012\xb2\xd2*H\n" +
+	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x011\xb2\xd2*H\n" +
 	"\"DeleteReservedInstancePoolMetadata\x12\"DeleteReservedInstancePoolResponse\x82\xd3\xe4\x93\x02?*=/compute/v1/reservedInstancePools/{reserved_instance_pool_id}\x12\xf6\x02\n" +
 	"\x0eListOperations\x12A.kacho.cloud.compute.v1.ListReservedInstancePoolOperationsRequest\x1aB.kacho.cloud.compute.v1.ListReservedInstancePoolOperationsResponse\"\xdc\x01\x8a\xb5\x18:compute.reserved_instance_pool_operationses.listOperations\x92\xb5\x18\x06viewer\x9a\xb5\x18;\n" +
-	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02J\x12H/compute/v1/reservedInstancePools/{reserved_instance_pool_id}/operations\x12\xf0\x02\n" +
+	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02J\x12H/compute/v1/reservedInstancePools/{reserved_instance_pool_id}/operations\x12\xf0\x02\n" +
 	"\rListInstances\x12@.kacho.cloud.compute.v1.ListReservedInstancePoolInstancesRequest\x1aA.kacho.cloud.compute.v1.ListReservedInstancePoolInstancesResponse\"\xd9\x01\x8a\xb5\x188compute.reserved_instance_pool_instanceses.listInstances\x92\xb5\x18\x06viewer\x9a\xb5\x18;\n" +
-	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02I\x12G/compute/v1/reservedInstancePools/{reserved_instance_pool_id}/instancesBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
+	"\x1ecompute_reserved_instance_pool\x12\x19reserved_instance_pool_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02I\x12G/compute/v1/reservedInstancePools/{reserved_instance_pool_id}/instancesBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
 var (
 	file_kacho_cloud_compute_v1_reserved_instance_pool_service_proto_rawDescOnce sync.Once

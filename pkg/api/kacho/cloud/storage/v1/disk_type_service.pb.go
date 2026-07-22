@@ -454,16 +454,16 @@ const file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc = "" +
 	"\x16DeleteDiskTypeResponse2\x8d\x03\n" +
 	"\x0fDiskTypeService\x12\xba\x01\n" +
 	"\x03Get\x12*.kacho.cloud.storage.v1.GetDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"e\x8a\xb5\x18\x16storage.disk_types.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02&\x12$/storage/v1/diskTypes/{disk_type_id}\x12\xbc\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&\x12$/storage/v1/diskTypes/{disk_type_id}\x12\xbc\x01\n" +
 	"\x04List\x12,.kacho.cloud.storage.v1.ListDiskTypesRequest\x1a-.kacho.cloud.storage.v1.ListDiskTypesResponse\"W\x8a\xb5\x18\x17storage.disk_types.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/diskTypes2\x82\x05\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/diskTypes2\x82\x05\n" +
 	"\x17InternalDiskTypeService\x12\xbd\x01\n" +
 	"\x06Create\x12-.kacho.cloud.storage.v1.CreateDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"b\x8a\xb5\x18\x19storage.disk_types.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/diskTypes\x12\xcc\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/diskTypes\x12\xcc\x01\n" +
 	"\x06Update\x12-.kacho.cloud.storage.v1.UpdateDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"q\x8a\xb5\x18\x19storage.disk_types.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02):\x01*2$/storage/v1/diskTypes/{disk_type_id}\x12\xd7\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02):\x01*2$/storage/v1/diskTypes/{disk_type_id}\x12\xd7\x01\n" +
 	"\x06Delete\x12-.kacho.cloud.storage.v1.DeleteDiskTypeRequest\x1a..kacho.cloud.storage.v1.DeleteDiskTypeResponse\"n\x8a\xb5\x18\x19storage.disk_types.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02&*$/storage/v1/diskTypes/{disk_type_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&*$/storage/v1/diskTypes/{disk_type_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescOnce sync.Once

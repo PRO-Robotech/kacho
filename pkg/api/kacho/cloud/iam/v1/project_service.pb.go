@@ -575,15 +575,15 @@ const file_kacho_cloud_iam_v1_project_service_proto_rawDesc = "" +
 	"\x0eProjectService\x12\xab\x01\n" +
 	"\x03Get\x12%.kacho.cloud.iam.v1.GetProjectRequest\x1a\x1b.kacho.cloud.iam.v1.Project\"`\x8a\xb5\x18\x10iam.projects.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1f\x12\x1d/iam/v1/projects/{project_id}\x12\x7f\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/iam/v1/projects/{project_id}\x12\x7f\n" +
 	"\x04List\x12'.kacho.cloud.iam.v1.ListProjectsRequest\x1a(.kacho.cloud.iam.v1.ListProjectsResponse\"$\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x12\x12\x10/iam/v1/projects\x12\xd4\x01\n" +
 	"\x06Create\x12(.kacho.cloud.iam.v1.CreateProjectRequest\x1a .kacho.cloud.operation.Operation\"~\x8a\xb5\x18\x13iam.projects.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
-	"account_id\xa2\xb5\x18\x012\xb2\xd2* \n" +
+	"account_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
 	"\x15CreateProjectMetadata\x12\aProject\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/iam/v1/projects\x12\xe4\x01\n" +
 	"\x06Update\x12(.kacho.cloud.iam.v1.UpdateProjectRequest\x1a .kacho.cloud.operation.Operation\"\x8d\x01\x8a\xb5\x18\x13iam.projects.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2* \n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
 	"\x15UpdateProjectMetadata\x12\aProject\x82\xd3\xe4\x93\x02\":\x01*2\x1d/iam/v1/projects/{project_id}\x12\xef\x01\n" +
 	"\x06Delete\x12(.kacho.cloud.iam.v1.DeleteProjectRequest\x1a .kacho.cloud.operation.Operation\"\x98\x01\x8a\xb5\x18\x13iam.projects.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
@@ -591,7 +591,7 @@ const file_kacho_cloud_iam_v1_project_service_proto_rawDesc = "" +
 	"\x15DeleteProjectMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/iam/v1/projects/{project_id}\x12\xfb\x01\n" +
 	"\x0eListOperations\x120.kacho.cloud.iam.v1.ListProjectOperationsRequest\x1a1.kacho.cloud.iam.v1.ListProjectOperationsResponse\"\x83\x01\x8a\xb5\x18'iam.project_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02*\x12(/iam/v1/projects/{project_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/iam/v1/projects/{project_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_project_service_proto_rawDescOnce sync.Once

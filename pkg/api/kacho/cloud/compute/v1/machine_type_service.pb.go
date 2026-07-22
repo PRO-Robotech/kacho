@@ -227,9 +227,9 @@ const file_kacho_cloud_compute_v1_machine_type_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa9\x03\n" +
 	"\x12MachineTypeService\x12\xc8\x01\n" +
 	"\x03Get\x12-.kacho.cloud.compute.v1.GetMachineTypeRequest\x1a#.kacho.cloud.compute.v1.MachineType\"m\x8a\xb5\x18\x18compute.machineTypes.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02,\x12*/compute/v1/machineTypes/{machine_type_id}\x12\xc7\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/compute/v1/machineTypes/{machine_type_id}\x12\xc7\x01\n" +
 	"\x04List\x12/.kacho.cloud.compute.v1.ListMachineTypesRequest\x1a0.kacho.cloud.compute.v1.ListMachineTypesResponse\"\\\x8a\xb5\x18\x19compute.machineTypes.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1a\x12\x18/compute/v1/machineTypesBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a\x12\x18/compute/v1/machineTypesBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
 var (
 	file_kacho_cloud_compute_v1_machine_type_service_proto_rawDescOnce sync.Once

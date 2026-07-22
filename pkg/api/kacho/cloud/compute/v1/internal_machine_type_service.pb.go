@@ -453,13 +453,13 @@ const file_kacho_cloud_compute_v1_internal_machine_type_service_proto_rawDesc = 
 	"\x0fmachine_type_id\x18\x01 \x01(\tR\rmachineTypeId2\xc1\x06\n" +
 	"\x1aInternalMachineTypeService\x12\xfb\x01\n" +
 	"\x06Create\x120.kacho.cloud.compute.v1.CreateMachineTypeRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x1bcompute.machineTypes.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*(\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
 	"\x19CreateMachineTypeMetadata\x12\vMachineType\x82\xd3\xe4\x93\x02&:\x01*\"!/compute/v1/internal/machineTypes\x12\x8d\x02\n" +
 	"\x06Update\x120.kacho.cloud.compute.v1.UpdateMachineTypeRequest\x1a .kacho.cloud.operation.Operation\"\xae\x01\x8a\xb5\x18\x1bcompute.machineTypes.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*(\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
 	"\x19UpdateMachineTypeMetadata\x12\vMachineType\x82\xd3\xe4\x93\x028:\x01*23/compute/v1/internal/machineTypes/{machine_type_id}\x12\x94\x02\n" +
 	"\x06Delete\x120.kacho.cloud.compute.v1.DeleteMachineTypeRequest\x1a .kacho.cloud.operation.Operation\"\xb5\x01\x8a\xb5\x18\x1bcompute.machineTypes.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*2\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*2\n" +
 	"\x19DeleteMachineTypeMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x025*3/compute/v1/internal/machineTypes/{machine_type_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
 var (

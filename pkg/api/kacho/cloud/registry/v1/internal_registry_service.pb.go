@@ -336,10 +336,10 @@ const file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDesc = "" 
 	"last_gc_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\blastGcAt2\xd7\x03\n" +
 	"\x17InternalRegistryService\x12\x84\x02\n" +
 	"\x18TriggerGarbageCollection\x128.kacho.cloud.registry.v1.TriggerGarbageCollectionRequest\x1a .kacho.cloud.operation.Operation\"\x8b\x01\x8a\xb5\x18\x16registry.registries.gc\x92\xb5\x18\x05admin\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x012\xb2\xd2*;\n" +
+	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\xb2\xd2*;\n" +
 	" TriggerGarbageCollectionMetadata\x12\x17GarbageCollectionResult\x12\xb4\x01\n" +
 	"\x10GetRegistryStats\x120.kacho.cloud.registry.v1.GetRegistryStatsRequest\x1a&.kacho.cloud.registry.v1.RegistryStats\"F\x8a\xb5\x18\x1cregistry.registries.getStats\x92\xb5\x18\rsystem_viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012BJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011BJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
 
 var (
 	file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDescOnce sync.Once

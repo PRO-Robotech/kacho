@@ -567,7 +567,7 @@ const file_kacho_cloud_iam_v1_internal_cluster_service_proto_rawDesc = "" +
 	"granted_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tgrantedAt2\xa6\a\n" +
 	"\x16InternalClusterService\x12\xaa\x01\n" +
 	"\x03Get\x12%.kacho.cloud.iam.v1.GetClusterRequest\x1a\x1b.kacho.cloud.iam.v1.Cluster\"_\x8a\xb5\x18\x16iam.cluster_admins.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1a\x12\x18/iam/v1/internal/cluster\x12\xfc\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a\x12\x18/iam/v1/internal/cluster\x12\xfc\x01\n" +
 	"\n" +
 	"GrantAdmin\x12,.kacho.cloud.iam.v1.GrantClusterAdminRequest\x1a .kacho.cloud.operation.Operation\"\x9d\x01\x8a\xb5\x18\x18iam.cluster_admins.grant\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*.\n" +
@@ -577,7 +577,7 @@ const file_kacho_cloud_iam_v1_internal_cluster_service_proto_rawDesc = "" +
 	"\x1aRevokeClusterAdminMetadata\x12\x11ClusterAdminGrant\x82\xd3\xe4\x93\x02.*,/iam/v1/internal/cluster/admins/{subject_id}\x12\xd2\x01\n" +
 	"\n" +
 	"ListAdmins\x12,.kacho.cloud.iam.v1.ListClusterAdminsRequest\x1a-.kacho.cloud.iam.v1.ListClusterAdminsResponse\"g\x8a\xb5\x18\x17iam.cluster_admins.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02!\x12\x1f/iam/v1/internal/cluster/adminsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!\x12\x1f/iam/v1/internal/cluster/adminsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_internal_cluster_service_proto_rawDescOnce sync.Once

@@ -195,7 +195,7 @@ const file_kacho_cloud_iam_v1_internal_operations_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x87\x02\n" +
 	"\x19InternalOperationsService\x12\xe9\x01\n" +
 	"\x11ListIamOperations\x12,.kacho.cloud.iam.v1.ListIamOperationsRequest\x1a-.kacho.cloud.iam.v1.ListIamOperationsResponse\"w\x8a\xb5\x18+iam.internal_operationses.listIamOperations\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1d\x12\x1b/iam/v1/internal/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/iam/v1/internal/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_internal_operations_service_proto_rawDescOnce sync.Once

@@ -1513,27 +1513,27 @@ const file_kacho_cloud_vpc_v1_internal_address_pool_service_proto_rawDesc = "" +
 	"\x0fEXTERNAL_PUBLIC\x10\x01\"\x04\b\x02\x10\x02\"\x04\bd\x10d*\rEXTERNAL_TEST*\x11RESERVED_INTERNAL2\x98\x13\n" +
 	"\x1aInternalAddressPoolService\x12\xb9\x01\n" +
 	"\x06Create\x12,.kacho.cloud.vpc.v1.CreateAddressPoolRequest\x1a\x1f.kacho.cloud.vpc.v1.AddressPool\"`\x8a\xb5\x18\x18vpc.address_pools.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/vpc/v1/addressPools\x12\xb7\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/vpc/v1/addressPools\x12\xb7\x01\n" +
 	"\x03Get\x12).kacho.cloud.vpc.v1.GetAddressPoolRequest\x1a\x1f.kacho.cloud.vpc.v1.AddressPool\"d\x8a\xb5\x18\x15vpc.address_pools.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02 \x12\x1e/vpc/v1/addressPools/{pool_id}\x12\xbe\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 \x12\x1e/vpc/v1/addressPools/{pool_id}\x12\xbe\x01\n" +
 	"\x04List\x12+.kacho.cloud.vpc.v1.ListAddressPoolsRequest\x1a,.kacho.cloud.vpc.v1.ListAddressPoolsResponse\"[\x8a\xb5\x18\x16vpc.address_pools.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x16\x12\x14/vpc/v1/addressPools\x12\xc3\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x16\x12\x14/vpc/v1/addressPools\x12\xc3\x01\n" +
 	"\x06Update\x12,.kacho.cloud.vpc.v1.UpdateAddressPoolRequest\x1a\x1f.kacho.cloud.vpc.v1.AddressPool\"j\x8a\xb5\x18\x18vpc.address_pools.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02#:\x01*2\x1e/vpc/v1/addressPools/{pool_id}\x12\xce\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02#:\x01*2\x1e/vpc/v1/addressPools/{pool_id}\x12\xce\x01\n" +
 	"\x06Delete\x12,.kacho.cloud.vpc.v1.DeleteAddressPoolRequest\x1a-.kacho.cloud.vpc.v1.DeleteAddressPoolResponse\"g\x8a\xb5\x18\x18vpc.address_pools.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02 *\x1e/vpc/v1/addressPools/{pool_id}\x12\xf1\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 *\x1e/vpc/v1/addressPools/{pool_id}\x12\xf1\x01\n" +
 	"\rAddCidrBlocks\x123.kacho.cloud.vpc.v1.AddAddressPoolCidrBlocksRequest\x1a\x1f.kacho.cloud.vpc.v1.AddressPool\"\x89\x01\x8a\xb5\x18!vpc.address_pools.add_cidr_blocks\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x029:\x01*\"4/vpc/v1/addressPools/{address_pool_id}:addCidrBlocks\x12\xfd\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x029:\x01*\"4/vpc/v1/addressPools/{address_pool_id}:addCidrBlocks\x12\xfd\x01\n" +
 	"\x10RemoveCidrBlocks\x126.kacho.cloud.vpc.v1.RemoveAddressPoolCidrBlocksRequest\x1a\x1f.kacho.cloud.vpc.v1.AddressPool\"\x8f\x01\x8a\xb5\x18$vpc.address_pools.remove_cidr_blocks\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02<:\x01*\"7/vpc/v1/addressPools/{address_pool_id}:removeCidrBlocks\x12\xe5\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02<:\x01*\"7/vpc/v1/addressPools/{address_pool_id}:removeCidrBlocks\x12\xe5\x01\n" +
 	"\x14BindAsNetworkDefault\x12/.kacho.cloud.vpc.v1.BindAsNetworkDefaultRequest\x1a .kacho.cloud.vpc.v1.BindResponse\"z\x8a\xb5\x18\x16vpc.address_pools.bind\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}/addressPoolBinding\x12\xe4\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}/addressPoolBinding\x12\xe4\x01\n" +
 	"\x14UnbindNetworkDefault\x12/.kacho.cloud.vpc.v1.UnbindNetworkDefaultRequest\x1a .kacho.cloud.vpc.v1.BindResponse\"y\x8a\xb5\x18\x18vpc.address_pools.unbind\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x022*0/vpc/v1/networks/{network_id}/addressPoolBinding\x12\xf5\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022*0/vpc/v1/networks/{network_id}/addressPoolBinding\x12\xf5\x01\n" +
 	"\rListAddresses\x123.kacho.cloud.vpc.v1.ListAddressPoolAddressesRequest\x1a4.kacho.cloud.vpc.v1.ListAddressPoolAddressesResponse\"y\x8a\xb5\x18 vpc.address_pools.list_addresses\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/addressPools/{pool_id}/addresses\x12\xf0\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/addressPools/{pool_id}/addresses\x12\xf0\x01\n" +
 	"\x0eGetUtilization\x124.kacho.cloud.vpc.v1.GetAddressPoolUtilizationRequest\x1a*.kacho.cloud.vpc.v1.AddressPoolUtilization\"|\x8a\xb5\x18!vpc.address_pools.get_utilization\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/addressPools/{pool_id}/utilizationB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/addressPools/{pool_id}/utilizationB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_internal_address_pool_service_proto_rawDescOnce sync.Once

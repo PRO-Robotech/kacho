@@ -248,11 +248,11 @@ const file_kacho_cloud_compute_v1_internal_catalog_service_proto_rawDesc = "" +
 	"\x16DeleteDiskTypeResponse2\x82\x05\n" +
 	"\x17InternalDiskTypeService\x12\xbd\x01\n" +
 	"\x06Create\x12-.kacho.cloud.compute.v1.CreateDiskTypeRequest\x1a .kacho.cloud.compute.v1.DiskType\"b\x8a\xb5\x18\x19compute.disk_types.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/compute/v1/diskTypes\x12\xcc\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/compute/v1/diskTypes\x12\xcc\x01\n" +
 	"\x06Update\x12-.kacho.cloud.compute.v1.UpdateDiskTypeRequest\x1a .kacho.cloud.compute.v1.DiskType\"q\x8a\xb5\x18\x19compute.disk_types.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02):\x01*2$/compute/v1/diskTypes/{disk_type_id}\x12\xd7\x01\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02):\x01*2$/compute/v1/diskTypes/{disk_type_id}\x12\xd7\x01\n" +
 	"\x06Delete\x12-.kacho.cloud.compute.v1.DeleteDiskTypeRequest\x1a..kacho.cloud.compute.v1.DeleteDiskTypeResponse\"n\x8a\xb5\x18\x19compute.disk_types.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02&*$/compute/v1/diskTypes/{disk_type_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&*$/compute/v1/diskTypes/{disk_type_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
 var (
 	file_kacho_cloud_compute_v1_internal_catalog_service_proto_rawDescOnce sync.Once

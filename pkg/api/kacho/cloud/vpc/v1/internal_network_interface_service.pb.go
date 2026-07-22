@@ -502,11 +502,11 @@ const file_kacho_cloud_vpc_v1_internal_network_interface_service_proto_rawDesc =
 	"macAddress2\x85\x05\n" +
 	"\x1fInternalNetworkInterfaceService\x12\xc4\x01\n" +
 	"\x06Attach\x121.kacho.cloud.vpc.v1.AttachNetworkInterfaceRequest\x1a2.kacho.cloud.vpc.v1.AttachNetworkInterfaceResponse\"S\x8a\xb5\x18\x1dvpc.network_interfaces.attach\x92\xb5\x18\x06editor\x9a\xb5\x18\x1f\n" +
-	"\x15vpc_network_interface\x12\x06nic_id\xa2\xb5\x18\x012\x12\xc4\x01\n" +
+	"\x15vpc_network_interface\x12\x06nic_id\xa2\xb5\x18\x011\x12\xc4\x01\n" +
 	"\x06Detach\x121.kacho.cloud.vpc.v1.DetachNetworkInterfaceRequest\x1a2.kacho.cloud.vpc.v1.DetachNetworkInterfaceResponse\"S\x8a\xb5\x18\x1dvpc.network_interfaces.detach\x92\xb5\x18\x06editor\x9a\xb5\x18\x1f\n" +
-	"\x15vpc_network_interface\x12\x06nic_id\xa2\xb5\x18\x012\x12\xd3\x01\n" +
+	"\x15vpc_network_interface\x12\x06nic_id\xa2\xb5\x18\x011\x12\xd3\x01\n" +
 	"\x0eListByInstance\x12:.kacho.cloud.vpc.v1.ListNetworkInterfacesByInstanceRequest\x1a;.kacho.cloud.vpc.v1.ListNetworkInterfacesByInstanceResponse\"H\x8a\xb5\x18%vpc.network_interfaces.listByInstance\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x012B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_internal_network_interface_service_proto_rawDescOnce sync.Once

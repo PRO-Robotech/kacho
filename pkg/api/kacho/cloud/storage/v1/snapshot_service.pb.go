@@ -630,19 +630,19 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"snapshotId2\x9b\t\n" +
 	"\x0fSnapshotService\x12\xcb\x01\n" +
 	"\x03Get\x12*.kacho.cloud.storage.v1.GetSnapshotRequest\x1a .kacho.cloud.storage.v1.Snapshot\"v\x8a\xb5\x18\x15storage.snapshots.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\x1f\n" +
-	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02%\x12#/storage/v1/snapshots/{snapshot_id}\x12\xc4\x01\n" +
+	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/storage/v1/snapshots/{snapshot_id}\x12\xc4\x01\n" +
 	"\x04List\x12,.kacho.cloud.storage.v1.ListSnapshotsRequest\x1a-.kacho.cloud.storage.v1.ListSnapshotsResponse\"_\x8a\xb5\x18\x16storage.snapshots.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/snapshots\x12\xe6\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/snapshots\x12\xe6\x01\n" +
 	"\x06Create\x12-.kacho.cloud.storage.v1.CreateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18storage.snapshots.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
 	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/snapshots\x12\xfe\x01\n" +
 	"\x06Update\x12-.kacho.cloud.storage.v1.UpdateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xa2\x01\x8a\xb5\x18\x18storage.snapshots.update\x92\xb5\x18\x06editor\x9a\xb5\x18\x1f\n" +
-	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x012\xb2\xd2*\"\n" +
+	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
 	"\x16UpdateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02(:\x01*2#/storage/v1/snapshots/{snapshot_id}\x12\x88\x02\n" +
 	"\x06Delete\x12-.kacho.cloud.storage.v1.DeleteSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xac\x01\x8a\xb5\x18\x18storage.snapshots.delete\x92\xb5\x18\x06editor\x9a\xb5\x18\x1f\n" +
-	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x012\xb2\xd2*/\n" +
+	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*/\n" +
 	"\x16DeleteSnapshotMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02%*#/storage/v1/snapshots/{snapshot_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (

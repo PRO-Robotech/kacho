@@ -939,28 +939,28 @@ const file_kacho_cloud_compute_v1_gpu_cluster_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xe5\x15\n" +
 	"\x11GpuClusterService\x12\xde\x01\n" +
 	"\x03Get\x12,.kacho.cloud.compute.v1.GetGpuClusterRequest\x1a\".kacho.cloud.compute.v1.GpuCluster\"\x84\x01\x8a\xb5\x18\x18compute.gpu_clusters.get\x92\xb5\x18\x06viewer\x9a\xb5\x18%\n" +
-	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02*\x12(/compute/v1/gpuClusters/{gpu_cluster_id}\x12\xcf\x01\n" +
+	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/compute/v1/gpuClusters/{gpu_cluster_id}\x12\xcf\x01\n" +
 	"\x04List\x12..kacho.cloud.compute.v1.ListGpuClustersRequest\x1a/.kacho.cloud.compute.v1.ListGpuClustersResponse\"f\x8a\xb5\x18\x1bcompute.gpu_clusterses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02\x19\x12\x17/compute/v1/gpuClusters\x12\xf1\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19\x12\x17/compute/v1/gpuClusters\x12\xf1\x01\n" +
 	"\x06Create\x12/.kacho.cloud.compute.v1.CreateGpuClusterRequest\x1a .kacho.cloud.operation.Operation\"\x93\x01\x8a\xb5\x18\x1bcompute.gpu_clusters.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*&\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
 	"\x18CreateGpuClusterMetadata\x12\n" +
 	"GpuCluster\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/compute/v1/gpuClusters\x12\x92\x02\n" +
 	"\x06Update\x12/.kacho.cloud.compute.v1.UpdateGpuClusterRequest\x1a .kacho.cloud.operation.Operation\"\xb4\x01\x8a\xb5\x18\x1bcompute.gpu_clusters.update\x92\xb5\x18\x06editor\x9a\xb5\x18%\n" +
-	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x012\xb2\xd2*&\n" +
+	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
 	"\x18UpdateGpuClusterMetadata\x12\n" +
 	"GpuCluster\x82\xd3\xe4\x93\x02-:\x01*2(/compute/v1/gpuClusters/{gpu_cluster_id}\x12\x9a\x02\n" +
 	"\x06Delete\x12/.kacho.cloud.compute.v1.DeleteGpuClusterRequest\x1a .kacho.cloud.operation.Operation\"\xbc\x01\x8a\xb5\x18\x1bcompute.gpu_clusters.delete\x92\xb5\x18\x06editor\x9a\xb5\x18%\n" +
-	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x012\xb2\xd2*1\n" +
+	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x011\xb2\xd2*1\n" +
 	"\x18DeleteGpuClusterMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02**(/compute/v1/gpuClusters/{gpu_cluster_id}\x12\xac\x02\n" +
 	"\x0eListOperations\x127.kacho.cloud.compute.v1.ListGpuClusterOperationsRequest\x1a8.kacho.cloud.compute.v1.ListGpuClusterOperationsResponse\"\xa6\x01\x8a\xb5\x18/compute.gpu_cluster_operationses.listOperations\x92\xb5\x18\x06viewer\x9a\xb5\x18%\n" +
-	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x025\x123/compute/v1/gpuClusters/{gpu_cluster_id}/operations\x12\xa6\x02\n" +
+	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x025\x123/compute/v1/gpuClusters/{gpu_cluster_id}/operations\x12\xa6\x02\n" +
 	"\rListInstances\x126.kacho.cloud.compute.v1.ListGpuClusterInstancesRequest\x1a7.kacho.cloud.compute.v1.ListGpuClusterInstancesResponse\"\xa3\x01\x8a\xb5\x18-compute.gpu_cluster_instanceses.listInstances\x92\xb5\x18\x06viewer\x9a\xb5\x18%\n" +
-	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x024\x122/compute/v1/gpuClusters/{gpu_cluster_id}/instances\x12\x85\x02\n" +
+	"\x13compute_gpu_cluster\x12\x0egpu_cluster_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x024\x122/compute/v1/gpuClusters/{gpu_cluster_id}/instances\x12\x85\x02\n" +
 	"\x12ListAccessBindings\x12-.kacho.cloud.access.ListAccessBindingsRequest\x1a..kacho.cloud.access.ListAccessBindingsResponse\"\x8f\x01\x8a\xb5\x18,compute.access_bindingses.listAccessBindings\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\aproject\x12\x01*\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02:\x128/compute/v1/gpuClusters/{resource_id}:listAccessBindings\x12\xc2\x02\n" +
+	"\aproject\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02:\x128/compute/v1/gpuClusters/{resource_id}:listAccessBindings\x12\xc2\x02\n" +
 	"\x11SetAccessBindings\x12,.kacho.cloud.access.SetAccessBindingsRequest\x1a .kacho.cloud.operation.Operation\"\xdc\x01\x8a\xb5\x18+compute.access_bindingses.setAccessBindings\x92\xb5\x18\x06editor\x9a\xb5\x18\f\n" +
 	"\aproject\x12\x01*\xa2\xb5\x18\x012\xb2\xd2*H\n" +
 	" access.SetAccessBindingsMetadata\x12$access.AccessBindingsOperationResult\x82\xd3\xe4\x93\x02<:\x01*\"7/compute/v1/gpuClusters/{resource_id}:setAccessBindings\x12\xd1\x02\n" +

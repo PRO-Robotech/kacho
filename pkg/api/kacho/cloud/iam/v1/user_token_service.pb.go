@@ -606,7 +606,7 @@ const file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc = "" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*0\n" +
 	"\x16IssueUserTokenMetadata\x12\x16IssueUserTokenResponse\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/iam/v1/users/{user_id}/tokens\x12\xc3\x01\n" +
 	"\x04List\x12).kacho.cloud.iam.v1.ListUserTokensRequest\x1a*.kacho.cloud.iam.v1.ListUserTokensResponse\"d\x8a\xb5\x18\x14iam.user_tokens.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02 \x12\x1e/iam/v1/users/{user_id}/tokens\x12\x89\x02\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 \x12\x1e/iam/v1/users/{user_id}/tokens\x12\x89\x02\n" +
 	"\x06Revoke\x12*.kacho.cloud.iam.v1.RevokeUserTokenRequest\x1a .kacho.cloud.operation.Operation\"\xb0\x01\x8a\xb5\x18\x1diam.revoke_user_tokens.revoke\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*2\n" +
 	"\x17RevokeUserTokenMetadata\x12\x17RevokeUserTokenResponse\x82\xd3\xe4\x93\x02+*)/iam/v1/users/{user_id}/tokens/{token_id}B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
