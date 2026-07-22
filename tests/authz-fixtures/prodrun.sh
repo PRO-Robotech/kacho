@@ -28,18 +28,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Reseed if missing, forced, or STALE: every token (bootstrap + SA subjects) is a
-# Hydra RS256 Bearer with ~1h TTL — a matrix older than 40min mints expired tokens
-# that newman rejects (code=16 token validation failed).
+# Reseed if missing, forced, or STALE: Hydra issues SA access tokens with a 900s
+# (15min) lifespan, so a matrix older than ~10min mints tokens that expire mid-run
+# (gateway: "token is expired" → 401 cascade). Reseed aggressively; each suite must
+# then finish inside the remaining token window (keep --delay low).
 STALE=0
 if [[ -s "$CACHE" ]]; then
   age=$(( $(date +%s) - $(stat -c %Y "$CACHE") ))
-  [[ "$age" -gt 2400 ]] && STALE=1
+  [[ "$age" -gt 600 ]] && STALE=1
 fi
+DID_RESEED=0
 if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
   echo "[prodrun] seeding matrix -> $CACHE (stale=$STALE)" >&2
   python3 "$FIX/prodseed_matrix.py" > "$CACHE"
   rm -f /tmp/matrix-*-ext.json   # subject ids change on reseed → invalidate ext caches
+  DID_RESEED=1
 fi
 
 ENVFILE="$ROOT/services/$SVC/tests/newman/environments/local.postman_environment.json"
@@ -57,6 +60,16 @@ if [[ -f "$EXT" ]]; then
     python3 "$EXT" > "$EXTCACHE"
   fi
   python3 "$FIX/patch-env.py" "$EXTCACHE" "$ENVFILE" >&2
+fi
+
+# Grant-materialization settle: freshly-created AccessBindings materialize the
+# subject's owner/verb FGA tuples eventually-consistent. Running collections at
+# matrix-age-0 hits that window (403 cascade in suites with thin retry coverage).
+# Wait once after a reseed so grants are visible; the run then fits the 15min token
+# window (reseed ~3min + settle + run). Not a foreground sleep (inside prodrun).
+if [[ "$DID_RESEED" == 1 ]]; then
+  echo "[prodrun] grant-materialization settle 60s…" >&2
+  sleep 60
 fi
 
 cd "$ROOT/services/$SVC/tests/newman"
