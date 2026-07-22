@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d0d7e540-99a0-4255-b1f6-7b4fa1424ed2",
+    "_postman_id": "52c3a4f7-a10b-4a56-9670-af97a09abe1b",
     "name": "kacho-storage / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -643,7 +643,7 @@
       ]
     },
     {
-      "name": "SNP-CR-VAL-PROJECT-REQUIRED — Create Snapshot без projectId → 400 INVALID_ARGUMENT (project_id required)",
+      "name": "SNP-CR-VAL-PROJECT-REQUIRED — Create Snapshot без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped; #62 project-scope)",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -683,10 +683,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+                  "});",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
                   "});"
                 ]
               }
@@ -1044,7 +1046,7 @@
       ]
     },
     {
-      "name": "SNP-LST-VAL-PROJECT-REQUIRED — List snapshots без projectId → 400 INVALID_ARGUMENT",
+      "name": "SNP-LST-VAL-PROJECT-REQUIRED — List snapshots без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped; #62 project-scope)",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -1075,10 +1077,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+                  "});",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
                   "});"
                 ]
               }

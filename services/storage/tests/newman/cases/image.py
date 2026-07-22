@@ -280,13 +280,13 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-CR-VAL-PROJECT-REQUIRED",
-    title="Create Image без projectId → 400 INVALID_ARGUMENT (project_id required)",
+    title="Create Image без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped; #62 project-scope)",
     classes=["VAL", "NEG"], priority="P0",
     # verifies STOR-1-20
     steps=[Step(name="cr-np", method="POST", path=IMG,
                 body={"regionId": "{{existingRegionId}}", "name": "img-np-{{runId}}",
                       "sourceVolumeId": "{{garbageStorageId}}"},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
@@ -477,11 +477,11 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-LST-VAL-PROJECT-REQUIRED",
-    title="List images без projectId → 400 INVALID_ARGUMENT (project_id required; anti-BOLA scope backstop)",
+    title="List images без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped anti-BOLA; #62 project-scope)",
     classes=["VAL", "NEG"], priority="P0",
     # verifies STOR-1-31
     steps=[Step(name="list-np", method="GET", path=IMG,
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(

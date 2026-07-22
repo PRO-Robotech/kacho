@@ -120,12 +120,12 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNP-CR-VAL-PROJECT-REQUIRED",
-    title="Create Snapshot без projectId → 400 INVALID_ARGUMENT (project_id required)",
+    title="Create Snapshot без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped; #62 project-scope)",
     classes=["VAL", "NEG"], priority="P0",
     # verifies CS1-S3-03
     steps=[Step(name="cr-np", method="POST", path=SNP,
                 body={"sourceVolumeId": "{{garbageStorageId}}", "name": "snap-np-{{runId}}"},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(
@@ -209,11 +209,11 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNP-LST-VAL-PROJECT-REQUIRED",
-    title="List snapshots без projectId → 400 INVALID_ARGUMENT",
+    title="List snapshots без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped; #62 project-scope)",
     classes=["VAL", "NEG"], priority="P0",
     # verifies CS1-S3-04
     steps=[Step(name="list-np", method="GET", path=SNP,
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+                test_script=[*assert_unscoped_rejected()])],
 ))
 
 CASES.append(Case(

@@ -111,6 +111,28 @@ def assert_grpc_code(code: int, code_name: str) -> List[str]:
     ]
 
 
+def assert_unscoped_rejected() -> List[str]:
+    """Unscoped create/list (без projectId) — ОТВЕРГНУТ. Два защитимых исхода, оба =
+    «отклонено» (defense-in-depth, security.md «authz-first», parity с compute 446e25b
+    / vpc):
+      403 PERMISSION_DENIED (code 7) — project-scope authz fail-closed «empty object id»
+        (пустой projectId → нет scope-объекта для anti-BOLA-проверки) ДО backend-валидации;
+      400 INVALID_ARGUMENT  (code 3) — backend «project_id required» при passthrough.
+    Толерантен к обоим — семантика негатива (rejected) сохранена, без ложного провала на
+    корректном authz-first 403. До #62-фикса storage гейтил на cluster-синглтоне (никогда
+    empty) → backend 400; теперь project-scoped (как compute/vpc) → empty projectId = 403.
+    Techniques: ECP (класс «unscoped запрос») + error-guessing (authz-vs-validation ordering)."""
+    return [
+        "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
+        "});",
+        "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
+        "});",
+    ]
+
+
 def assert_field_violation(field_name: str) -> List[str]:
     return [
         f"pm.test('field violation on \"{field_name}\"', () => {{",
@@ -638,6 +660,7 @@ def load_cases_module(path: Path):
     mod.Case = Case
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
+    mod.assert_unscoped_rejected = assert_unscoped_rejected
     mod.assert_field_violation = assert_field_violation
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
