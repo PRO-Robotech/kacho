@@ -20,6 +20,7 @@
 package middleware
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -47,7 +48,51 @@ func NewRestRouter() *RestRouter {
 			r.fqnTemplate[rt.FQN] = rt.Template
 		}
 	}
+	// Order each method's routes MOST-SPECIFIC-FIRST so first-match Resolve picks
+	// the same route the grpc-gateway mux would. Since `{field=**}` deep-wildcards
+	// now match multiple segments, a bare catch-all (`…/repositories/{repo=**}`)
+	// would otherwise greedily swallow more-specific sub-resource routes
+	// (`…/{repo=**}/referrers`, `…/{repo}/tags/{tag}`). Specificity = more literal
+	// segments first, then non-deep before deep, then longer template.
+	for m := range r.byMethod {
+		routes := r.byMethod[m]
+		sort.SliceStable(routes, func(i, j int) bool {
+			return moreSpecific(routes[i].Template, routes[j].Template)
+		})
+	}
 	return r
+}
+
+// moreSpecific reports whether template a should be tried before template b under
+// most-specific-first routing.
+func moreSpecific(a, b string) bool {
+	la, da, sa := templSpecificity(a)
+	lb, db, sb := templSpecificity(b)
+	if la != lb {
+		return la > lb // more literal segments = more specific
+	}
+	if da != db {
+		return !da // a non-deep route beats a deep-wildcard route
+	}
+	return sa > sb // longer template = more specific
+}
+
+// templSpecificity returns the count of literal (non-placeholder) segments, whether
+// the template carries a `{field=**}` deep-wildcard, and its total segment count.
+func templSpecificity(template string) (literals int, hasDeep bool, segs int) {
+	seg, _ := splitVerb(template)
+	parts := splitPath(seg)
+	segs = len(parts)
+	for _, p := range parts {
+		switch {
+		case isDeepPlaceholder(p):
+			hasDeep = true
+		case isPlaceholder(p):
+		default:
+			literals++
+		}
+	}
+	return literals, hasDeep, segs
 }
 
 // Resolve maps an HTTP (method, path) to a gRPC FQN. Returns ok=false when
@@ -93,12 +138,47 @@ func matchTemplate(template, reqPath string) bool {
 	}
 	tparts := splitPath(tSeg)
 	pparts := splitPath(pSeg)
-	if len(tparts) != len(pparts) {
+
+	// Locate a `{field=**}` deep-wildcard segment (at most one per template, per
+	// grpc-gateway). It matches ONE OR MORE path segments (e.g. repository
+	// "backend/api"), so it CANNOT be treated as a single placeholder — doing so
+	// made every multi-segment repository RPC fail to resolve → "catalog: no entry
+	// for method" → AUTHZ_DENIED (#64 follow-up).
+	deep := -1
+	for i, t := range tparts {
+		if isDeepPlaceholder(t) {
+			deep = i
+			break
+		}
+	}
+
+	if deep < 0 {
+		// No deep wildcard: exact segment count; each `{field}` = one non-empty segment.
+		if len(tparts) != len(pparts) {
+			return false
+		}
+		return matchSegments(tparts, pparts)
+	}
+
+	// Deep wildcard: the prefix (before `**`) matches head-to-head, the suffix
+	// (after `**`, e.g. `/referrers`) matches tail-to-tail, and `**` consumes the
+	// ≥1 middle segments. Total path length must leave room for that middle.
+	prefix, suffix := tparts[:deep], tparts[deep+1:]
+	if len(pparts) < len(prefix)+1+len(suffix) {
 		return false
 	}
+	if !matchSegments(prefix, pparts[:len(prefix)]) {
+		return false
+	}
+	return matchSegments(suffix, pparts[len(pparts)-len(suffix):])
+}
+
+// matchSegments matches equal-length template/path slices where each `{field}`
+// template segment matches any single non-empty path segment and every other
+// segment must be literally equal.
+func matchSegments(tparts, pparts []string) bool {
 	for i, t := range tparts {
 		if isPlaceholder(t) {
-			// A placeholder matches any single, non-empty segment.
 			if pparts[i] == "" {
 				return false
 			}
@@ -109,6 +189,12 @@ func matchTemplate(template, reqPath string) bool {
 		}
 	}
 	return true
+}
+
+// isDeepPlaceholder reports whether a template segment is a `{field=**}` deep
+// capture (matches 1+ trailing segments), as opposed to a single-segment `{field}`.
+func isDeepPlaceholder(seg string) bool {
+	return isPlaceholder(seg) && strings.Contains(seg, "=**")
 }
 
 // splitVerb separates an optional grpc-gateway `:verb` suffix-action from the
