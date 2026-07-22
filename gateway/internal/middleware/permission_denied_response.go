@@ -30,6 +30,27 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// safeDenyDescription returns a generic, NON-LEAKING violation description for a
+// 403 deny reason. The raw reason (e.g. "no path: account:acc_secret has no
+// v_delete for user:usr_x") names the resource + the FGA relation — an existence/
+// authz oracle that must never reach the wire (registry-authz finding, #64). This
+// preserves the ONE actionable distinction the client needs — whether re-auth with
+// a stronger session would help (step-up) vs a plain lack of authorization — WITHOUT
+// echoing the reason; the machine-readable violation TYPE (classifyDenyReasonType)
+// still carries the category for programmatic handling, and the raw reason stays in
+// the server logs only.
+func safeDenyDescription(reason string) string {
+	// "unauthenticated" reports the CALLER's own auth state (they know it) — not a
+	// resource oracle — and clients/observability key on it, so it is preserved.
+	if strings.Contains(strings.ToLower(reason), "unauthenticated") {
+		return "unauthenticated: authentication required"
+	}
+	if shouldStepUpChallenge([]string{reason}) {
+		return "step-up authentication required"
+	}
+	return "no authorization path to the resource"
+}
+
 // permissionDeniedDescriptor — common subject/action/resource tuple included
 // in every deny violation (forensic correlation).
 type permissionDeniedDescriptor struct {
@@ -62,7 +83,7 @@ func buildGRPCDenyStatus(desc permissionDeniedDescriptor, reasons []string) *sta
 			pf.Violations = append(pf.Violations, &errdetails.PreconditionFailure_Violation{
 				Type:        classifyDenyReasonType(r),
 				Subject:     resourceLabel(desc),
-				Description: r,
+				Description: safeDenyDescription(r),
 			})
 		}
 	}
@@ -71,11 +92,12 @@ func buildGRPCDenyStatus(desc permissionDeniedDescriptor, reasons []string) *sta
 		Reason: "AUTHZ_DENIED",
 		Domain: "kacho.cloud.iam.v1",
 		Metadata: map[string]string{
-			"subject":      desc.Subject,
-			"action":       desc.Action,
-			"resource":     resourceLabel(desc),
-			"fqn":          desc.FQN,
-			"deny_reasons": strings.Join(reasons, "; "),
+			"subject":  desc.Subject,
+			"action":   desc.Action,
+			"resource": resourceLabel(desc),
+			"fqn":      desc.FQN,
+			// deny_reasons intentionally OMITTED — the joined raw reasons name the
+			// resource + FGA relation (existence/authz oracle). Kept in logs only.
 		},
 	}
 
@@ -237,7 +259,7 @@ func writeHTTPDeny(w http.ResponseWriter, desc permissionDeniedDescriptor, reaso
 			viol = append(viol, map[string]any{
 				"type":        classifyDenyReasonType(r),
 				"subject":     resourceLabel(desc),
-				"description": r,
+				"description": safeDenyDescription(r),
 			})
 		}
 		details = append(details, map[string]any{
@@ -250,11 +272,11 @@ func writeHTTPDeny(w http.ResponseWriter, desc permissionDeniedDescriptor, reaso
 		"reason": "AUTHZ_DENIED",
 		"domain": "kacho.cloud.iam.v1",
 		"metadata": map[string]string{
-			"subject":      desc.Subject,
-			"action":       desc.Action,
-			"resource":     resourceLabel(desc),
-			"fqn":          desc.FQN,
-			"deny_reasons": strings.Join(reasons, "; "),
+			"subject":  desc.Subject,
+			"action":   desc.Action,
+			"resource": resourceLabel(desc),
+			"fqn":      desc.FQN,
+			// deny_reasons intentionally OMITTED — existence/authz oracle (logs only).
 		},
 	})
 
