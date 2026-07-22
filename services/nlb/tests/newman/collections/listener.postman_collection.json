@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "7c3e9521-70e9-4652-be7f-ae316ba5db48",
+    "_postman_id": "bde77872-4821-4604-b09f-576c9e628f85",
     "name": "kacho-nlb / newman / listener",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -59,7 +59,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-auto-vip-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-auto-vip-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -149,7 +149,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya391",
+          "name": "setup-materialize-lb-rya341",
           "request": {
             "method": "GET",
             "header": [
@@ -198,7 +198,7 @@
           ]
         },
         {
-          "name": "cr-lst-rya392",
+          "name": "cr-lst-rya342",
           "request": {
             "method": "POST",
             "header": [
@@ -316,7 +316,7 @@
           ]
         },
         {
-          "name": "get-rya393",
+          "name": "get-rya343",
           "request": {
             "method": "GET",
             "header": [
@@ -368,7 +368,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-rya394",
+          "name": "get-lb-vip-rya344",
           "request": {
             "method": "GET",
             "header": [
@@ -714,7 +714,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -804,7 +804,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya395",
+          "name": "setup-materialize-lb-rya345",
           "request": {
             "method": "GET",
             "header": [
@@ -853,7 +853,7 @@
           ]
         },
         {
-          "name": "cr-byo-rya396",
+          "name": "cr-byo-rya346",
           "request": {
             "method": "POST",
             "header": [
@@ -971,7 +971,7 @@
           ]
         },
         {
-          "name": "get-byo-rya397",
+          "name": "get-byo-rya347",
           "request": {
             "method": "GET",
             "header": [
@@ -1410,7 +1410,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr398",
+          "name": "setup-lb-cr348",
           "request": {
             "method": "POST",
             "header": [
@@ -1432,7 +1432,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-int-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-int-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1527,7 +1527,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya399",
+          "name": "setup-materialize-lb-rya349",
           "request": {
             "method": "GET",
             "header": [
@@ -1576,7 +1576,7 @@
           ]
         },
         {
-          "name": "cr-int-rya400",
+          "name": "cr-int-rya350",
           "request": {
             "method": "POST",
             "header": [
@@ -2080,7 +2080,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr401",
+          "name": "setup-lb-cr351",
           "request": {
             "method": "POST",
             "header": [
@@ -2102,7 +2102,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-get-ok-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-get-ok-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2197,7 +2197,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya402",
+          "name": "setup-materialize-lb-rya352",
           "request": {
             "method": "GET",
             "header": [
@@ -2246,7 +2246,7 @@
           ]
         },
         {
-          "name": "cr-rya403",
+          "name": "cr-rya353",
           "request": {
             "method": "POST",
             "header": [
@@ -2364,7 +2364,7 @@
           ]
         },
         {
-          "name": "get-rya404",
+          "name": "get-rya354",
           "request": {
             "method": "GET",
             "header": [
@@ -2803,7 +2803,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr405",
+          "name": "setup-lb-cr355",
           "request": {
             "method": "POST",
             "header": [
@@ -2825,7 +2825,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-list-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-list-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2920,7 +2920,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya406",
+          "name": "setup-materialize-lb-rya356",
           "request": {
             "method": "GET",
             "header": [
@@ -3301,7 +3301,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr407",
+          "name": "setup-lb-cr357",
           "request": {
             "method": "POST",
             "header": [
@@ -3323,7 +3323,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-upd-ok-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-upd-ok-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3418,7 +3418,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya408",
+          "name": "setup-materialize-lb-rya358",
           "request": {
             "method": "GET",
             "header": [
@@ -3467,7 +3467,7 @@
           ]
         },
         {
-          "name": "cr-rya409",
+          "name": "cr-rya359",
           "request": {
             "method": "POST",
             "header": [
@@ -3585,7 +3585,7 @@
           ]
         },
         {
-          "name": "upd-rya410",
+          "name": "upd-rya360",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3993,7 +3993,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-del-auto-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-del-auto-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4083,7 +4083,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya411",
+          "name": "setup-materialize-lb-rya361",
           "request": {
             "method": "GET",
             "header": [
@@ -4132,7 +4132,7 @@
           ]
         },
         {
-          "name": "cr-rya412",
+          "name": "cr-rya362",
           "request": {
             "method": "POST",
             "header": [
@@ -4250,7 +4250,7 @@
           ]
         },
         {
-          "name": "del-rya413",
+          "name": "del-rya363",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4560,7 +4560,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-del-byo-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-del-byo-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4650,7 +4650,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya414",
+          "name": "setup-materialize-lb-rya364",
           "request": {
             "method": "GET",
             "header": [
@@ -4699,7 +4699,7 @@
           ]
         },
         {
-          "name": "cr-byo-rya415",
+          "name": "cr-byo-rya365",
           "request": {
             "method": "POST",
             "header": [
@@ -4817,7 +4817,7 @@
           ]
         },
         {
-          "name": "del-byo-rya416",
+          "name": "del-byo-rya366",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5218,7 +5218,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr417",
+          "name": "setup-lb-cr367",
           "request": {
             "method": "POST",
             "header": [
@@ -5240,7 +5240,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-lops-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-lops-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5335,7 +5335,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya418",
+          "name": "setup-materialize-lb-rya368",
           "request": {
             "method": "GET",
             "header": [
@@ -5384,7 +5384,7 @@
           ]
         },
         {
-          "name": "cr-rya419",
+          "name": "cr-rya369",
           "request": {
             "method": "POST",
             "header": [
@@ -5502,7 +5502,7 @@
           ]
         },
         {
-          "name": "lops-rya420",
+          "name": "lops-rya370",
           "request": {
             "method": "GET",
             "header": [
@@ -5941,7 +5941,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr421",
+          "name": "setup-lb-cr371",
           "request": {
             "method": "POST",
             "header": [
@@ -5963,7 +5963,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-0-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-0-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6058,7 +6058,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya422",
+          "name": "setup-materialize-lb-rya372",
           "request": {
             "method": "GET",
             "header": [
@@ -6107,7 +6107,7 @@
           ]
         },
         {
-          "name": "cr-p0-rya423",
+          "name": "cr-p0-rya373",
           "request": {
             "method": "POST",
             "header": [
@@ -6465,7 +6465,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr424",
+          "name": "setup-lb-cr374",
           "request": {
             "method": "POST",
             "header": [
@@ -6487,7 +6487,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-over-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-over-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6582,7 +6582,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya425",
+          "name": "setup-materialize-lb-rya375",
           "request": {
             "method": "GET",
             "header": [
@@ -6631,7 +6631,7 @@
           ]
         },
         {
-          "name": "cr-po-rya426",
+          "name": "cr-po-rya376",
           "request": {
             "method": "POST",
             "header": [
@@ -6990,7 +6990,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr427",
+          "name": "setup-lb-cr377",
           "request": {
             "method": "POST",
             "header": [
@@ -7012,7 +7012,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-neg-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-neg-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7107,7 +7107,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya428",
+          "name": "setup-materialize-lb-rya378",
           "request": {
             "method": "GET",
             "header": [
@@ -7156,7 +7156,7 @@
           ]
         },
         {
-          "name": "cr-pn-rya429",
+          "name": "cr-pn-rya379",
           "request": {
             "method": "POST",
             "header": [
@@ -7511,7 +7511,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr430",
+          "name": "setup-lb-cr380",
           "request": {
             "method": "POST",
             "header": [
@@ -7533,7 +7533,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-bad-proto-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-bad-proto-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7628,7 +7628,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya431",
+          "name": "setup-materialize-lb-rya381",
           "request": {
             "method": "GET",
             "header": [
@@ -7677,7 +7677,7 @@
           ]
         },
         {
-          "name": "cr-http-rya432",
+          "name": "cr-http-rya382",
           "request": {
             "method": "POST",
             "header": [
@@ -8032,7 +8032,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr433",
+          "name": "setup-lb-cr383",
           "request": {
             "method": "POST",
             "header": [
@@ -8054,7 +8054,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-int-no-subnet-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-int-no-subnet-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8149,7 +8149,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya434",
+          "name": "setup-materialize-lb-rya384",
           "request": {
             "method": "GET",
             "header": [
@@ -8198,7 +8198,7 @@
           ]
         },
         {
-          "name": "cr-int-no-subnet-rya435",
+          "name": "cr-int-no-subnet-rya385",
           "request": {
             "method": "POST",
             "header": [
@@ -8642,7 +8642,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr436",
+          "name": "setup-lb-cr386",
           "request": {
             "method": "POST",
             "header": [
@@ -8664,7 +8664,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-bad-name-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-bad-name-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8759,7 +8759,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya437",
+          "name": "setup-materialize-lb-rya387",
           "request": {
             "method": "GET",
             "header": [
@@ -8808,7 +8808,7 @@
           ]
         },
         {
-          "name": "cr-bad-name-rya438",
+          "name": "cr-bad-name-rya388",
           "request": {
             "method": "POST",
             "header": [
@@ -9167,7 +9167,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr439",
+          "name": "setup-lb-cr389",
           "request": {
             "method": "POST",
             "header": [
@@ -9189,7 +9189,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-1-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-1-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9284,7 +9284,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya440",
+          "name": "setup-materialize-lb-rya390",
           "request": {
             "method": "GET",
             "header": [
@@ -9333,7 +9333,7 @@
           ]
         },
         {
-          "name": "cr-p1-rya441",
+          "name": "cr-p1-rya391",
           "request": {
             "method": "POST",
             "header": [
@@ -9837,7 +9837,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr442",
+          "name": "setup-lb-cr392",
           "request": {
             "method": "POST",
             "header": [
@@ -9859,7 +9859,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-max-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-port-max-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9954,7 +9954,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya443",
+          "name": "setup-materialize-lb-rya393",
           "request": {
             "method": "GET",
             "header": [
@@ -10003,7 +10003,7 @@
           ]
         },
         {
-          "name": "cr-pmax-rya444",
+          "name": "cr-pmax-rya394",
           "request": {
             "method": "POST",
             "header": [
@@ -10507,7 +10507,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr445",
+          "name": "setup-lb-cr395",
           "request": {
             "method": "POST",
             "header": [
@@ -10529,7 +10529,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-used-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-used-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10624,7 +10624,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya446",
+          "name": "setup-materialize-lb-rya396",
           "request": {
             "method": "GET",
             "header": [
@@ -10673,7 +10673,7 @@
           ]
         },
         {
-          "name": "cr-used-rya447",
+          "name": "cr-used-rya397",
           "request": {
             "method": "POST",
             "header": [
@@ -11117,7 +11117,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr448",
+          "name": "setup-lb-cr398",
           "request": {
             "method": "POST",
             "header": [
@@ -11139,7 +11139,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-ipv-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-ipv-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11234,7 +11234,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya449",
+          "name": "setup-materialize-lb-rya399",
           "request": {
             "method": "GET",
             "header": [
@@ -11283,7 +11283,7 @@
           ]
         },
         {
-          "name": "cr-ipv-mismatch-rya450",
+          "name": "cr-ipv-mismatch-rya400",
           "request": {
             "method": "POST",
             "header": [
@@ -11693,7 +11693,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr451",
+          "name": "setup-lb-cr401",
           "request": {
             "method": "POST",
             "header": [
@@ -11715,7 +11715,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-xprj-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-byo-xprj-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11810,7 +11810,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya452",
+          "name": "setup-materialize-lb-rya402",
           "request": {
             "method": "GET",
             "header": [
@@ -12309,7 +12309,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr453",
+          "name": "setup-lb-cr403",
           "request": {
             "method": "POST",
             "header": [
@@ -12331,7 +12331,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-dup-pp-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-dup-pp-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12426,7 +12426,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya454",
+          "name": "setup-materialize-lb-rya404",
           "request": {
             "method": "GET",
             "header": [
@@ -12475,7 +12475,7 @@
           ]
         },
         {
-          "name": "cr-1-rya455",
+          "name": "cr-1-rya405",
           "request": {
             "method": "POST",
             "header": [
@@ -12593,7 +12593,7 @@
           ]
         },
         {
-          "name": "cr-2-dup-rya456",
+          "name": "cr-2-dup-rya406",
           "request": {
             "method": "POST",
             "header": [
@@ -13092,7 +13092,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr457",
+          "name": "setup-lb-cr407",
           "request": {
             "method": "POST",
             "header": [
@@ -13114,7 +13114,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-vip-comp-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-vip-comp-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13209,7 +13209,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya458",
+          "name": "setup-materialize-lb-rya408",
           "request": {
             "method": "GET",
             "header": [
@@ -13258,7 +13258,7 @@
           ]
         },
         {
-          "name": "cr-likely-fail-rya459",
+          "name": "cr-likely-fail-rya409",
           "request": {
             "method": "POST",
             "header": [
@@ -13948,7 +13948,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr460",
+          "name": "setup-lb-cr410",
           "request": {
             "method": "POST",
             "header": [
@@ -13970,7 +13970,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-def-tg-region-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-def-tg-region-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14065,7 +14065,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya461",
+          "name": "setup-materialize-lb-rya411",
           "request": {
             "method": "GET",
             "header": [
@@ -14114,7 +14114,7 @@
           ]
         },
         {
-          "name": "cr-rya462",
+          "name": "cr-rya412",
           "request": {
             "method": "POST",
             "header": [
@@ -14335,7 +14335,7 @@
           ]
         },
         {
-          "name": "upd-default-tg-mismatch-rya463",
+          "name": "upd-default-tg-mismatch-rya413",
           "request": {
             "method": "PATCH",
             "header": [
@@ -15185,7 +15185,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr464",
+          "name": "setup-lb-cr414",
           "request": {
             "method": "POST",
             "header": [
@@ -15207,7 +15207,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-name-digit-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-name-digit-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15302,7 +15302,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya465",
+          "name": "setup-materialize-lb-rya415",
           "request": {
             "method": "GET",
             "header": [
@@ -15351,7 +15351,7 @@
           ]
         },
         {
-          "name": "cr-digit-rya466",
+          "name": "cr-digit-rya416",
           "request": {
             "method": "POST",
             "header": [
@@ -15710,7 +15710,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr467",
+          "name": "setup-lb-cr417",
           "request": {
             "method": "POST",
             "header": [
@@ -15732,7 +15732,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-name-hyp-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-name-hyp-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15827,7 +15827,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya468",
+          "name": "setup-materialize-lb-rya418",
           "request": {
             "method": "GET",
             "header": [
@@ -15876,7 +15876,7 @@
           ]
         },
         {
-          "name": "cr-hyp-rya469",
+          "name": "cr-hyp-rya419",
           "request": {
             "method": "POST",
             "header": [
@@ -16235,7 +16235,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr470",
+          "name": "setup-lb-cr420",
           "request": {
             "method": "POST",
             "header": [
@@ -16257,7 +16257,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-tp-0-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-tp-0-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16352,7 +16352,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya471",
+          "name": "setup-materialize-lb-rya421",
           "request": {
             "method": "GET",
             "header": [
@@ -16401,7 +16401,7 @@
           ]
         },
         {
-          "name": "cr-tp-0-rya472",
+          "name": "cr-tp-0-rya422",
           "request": {
             "method": "POST",
             "header": [
@@ -16756,7 +16756,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr473",
+          "name": "setup-lb-cr423",
           "request": {
             "method": "POST",
             "header": [
@@ -16778,7 +16778,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-tp-over-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-tp-over-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16873,7 +16873,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya474",
+          "name": "setup-materialize-lb-rya424",
           "request": {
             "method": "GET",
             "header": [
@@ -16922,7 +16922,7 @@
           ]
         },
         {
-          "name": "cr-tp-o-rya475",
+          "name": "cr-tp-o-rya425",
           "request": {
             "method": "POST",
             "header": [
@@ -17277,7 +17277,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr476",
+          "name": "setup-lb-cr426",
           "request": {
             "method": "POST",
             "header": [
@@ -17299,7 +17299,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-ipv-unk-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-ipv-unk-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17394,7 +17394,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya477",
+          "name": "setup-materialize-lb-rya427",
           "request": {
             "method": "GET",
             "header": [
@@ -17443,7 +17443,7 @@
           ]
         },
         {
-          "name": "cr-ipv-unk-rya478",
+          "name": "cr-ipv-unk-rya428",
           "request": {
             "method": "POST",
             "header": [
@@ -17798,7 +17798,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr479",
+          "name": "setup-lb-cr429",
           "request": {
             "method": "POST",
             "header": [
@@ -17820,7 +17820,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-ipv6-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-ipv6-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17915,7 +17915,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya480",
+          "name": "setup-materialize-lb-rya430",
           "request": {
             "method": "GET",
             "header": [
@@ -17964,7 +17964,7 @@
           ]
         },
         {
-          "name": "cr-ipv6-rya481",
+          "name": "cr-ipv6-rya431",
           "request": {
             "method": "POST",
             "header": [
@@ -18468,7 +18468,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr482",
+          "name": "setup-lb-cr432",
           "request": {
             "method": "POST",
             "header": [
@@ -18490,7 +18490,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-pp2-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-pp2-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18585,7 +18585,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya483",
+          "name": "setup-materialize-lb-rya433",
           "request": {
             "method": "GET",
             "header": [
@@ -18634,7 +18634,7 @@
           ]
         },
         {
-          "name": "cr-pp2-rya484",
+          "name": "cr-pp2-rya434",
           "request": {
             "method": "POST",
             "header": [
@@ -18752,7 +18752,7 @@
           ]
         },
         {
-          "name": "get-rya485",
+          "name": "get-rya435",
           "request": {
             "method": "GET",
             "header": [
@@ -19189,7 +19189,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr486",
+          "name": "setup-lb-cr436",
           "request": {
             "method": "POST",
             "header": [
@@ -19211,7 +19211,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-def-tg-clear-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-def-tg-clear-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19306,7 +19306,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya487",
+          "name": "setup-materialize-lb-rya437",
           "request": {
             "method": "GET",
             "header": [
@@ -19355,7 +19355,7 @@
           ]
         },
         {
-          "name": "cr-rya488",
+          "name": "cr-rya438",
           "request": {
             "method": "POST",
             "header": [
@@ -19473,7 +19473,7 @@
           ]
         },
         {
-          "name": "upd-clear-rya489",
+          "name": "upd-clear-rya439",
           "request": {
             "method": "PATCH",
             "header": [
@@ -20054,7 +20054,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr490",
+          "name": "setup-lb-cr440",
           "request": {
             "method": "POST",
             "header": [
@@ -20076,7 +20076,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-page-rt-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-page-rt-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20171,7 +20171,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya491",
+          "name": "setup-materialize-lb-rya441",
           "request": {
             "method": "GET",
             "header": [
@@ -20690,7 +20690,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr492",
+          "name": "setup-lb-cr442",
           "request": {
             "method": "POST",
             "header": [
@@ -20712,7 +20712,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-udp-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-udp-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20807,7 +20807,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya493",
+          "name": "setup-materialize-lb-rya443",
           "request": {
             "method": "GET",
             "header": [
@@ -20856,7 +20856,7 @@
           ]
         },
         {
-          "name": "cr-udp-rya494",
+          "name": "cr-udp-rya444",
           "request": {
             "method": "POST",
             "header": [

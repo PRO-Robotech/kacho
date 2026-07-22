@@ -88,8 +88,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
             # parent INTERNAL LB is real (not phantom) before the child listener flow.
             retry_create_until_present(Step(name="setup-lb", method="POST", path=_LB_BASE,
                  body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                       "name": f"lst-{name_suffix}-{{{{runId}}}}", "type": "INTERNAL",
-                       "placementType": "ZONAL", "v4Source": {"subnetId": "{{lstSubnetId}}"}},
+                       "name": f"lst-{name_suffix}-{{{{runId}}}}", "placement": "INTERNAL_ZONAL", "v4Source": {"subnetId": "{{lstSubnetId}}"}},
                  test_script=[
                      "pm.environment.unset('nlbId');",
                      "if (pm.environment.get('lstSubnetId')) {",
@@ -113,7 +112,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
         Step(name="setup-lb", method="POST", path=_LB_BASE,
              pre_script=["pm.environment.unset('lstSubnetId');"],
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": f"lst-{name_suffix}-{{{{runId}}}}", "type": lb_type,
+                   "name": f"lst-{name_suffix}-{{{{runId}}}}", "placement": "EXTERNAL_REGIONAL",
                    "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),

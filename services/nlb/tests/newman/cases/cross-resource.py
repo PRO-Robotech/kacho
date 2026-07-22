@@ -73,7 +73,7 @@ _VALID_TARGET_STATE_JS = (
 def _create_external_lb(suffix: str, body_extra: dict = None):
     # sub-phase 8.1: EXTERNAL LB carries an auto public VIP source on Create.
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-            "type": "EXTERNAL", "name": f"xres-{suffix}-{{{{runId}}}}",
+            "placement": "EXTERNAL_REGIONAL", "name": f"xres-{suffix}-{{{{runId}}}}",
             "v4Source": {"public": {}}, **(body_extra or {})}
     return [
         Step(name="create-lb", method="POST", path=_LB_BASE, body=body,
@@ -188,15 +188,8 @@ CASES.append(Case(
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        # Step 5: attach TG to LB. Authorized against editor@lb (fresh LB tuple lag).
-        retry_until_authorized(Step(name="attach-tg", method="POST",
-             path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200),
-                          *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
-                          *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
-        # Step 6: now the listener default_target_group_id FK resolves (TG attached).
+        # Step 5: wire the TG into the listener via default_target_group_id — the listener
+        # FK is now the TG↔LB link (attach/detach RPCs removed; the TG need only exist).
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -225,14 +218,9 @@ CASES.append(Case(
                           "pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));",
                           "states.forEach(s => pm.test('target status is a valid enum member', () => "
                           f"  pm.expect(s.status).to.be.oneOf({_VALID_TARGET_STATE_JS})));"]),
-        # Teardown (bottom-up; clear default before detach — composite FK RESTRICT).
+        # Teardown (bottom-up; clear the listener default before deleting the TG — FK RESTRICT).
         Step(name="clear-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        Step(name="detach-tg", method="POST",
-             path=f"{_LB_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="remove-instance-target", method="POST",
@@ -261,7 +249,7 @@ CASES.append(Case(
         # the LB actually materialised (200 GET, no lastOpError).
         Step(name="create-lb-v6", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "EXTERNAL", "name": "xres-ext-v6-{{runId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "xres-ext-v6-{{runId}}",
                    "v6Source": {"public": {}}},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
@@ -394,7 +382,7 @@ CASES.append(Case(
         # materialises across the service boundary, so the INTERNAL parent LB is real.
         retry_create_until_present(Step(name="create-internal-lb", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "placementType": "ZONAL", "name": "xres-int-{{runId}}",
+                   "placement": "INTERNAL_ZONAL", "name": "xres-int-{{runId}}",
                    "sessionAffinity": "CLIENT_IP_ONLY",
                    "v4Source": {"subnetId": "{{xresSubnetId}}"}},
              test_script=[
@@ -452,16 +440,8 @@ CASES.append(Case(
                  "}",
              ]),
         *_create_tg("int-flow"),
-        retry_until_authorized(Step(name="attach-internal-tg", method="POST",
-             path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[
-                 # Authorized against editor@lb (fresh LB tuple lag) → bounded retry.
-                 "pm.test('attach accepted or rejected (LB dependent)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
-                 *save_from_response("j.id", "opId"),
-             ])),
-        poll_operation_until_done(),
+        # GetTargetStates is a per-TG query (same-project + viewer) — it needs neither an
+        # attach nor a listener wiring (attach/detach RPCs removed).
         Step(name="get-internal-target-states", method="GET",
              path=f"{_LB_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[
@@ -473,11 +453,6 @@ CASES.append(Case(
                  "}",
              ]),
         # Teardown (guarded best-effort).
-        Step(name="detach-internal-tg", method="POST",
-             path=f"{_LB_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
         Step(name="cleanup-int-listener", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -491,13 +466,13 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="XRES-E2E-INTERNAL-NO-NETWORK-INVALID",
-    title="INTERNAL LB with no placementType and no VIP source → InvalidArgument "
-          "(8.1 replaces the old network_id requirement) (Verifies 8.1-12/8.1-19)",
+    title="INTERNAL_ZONAL LB with no VIP source → InvalidArgument "
+          "(8.1 replaces the old network_id requirement) (Verifies 8.1-19)",
     classes=["NEG", "VAL"], priority="P0",
     steps=[
         Step(name="create-internal-bare", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "INTERNAL", "name": "int-bare-{{runId}}"},
+                   "placement": "INTERNAL_ZONAL", "name": "int-bare-{{runId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('rejected for missing placement or missing vip source', () => {",
                           "  const m = (pm.response.json().message || '').toLowerCase();",
@@ -514,7 +489,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-external-with-removed-network", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "EXTERNAL", "name": "ext-net-{{runId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "ext-net-{{runId}}",
                    "networkId": "{{garbageNetworkId}}", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
@@ -551,7 +526,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-with-removed-sg", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "type": "EXTERNAL", "name": "ext-sg-{{runId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "ext-sg-{{runId}}",
                    "securityGroupIds": ["{{garbageSecurityGroupId}}"], "v4Source": {"public": {}}},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('securityGroupIds rejected on EXTERNAL (INTERNAL-only field)', () => "
@@ -586,11 +561,8 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.200"}, "weight": 100}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="attach-tg", method="POST",
-             path=f"{_LB_BASE}/{{{{nlbId}}}}:attachTargetGroup",
-             body={"attachedTargetGroup": {"targetGroupId": "{{tgId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
+        # Wire the TG into the listener (default_target_group_id FK) — the listener is now
+        # the sole TG↔LB link (attach/detach RPCs removed).
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[*save_from_response("j.id", "opId")]),
@@ -618,31 +590,25 @@ CASES.append(Case(
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        # Step 3: detach TG (no longer the listener default).
-        Step(name="detach-tg", method="POST",
-             path=f"{_LB_BASE}/{{{{nlbId}}}}:detachTargetGroup",
-             body={"targetGroupId": "{{tgId}}"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        # Step 4: drain the target (2-phase RemoveTargets, peer-independent).
+        # Step 3: drain the target (2-phase RemoveTargets, peer-independent).
         Step(name="remove-target", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.200"}}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        # Step 5: delete listener → auto VIP returned via FreeIP (vip_origin=auto).
+        # Step 4: delete listener → auto VIP returned via FreeIP (vip_origin=auto).
         Step(name="delete-listener", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="listener-gone", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
-        # Step 6: delete LB → now empty → succeeds.
+        # Step 5: delete LB → now empty → succeeds.
         Step(name="delete-lb-empty", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="lb-gone", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
-        # Step 7: delete TG (no attachment, drained) → succeeds.
+        # Step 6: delete TG (no listener reference, drained) → succeeds.
         Step(name="delete-tg", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
                  "pm.test('TG delete accepted (drained, detached)', () => "

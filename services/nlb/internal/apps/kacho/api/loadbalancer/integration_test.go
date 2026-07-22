@@ -168,9 +168,8 @@ func (s *stubAddressClient) ClearReference(context.Context, string) error {
 func internalAutoReq(projectID, name string) *lbv1.CreateNetworkLoadBalancerRequest {
 	return &lbv1.CreateNetworkLoadBalancerRequest{
 		ProjectId: projectID, RegionId: "ru-central1", Name: name,
-		Type:          lbv1.NetworkLoadBalancer_INTERNAL,
-		PlacementType: lbv1.NetworkLoadBalancer_REGIONAL,
-		V4Source:      &lbv1.VipSource{Source: &lbv1.VipSource_SubnetId{SubnetId: "sub-1"}},
+		Placement: lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL,
+		V4Source:  &lbv1.VipSource{Source: &lbv1.VipSource_SubnetId{SubnetId: "sub-1"}},
 	}
 }
 

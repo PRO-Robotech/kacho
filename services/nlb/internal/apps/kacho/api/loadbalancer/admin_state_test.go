@@ -78,7 +78,7 @@ func TestLoadBalancer_AdminState_Create(t *testing.T) {
 		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 		uc := newCreateUC(repo, opsRepo, createDeps{addr: &fakeAddressClient{}})
 		req := baseCreateReq()
-		req.Type = lbv1.NetworkLoadBalancer_EXTERNAL
+		req.Placement = lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL
 		req.V4Source = vipPublic()
 		op, err := uc.Execute(context.Background(), req)
 		require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestLoadBalancer_AdminState_Create(t *testing.T) {
 		repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 		uc := newCreateUC(repo, opsRepo, createDeps{addr: &fakeAddressClient{}})
 		req := baseCreateReq()
-		req.Type = lbv1.NetworkLoadBalancer_EXTERNAL
+		req.Placement = lbv1.NetworkLoadBalancer_EXTERNAL_REGIONAL
 		req.V4Source = vipPublic()
 		req.AdminState = lbv1.NetworkLoadBalancer_ADMIN_STATE_DISABLED
 		op, err := uc.Execute(context.Background(), req)

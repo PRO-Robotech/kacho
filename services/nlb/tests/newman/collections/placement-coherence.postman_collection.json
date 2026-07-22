@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "79efbdff-d193-4c15-80c3-c5c0492c9af7",
+    "_postman_id": "8efbadf5-52fe-49b0-a156-f8f4e688907a",
     "name": "kacho-nlb / newman / placement-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -261,7 +261,7 @@
           ]
         },
         {
-          "name": "create-cross-zone-cr641",
+          "name": "create-cross-zone-cr547",
           "request": {
             "method": "POST",
             "header": [
@@ -283,7 +283,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"name\": \"zc-xz-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubV4Id}}\"}, \"v6Source\": {\"subnetId\": \"{{zcSubV6Id}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"placement\": \"INTERNAL_ZONAL\", \"name\": \"zc-xz-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubV4Id}}\"}, \"v6Source\": {\"subnetId\": \"{{zcSubV6Id}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -737,7 +737,7 @@
           ]
         },
         {
-          "name": "create-same-zone-cr642",
+          "name": "create-same-zone-cr548",
           "request": {
             "method": "POST",
             "header": [
@@ -759,7 +759,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"name\": \"zc-sz-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubV4Id}}\"}, \"v6Source\": {\"subnetId\": \"{{zcSubV6Id}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"placement\": \"INTERNAL_ZONAL\", \"name\": \"zc-sz-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubV4Id}}\"}, \"v6Source\": {\"subnetId\": \"{{zcSubV6Id}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1243,7 +1243,7 @@
           ]
         },
         {
-          "name": "create-wrong-region-cr643",
+          "name": "create-wrong-region-cr549",
           "request": {
             "method": "POST",
             "header": [
@@ -1265,7 +1265,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"type\": \"INTERNAL\", \"placementType\": \"REGIONAL\", \"name\": \"zc-wr-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubR2Id}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"placement\": \"INTERNAL_REGIONAL\", \"name\": \"zc-wr-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubR2Id}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1518,7 +1518,7 @@
           ]
         },
         {
-          "name": "create-same-region-cr644",
+          "name": "create-same-region-cr550",
           "request": {
             "method": "POST",
             "header": [
@@ -1540,7 +1540,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"type\": \"INTERNAL\", \"placementType\": \"REGIONAL\", \"name\": \"zc-sr-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubR1Id}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"placement\": \"INTERNAL_REGIONAL\", \"name\": \"zc-sr-{{runId}}\", \"v4Source\": {\"subnetId\": \"{{zcSubR1Id}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"

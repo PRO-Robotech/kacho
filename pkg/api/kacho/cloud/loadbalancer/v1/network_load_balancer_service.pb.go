@@ -195,19 +195,24 @@ func (x *ListNetworkLoadBalancersResponse) GetNextPageToken() string {
 }
 
 type CreateNetworkLoadBalancerRequest struct {
-	state              protoimpl.MessageState   `protogen:"open.v1"`
-	ProjectId          string                   `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Name               string                   `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description        string                   `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Labels             map[string]string        `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	RegionId           string                   `protobuf:"bytes,5,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId   string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Labels      map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	RegionId    string                 `protobuf:"bytes,5,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// type — DERIVED output-only (NLB CONTRACT / NLB-1-08). Retained as a request
+	// field ONLY so that a client that sets it gets an EXPLICIT InvalidArgument
+	// reject rather than a silent grpc-gateway drop; the load balancer mode is set
+	// solely by `placement` below. Setting type (or placement_type) → InvalidArgument.
 	Type               NetworkLoadBalancer_Type `protobuf:"varint,6,opt,name=type,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Type" json:"type,omitempty"`
 	DeletionProtection bool                     `protobuf:"varint,9,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`
 	// session_affinity — UNSPECIFIED is accepted and persisted as the FIVE_TUPLE
 	// default; FIVE_TUPLE / CLIENT_IP_ONLY are persisted verbatim.
 	SessionAffinity NetworkLoadBalancer_SessionAffinity `protobuf:"varint,11,opt,name=session_affinity,json=sessionAffinity,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_SessionAffinity" json:"session_affinity,omitempty"`
-	// placement_type — обязателен и явен для INTERNAL (ZONAL|REGIONAL);
-	// запрещён для EXTERNAL.
+	// placement_type — DERIVED output-only (NLB CONTRACT / NLB-1-08), same as `type`:
+	// retained only for explicit-reject; setting it → InvalidArgument. The mode is set
+	// solely by `placement`.
 	PlacementType NetworkLoadBalancer_PlacementType `protobuf:"varint,17,opt,name=placement_type,json=placementType,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_PlacementType" json:"placement_type,omitempty"`
 	// disabled_announce_zones — только для REGIONAL: зоны, из которых anycast-VIP
 	// не анонсируется (drain). Каждая зона ∈ регион LB; набор не покрывает все зоны.
@@ -217,10 +222,10 @@ type CreateNetworkLoadBalancerRequest struct {
 	// public ⟹ EXTERNAL auto.
 	V4Source *VipSource `protobuf:"bytes,19,opt,name=v4_source,json=v4Source,proto3" json:"v4_source,omitempty"`
 	V6Source *VipSource `protobuf:"bytes,20,opt,name=v6_source,json=v6Source,proto3" json:"v6_source,omitempty"`
-	// placement — NLB-1b EXPAND (additive, optional): merged placement value.
-	// If set it must be consistent with type/placement_type (which stay the
-	// authoritative inputs in EXPAND); inconsistent → InvalidArgument. If unset,
-	// placement is derived from type/placement_type and persisted for read.
+	// placement — NLB CONTRACT (F2): the SOLE authoritative, REQUIRED mode input
+	// (EXTERNAL_REGIONAL | INTERNAL_REGIONAL | INTERNAL_ZONAL). Drives the derived
+	// type°/placementType° read projections. "external+zonal" is inexpressible by
+	// construction. Unset → InvalidArgument.
 	Placement NetworkLoadBalancer_Placement `protobuf:"varint,21,opt,name=placement,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Placement" json:"placement,omitempty"`
 	// admin_state — NLB-1b EXPAND (additive, optional). Desired administrative
 	// state; UNSPECIFIED is persisted as ENABLED.
@@ -1021,15 +1026,15 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	"\x8a\xc81\x06<=1000R\x06filter\"\xb2\x01\n" +
 	" ListNetworkLoadBalancersResponse\x12f\n" +
 	"\x16network_load_balancers\x18\x01 \x03(\v20.kacho.cloud.loadbalancer.v1.NetworkLoadBalancerR\x14networkLoadBalancers\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x88\v\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x82\v\n" +
 	" CreateNetworkLoadBalancerRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x125\n" +
 	"\x04name\x18\x02 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
 	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x9e\x01\n" +
 	"\x06labels\x18\x04 \x03(\v2I.kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12%\n" +
-	"\tregion_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12O\n" +
-	"\x04type\x18\x06 \x01(\x0e25.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.TypeB\x04\xe8\xc71\x01R\x04type\x12/\n" +
+	"\tregion_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12I\n" +
+	"\x04type\x18\x06 \x01(\x0e25.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.TypeR\x04type\x12/\n" +
 	"\x13deletion_protection\x18\t \x01(\bR\x12deletionProtection\x12k\n" +
 	"\x10session_affinity\x18\v \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x12e\n" +
 	"\x0eplacement_type\x18\x11 \x01(\x0e2>.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementTypeR\rplacementType\x12@\n" +

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "60ef3bf5-442f-402f-adb8-74074afd4b93",
+    "_postman_id": "b8ffd8ea-7a49-49c6-a09c-0bee13de0915",
     "name": "kacho-nlb / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -59,7 +59,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-vd-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-vd-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -193,7 +193,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-vok-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-vok-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -289,7 +289,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya352",
+          "name": "get-viewer-rya305",
           "request": {
             "method": "GET",
             "header": [
@@ -584,186 +584,6 @@
       ]
     },
     {
-      "name": "AZD-NLB-START-VIEWER-DENIED — POST /nlb/v1/networkLoadBalancers/{{garbageNlbId}}:start as viewer → PERMISSION_DENIED",
-      "description": "class:AZD | priority:P1",
-      "item": [
-        {
-          "name": "viewer",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{garbageNlbId}}:start",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{garbageNlbId}}:start"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectViewerA'",
-                  "const __t = pm.environment.get('jwtProjectViewerA') || pm.variables.get('jwtProjectViewerA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected (403)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-                  "if (pm.response.code === 403) pm.test('grpc 7', () =>   pm.expect(pm.response.json().code).to.eql(7));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AZD-NLB-STOP-VIEWER-DENIED — POST /nlb/v1/networkLoadBalancers/{{garbageNlbId}}:stop as viewer → PERMISSION_DENIED",
-      "description": "class:AZD | priority:P1",
-      "item": [
-        {
-          "name": "viewer",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{garbageNlbId}}:stop",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{garbageNlbId}}:stop"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectViewerA'",
-                  "const __t = pm.environment.get('jwtProjectViewerA') || pm.variables.get('jwtProjectViewerA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected (403)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-                  "if (pm.response.code === 403) pm.test('grpc 7', () =>   pm.expect(pm.response.json().code).to.eql(7));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AZD-NLB-DET-VIEWER-DENIED — POST /nlb/v1/networkLoadBalancers/{{garbageNlbId}}:detachTargetGroup as viewer → PERMISSION_DENIED",
-      "description": "class:AZD | priority:P1",
-      "item": [
-        {
-          "name": "viewer",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{garbageNlbId}}:detachTargetGroup",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{garbageNlbId}}:detachTargetGroup"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"targetGroupId\": \"{{garbageTgrId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectViewerA'",
-                  "const __t = pm.environment.get('jwtProjectViewerA') || pm.variables.get('jwtProjectViewerA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected (403)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-                  "if (pm.response.code === 403) pm.test('grpc 7', () =>   pm.expect(pm.response.json().code).to.eql(7));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "AZD-NLB-GTS-STRANGER-DENIED — GET /nlb/v1/networkLoadBalancers/{{garbageNlbId}}/targetStates as viewer → PERMISSION_DENIED",
       "description": "class:AZD | priority:P1",
       "item": [
@@ -969,7 +789,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-mvpc-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-mvpc-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1031,7 +851,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-mv-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-mv-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1290,72 +1110,6 @@
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AZD-NLB-ATT-NEEDS-VIEWER-ON-TG — NLB.AttachTargetGroup: editor on LB but no tuple on TG → PERMISSION_DENIED",
-      "description": "class:AZD | priority:P1",
-      "item": [
-        {
-          "name": "att-cross-tg",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{garbageNlbId}}:attachTargetGroup",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{garbageNlbId}}:attachTargetGroup"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"attachedTargetGroup\": {\"targetGroupId\": \"{{garbageTgrId}}\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
-                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected (403/404, never 200)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-                  "pm.test('grpc deny code (5 NotFound or 7 PermissionDenied)', () =>   pm.expect(pm.response.json().code).to.be.oneOf([5, 7]));"
                 ]
               }
             }
@@ -2675,7 +2429,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-cancel-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-cancel-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2951,7 +2705,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-fga-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-fga-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3180,7 +2934,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-anon-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-anon-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3214,7 +2968,7 @@
       ]
     },
     {
-      "name": "AZD-PERMISSION-CATALOG-COMPLETE — Permission catalog contains all 30 loadbalancer.* permissions (Verifies REQ-AZD-CATALOG)",
+      "name": "AZD-PERMISSION-CATALOG-COMPLETE — Permission catalog contains all 26 loadbalancer.* permissions (Verifies REQ-AZD-CATALOG)",
       "description": "class:AZD | priority:P0",
       "item": [
         {
@@ -3240,7 +2994,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-cat-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-cat-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3277,11 +3031,7 @@
                   "  'loadbalancer.networkLoadBalancers.create',",
                   "  'loadbalancer.networkLoadBalancers.update',",
                   "  'loadbalancer.networkLoadBalancers.delete',",
-                  "  'loadbalancer.networkLoadBalancers.start',",
-                  "  'loadbalancer.networkLoadBalancers.stop',",
                   "  'loadbalancer.networkLoadBalancers.move',",
-                  "  'loadbalancer.networkLoadBalancers.attachTargetGroup',",
-                  "  'loadbalancer.networkLoadBalancers.detachTargetGroup',",
                   "  'loadbalancer.networkLoadBalancers.getTargetStates',",
                   "  'loadbalancer.networkLoadBalancers.listOperations',",
                   "  'loadbalancer.listeners.get',",
@@ -3303,7 +3053,7 @@
                   "  'loadbalancer.operations.list',",
                   "  'loadbalancer.operations.cancel',",
                   "];",
-                  "pm.test('30 permissions enumerated', () => pm.expect(expected.length).to.eql(30));",
+                  "pm.test('26 permissions enumerated', () => pm.expect(expected.length).to.eql(26));",
                   "pm.test('request accepted (catalog covered by editor binding)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -3426,339 +3176,6 @@
         },
         {
           "name": "poll-op-12",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AZD-CUSTOM-ROLE-OPERATOR-START — Custom role with only start/stop perms resolves to editor → can Start (Verifies REQ-AZD-CUSTOM-ROLE)",
-      "description": "class:AZD | priority:P1",
-      "item": [
-        {
-          "name": "setup-cr-as-editor",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-op-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
-                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-13",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "start-as-operator",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}:start",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}:start"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtCustomRoleOperator'",
-                  "const __t = pm.environment.get('jwtCustomRoleOperator') || pm.variables.get('jwtCustomRoleOperator') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('OK or PD (env may not yet have operator role)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-14",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
-                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-15",
           "request": {
             "method": "GET",
             "header": [
@@ -4025,7 +3442,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-brk-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-brk-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4138,7 +3555,7 @@
           ]
         },
         {
-          "name": "poll-op-16",
+          "name": "poll-op-13",
           "request": {
             "method": "GET",
             "header": [
@@ -4188,7 +3605,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr353",
+          "name": "setup-cr-cr306",
           "request": {
             "method": "POST",
             "header": [
@@ -4210,7 +3627,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-lcd-{{runId}}\", \"type\": \"INTERNAL\", \"placementType\": \"ZONAL\", \"v4Source\": {\"subnetId\": \"{{azdSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-lcd-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{azdSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4274,7 +3691,7 @@
           ]
         },
         {
-          "name": "poll-op-17",
+          "name": "poll-op-14",
           "request": {
             "method": "GET",
             "header": [
@@ -4324,7 +3741,7 @@
           ]
         },
         {
-          "name": "del-rya354",
+          "name": "del-rya307",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4394,7 +3811,7 @@
           ]
         },
         {
-          "name": "poll-op-18",
+          "name": "poll-op-15",
           "request": {
             "method": "GET",
             "header": [
@@ -4576,7 +3993,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-cinv-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-cinv-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4644,7 +4061,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-own-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-own-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4690,7 +4107,7 @@
           ]
         },
         {
-          "name": "poll-op-19",
+          "name": "poll-op-16",
           "request": {
             "method": "GET",
             "header": [
@@ -4740,7 +4157,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya355",
+          "name": "del-by-creator-rya308",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4810,7 +4227,7 @@
           ]
         },
         {
-          "name": "poll-op-20",
+          "name": "poll-op-17",
           "request": {
             "method": "GET",
             "header": [
@@ -4888,7 +4305,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-sa-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-sa-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4934,7 +4351,7 @@
           ]
         },
         {
-          "name": "poll-op-21",
+          "name": "poll-op-18",
           "request": {
             "method": "GET",
             "header": [
@@ -5038,7 +4455,7 @@
           ]
         },
         {
-          "name": "poll-op-22",
+          "name": "poll-op-19",
           "request": {
             "method": "GET",
             "header": [
@@ -5116,7 +4533,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-grp-{{runId}}\", \"type\": \"EXTERNAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-grp-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5162,7 +4579,7 @@
           ]
         },
         {
-          "name": "poll-op-23",
+          "name": "poll-op-20",
           "request": {
             "method": "GET",
             "header": [
@@ -5266,7 +4683,7 @@
           ]
         },
         {
-          "name": "poll-op-24",
+          "name": "poll-op-21",
           "request": {
             "method": "GET",
             "header": [

@@ -88,11 +88,10 @@ message NetworkLoadBalancer {
     ADMIN_STATE_DISABLED = 2;
   }
 
-  // Placement — NLB-1b EXPAND (additive): merged placement discriminator that
-  // fuses type + placement_type into one value. "external+zonal" is
-  // inexpressible by construction. In EXPAND it is derived-consistent with the
-  // legacy type/placement_type (which remain the authoritative inputs); the
-  // authority switch + write-reject of type/placement_type land in NLB-1c.
+  // Placement — the merged placement discriminator that fuses type + placement_type
+  // into one value. "external+zonal" is inexpressible by construction. NLB CONTRACT:
+  // placement is the SOLE authoritative mode input on Create (required); type° /
+  // placementType° are derived output-only projections (write-reject on input).
   enum Placement {
     PLACEMENT_UNSPECIFIED = 0;
     EXTERNAL_REGIONAL = 1;
@@ -125,7 +124,8 @@ message NetworkLoadBalancer {
   string v4_address_id = 24;
   string v6_address_id = 25;
 
-  // placement_type — только для INTERNAL (immutable). Для EXTERNAL пуст.
+  // placement_type — DERIVED output-only projection of `placement` (INTERNAL: ZONAL|
+  // REGIONAL; EXTERNAL: empty). Not a Create input (write-reject); read-only mirror.
   PlacementType placement_type = 27;
 
   // disabled_announce_zones — только для REGIONAL (mutable): deny-list зон, из
@@ -133,8 +133,8 @@ message NetworkLoadBalancer {
   // Реальный withdraw — data plane; здесь только intent.
   repeated string disabled_announce_zones = 28;
 
-  // placement — NLB-1b EXPAND (additive, output + Create input). Merged
-  // placement discriminator; derived-consistent with type/placement_type.
+  // placement — the SOLE authoritative, required Create mode input (NLB CONTRACT);
+  // also echoed on read. type°/placement_type° are its derived output-only mirrors.
   Placement placement = 40;
 
   // admin_state — NLB-1b EXPAND (additive, output + Create/Update input).

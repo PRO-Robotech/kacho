@@ -41,9 +41,8 @@ func TestHandler_DispatchesAll(t *testing.T) {
 	// Create (INTERNAL REGIONAL subnet-auto)
 	op, err := h.Create(ctx, &lbv1.CreateNetworkLoadBalancerRequest{
 		ProjectId: "prj-a", RegionId: "ru-central1", Name: "edge-2",
-		Type:          lbv1.NetworkLoadBalancer_INTERNAL,
-		PlacementType: lbv1.NetworkLoadBalancer_REGIONAL,
-		V4Source:      vipSubnet(lbTestSubnetRegional),
+		Placement: lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL,
+		V4Source:  vipSubnet(lbTestSubnetRegional),
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, op.GetId())

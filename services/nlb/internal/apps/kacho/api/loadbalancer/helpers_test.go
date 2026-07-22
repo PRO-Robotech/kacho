@@ -12,34 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
-	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
-
-func TestLBTypeFromPb_All(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		in     lbv1.NetworkLoadBalancer_Type
-		want   domain.LBType
-		hasErr bool
-	}{
-		{lbv1.NetworkLoadBalancer_EXTERNAL, domain.LBTypeExternal, false},
-		{lbv1.NetworkLoadBalancer_INTERNAL, domain.LBTypeInternal, false},
-		{lbv1.NetworkLoadBalancer_TYPE_UNSPECIFIED, "", true},
-	} {
-		got, err := lbTypeFromPb(tc.in)
-		if tc.hasErr {
-			require.Error(t, err)
-		} else {
-			require.NoError(t, err)
-			require.Equal(t, tc.want, got)
-		}
-	}
-}
 
 func TestLBOutboxPayload_Nil(t *testing.T) {
 	t.Parallel()

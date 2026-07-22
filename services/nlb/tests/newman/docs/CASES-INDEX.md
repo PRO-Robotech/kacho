@@ -24,23 +24,19 @@ existing pattern, no separate catalogue entry needed").
 - `*-UPD-CRUD-MULTI-MASK` — CRUD,STATE/P2 — Update multi-field mask
 - `*-DEL-CRUD-OK` — CRUD/P1 — Delete a clean resource (Verifies REQ-NLB-DEL-01)
 - `*-LOPS-CRUD-OK` — CRUD,LSG/P2 — ListOperations returns ordered history
-- `*-START-CRUD-OK` — CRUD,STATE/P1 — Start from INACTIVE (Verifies REQ-NLB-LIFE-01)
-- `*-STOP-CRUD-OK` — CRUD,STATE/P1 — Stop from ACTIVE/INACTIVE (Verifies REQ-NLB-LIFE-02)
 - `*-MV-CRUD-OK` — CRUD,STATE/P1 — Move cross-project (Verifies REQ-NLB-MV-01)
-- `*-ATT-CRUD-OK` — CRUD,IDEM/P1 — AttachTargetGroup happy (Verifies REQ-NLB-ATT-01)
-- `*-DET-CRUD-OK` — CRUD/P1 — DetachTargetGroup happy (Verifies REQ-NLB-DET-01)
-- `*-GTS-CRUD-EMPTY` — CRUD/P1 — GetTargetStates on LB with no attached TG → `[]` (Verifies REQ-NLB-GTS-01)
-- `*-GTS-STATE-LB-STOPPED` — STATE/P2 — GetTargetStates returns INACTIVE for all when LB STOPPED
+- `*-GTS-CRUD-EMPTY` — CRUD/P1 — GetTargetStates on a TG with no targets → `[]` (Verifies REQ-NLB-GTS-01)
+- `*-GTS-STATE-LB-DISABLED` — STATE/P2 — GetTargetStates returns INACTIVE for all when LB adminState=DISABLED
 
 ### Validation (VAL)
 - `*-CR-VAL-NAME-REGEX` — VAL/P1 — invalid name regex → 400 INVALID_ARGUMENT (Verifies REQ-NLB-CR-VAL-NAME)
 - `*-CR-VAL-NAME-UNDERSCORE` — VAL/P1 — `_` not allowed in name
 - `*-CR-VAL-NAME-UPPERCASE` — VAL/P1 — uppercase rejected (per LbName domain newtype)
 - `*-CR-VAL-NAME-EMPTY` — VAL/P0 — empty name → required-field violation
+- `*-CR-VAL-LEGACY-MODE-INPUT` — VAL/P1 — legacy type/placementType input on Create → 400 INVALID_ARGUMENT (Verifies NLB-1-08: mode set solely by placement)
 - `*-CR-VAL-NAME-NULL` — VAL/P2 — null name → validation
 - `*-CR-VAL-MISSING-REGION` — VAL/P0 — region_id required
 - `*-CR-VAL-MISSING-PROJECT` — VAL/P0 — project_id required
-- `*-CR-VAL-INVALID-TYPE` — VAL/P1 — unknown type enum
 - `*-CR-VAL-INVALID-AFFINITY` — VAL/P2 — unknown session_affinity enum
 - `*-CR-VAL-LABELS-OVER-64` — VAL,BVA/P1 — >64 label pairs → 23514 → InvalidArgument (Verifies REQ-DB-LABEL-CHECK)
 - `*-CR-VAL-LABELS-UPPERCASE-KEY` — VAL/P1 — uppercase label key rejected
@@ -83,22 +79,12 @@ existing pattern, no separate catalogue entry needed").
 - `*-UPD-STATE-IMMUTABLE-PROJECT` — STATE,VAL/P0 — project_id immutable (Move only)
 - `*-UPD-STATE-MASK-UNKNOWN` — STATE,VAL/P1 — unknown field in mask → InvalidArgument
 - `*-UPD-STATE-MASK-EMPTY` — STATE,VAL/P1 — empty mask → InvalidArgument
-- `*-START-STATE-ALREADY-ACTIVE` — STATE,NEG/P1 — Start on ACTIVE → FailedPrecondition (Verifies REQ-NLB-START-NEG)
-- `*-START-STATE-DELETING` — STATE,NEG/P1 — Start on DELETING → FailedPrecondition
-- `*-STOP-STATE-ALREADY-STOPPED` — STATE,NEG/P1 — Stop on STOPPED → FailedPrecondition
-- `*-STOP-STATE-DELETING` — STATE,NEG/P1 — Stop on DELETING → FailedPrecondition
-- `*-ATT-STATE-REGION-MISMATCH` — STATE,NEG/P0 — TG in different region → FailedPrecondition (Verifies REQ-NLB-SAME-REGION)
-- `*-ATT-STATE-TG-DELETING` — STATE,NEG/P1 — TG in DELETING → FailedPrecondition
-- `*-ATT-NEG-TG-UNKNOWN` — NEG/P1 — unknown TG id → NotFound
-- `*-ATT-IDEM-REPEAT-OK` — IDEM/P1 — repeat Attach (idempotent, ON CONFLICT DO NOTHING) → OK (no duplicate row)
-- `*-DET-NEG-NOT-ATTACHED` — NEG,STATE/P1 — Detach when no attach exists → FailedPrecondition
-- `*-MV-NEG-ATTACHED-TG` — NEG,STATE/P0 — Move with attached TG → FailedPrecondition (Verifies REQ-NLB-MV-NEG)
+- `*-MV-NEG-ATTACHED-TG` — NEG,STATE/P0 — Move LB with a listener-wired TG → FailedPrecondition (Verifies REQ-NLB-MV-NEG)
 - `*-MV-VAL-MISSING-DEST` — VAL/P1 — destinationProjectId required
 - `*-MV-NEG-NF-UNKNOWN` — NEG/P1 — Move unknown id → 404
 - `*-MV-IDM-SAME-PROJECT` — IDEM,NEG/P2 — Move to current project → InvalidArgument verbatim
 - `*-DEL-STATE-PROTECTION` — STATE,NEG/P0 — deletion_protection=true → FailedPrecondition (Verifies REQ-NLB-DEL-PROT)
 - `*-DEL-STATE-HAS-LISTENER` — STATE,NEG/P0 — Delete with listeners → FailedPrecondition (Verifies REQ-NLB-DEL-LISTENERS)
-- `*-DEL-STATE-HAS-ATTACHED` — STATE,NEG/P0 — Delete with attached TG → FailedPrecondition
 
 ### HTTP method semantics
 - `*-METHOD-PUT-NOT-ALLOWED` — VAL,NEG/P3 — PUT on collection → 403/404/405/501
@@ -122,8 +108,6 @@ strict assertions on the fixture materialising (see load-balancer.py docstring).
 Source × type × placement matrix — sync fail-fast negatives (decision-table):
 - `*-CR-VAL-SUBNET-ON-EXTERNAL` — VAL,NEG/P1 — subnet_id source on EXTERNAL → InvalidArgument (8.1-08)
 - `*-CR-VAL-PUBLIC-ON-INTERNAL` — VAL,NEG/P1 — public source on INTERNAL → InvalidArgument (8.1-09)
-- `*-CR-VAL-PLACEMENT-ON-EXTERNAL` — VAL,NEG/P1 — placementType on EXTERNAL → InvalidArgument (8.1-12)
-- `*-CR-VAL-PLACEMENT-MISSING-INTERNAL` — VAL,NEG/P1 — INTERNAL without placementType → InvalidArgument (8.1-12)
 - `*-CR-VAL-DRAIN-ON-ZONAL` — VAL,NEG/P1 — disabledAnnounceZones on ZONAL → InvalidArgument (8.1-13)
 - `*-CR-VAL-DRAIN-COVERS-ALL-ZONES` — VAL,NEG/P1 — drain covering every region zone → InvalidArgument (8.1-14)
 - `*-CR-VAL-DRAIN-ZONE-WRONG-REGION` — VAL,NEG/P2 — drain zone outside the region → InvalidArgument (8.1-15)
@@ -233,10 +217,10 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-UPD-STATE-IMMUTABLE-PROJECT` — STATE,VAL/P0 — project_id immutable
 - `*-UPD-STATE-IMMUTABLE-REGION` — STATE,VAL/P0 — region_id immutable
 - `*-UPD-VAL-TARGETS-VIA-MASK` — VAL/P0 — update_mask=["targets"] rejected → use AddTargets/RemoveTargets
-- `*-DEL-NEG-HAS-ATTACHED-LB` — NEG,STATE/P0 — Delete with attached LB → FailedPrecondition (Verifies REQ-TGR-DEL-ATTACHED)
+- `*-DEL-NEG-HAS-ATTACHED-LB` — NEG,STATE/P0 — Delete TG referenced by a listener → FailedPrecondition (Verifies REQ-TGR-DEL-ATTACHED)
 - `*-DEL-NEG-HAS-TARGETS` — NEG,STATE/P0 — Delete with targets → FailedPrecondition (Verifies REQ-TGR-DEL-TARGETS)
 - `*-DEL-CONF-FK-RACE` — CONF/P1 — concurrent AddTargets during Delete → FK 23503 → FailedPrecondition
-- `*-MV-NEG-ATTACHED-LB` — NEG,STATE/P0 — Move with attached LB → FailedPrecondition
+- `*-MV-NEG-ATTACHED-LB` — NEG,STATE/P0 — Move TG referenced by a listener → FailedPrecondition
 - `*-MV-VAL-MISSING-DEST` — VAL/P1 — destinationProjectId required
 - `*-MV-NEG-NF-UNKNOWN` — NEG/P1 — Move unknown id → 404
 - `*-GET-NEG-NF-UNKNOWN` — NEG/P0 — Get unknown id → 404
@@ -310,11 +294,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-NLB-GET-VIEWER-OK` — AZD/P1 — viewer OK on Get
 - `*-NLB-UPD-VIEWER-DENIED` — AZD/P1 — viewer cannot Update
 - `*-NLB-DEL-VIEWER-DENIED` — AZD/P1 — viewer cannot Delete
-- `*-NLB-START-VIEWER-DENIED` — AZD/P1 — viewer cannot Start
-- `*-NLB-STOP-VIEWER-DENIED` — AZD/P1 — viewer cannot Stop
 - `*-NLB-MV-SCOPE-DST-DENIED` — AZD/P0 — editor on src + viewer on dst → PermissionDenied (Verifies REQ-AZD-NLB-MV-SCOPE)
-- `*-NLB-ATT-NEEDS-VIEWER-ON-TG` — AZD/P1 — editor on LB but no tuple on TG → PermissionDenied
-- `*-NLB-DET-VIEWER-DENIED` — AZD/P1 — viewer cannot Detach
 - `*-NLB-GTS-STRANGER-DENIED` — AZD/P1 — stranger cannot read target states
 - `*-NLB-LST-STRANGER-DENIED` — AZD/P1 — stranger cannot List
 - `*-NLB-LOPS-STRANGER-DENIED` — AZD/P2 — stranger cannot ListOperations
@@ -342,8 +322,7 @@ Immutability + drain toggle + lean projection + delete-release:
 ### Special / cross-cutting AZD
 - `*-FGA-UNAVAILABLE-FAIL-CLOSED` — AZD/P0 — FGA service unavailable → PermissionDenied (fail-closed) (Verifies REQ-AZD-FAIL-CLOSED)
 - `*-NLB-CR-ANONYMOUS-UNAUTH` — AZD/P0 — no Authorization header → UNAUTHENTICATED 401 (Verifies REQ-AZD-ANON)
-- `*-PERMISSION-CATALOG-COMPLETE` — AZD/P0 — full enumeration of 30 loadbalancer.* permissions present (Verifies REQ-AZD-CATALOG)
-- `*-CUSTOM-ROLE-OPERATOR-START` — AZD/P1 — custom role granting only start/stop resolves to editor relation (Verifies REQ-AZD-CUSTOM-ROLE)
+- `*-PERMISSION-CATALOG-COMPLETE` — AZD/P0 — full enumeration of 26 loadbalancer.* permissions present (Verifies REQ-AZD-CATALOG)
 - `*-CUSTOM-ROLE-TARGET-MANAGER` — AZD/P1 — targetManager role can AddTargets but not Update TG metadata
 - `*-CUSTOM-ROLE-UNKNOWN-PERMISSION` — AZD/P1 — role with unknown permission rejected at create
 - `*-BREAKGLASS-DEV-BYPASS` — AZD/P2 — KACHO_NLB_AUTHZ__BREAKGLASS=true bypasses (dev-only)
@@ -386,11 +365,6 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-LST-BVA-PAGESIZE-1001` — BVA,VAL,LSG/P2 — pageSize=1001 (off-by-one over max) → InvalidArgument
 - `*-LST-BVA-PAGESIZE-NEGATIVE` — BVA,VAL,LSG/P2 — pageSize=-1 → InvalidArgument
 - `*-UPD-STATE-NO-CHANGE` — STATE,IDEM/P2 — Update with same value → no-op success
-- `*-START-NEG-NF-UNKNOWN` — NEG/P1 — Start on unknown id → 404
-- `*-STOP-NEG-NF-UNKNOWN` — NEG/P1 — Stop on unknown id → 404
-- `*-ATT-NEG-LB-UNKNOWN` — NEG/P1 — Attach to unknown LB id → 404
-- `*-DET-NEG-LB-UNKNOWN` — NEG/P1 — Detach from unknown LB id → 404
-- `*-DET-NEG-TG-UNKNOWN` — NEG/P1 — Detach unknown TG id → 404
 - `*-GTS-NEG-NF-UNKNOWN` — NEG/P1 — GetTargetStates of unknown LB (with well-formed targetGroupId query param) → 404 NotFound (target_group_id is required and validated first)
 - `*-LOPS-NEG-NF-UNKNOWN` — NEG/P1 — ListOperations of unknown id → 200 + empty operations (list-by-parent, no existence check)
 - `*-CR-BVA-LABELS-MAX-64` — BVA/P2 — exactly 64 labels (upper bound) → OK
