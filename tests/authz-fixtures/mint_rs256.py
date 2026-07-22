@@ -21,18 +21,26 @@ through the SAME machinery the platform uses, no dev-bypass, no direct Hydra-adm
 Hydra remains the issuer/signer throughout; we only broker exchanges. Requires
 PyJWT + cryptography (ES256 signing). Usable as a library (import) or a CLI.
 
-STATUS (Phase C, #59):
-  - `mint_bootstrap` (bootstrap admin) — PROVEN end-to-end: MintBootstrapToken →
-    RS256 → api-gateway GET /iam/v1/accounts = 200 (IBT-04). This is the working
-    primitive the deploy-config fixes on redesign/integration unblocked.
-  - `user_rs256` / `sa_rs256` (per-subject) — the OAuth flow (Issue → sign
-    client_assertion → client_credentials exchange) is correct and reaches Hydra,
-    but is BLOCKED at iam: UserTokenService.Issue / SAKeyService.Issue force
-    created_by = the CALLER principal, and the bootstrap caller is a ServiceAccount,
-    whose id is not a users(id) row → created_by FK (23503) → the Issue Operation
-    ends code 9. There is no non-interactive admin path to mint a token FOR another
-    principal. Tracked as a product gap in PRO-Robotech/kacho#60; the per-subject
-    functions here are ready to drive the seed the moment that lands.
+STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
+  - `mint_bootstrap` (bootstrap admin) — PROVEN: MintBootstrapToken → RS256 →
+    api-gateway GET /iam/v1/accounts = 200 (IBT-04).
+  - `sa_rs256` (per-subject SA) — PROVEN end-to-end against the production-strict
+    stand: SAKeyService.Issue (WITH `audience:[https://api.kacho.cloud]` — the
+    SA-key resolveAudience honours caller audiences, unlike user-tokens) → sign
+    client_assertion → client_credentials exchange → RS256 SA token whose
+    token-hook `kacho_principal_type=service_account` enrichment makes it
+    acr-EXEMPT (stepup_gate O-1) and reachable on acr=1 resource RPCs. The
+    created_by FK blocker (#60) is fixed for SA-keys: an SA-principal caller
+    records created_by = the target SA's account owner (see sa_keys handler/
+    usecase). The whole vpc `network` newman collection runs GREEN with an
+    RS256-SA seed under production-strict (see prodseed_network.py).
+  - `user_rs256` (per-subject USER) — DOES NOT authenticate resource RPCs in
+    production-strict: a user client_credentials token carries no `acr` (fails the
+    acr>=1 floor — user principals are NOT acr-exempt) AND UserTokenService.Issue
+    hardcodes the kacho-internal audience (resolveAudience ignores caller audience)
+    so its `aud` never matches the gateway ExpectedAudience. User tokens with `acr`
+    require interactive OIDC login (Kratos→Hydra) — the "production-user-gated"
+    class (#59 follow-up). Machine e2e is SA by nature; use `sa_rs256`.
 """
 from __future__ import annotations
 
