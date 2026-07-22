@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6aab0d51-c44a-46e2-ae39-eacb779f9094",
+    "_postman_id": "1acfad9a-9b9d-4a60-ba6f-9c44dd6b4b8f",
     "name": "kacho-geo / newman / region",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -135,7 +135,7 @@
                   "pm.test('regions non-empty (geography seeded)', () => pm.expect((j.regions||[]).length).to.be.greaterThan(0));",
                   "try {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.regions[0].id);",
+                  "  const v = ((j.regions.find(r => !String(r.id).startsWith('qa')) || j.regions[0]).id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('pickRegionId', String(v));",
                   "} catch (e) {}"
                 ]
@@ -223,7 +223,7 @@
                   "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
                   "try {",
                   "  const j = pm.response.json();",
-                  "  const v = (pm.response.json().regions[0].id);",
+                  "  const v = ((pm.response.json().regions.find(r => !String(r.id).startsWith('qa')) || pm.response.json().regions[0]).id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('pickRegionId', String(v));",
                   "} catch (e) {}"
                 ]

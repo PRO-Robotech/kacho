@@ -1,0 +1,8 @@
+# Collections that mutate the GLOBAL geo catalog (Region/Zone are cluster-singletons,
+# not project-scoped → cannot be {{runId}}-isolated). The public read collections
+# region.py / zone.py "List all → pick [0] → Get it"; if an internal-* collection
+# creates/deletes catalog rows concurrently, the picked row can vanish mid-flight
+# (Get → 404 → undefined-field asserts). Defer these to run strictly after the
+# parallel pool, one at a time — same pattern as vpc EXTERNAL AddressPool (#59).
+internal-region
+internal-zone

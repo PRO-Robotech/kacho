@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "60df3e8d-7417-40ca-a158-74cab7379e8e",
+    "_postman_id": "f8afed63-93cb-4014-8683-165b660d2f40",
     "name": "kacho-geo / newman / zone",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -137,7 +137,7 @@
                   "pm.test('zones non-empty (geography seeded)', () => pm.expect((j.zones||[]).length).to.be.greaterThan(0));",
                   "try {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.zones[0].id);",
+                  "  const v = ((j.zones.find(z => !String(z.id).startsWith('qa')) || j.zones[0]).id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('pickZoneId', String(v));",
                   "} catch (e) {}"
                 ]
@@ -228,7 +228,7 @@
                   "pm.test('zones non-empty', () => pm.expect((pm.response.json().zones||[]).length).to.be.greaterThan(0));",
                   "try {",
                   "  const j = pm.response.json();",
-                  "  const v = (pm.response.json().zones[0].id);",
+                  "  const v = ((pm.response.json().zones.find(z => !String(z.id).startsWith('qa')) || pm.response.json().zones[0]).id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('pickZoneId', String(v));",
                   "} catch (e) {}"
                 ]
