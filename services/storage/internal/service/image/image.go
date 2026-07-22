@@ -202,6 +202,15 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 	if err := i.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
 	}
+	// Sync BVA at the request edge (parity with Volume, #61): reject over-limit
+	// description (>256) / labels (>64) BEFORE any peer/DB call, so an over-limit
+	// input returns INVALID_ARGUMENT instead of a 200 Operation.
+	if err := validate.Description("description", i.Description); err != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+	}
+	if err := validate.Labels("labels", i.Labels); err != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+	}
 	if err := u.geo.EnsureRegionExists(ctx, i.RegionID); err != nil {
 		return nil, u.errStatus(err)
 	}
