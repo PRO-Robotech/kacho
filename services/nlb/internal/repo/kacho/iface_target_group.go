@@ -27,10 +27,6 @@ type TargetGroupReaderIface interface {
 	// delaySeconds — TG.deregistration_delay_seconds.
 	ListDrainingExpired(ctx context.Context, tgID string, delaySeconds int32) ([]*TargetRecord, error)
 
-	// HasAttachedLB — `EXISTS` для precheck в TG.Delete (нельзя удалить TG,
-	// который привязан к LB).
-	HasAttachedLB(ctx context.Context, tgID string) (bool, error)
-
 	// ReferencingListenerIDs — id листенеров, которые ссылаются на этот TG
 	// (`listeners.default_target_group_id = tgID`, FK RESTRICT из 0018). Для
 	// friendly teardown-precheck в TG.Delete (NLB-1-41): непусто → блокирующий
@@ -72,7 +68,8 @@ type TargetGroupWriterIface interface {
 	// Возвращает количество удалённых строк.
 	DeleteTargetsDrained(ctx context.Context, tgID string, delaySeconds int32) (int, error)
 
-	// Delete — DELETE target_groups WHERE id=$1. FK-violation от child
-	// targets/attached_target_groups → ErrFailedPrecondition.
+	// Delete — DELETE target_groups WHERE id=$1. FK-violation от child targets
+	// или от ссылающегося listener (default_target_group_id FK RESTRICT) →
+	// ErrFailedPrecondition.
 	Delete(ctx context.Context, id string) error
 }

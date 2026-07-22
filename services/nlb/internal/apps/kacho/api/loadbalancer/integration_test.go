@@ -243,163 +243,10 @@ func TestIntegration_DeleteLoadBalancer_BlocksOnListener(t *testing.T) {
 	require.Contains(t, status.Convert(err).Message(), "listener")
 }
 
-func TestIntegration_AttachTargetGroup_RegionMismatch(t *testing.T) {
-	t.Parallel()
-	pool, repo := setupDB(t)
-	opsRepo := newOpsRepo(t, pool)
-	h := makeHandler(t, repo, opsRepo)
-
-	w, err := repo.Writer(context.Background())
-	require.NoError(t, err)
-	lb := &domain.LoadBalancer{
-		ID:        domain.ResourceID(ids.NewID(ids.PrefixLoadBalancer)),
-		ProjectID: "prj-z", RegionID: "ru-central1",
-		Name: "edge", Type: domain.LBTypeExternal, Status: domain.LBStatusInactive,
-		SessionAffinity: domain.SessionAffinity5Tuple,
-	}
-	_, err = w.LoadBalancers().Insert(context.Background(), lb)
-	require.NoError(t, err)
-	tg := &domain.TargetGroup{
-		ID:        domain.ResourceID(ids.NewID(ids.PrefixTargetGroup)),
-		ProjectID: "prj-z", RegionID: "ru-central2", Name: "tg-1",
-		DeregistrationDelay: domain.LbDuration(300 * time.Second),
-		Status:              domain.TargetGroupStatusActive,
-		Port:                8080,
-		HealthCheck: domain.HealthCheck{
-			Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
-			UnhealthyThreshold: domain.DefaultUnhealthyThreshold, HealthyThreshold: domain.DefaultHealthyThreshold,
-			TCP: &domain.HealthCheckTCP{Port: 80},
-		},
-	}
-	_, err = w.TargetGroups().Insert(context.Background(), tg)
-	require.NoError(t, err)
-	require.NoError(t, w.Commit())
-
-	_, err = h.AttachTargetGroup(context.Background(), &lbv1.AttachNetworkLoadBalancerTargetGroupRequest{
-		NetworkLoadBalancerId: string(lb.ID),
-		AttachedTargetGroup:   &lbv1.AttachedTargetGroup{TargetGroupId: string(tg.ID)},
-	})
-	require.Error(t, err)
-	require.Equal(t, codes.FailedPrecondition, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "region mismatch")
-}
-
-func TestIntegration_AttachTargetGroup_HappyPath_AndStatusRecompute(t *testing.T) {
-	t.Parallel()
-	pool, repo := setupDB(t)
-	opsRepo := newOpsRepo(t, pool)
-	h := makeHandler(t, repo, opsRepo)
-
-	w, err := repo.Writer(context.Background())
-	require.NoError(t, err)
-	lbID := ids.NewID(ids.PrefixLoadBalancer)
-	lb := &domain.LoadBalancer{
-		ID: domain.ResourceID(lbID), ProjectID: "prj-acme",
-		RegionID: "ru-central1", Name: "edge",
-		Type: domain.LBTypeExternal, Status: domain.LBStatusInactive,
-		SessionAffinity: domain.SessionAffinity5Tuple,
-	}
-	_, err = w.LoadBalancers().Insert(context.Background(), lb)
-	require.NoError(t, err)
-	tgID := ids.NewID(ids.PrefixTargetGroup)
-	tg := &domain.TargetGroup{
-		ID: domain.ResourceID(tgID), ProjectID: "prj-acme", RegionID: "ru-central1",
-		Name: "tg-1", DeregistrationDelay: domain.LbDuration(300 * time.Second),
-		Status: domain.TargetGroupStatusActive, Port: 8080,
-		HealthCheck: domain.HealthCheck{
-			Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
-			UnhealthyThreshold: domain.DefaultUnhealthyThreshold, HealthyThreshold: domain.DefaultHealthyThreshold,
-			TCP: &domain.HealthCheckTCP{Port: 80},
-		},
-	}
-	_, err = w.TargetGroups().Insert(context.Background(), tg)
-	require.NoError(t, err)
-	require.NoError(t, w.Commit())
-	// Insert listener (raw SQL) after LB committed so trigger lb_status_recompute fires.
-	_, err = pool.Exec(context.Background(), `
-		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
-			description, labels, protocol, port, target_port, ip_version,
-			address_id, allocated_address, subnet_id, proxy_protocol_v2, default_target_group_id, status)
-		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, 'IPV4',
-		        '', '203.0.113.5', '', false, '', 'ACTIVE')`,
-		ids.NewID(ids.PrefixListener), "prj-acme", lbID, "ru-central1",
-	)
-	require.NoError(t, err)
-
-	op, err := h.AttachTargetGroup(context.Background(), &lbv1.AttachNetworkLoadBalancerTargetGroupRequest{
-		NetworkLoadBalancerId: lbID,
-		AttachedTargetGroup:   &lbv1.AttachedTargetGroup{TargetGroupId: tgID},
-	})
-	require.NoError(t, err)
-	final := pollOpDone(t, opsRepo, op.GetId())
-	require.Nilf(t, final.Error, "op err: %v", final.Error)
-
-	// Verify pivot row inserted.
-	rd, err := repo.Reader(context.Background())
-	require.NoError(t, err)
-	defer func() { _ = rd.Close() }()
-	rec, err := rd.AttachedTargetGroups().Get(context.Background(), lbID, tgID)
-	require.NoError(t, err)
-	require.Equal(t, lbID, rec.LoadBalancerID)
-
-	// Trigger lb_status_recompute should have switched status to ACTIVE.
-	lbRec, err := rd.LoadBalancers().Get(context.Background(), lbID)
-	require.NoError(t, err)
-	require.Equal(t, domain.LBStatusActive, lbRec.Status, "trigger should have moved INACTIVE → ACTIVE")
-}
-
-func TestIntegration_AttachTargetGroup_Concurrent_OnlyOneInsert(t *testing.T) {
-	t.Parallel()
-	pool, repo := setupDB(t)
-	opsRepo := newOpsRepo(t, pool)
-	h := makeHandler(t, repo, opsRepo)
-
-	w, err := repo.Writer(context.Background())
-	require.NoError(t, err)
-	lbID := ids.NewID(ids.PrefixLoadBalancer)
-	tgID := ids.NewID(ids.PrefixTargetGroup)
-	_, err = w.LoadBalancers().Insert(context.Background(), &domain.LoadBalancer{
-		ID: domain.ResourceID(lbID), ProjectID: "prj-c", RegionID: "ru-central1",
-		Name: "edge", Type: domain.LBTypeExternal, Status: domain.LBStatusInactive,
-		SessionAffinity: domain.SessionAffinity5Tuple,
-	})
-	require.NoError(t, err)
-	_, err = w.TargetGroups().Insert(context.Background(), &domain.TargetGroup{
-		ID: domain.ResourceID(tgID), ProjectID: "prj-c", RegionID: "ru-central1",
-		Name: "tg-1", DeregistrationDelay: domain.LbDuration(300 * time.Second), Status: domain.TargetGroupStatusActive, Port: 8080,
-		HealthCheck: domain.HealthCheck{
-			Interval: domain.DefaultHealthInterval, Timeout: domain.DefaultHealthTimeout,
-			UnhealthyThreshold: domain.DefaultUnhealthyThreshold, HealthyThreshold: domain.DefaultHealthyThreshold,
-			TCP: &domain.HealthCheckTCP{Port: 80},
-		},
-	})
-	require.NoError(t, err)
-	require.NoError(t, w.Commit())
-
-	// Fire 5 concurrent Attach RPCs for the same (lb, tg) pair.
-	const N = 5
-	ops := make([]string, N)
-	for i := 0; i < N; i++ {
-		op, err := h.AttachTargetGroup(context.Background(), &lbv1.AttachNetworkLoadBalancerTargetGroupRequest{
-			NetworkLoadBalancerId: lbID,
-			AttachedTargetGroup:   &lbv1.AttachedTargetGroup{TargetGroupId: tgID},
-		})
-		require.NoError(t, err)
-		ops[i] = op.GetId()
-	}
-	for _, id := range ops {
-		final := pollOpDone(t, opsRepo, id)
-		require.Nil(t, final.Error)
-	}
-	// Verify exactly one pivot row.
-	var n int
-	require.NoError(t, pool.QueryRow(context.Background(),
-		`SELECT COUNT(*) FROM kacho_nlb.attached_target_groups WHERE load_balancer_id=$1 AND target_group_id=$2`,
-		lbID, tgID).Scan(&n))
-	require.Equal(t, 1, n)
-}
-
-func TestIntegration_Move_Blocked_AttachedTG(t *testing.T) {
+// TestIntegration_Move_Blocked_ListenerWiredToTG — NLB CONTRACT replacement for
+// the removed attach-pivot Move guard: a LB with a listener wired to a target
+// group (default_target_group_id set, direct FK) cannot be moved cross-project.
+func TestIntegration_Move_Blocked_ListenerWiredToTG(t *testing.T) {
 	t.Parallel()
 	pool, repo := setupDB(t)
 	opsRepo := newOpsRepo(t, pool)
@@ -425,9 +272,20 @@ func TestIntegration_Move_Blocked_AttachedTG(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	_, _, err = w.AttachedTargetGroups().Attach(context.Background(), lbID, tgID, 0)
-	require.NoError(t, err)
 	require.NoError(t, w.Commit())
+	// Wire a listener to the TG (default_target_group_id set) — the NLB CONTRACT
+	// replacement for the removed attach pivot. Raw SQL after the LB+TG TX is
+	// committed (pool sees a different snapshot); the direct FK RESTRICT to
+	// target_groups(id) is satisfied because the TG exists.
+	_, err = pool.Exec(context.Background(), `
+		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
+			description, labels, protocol, port, target_port, ip_version,
+			address_id, allocated_address, subnet_id, proxy_protocol_v2, default_target_group_id, status)
+		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, 'IPV4',
+		        '', '203.0.113.5', '', false, $5, 'ACTIVE')`,
+		ids.NewID(ids.PrefixListener), "prj-src", lbID, "ru-central1", tgID,
+	)
+	require.NoError(t, err)
 
 	_, err = h.Move(context.Background(), &lbv1.MoveNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lbID,
@@ -435,6 +293,7 @@ func TestIntegration_Move_Blocked_AttachedTG(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "wired to a target group")
 }
 
 func TestIntegration_GetTargetStates_HappyPath(t *testing.T) {

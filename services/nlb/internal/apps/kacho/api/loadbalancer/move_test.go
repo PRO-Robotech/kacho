@@ -13,7 +13,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/H-BF/corlib/pkg/option"
+
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -92,12 +95,19 @@ func TestMove_SameProject(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-func TestMove_BlockedIfAttachedTG(t *testing.T) {
+// TestMove_BlockedIfListenerWiredToTG — NLB CONTRACT replacement for the removed
+// attach-pivot Move guard: a LB that has a listener wired to a target group
+// (default_target_group_id set) cannot be moved cross-project — repoint first.
+func TestMove_BlockedIfListenerWiredToTG(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepo()
 	lbID := seedLB(t, repo, "prj-a", "edge")
-	repo.pivot[lbID+"/tgr-fake"] = &kachorepo.AttachedTargetGroupRecord{
-		LoadBalancerID: lbID, TargetGroupID: "tgr-fake",
+	repo.lists[lbID] = []*kachorepo.ListenerRecord{
+		{Listener: domain.Listener{
+			ID:                   domain.ResourceID(ids.NewID(ids.PrefixListener)),
+			LoadBalancerID:       domain.ResourceID(lbID),
+			DefaultTargetGroupID: option.MustNewOption(domain.ResourceID("tgr-fake")),
+		}},
 	}
 	uc := NewMoveLoadBalancerUseCase(repo, newFakeOpsRepo(), &fakeProjectClient{}, nil, nil)
 	_, err := uc.Execute(context.Background(), &lbv1.MoveNetworkLoadBalancerRequest{
@@ -105,6 +115,7 @@ func TestMove_BlockedIfAttachedTG(t *testing.T) {
 		DestinationProjectId:  "prj-dst",
 	})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "wired to a target group")
 }
 
 func TestMove_EmptyDst(t *testing.T) {

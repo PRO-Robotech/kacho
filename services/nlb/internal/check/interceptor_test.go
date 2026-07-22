@@ -154,41 +154,6 @@ func TestAZD003_NLBGet_Stranger_Denied(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// NLB.Start: viewer rejected, editor OK
-// ────────────────────────────────────────────────────────────────────────────
-
-func TestAZD004_NLBStart_VUpdate_Denied(t *testing.T) {
-	intr, _, _ := newTestInterceptor(t, func(_ context.Context, subj, rel, obj string) (bool, error) {
-		require.Equal(t, "v_update", rel)
-		return false, nil
-	})
-	_, err := intr.Unary()(
-		principalCtx("user", "usr_viewer"),
-		&lbv1.StartNetworkLoadBalancerRequest{NetworkLoadBalancerId: "nlb-1"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start"},
-		func(context.Context, any) (any, error) { t.Fatal("handler must not run"); return nil, nil },
-	)
-	st, _ := status.FromError(err)
-	require.Equal(t, codes.PermissionDenied, st.Code())
-}
-
-func TestAZD004_NLBStop_VUpdate_OK(t *testing.T) {
-	intr, _, _ := newTestInterceptor(t, func(_ context.Context, subj, rel, obj string) (bool, error) {
-		require.Equal(t, "v_update", rel)
-		require.Equal(t, "nlb_network_load_balancer:nlb-1", obj)
-		return true, nil
-	})
-	resp, err := intr.Unary()(
-		principalCtx("user", "usr_editor"),
-		&lbv1.StopNetworkLoadBalancerRequest{NetworkLoadBalancerId: "nlb-1"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop"},
-		func(context.Context, any) (any, error) { return "ok", nil },
-	)
-	require.NoError(t, err)
-	require.Equal(t, "ok", resp)
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // NLB.Delete: editor OK, viewer rejected
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -244,30 +209,6 @@ func TestAZD006_NLBMove_PerRPCCheck_OnResourceOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, *n, "exactly one Check expected at interceptor level (destination project — handler-level)")
 	require.Len(t, *calls, 1)
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// NLB.AttachTargetGroup: per-RPC Check на LB (editor); TG-check
-// handler'ом (interceptor выполняет один Check).
-// ────────────────────────────────────────────────────────────────────────────
-
-func TestAZD007_NLBAttachTargetGroup_PerRPCCheck_OnLBOnly(t *testing.T) {
-	intr, n, _ := newTestInterceptor(t, func(_ context.Context, _, rel, obj string) (bool, error) {
-		require.Equal(t, "v_update", rel)
-		require.Equal(t, "nlb_network_load_balancer:nlb-1", obj)
-		return true, nil
-	})
-	_, err := intr.Unary()(
-		principalCtx("user", "usr_e"),
-		&lbv1.AttachNetworkLoadBalancerTargetGroupRequest{
-			NetworkLoadBalancerId: "nlb-1",
-			AttachedTargetGroup:   &lbv1.AttachedTargetGroup{TargetGroupId: "tgr-1"},
-		},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup"},
-		func(context.Context, any) (any, error) { return "ok", nil },
-	)
-	require.NoError(t, err)
-	require.Equal(t, 1, *n)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -486,30 +427,6 @@ func TestAZD016_CacheInvalidation_BySubject(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Custom role resolves to editor through 3-relation cascade
-// (FGA expands `loadbalancer.networkLoadBalancers.start` → tuple `editor`).
-// Здесь — interceptor proof: relation=editor accepted даже если permission
-// строка узкая (Custom role).
-// ────────────────────────────────────────────────────────────────────────────
-
-func TestAZD017_CustomRole_ResolvesToVUpdate(t *testing.T) {
-	intr, _, calls := newTestInterceptor(t, func(_ context.Context, _, rel, obj string) (bool, error) {
-		require.Equal(t, "v_update", rel,
-			"Custom role with start-verb gates object-self Start on v_update (Design B verb-bearing)")
-		require.Equal(t, "nlb_network_load_balancer:nlb-1", obj)
-		return true, nil
-	})
-	_, err := intr.Unary()(
-		principalCtx("user", "usr_custom_role"),
-		&lbv1.StartNetworkLoadBalancerRequest{NetworkLoadBalancerId: "nlb-1"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start"},
-		func(context.Context, any) (any, error) { return "ok", nil },
-	)
-	require.NoError(t, err)
-	require.Len(t, *calls, 1)
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // Custom role with unknown permission → InvalidArgument.
 // Это валидация iam.Role.Create (kacho-iam-side); здесь — sanity test через
 // Catalog.
@@ -527,17 +444,17 @@ func TestAZD018_UnknownPermission_NotInCatalog(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Permission catalog completeness (30) — также в drift_test.
+// Permission catalog completeness (26) — также в drift_test.
 // Дублируем здесь как explicit проверка.
 // ────────────────────────────────────────────────────────────────────────────
 
-func TestAZD019_CatalogCount_30(t *testing.T) {
+func TestAZD019_CatalogCount_26(t *testing.T) {
 	cat := check.Catalog()
 	uniq := map[string]struct{}{}
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Len(t, uniq, 30, "design §6.2 + acceptance §AZD-019: exactly 30 permission strings")
+	require.Len(t, uniq, 26, "design §6.2 + acceptance §AZD-019: exactly 26 permission strings (NLB CONTRACT dropped start/stop/attach/detach)")
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -547,7 +464,7 @@ func TestAZD019_CatalogCount_30(t *testing.T) {
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestAZD020_AdminRoleCoversAllPermissions(t *testing.T) {
-	// admin == `loadbalancer.*.*` — все 30 permissions.
+	// admin == `loadbalancer.*.*` — все 26 permissions.
 	// Sanity: Catalog не пуст.
 	require.NotEmpty(t, check.Catalog())
 }

@@ -160,21 +160,6 @@ func TestResolve_AddTargetsPresent_DoneWithTargetGroup(t *testing.T) {
 	}
 }
 
-func TestResolve_AttachTargetGroupPresent_DoneWithLoadBalancer(t *testing.T) {
-	r := New(Readers{LoadBalancer: fakeLB{rec: &lbv1.NetworkLoadBalancer{Id: "nlb1"}}})
-	op := newOp(t, &lbv1.AttachNetworkLoadBalancerTargetGroupMetadata{
-		NetworkLoadBalancerId: "nlb1", TargetGroupId: "tgr9",
-	})
-
-	res, err := r.Resolve(context.Background(), op)
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if res.Outcome != operations.OutcomeDone {
-		t.Fatalf("outcome = %v, want Done (LB existence preserved by attach)", res.Outcome)
-	}
-}
-
 func TestResolve_TransientReadError_Propagates(t *testing.T) {
 	boom := errors.New("db down")
 	r := New(Readers{LoadBalancer: fakeLB{err: boom}})

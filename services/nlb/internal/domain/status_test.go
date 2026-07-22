@@ -35,16 +35,16 @@ func TestLBType_Validate(t *testing.T) {
 func TestLBStatus_Validate(t *testing.T) {
 	t.Parallel()
 	good := []domain.LBStatus{
-		domain.LBStatusCreating, domain.LBStatusStarting, domain.LBStatusActive,
-		domain.LBStatusStopping, domain.LBStatusStopped, domain.LBStatusDeleting,
-		domain.LBStatusInactive,
+		domain.LBStatusCreating, domain.LBStatusActive,
+		domain.LBStatusDeleting, domain.LBStatusInactive,
 	}
 	for _, s := range good {
 		if err := s.Validate(); err != nil {
 			t.Errorf("LBStatus(%q) unexpectedly invalid: %v", s, err)
 		}
 	}
-	bad := []domain.LBStatus{"", "DELETED", "active"}
+	// STARTING/STOPPING/STOPPED removed with the :start/:stop power-verbs — now invalid.
+	bad := []domain.LBStatus{"", "DELETED", "active", "STARTING", "STOPPING", "STOPPED"}
 	for _, s := range bad {
 		if err := s.Validate(); err == nil {
 			t.Errorf("LBStatus(%q): expected error", s)

@@ -81,13 +81,10 @@ type NetworkLoadBalancer_Status int32
 const (
 	NetworkLoadBalancer_STATUS_UNSPECIFIED NetworkLoadBalancer_Status = 0
 	NetworkLoadBalancer_CREATING           NetworkLoadBalancer_Status = 1
-	NetworkLoadBalancer_STARTING           NetworkLoadBalancer_Status = 2
 	NetworkLoadBalancer_ACTIVE             NetworkLoadBalancer_Status = 3
-	NetworkLoadBalancer_STOPPING           NetworkLoadBalancer_Status = 4
-	NetworkLoadBalancer_STOPPED            NetworkLoadBalancer_Status = 5
 	NetworkLoadBalancer_DELETING           NetworkLoadBalancer_Status = 6
-	// No active listeners or attached target groups; no health-checks issued,
-	// no traffic forwarded.
+	// No listener wired to a target group; no health-checks issued, no traffic
+	// forwarded.
 	NetworkLoadBalancer_INACTIVE NetworkLoadBalancer_Status = 7
 )
 
@@ -96,20 +93,14 @@ var (
 	NetworkLoadBalancer_Status_name = map[int32]string{
 		0: "STATUS_UNSPECIFIED",
 		1: "CREATING",
-		2: "STARTING",
 		3: "ACTIVE",
-		4: "STOPPING",
-		5: "STOPPED",
 		6: "DELETING",
 		7: "INACTIVE",
 	}
 	NetworkLoadBalancer_Status_value = map[string]int32{
 		"STATUS_UNSPECIFIED": 0,
 		"CREATING":           1,
-		"STARTING":           2,
 		"ACTIVE":             3,
-		"STOPPING":           4,
-		"STOPPED":            5,
 		"DELETING":           6,
 		"INACTIVE":           7,
 	}
@@ -296,11 +287,9 @@ func (NetworkLoadBalancer_SessionAffinity) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{0, 3}
 }
 
-// AdminState — NLB-1b EXPAND (additive): desired administrative state, the
-// redesign replacement for the :start/:stop power-verbs. LIVE-mutable. In
-// EXPAND it is stored + echoed but does not yet gate status recompute (that
-// arrives with the 0013 status-trigger rewrite in NLB-1c). Legacy Start/Stop
-// RPCs are NOT removed in EXPAND.
+// AdminState — desired administrative state, the redesign replacement for the
+// removed :start/:stop power-verbs. LIVE-mutable (ENABLED|DISABLED). A DISABLED
+// LB keeps its config; its targets are reported INACTIVE by GetTargetStates.
 type NetworkLoadBalancer_AdminState int32
 
 const (
@@ -462,7 +451,7 @@ func (x TargetState_Status) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TargetState_Status.Descriptor instead.
 func (TargetState_Status) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{4, 0}
+	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{3, 0}
 }
 
 // NetworkLoadBalancer — L4 regional load balancer.
@@ -475,22 +464,16 @@ type NetworkLoadBalancer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ID of the project the NLB belongs to.
-	ProjectId       string                              `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	CreatedAt       *timestamppb.Timestamp              `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	Name            string                              `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	Description     string                              `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
-	Labels          map[string]string                   `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	RegionId        string                              `protobuf:"bytes,7,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	Status          NetworkLoadBalancer_Status          `protobuf:"varint,9,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Status" json:"status,omitempty"`
-	Type            NetworkLoadBalancer_Type            `protobuf:"varint,10,opt,name=type,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Type" json:"type,omitempty"`
-	SessionAffinity NetworkLoadBalancer_SessionAffinity `protobuf:"varint,11,opt,name=session_affinity,json=sessionAffinity,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_SessionAffinity" json:"session_affinity,omitempty"`
-	// Inline attached target groups snapshot — DEPRECATED. The
-	// `attached_target_groups` DB pivot (M:N managed via
-	// AttachTargetGroup/DetachTargetGroup RPCs) is the source of truth.
-	//
-	// Deprecated: Marked as deprecated in kacho/cloud/loadbalancer/v1/network_load_balancer.proto.
-	AttachedTargetGroups []*AttachedTargetGroup `protobuf:"bytes,13,rep,name=attached_target_groups,json=attachedTargetGroups,proto3" json:"attached_target_groups,omitempty"`
-	DeletionProtection   bool                   `protobuf:"varint,14,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`
+	ProjectId          string                              `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	CreatedAt          *timestamppb.Timestamp              `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Name               string                              `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	Description        string                              `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	Labels             map[string]string                   `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	RegionId           string                              `protobuf:"bytes,7,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	Status             NetworkLoadBalancer_Status          `protobuf:"varint,9,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Status" json:"status,omitempty"`
+	Type               NetworkLoadBalancer_Type            `protobuf:"varint,10,opt,name=type,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_Type" json:"type,omitempty"`
+	SessionAffinity    NetworkLoadBalancer_SessionAffinity `protobuf:"varint,11,opt,name=session_affinity,json=sessionAffinity,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_SessionAffinity" json:"session_affinity,omitempty"`
+	DeletionProtection bool                                `protobuf:"varint,14,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`
 	// v4_address_id / v6_address_id — output-only: связанный vpc Address (IPv4/IPv6),
 	// в который резолвится VipSource. Пуст, пока status=CREATING (durable-handle до
 	// bind). Один Address на семейство (single-VIP-per-LB, инвариант на DB-уровне:
@@ -624,14 +607,6 @@ func (x *NetworkLoadBalancer) GetSessionAffinity() NetworkLoadBalancer_SessionAf
 		return x.SessionAffinity
 	}
 	return NetworkLoadBalancer_SESSION_AFFINITY_UNSPECIFIED
-}
-
-// Deprecated: Marked as deprecated in kacho/cloud/loadbalancer/v1/network_load_balancer.proto.
-func (x *NetworkLoadBalancer) GetAttachedTargetGroups() []*AttachedTargetGroup {
-	if x != nil {
-		return x.AttachedTargetGroups
-	}
-	return nil
 }
 
 func (x *NetworkLoadBalancer) GetDeletionProtection() bool {
@@ -838,64 +813,6 @@ func (*VipSource_SubnetId) isVipSource_Source() {}
 
 func (*VipSource_Public) isVipSource_Source() {}
 
-// AttachedTargetGroup — yc-shim-compat snapshot of a single
-// `attached_target_groups` pivot row. Source of truth is the DB pivot
-// (design §5.2). Retained solely as the element type for
-// NetworkLoadBalancer.attached_target_groups (deprecated field).
-type AttachedTargetGroup struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetGroupId string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
-	// Snapshot of HealthCheck configuration from the parent target group at
-	// attach time. Source of truth is `target_groups.health_check` (JSONB).
-	HealthChecks  []*HealthCheck `protobuf:"bytes,2,rep,name=health_checks,json=healthChecks,proto3" json:"health_checks,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AttachedTargetGroup) Reset() {
-	*x = AttachedTargetGroup{}
-	mi := &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AttachedTargetGroup) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AttachedTargetGroup) ProtoMessage() {}
-
-func (x *AttachedTargetGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AttachedTargetGroup.ProtoReflect.Descriptor instead.
-func (*AttachedTargetGroup) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *AttachedTargetGroup) GetTargetGroupId() string {
-	if x != nil {
-		return x.TargetGroupId
-	}
-	return ""
-}
-
-func (x *AttachedTargetGroup) GetHealthChecks() []*HealthCheck {
-	if x != nil {
-		return x.HealthChecks
-	}
-	return nil
-}
-
 // TargetState — per-target health snapshot returned by
 // NetworkLoadBalancerService.GetTargetStates / TargetGroupService.GetTargetStates
 // (design §4.6, computed sync). Not a stored entity.
@@ -911,7 +828,7 @@ type TargetState struct {
 
 func (x *TargetState) Reset() {
 	*x = TargetState{}
-	mi := &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes[4]
+	mi := &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -923,7 +840,7 @@ func (x *TargetState) String() string {
 func (*TargetState) ProtoMessage() {}
 
 func (x *TargetState) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes[4]
+	mi := &file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -936,7 +853,7 @@ func (x *TargetState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TargetState.ProtoReflect.Descriptor instead.
 func (*TargetState) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{4}
+	return file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TargetState) GetSubnetId() string {
@@ -971,7 +888,7 @@ var File_kacho_cloud_loadbalancer_v1_network_load_balancer_proto protoreflect.Fi
 
 const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xde\x0f\n" +
+	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\x97\x0f\n" +
 	"\x13NetworkLoadBalancer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -985,8 +902,7 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\x06status\x18\t \x01(\x0e27.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.StatusR\x06status\x12I\n" +
 	"\x04type\x18\n" +
 	" \x01(\x0e25.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.TypeR\x04type\x12k\n" +
-	"\x10session_affinity\x18\v \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x12j\n" +
-	"\x16attached_target_groups\x18\r \x03(\v20.kacho.cloud.loadbalancer.v1.AttachedTargetGroupB\x02\x18\x01R\x14attachedTargetGroups\x12/\n" +
+	"\x10session_affinity\x18\v \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x12/\n" +
 	"\x13deletion_protection\x18\x0e \x01(\bR\x12deletionProtection\x12\"\n" +
 	"\rv4_address_id\x18\x18 \x01(\tR\vv4AddressId\x12\"\n" +
 	"\rv6_address_id\x18\x19 \x01(\tR\vv6AddressId\x12e\n" +
@@ -999,17 +915,14 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\x12security_group_ids\x18+ \x03(\tR\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x7f\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x85\x01\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\f\n" +
-	"\bCREATING\x10\x01\x12\f\n" +
-	"\bSTARTING\x10\x02\x12\n" +
+	"\bCREATING\x10\x01\x12\n" +
 	"\n" +
 	"\x06ACTIVE\x10\x03\x12\f\n" +
-	"\bSTOPPING\x10\x04\x12\v\n" +
-	"\aSTOPPED\x10\x05\x12\f\n" +
 	"\bDELETING\x10\x06\x12\f\n" +
-	"\bINACTIVE\x10\a\"8\n" +
+	"\bINACTIVE\x10\a\"\x04\b\x02\x10\x02\"\x04\b\x04\x10\x04\"\x04\b\x05\x10\x05*\bSTARTING*\bSTOPPING*\aSTOPPED\"8\n" +
 	"\x04Type\x12\x14\n" +
 	"\x10TYPE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bEXTERNAL\x10\x01\x12\f\n" +
@@ -1032,8 +945,8 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\x15PLACEMENT_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11EXTERNAL_REGIONAL\x10\x01\x12\x15\n" +
 	"\x11INTERNAL_REGIONAL\x10\x02\x12\x12\n" +
-	"\x0eINTERNAL_ZONAL\x10\x03J\x04\b\b\x10\tJ\x04\b\f\x10\rJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b\x1e\x10(R\tlistenersR\x11allow_zonal_shiftR\x15disable_zone_statusesR\n" +
-	"network_idR\n" +
+	"\x0eINTERNAL_ZONAL\x10\x03J\x04\b\b\x10\tJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b\x1e\x10(R\tlistenersR\x11allow_zonal_shiftR\x15disable_zone_statusesR\n" +
+	"network_idR\x16attached_target_groupsR\n" +
 	"address_v4R\n" +
 	"address_v6R\vip_families\"\v\n" +
 	"\tPublicVip\"\x97\x01\n" +
@@ -1042,10 +955,7 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"address_id\x18\x01 \x01(\tH\x00R\taddressId\x12\x1d\n" +
 	"\tsubnet_id\x18\x02 \x01(\tH\x00R\bsubnetId\x12@\n" +
 	"\x06public\x18\x03 \x01(\v2&.kacho.cloud.loadbalancer.v1.PublicVipH\x00R\x06publicB\b\n" +
-	"\x06source\"\xa1\x01\n" +
-	"\x13AttachedTargetGroup\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\x12T\n" +
-	"\rhealth_checks\x18\x02 \x03(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckB\x05\x82\xc81\x011R\fhealthChecks\"\x97\x02\n" +
+	"\x06source\"\x97\x02\n" +
 	"\vTargetState\x12\x1b\n" +
 	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12G\n" +
@@ -1076,7 +986,7 @@ func file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDescGZIP() 
 }
 
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_goTypes = []any{
 	(IpVersion)(0),                           // 0: kacho.cloud.loadbalancer.v1.IpVersion
 	(NetworkLoadBalancer_Status)(0),          // 1: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Status
@@ -1089,30 +999,26 @@ var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_goTypes = []any
 	(*NetworkLoadBalancer)(nil),              // 8: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer
 	(*PublicVip)(nil),                        // 9: kacho.cloud.loadbalancer.v1.PublicVip
 	(*VipSource)(nil),                        // 10: kacho.cloud.loadbalancer.v1.VipSource
-	(*AttachedTargetGroup)(nil),              // 11: kacho.cloud.loadbalancer.v1.AttachedTargetGroup
-	(*TargetState)(nil),                      // 12: kacho.cloud.loadbalancer.v1.TargetState
-	nil,                                      // 13: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
-	(*timestamppb.Timestamp)(nil),            // 14: google.protobuf.Timestamp
-	(*HealthCheck)(nil),                      // 15: kacho.cloud.loadbalancer.v1.HealthCheck
+	(*TargetState)(nil),                      // 11: kacho.cloud.loadbalancer.v1.TargetState
+	nil,                                      // 12: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
+	(*timestamppb.Timestamp)(nil),            // 13: google.protobuf.Timestamp
 }
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_depIdxs = []int32{
-	14, // 0: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.created_at:type_name -> google.protobuf.Timestamp
-	13, // 1: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.labels:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
+	13, // 0: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.created_at:type_name -> google.protobuf.Timestamp
+	12, // 1: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.labels:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.LabelsEntry
 	1,  // 2: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.status:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Status
 	2,  // 3: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.type:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Type
 	4,  // 4: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.session_affinity:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinity
-	11, // 5: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.attached_target_groups:type_name -> kacho.cloud.loadbalancer.v1.AttachedTargetGroup
-	3,  // 6: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.placement_type:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementType
-	6,  // 7: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.placement:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Placement
-	5,  // 8: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.admin_state:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
-	9,  // 9: kacho.cloud.loadbalancer.v1.VipSource.public:type_name -> kacho.cloud.loadbalancer.v1.PublicVip
-	15, // 10: kacho.cloud.loadbalancer.v1.AttachedTargetGroup.health_checks:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
-	7,  // 11: kacho.cloud.loadbalancer.v1.TargetState.status:type_name -> kacho.cloud.loadbalancer.v1.TargetState.Status
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	3,  // 5: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.placement_type:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementType
+	6,  // 6: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.placement:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Placement
+	5,  // 7: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.admin_state:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
+	9,  // 8: kacho.cloud.loadbalancer.v1.VipSource.public:type_name -> kacho.cloud.loadbalancer.v1.PublicVip
+	7,  // 9: kacho.cloud.loadbalancer.v1.TargetState.status:type_name -> kacho.cloud.loadbalancer.v1.TargetState.Status
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_init() }
@@ -1120,7 +1026,6 @@ func file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_init() {
 	if File_kacho_cloud_loadbalancer_v1_network_load_balancer_proto != nil {
 		return
 	}
-	file_kacho_cloud_loadbalancer_v1_health_check_proto_init()
 	file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_msgTypes[2].OneofWrappers = []any{
 		(*VipSource_AddressId)(nil),
 		(*VipSource_SubnetId)(nil),
@@ -1132,7 +1037,7 @@ func file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc), len(file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   6,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -23,18 +23,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NetworkLoadBalancerService_Get_FullMethodName               = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get"
-	NetworkLoadBalancerService_List_FullMethodName              = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List"
-	NetworkLoadBalancerService_Create_FullMethodName            = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create"
-	NetworkLoadBalancerService_Update_FullMethodName            = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Update"
-	NetworkLoadBalancerService_Delete_FullMethodName            = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Delete"
-	NetworkLoadBalancerService_Start_FullMethodName             = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start"
-	NetworkLoadBalancerService_Stop_FullMethodName              = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop"
-	NetworkLoadBalancerService_Move_FullMethodName              = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move"
-	NetworkLoadBalancerService_AttachTargetGroup_FullMethodName = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup"
-	NetworkLoadBalancerService_DetachTargetGroup_FullMethodName = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/DetachTargetGroup"
-	NetworkLoadBalancerService_GetTargetStates_FullMethodName   = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates"
-	NetworkLoadBalancerService_ListOperations_FullMethodName    = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/ListOperations"
+	NetworkLoadBalancerService_Get_FullMethodName             = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get"
+	NetworkLoadBalancerService_List_FullMethodName            = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List"
+	NetworkLoadBalancerService_Create_FullMethodName          = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create"
+	NetworkLoadBalancerService_Update_FullMethodName          = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Update"
+	NetworkLoadBalancerService_Delete_FullMethodName          = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Delete"
+	NetworkLoadBalancerService_Move_FullMethodName            = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move"
+	NetworkLoadBalancerService_GetTargetStates_FullMethodName = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates"
+	NetworkLoadBalancerService_ListOperations_FullMethodName  = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/ListOperations"
 )
 
 // NetworkLoadBalancerServiceClient is the client API for NetworkLoadBalancerService service.
@@ -51,14 +47,11 @@ type NetworkLoadBalancerServiceClient interface {
 	Create(ctx context.Context, in *CreateNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	Update(ctx context.Context, in *UpdateNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	Delete(ctx context.Context, in *DeleteNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	Start(ctx context.Context, in *StartNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	Stop(ctx context.Context, in *StopNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Move the load balancer to another project in the same region (design §4.7).
-	// Blocked if any TG is attached; child listeners are repointed in the same
-	// worker transaction (denorm sync).
+	// Blocked if any child listener is wired to a target group (cross-project
+	// reference guard); child listeners are repointed in the same worker
+	// transaction (denorm sync).
 	Move(ctx context.Context, in *MoveNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	AttachTargetGroup(ctx context.Context, in *AttachNetworkLoadBalancerTargetGroupRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	DetachTargetGroup(ctx context.Context, in *DetachNetworkLoadBalancerTargetGroupRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// GetTargetStates — computed deterministic snapshot (design §4.6).
 	// REST kept as a sub-resource collection rather than `:getTargetStates`
 	// suffix so the underlying object can be cached and conditionally
@@ -125,50 +118,10 @@ func (c *networkLoadBalancerServiceClient) Delete(ctx context.Context, in *Delet
 	return out, nil
 }
 
-func (c *networkLoadBalancerServiceClient) Start(ctx context.Context, in *StartNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, NetworkLoadBalancerService_Start_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *networkLoadBalancerServiceClient) Stop(ctx context.Context, in *StopNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, NetworkLoadBalancerService_Stop_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *networkLoadBalancerServiceClient) Move(ctx context.Context, in *MoveNetworkLoadBalancerRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
 	err := c.cc.Invoke(ctx, NetworkLoadBalancerService_Move_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *networkLoadBalancerServiceClient) AttachTargetGroup(ctx context.Context, in *AttachNetworkLoadBalancerTargetGroupRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, NetworkLoadBalancerService_AttachTargetGroup_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *networkLoadBalancerServiceClient) DetachTargetGroup(ctx context.Context, in *DetachNetworkLoadBalancerTargetGroupRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, NetworkLoadBalancerService_DetachTargetGroup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -209,14 +162,11 @@ type NetworkLoadBalancerServiceServer interface {
 	Create(context.Context, *CreateNetworkLoadBalancerRequest) (*operation.Operation, error)
 	Update(context.Context, *UpdateNetworkLoadBalancerRequest) (*operation.Operation, error)
 	Delete(context.Context, *DeleteNetworkLoadBalancerRequest) (*operation.Operation, error)
-	Start(context.Context, *StartNetworkLoadBalancerRequest) (*operation.Operation, error)
-	Stop(context.Context, *StopNetworkLoadBalancerRequest) (*operation.Operation, error)
 	// Move the load balancer to another project in the same region (design §4.7).
-	// Blocked if any TG is attached; child listeners are repointed in the same
-	// worker transaction (denorm sync).
+	// Blocked if any child listener is wired to a target group (cross-project
+	// reference guard); child listeners are repointed in the same worker
+	// transaction (denorm sync).
 	Move(context.Context, *MoveNetworkLoadBalancerRequest) (*operation.Operation, error)
-	AttachTargetGroup(context.Context, *AttachNetworkLoadBalancerTargetGroupRequest) (*operation.Operation, error)
-	DetachTargetGroup(context.Context, *DetachNetworkLoadBalancerTargetGroupRequest) (*operation.Operation, error)
 	// GetTargetStates — computed deterministic snapshot (design §4.6).
 	// REST kept as a sub-resource collection rather than `:getTargetStates`
 	// suffix so the underlying object can be cached and conditionally
@@ -248,20 +198,8 @@ func (UnimplementedNetworkLoadBalancerServiceServer) Update(context.Context, *Up
 func (UnimplementedNetworkLoadBalancerServiceServer) Delete(context.Context, *DeleteNetworkLoadBalancerRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedNetworkLoadBalancerServiceServer) Start(context.Context, *StartNetworkLoadBalancerRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method Start not implemented")
-}
-func (UnimplementedNetworkLoadBalancerServiceServer) Stop(context.Context, *StopNetworkLoadBalancerRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method Stop not implemented")
-}
 func (UnimplementedNetworkLoadBalancerServiceServer) Move(context.Context, *MoveNetworkLoadBalancerRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Move not implemented")
-}
-func (UnimplementedNetworkLoadBalancerServiceServer) AttachTargetGroup(context.Context, *AttachNetworkLoadBalancerTargetGroupRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method AttachTargetGroup not implemented")
-}
-func (UnimplementedNetworkLoadBalancerServiceServer) DetachTargetGroup(context.Context, *DetachNetworkLoadBalancerTargetGroupRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method DetachTargetGroup not implemented")
 }
 func (UnimplementedNetworkLoadBalancerServiceServer) GetTargetStates(context.Context, *GetTargetStatesRequest) (*GetTargetStatesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTargetStates not implemented")
@@ -381,42 +319,6 @@ func _NetworkLoadBalancerService_Delete_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NetworkLoadBalancerService_Start_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(StartNetworkLoadBalancerRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NetworkLoadBalancerServiceServer).Start(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NetworkLoadBalancerService_Start_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkLoadBalancerServiceServer).Start(ctx, req.(*StartNetworkLoadBalancerRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _NetworkLoadBalancerService_Stop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(StopNetworkLoadBalancerRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NetworkLoadBalancerServiceServer).Stop(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NetworkLoadBalancerService_Stop_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkLoadBalancerServiceServer).Stop(ctx, req.(*StopNetworkLoadBalancerRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _NetworkLoadBalancerService_Move_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MoveNetworkLoadBalancerRequest)
 	if err := dec(in); err != nil {
@@ -431,42 +333,6 @@ func _NetworkLoadBalancerService_Move_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NetworkLoadBalancerServiceServer).Move(ctx, req.(*MoveNetworkLoadBalancerRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _NetworkLoadBalancerService_AttachTargetGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AttachNetworkLoadBalancerTargetGroupRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NetworkLoadBalancerServiceServer).AttachTargetGroup(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NetworkLoadBalancerService_AttachTargetGroup_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkLoadBalancerServiceServer).AttachTargetGroup(ctx, req.(*AttachNetworkLoadBalancerTargetGroupRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _NetworkLoadBalancerService_DetachTargetGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DetachNetworkLoadBalancerTargetGroupRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NetworkLoadBalancerServiceServer).DetachTargetGroup(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NetworkLoadBalancerService_DetachTargetGroup_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkLoadBalancerServiceServer).DetachTargetGroup(ctx, req.(*DetachNetworkLoadBalancerTargetGroupRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -535,24 +401,8 @@ var NetworkLoadBalancerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NetworkLoadBalancerService_Delete_Handler,
 		},
 		{
-			MethodName: "Start",
-			Handler:    _NetworkLoadBalancerService_Start_Handler,
-		},
-		{
-			MethodName: "Stop",
-			Handler:    _NetworkLoadBalancerService_Stop_Handler,
-		},
-		{
 			MethodName: "Move",
 			Handler:    _NetworkLoadBalancerService_Move_Handler,
-		},
-		{
-			MethodName: "AttachTargetGroup",
-			Handler:    _NetworkLoadBalancerService_AttachTargetGroup_Handler,
-		},
-		{
-			MethodName: "DetachTargetGroup",
-			Handler:    _NetworkLoadBalancerService_DetachTargetGroup_Handler,
 		},
 		{
 			MethodName: "GetTargetStates",

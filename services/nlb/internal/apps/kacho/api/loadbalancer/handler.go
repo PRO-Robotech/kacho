@@ -5,8 +5,7 @@
 //
 // handler — тонкий transport (parse-request → call use-case →
 // format-response), бизнес-логика живёт в use-case'ах (per-RPC файлы:
-// create.go / update.go / delete.go / start.go / stop.go / move.go /
-// attach_target_group.go / detach_target_group.go / get_target_states.go /
+// create.go / update.go / delete.go / move.go / get_target_states.go /
 // list_operations.go).
 //
 // Каждый use-case принимает domain-тип (или ResourceID), репозиторий через
@@ -42,11 +41,7 @@ type Handler struct {
 	create          *CreateLoadBalancerUseCase
 	update          *UpdateLoadBalancerUseCase
 	deleteUC        *DeleteLoadBalancerUseCase
-	start           *StartLoadBalancerUseCase
-	stop            *StopLoadBalancerUseCase
 	move            *MoveLoadBalancerUseCase
-	attachTG        *AttachTargetGroupUseCase
-	detachTG        *DetachTargetGroupUseCase
 	getTargetStates *GetTargetStatesUseCase
 	listOps         *ListOperationsUseCase
 }
@@ -80,11 +75,7 @@ func NewHandler(
 		create:          NewCreateLoadBalancerUseCase(repo, opsRepo, peerProject, peerRegion, peerZone, peerSubnet, peerAddress, peerInternalAddr, logger),
 		update:          NewUpdateLoadBalancerUseCase(repo, opsRepo, peerZone, logger),
 		deleteUC:        NewDeleteLoadBalancerUseCase(repo, opsRepo, peerInternalAddr, logger),
-		start:           NewStartLoadBalancerUseCase(repo, opsRepo, logger),
-		stop:            NewStopLoadBalancerUseCase(repo, opsRepo, logger),
 		move:            NewMoveLoadBalancerUseCase(repo, opsRepo, peerProject, peerCheck, logger),
-		attachTG:        NewAttachTargetGroupUseCase(repo, opsRepo, peerCheck, logger),
-		detachTG:        NewDetachTargetGroupUseCase(repo, opsRepo, logger),
 		getTargetStates: NewGetTargetStatesUseCase(repo, peerCheck),
 		listOps:         NewListOperationsUseCase(opsRepo),
 	}
@@ -125,7 +116,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *lbv1.ListNetworkLoadB
 	return h.listOps.Execute(ctx, req)
 }
 
-// ---- 8 mutating RPCs (async; return Operation) -----------------------------
+// ---- 4 mutating RPCs (async; return Operation) -----------------------------
 
 func (h *Handler) Create(ctx context.Context, req *lbv1.CreateNetworkLoadBalancerRequest) (*operationpb.Operation, error) {
 	op, err := h.create.Execute(ctx, req)
@@ -151,40 +142,8 @@ func (h *Handler) Delete(ctx context.Context, req *lbv1.DeleteNetworkLoadBalance
 	return operationToProto(op), nil
 }
 
-func (h *Handler) Start(ctx context.Context, req *lbv1.StartNetworkLoadBalancerRequest) (*operationpb.Operation, error) {
-	op, err := h.start.Execute(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return operationToProto(op), nil
-}
-
-func (h *Handler) Stop(ctx context.Context, req *lbv1.StopNetworkLoadBalancerRequest) (*operationpb.Operation, error) {
-	op, err := h.stop.Execute(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return operationToProto(op), nil
-}
-
 func (h *Handler) Move(ctx context.Context, req *lbv1.MoveNetworkLoadBalancerRequest) (*operationpb.Operation, error) {
 	op, err := h.move.Execute(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return operationToProto(op), nil
-}
-
-func (h *Handler) AttachTargetGroup(ctx context.Context, req *lbv1.AttachNetworkLoadBalancerTargetGroupRequest) (*operationpb.Operation, error) {
-	op, err := h.attachTG.Execute(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return operationToProto(op), nil
-}
-
-func (h *Handler) DetachTargetGroup(ctx context.Context, req *lbv1.DetachNetworkLoadBalancerTargetGroupRequest) (*operationpb.Operation, error) {
-	op, err := h.detachTG.Execute(ctx, req)
 	if err != nil {
 		return nil, err
 	}

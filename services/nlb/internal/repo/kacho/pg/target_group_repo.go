@@ -265,18 +265,6 @@ func (r *targetGroupReader) ListDrainingExpired(ctx context.Context, tgID string
 	return out, nil
 }
 
-func (r *targetGroupReader) HasAttachedLB(ctx context.Context, tgID string) (bool, error) {
-	var exists bool
-	err := r.tx.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM kacho_nlb.attached_target_groups WHERE target_group_id = $1)`,
-		tgID,
-	).Scan(&exists)
-	if err != nil {
-		return false, mapPgErr(err, "TargetGroup", tgID)
-	}
-	return exists, nil
-}
-
 // ReferencingListenerIDs — id листенеров, ссылающихся на TG через
 // listeners.default_target_group_id (FK RESTRICT из 0018). ORDER BY id для
 // детерминированного порядка в teardown-precheck error-тексте (NLB-1-41).
@@ -414,22 +402,18 @@ func (w *targetGroupWriter) SetStatusCAS(ctx context.Context, id string, expecte
 // MoveProject — atomic project-rewrite of a TargetGroup.
 //
 // Инвариант (within-service refs на DB-уровне):
-// приаттаченный TG двигать НЕЛЬЗЯ — иначе attached_target_groups свяжет LB в
-// проекте A с TG в проекте B (cross-project attach, запрещён моделью). Sync-
-// precheck HasAttachedLB в use-case'е — только UX/fast-fail; здесь инвариант
-// прибит гвоздём атомарным CAS-guard'ом `UPDATE ... WHERE NOT EXISTS(attach)`.
+// TG, на который ссылается хоть один listener (listeners.default_target_group_id),
+// двигать НЕЛЬЗЯ — иначе listener в проекте A ссылался бы на TG в проекте B
+// (cross-project ref, запрещён моделью). Sync-precheck ReferencingListenerIDs в
+// use-case'е — только UX/fast-fail; здесь инвариант прибит гвоздём атомарным
+// CAS-guard'ом `UPDATE ... WHERE NOT EXISTS(referencing listener)`.
 //
-// Двусторонняя гарантия против Move↔Attach TOCTOU (парно с attachedTGWriter.Attach,
-// который берёт `FOR NO KEY UPDATE OF lb, tg` locking-read):
-//   - attach-committed-first: Move видит attach-row в NOT EXISTS → 0 rows →
-//     FailedPrecondition;
-//   - move-first: Move держит row-lock на tg (uncommitted); конкурентный Attach
-//     блокируется на том же tg-row в своём locking-read и после commit'а Move
-//     через EvalPlanQual пере-оценивает project-JOIN на свежем project → mismatch
-//     → 0 rows → FailedPrecondition. Плоский `UPDATE` без guard'а этот второй
-//     порядок НЕ закрывал (plain-read Attach видел stale project) — отсюда правка.
+// Гарантия против Move↔wire TOCTOU (парно с Listener.Insert/repoint, который берёт
+// `FOR NO KEY UPDATE OF lb`): listener, привязавшийся до commit'а Move, попадёт в
+// NOT EXISTS → 0 rows → FailedPrecondition; move-first держит row-lock на tg, и
+// конкурентный listener-wire ловит свежий project через EvalPlanQual.
 //
-// 0 rows при существующем TG → приаттачен между sync-check и apply →
+// 0 rows при существующем TG → на него сослался listener между sync-check и apply →
 // FailedPrecondition; отсутствующий TG → NotFound.
 func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kacho.TargetGroupRecord, error) {
 	q := fmt.Sprintf(`
@@ -437,15 +421,15 @@ func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID st
            SET project_id = $2, updated_at = now()
          WHERE id = $1
            AND NOT EXISTS (
-               SELECT 1 FROM kacho_nlb.attached_target_groups
-                WHERE target_group_id = $1
+               SELECT 1 FROM kacho_nlb.listeners
+                WHERE default_target_group_id = $1
            )
         RETURNING %s`, targetGroupCols)
 	row := w.tx.QueryRow(ctx, q, id, newProjectID)
 	rec, err := scanTG(row)
 	if err != nil {
 		if pgxIsNoRows(err) {
-			// Различаем «TG нет» (NotFound) и «есть attach'и» (FailedPrecondition).
+			// Различаем «TG нет» (NotFound) и «есть ссылающийся listener» (FailedPrecondition).
 			var exists bool
 			if e := w.tx.QueryRow(ctx,
 				`SELECT EXISTS(SELECT 1 FROM kacho_nlb.target_groups WHERE id = $1)`, id,
@@ -453,7 +437,7 @@ func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID st
 				return nil, mapPgErr(e, "TargetGroup", id)
 			}
 			if exists {
-				return nil, fmt.Errorf("%w: TargetGroup %s is attached to a load balancer; detach before Move",
+				return nil, fmt.Errorf("%w: TargetGroup %s is referenced by a listener; repoint before Move",
 					kacho.ErrFailedPrecondition, id)
 			}
 			return nil, fmt.Errorf("%w: TargetGroup %s not found", kacho.ErrNotFound, id)

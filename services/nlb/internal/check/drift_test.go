@@ -184,21 +184,22 @@ func TestDrift_ExtractNonNilForNonPublic(t *testing.T) {
 	}
 }
 
-// TestDrift_CatalogCompleteness — Catalog возвращает ровно 30 уникальных
-// permission строк. Acceptance
+// TestDrift_CatalogCompleteness — Catalog возвращает ровно 26 уникальных
+// permission строк (NLB CONTRACT удалил loadbalancer.networkLoadBalancers.
+// {start,stop,attachTargetGroup,detachTargetGroup} → 30−4=26). Acceptance
 func TestDrift_CatalogCompleteness(t *testing.T) {
 	cat := check.Catalog()
 	uniq := make(map[string]struct{}, len(cat))
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Lenf(t, uniq, 30,
-		"Catalog must have 30 unique permission strings (design §6.2 §AZD-019); got %d: %v",
+	require.Lenf(t, uniq, 26,
+		"Catalog must have 26 unique permission strings (design §6.2 §AZD-019); got %d: %v",
 		len(uniq), sortedKeys(uniq))
 	require.Equal(t, len(cat), len(uniq), "Catalog() contains duplicates")
 }
 
-// TestDrift_CatalogRegex — все 30 строк каталога соответствуют regex
+// TestDrift_CatalogRegex — все 26 строк каталога соответствуют regex
 // (включая catalog-only `loadbalancer.operations.{get,cancel,list}`).
 func TestDrift_CatalogRegex(t *testing.T) {
 	for _, p := range check.Catalog() {
@@ -211,10 +212,10 @@ func TestDrift_CatalogRegex(t *testing.T) {
 // сумме методов всех gRPC-сервисов на ОБОИХ listener'ах (public + internal). Если
 // refactor proto добавил/удалил RPC, оба теста (этот + EveryRPCMapped) ловят drift.
 //
-// Ожидание:
+// Ожидание (после NLB CONTRACT — NLB service = 8 RPC, минус start/stop/attach/detach):
 //
-//	12 NLB + 6 Listener + 9 TG + 2 Operation = 29 public + 1 internal Subscribe +
-//	2 internal Announce (Get/Report) = 32 entries.
+//	8 NLB + 6 Listener + 9 TG + 2 Operation = 25 public + 1 internal Subscribe +
+//	2 internal Announce (Get/Report) = 28 entries.
 func TestDrift_RPCMethodCount(t *testing.T) {
 	got := len(check.PermissionMap())
 
@@ -235,7 +236,7 @@ func TestDrift_RPCMethodCount(t *testing.T) {
 //   - возвращённый objectID == ожидаемый "extracted-id";
 //   - err == nil.
 //
-// Это исчерпывающе покрывает все 27 Extract closure'ов в PermissionMap →
+// Это исчерпывающе покрывает все 23 Extract closure'а в PermissionMap →
 // PermissionMap coverage 39% → ≥90%.
 func TestExtract_AllRPCEntries(t *testing.T) {
 	m := check.PermissionMap()
@@ -264,20 +265,8 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Delete",
 			&lbv1.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: id},
 			"nlb_network_load_balancer", id},
-		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start",
-			&lbv1.StartNetworkLoadBalancerRequest{NetworkLoadBalancerId: id},
-			"nlb_network_load_balancer", id},
-		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop",
-			&lbv1.StopNetworkLoadBalancerRequest{NetworkLoadBalancerId: id},
-			"nlb_network_load_balancer", id},
 		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move",
 			&lbv1.MoveNetworkLoadBalancerRequest{NetworkLoadBalancerId: id, DestinationProjectId: "p2"},
-			"nlb_network_load_balancer", id},
-		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup",
-			&lbv1.AttachNetworkLoadBalancerTargetGroupRequest{NetworkLoadBalancerId: id},
-			"nlb_network_load_balancer", id},
-		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/DetachTargetGroup",
-			&lbv1.DetachNetworkLoadBalancerTargetGroupRequest{NetworkLoadBalancerId: id},
 			"nlb_network_load_balancer", id},
 		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates",
 			&lbv1.GetTargetStatesRequest{NetworkLoadBalancerId: id},
@@ -333,7 +322,7 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 			&lbv1.ListTargetGroupOperationsRequest{TargetGroupId: id},
 			"nlb_target_group", id},
 	}
-	require.Lenf(t, cases, 27, "must cover all 27 non-Public RPCs in PermissionMap (got %d)", len(cases))
+	require.Lenf(t, cases, 23, "must cover all 23 non-Public RPCs in PermissionMap (got %d)", len(cases))
 
 	for _, c := range cases {
 		t.Run(c.fm, func(t *testing.T) {

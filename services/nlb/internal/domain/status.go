@@ -37,18 +37,14 @@ type LBStatus string
 
 const (
 	LBStatusCreating LBStatus = "CREATING"
-	LBStatusStarting LBStatus = "STARTING"
 	LBStatusActive   LBStatus = "ACTIVE"
-	LBStatusStopping LBStatus = "STOPPING"
-	LBStatusStopped  LBStatus = "STOPPED"
 	LBStatusDeleting LBStatus = "DELETING"
 	LBStatusInactive LBStatus = "INACTIVE"
 )
 
 func (s LBStatus) Validate() error {
 	switch s {
-	case LBStatusCreating, LBStatusStarting, LBStatusActive,
-		LBStatusStopping, LBStatusStopped, LBStatusDeleting, LBStatusInactive:
+	case LBStatusCreating, LBStatusActive, LBStatusDeleting, LBStatusInactive:
 		return nil
 	}
 	return coreerrors.InvalidArgument().

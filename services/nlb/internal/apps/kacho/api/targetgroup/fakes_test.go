@@ -36,13 +36,13 @@ import (
 // fakeRepo — in-memory `kacho.Repository` для unit-тестов use-case'ов TG.
 // Покрывает методы, реально вызываемые TG-use-case'ами: TargetGroups
 // Reader+Writer (Get/List/Insert/Update/Delete/MoveProject/AddTargets/
-// RemoveTargetsMarkDraining/HasAttachedLB/ListTargets) + AttachedTargetGroups
-// (ListByTG) + Outbox emit.
+// RemoveTargetsMarkDraining/ListTargets/ReferencingListenerIDs) + Outbox emit.
+// После NLB CONTRACT ассоциация LB↔TG деривится из referencing-листенеров
+// (listeners.default_target_group_id) — M:N pivot удалён.
 type fakeRepo struct {
 	mu               sync.Mutex
 	tgs              map[string]*kachorepo.TargetGroupRecord
 	targets          map[string]map[string]*kachorepo.TargetRecord // tgID → target.ID → row
-	pivot            map[string]bool                               // "lbID/tgID" → attached
 	refListeners     map[string][]string                           // tgID → referencing listener ids
 	outbox           []fakeOutboxEvent
 	fga              []fgaIntentEvent // FGARegisterOutbox intents (flushed on Commit)
@@ -65,7 +65,6 @@ func newFakeRepo() *fakeRepo {
 	return &fakeRepo{
 		tgs:     make(map[string]*kachorepo.TargetGroupRecord),
 		targets: make(map[string]map[string]*kachorepo.TargetRecord),
-		pivot:   make(map[string]bool),
 	}
 }
 
@@ -84,12 +83,6 @@ func (r *fakeRepo) seedTarget(tgID string, rec *kachorepo.TargetRecord) {
 		r.targets[tgID] = m
 	}
 	m[rec.ID] = rec
-}
-
-func (r *fakeRepo) seedAttached(lbID, tgID string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.pivot[lbID+"/"+tgID] = true
 }
 
 func (r *fakeRepo) seedReferencingListener(tgID, listenerID string) {
@@ -126,10 +119,7 @@ type fakeReader struct{ r *fakeRepo }
 func (rd *fakeReader) LoadBalancers() kachorepo.LoadBalancerReaderIface { return &fakeLBStub{} }
 func (rd *fakeReader) Listeners() kachorepo.ListenerReaderIface         { return &fakeListenerStub{} }
 func (rd *fakeReader) TargetGroups() kachorepo.TargetGroupReaderIface   { return &fakeTGReader{r: rd.r} }
-func (rd *fakeReader) AttachedTargetGroups() kachorepo.AttachedTargetGroupReaderIface {
-	return &fakeATGReader{r: rd.r}
-}
-func (rd *fakeReader) Close() error { return nil }
+func (rd *fakeReader) Close() error                                     { return nil }
 
 type fakeWriter struct {
 	r             *fakeRepo
@@ -162,9 +152,6 @@ func (w *fakeWriter) LoadBalancers() kachorepo.LoadBalancerWriterIface { return 
 func (w *fakeWriter) Listeners() kachorepo.ListenerWriterIface         { return &fakeListenerStub{} }
 func (w *fakeWriter) TargetGroups() kachorepo.TargetGroupWriterIface {
 	return &fakeTGWriter{r: w.r, w: w}
-}
-func (w *fakeWriter) AttachedTargetGroups() kachorepo.AttachedTargetGroupWriterIface {
-	return &fakeATGWriter{r: w.r}
 }
 func (w *fakeWriter) Outbox() kachorepo.OutboxEmitter { return &fakeOutbox{r: w.r, w: w} }
 func (w *fakeWriter) FGARegisterOutbox() kachorepo.FGARegisterEmitter {
@@ -320,18 +307,6 @@ func (q *fakeTGReader) ListDrainingExpired(_ context.Context, _ string, _ int32)
 	return nil, nil
 }
 
-func (q *fakeTGReader) HasAttachedLB(_ context.Context, tgID string) (bool, error) {
-	q.r.mu.Lock()
-	defer q.r.mu.Unlock()
-	suffix := "/" + tgID
-	for k := range q.r.pivot {
-		if len(k) > len(suffix) && k[len(k)-len(suffix):] == suffix {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (q *fakeTGReader) ReferencingListenerIDs(_ context.Context, tgID string) ([]string, error) {
 	q.r.mu.Lock()
 	defer q.r.mu.Unlock()
@@ -362,9 +337,6 @@ func (q *fakeTGWriter) ReferencingListenerIDs(ctx context.Context, tgID string) 
 }
 func (q *fakeTGWriter) ListDrainingExpired(ctx context.Context, tgID string, delaySeconds int32) ([]*kachorepo.TargetRecord, error) {
 	return (&fakeTGReader{r: q.r}).ListDrainingExpired(ctx, tgID, delaySeconds)
-}
-func (q *fakeTGWriter) HasAttachedLB(ctx context.Context, tgID string) (bool, error) {
-	return (&fakeTGReader{r: q.r}).HasAttachedLB(ctx, tgID)
 }
 
 func (q *fakeTGWriter) Insert(_ context.Context, tg *domain.TargetGroup) (*kachorepo.TargetGroupRecord, error) {
@@ -513,62 +485,6 @@ func (q *fakeTGWriter) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// ---- AttachedTG (ListByTG only) ----
-
-type fakeATGReader struct{ r *fakeRepo }
-
-func (q *fakeATGReader) Get(_ context.Context, lbID, tgID string) (*kachorepo.AttachedTargetGroupRecord, error) {
-	q.r.mu.Lock()
-	defer q.r.mu.Unlock()
-	if q.r.pivot[lbID+"/"+tgID] {
-		return &kachorepo.AttachedTargetGroupRecord{LoadBalancerID: lbID, TargetGroupID: tgID}, nil
-	}
-	return nil, fmt.Errorf("%w: AttachedTargetGroup %s/%s not found", kachorepo.ErrNotFound, lbID, tgID)
-}
-func (q *fakeATGReader) ListByLB(_ context.Context, lbID string) ([]*kachorepo.AttachedTargetGroupRecord, error) {
-	q.r.mu.Lock()
-	defer q.r.mu.Unlock()
-	var out []*kachorepo.AttachedTargetGroupRecord
-	prefix := lbID + "/"
-	for k := range q.r.pivot {
-		if len(k) > len(prefix) && k[:len(prefix)] == prefix {
-			out = append(out, &kachorepo.AttachedTargetGroupRecord{LoadBalancerID: lbID, TargetGroupID: k[len(prefix):]})
-		}
-	}
-	return out, nil
-}
-func (q *fakeATGReader) ListByTG(_ context.Context, tgID string) ([]*kachorepo.AttachedTargetGroupRecord, error) {
-	q.r.mu.Lock()
-	defer q.r.mu.Unlock()
-	var out []*kachorepo.AttachedTargetGroupRecord
-	suffix := "/" + tgID
-	for k := range q.r.pivot {
-		if len(k) > len(suffix) && k[len(k)-len(suffix):] == suffix {
-			lb := k[:len(k)-len(suffix)]
-			out = append(out, &kachorepo.AttachedTargetGroupRecord{LoadBalancerID: lb, TargetGroupID: tgID})
-		}
-	}
-	return out, nil
-}
-
-type fakeATGWriter struct{ r *fakeRepo }
-
-func (q *fakeATGWriter) Get(ctx context.Context, lbID, tgID string) (*kachorepo.AttachedTargetGroupRecord, error) {
-	return (&fakeATGReader{r: q.r}).Get(ctx, lbID, tgID)
-}
-func (q *fakeATGWriter) ListByLB(ctx context.Context, lbID string) ([]*kachorepo.AttachedTargetGroupRecord, error) {
-	return (&fakeATGReader{r: q.r}).ListByLB(ctx, lbID)
-}
-func (q *fakeATGWriter) ListByTG(ctx context.Context, tgID string) ([]*kachorepo.AttachedTargetGroupRecord, error) {
-	return (&fakeATGReader{r: q.r}).ListByTG(ctx, tgID)
-}
-func (q *fakeATGWriter) Attach(_ context.Context, _, _ string, _ int32) (*kachorepo.AttachedTargetGroupRecord, bool, error) {
-	return nil, false, errors.New("fakeATGWriter.Attach not used by TG use-cases")
-}
-func (q *fakeATGWriter) Detach(_ context.Context, _, _ string) error {
-	return errors.New("fakeATGWriter.Detach not used by TG use-cases")
-}
-
 // ---- Outbox ----
 
 type fakeOutbox struct {
@@ -600,8 +516,8 @@ func (fakeLBStub) List(context.Context, kachorepo.LoadBalancerFilter, kachorepo.
 func (fakeLBStub) ListByProject(context.Context, string, kachorepo.Pagination) ([]*kachorepo.LoadBalancerRecord, string, error) {
 	return nil, "", nil
 }
-func (fakeLBStub) HasListeners(context.Context, string) (bool, error)            { return false, nil }
-func (fakeLBStub) HasAttachedTargetGroups(context.Context, string) (bool, error) { return false, nil }
+func (fakeLBStub) HasListeners(context.Context, string) (bool, error)        { return false, nil }
+func (fakeLBStub) HasWiredTargetGroup(context.Context, string) (bool, error) { return false, nil }
 func (fakeLBStub) Insert(context.Context, *domain.LoadBalancer) (*kachorepo.LoadBalancerRecord, error) {
 	return nil, errors.New("not used")
 }

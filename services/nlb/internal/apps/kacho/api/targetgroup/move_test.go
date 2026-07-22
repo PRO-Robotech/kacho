@@ -105,12 +105,14 @@ func TestMove_SameProject_InvalidArg(t *testing.T) {
 	require.Contains(t, status.Convert(err).Message(), "destination project is the same as source")
 }
 
-// attached to LB → FailedPrecondition с фиксированным текстом.
-func TestMove_HasAttachedLB(t *testing.T) {
+// referenced by a listener → FailedPrecondition с фиксированным текстом (NLB
+// CONTRACT: association LB↔TG derives from listeners.default_target_group_id;
+// a referenced TG cannot be moved cross-project — repoint the listeners first).
+func TestMove_ReferencedByListener(t *testing.T) {
 	repo := newFakeRepo()
-	tg := makeTG("prj-y", "attached")
+	tg := makeTG("prj-y", "referenced")
 	repo.seedTG(tg)
-	repo.seedAttached("nlb-1", string(tg.ID))
+	repo.seedReferencingListener(string(tg.ID), "lst-7h3k9m2x4q8w1t0y")
 	uc := NewMoveTargetGroupUseCase(repo, newFakeOpsRepo(), &fakeProjectClient{}, nil, nil)
 
 	_, err := uc.Execute(context.Background(), &lbv1.MoveTargetGroupRequest{
@@ -119,7 +121,7 @@ func TestMove_HasAttachedLB(t *testing.T) {
 	})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(),
-		"is attached to 1 load balancer(s); detach before moving")
+		"target group is referenced by 1 listener(s); repoint them before moving")
 }
 
 // Destination project peer NotFound → InvalidArgument with с фиксированным текстом.

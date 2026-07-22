@@ -13,9 +13,9 @@
 // Несовпадение → CI fail до merge'а.
 //
 // Source-of-truth permission catalog — `kacho-iam/internal/authzmap/permission_catalog.go`
-// (30 строк под namespace `loadbalancer.*`). Эти 30 имён
-// валидируются iam'ом против каталога при создании custom roles. Все 30 строк
-// перечислены в `Catalog` ниже; 27 из них привязаны к конкретным RPC через
+// (26 строк под namespace `loadbalancer.*`). Эти 26 имён
+// валидируются iam'ом против каталога при создании custom roles. Все 26 строк
+// перечислены в `Catalog` ниже; 23 из них привязаны к конкретным RPC через
 // PermissionMap, ещё 3 (`loadbalancer.operations.{get,cancel,list}`) — это
 // "catalog-only" permissions: OperationService.Get/Cancel помечены
 // `(kacho.iam.authz.v1.permission) = "<exempt>"` в proto-аннотации (Public,
@@ -73,7 +73,7 @@ const (
 	//	v_get    — чтение содержимого самого ресурса (Get / GetTargetStates);
 	//	v_list   — видимость операций на самом ресурсе (ListOperations) — НЕ
 	//	           top-level project-List;
-	//	v_update — мутация самого ресурса (Update + start/stop/move/attach/targets);
+	//	v_update — мутация самого ресурса (Update + move/targets);
 	//	v_delete — удаление самого ресурса.
 	relationVGet    = "v_get"
 	relationVList   = "v_list"
@@ -115,21 +115,17 @@ func staticClusterFloor() authz.ObjectExtractor {
 //     поля в PermissionMap;
 //   - уникальность Permission строк внутри PermissionMap;
 //   - суммарный набор (PermissionMap + `catalogOnlyOperationPermissions`) =
-//     30 distinct.
+//     26 distinct.
 const (
-	// NLB (12)
-	permNLBGet               = "loadbalancer.networkLoadBalancers.get"
-	permNLBList              = "loadbalancer.networkLoadBalancers.list"
-	permNLBCreate            = "loadbalancer.networkLoadBalancers.create"
-	permNLBUpdate            = "loadbalancer.networkLoadBalancers.update"
-	permNLBDelete            = "loadbalancer.networkLoadBalancers.delete"
-	permNLBStart             = "loadbalancer.networkLoadBalancers.start"
-	permNLBStop              = "loadbalancer.networkLoadBalancers.stop"
-	permNLBMove              = "loadbalancer.networkLoadBalancers.move"
-	permNLBAttachTargetGroup = "loadbalancer.networkLoadBalancers.attachTargetGroup"
-	permNLBDetachTargetGroup = "loadbalancer.networkLoadBalancers.detachTargetGroup"
-	permNLBGetTargetStates   = "loadbalancer.networkLoadBalancers.getTargetStates"
-	permNLBListOperations    = "loadbalancer.networkLoadBalancers.listOperations"
+	// NLB (8)
+	permNLBGet             = "loadbalancer.networkLoadBalancers.get"
+	permNLBList            = "loadbalancer.networkLoadBalancers.list"
+	permNLBCreate          = "loadbalancer.networkLoadBalancers.create"
+	permNLBUpdate          = "loadbalancer.networkLoadBalancers.update"
+	permNLBDelete          = "loadbalancer.networkLoadBalancers.delete"
+	permNLBMove            = "loadbalancer.networkLoadBalancers.move"
+	permNLBGetTargetStates = "loadbalancer.networkLoadBalancers.getTargetStates"
+	permNLBListOperations  = "loadbalancer.networkLoadBalancers.listOperations"
 	// Listener (6)
 	permLstGet            = "loadbalancer.listeners.get"
 	permLstList           = "loadbalancer.listeners.list"
@@ -156,12 +152,12 @@ const (
 // catalogOnlyOperationPermissions — 3 catalog-only имена, не привязанные к
 // конкретному NLB-RPC. См. doc.go раздел "catalog-only".
 //
-// Drift-test использует это, чтобы проверить полноту 30-string каталога
-// (PermissionMap values ∪ catalogOnlyOperationPermissions = 30).
+// Drift-test использует это, чтобы проверить полноту 26-string каталога
+// (PermissionMap values ∪ catalogOnlyOperationPermissions = 26).
 var catalogOnlyOperationPermissions = []string{permOPGet, permOPCancel, permOPList}
 
-// Catalog возвращает union всех 30 catalog strings:
-// 27 RPC-mapped через PermissionMap + 3 catalog-only operation strings.
+// Catalog возвращает union всех 26 catalog strings:
+// 23 RPC-mapped через PermissionMap + 3 catalog-only operation strings.
 //
 // Сортировка не гарантируется; drift-test сравнивает как set.
 func Catalog() []string {
@@ -212,7 +208,7 @@ func Catalog() []string {
 func PermissionMap() authz.RPCMap {
 	return authz.RPCMap{
 		// =========================
-		// NetworkLoadBalancerService (12 RPCs)
+		// NetworkLoadBalancerService (8 RPCs)
 		// =========================
 		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get": {
 			Relation:   relationVGet,
@@ -250,20 +246,6 @@ func PermissionMap() authz.RPCMap {
 				return req.(*lbv1.DeleteNetworkLoadBalancerRequest).GetNetworkLoadBalancerId(), nil
 			}),
 		},
-		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start": {
-			Relation:   relationVUpdate,
-			Permission: permNLBStart,
-			Extract: authz.StaticExtractor(objectTypeLoadBalancer, func(req any) (string, error) {
-				return req.(*lbv1.StartNetworkLoadBalancerRequest).GetNetworkLoadBalancerId(), nil
-			}),
-		},
-		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop": {
-			Relation:   relationVUpdate,
-			Permission: permNLBStop,
-			Extract: authz.StaticExtractor(objectTypeLoadBalancer, func(req any) (string, error) {
-				return req.(*lbv1.StopNetworkLoadBalancerRequest).GetNetworkLoadBalancerId(), nil
-			}),
-		},
 		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move": {
 			// Per-RPC Check на ресурсе (editor on src LB → cascades через editor on
 			// project src). Destination project Check — handler'ом (см. doc).
@@ -271,21 +253,6 @@ func PermissionMap() authz.RPCMap {
 			Permission: permNLBMove,
 			Extract: authz.StaticExtractor(objectTypeLoadBalancer, func(req any) (string, error) {
 				return req.(*lbv1.MoveNetworkLoadBalancerRequest).GetNetworkLoadBalancerId(), nil
-			}),
-		},
-		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup": {
-			// Per-RPC Check — editor on LB. Дополнительный viewer on TG — handler'ом.
-			Relation:   relationVUpdate,
-			Permission: permNLBAttachTargetGroup,
-			Extract: authz.StaticExtractor(objectTypeLoadBalancer, func(req any) (string, error) {
-				return req.(*lbv1.AttachNetworkLoadBalancerTargetGroupRequest).GetNetworkLoadBalancerId(), nil
-			}),
-		},
-		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/DetachTargetGroup": {
-			Relation:   relationVUpdate,
-			Permission: permNLBDetachTargetGroup,
-			Extract: authz.StaticExtractor(objectTypeLoadBalancer, func(req any) (string, error) {
-				return req.(*lbv1.DetachNetworkLoadBalancerTargetGroupRequest).GetNetworkLoadBalancerId(), nil
 			}),
 		},
 		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates": {
@@ -447,7 +414,7 @@ func PermissionMap() authz.RPCMap {
 		// kacho-iam SystemViewerFloor); любой другой subject → PermissionDenied.
 		//
 		// Permission намеренно пустой: это НЕ tenant-facing каталожный permission
-		// (30-string `loadbalancer.*`-каталог покрывает только public-RPC) — gate тут
+		// (26-string `loadbalancer.*`-каталог покрывает только public-RPC) — gate тут
 		// чисто relation-based, как cluster-floor у других сервисов.
 		"/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe": {
 			Relation: relationSystemViewer,
@@ -468,7 +435,7 @@ func PermissionMap() authz.RPCMap {
 		//     (единственный носитель = data plane; viewer/tenant → PermissionDenied).
 		//
 		// Permission намеренно пустой: announce — internal RPC, gate чисто
-		// relation-based; в 30-string tenant-каталог `loadbalancer.*` он не входит
+		// relation-based; в 26-string tenant-каталог `loadbalancer.*` он не входит
 		// (каталогизация announce-permission на iam-стороне — отдельная задача).
 		"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/GetAnnounceState": {
 			Relation: relationVGet,

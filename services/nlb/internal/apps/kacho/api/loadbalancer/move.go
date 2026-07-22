@@ -26,8 +26,9 @@ import (
 // Sync prechecks:
 //   - same-project — InvalidArgument "destination project is the same as source";
 //   - destination project exists (peer ProjectClient.Get);
-//   - LB has no attached target groups (FGA / data-model constraint: cross-project
-//     TG attach запрещён — Move заблокирован если есть).
+//   - no child listener wired to a target group (cross-project ref guard: a
+//     listener in the destination project must not reference a TG in the source
+//     project — Move заблокирован если есть).
 //
 // Worker: Writer-TX → repo.MoveProject (UPDATE LB + cascade UPDATE listeners) +
 // outbox MOVED + FGA-register(dst project) + FGA-unregister(src project) → Commit
@@ -89,14 +90,14 @@ func (u *MoveLoadBalancerUseCase) Execute(
 		return nil, status.Error(codes.InvalidArgument,
 			"destination project is the same as source")
 	}
-	hasTG, err := rd.LoadBalancers().HasAttachedTargetGroups(ctx, id)
+	hasTG, err := rd.LoadBalancers().HasWiredTargetGroup(ctx, id)
 	_ = rd.Close()
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if hasTG {
 		return nil, status.Error(codes.FailedPrecondition,
-			"NetworkLoadBalancer has attached target group(s); detach before Move")
+			"NetworkLoadBalancer has a listener wired to a target group; repoint before Move")
 	}
 
 	// Peer-check destination project.

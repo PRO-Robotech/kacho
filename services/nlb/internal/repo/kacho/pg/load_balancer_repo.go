@@ -246,11 +246,15 @@ func (r *loadBalancerReader) HasListeners(ctx context.Context, lbID string) (boo
 	return exists, nil
 }
 
-// HasAttachedTargetGroups — EXISTS query.
-func (r *loadBalancerReader) HasAttachedTargetGroups(ctx context.Context, lbID string) (bool, error) {
+// HasWiredTargetGroup — EXISTS query: does this LB have any listener wired to a
+// target group (listeners.default_target_group_id set)? Replaces the removed
+// attached_target_groups M:N pivot — a target group's association with an LB is
+// now derived from its listeners' wiring.
+func (r *loadBalancerReader) HasWiredTargetGroup(ctx context.Context, lbID string) (bool, error) {
 	var exists bool
 	err := r.tx.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM kacho_nlb.attached_target_groups WHERE load_balancer_id = $1)`,
+		`SELECT EXISTS(SELECT 1 FROM kacho_nlb.listeners
+                        WHERE load_balancer_id = $1 AND default_target_group_id <> '')`,
 		lbID,
 	).Scan(&exists)
 	if err != nil {
@@ -457,12 +461,12 @@ func (w *loadBalancerWriter) SetStatusCAS(ctx context.Context, id string, expect
 //	SELECT 1 FROM load_balancers WHERE id=$1 FOR NO KEY UPDATE   -- lock-acquire
 //	UPDATE ... SET status='DELETING'
 //	 WHERE id=$1 AND deletion_protection=false
-//	   AND NOT EXISTS(listeners) AND NOT EXISTS(attached_target_groups)
+//	   AND NOT EXISTS(listeners)
 //	RETURNING ...
 //
 // Два стейтмента, НЕ один. Row-lock (FOR NO KEY UPDATE на LB) сериализуется с
-// child-INSERT'ами (Listener.Insert / Attach держат FOR NO KEY UPDATE OF lb и
-// отвергают DELETING-родителя), но одного row-lock'а НЕДОСТАТОЧНО, если guard —
+// child-INSERT'ами (Listener.Insert держит FOR NO KEY UPDATE OF lb и
+// отвергает DELETING-родителя), но одного row-lock'а НЕДОСТАТОЧНО, если guard —
 // cross-table NOT EXISTS(children): single-statement UPDATE вычисляет подзапрос по
 // СВОЕМУ start-снапшоту; при разблокировке row-lock'а EvalPlanQual (READ COMMITTED)
 // пере-проверяет только целевую LB-строку, но НЕ пере-исполняет cross-table
@@ -494,7 +498,6 @@ func (w *loadBalancerWriter) MarkDeleting(ctx context.Context, id string) (*kach
          WHERE id = $1
            AND deletion_protection = false
            AND NOT EXISTS (SELECT 1 FROM kacho_nlb.listeners WHERE load_balancer_id = $1)
-           AND NOT EXISTS (SELECT 1 FROM kacho_nlb.attached_target_groups WHERE load_balancer_id = $1)
         RETURNING %s`, loadBalancerCols)
 	row := w.tx.QueryRow(ctx, q, id, string(domain.LBStatusDeleting))
 	rec, err := scanLB(row)
@@ -512,14 +515,13 @@ func (w *loadBalancerWriter) MarkDeleting(ctx context.Context, id string) (*kach
 // sync-precheck Delete-use-case'а). Читает под той же writer-TX (row уже
 // row-locked mark-UPDATE'ом, если существует).
 func (w *loadBalancerWriter) markDeletingBlockReason(ctx context.Context, id string) error {
-	var protected, hasListener, hasAttached bool
+	var protected, hasListener bool
 	e := w.tx.QueryRow(ctx, `
         SELECT lb.deletion_protection,
-               EXISTS(SELECT 1 FROM kacho_nlb.listeners WHERE load_balancer_id = lb.id),
-               EXISTS(SELECT 1 FROM kacho_nlb.attached_target_groups WHERE load_balancer_id = lb.id)
+               EXISTS(SELECT 1 FROM kacho_nlb.listeners WHERE load_balancer_id = lb.id)
           FROM kacho_nlb.load_balancers lb
          WHERE lb.id = $1`, id,
-	).Scan(&protected, &hasListener, &hasAttached)
+	).Scan(&protected, &hasListener)
 	if e != nil {
 		if pgxIsNoRows(e) {
 			return fmt.Errorf("%w: NetworkLoadBalancer %s not found", kacho.ErrNotFound, id)
@@ -531,8 +533,6 @@ func (w *loadBalancerWriter) markDeletingBlockReason(ctx context.Context, id str
 		return fmt.Errorf("%w: NetworkLoadBalancer %s has deletion protection enabled", kacho.ErrFailedPrecondition, id)
 	case hasListener:
 		return fmt.Errorf("%w: NetworkLoadBalancer %s has listener(s); delete first", kacho.ErrFailedPrecondition, id)
-	case hasAttached:
-		return fmt.Errorf("%w: NetworkLoadBalancer %s has attached target group(s); detach first", kacho.ErrFailedPrecondition, id)
 	}
 	// Guards очистились между UPDATE и этим SELECT (ребёнок удалён под гонку) —
 	// generic precondition-miss; повторный Delete пройдёт.
@@ -542,29 +542,29 @@ func (w *loadBalancerWriter) markDeletingBlockReason(ctx context.Context, id str
 // MoveProject — atomic project-rewrite LB + каскад на listeners (denorm sync).
 //
 // Инвариант (within-service refs на DB-уровне):
-// LB с приаттаченными target-group'ами двигать НЕЛЬЗЯ — иначе attached_target_groups
-// свяжет LB в проекте B с TG в проекте A (cross-project attach, запрещён моделью).
-// Sync-precheck HasAttachedTargetGroups в use-case'е — только UX/fast-fail; здесь
-// гвоздём прибиваем инвариант атомарным `UPDATE ... WHERE NOT EXISTS(attach)`,
-// который сериализуется с конкурентным Attach INSERT'ом (см. AttachedTargetGroups.
-// Attach: тот re-check'ает project внутри своей writer-tx через conditional INSERT).
-// 0 rows при существующем LB → приаттачен TG между sync-check и apply → FailedPrecondition.
+// LB, у которого хоть один listener привязан к TG (default_target_group_id set),
+// двигать НЕЛЬЗЯ — иначе listener в проекте B ссылался бы на TG в проекте A
+// (cross-project ref, запрещён моделью). Sync-precheck HasWiredTargetGroup в
+// use-case'е — только UX/fast-fail; здесь гвоздём прибиваем инвариант атомарным
+// `UPDATE ... WHERE NOT EXISTS(listener wired to TG)`, который сериализуется с
+// конкурентным Listener.Insert/repoint (тот держит FOR NO KEY UPDATE OF lb).
+// 0 rows при существующем LB → listener привязался между sync-check и apply → FailedPrecondition.
 func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kacho.LoadBalancerRecord, error) {
-	// 1. Сам LB — atomic CAS-подобный guard: двигаем только если нет attach'ей.
+	// 1. Сам LB — atomic CAS-подобный guard: двигаем только если нет wired listener'ов.
 	q := fmt.Sprintf(`
         UPDATE kacho_nlb.load_balancers
            SET project_id = $2, updated_at = now()
          WHERE id = $1
            AND NOT EXISTS (
-               SELECT 1 FROM kacho_nlb.attached_target_groups
-                WHERE load_balancer_id = $1
+               SELECT 1 FROM kacho_nlb.listeners
+                WHERE load_balancer_id = $1 AND default_target_group_id <> ''
            )
         RETURNING %s`, loadBalancerCols)
 	row := w.tx.QueryRow(ctx, q, id, newProjectID)
 	rec, err := scanLB(row)
 	if err != nil {
 		if pgxIsNoRows(err) {
-			// Различаем «LB нет» (NotFound) и «есть attach'и» (FailedPrecondition).
+			// Различаем «LB нет» (NotFound) и «есть wired listener» (FailedPrecondition).
 			var exists bool
 			if e := w.tx.QueryRow(ctx,
 				`SELECT EXISTS(SELECT 1 FROM kacho_nlb.load_balancers WHERE id = $1)`, id,
@@ -572,7 +572,7 @@ func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID s
 				return nil, mapPgErr(e, "NetworkLoadBalancer", id)
 			}
 			if exists {
-				return nil, fmt.Errorf("%w: NetworkLoadBalancer %s has attached target group(s); detach before Move",
+				return nil, fmt.Errorf("%w: NetworkLoadBalancer %s has a listener wired to a target group; repoint before Move",
 					kacho.ErrFailedPrecondition, id)
 			}
 			return nil, fmt.Errorf("%w: NetworkLoadBalancer %s not found", kacho.ErrNotFound, id)

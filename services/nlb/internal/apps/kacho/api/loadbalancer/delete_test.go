@@ -108,22 +108,6 @@ func TestDelete_HasListeners(t *testing.T) {
 	require.Contains(t, status.Convert(err).Message(), "listener")
 }
 
-func TestDelete_HasAttachedTG(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepo()
-	lbID := seedLB(t, repo, "prj-a", "edge")
-	tgID := "tgr-fake"
-	repo.pivot[lbID+"/"+tgID] = &kachorepo.AttachedTargetGroupRecord{
-		LoadBalancerID: lbID, TargetGroupID: tgID,
-	}
-	uc := NewDeleteLoadBalancerUseCase(repo, newFakeOpsRepo(), &fakeAddressClient{}, nil)
-	_, err := uc.Execute(context.Background(), &lbv1.DeleteNetworkLoadBalancerRequest{
-		NetworkLoadBalancerId: lbID,
-	})
-	require.Equal(t, codes.FailedPrecondition, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "attached target group")
-}
-
 // TestDelete_GuardFailure_DoesNotReleaseVIP — при провале атомарного
 // mark-DELETING guard'а (конкурентная re-protection / появившийся ребёнок между
 // sync-precheck и async-воркером) необратимый cross-domain release VIP НЕ должен

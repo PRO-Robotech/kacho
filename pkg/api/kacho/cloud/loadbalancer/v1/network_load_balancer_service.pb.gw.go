@@ -220,84 +220,6 @@ func local_request_NetworkLoadBalancerService_Delete_0(ctx context.Context, mars
 	return msg, metadata, err
 }
 
-func request_NetworkLoadBalancerService_Start_0(ctx context.Context, marshaler runtime.Marshaler, client NetworkLoadBalancerServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq StartNetworkLoadBalancerRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := client.Start(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_NetworkLoadBalancerService_Start_0(ctx context.Context, marshaler runtime.Marshaler, server NetworkLoadBalancerServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq StartNetworkLoadBalancerRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := server.Start(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_NetworkLoadBalancerService_Stop_0(ctx context.Context, marshaler runtime.Marshaler, client NetworkLoadBalancerServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq StopNetworkLoadBalancerRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := client.Stop(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_NetworkLoadBalancerService_Stop_0(ctx context.Context, marshaler runtime.Marshaler, server NetworkLoadBalancerServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq StopNetworkLoadBalancerRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := server.Stop(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 func request_NetworkLoadBalancerService_Move_0(ctx context.Context, marshaler runtime.Marshaler, client NetworkLoadBalancerServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq MoveNetworkLoadBalancerRequest
@@ -340,96 +262,6 @@ func local_request_NetworkLoadBalancerService_Move_0(ctx context.Context, marsha
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
 	}
 	msg, err := server.Move(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_NetworkLoadBalancerService_AttachTargetGroup_0(ctx context.Context, marshaler runtime.Marshaler, client NetworkLoadBalancerServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq AttachNetworkLoadBalancerTargetGroupRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := client.AttachTargetGroup(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_NetworkLoadBalancerService_AttachTargetGroup_0(ctx context.Context, marshaler runtime.Marshaler, server NetworkLoadBalancerServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq AttachNetworkLoadBalancerTargetGroupRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := server.AttachTargetGroup(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_NetworkLoadBalancerService_DetachTargetGroup_0(ctx context.Context, marshaler runtime.Marshaler, client NetworkLoadBalancerServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq DetachNetworkLoadBalancerTargetGroupRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := client.DetachTargetGroup(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_NetworkLoadBalancerService_DetachTargetGroup_0(ctx context.Context, marshaler runtime.Marshaler, server NetworkLoadBalancerServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq DetachNetworkLoadBalancerTargetGroupRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["network_load_balancer_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "network_load_balancer_id")
-	}
-	protoReq.NetworkLoadBalancerId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "network_load_balancer_id", err)
-	}
-	msg, err := server.DetachTargetGroup(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -645,46 +477,6 @@ func RegisterNetworkLoadBalancerServiceHandlerServer(ctx context.Context, mux *r
 		}
 		forward_NetworkLoadBalancerService_Delete_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_Start_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:start"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_NetworkLoadBalancerService_Start_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_Start_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_Stop_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:stop"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_NetworkLoadBalancerService_Stop_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_Stop_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_Move_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -704,46 +496,6 @@ func RegisterNetworkLoadBalancerServiceHandlerServer(ctx context.Context, mux *r
 			return
 		}
 		forward_NetworkLoadBalancerService_Move_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_AttachTargetGroup_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:attachTargetGroup"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_NetworkLoadBalancerService_AttachTargetGroup_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_AttachTargetGroup_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_DetachTargetGroup_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/DetachTargetGroup", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:detachTargetGroup"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_NetworkLoadBalancerService_DetachTargetGroup_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_DetachTargetGroup_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_NetworkLoadBalancerService_GetTargetStates_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -910,40 +662,6 @@ func RegisterNetworkLoadBalancerServiceHandlerClient(ctx context.Context, mux *r
 		}
 		forward_NetworkLoadBalancerService_Delete_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_Start_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:start"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_NetworkLoadBalancerService_Start_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_Start_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_Stop_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:stop"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_NetworkLoadBalancerService_Stop_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_Stop_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_Move_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -960,40 +678,6 @@ func RegisterNetworkLoadBalancerServiceHandlerClient(ctx context.Context, mux *r
 			return
 		}
 		forward_NetworkLoadBalancerService_Move_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_AttachTargetGroup_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:attachTargetGroup"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_NetworkLoadBalancerService_AttachTargetGroup_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_AttachTargetGroup_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_NetworkLoadBalancerService_DetachTargetGroup_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/DetachTargetGroup", runtime.WithHTTPPathPattern("/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:detachTargetGroup"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_NetworkLoadBalancerService_DetachTargetGroup_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_NetworkLoadBalancerService_DetachTargetGroup_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_NetworkLoadBalancerService_GetTargetStates_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -1033,31 +717,23 @@ func RegisterNetworkLoadBalancerServiceHandlerClient(ctx context.Context, mux *r
 }
 
 var (
-	pattern_NetworkLoadBalancerService_Get_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, ""))
-	pattern_NetworkLoadBalancerService_List_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"nlb", "v1", "networkLoadBalancers"}, ""))
-	pattern_NetworkLoadBalancerService_Create_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"nlb", "v1", "networkLoadBalancers"}, ""))
-	pattern_NetworkLoadBalancerService_Update_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, ""))
-	pattern_NetworkLoadBalancerService_Delete_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, ""))
-	pattern_NetworkLoadBalancerService_Start_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, "start"))
-	pattern_NetworkLoadBalancerService_Stop_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, "stop"))
-	pattern_NetworkLoadBalancerService_Move_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, "move"))
-	pattern_NetworkLoadBalancerService_AttachTargetGroup_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, "attachTargetGroup"))
-	pattern_NetworkLoadBalancerService_DetachTargetGroup_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, "detachTargetGroup"))
-	pattern_NetworkLoadBalancerService_GetTargetStates_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id", "targetStates"}, ""))
-	pattern_NetworkLoadBalancerService_ListOperations_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id", "operations"}, ""))
+	pattern_NetworkLoadBalancerService_Get_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, ""))
+	pattern_NetworkLoadBalancerService_List_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"nlb", "v1", "networkLoadBalancers"}, ""))
+	pattern_NetworkLoadBalancerService_Create_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"nlb", "v1", "networkLoadBalancers"}, ""))
+	pattern_NetworkLoadBalancerService_Update_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, ""))
+	pattern_NetworkLoadBalancerService_Delete_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, ""))
+	pattern_NetworkLoadBalancerService_Move_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id"}, "move"))
+	pattern_NetworkLoadBalancerService_GetTargetStates_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id", "targetStates"}, ""))
+	pattern_NetworkLoadBalancerService_ListOperations_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"nlb", "v1", "networkLoadBalancers", "network_load_balancer_id", "operations"}, ""))
 )
 
 var (
-	forward_NetworkLoadBalancerService_Get_0               = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_List_0              = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_Create_0            = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_Update_0            = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_Delete_0            = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_Start_0             = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_Stop_0              = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_Move_0              = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_AttachTargetGroup_0 = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_DetachTargetGroup_0 = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_GetTargetStates_0   = runtime.ForwardResponseMessage
-	forward_NetworkLoadBalancerService_ListOperations_0    = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_Get_0             = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_List_0            = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_Create_0          = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_Update_0          = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_Delete_0          = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_Move_0            = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_GetTargetStates_0 = runtime.ForwardResponseMessage
+	forward_NetworkLoadBalancerService_ListOperations_0  = runtime.ForwardResponseMessage
 )

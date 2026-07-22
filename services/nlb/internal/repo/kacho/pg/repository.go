@@ -91,10 +91,6 @@ func (r *readerImpl) TargetGroups() kacho.TargetGroupReaderIface {
 	return &targetGroupReader{tx: r.tx}
 }
 
-func (r *readerImpl) AttachedTargetGroups() kacho.AttachedTargetGroupReaderIface {
-	return &attachedTGReader{tx: r.tx}
-}
-
 // Close rollback'ит read-TX (read-only TX — rollback не имеет side-effects).
 // Идемпотентно. Игнорирует pgx.ErrTxClosed.
 func (r *readerImpl) Close() error {
@@ -133,12 +129,6 @@ func (w *writerImpl) Listeners() kacho.ListenerWriterIface {
 func (w *writerImpl) TargetGroups() kacho.TargetGroupWriterIface {
 	return &targetGroupWriter{
 		targetGroupReader: targetGroupReader{tx: w.tx},
-	}
-}
-
-func (w *writerImpl) AttachedTargetGroups() kacho.AttachedTargetGroupWriterIface {
-	return &attachedTGWriter{
-		attachedTGReader: attachedTGReader{tx: w.tx},
 	}
 }
 

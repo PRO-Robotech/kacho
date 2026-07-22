@@ -27,12 +27,13 @@ func instTarget(idx int) domain.Target {
 	}
 }
 
-// --- Move ↔ Attach TOCTOU (cross-project attach) -----------------------------
+// --- Move ↔ wired-listener TOCTOU (cross-project wiring) ----------------------
 
-// TestMoveProject_BlockedByAttachedTG_Atomic — MoveProject должен атомарно
-// отказывать, если у LB есть приаттаченный TG (иначе attached_target_groups
-// свяжет LB проекта B с TG проекта A). DB-level guard (`WHERE NOT EXISTS attach`).
-func TestMoveProject_BlockedByAttachedTG_Atomic(t *testing.T) {
+// TestMoveProject_BlockedByWiredListener_Atomic — MoveProject должен атомарно
+// отказывать, если у LB есть листенер, привязанный к TG (default_target_group_id
+// set) — иначе LB проекта B унёс бы листенер, ссылающийся на TG проекта A. NLB
+// CONTRACT: M:N pivot удалён; DB-level guard теперь `WHERE NOT EXISTS wired listener`.
+func TestMoveProject_BlockedByWiredListener_Atomic(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
 	ctx := context.Background()
@@ -44,18 +45,20 @@ func TestMoveProject_BlockedByAttachedTG_Atomic(t *testing.T) {
 		require.NoError(t, err)
 		_, err = w.TargetGroups().Insert(ctx, tg)
 		require.NoError(t, err)
-		_, _, err = w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 0)
+		l := newListener(lb.ID, string(lb.ProjectID), "move-lst", 80)
+		l.DefaultTargetGroupID = option.MustNewOption(tg.ID)
+		_, err = w.Listeners().Insert(ctx, l)
 		require.NoError(t, err)
 	})
 
-	// Move to a different project must be refused while a TG is attached.
+	// Move to a different project must be refused while a listener is wired to a TG.
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
 	_, err = w.LoadBalancers().MoveProject(ctx, string(lb.ID), "prj02OTHER234567890ll")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrFailedPrecondition),
-		"attached LB move must be FailedPrecondition, got %v", err)
+		"wired-listener LB move must be FailedPrecondition, got %v", err)
 
 	// Project unchanged.
 	rd, _ := repo.Reader(ctx)
@@ -97,120 +100,6 @@ func TestMoveProject_NotFound(t *testing.T) {
 	_, err = w.LoadBalancers().MoveProject(ctx, "nlbMISSING1234567890", "prj02OTHER234567890ll")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrNotFound), "missing LB → NotFound, got %v", err)
-}
-
-// TestAttach_CrossProject_Rejected — repo-level guard: attach LB(projA)↔TG(projB)
-// отклоняется на DB-уровне (conditional INSERT ... SELECT re-check project/region).
-func TestAttach_CrossProject_Rejected(t *testing.T) {
-	repo, cleanup := newRepo(t, setupTestDB(t))
-	defer cleanup()
-	ctx := context.Background()
-
-	lb := newLB("prj0AXPROJ234567890ll", "xp-lb")
-	tg := newTG("prj0BXPROJ234567890ll", "xp-tg") // different project, same region
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().Insert(ctx, lb)
-		require.NoError(t, err)
-		_, err = w.TargetGroups().Insert(ctx, tg)
-		require.NoError(t, err)
-	})
-
-	w, err := repo.Writer(ctx)
-	require.NoError(t, err)
-	defer w.Abort()
-	_, inserted, err := w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 0)
-	require.Error(t, err)
-	assert.False(t, inserted)
-	assert.True(t, errors.Is(err, kacho.ErrFailedPrecondition),
-		"cross-project attach must be FailedPrecondition, got %v", err)
-}
-
-// TestAttach_SameProject_Idempotent — same-project attach + идемпотентный re-attach.
-func TestAttach_SameProject_Idempotent(t *testing.T) {
-	repo, cleanup := newRepo(t, setupTestDB(t))
-	defer cleanup()
-	ctx := context.Background()
-
-	lb := newLB("prj0SAMEPR34567890lll", "sp-lb")
-	tg := newTG("prj0SAMEPR34567890lll", "sp-tg")
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().Insert(ctx, lb)
-		require.NoError(t, err)
-		_, err = w.TargetGroups().Insert(ctx, tg)
-		require.NoError(t, err)
-	})
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, inserted, err := w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 0)
-		require.NoError(t, err)
-		assert.True(t, inserted)
-	})
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, inserted, err := w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 0)
-		require.NoError(t, err, "re-attach must be idempotent")
-		assert.False(t, inserted, "no new row on idempotent re-attach")
-	})
-}
-
-// TestMoveAttach_Race — конкурентные Move и Attach не должны создать
-// cross-project attach: ровно одна из операций «побеждает», а результат
-// консистентен (либо moved+no-attach, либо attached+not-moved).
-func TestMoveAttach_Race(t *testing.T) {
-	repo, cleanup := newRepo(t, setupTestDB(t))
-	defer cleanup()
-	ctx := context.Background()
-
-	const srcPrj = "prj0RACE1234567890lll"
-	const dstPrj = "prj0RACE2234567890lll"
-	lb := newLB(srcPrj, "race-lb")
-	tg := newTG(srcPrj, "race-tg")
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().Insert(ctx, lb)
-		require.NoError(t, err)
-		_, err = w.TargetGroups().Insert(ctx, tg)
-		require.NoError(t, err)
-	})
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		w, err := repo.Writer(ctx)
-		if err != nil {
-			return
-		}
-		defer w.Abort()
-		if _, err := w.LoadBalancers().MoveProject(ctx, string(lb.ID), dstPrj); err == nil {
-			_ = w.Commit()
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		w, err := repo.Writer(ctx)
-		if err != nil {
-			return
-		}
-		defer w.Abort()
-		if _, _, err := w.AttachedTargetGroups().Attach(ctx, string(lb.ID), string(tg.ID), 0); err == nil {
-			_ = w.Commit()
-		}
-	}()
-	wg.Wait()
-
-	// Invariant: any attached TG must share the LB's (post-op) project.
-	rd, _ := repo.Reader(ctx)
-	defer func() { _ = rd.Close() }()
-	gotLB, err := rd.LoadBalancers().Get(ctx, string(lb.ID))
-	require.NoError(t, err)
-	attached, err := rd.AttachedTargetGroups().ListByLB(ctx, string(lb.ID))
-	require.NoError(t, err)
-	if len(attached) > 0 {
-		gotTG, err := rd.TargetGroups().Get(ctx, string(tg.ID))
-		require.NoError(t, err)
-		assert.Equal(t, gotLB.ProjectID, gotTG.ProjectID,
-			"attached TG must share the LB project — no cross-project attach allowed")
-		assert.Equal(t, domain.ProjectID(srcPrj), gotLB.ProjectID,
-			"if attach won, LB must NOT have moved")
-	}
 }
 
 // --- cumulative per-group target cap -----------------------------------------

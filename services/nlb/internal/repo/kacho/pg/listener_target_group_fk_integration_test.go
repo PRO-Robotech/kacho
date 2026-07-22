@@ -18,10 +18,10 @@ import (
 
 // NLB-1b MIGRATE (F4 / grind-note #3): the listener wires to a TargetGroup DIRECTLY
 // via listeners.default_target_group_id → target_groups(id) FK ON DELETE RESTRICT
-// (migration 0018). The M:N attached_target_groups pivot remains present but is no
-// longer the wiring path (CONTRACT removes it). These tests lock the DIRECT-FK
-// contract; the legacy pivot-composite-FK tests were replaced (межфазовая
-// эволюция, grind-note #2 EVOLUTION).
+// (migration 0018). The M:N attached_target_groups pivot has been DROPPED (migration
+// 0022, NLB CONTRACT) — the direct FK is now the only wiring path. These tests lock
+// the DIRECT-FK contract; the legacy pivot-composite-FK tests were replaced
+// (межфазовая эволюция, grind-note #2 EVOLUTION).
 
 // tgReferencedByListenerMsg — verbatim contract text of the direct FK RESTRICT
 // (TG.Delete while referenced by a listener). Part of the API contract.

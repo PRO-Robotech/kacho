@@ -261,11 +261,7 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create":            {},
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Update":            {},
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Delete":            {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Start":             {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Stop":              {},
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move":              {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/AttachTargetGroup": {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/DetachTargetGroup": {},
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates":   {},
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/ListOperations":    {},
 	// loadbalancer.v1 — ListenerService (first-class FGA object)

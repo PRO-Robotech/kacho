@@ -176,10 +176,7 @@ func TestNetworkLoadBalancer_StatusMapping(t *testing.T) {
 		pb     lbv1.NetworkLoadBalancer_Status
 	}{
 		{domain.LBStatusCreating, lbv1.NetworkLoadBalancer_CREATING},
-		{domain.LBStatusStarting, lbv1.NetworkLoadBalancer_STARTING},
 		{domain.LBStatusActive, lbv1.NetworkLoadBalancer_ACTIVE},
-		{domain.LBStatusStopping, lbv1.NetworkLoadBalancer_STOPPING},
-		{domain.LBStatusStopped, lbv1.NetworkLoadBalancer_STOPPED},
 		{domain.LBStatusDeleting, lbv1.NetworkLoadBalancer_DELETING},
 		{domain.LBStatusInactive, lbv1.NetworkLoadBalancer_INACTIVE},
 	}

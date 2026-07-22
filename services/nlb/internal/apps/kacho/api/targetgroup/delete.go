@@ -26,8 +26,9 @@ import (
 // .
 //
 // Sync prechecks:
-//   - HasAttachedLB > 0 → FailedPrecondition с фиксированным текстом
-//     `"TargetGroup is attached to N load balancer(s); detach first"`.
+//   - ReferencingListenerIDs non-empty → FailedPrecondition с фиксированным текстом
+//     `"target group is referenced by listeners: [<ids>]"` (listeners.default_target_group_id
+//     FK RESTRICT, 0018 — repoint them first).
 //   - ListTargets count > 0 → FailedPrecondition с фиксированным текстом
 //     `"TargetGroup has N target(s); remove them first via RemoveTargets"`.
 //
@@ -86,20 +87,6 @@ func (u *DeleteTargetGroupUseCase) Execute(
 	if len(lstIDs) > 0 {
 		return nil, status.Errorf(codes.FailedPrecondition,
 			"target group is referenced by listeners: [%s]", strings.Join(lstIDs, ", "))
-	}
-
-	hasLB, err := rd.TargetGroups().HasAttachedLB(ctx, id)
-	if err != nil {
-		return nil, mapDomainErr(err)
-	}
-	if hasLB {
-		// Точный count: ListByTG в AttachedTargetGroups.
-		atgs, lerr := rd.AttachedTargetGroups().ListByTG(ctx, id)
-		if lerr != nil {
-			return nil, mapDomainErr(lerr)
-		}
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"TargetGroup is attached to %d load balancer(s); detach first", len(atgs))
 	}
 
 	targets, err := rd.TargetGroups().ListTargets(ctx, id)

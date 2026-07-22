@@ -120,14 +120,8 @@ func lbStatusToPb(s domain.LBStatus) (lbv1.NetworkLoadBalancer_Status, error) {
 	switch s {
 	case domain.LBStatusCreating:
 		return lbv1.NetworkLoadBalancer_CREATING, nil
-	case domain.LBStatusStarting:
-		return lbv1.NetworkLoadBalancer_STARTING, nil
 	case domain.LBStatusActive:
 		return lbv1.NetworkLoadBalancer_ACTIVE, nil
-	case domain.LBStatusStopping:
-		return lbv1.NetworkLoadBalancer_STOPPING, nil
-	case domain.LBStatusStopped:
-		return lbv1.NetworkLoadBalancer_STOPPED, nil
 	case domain.LBStatusDeleting:
 		return lbv1.NetworkLoadBalancer_DELETING, nil
 	case domain.LBStatusInactive:
