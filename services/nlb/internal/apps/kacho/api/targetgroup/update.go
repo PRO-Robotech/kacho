@@ -7,10 +7,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
@@ -41,19 +43,41 @@ func NewUpdateTargetGroupUseCase(repo Repo, opsRepo OpsRepo, logger *slog.Logger
 	return &UpdateTargetGroupUseCase{repo: repo, opsRepo: opsRepo, logger: logger}
 }
 
-// knownUpdateFieldsTG — whitelist update_mask fields.
+// knownUpdateFieldsTG — whitelist update_mask fields (NLB-1c: durations
+// renamed to Duration form; `port` LIVE-mutable; `health_check` supports both a
+// bare full-replace and dotted `health_check.<sub>` merge paths).
 var knownUpdateFieldsTG = map[string]bool{
-	"name":                         true,
-	"description":                  true,
-	"labels":                       true,
-	"health_check":                 true,
-	"deregistration_delay_seconds": true,
-	"slow_start_seconds":           true,
+	"name":                 true,
+	"description":          true,
+	"labels":               true,
+	"health_check":         true,
+	"deregistration_delay": true,
+	"slow_start":           true,
+	"port":                 true,
+}
+
+// knownHCSubFields — allowed dotted `health_check.<sub>` mask paths (scalar
+// dotted-mask PATCH + probe-oneof atomic-replace discriminators).
+var knownHCSubFields = map[string]bool{
+	"interval":            true,
+	"timeout":             true,
+	"healthy_threshold":   true,
+	"unhealthy_threshold": true,
+	"tcp":                 true,
+	"http":                true,
+	"https":               true,
+	"grpc":                true,
+}
+
+// hcProbeSubFields — probe-oneof discriminators (atomic-replace, sibling-scalar
+// preservation).
+var hcProbeSubFields = map[string]bool{
+	"tcp": true, "http": true, "https": true, "grpc": true,
 }
 
 // immutableUpdateFieldsTG — hard-immutable, с фиксированным текстом error text.
 var immutableUpdateFieldsTG = map[string]string{
-	"project_id": "project_id is immutable; use TargetGroupService.Move",
+	"project_id": "project_id is immutable after TargetGroup.Create",
 	"region_id":  "region_id is immutable after TargetGroup.Create",
 }
 
@@ -75,8 +99,17 @@ func (u *UpdateTargetGroupUseCase) Execute(
 			return nil, status.Error(codes.InvalidArgument,
 				"targets must be modified via AddTargets / RemoveTargets")
 		}
+		// immutable-check ДО known-set (api-conventions.md: known-set не несёт
+		// immutable-полей, иначе они отвергнутся как generic unknown).
 		if msg, ok := immutableUpdateFieldsTG[p]; ok {
 			return nil, status.Errorf(codes.InvalidArgument, "%s", msg)
+		}
+		// dotted health_check.<sub> — scalar dotted-mask PATCH / probe replace.
+		if sub, ok := strings.CutPrefix(p, "health_check."); ok {
+			if !knownHCSubFields[sub] {
+				return nil, status.Errorf(codes.InvalidArgument, "unknown update_mask field: %s", p)
+			}
+			continue
 		}
 		if !knownUpdateFieldsTG[p] {
 			return nil, status.Errorf(codes.InvalidArgument, "unknown update_mask field: %s", p)
@@ -178,11 +211,16 @@ func (u *UpdateTargetGroupUseCase) doUpdate(ctx context.Context, tg domain.Targe
 // applyUpdateMaskTG — наложить mask на текущий TG. Empty mask → full PATCH:
 // mutable полностью перезаписываются из req; immutable silent-ignored
 // (по конвенции Kachō; explicit immutable field в mask уже отлавливается выше).
+//
+// health_check — oneof-replace дисциплина (NLB-1c): bare `health_check` (или
+// empty mask) → full replace; dotted `health_check.<sub>` → merge (scalar-set
+// либо probe atomic-replace с сохранением sibling-скаляров).
 func applyUpdateMaskTG(
 	cur domain.TargetGroup, req *lbv1.UpdateTargetGroupRequest, mask []string,
 ) (domain.TargetGroup, error) {
+	full := len(mask) == 0
 	apply := func(field string) bool {
-		if len(mask) == 0 {
+		if full {
 			return true
 		}
 		for _, p := range mask {
@@ -202,18 +240,122 @@ func applyUpdateMaskTG(
 	if apply("labels") {
 		out.Labels = domain.LabelsFromMap(req.GetLabels())
 	}
-	if apply("health_check") && req.GetHealthCheck() != nil {
-		hc, err := healthCheckFromPb(req.GetHealthCheck())
-		if err != nil {
-			return domain.TargetGroup{}, err
+	if apply("deregistration_delay") {
+		out.DeregistrationDelay = durationFromPb(req.GetDeregistrationDelay())
+	}
+	if apply("slow_start") {
+		out.SlowStart = durationFromPb(req.GetSlowStart())
+	}
+	if apply("port") {
+		out.Port = domain.LbPort(req.GetPort())
+	}
+	hc, err := mergeHealthCheckTG(cur.HealthCheck, req.GetHealthCheck(), mask, full)
+	if err != nil {
+		return domain.TargetGroup{}, err
+	}
+	out.HealthCheck = hc
+	return out, nil
+}
+
+// durationFromPb — proto Duration → domain.LbDuration (nil → 0s).
+func durationFromPb(d *durationpb.Duration) domain.LbDuration {
+	if d == nil {
+		return 0
+	}
+	return domain.LbDuration(d.AsDuration())
+}
+
+// mergeHealthCheckTG — oneof-replace merge для health_check в Update.
+//
+//   - bare "health_check" (или empty mask) → full replace из req (probe
+//     discriminator обязателен — ловится domain.Validate);
+//   - dotted "health_check.<sub>" → merge поверх cur: scalar-set (interval/
+//     timeout/*_threshold) либо probe atomic-replace (tcp/http/https/grpc) с
+//     сохранением sibling-скаляров;
+//   - health_check не тронут маской → cur без изменений.
+func mergeHealthCheckTG(
+	cur domain.HealthCheck, reqPb *lbv1.HealthCheck, mask []string, full bool,
+) (domain.HealthCheck, error) {
+	bareHC := full
+	var dotted []string
+	for _, p := range mask {
+		switch {
+		case p == "health_check":
+			bareHC = true
+		case strings.HasPrefix(p, "health_check."):
+			dotted = append(dotted, strings.TrimPrefix(p, "health_check."))
 		}
-		out.HealthCheck = hc
 	}
-	if apply("deregistration_delay_seconds") {
-		out.DeregistrationDelaySeconds = req.GetDeregistrationDelaySeconds()
+	if !bareHC && len(dotted) == 0 {
+		return cur, nil // health_check не в маске — не трогаем.
 	}
-	if apply("slow_start_seconds") {
-		out.SlowStartSeconds = req.GetSlowStartSeconds()
+	reqHC, err := healthCheckFromPb(reqPb)
+	if err != nil {
+		return domain.HealthCheck{}, err
+	}
+	if bareHC {
+		// Full replace: probe-discriminator обязателен — domain.Validate ловит
+		// "exactly one of" при пустом probe (NLB-1-38, generic health_check).
+		return reqHC, nil
+	}
+	// Dotted merge поверх cur — sibling-скаляры и probe сохраняются, пока их
+	// сабпуть не в маске.
+	out := cur
+	for _, sub := range dotted {
+		if hcProbeSubFields[sub] {
+			if err := replaceProbeTG(&out, reqHC, sub); err != nil {
+				return domain.HealthCheck{}, err
+			}
+			continue
+		}
+		switch sub {
+		case "interval":
+			out.Interval = reqHC.Interval
+		case "timeout":
+			out.Timeout = reqHC.Timeout
+		case "healthy_threshold":
+			out.HealthyThreshold = reqHC.HealthyThreshold
+		case "unhealthy_threshold":
+			out.UnhealthyThreshold = reqHC.UnhealthyThreshold
+		}
 	}
 	return out, nil
+}
+
+// replaceProbeTG — atomic-replace probe-oneof на `sub`, сохраняя sibling-скаляры
+// (interval/timeout/thresholds уцелевают — NLB-1-37). Discriminator (тело
+// выбранной пробы) ОБЯЗАН присутствовать в req — иначе INVALID_ARGUMENT (не
+// silent-clear, NLB-1-38).
+func replaceProbeTG(out *domain.HealthCheck, reqHC domain.HealthCheck, sub string) error {
+	out.TCP, out.HTTP, out.HTTPS, out.GRPC = nil, nil, nil, nil
+	switch sub {
+	case "tcp":
+		if reqHC.TCP == nil {
+			return errMissingProbeBody("tcp")
+		}
+		out.TCP = reqHC.TCP
+	case "http":
+		if reqHC.HTTP == nil {
+			return errMissingProbeBody("http")
+		}
+		out.HTTP = reqHC.HTTP
+	case "https":
+		if reqHC.HTTPS == nil {
+			return errMissingProbeBody("https")
+		}
+		out.HTTPS = reqHC.HTTPS
+	case "grpc":
+		if reqHC.GRPC == nil {
+			return errMissingProbeBody("grpc")
+		}
+		out.GRPC = reqHC.GRPC
+	}
+	return nil
+}
+
+// errMissingProbeBody — INVALID_ARGUMENT когда маска указывает probe-путь, но
+// его тело/дискриминатор отсутствует в теле req (NLB-1-38, не silent-clear).
+func errMissingProbeBody(sub string) error {
+	return status.Errorf(codes.InvalidArgument,
+		"health_check.%s requires the %s probe body when the update_mask replaces the probe", sub, sub)
 }

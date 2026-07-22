@@ -87,8 +87,8 @@ func NewListener(
 //   - ID: свежий `tgr`-prefix;
 //   - Targets: пустой (caller добавляет через AddTargets use-case);
 //   - HealthCheck: caller задаёт (нет sensible default — это required-поле);
-//   - DeregistrationDelaySeconds: DefaultDeregistrationDelay (300);
-//   - SlowStartSeconds: DefaultSlowStart (0);
+//   - DeregistrationDelay: DefaultDeregistrationDelay (300s);
+//   - SlowStart: DefaultSlowStart (0s);
 //   - Status: ACTIVE (TG нет staging-фазы).
 func NewTargetGroup(
 	projectID ProjectID,
@@ -98,16 +98,16 @@ func NewTargetGroup(
 	labels LbLabels,
 ) TargetGroup {
 	return TargetGroup{
-		ID:                         ResourceID(ids.NewID(ids.PrefixTargetGroup)),
-		ProjectID:                  projectID,
-		RegionID:                   regionID,
-		Name:                       name,
-		Description:                description,
-		Labels:                     labels,
-		Targets:                    nil,
-		DeregistrationDelaySeconds: DefaultDeregistrationDelay,
-		SlowStartSeconds:           DefaultSlowStart,
-		Status:                     TargetGroupStatusActive,
+		ID:                  ResourceID(ids.NewID(ids.PrefixTargetGroup)),
+		ProjectID:           projectID,
+		RegionID:            regionID,
+		Name:                name,
+		Description:         description,
+		Labels:              labels,
+		Targets:             nil,
+		DeregistrationDelay: DefaultDeregistrationDelay,
+		SlowStart:           DefaultSlowStart,
+		Status:              TargetGroupStatusActive,
 	}
 }
 

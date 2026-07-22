@@ -394,8 +394,8 @@ func (q *fakeTGWriter) Update(_ context.Context, tg *domain.TargetGroup, _ strin
 	updated.Description = tg.Description
 	updated.Labels = tg.Labels
 	updated.HealthCheck = tg.HealthCheck
-	updated.DeregistrationDelaySeconds = tg.DeregistrationDelaySeconds
-	updated.SlowStartSeconds = tg.SlowStartSeconds
+	updated.DeregistrationDelay = tg.DeregistrationDelay
+	updated.SlowStart = tg.SlowStart
 	updated.UpdatedAt = time.Now().UTC()
 	q.w.pendingTGs = append(q.w.pendingTGs, &updated)
 	c := updated
@@ -921,18 +921,17 @@ func mkOp(id string) operations.Operation {
 func makeTG(projectID, name string) *kachorepo.TargetGroupRecord {
 	return &kachorepo.TargetGroupRecord{
 		TargetGroup: domain.TargetGroup{
-			ID:                         domain.ResourceID(ids.NewID(ids.PrefixTargetGroup)),
-			ProjectID:                  domain.ProjectID(projectID),
-			RegionID:                   "ru-central1",
-			Name:                       domain.LbName(name),
-			Description:                "",
-			Labels:                     domain.LbLabels{},
-			DeregistrationDelaySeconds: 300,
-			SlowStartSeconds:           0,
-			Status:                     domain.TargetGroupStatusActive,
-			Port:                       8080,
+			ID:                  domain.ResourceID(ids.NewID(ids.PrefixTargetGroup)),
+			ProjectID:           domain.ProjectID(projectID),
+			RegionID:            "ru-central1",
+			Name:                domain.LbName(name),
+			Description:         "",
+			Labels:              domain.LbLabels{},
+			DeregistrationDelay: domain.LbDuration(300 * time.Second),
+			SlowStart:           domain.LbDuration(0),
+			Status:              domain.TargetGroupStatusActive,
+			Port:                8080,
 			HealthCheck: domain.HealthCheck{
-				Name:               "hc-tcp",
 				Interval:           domain.DefaultHealthInterval,
 				Timeout:            domain.DefaultHealthTimeout,
 				UnhealthyThreshold: domain.DefaultUnhealthyThreshold,

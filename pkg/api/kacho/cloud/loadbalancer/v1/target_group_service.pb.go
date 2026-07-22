@@ -17,6 +17,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	reflect "reflect"
 	sync "sync"
@@ -206,14 +207,16 @@ type CreateTargetGroupRequest struct {
 	Targets []*Target `protobuf:"bytes,7,rep,name=targets,proto3" json:"targets,omitempty"`
 	// Required — single embedded HC per group (design §2.2).
 	HealthCheck *HealthCheck `protobuf:"bytes,8,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
-	// Drain timeout for removed targets (design §4.4). Default 300 when zero.
-	DeregistrationDelaySeconds int32 `protobuf:"varint,9,opt,name=deregistration_delay_seconds,json=deregistrationDelaySeconds,proto3" json:"deregistration_delay_seconds,omitempty"`
-	// Slow-start ramp window for added targets. Default 0 (off).
-	SlowStartSeconds int32 `protobuf:"varint,10,opt,name=slow_start_seconds,json=slowStartSeconds,proto3" json:"slow_start_seconds,omitempty"`
 	// Required — single backend port of the group (NLB-1b F6-co-req). Every
 	// target receives forwarded traffic on this port; echoed by
 	// Listener.resolved_backend_port. Range 1..65535.
-	Port          int32 `protobuf:"varint,11,opt,name=port,proto3" json:"port,omitempty"`
+	Port int32 `protobuf:"varint,11,opt,name=port,proto3" json:"port,omitempty"`
+	// Drain timeout for removed targets (design §4.4). NLB-1c (B8): Duration,
+	// bounds [0s, 3600s]. Default 300s when unset.
+	DeregistrationDelay *durationpb.Duration `protobuf:"bytes,12,opt,name=deregistration_delay,json=deregistrationDelay,proto3" json:"deregistration_delay,omitempty"`
+	// Slow-start ramp window for added targets. NLB-1c (B8): Duration, bounds
+	// [0s, 900s]. Default 0s (off).
+	SlowStart     *durationpb.Duration `protobuf:"bytes,13,opt,name=slow_start,json=slowStart,proto3" json:"slow_start,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -297,25 +300,25 @@ func (x *CreateTargetGroupRequest) GetHealthCheck() *HealthCheck {
 	return nil
 }
 
-func (x *CreateTargetGroupRequest) GetDeregistrationDelaySeconds() int32 {
-	if x != nil {
-		return x.DeregistrationDelaySeconds
-	}
-	return 0
-}
-
-func (x *CreateTargetGroupRequest) GetSlowStartSeconds() int32 {
-	if x != nil {
-		return x.SlowStartSeconds
-	}
-	return 0
-}
-
 func (x *CreateTargetGroupRequest) GetPort() int32 {
 	if x != nil {
 		return x.Port
 	}
 	return 0
+}
+
+func (x *CreateTargetGroupRequest) GetDeregistrationDelay() *durationpb.Duration {
+	if x != nil {
+		return x.DeregistrationDelay
+	}
+	return nil
+}
+
+func (x *CreateTargetGroupRequest) GetSlowStart() *durationpb.Duration {
+	if x != nil {
+		return x.SlowStart
+	}
+	return nil
 }
 
 type CreateTargetGroupMetadata struct {
@@ -372,12 +375,19 @@ type UpdateTargetGroupRequest struct {
 	// Targets list replacement is rejected on this RPC — use AddTargets /
 	// RemoveTargets so each target mutation goes through its own Operation
 	// history and idempotency keys (design §3.4).
-	Targets                    []*Target    `protobuf:"bytes,6,rep,name=targets,proto3" json:"targets,omitempty"`
-	HealthCheck                *HealthCheck `protobuf:"bytes,7,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
-	DeregistrationDelaySeconds int32        `protobuf:"varint,8,opt,name=deregistration_delay_seconds,json=deregistrationDelaySeconds,proto3" json:"deregistration_delay_seconds,omitempty"`
-	SlowStartSeconds           int32        `protobuf:"varint,9,opt,name=slow_start_seconds,json=slowStartSeconds,proto3" json:"slow_start_seconds,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	Targets     []*Target    `protobuf:"bytes,6,rep,name=targets,proto3" json:"targets,omitempty"`
+	HealthCheck *HealthCheck `protobuf:"bytes,7,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
+	// NLB-1c (B8): Duration, bounds [0s, 3600s]. Replaces int32
+	// deregistration_delay_seconds.
+	DeregistrationDelay *durationpb.Duration `protobuf:"bytes,10,opt,name=deregistration_delay,json=deregistrationDelay,proto3" json:"deregistration_delay,omitempty"`
+	// NLB-1c (B8): Duration, bounds [0s, 900s]. Replaces int32 slow_start_seconds.
+	SlowStart *durationpb.Duration `protobuf:"bytes,11,opt,name=slow_start,json=slowStart,proto3" json:"slow_start,omitempty"`
+	// port — single backend port of the group. LIVE-mutable (NLB-1c NLB-1-56):
+	// updating it re-echoes into wired listeners' resolved_backend_port. Range
+	// 1..65535 (validated in domain when present in update_mask).
+	Port          int32 `protobuf:"varint,12,opt,name=port,proto3" json:"port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateTargetGroupRequest) Reset() {
@@ -459,16 +469,23 @@ func (x *UpdateTargetGroupRequest) GetHealthCheck() *HealthCheck {
 	return nil
 }
 
-func (x *UpdateTargetGroupRequest) GetDeregistrationDelaySeconds() int32 {
+func (x *UpdateTargetGroupRequest) GetDeregistrationDelay() *durationpb.Duration {
 	if x != nil {
-		return x.DeregistrationDelaySeconds
+		return x.DeregistrationDelay
 	}
-	return 0
+	return nil
 }
 
-func (x *UpdateTargetGroupRequest) GetSlowStartSeconds() int32 {
+func (x *UpdateTargetGroupRequest) GetSlowStart() *durationpb.Duration {
 	if x != nil {
-		return x.SlowStartSeconds
+		return x.SlowStart
+	}
+	return nil
+}
+
+func (x *UpdateTargetGroupRequest) GetPort() int32 {
+	if x != nil {
+		return x.Port
 	}
 	return 0
 }
@@ -1017,7 +1034,7 @@ var File_kacho_cloud_loadbalancer_v1_target_group_service_proto protoreflect.Fil
 
 const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\n" +
-	"6kacho/cloud/loadbalancer/v1/target_group_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a.kacho/cloud/loadbalancer/v1/target_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"M\n" +
+	"6kacho/cloud/loadbalancer/v1/target_group_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a.kacho/cloud/loadbalancer/v1/target_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"M\n" +
 	"\x15GetTargetGroupRequest\x124\n" +
 	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\"\xbd\x01\n" +
 	"\x17ListTargetGroupsRequest\x12+\n" +
@@ -1031,7 +1048,7 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"\x91\x01\n" +
 	"\x18ListTargetGroupsResponse\x12M\n" +
 	"\rtarget_groups\x18\x01 \x03(\v2(.kacho.cloud.loadbalancer.v1.TargetGroupR\ftargetGroups\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xea\x05\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa9\x06\n" +
 	"\x18CreateTargetGroupRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x125\n" +
@@ -1040,17 +1057,18 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\x06labels\x18\x04 \x03(\v2A.kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12%\n" +
 	"\tregion_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12=\n" +
 	"\atargets\x18\a \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\x12Q\n" +
-	"\fhealth_check\x18\b \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckB\x04\xe8\xc71\x01R\vhealthCheck\x12L\n" +
-	"\x1cderegistration_delay_seconds\x18\t \x01(\x05B\n" +
-	"\xfa\xc71\x060-3600R\x1aderegistrationDelaySeconds\x127\n" +
-	"\x12slow_start_seconds\x18\n" +
-	" \x01(\x05B\t\xfa\xc71\x050-900R\x10slowStartSeconds\x12#\n" +
-	"\x04port\x18\v \x01(\x05B\x0f\xe8\xc71\x01\xfa\xc71\a1-65535R\x04port\x1a9\n" +
+	"\fhealth_check\x18\b \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckB\x04\xe8\xc71\x01R\vhealthCheck\x12#\n" +
+	"\x04port\x18\v \x01(\x05B\x0f\xe8\xc71\x01\xfa\xc71\a1-65535R\x04port\x12L\n" +
+	"\x14deregistration_delay\x18\f \x01(\v2\x19.google.protobuf.DurationR\x13deregistrationDelay\x128\n" +
+	"\n" +
+	"slow_start\x18\r \x01(\v2\x19.google.protobuf.DurationR\tslowStart\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\a\"C\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\t\x10\n" +
+	"J\x04\b\n" +
+	"\x10\vR\x1cderegistration_delay_secondsR\x12slow_start_seconds\"C\n" +
 	"\x19CreateTargetGroupMetadata\x12&\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\xd8\x05\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\xb8\x06\n" +
 	"\x18UpdateTargetGroupRequest\x124\n" +
 	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -1060,12 +1078,15 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\x06labels\x18\x05 \x03(\v2A.kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12=\n" +
 	"\atargets\x18\x06 \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\x12K\n" +
 	"\fhealth_check\x18\a \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckR\vhealthCheck\x12L\n" +
-	"\x1cderegistration_delay_seconds\x18\b \x01(\x05B\n" +
-	"\xfa\xc71\x060-3600R\x1aderegistrationDelaySeconds\x127\n" +
-	"\x12slow_start_seconds\x18\t \x01(\x05B\t\xfa\xc71\x050-900R\x10slowStartSeconds\x1a9\n" +
+	"\x14deregistration_delay\x18\n" +
+	" \x01(\v2\x19.google.protobuf.DurationR\x13deregistrationDelay\x128\n" +
+	"\n" +
+	"slow_start\x18\v \x01(\v2\x19.google.protobuf.DurationR\tslowStart\x12\x1f\n" +
+	"\x04port\x18\f \x01(\x05B\v\xfa\xc71\a1-65535R\x04port\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"C\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
+	"R\x1cderegistration_delay_secondsR\x12slow_start_seconds\"C\n" +
 	"\x19UpdateTargetGroupMetadata\x12&\n" +
 	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"P\n" +
 	"\x18DeleteTargetGroupRequest\x124\n" +
@@ -1101,30 +1122,30 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x8c\x13\n" +
 	"\x12TargetGroupService\x12\xea\x01\n" +
 	"\x03Get\x122.kacho.cloud.loadbalancer.v1.GetTargetGroupRequest\x1a(.kacho.cloud.loadbalancer.v1.TargetGroup\"\x84\x01\x8a\xb5\x18\x1dloadbalancer.targetGroups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x02(\x12&/nlb/v1/targetGroups/{target_group_id}\x12\x9d\x01\n" +
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/nlb/v1/targetGroups/{target_group_id}\x12\x9d\x01\n" +
 	"\x04List\x124.kacho.cloud.loadbalancer.v1.ListTargetGroupsRequest\x1a5.kacho.cloud.loadbalancer.v1.ListTargetGroupsResponse\"(\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x16\x12\x14/nlb/v1/targetGroups\x12\xfb\x01\n" +
 	"\x06Create\x125.kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest\x1a .kacho.cloud.operation.Operation\"\x97\x01\x8a\xb5\x18 loadbalancer.targetGroups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x012\xb2\xd2*(\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*(\n" +
 	"\x19CreateTargetGroupMetadata\x12\vTargetGroup\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/nlb/v1/targetGroups\x12\x9d\x02\n" +
 	"\x06Update\x125.kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest\x1a .kacho.cloud.operation.Operation\"\xb9\x01\x8a\xb5\x18 loadbalancer.targetGroups.update\x92\xb5\x18\bv_update\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x012\xb2\xd2*(\n" +
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\xb2\xd2*(\n" +
 	"\x19UpdateTargetGroupMetadata\x12\vTargetGroup\x82\xd3\xe4\x93\x02+:\x01*2&/nlb/v1/targetGroups/{target_group_id}\x12\xa4\x02\n" +
 	"\x06Delete\x125.kacho.cloud.loadbalancer.v1.DeleteTargetGroupRequest\x1a .kacho.cloud.operation.Operation\"\xc0\x01\x8a\xb5\x18 loadbalancer.targetGroups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x012\xb2\xd2*2\n" +
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\xb2\xd2*2\n" +
 	"\x19DeleteTargetGroupMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02(*&/nlb/v1/targetGroups/{target_group_id}\x12\x9a\x02\n" +
 	"\x04Move\x123.kacho.cloud.loadbalancer.v1.MoveTargetGroupRequest\x1a .kacho.cloud.operation.Operation\"\xba\x01\x8a\xb5\x18\x1eloadbalancer.targetGroups.move\x92\xb5\x18\bv_update\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x012\xb2\xd2*&\n" +
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
 	"\x17MoveTargetGroupMetadata\x12\vTargetGroup\x82\xd3\xe4\x93\x020:\x01*\"+/nlb/v1/targetGroups/{target_group_id}:move\x12\xa2\x02\n" +
 	"\n" +
 	"AddTargets\x12..kacho.cloud.loadbalancer.v1.AddTargetsRequest\x1a .kacho.cloud.operation.Operation\"\xc1\x01\x8a\xb5\x18$loadbalancer.targetGroups.addTargets\x92\xb5\x18\bv_update\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x012\xb2\xd2*!\n" +
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\xb2\xd2*!\n" +
 	"\x12AddTargetsMetadata\x12\vTargetGroup\x82\xd3\xe4\x93\x026:\x01*\"1/nlb/v1/targetGroups/{target_group_id}:addTargets\x12\xb1\x02\n" +
 	"\rRemoveTargets\x121.kacho.cloud.loadbalancer.v1.RemoveTargetsRequest\x1a .kacho.cloud.operation.Operation\"\xca\x01\x8a\xb5\x18'loadbalancer.targetGroups.removeTargets\x92\xb5\x18\bv_update\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x012\xb2\xd2*$\n" +
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\xb2\xd2*$\n" +
 	"\x15RemoveTargetsMetadata\x12\vTargetGroup\x82\xd3\xe4\x93\x029:\x01*\"4/nlb/v1/targetGroups/{target_group_id}:removeTargets\x12\xad\x02\n" +
 	"\x0eListOperations\x12=.kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsRequest\x1a>.kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsResponse\"\x9b\x01\x8a\xb5\x18(loadbalancer.targetGroups.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x012\x82\xd3\xe4\x93\x023\x121/nlb/v1/targetGroups/{target_group_id}/operationsBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x023\x121/nlb/v1/targetGroups/{target_group_id}/operationsBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 
 var (
 	file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDescOnce sync.Once
@@ -1162,44 +1183,49 @@ var file_kacho_cloud_loadbalancer_v1_target_group_service_proto_goTypes = []any{
 	(*TargetGroup)(nil),           // 19: kacho.cloud.loadbalancer.v1.TargetGroup
 	(*Target)(nil),                // 20: kacho.cloud.loadbalancer.v1.Target
 	(*HealthCheck)(nil),           // 21: kacho.cloud.loadbalancer.v1.HealthCheck
-	(*fieldmaskpb.FieldMask)(nil), // 22: google.protobuf.FieldMask
-	(*operation.Operation)(nil),   // 23: kacho.cloud.operation.Operation
+	(*durationpb.Duration)(nil),   // 22: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil), // 23: google.protobuf.FieldMask
+	(*operation.Operation)(nil),   // 24: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_loadbalancer_v1_target_group_service_proto_depIdxs = []int32{
 	19, // 0: kacho.cloud.loadbalancer.v1.ListTargetGroupsResponse.target_groups:type_name -> kacho.cloud.loadbalancer.v1.TargetGroup
 	17, // 1: kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.labels:type_name -> kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.LabelsEntry
 	20, // 2: kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
 	21, // 3: kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.health_check:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
-	22, // 4: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
-	18, // 5: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.labels:type_name -> kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.LabelsEntry
-	20, // 6: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
-	21, // 7: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.health_check:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
-	20, // 8: kacho.cloud.loadbalancer.v1.AddTargetsRequest.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
-	20, // 9: kacho.cloud.loadbalancer.v1.RemoveTargetsRequest.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
-	23, // 10: kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	0,  // 11: kacho.cloud.loadbalancer.v1.TargetGroupService.Get:input_type -> kacho.cloud.loadbalancer.v1.GetTargetGroupRequest
-	1,  // 12: kacho.cloud.loadbalancer.v1.TargetGroupService.List:input_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupsRequest
-	3,  // 13: kacho.cloud.loadbalancer.v1.TargetGroupService.Create:input_type -> kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest
-	5,  // 14: kacho.cloud.loadbalancer.v1.TargetGroupService.Update:input_type -> kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest
-	7,  // 15: kacho.cloud.loadbalancer.v1.TargetGroupService.Delete:input_type -> kacho.cloud.loadbalancer.v1.DeleteTargetGroupRequest
-	9,  // 16: kacho.cloud.loadbalancer.v1.TargetGroupService.Move:input_type -> kacho.cloud.loadbalancer.v1.MoveTargetGroupRequest
-	11, // 17: kacho.cloud.loadbalancer.v1.TargetGroupService.AddTargets:input_type -> kacho.cloud.loadbalancer.v1.AddTargetsRequest
-	13, // 18: kacho.cloud.loadbalancer.v1.TargetGroupService.RemoveTargets:input_type -> kacho.cloud.loadbalancer.v1.RemoveTargetsRequest
-	15, // 19: kacho.cloud.loadbalancer.v1.TargetGroupService.ListOperations:input_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsRequest
-	19, // 20: kacho.cloud.loadbalancer.v1.TargetGroupService.Get:output_type -> kacho.cloud.loadbalancer.v1.TargetGroup
-	2,  // 21: kacho.cloud.loadbalancer.v1.TargetGroupService.List:output_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupsResponse
-	23, // 22: kacho.cloud.loadbalancer.v1.TargetGroupService.Create:output_type -> kacho.cloud.operation.Operation
-	23, // 23: kacho.cloud.loadbalancer.v1.TargetGroupService.Update:output_type -> kacho.cloud.operation.Operation
-	23, // 24: kacho.cloud.loadbalancer.v1.TargetGroupService.Delete:output_type -> kacho.cloud.operation.Operation
-	23, // 25: kacho.cloud.loadbalancer.v1.TargetGroupService.Move:output_type -> kacho.cloud.operation.Operation
-	23, // 26: kacho.cloud.loadbalancer.v1.TargetGroupService.AddTargets:output_type -> kacho.cloud.operation.Operation
-	23, // 27: kacho.cloud.loadbalancer.v1.TargetGroupService.RemoveTargets:output_type -> kacho.cloud.operation.Operation
-	16, // 28: kacho.cloud.loadbalancer.v1.TargetGroupService.ListOperations:output_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsResponse
-	20, // [20:29] is the sub-list for method output_type
-	11, // [11:20] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	22, // 4: kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.deregistration_delay:type_name -> google.protobuf.Duration
+	22, // 5: kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.slow_start:type_name -> google.protobuf.Duration
+	23, // 6: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
+	18, // 7: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.labels:type_name -> kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.LabelsEntry
+	20, // 8: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
+	21, // 9: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.health_check:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
+	22, // 10: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.deregistration_delay:type_name -> google.protobuf.Duration
+	22, // 11: kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.slow_start:type_name -> google.protobuf.Duration
+	20, // 12: kacho.cloud.loadbalancer.v1.AddTargetsRequest.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
+	20, // 13: kacho.cloud.loadbalancer.v1.RemoveTargetsRequest.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
+	24, // 14: kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 15: kacho.cloud.loadbalancer.v1.TargetGroupService.Get:input_type -> kacho.cloud.loadbalancer.v1.GetTargetGroupRequest
+	1,  // 16: kacho.cloud.loadbalancer.v1.TargetGroupService.List:input_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupsRequest
+	3,  // 17: kacho.cloud.loadbalancer.v1.TargetGroupService.Create:input_type -> kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest
+	5,  // 18: kacho.cloud.loadbalancer.v1.TargetGroupService.Update:input_type -> kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest
+	7,  // 19: kacho.cloud.loadbalancer.v1.TargetGroupService.Delete:input_type -> kacho.cloud.loadbalancer.v1.DeleteTargetGroupRequest
+	9,  // 20: kacho.cloud.loadbalancer.v1.TargetGroupService.Move:input_type -> kacho.cloud.loadbalancer.v1.MoveTargetGroupRequest
+	11, // 21: kacho.cloud.loadbalancer.v1.TargetGroupService.AddTargets:input_type -> kacho.cloud.loadbalancer.v1.AddTargetsRequest
+	13, // 22: kacho.cloud.loadbalancer.v1.TargetGroupService.RemoveTargets:input_type -> kacho.cloud.loadbalancer.v1.RemoveTargetsRequest
+	15, // 23: kacho.cloud.loadbalancer.v1.TargetGroupService.ListOperations:input_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsRequest
+	19, // 24: kacho.cloud.loadbalancer.v1.TargetGroupService.Get:output_type -> kacho.cloud.loadbalancer.v1.TargetGroup
+	2,  // 25: kacho.cloud.loadbalancer.v1.TargetGroupService.List:output_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupsResponse
+	24, // 26: kacho.cloud.loadbalancer.v1.TargetGroupService.Create:output_type -> kacho.cloud.operation.Operation
+	24, // 27: kacho.cloud.loadbalancer.v1.TargetGroupService.Update:output_type -> kacho.cloud.operation.Operation
+	24, // 28: kacho.cloud.loadbalancer.v1.TargetGroupService.Delete:output_type -> kacho.cloud.operation.Operation
+	24, // 29: kacho.cloud.loadbalancer.v1.TargetGroupService.Move:output_type -> kacho.cloud.operation.Operation
+	24, // 30: kacho.cloud.loadbalancer.v1.TargetGroupService.AddTargets:output_type -> kacho.cloud.operation.Operation
+	24, // 31: kacho.cloud.loadbalancer.v1.TargetGroupService.RemoveTargets:output_type -> kacho.cloud.operation.Operation
+	16, // 32: kacho.cloud.loadbalancer.v1.TargetGroupService.ListOperations:output_type -> kacho.cloud.loadbalancer.v1.ListTargetGroupOperationsResponse
+	24, // [24:33] is the sub-list for method output_type
+	15, // [15:24] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_target_group_service_proto_init() }

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -220,14 +221,14 @@ func TestTargetGroup_Update_OCC_StaleXminConflict(t *testing.T) {
 	sharedXmin := snap.Xmin
 
 	first := snap.TargetGroup
-	first.DeregistrationDelaySeconds = 111
+	first.DeregistrationDelay = domain.LbDuration(111 * time.Second)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		_, uerr := w.TargetGroups().Update(ctx, &first, sharedXmin)
 		require.NoError(t, uerr)
 	})
 
 	second := snap.TargetGroup
-	second.DeregistrationDelaySeconds = 222
+	second.DeregistrationDelay = domain.LbDuration(222 * time.Second)
 	wB, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	_, bErr := wB.TargetGroups().Update(ctx, &second, sharedXmin)
@@ -334,7 +335,7 @@ func TestTargetGroup_Update_OCC_ConcurrentExactlyOneWins(t *testing.T) {
 	sharedXmin := snap.Xmin
 
 	mutate := []func(*domain.TargetGroup){
-		func(o *domain.TargetGroup) { o.DeregistrationDelaySeconds = 111 },
+		func(o *domain.TargetGroup) { o.DeregistrationDelay = domain.LbDuration(111 * time.Second) },
 		func(o *domain.TargetGroup) { o.Name = domain.LbName("occ-tg-conc-renamed") },
 	}
 	var wg sync.WaitGroup

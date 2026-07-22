@@ -26,26 +26,43 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// A HealthCheck resource. For more information, see [Health check](/docs/network-load-balancer/concepts/health-check).
+// HealthCheck — embedded value-object of a TargetGroup (NOT a standalone
+// resource; NLB-1c redesign dropped the `name`/id it carried AS-IS). Describes
+// the desired probe configuration; in the control-plane-only NLB-1 phase the
+// probe does not actually fire (real probing lands in NLB-2). One HealthCheck
+// per TargetGroup, serialized into the `target_groups.health_check` JSONB
+// column.
+//
+// Probe is a 4-way oneof: exactly one of tcp / http / https / grpc. Each probe
+// option carries an OPTIONAL `port` override — when omitted (0) the probe
+// inherits the group's backend port (`TargetGroup.port`); the resolved value is
+// surfaced output-only as `effective_port`.
 type HealthCheck struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Name of the health check. The name must be unique for each target group that attached to a single load balancer. 3-63 characters long.
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// The interval between health checks. The default is 2 seconds.
+	// The interval between health checks. Bounds [1s, 600s]. Default 2s.
 	Interval *durationpb.Duration `protobuf:"bytes,2,opt,name=interval,proto3" json:"interval,omitempty"`
-	// Timeout for a target to return a response for the health check. The default is 1 second.
+	// Timeout for a target to return a response. Must be positive and
+	// <= interval. Default 1s.
 	Timeout *durationpb.Duration `protobuf:"bytes,3,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	// Number of failed health checks before changing the status to “ UNHEALTHY “. The default is 2.
+	// Number of failed checks before a target becomes UNHEALTHY. Range [2, 10].
 	UnhealthyThreshold int64 `protobuf:"varint,4,opt,name=unhealthy_threshold,json=unhealthyThreshold,proto3" json:"unhealthy_threshold,omitempty"`
-	// Number of successful health checks required in order to set the “ HEALTHY “ status for the target. The default is 2.
+	// Number of successful checks before a target becomes HEALTHY. Range [2, 10].
 	HealthyThreshold int64 `protobuf:"varint,5,opt,name=healthy_threshold,json=healthyThreshold,proto3" json:"healthy_threshold,omitempty"`
-	// Protocol to use for the health check. Either TCP or HTTP.
+	// Fields 6/7 previously held tcp_options/http_options — replaced in NLB-1c by
+	// the extended 4-way oneof below (tags reused within the same oneof: tcp/http
+	// keep 6/7, https/grpc add 8/9).
 	//
 	// Types that are valid to be assigned to Options:
 	//
-	//	*HealthCheck_TcpOptions_
-	//	*HealthCheck_HttpOptions_
-	Options       isHealthCheck_Options `protobuf_oneof:"options"`
+	//	*HealthCheck_Tcp
+	//	*HealthCheck_Http
+	//	*HealthCheck_Https
+	//	*HealthCheck_Grpc
+	Options isHealthCheck_Options `protobuf_oneof:"options"`
+	// effective_port — output-only derived: the probe-port override if set,
+	// otherwise the group's backend port (`TargetGroup.port`). Surfaces the
+	// probe-vs-traffic port divergence by construction.
+	EffectivePort int64 `protobuf:"varint,10,opt,name=effective_port,json=effectivePort,proto3" json:"effective_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -78,13 +95,6 @@ func (x *HealthCheck) ProtoReflect() protoreflect.Message {
 // Deprecated: Use HealthCheck.ProtoReflect.Descriptor instead.
 func (*HealthCheck) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *HealthCheck) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
 }
 
 func (x *HealthCheck) GetInterval() *durationpb.Duration {
@@ -122,46 +132,86 @@ func (x *HealthCheck) GetOptions() isHealthCheck_Options {
 	return nil
 }
 
-func (x *HealthCheck) GetTcpOptions() *HealthCheck_TcpOptions {
+func (x *HealthCheck) GetTcp() *HealthCheck_TcpOptions {
 	if x != nil {
-		if x, ok := x.Options.(*HealthCheck_TcpOptions_); ok {
-			return x.TcpOptions
+		if x, ok := x.Options.(*HealthCheck_Tcp); ok {
+			return x.Tcp
 		}
 	}
 	return nil
 }
 
-func (x *HealthCheck) GetHttpOptions() *HealthCheck_HttpOptions {
+func (x *HealthCheck) GetHttp() *HealthCheck_HttpOptions {
 	if x != nil {
-		if x, ok := x.Options.(*HealthCheck_HttpOptions_); ok {
-			return x.HttpOptions
+		if x, ok := x.Options.(*HealthCheck_Http); ok {
+			return x.Http
 		}
 	}
 	return nil
+}
+
+func (x *HealthCheck) GetHttps() *HealthCheck_HttpsOptions {
+	if x != nil {
+		if x, ok := x.Options.(*HealthCheck_Https); ok {
+			return x.Https
+		}
+	}
+	return nil
+}
+
+func (x *HealthCheck) GetGrpc() *HealthCheck_GrpcOptions {
+	if x != nil {
+		if x, ok := x.Options.(*HealthCheck_Grpc); ok {
+			return x.Grpc
+		}
+	}
+	return nil
+}
+
+func (x *HealthCheck) GetEffectivePort() int64 {
+	if x != nil {
+		return x.EffectivePort
+	}
+	return 0
 }
 
 type isHealthCheck_Options interface {
 	isHealthCheck_Options()
 }
 
-type HealthCheck_TcpOptions_ struct {
-	// Options for TCP health check.
-	TcpOptions *HealthCheck_TcpOptions `protobuf:"bytes,6,opt,name=tcp_options,json=tcpOptions,proto3,oneof"`
+type HealthCheck_Tcp struct {
+	// (1) TCP connect probe.
+	Tcp *HealthCheck_TcpOptions `protobuf:"bytes,6,opt,name=tcp,proto3,oneof"`
 }
 
-type HealthCheck_HttpOptions_ struct {
-	// Options for HTTP health check.
-	HttpOptions *HealthCheck_HttpOptions `protobuf:"bytes,7,opt,name=http_options,json=httpOptions,proto3,oneof"`
+type HealthCheck_Http struct {
+	// (2) HTTP probe.
+	Http *HealthCheck_HttpOptions `protobuf:"bytes,7,opt,name=http,proto3,oneof"`
 }
 
-func (*HealthCheck_TcpOptions_) isHealthCheck_Options() {}
+type HealthCheck_Https struct {
+	// (3) HTTPS probe.
+	Https *HealthCheck_HttpsOptions `protobuf:"bytes,8,opt,name=https,proto3,oneof"`
+}
 
-func (*HealthCheck_HttpOptions_) isHealthCheck_Options() {}
+type HealthCheck_Grpc struct {
+	// (4) gRPC probe.
+	Grpc *HealthCheck_GrpcOptions `protobuf:"bytes,9,opt,name=grpc,proto3,oneof"`
+}
 
-// Configuration option for a TCP health check.
+func (*HealthCheck_Tcp) isHealthCheck_Options() {}
+
+func (*HealthCheck_Http) isHealthCheck_Options() {}
+
+func (*HealthCheck_Https) isHealthCheck_Options() {}
+
+func (*HealthCheck_Grpc) isHealthCheck_Options() {}
+
+// TCP probe — connect-only, no payload. `port` optional (0 → inherit
+// TargetGroup.port).
 type HealthCheck_TcpOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Port to use for TCP health checks.
+	// Optional probe-port override; 0 → inherit TargetGroup.port.
 	Port          int64 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -204,14 +254,21 @@ func (x *HealthCheck_TcpOptions) GetPort() int64 {
 	return 0
 }
 
-// Configuration option for an HTTP health check.
+// HTTP probe — GET on `path`; a response with a code in `expected_codes` is
+// healthy.
 type HealthCheck_HttpOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Port to use for HTTP health checks.
+	// Optional probe-port override; 0 → inherit TargetGroup.port.
 	Port int64 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
-	// URL path to set for health checking requests for every target in the target group.
-	// For example “ /ping “. The default path is “ / “.
-	Path          string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// URL path for the probe request, e.g. `/healthz`. Default `/`.
+	Path string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// Healthy HTTP status codes — comma-separated list and/or inclusive ranges,
+	// e.g. `200-299` or `200,204`. Empty → any 2xx.
+	ExpectedCodes string `protobuf:"bytes,3,opt,name=expected_codes,json=expectedCodes,proto3" json:"expected_codes,omitempty"`
+	// Optional `Host` header override for the probe request.
+	Host string `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
+	// Optional extra request headers sent with each probe.
+	Headers       map[string]string `protobuf:"bytes,5,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -260,27 +317,206 @@ func (x *HealthCheck_HttpOptions) GetPath() string {
 	return ""
 }
 
+func (x *HealthCheck_HttpOptions) GetExpectedCodes() string {
+	if x != nil {
+		return x.ExpectedCodes
+	}
+	return ""
+}
+
+func (x *HealthCheck_HttpOptions) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *HealthCheck_HttpOptions) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+// HTTPS probe — like HTTP but over TLS.
+type HealthCheck_HttpsOptions struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Optional probe-port override; 0 → inherit TargetGroup.port.
+	Port int64 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
+	// URL path for the probe request, e.g. `/healthz`. Default `/`.
+	Path string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// Healthy HTTP status codes — comma-separated list and/or inclusive ranges.
+	ExpectedCodes string `protobuf:"bytes,3,opt,name=expected_codes,json=expectedCodes,proto3" json:"expected_codes,omitempty"`
+	// Optional `Host` header (SNI) override for the probe request.
+	Host string `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
+	// Optional extra request headers sent with each probe.
+	Headers       map[string]string `protobuf:"bytes,5,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HealthCheck_HttpsOptions) Reset() {
+	*x = HealthCheck_HttpsOptions{}
+	mi := &file_kacho_cloud_loadbalancer_v1_health_check_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthCheck_HttpsOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthCheck_HttpsOptions) ProtoMessage() {}
+
+func (x *HealthCheck_HttpsOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_loadbalancer_v1_health_check_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthCheck_HttpsOptions.ProtoReflect.Descriptor instead.
+func (*HealthCheck_HttpsOptions) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDescGZIP(), []int{0, 2}
+}
+
+func (x *HealthCheck_HttpsOptions) GetPort() int64 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *HealthCheck_HttpsOptions) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *HealthCheck_HttpsOptions) GetExpectedCodes() string {
+	if x != nil {
+		return x.ExpectedCodes
+	}
+	return ""
+}
+
+func (x *HealthCheck_HttpsOptions) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *HealthCheck_HttpsOptions) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+// gRPC probe — grpc.health.v1 Check on `service_name`.
+type HealthCheck_GrpcOptions struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Optional probe-port override; 0 → inherit TargetGroup.port.
+	Port int64 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
+	// gRPC service name to probe, e.g. `grpc.health.v1.Health`. Empty → overall
+	// server health.
+	ServiceName   string `protobuf:"bytes,2,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HealthCheck_GrpcOptions) Reset() {
+	*x = HealthCheck_GrpcOptions{}
+	mi := &file_kacho_cloud_loadbalancer_v1_health_check_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthCheck_GrpcOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthCheck_GrpcOptions) ProtoMessage() {}
+
+func (x *HealthCheck_GrpcOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_loadbalancer_v1_health_check_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthCheck_GrpcOptions.ProtoReflect.Descriptor instead.
+func (*HealthCheck_GrpcOptions) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDescGZIP(), []int{0, 3}
+}
+
+func (x *HealthCheck_GrpcOptions) GetPort() int64 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *HealthCheck_GrpcOptions) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
 var File_kacho_cloud_loadbalancer_v1_health_check_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/loadbalancer/v1/health_check.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1ckacho/cloud/validation.proto\"\xdd\x04\n" +
-	"\vHealthCheck\x129\n" +
-	"\x04name\x18\x01 \x01(\tB%\xe8\xc71\x01\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x125\n" +
+	".kacho/cloud/loadbalancer/v1/health_check.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1ckacho/cloud/validation.proto\"\xe1\t\n" +
+	"\vHealthCheck\x125\n" +
 	"\binterval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\binterval\x123\n" +
 	"\atimeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x129\n" +
 	"\x13unhealthy_threshold\x18\x04 \x01(\x03B\b\xfa\xc71\x042-10R\x12unhealthyThreshold\x125\n" +
-	"\x11healthy_threshold\x18\x05 \x01(\x03B\b\xfa\xc71\x042-10R\x10healthyThreshold\x12V\n" +
-	"\vtcp_options\x18\x06 \x01(\v23.kacho.cloud.loadbalancer.v1.HealthCheck.TcpOptionsH\x00R\n" +
-	"tcpOptions\x12Y\n" +
-	"\fhttp_options\x18\a \x01(\v24.kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptionsH\x00R\vhttpOptions\x1a-\n" +
+	"\x11healthy_threshold\x18\x05 \x01(\x03B\b\xfa\xc71\x042-10R\x10healthyThreshold\x12G\n" +
+	"\x03tcp\x18\x06 \x01(\v23.kacho.cloud.loadbalancer.v1.HealthCheck.TcpOptionsH\x00R\x03tcp\x12J\n" +
+	"\x04http\x18\a \x01(\v24.kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptionsH\x00R\x04http\x12M\n" +
+	"\x05https\x18\b \x01(\v25.kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptionsH\x00R\x05https\x12J\n" +
+	"\x04grpc\x18\t \x01(\v24.kacho.cloud.loadbalancer.v1.HealthCheck.GrpcOptionsH\x00R\x04grpc\x12%\n" +
+	"\x0eeffective_port\x18\n" +
+	" \x01(\x03R\reffectivePort\x1a \n" +
 	"\n" +
-	"TcpOptions\x12\x1f\n" +
-	"\x04port\x18\x01 \x01(\x03B\v\xfa\xc71\a1-65535R\x04port\x1aB\n" +
-	"\vHttpOptions\x12\x1f\n" +
-	"\x04port\x18\x01 \x01(\x03B\v\xfa\xc71\a1-65535R\x04port\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\tR\x04pathB\x0f\n" +
-	"\aoptions\x12\x04\xc0\xc11\x01BRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
+	"TcpOptions\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\x03R\x04port\x1a\x89\x02\n" +
+	"\vHttpOptions\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\x03R\x04port\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12%\n" +
+	"\x0eexpected_codes\x18\x03 \x01(\tR\rexpectedCodes\x12\x12\n" +
+	"\x04host\x18\x04 \x01(\tR\x04host\x12[\n" +
+	"\aheaders\x18\x05 \x03(\v2A.kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions.HeadersEntryR\aheaders\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a\x8b\x02\n" +
+	"\fHttpsOptions\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\x03R\x04port\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12%\n" +
+	"\x0eexpected_codes\x18\x03 \x01(\tR\rexpectedCodes\x12\x12\n" +
+	"\x04host\x18\x04 \x01(\tR\x04host\x12\\\n" +
+	"\aheaders\x18\x05 \x03(\v2B.kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptions.HeadersEntryR\aheaders\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aD\n" +
+	"\vGrpcOptions\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\x03R\x04port\x12!\n" +
+	"\fservice_name\x18\x02 \x01(\tR\vserviceNameB\x0f\n" +
+	"\aoptions\x12\x04\xc0\xc11\x01J\x04\b\x01\x10\x02R\x04nameBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 
 var (
 	file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDescOnce sync.Once
@@ -294,23 +530,31 @@ func file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDescData
 }
 
-var file_kacho_cloud_loadbalancer_v1_health_check_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_kacho_cloud_loadbalancer_v1_health_check_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kacho_cloud_loadbalancer_v1_health_check_proto_goTypes = []any{
-	(*HealthCheck)(nil),             // 0: kacho.cloud.loadbalancer.v1.HealthCheck
-	(*HealthCheck_TcpOptions)(nil),  // 1: kacho.cloud.loadbalancer.v1.HealthCheck.TcpOptions
-	(*HealthCheck_HttpOptions)(nil), // 2: kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions
-	(*durationpb.Duration)(nil),     // 3: google.protobuf.Duration
+	(*HealthCheck)(nil),              // 0: kacho.cloud.loadbalancer.v1.HealthCheck
+	(*HealthCheck_TcpOptions)(nil),   // 1: kacho.cloud.loadbalancer.v1.HealthCheck.TcpOptions
+	(*HealthCheck_HttpOptions)(nil),  // 2: kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions
+	(*HealthCheck_HttpsOptions)(nil), // 3: kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptions
+	(*HealthCheck_GrpcOptions)(nil),  // 4: kacho.cloud.loadbalancer.v1.HealthCheck.GrpcOptions
+	nil,                              // 5: kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions.HeadersEntry
+	nil,                              // 6: kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptions.HeadersEntry
+	(*durationpb.Duration)(nil),      // 7: google.protobuf.Duration
 }
 var file_kacho_cloud_loadbalancer_v1_health_check_proto_depIdxs = []int32{
-	3, // 0: kacho.cloud.loadbalancer.v1.HealthCheck.interval:type_name -> google.protobuf.Duration
-	3, // 1: kacho.cloud.loadbalancer.v1.HealthCheck.timeout:type_name -> google.protobuf.Duration
-	1, // 2: kacho.cloud.loadbalancer.v1.HealthCheck.tcp_options:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.TcpOptions
-	2, // 3: kacho.cloud.loadbalancer.v1.HealthCheck.http_options:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	7, // 0: kacho.cloud.loadbalancer.v1.HealthCheck.interval:type_name -> google.protobuf.Duration
+	7, // 1: kacho.cloud.loadbalancer.v1.HealthCheck.timeout:type_name -> google.protobuf.Duration
+	1, // 2: kacho.cloud.loadbalancer.v1.HealthCheck.tcp:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.TcpOptions
+	2, // 3: kacho.cloud.loadbalancer.v1.HealthCheck.http:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions
+	3, // 4: kacho.cloud.loadbalancer.v1.HealthCheck.https:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptions
+	4, // 5: kacho.cloud.loadbalancer.v1.HealthCheck.grpc:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.GrpcOptions
+	5, // 6: kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions.headers:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptions.HeadersEntry
+	6, // 7: kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptions.headers:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptions.HeadersEntry
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_health_check_proto_init() }
@@ -319,8 +563,10 @@ func file_kacho_cloud_loadbalancer_v1_health_check_proto_init() {
 		return
 	}
 	file_kacho_cloud_loadbalancer_v1_health_check_proto_msgTypes[0].OneofWrappers = []any{
-		(*HealthCheck_TcpOptions_)(nil),
-		(*HealthCheck_HttpOptions_)(nil),
+		(*HealthCheck_Tcp)(nil),
+		(*HealthCheck_Http)(nil),
+		(*HealthCheck_Https)(nil),
+		(*HealthCheck_Grpc)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -328,7 +574,7 @@ func file_kacho_cloud_loadbalancer_v1_health_check_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDesc), len(file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

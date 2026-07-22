@@ -6,11 +6,13 @@ package targetgroup
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
@@ -55,9 +57,9 @@ func TestUpdate_NonLabelsMask_NoMirrorIntent(t *testing.T) {
 	uc := NewUpdateTargetGroupUseCase(repo, opsRepo, nil)
 
 	op, err := uc.Execute(context.Background(), &lbv1.UpdateTargetGroupRequest{
-		TargetGroupId:              string(tg.ID),
-		UpdateMask:                 &fieldmaskpb.FieldMask{Paths: []string{"deregistration_delay_seconds"}},
-		DeregistrationDelaySeconds: 600,
+		TargetGroupId:       string(tg.ID),
+		UpdateMask:          &fieldmaskpb.FieldMask{Paths: []string{"deregistration_delay"}},
+		DeregistrationDelay: durationpb.New(600 * time.Second),
 	})
 	require.NoError(t, err)
 	final := awaitOpDone(t, opsRepo, op.ID)
@@ -76,9 +78,9 @@ func TestUpdate_MutableFields(t *testing.T) {
 	uc := NewUpdateTargetGroupUseCase(repo, opsRepo, nil)
 
 	op, err := uc.Execute(context.Background(), &lbv1.UpdateTargetGroupRequest{
-		TargetGroupId:              string(tg.ID),
-		UpdateMask:                 &fieldmaskpb.FieldMask{Paths: []string{"deregistration_delay_seconds"}},
-		DeregistrationDelaySeconds: 600,
+		TargetGroupId:       string(tg.ID),
+		UpdateMask:          &fieldmaskpb.FieldMask{Paths: []string{"deregistration_delay"}},
+		DeregistrationDelay: durationpb.New(600 * time.Second),
 	})
 	require.NoErrorf(t, err, "err details=%s", fieldViolationsText(err))
 	final := awaitOpDone(t, opsRepo, op.ID)
@@ -116,8 +118,9 @@ func TestUpdate_Immutable_ProjectID(t *testing.T) {
 		UpdateMask:    &fieldmaskpb.FieldMask{Paths: []string{"project_id"}},
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "project_id is immutable")
-	require.Contains(t, status.Convert(err).Message(), "TargetGroupService.Move")
+	// NLB-1-40: contract text is the plain immutable message for both
+	// project_id and region_id ("<field> is immutable after TargetGroup.Create").
+	require.Contains(t, status.Convert(err).Message(), "project_id is immutable after TargetGroup.Create")
 }
 
 // targets via mask → InvalidArgument с фиксированным текстом.

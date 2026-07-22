@@ -20,7 +20,6 @@ import (
 
 func TestTargetGroup_Transfer_WithTargetsAndHC(t *testing.T) {
 	hc := domain.HealthCheck{
-		Name:               "hc-tcp",
 		Interval:           domain.LbDuration(2 * time.Second),
 		Timeout:            domain.LbDuration(1 * time.Second),
 		UnhealthyThreshold: 3,
@@ -39,11 +38,11 @@ func TestTargetGroup_Transfer_WithTargetsAndHC(t *testing.T) {
 				{InstanceID: option.MustNewOption(domain.InstanceID("epd0INST1")), Weight: 100},
 				{NicID: option.MustNewOption(domain.NicID("e9b0NIC1")), Weight: 50},
 			},
-			HealthCheck:                hc,
-			DeregistrationDelaySeconds: 60,
-			SlowStartSeconds:           10,
-			Status:                     domain.TargetGroupStatusActive,
-			Port:                       8080,
+			HealthCheck:         hc,
+			DeregistrationDelay: domain.LbDuration(60 * time.Second),
+			SlowStart:           domain.LbDuration(10 * time.Second),
+			Status:              domain.TargetGroupStatusActive,
+			Port:                8080,
 		},
 		CreatedAt: time.Date(2026, 5, 24, 0, 0, 0, 0, time.UTC),
 	}
@@ -57,20 +56,19 @@ func TestTargetGroup_Transfer_WithTargetsAndHC(t *testing.T) {
 	assert.Equal(t, "epd0INST1", pb.Targets[0].GetInstanceId())
 	assert.Equal(t, "e9b0NIC1", pb.Targets[1].GetNicId())
 	require.NotNil(t, pb.HealthCheck)
-	assert.Equal(t, "hc-tcp", pb.HealthCheck.Name)
-	require.NotNil(t, pb.HealthCheck.GetTcpOptions())
-	assert.Equal(t, int64(80), pb.HealthCheck.GetTcpOptions().Port)
+	require.NotNil(t, pb.HealthCheck.GetTcp())
+	assert.Equal(t, int64(80), pb.HealthCheck.GetTcp().Port)
 	assert.Equal(t, int64(3), pb.HealthCheck.UnhealthyThreshold)
 }
 
 func TestTargetGroup_Transfer_NoTargetsZeroHC(t *testing.T) {
 	rec := kachorepo.TargetGroupRecord{
 		TargetGroup: domain.TargetGroup{
-			ID:                         "tgr01ZERO123456789xx",
-			ProjectID:                  "p1",
-			RegionID:                   "r1",
-			DeregistrationDelaySeconds: 300,
-			Status:                     domain.TargetGroupStatusActive,
+			ID:                  "tgr01ZERO123456789xx",
+			ProjectID:           "p1",
+			RegionID:            "r1",
+			DeregistrationDelay: domain.LbDuration(300 * time.Second),
+			Status:              domain.TargetGroupStatusActive,
 		},
 		CreatedAt: time.Now(),
 	}
@@ -82,35 +80,35 @@ func TestTargetGroup_Transfer_NoTargetsZeroHC(t *testing.T) {
 
 func TestTargetGroup_HTTPHealthCheck(t *testing.T) {
 	hc := domain.HealthCheck{
-		Name:               "hc-http",
 		Interval:           domain.LbDuration(5 * time.Second),
 		Timeout:            domain.LbDuration(2 * time.Second),
 		UnhealthyThreshold: 2,
 		HealthyThreshold:   2,
 		HTTP:               &domain.HealthCheckHTTP{Port: 8080, Path: "/healthz"},
 	}
-	pb := healthCheckToPb(hc)
+	pb := healthCheckToPb(hc, 8080)
 	require.NotNil(t, pb)
-	require.NotNil(t, pb.GetHttpOptions())
-	assert.Equal(t, int64(8080), pb.GetHttpOptions().Port)
-	assert.Equal(t, "/healthz", pb.GetHttpOptions().Path)
+	require.NotNil(t, pb.GetHttp())
+	assert.Equal(t, int64(8080), pb.GetHttp().Port)
+	assert.Equal(t, "/healthz", pb.GetHttp().Path)
 	assert.Equal(t, 5*time.Second, pb.Interval.AsDuration())
 }
 
 func TestTargetGroup_HTTPSAndGRPCFallback(t *testing.T) {
-	// HTTPS / GRPC варианты в proto-VR не существуют — тест фиксирует, что
-	// transfer не паникует и возвращает pb без options-oneof (вместо TCP/HTTP).
+	// NLB-1c: HTTPS / GRPC теперь имеют proto-эквиваленты (4-way oneof) —
+	// transfer не паникует и проецирует HTTPS в options-oneof HealthCheck_Https.
 	hc := domain.HealthCheck{
-		Name:               "hc-https",
 		Interval:           domain.LbDuration(2 * time.Second),
 		Timeout:            domain.LbDuration(1 * time.Second),
 		UnhealthyThreshold: 2,
 		HealthyThreshold:   2,
 		HTTPS:              &domain.HealthCheckHTTPS{Port: 443, Path: "/"},
 	}
-	pb := healthCheckToPb(hc)
+	pb := healthCheckToPb(hc, 443)
 	require.NotNil(t, pb)
-	assert.Nil(t, pb.Options, "HTTPS вариант не имеет proto-эквивалента → options nil")
+	require.NotNil(t, pb.GetHttps(), "HTTPS вариант проецируется в HealthCheck_Https")
+	assert.Equal(t, int64(443), pb.GetHttps().Port)
+	assert.Equal(t, "/", pb.GetHttps().Path)
 }
 
 func TestTargetGroup_StatusUnknownFail(t *testing.T) {

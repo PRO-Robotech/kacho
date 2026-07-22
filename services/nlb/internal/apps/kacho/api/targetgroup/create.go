@@ -112,12 +112,12 @@ func (u *CreateTargetGroupUseCase) Execute(
 	tg.Port = domain.LbPort(req.GetPort())
 	tg.Targets = targetsFromPb(req.GetTargets())
 	// Defaults via builder уже выставлены — override только если caller прислал
-	// non-zero значение (proto numeric zero === «не задано»).
-	if v := req.GetDeregistrationDelaySeconds(); v != 0 {
-		tg.DeregistrationDelaySeconds = v
+	// значение (proto message-nil === «не задано»; NLB-1c B8 Duration).
+	if d := req.GetDeregistrationDelay(); d != nil {
+		tg.DeregistrationDelay = domain.LbDuration(d.AsDuration())
 	}
-	if v := req.GetSlowStartSeconds(); v != 0 {
-		tg.SlowStartSeconds = v
+	if d := req.GetSlowStart(); d != nil {
+		tg.SlowStart = domain.LbDuration(d.AsDuration())
 	}
 	if err := tg.Validate(); err != nil {
 		return nil, mapDomainErr(err)

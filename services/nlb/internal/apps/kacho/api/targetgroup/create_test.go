@@ -30,18 +30,17 @@ func mkCreateReq(projectID, regionID, name string) *lbv1.CreateTargetGroupReques
 		Description: "test tg",
 		Labels:      map[string]string{"tier": "web"},
 		HealthCheck: &lbv1.HealthCheck{
-			Name:               "hc-http",
 			Interval:           durationpb.New(2 * time.Second),
 			Timeout:            durationpb.New(1 * time.Second),
 			UnhealthyThreshold: 2,
 			HealthyThreshold:   2,
-			Options: &lbv1.HealthCheck_HttpOptions_{
-				HttpOptions: &lbv1.HealthCheck_HttpOptions{Port: 8080, Path: "/healthz"},
+			Options: &lbv1.HealthCheck_Http{
+				Http: &lbv1.HealthCheck_HttpOptions{Port: 8080, Path: "/healthz"},
 			},
 		},
-		DeregistrationDelaySeconds: 300,
-		SlowStartSeconds:           30,
-		Port:                       8080,
+		DeregistrationDelay: durationpb.New(300 * time.Second),
+		SlowStart:           durationpb.New(30 * time.Second),
+		Port:                8080,
 	}
 }
 
@@ -186,8 +185,8 @@ func TestCreate_HealthCheckPortOverflowRejected(t *testing.T) {
 	repo := newFakeRepo()
 	uc := mkUC(repo, newFakeOpsRepo())
 	req := mkCreateReq("prj-acme", "ru-central1", "ovf-hcport")
-	req.HealthCheck.Options = &lbv1.HealthCheck_HttpOptions_{
-		HttpOptions: &lbv1.HealthCheck_HttpOptions{Port: int64(1)<<32 + 8080, Path: "/healthz"},
+	req.HealthCheck.Options = &lbv1.HealthCheck_Http{
+		Http: &lbv1.HealthCheck_HttpOptions{Port: int64(1)<<32 + 8080, Path: "/healthz"},
 	}
 	_, err := uc.Execute(context.Background(), req)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -199,10 +198,10 @@ func TestCreate_DeregDelay_OutOfBounds(t *testing.T) {
 	repo := newFakeRepo()
 	uc := mkUC(repo, newFakeOpsRepo())
 	req := mkCreateReq("prj-acme", "ru-central1", "bad-dreg")
-	req.DeregistrationDelaySeconds = 3601
+	req.DeregistrationDelay = durationpb.New(3601 * time.Second)
 	_, err := uc.Execute(context.Background(), req)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, fieldViolationsText(err), "deregistration_delay_seconds must be in range [0, 3600]")
+	require.Contains(t, fieldViolationsText(err), "deregistration_delay must be in range [0s, 3600s]")
 }
 
 // slow_start out-of-bounds.
@@ -210,10 +209,10 @@ func TestCreate_SlowStart_OutOfBounds(t *testing.T) {
 	repo := newFakeRepo()
 	uc := mkUC(repo, newFakeOpsRepo())
 	req := mkCreateReq("prj-acme", "ru-central1", "bad-slow")
-	req.SlowStartSeconds = 901
+	req.SlowStart = durationpb.New(901 * time.Second)
 	_, err := uc.Execute(context.Background(), req)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, fieldViolationsText(err), "slow_start_seconds must be in range [0, 900]")
+	require.Contains(t, fieldViolationsText(err), "slow_start must be in range [0s, 900s]")
 }
 
 // target without identity.
