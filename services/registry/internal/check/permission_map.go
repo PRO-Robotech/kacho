@@ -34,6 +34,7 @@ const (
 	relVCreate = domain.FGARelationVCreate
 	relVUpdate = domain.FGARelationVUpdate
 	relVDelete = domain.FGARelationVDelete
+	relEditor  = domain.FGARelationEditor
 )
 
 // registryObject — extractor (registry_registry, <registryId>) из request'ов,
@@ -133,8 +134,13 @@ func PermissionMap() authz.RPCMap {
 			Permission:    "registry.registries.list",
 			ScopeFiltered: true,
 		},
+		// Create — create-child gated by editor@project (proto required_relation +
+		// gateway catalog). NOT v_create: `project#v_create` is the account-level
+		// "create the project" verb that the iam reconciler never materializes for an
+		// edit-role, so a project-editor (has project#editor) would be denied here while
+		// the gateway allows — the #62-class in-service/gateway relation mismatch.
 		"/kacho.cloud.registry.v1.RegistryService/Create": {
-			Relation:   relVCreate,
+			Relation:   relEditor,
 			Extract:    projectObject(),
 			Permission: "registry.registries.create",
 		},

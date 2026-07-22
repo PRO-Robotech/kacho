@@ -76,6 +76,15 @@ const (
 // default_visibility→PUBLIC B10) требует этого relation (D-6 any-path-to-PUBLIC gate).
 const FGARelationAdmin = "admin"
 
+// FGARelationEditor — editor-tier relation на PARENT-объекте (project). Create-child
+// (RegistryService.Create) гейтится editor@project (не v_create@project): «create a
+// registry IN the project» — editor-tier способность на РОДИТЕЛЕ, тогда как
+// `project#v_create` — это account-level «создать сам project» (iam-реконсайлер НЕ
+// материализует v_create/v_delete на project-scope для edit-роли). Совпадает с proto
+// required_relation="editor" + api-gateway permission-catalog (defense-in-depth: оба
+// плана резолвят ОДНО решение). Зеркалит compute/vpc/storage create-child = editor@project.
+const FGARelationEditor = "editor"
+
 // FGASubjectPublicWildcard — FGA subject-строка анонимного/публичного принципала
 // ("user:*"). visibility=PUBLIC ⟺ существует tuple "user:* v_get registry_repository:
 // <reg>/<repo>" (D-7): анонимный pull резолвится в этот wildcard subject. Governance —
