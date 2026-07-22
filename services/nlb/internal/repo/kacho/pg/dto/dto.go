@@ -24,8 +24,9 @@ import (
 // DurationToSeconds — domain.LbDuration → integer seconds for the
 // `deregistration_delay_seconds` / `slow_start_seconds` int columns (NLB-1c B8:
 // domain type is Duration; DB storage stays integer seconds, keeping the drain
-// runner's `make_interval(secs => …)` SQL intact). Bounds are validated in the
-// domain [0s..3600s]/[0s..900s], so the truncation to whole seconds is exact.
+// runner's `make_interval(secs => …)` SQL intact). domain.TargetGroup.Validate
+// rejects sub-second precision for these two fields, so the division to whole
+// seconds is lossless (no silent truncation / read-after-write mismatch).
 func DurationToSeconds(d domain.LbDuration) int32 {
 	return int32(time.Duration(d) / time.Second)
 }
