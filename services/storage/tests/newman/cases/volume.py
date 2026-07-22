@@ -82,6 +82,58 @@ CASES.append(Case(
 ))
 
 # ---------------------------------------------------------------------------
+# CS1-S1-71 — object-self Get/Update/Delete under a PROJECT-SCOPED actor (#71)
+#
+# The rest of this suite runs CRUD as jwtBootstrap (cluster system_admin), whose
+# Check SHORT-CIRCUITS the per-object storage_volume Check — so it can 200 a
+# volume GET even when the storage_volume FGA type / reconciler wiring is missing,
+# MASKING that a real project-scoped tenant is denied (verified live: same volume,
+# jwtBootstrap GET=200 but jwtProjectEditorA GET=403 "no authorization path"). That
+# false-green shipped storage object-self reads broken (#71). This case exercises
+# the tenant anti-BOLA path as jwtProjectEditorA (editor on _suiteFolderId) so the
+# suite actually covers it: RED until the #71 FGA model+wiring deploys (owner v_*
+# materialize from the project-editor binding), GREEN after. retry_until_authorized
+# absorbs ONLY the read-your-writes owner-tuple materialization window (never a real
+# deny — a genuine 403 still fails the assertion once the budget is spent).
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="VOL-OBJSELF-PROJECT-SCOPED-CRUD",
+    title="[#71] project-scoped editor Get/Update/Delete OWN volume → 200 (object-self anti-BOLA; NOT cluster-admin-masked)",
+    classes=["CRUD", "AUTHZ", "CONF"], priority="P0",
+    # verifies #71 (storage_* FGA types + reconciler wiring; object-self tenant authz)
+    steps=[
+        # Create as the default cluster-admin (reliable seed); the volume lands in
+        # _suiteFolderId, on which jwtProjectEditorA holds an editor binding.
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("objself"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
+        poll_operation_until_done(), assert_op_success(),
+        # GET own volume as the PROJECT-SCOPED editor → object-self Check on
+        # storage_volume:<id> must resolve v_get for the editor (materialized from
+        # the project binding). Pre-#71: 403 (type missing) → RED.
+        retry_until_authorized(Step(name="objself-get", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             auth="jwtProjectEditorA",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('project-editor resolves own volume (v_get materialized)', () => pm.expect(j.id).to.eql(pm.environment.get('volumeId')));"])),
+        # UPDATE (grow) as the project-scoped editor → object-self v_update.
+        retry_until_authorized(Step(name="objself-patch", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
+             auth="jwtProjectEditorA",
+             body={"updateMask": "sizeBytes", "sizeBytes": _GROW_SIZE},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          "pm.test('project-editor Operation envelope (v_update materialized)', () => pm.expect(pm.response.json().id).to.match(/^sop/));"])),
+        poll_operation_until_done(), assert_op_success(),
+        # DELETE as the project-scoped editor → object-self v_delete (editor co-materializes delete).
+        retry_until_authorized(Step(name="objself-delete", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
+             auth="jwtProjectEditorA",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          "pm.test('project-editor deletes own volume (v_delete materialized)', () => pm.expect(pm.response.json().id).to.match(/^sop/));"])),
+        poll_operation_until_done(), assert_op_success(),
+    ],
+))
+
+# ---------------------------------------------------------------------------
 # CS1-S1-02 — Get: malformed id (sync INVALID_ARGUMENT) + well-formed NotFound
 # ---------------------------------------------------------------------------
 
