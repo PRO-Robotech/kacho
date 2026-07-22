@@ -65,6 +65,7 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | VOL-UPD-MASK-EMPTY-FULL-PATCH-OK | CS1-S1-05 | happy (full-PATCH) |
 | VOL-CR-SEC-NAME-INJECTION | CS1-S1-11 | negative (SEC no-leak) |
 | VOL-LST-SEC-FILTER-SQLI | CS1-S1-03 | negative (SEC no-leak) |
+| VOL-OBJSELF-PROJECT-SCOPED-CRUD | #71 | happy (object-self anti-BOLA, project-scoped actor — not cluster-admin-masked) |
 
 ## Snapshot (`cases/snapshot.py`) — stage S3
 
