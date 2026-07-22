@@ -43,7 +43,7 @@ service InternalRegionService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Update (UpdateRegionRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/regions/{region_id}" body: "*" };
@@ -57,7 +57,7 @@ service InternalRegionService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Delete (DeleteRegionRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/regions/{region_id}" };
@@ -71,7 +71,7 @@ service InternalRegionService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   // GetInternal returns the FULL Internal projection (raw status + infra°).
   rpc GetInternal (GetInternalRegionRequest) returns (InternalRegion) {
@@ -82,7 +82,7 @@ service InternalRegionService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 
@@ -146,7 +146,7 @@ service InternalZoneService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Update (UpdateZoneRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/zones/{zone_id}" body: "*" };
@@ -160,7 +160,7 @@ service InternalZoneService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   rpc Delete (DeleteZoneRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/zones/{zone_id}" };
@@ -174,7 +174,7 @@ service InternalZoneService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   // GetInternal returns the FULL Internal projection (raw status + infra°).
   rpc GetInternal (GetInternalZoneRequest) returns (InternalZone) {
@@ -185,7 +185,7 @@ service InternalZoneService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

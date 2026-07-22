@@ -26,7 +26,7 @@ service AccountService {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Account resources.
@@ -75,7 +75,7 @@ service AccountService {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified account.
@@ -105,7 +105,7 @@ service AccountService {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists ALL IAM operations whose owning resource belongs to the specified
@@ -122,7 +122,7 @@ service AccountService {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

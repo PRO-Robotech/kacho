@@ -30,7 +30,7 @@ service InternalImageService {
       object_type:        "storage_image"
       from_request_field: "image_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

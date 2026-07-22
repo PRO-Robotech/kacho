@@ -27,7 +27,7 @@ service GatewayService {
       object_type:        "vpc_gateway"
       from_request_field: "gateway_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Gateway resources in the specified folder.
@@ -39,7 +39,7 @@ service GatewayService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a gateway in the specified folder.
@@ -55,7 +55,7 @@ service GatewayService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   };
 
   // Updates the specified gateway.
@@ -71,7 +71,7 @@ service GatewayService {
       object_type:        "vpc_gateway"
       from_request_field: "gateway_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   };
 
   // Deletes the specified gateway.
@@ -87,7 +87,7 @@ service GatewayService {
       object_type:        "vpc_gateway"
       from_request_field: "gateway_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   };
 
   // List operations for the specified gateway.
@@ -99,7 +99,7 @@ service GatewayService {
       object_type:        "vpc_gateway"
       from_request_field: "gateway_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

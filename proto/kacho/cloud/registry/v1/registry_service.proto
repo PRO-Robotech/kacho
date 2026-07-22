@@ -29,7 +29,7 @@ service RegistryService {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // List — sync-список реестров project'а. Scope-filtered (handler фильтрует
@@ -56,7 +56,7 @@ service RegistryService {
       object_type: "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Update — async, mutable labels/description (name/project immutable). v_update.
@@ -81,7 +81,7 @@ service RegistryService {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
     option (kacho.iam.authz.v1.hide_existence) = true;
   }
 
@@ -102,7 +102,7 @@ service RegistryService {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
     option (kacho.iam.authz.v1.hide_existence) = true;
   }
 
@@ -125,7 +125,7 @@ service RegistryService {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // === Repository-scoped RPC — ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ (REST-precedence) =====

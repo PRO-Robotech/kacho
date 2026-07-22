@@ -40,7 +40,7 @@ service InternalLoadBalancerAnnounceService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ReportAnnounceState — inbound write-канал data-plane→nlb (новое одностороннее
@@ -59,7 +59,7 @@ service InternalLoadBalancerAnnounceService {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -36,7 +36,7 @@ service InternalVolumeService {
       object_type:        "storage_volume"
       from_request_field: "volume_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Detach — idempotent delete of the volume_attachments row; 0 rows deleted → the
@@ -48,7 +48,7 @@ service InternalVolumeService {
       object_type:        "storage_volume"
       from_request_field: "volume_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ListAttachments — batched read of attachments for the given instances, used by
@@ -60,7 +60,7 @@ service InternalVolumeService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // GetInternal — full (infra) projection of a Volume, internal-only.
@@ -77,7 +77,7 @@ service InternalVolumeService {
       object_type:        "storage_volume"
       from_request_field: "volume_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -35,7 +35,7 @@ service InternalNetworkService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // GetNetwork — internal-only read, возвращающий Network вместе с
@@ -62,7 +62,7 @@ service InternalNetworkService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

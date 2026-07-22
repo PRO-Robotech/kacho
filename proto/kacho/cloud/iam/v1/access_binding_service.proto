@@ -32,7 +32,7 @@ service AccessBindingService {
       object_type:        "iam_access_binding"
       from_request_field: "access_binding_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates an access binding.
@@ -55,6 +55,7 @@ service AccessBindingService {
     // the actual scope object). Anonymous is still rejected by the IAM
     // anti-anonymous interceptor.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
 
   // Deletes the specified access binding.
@@ -116,7 +117,7 @@ service AccessBindingService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists access bindings attached to the specified scope (renamed from the
@@ -137,7 +138,7 @@ service AccessBindingService {
       from_request_field:             "resource_id"
       object_type_from_request_field: "resource_type"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists access bindings assigned to the specified subject. Cluster-scoped
@@ -153,7 +154,7 @@ service AccessBindingService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists the privileges (enriched access bindings) attached to the specified
@@ -183,7 +184,7 @@ service AccessBindingService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists the roles that are assignable on the specified resource.
@@ -224,7 +225,7 @@ service AccessBindingService {
       from_request_field:             "resource_id"
       object_type_from_request_field: "resource_type"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists the access bindings that carry a given Role (audit "who holds role R").
@@ -247,7 +248,7 @@ service AccessBindingService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Expands a userset on an object+relation into the concrete principals that
@@ -269,7 +270,7 @@ service AccessBindingService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists access bindings in an account (all subjects). Requires `admin`
@@ -290,7 +291,7 @@ service AccessBindingService {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified access binding.
@@ -302,7 +303,7 @@ service AccessBindingService {
       object_type:        "iam_access_binding"
       from_request_field: "access_binding_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Soft-revokes the specified access binding (redesign-2026 F10 IAM-1-28).

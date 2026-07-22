@@ -31,7 +31,7 @@ service HostGroupService {
       object_type:        "compute_host_group"
       from_request_field: "host_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
 
@@ -44,7 +44,7 @@ service HostGroupService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a host group in the specified folder.
@@ -60,7 +60,7 @@ service HostGroupService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified host group.
@@ -76,7 +76,7 @@ service HostGroupService {
       object_type:        "compute_host_group"
       from_request_field: "host_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified host group.
@@ -92,7 +92,7 @@ service HostGroupService {
       object_type:        "compute_host_group"
       from_request_field: "host_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified host group.
@@ -104,7 +104,7 @@ service HostGroupService {
       object_type:        "compute_host_group"
       from_request_field: "host_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists instances that belongs to the specified host group.
@@ -116,7 +116,7 @@ service HostGroupService {
       object_type:        "compute_host_group"
       from_request_field: "host_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists hosts that belongs to the specified host group.
@@ -128,7 +128,7 @@ service HostGroupService {
       object_type:        "compute_host_group"
       from_request_field: "host_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Update host
@@ -144,7 +144,7 @@ service HostGroupService {
       object_type:        "compute_host_group"
       from_request_field: "host_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // access
@@ -158,7 +158,7 @@ service HostGroupService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Sets access bindings for the host group.

@@ -60,7 +60,7 @@ service RoleService {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified custom role.
@@ -107,7 +107,7 @@ service RoleService {
       object_type:        "iam_role"
       from_request_field: "role_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

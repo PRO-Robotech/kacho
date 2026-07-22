@@ -31,7 +31,7 @@ service PlacementGroupService {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of placement groups in the specified folder.
@@ -43,7 +43,7 @@ service PlacementGroupService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a placement group in the specified folder.
@@ -59,7 +59,7 @@ service PlacementGroupService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified placement group.
@@ -75,7 +75,7 @@ service PlacementGroupService {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified placement group.
@@ -91,7 +91,7 @@ service PlacementGroupService {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists instances for the specified placement group.
@@ -103,7 +103,7 @@ service PlacementGroupService {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified placement group.
@@ -115,7 +115,7 @@ service PlacementGroupService {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // access
@@ -129,7 +129,7 @@ service PlacementGroupService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Sets access bindings for the placement group.

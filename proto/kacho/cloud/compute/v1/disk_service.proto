@@ -31,7 +31,7 @@ service DiskService {
       object_type:        "compute_disk"
       from_request_field: "disk_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Disk resources in the specified folder.
@@ -43,7 +43,7 @@ service DiskService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a disk in the specified folder.
@@ -62,7 +62,7 @@ service DiskService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified disk.
@@ -78,7 +78,7 @@ service DiskService {
       object_type:        "compute_disk"
       from_request_field: "disk_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified disk.
@@ -99,7 +99,7 @@ service DiskService {
       object_type:        "compute_disk"
       from_request_field: "disk_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified disk.
@@ -111,7 +111,7 @@ service DiskService {
       object_type:        "compute_disk"
       from_request_field: "disk_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Moves the specified disk to another availability zone
@@ -130,7 +130,7 @@ service DiskService {
       object_type:        "compute_disk"
       from_request_field: "disk_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of snapshot schedules the specified disk is attached to.
@@ -141,7 +141,7 @@ service DiskService {
       object_type:        "compute_disk"
       from_request_field: "disk_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // access
@@ -155,7 +155,7 @@ service DiskService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Sets access bindings for the disk.

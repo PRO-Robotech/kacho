@@ -41,7 +41,7 @@ service InternalNetworkInterfaceService {
       object_type:        "vpc_network_interface"
       from_request_field: "nic_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Detach — idempotent release of the NIC↔Instance binding (clears used_by_id /
@@ -54,7 +54,7 @@ service InternalNetworkInterfaceService {
       object_type:        "vpc_network_interface"
       from_request_field: "nic_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ListByInstance — batched read of NIC attachments for the given instances, used
@@ -67,7 +67,7 @@ service InternalNetworkInterfaceService {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

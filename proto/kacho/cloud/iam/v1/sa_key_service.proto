@@ -54,7 +54,7 @@ service SAKeyService {
       object_type:        "iam_service_account"
       from_request_field: "service_account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Revoke (RevokeSAKeyRequest) returns (operation.Operation) {

@@ -30,7 +30,7 @@ service ReservedInstancePoolService {
       object_type:        "compute_reserved_instance_pool"
       from_request_field: "reserved_instance_pool_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   
   // Retrieves the list of reserved instance pool resources in the specified folder.
@@ -42,7 +42,7 @@ service ReservedInstancePoolService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates an reserved instance pool in the specified folder.
@@ -62,7 +62,7 @@ service ReservedInstancePoolService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified reserved instance pool.
@@ -81,7 +81,7 @@ service ReservedInstancePoolService {
       object_type:        "compute_reserved_instance_pool"
       from_request_field: "reserved_instance_pool_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified reserved instance pool.
@@ -97,7 +97,7 @@ service ReservedInstancePoolService {
       object_type:        "compute_reserved_instance_pool"
       from_request_field: "reserved_instance_pool_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
     // Lists operations for the specified reserved instance pool.
@@ -109,7 +109,7 @@ service ReservedInstancePoolService {
       object_type:        "compute_reserved_instance_pool"
       from_request_field: "reserved_instance_pool_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of instances, using the specified reserved instance pool.
@@ -121,7 +121,7 @@ service ReservedInstancePoolService {
       object_type:        "compute_reserved_instance_pool"
       from_request_field: "reserved_instance_pool_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

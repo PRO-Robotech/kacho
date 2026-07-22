@@ -24,7 +24,7 @@ service MaintenanceService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the specific Maintenance by ID.
@@ -36,7 +36,7 @@ service MaintenanceService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Allows user to reschedule Maintenance to another date and time.
@@ -51,6 +51,6 @@ service MaintenanceService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }

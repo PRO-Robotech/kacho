@@ -64,10 +64,11 @@ func stepUpVerifier(t *testing.T, fix *jwksFixture) *middleware.JWTVerifier {
 	return v
 }
 
-// A privileged RPC (NetworkService/Create, required_acr_min=2) called with a
-// token presenting acr=1 must be rejected with an RFC 9470 step-up challenge —
-// the backend handler must never run.
-func TestDPoPStepUp_InsufficientACR_ChallengesAndBlocks(t *testing.T) {
+// SEC-acr-stepup-refinement (SEC-ACR-01/03/21, I3): a SENSITIVE RPC
+// (UserTokenService/Issue — credential mint, required_acr_min=2) called with a
+// token presenting acr=1 must STILL be rejected with an RFC 9470 step-up
+// challenge — step-up is preserved on the 41-set grant/credential surface.
+func TestDPoPStepUp_SensitiveRPC_InsufficientACR_Blocks(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
 	mw := buildStepUpMiddleware(t, stepUpVerifier(t, fix))
 
@@ -81,26 +82,30 @@ func TestDPoPStepUp_InsufficientACR_ChallengesAndBlocks(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "https://api.kacho.cloud/vpc/v1/networks", nil)
+	// POST /iam/v1/users/{user_id}/tokens → UserTokenService/Issue (credential mint, acr=2).
+	req := httptest.NewRequest(http.MethodPost, "https://api.kacho.cloud/iam/v1/users/usr-abc/tokens", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusUnauthorized, rec.Code, "step-up must reject acr=1 on an acr>=2 RPC")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code, "step-up must reject acr=1 on a sensitive acr>=2 RPC")
 	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "insufficient_user_authentication",
 		"must emit an RFC 9470 step-up challenge")
 	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), `acr_values="2"`)
 	assert.False(t, backendHit, "backend handler must not run when step-up is required")
 }
 
-// The same RPC called with a sufficient ACR passes the gate and reaches the
-// backend.
-func TestDPoPStepUp_SufficientACR_PassesThrough(t *testing.T) {
+// SEC-acr-stepup-refinement (SEC-ACR-08, I5, регрессия #3 — the core UNBLOCK):
+// a ROUTINE resource RPC (NetworkService/Create, downgraded to required_acr_min=1)
+// called with an ordinary AAL1 token (acr=1) now PASSES the step-up gate and
+// reaches the backend — before the refinement this returned 401. This unblocks
+// the production-newman user-subject flows (#59).
+func TestDPoPStepUp_RoutineRPC_AAL1_Unblocked(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
 	mw := buildStepUpMiddleware(t, stepUpVerifier(t, fix))
 
 	claims := standardClaims()
-	claims["acr"] = "2" // meets requirement
+	claims["acr"] = "1" // password-only / AAL1 — the ordinary non-interactive token
 	token := fix.sign(t, claims)
 
 	backendHit := false
@@ -114,8 +119,35 @@ func TestDPoPStepUp_SufficientACR_PassesThrough(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.True(t, backendHit, "backend handler must run when ACR is sufficient")
+	assert.Equal(t, http.StatusOK, rec.Code, "routine RPC must pass at acr=1 after the refinement (UNBLOCK)")
+	assert.True(t, backendHit, "backend handler must run — routine resource-create is not a grant")
+}
+
+// SEC-acr-stepup-refinement (SEC-ACR-10, I6, регрессия #4): the AAL1 floor holds
+// — a routine RPC with acr=0 (no interactive auth) is STILL rejected. Downgrading
+// to "1" does NOT open anonymous access (routine ≠ anonymous, fail-closed).
+func TestDPoPStepUp_RoutineRPC_AAL0_StillBlocked(t *testing.T) {
+	fix := newJWKSFixture(t, "ES256")
+	mw := buildStepUpMiddleware(t, stepUpVerifier(t, fix))
+
+	claims := standardClaims()
+	claims["acr"] = "0" // no interactive auth
+	token := fix.sign(t, claims)
+
+	backendHit := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		backendHit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "https://api.kacho.cloud/vpc/v1/networks", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code, "routine acr=1 floor must reject acr=0 (routine ≠ anonymous)")
+	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), `acr_values="1"`)
+	assert.False(t, backendHit, "backend must not run — AAL1 floor holds")
 }
 
 // An unknown/unmapped path (no REST route → no catalog entry) carries no

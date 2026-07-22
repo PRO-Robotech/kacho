@@ -32,7 +32,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of snapshot schedules in the specified folder.
@@ -44,7 +44,7 @@ service SnapshotScheduleService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a snapshot schedule in the specified folder.
@@ -60,7 +60,7 @@ service SnapshotScheduleService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified snapshot schedule.
@@ -78,7 +78,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified snapshot schedule.
@@ -99,7 +99,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the list of disks attached to the specified schedule.
@@ -117,7 +117,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Disables the specified snapshot schedule.
@@ -138,7 +138,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
   
   // Enables the specified snapshot schedule.
@@ -157,7 +157,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified snapshot schedule.
@@ -169,7 +169,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of snapshots created by the specified snapshot schedule.
@@ -181,7 +181,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of disks attached to the specified snapshot schedule.
@@ -193,7 +193,7 @@ service SnapshotScheduleService {
       object_type:        "compute_snapshot_schedule"
       from_request_field: "snapshot_schedule_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // access
@@ -207,7 +207,7 @@ service SnapshotScheduleService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Sets access bindings for the snapshot schedule.

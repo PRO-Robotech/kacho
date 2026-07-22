@@ -28,7 +28,7 @@ service ImageService {
       object_type:        "storage_image"
       from_request_field: "image_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Image resources in the specified project.
@@ -40,7 +40,7 @@ service ImageService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates an image in the specified project.
@@ -59,7 +59,7 @@ service ImageService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified image.
@@ -81,7 +81,7 @@ service ImageService {
       object_type:        "storage_image"
       from_request_field: "image_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified image.
@@ -101,7 +101,7 @@ service ImageService {
       object_type:        "storage_image"
       from_request_field: "image_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified image.
@@ -113,7 +113,7 @@ service ImageService {
       object_type:        "storage_image"
       from_request_field: "image_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

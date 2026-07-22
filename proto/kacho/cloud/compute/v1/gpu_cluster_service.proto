@@ -30,7 +30,7 @@ service GpuClusterService {
       object_type:        "compute_gpu_cluster"
       from_request_field: "gpu_cluster_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of GPU clusters in the specified folder.
@@ -42,7 +42,7 @@ service GpuClusterService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a GPU cluster in the specified folder.
@@ -58,7 +58,7 @@ service GpuClusterService {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified GPU cluster.
@@ -76,7 +76,7 @@ service GpuClusterService {
       object_type:        "compute_gpu_cluster"
       from_request_field: "gpu_cluster_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified GPU cluster.
@@ -94,7 +94,7 @@ service GpuClusterService {
       object_type:        "compute_gpu_cluster"
       from_request_field: "gpu_cluster_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified GPU cluster.
@@ -106,7 +106,7 @@ service GpuClusterService {
       object_type:        "compute_gpu_cluster"
       from_request_field: "gpu_cluster_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // List instances created in this GPU cluster.
@@ -118,7 +118,7 @@ service GpuClusterService {
       object_type:        "compute_gpu_cluster"
       from_request_field: "gpu_cluster_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // access
@@ -132,7 +132,7 @@ service GpuClusterService {
       object_type:        "project"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Sets access bindings for the GPU cluster.
