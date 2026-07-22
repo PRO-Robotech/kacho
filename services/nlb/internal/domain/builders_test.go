@@ -70,10 +70,10 @@ func TestNewTargetGroup_Defaults(t *testing.T) {
 	if !strings.HasPrefix(string(tg.ID), ids.PrefixTargetGroup) {
 		t.Fatalf("expected `tgr` id prefix, got %q", tg.ID)
 	}
-	if tg.DeregistrationDelaySeconds != domain.DefaultDeregistrationDelay {
+	if tg.DeregistrationDelay != domain.DefaultDeregistrationDelay {
 		t.Errorf("DeregistrationDelay default mismatch")
 	}
-	if tg.SlowStartSeconds != domain.DefaultSlowStart {
+	if tg.SlowStart != domain.DefaultSlowStart {
 		t.Errorf("SlowStart default mismatch")
 	}
 	if tg.Status != domain.TargetGroupStatusActive {

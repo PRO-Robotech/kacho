@@ -5,6 +5,7 @@ syntax = "proto3";
 
 package kacho.cloud.loadbalancer.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/loadbalancer/v1/health_check.proto";
 import "kacho/cloud/validation.proto";
@@ -21,6 +22,11 @@ message TargetGroup {
   // affinity overrides). Numbered up so low slots stay for hot-path data.
   reserved 8;
   reserved 50 to 59;
+  // Fields 11/12 previously held int32-seconds deregistration_delay_seconds /
+  // slow_start_seconds — replaced in NLB-1c (B8) by Duration fields
+  // deregistration_delay=15 / slow_start=16 below.
+  reserved 11, 12;
+  reserved "deregistration_delay_seconds", "slow_start_seconds";
 
   // Lifecycle status (design §2.3). Only two transitions — TG has no
   // STARTING/STOPPED — it is either ACTIVE or being torn down.
@@ -43,26 +49,29 @@ message TargetGroup {
   // go through dedicated RPCs (TargetGroupService.AddTargets / RemoveTargets).
   repeated Target targets = 9;
 
-  // Embedded health check — single HC per group (parity with upstream YC's
-  // 1-HC-per-AttachedTargetGroup constraint, hoisted to TG-level).
+  // Embedded health check — single HC per group (hoisted to TG-level; embedded
+  // value-object, redesigned in NLB-1c to drop `name` and carry the 4-way
+  // tcp/http/https/grpc oneof).
   HealthCheck health_check = 10;
-
-  // Drain timeout applied when a target is removed (design §4.4 two-phase
-  // RemoveTargets). 0-3600 seconds; default 300.
-  int32 deregistration_delay_seconds = 11 [(value) = "0-3600"];
-
-  // Slow-start ramp window for newly added targets. 0-900 seconds; default 0
-  // (no ramp).
-  int32 slow_start_seconds = 12 [(value) = "0-900"];
 
   Status status = 13;
 
   // port — single backend port of the group (net-new, NLB-1b F6-co-req). Every
   // target of the group receives forwarded traffic on this port; it is the sole
   // backend-port source echoed by Listener.resolved_backend_port (design NLB-1
-  // §Listener wiring). Required, range 1..65535. Set-at-create in NLB-1b;
-  // LIVE-mutable re-echo semantics arrive in NLB-1c.
+  // §Listener wiring). Required, range 1..65535. LIVE-mutable in NLB-1c
+  // (re-echoes into wired listeners' resolved_backend_port).
   int32 port = 14 [(value) = "1-65535"];
+
+  // deregistration_delay — drain timeout applied when a target is removed
+  // (design §4.4 two-phase RemoveTargets). NLB-1c (B8): Duration string,
+  // bounds [0s, 3600s]; default 300s. Replaces int32 deregistration_delay_seconds.
+  google.protobuf.Duration deregistration_delay = 15;
+
+  // slow_start — ramp window for newly added targets. NLB-1c (B8): Duration
+  // string, bounds [0s, 900s]; default 0s (no ramp). Replaces int32
+  // slow_start_seconds.
+  google.protobuf.Duration slow_start = 16;
 }
 
 // Target — one backend endpoint. 4-way identity oneof (design §2.5):

@@ -137,16 +137,16 @@ func newListener(lbID domain.ResourceID, projectID, name string, port int32) *do
 // newTG строит свежий domain.TargetGroup с safe-defaults (без targets).
 func newTG(projectID, name string) *domain.TargetGroup {
 	return &domain.TargetGroup{
-		ID:                         domain.ResourceID(ids.NewID(ids.PrefixTargetGroup)),
-		ProjectID:                  domain.ProjectID(projectID),
-		RegionID:                   "ru-central1",
-		Name:                       domain.LbName(name),
-		Description:                "",
-		Labels:                     domain.LbLabels{},
-		DeregistrationDelaySeconds: 300,
-		SlowStartSeconds:           0,
-		Status:                     domain.TargetGroupStatusActive,
-		Port:                       8080,
+		ID:                  domain.ResourceID(ids.NewID(ids.PrefixTargetGroup)),
+		ProjectID:           domain.ProjectID(projectID),
+		RegionID:            "ru-central1",
+		Name:                domain.LbName(name),
+		Description:         "",
+		Labels:              domain.LbLabels{},
+		DeregistrationDelay: domain.LbDuration(300 * time.Second),
+		SlowStart:           domain.LbDuration(0),
+		Status:              domain.TargetGroupStatusActive,
+		Port:                8080,
 	}
 }
 

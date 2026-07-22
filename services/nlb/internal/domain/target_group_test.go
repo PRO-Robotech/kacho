@@ -5,24 +5,25 @@ package domain_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
 func validTG() domain.TargetGroup {
 	return domain.TargetGroup{
-		ID:                         "tgr-x",
-		ProjectID:                  "prj-x",
-		RegionID:                   "ru-central1",
-		Name:                       "backend-web",
-		Description:                "",
-		Labels:                     domain.LabelsFromMap(map[string]string{"tier": "web"}),
-		Targets:                    nil,
-		HealthCheck:                validHC(),
-		DeregistrationDelaySeconds: 300,
-		SlowStartSeconds:           0,
-		Status:                     domain.TargetGroupStatusActive,
-		Port:                       8080,
+		ID:                  "tgr-x",
+		ProjectID:           "prj-x",
+		RegionID:            "ru-central1",
+		Name:                "backend-web",
+		Description:         "",
+		Labels:              domain.LabelsFromMap(map[string]string{"tier": "web"}),
+		Targets:             nil,
+		HealthCheck:         validHC(),
+		DeregistrationDelay: domain.LbDuration(300 * time.Second),
+		SlowStart:           domain.LbDuration(0),
+		Status:              domain.TargetGroupStatusActive,
+		Port:                8080,
 	}
 }
 
@@ -66,20 +67,20 @@ func TestTargetGroup_Validate_DeregistrationDelay(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name    string
-		value   int32
+		value   domain.LbDuration
 		wantErr bool
 	}{
-		{"0 OK (lower bound)", 0, false},
-		{"300 OK", 300, false},
-		{"3600 OK (upper bound)", 3600, false},
-		{"-1 rejected (TGR-007)", -1, true},
-		{"3601 rejected", 3601, true},
+		{"0 OK (lower bound)", domain.LbDuration(0), false},
+		{"300 OK", domain.LbDuration(300 * time.Second), false},
+		{"3600 OK (upper bound)", domain.LbDuration(3600 * time.Second), false},
+		{"-1 rejected (TGR-007)", domain.LbDuration(-1 * time.Second), true},
+		{"3601 rejected", domain.LbDuration(3601 * time.Second), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tg := validTG()
-			tg.DeregistrationDelaySeconds = tc.value
+			tg.DeregistrationDelay = tc.value
 			err := tg.Validate()
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err=%v wantErr=%v", err, tc.wantErr)
@@ -92,19 +93,19 @@ func TestTargetGroup_Validate_SlowStart(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name    string
-		value   int32
+		value   domain.LbDuration
 		wantErr bool
 	}{
-		{"0 OK (lower bound)", 0, false},
-		{"900 OK (upper bound)", 900, false},
-		{"-1 rejected (TGR-008)", -1, true},
-		{"901 rejected", 901, true},
+		{"0 OK (lower bound)", domain.LbDuration(0), false},
+		{"900 OK (upper bound)", domain.LbDuration(900 * time.Second), false},
+		{"-1 rejected (TGR-008)", domain.LbDuration(-1 * time.Second), true},
+		{"901 rejected", domain.LbDuration(901 * time.Second), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tg := validTG()
-			tg.SlowStartSeconds = tc.value
+			tg.SlowStart = tc.value
 			err := tg.Validate()
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err=%v wantErr=%v", err, tc.wantErr)

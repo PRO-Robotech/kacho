@@ -6,6 +6,7 @@ syntax = "proto3";
 package kacho.cloud.loadbalancer.v1;
 
 import "google/api/annotations.proto";
+import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/loadbalancer/v1/health_check.proto";
@@ -182,6 +183,10 @@ message ListTargetGroupsResponse {
 
 message CreateTargetGroupRequest {
   reserved 6;
+  // Fields 9/10 previously held int32-seconds deregistration_delay_seconds /
+  // slow_start_seconds — replaced in NLB-1c (B8) by Duration fields at 12/13.
+  reserved 9, 10;
+  reserved "deregistration_delay_seconds", "slow_start_seconds";
 
   string project_id = 1 [
     (required) = true,
@@ -205,12 +210,6 @@ message CreateTargetGroupRequest {
   // Required — single embedded HC per group (design §2.2).
   HealthCheck health_check = 8 [(required) = true];
 
-  // Drain timeout for removed targets (design §4.4). Default 300 when zero.
-  int32 deregistration_delay_seconds = 9 [(value) = "0-3600"];
-
-  // Slow-start ramp window for added targets. Default 0 (off).
-  int32 slow_start_seconds = 10 [(value) = "0-900"];
-
   // Required — single backend port of the group (NLB-1b F6-co-req). Every
   // target receives forwarded traffic on this port; echoed by
   // Listener.resolved_backend_port. Range 1..65535.
@@ -218,6 +217,14 @@ message CreateTargetGroupRequest {
     (required) = true,
     (value) = "1-65535"
   ];
+
+  // Drain timeout for removed targets (design §4.4). NLB-1c (B8): Duration,
+  // bounds [0s, 3600s]. Default 300s when unset.
+  google.protobuf.Duration deregistration_delay = 12;
+
+  // Slow-start ramp window for added targets. NLB-1c (B8): Duration, bounds
+  // [0s, 900s]. Default 0s (off).
+  google.protobuf.Duration slow_start = 13;
 }
 
 message CreateTargetGroupMetadata {
@@ -225,6 +232,11 @@ message CreateTargetGroupMetadata {
 }
 
 message UpdateTargetGroupRequest {
+  // Fields 8/9 previously held int32-seconds deregistration_delay_seconds /
+  // slow_start_seconds — replaced in NLB-1c (B8) by Duration fields at 10/11.
+  reserved 8, 9;
+  reserved "deregistration_delay_seconds", "slow_start_seconds";
+
   string target_group_id = 1 [
     (required) = true,
     (length) = "<=50"
@@ -246,8 +258,18 @@ message UpdateTargetGroupRequest {
   repeated Target targets = 6;
 
   HealthCheck health_check = 7;
-  int32 deregistration_delay_seconds = 8 [(value) = "0-3600"];
-  int32 slow_start_seconds = 9 [(value) = "0-900"];
+
+  // NLB-1c (B8): Duration, bounds [0s, 3600s]. Replaces int32
+  // deregistration_delay_seconds.
+  google.protobuf.Duration deregistration_delay = 10;
+
+  // NLB-1c (B8): Duration, bounds [0s, 900s]. Replaces int32 slow_start_seconds.
+  google.protobuf.Duration slow_start = 11;
+
+  // port — single backend port of the group. LIVE-mutable (NLB-1c NLB-1-56):
+  // updating it re-echoes into wired listeners' resolved_backend_port. Range
+  // 1..65535 (validated in domain when present in update_mask).
+  int32 port = 12 [(value) = "1-65535"];
 }
 
 message UpdateTargetGroupMetadata {

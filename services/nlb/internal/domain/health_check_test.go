@@ -12,7 +12,6 @@ import (
 
 func validHC() domain.HealthCheck {
 	return domain.HealthCheck{
-		Name:               "hc-ok",
 		Interval:           domain.LbDuration(2 * time.Second),
 		Timeout:            domain.LbDuration(1 * time.Second),
 		UnhealthyThreshold: 2,
@@ -73,12 +72,12 @@ func TestHealthCheck_Validate_OneOfProbe(t *testing.T) {
 			t.Fatalf("GRPC probe: %v", err)
 		}
 	})
-	t.Run("probe port=0 rejected", func(t *testing.T) {
+	t.Run("probe port=0 accepted (NLB-1c: inherit backend port)", func(t *testing.T) {
 		t.Parallel()
 		hc := validHC()
 		hc.TCP = &domain.HealthCheckTCP{Port: 0}
-		if err := hc.Validate(); err == nil {
-			t.Fatal("expected error")
+		if err := hc.Validate(); err != nil {
+			t.Fatalf("probe port=0 is a valid inherit-override in NLB-1c: %v", err)
 		}
 	})
 }

@@ -67,19 +67,19 @@ const (
 // ---- Target group lifecycle -------------------------------------------------
 
 const (
-	// DefaultDeregistrationDelay — (300s).
-	DefaultDeregistrationDelay int32 = 300
+	// DefaultDeregistrationDelay — (300s). NLB-1c (B8): Duration-typed.
+	DefaultDeregistrationDelay LbDuration = LbDuration(300 * time.Second)
 
-	// DeregistrationDelayMin / Max — [0..3600].
-	DeregistrationDelayMin int32 = 0
-	DeregistrationDelayMax int32 = 3600
+	// DeregistrationDelayMin / Max — [0s..3600s]. NLB-1c (B8): Duration-typed.
+	DeregistrationDelayMin LbDuration = LbDuration(0)
+	DeregistrationDelayMax LbDuration = LbDuration(3600 * time.Second)
 
-	// DefaultSlowStart — (0s = выключен).
-	DefaultSlowStart int32 = 0
+	// DefaultSlowStart — (0s = выключен). NLB-1c (B8): Duration-typed.
+	DefaultSlowStart LbDuration = LbDuration(0)
 
-	// SlowStartMin / Max — [0..900].
-	SlowStartMin int32 = 0
-	SlowStartMax int32 = 900
+	// SlowStartMin / Max — [0s..900s]. NLB-1c (B8): Duration-typed.
+	SlowStartMin LbDuration = LbDuration(0)
+	SlowStartMax LbDuration = LbDuration(900 * time.Second)
 
 	// DefaultTargetWeight — (100).
 	DefaultTargetWeight LbWeight = 100

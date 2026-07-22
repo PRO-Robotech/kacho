@@ -47,7 +47,6 @@ func TestLabelsNilEmpty(t *testing.T) {
 
 func TestHealthCheckTCP_Roundtrip(t *testing.T) {
 	in := domain.HealthCheck{
-		Name:               "tcp-hc",
 		Interval:           domain.LbDuration(3 * time.Second),
 		Timeout:            domain.LbDuration(time.Second),
 		UnhealthyThreshold: 3,
@@ -58,7 +57,6 @@ func TestHealthCheckTCP_Roundtrip(t *testing.T) {
 	require.NoError(t, err)
 	out, err := HealthCheckFromJSONB(b)
 	require.NoError(t, err)
-	assert.Equal(t, in.Name, out.Name)
 	assert.Equal(t, in.Interval, out.Interval)
 	assert.Equal(t, in.UnhealthyThreshold, out.UnhealthyThreshold)
 	require.NotNil(t, out.TCP)
@@ -67,15 +65,14 @@ func TestHealthCheckTCP_Roundtrip(t *testing.T) {
 
 func TestHealthCheckHTTPS_Roundtrip(t *testing.T) {
 	in := domain.HealthCheck{
-		Name:               "https-hc",
 		Interval:           domain.LbDuration(5 * time.Second),
 		Timeout:            domain.LbDuration(2 * time.Second),
 		UnhealthyThreshold: 2,
 		HealthyThreshold:   2,
 		HTTPS: &domain.HealthCheckHTTPS{
-			Port:             443,
-			Path:             "/_health",
-			ExpectedStatuses: []int32{200, 204},
+			Port:          443,
+			Path:          "/_health",
+			ExpectedCodes: "200,204",
 		},
 	}
 	b, err := HealthCheckToJSONB(in)
@@ -85,7 +82,7 @@ func TestHealthCheckHTTPS_Roundtrip(t *testing.T) {
 	require.NotNil(t, out.HTTPS)
 	assert.Equal(t, domain.LbPort(443), out.HTTPS.Port)
 	assert.Equal(t, "/_health", out.HTTPS.Path)
-	assert.Equal(t, []int32{200, 204}, out.HTTPS.ExpectedStatuses)
+	assert.Equal(t, "200,204", out.HTTPS.ExpectedCodes)
 }
 
 func TestHealthCheckZero_NoTypeRoundtrip(t *testing.T) {
@@ -95,7 +92,6 @@ func TestHealthCheckZero_NoTypeRoundtrip(t *testing.T) {
 
 	out, err := HealthCheckFromJSONB(b)
 	require.NoError(t, err)
-	assert.Empty(t, out.Name)
 	assert.Nil(t, out.TCP)
 	assert.Nil(t, out.HTTP)
 }

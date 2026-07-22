@@ -24,7 +24,6 @@ func TestTG_CRUD_WithHealthCheck(t *testing.T) {
 
 	tg := newTG("prj01TGCC1234567890ll", "crud-tg")
 	tg.HealthCheck = domain.HealthCheck{
-		Name:               "hc-tcp",
 		Interval:           domain.LbDuration(2 * time.Second),
 		Timeout:            domain.LbDuration(1 * time.Second),
 		UnhealthyThreshold: 2,
@@ -402,7 +401,7 @@ func TestTG_DereDelayOutOfRange(t *testing.T) {
 	ctx := context.Background()
 
 	tg := newTG("prj01TGDS1234567890ll", "dr-tg")
-	tg.DeregistrationDelaySeconds = 9999 // out of range
+	tg.DeregistrationDelay = domain.LbDuration(9999 * time.Second) // out of range
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()

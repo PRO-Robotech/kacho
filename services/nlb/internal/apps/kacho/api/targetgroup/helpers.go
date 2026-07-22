@@ -13,10 +13,10 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
-// healthCheckFromPb — конвертер proto HealthCheck → domain HealthCheck. Proto
-// несёт только tcp_options и http_options (см. health_check.proto); HTTPS и
-// GRPC варианты в proto отсутствуют (известное ограничение, см.
-// internal/dto/type2pb/health_check.go).
+// healthCheckFromPb — конвертер proto HealthCheck → domain HealthCheck (NLB-1c
+// redesigned: без `name`; 4-way oneof tcp/http/https/grpc; http/https несут
+// expected_codes/host/headers). probe-port override опционален (0 → наследует
+// TargetGroup.port).
 //
 // Возвращает zero-value HealthCheck если pb==nil — caller'у тогда лучше отдать
 // ошибку «health_check is required» вверх. Threshold/port поля int64 на wire;
@@ -35,27 +35,50 @@ func healthCheckFromPb(pb *lbv1.HealthCheck) (domain.HealthCheck, error) {
 		return domain.HealthCheck{}, err
 	}
 	hc := domain.HealthCheck{
-		Name:               domain.LbName(pb.GetName()),
 		Interval:           domain.LbDuration(pb.GetInterval().AsDuration()),
 		Timeout:            domain.LbDuration(pb.GetTimeout().AsDuration()),
 		UnhealthyThreshold: unhealthy,
 		HealthyThreshold:   healthy,
 	}
 	switch v := pb.GetOptions().(type) {
-	case *lbv1.HealthCheck_TcpOptions_:
-		port, err := domain.LbPortFromProto(v.TcpOptions.GetPort())
+	case *lbv1.HealthCheck_Tcp:
+		port, err := domain.LbPortFromProto(v.Tcp.GetPort())
 		if err != nil {
 			return domain.HealthCheck{}, err
 		}
 		hc.TCP = &domain.HealthCheckTCP{Port: port}
-	case *lbv1.HealthCheck_HttpOptions_:
-		port, err := domain.LbPortFromProto(v.HttpOptions.GetPort())
+	case *lbv1.HealthCheck_Http:
+		port, err := domain.LbPortFromProto(v.Http.GetPort())
 		if err != nil {
 			return domain.HealthCheck{}, err
 		}
 		hc.HTTP = &domain.HealthCheckHTTP{
-			Port: port,
-			Path: v.HttpOptions.GetPath(),
+			Port:          port,
+			Path:          v.Http.GetPath(),
+			ExpectedCodes: v.Http.GetExpectedCodes(),
+			Host:          v.Http.GetHost(),
+			Headers:       v.Http.GetHeaders(),
+		}
+	case *lbv1.HealthCheck_Https:
+		port, err := domain.LbPortFromProto(v.Https.GetPort())
+		if err != nil {
+			return domain.HealthCheck{}, err
+		}
+		hc.HTTPS = &domain.HealthCheckHTTPS{
+			Port:          port,
+			Path:          v.Https.GetPath(),
+			ExpectedCodes: v.Https.GetExpectedCodes(),
+			Host:          v.Https.GetHost(),
+			Headers:       v.Https.GetHeaders(),
+		}
+	case *lbv1.HealthCheck_Grpc:
+		port, err := domain.LbPortFromProto(v.Grpc.GetPort())
+		if err != nil {
+			return domain.HealthCheck{}, err
+		}
+		hc.GRPC = &domain.HealthCheckGRPC{
+			Port:        port,
+			ServiceName: v.Grpc.GetServiceName(),
 		}
 	}
 	return hc, nil

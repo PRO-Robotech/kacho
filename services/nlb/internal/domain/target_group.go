@@ -17,19 +17,19 @@ import (
 // HealthCheck сериализуется JSONB-колонкой; embedded — потому что у TG ровно
 // один HC.
 type TargetGroup struct {
-	ID                         ResourceID
-	ProjectID                  ProjectID
-	RegionID                   RegionID
-	Name                       LbName
-	Description                LbDescription
-	Labels                     LbLabels
-	Targets                    []Target
-	HealthCheck                HealthCheck
-	DeregistrationDelaySeconds int32
-	SlowStartSeconds           int32
-	Status                     TargetGroupStatus
+	ID                  ResourceID
+	ProjectID           ProjectID
+	RegionID            RegionID
+	Name                LbName
+	Description         LbDescription
+	Labels              LbLabels
+	Targets             []Target
+	HealthCheck         HealthCheck
+	DeregistrationDelay LbDuration
+	SlowStart           LbDuration
+	Status              TargetGroupStatus
 	// Port — single backend port of the group (NLB-1b F6-co-req). Required,
-	// 1..65535. Echoed by Listener.resolved_backend_port. Set-at-create.
+	// 1..65535. Echoed by Listener.resolved_backend_port. LIVE-mutable (NLB-1c).
 	Port LbPort
 }
 
@@ -37,18 +37,18 @@ type TargetGroup struct {
 // Покрывает.
 func (tg TargetGroup) Validate() error {
 	deregErr := error(nil)
-	if tg.DeregistrationDelaySeconds < DeregistrationDelayMin ||
-		tg.DeregistrationDelaySeconds > DeregistrationDelayMax {
+	if tg.DeregistrationDelay < DeregistrationDelayMin ||
+		tg.DeregistrationDelay > DeregistrationDelayMax {
 		deregErr = coreerrors.InvalidArgument().
-			AddFieldViolation("deregistration_delay_seconds",
-				"deregistration_delay_seconds must be in range [0, 3600]").
+			AddFieldViolation("deregistration_delay",
+				"deregistration_delay must be in range [0s, 3600s]").
 			Err()
 	}
 	slowErr := error(nil)
-	if tg.SlowStartSeconds < SlowStartMin || tg.SlowStartSeconds > SlowStartMax {
+	if tg.SlowStart < SlowStartMin || tg.SlowStart > SlowStartMax {
 		slowErr = coreerrors.InvalidArgument().
-			AddFieldViolation("slow_start_seconds",
-				"slow_start_seconds must be in range [0, 900]").
+			AddFieldViolation("slow_start",
+				"slow_start must be in range [0s, 900s]").
 			Err()
 	}
 	cardErr := error(nil)

@@ -10,15 +10,14 @@ import (
 	"go.uber.org/multierr"
 )
 
-// HealthCheck — desired-конфигурация health-check. В
-// control-plane-only фазе не исполняется; GetTargetStates
-// возвращает детерминированный computed-ramp.
+// HealthCheck — desired-конфигурация health-check. Embedded value-object
+// TargetGroup (NLB-1c: снят `name`/id — HC не самостоятельный ресурс). В
+// control-plane-only фазе не исполняется; реальные пробы — NLB-2.
 //
-// Probe-тип — 4-way oneof: exactly one of TCP/HTTP/HTTPS/GRPC должен быть
-// не-nil (004). Конкретные options-структуры — внутри
-// этого файла, чтобы domain-пакет был compact.
+// Probe-тип — 4-way oneof: exactly one of TCP/HTTP/HTTPS/GRPC. Каждый probe
+// несёт ОПЦИОНАЛЬНЫЙ `Port`-override; при 0 проба наследует backend-порт группы
+// (`TargetGroup.Port`) — резолв через EffectivePort.
 type HealthCheck struct {
-	Name               LbName
 	Interval           LbDuration
 	Timeout            LbDuration
 	UnhealthyThreshold int32
@@ -29,23 +28,32 @@ type HealthCheck struct {
 	GRPC               *HealthCheckGRPC
 }
 
-// HealthCheckTCP — TCP-probe; полезной нагрузки нет, только port.
+// HealthCheckTCP — TCP-probe; полезной нагрузки нет, только опциональный
+// port-override.
 type HealthCheckTCP struct {
 	Port LbPort
 }
 
 // HealthCheckHTTP — HTTP-probe.
 type HealthCheckHTTP struct {
-	Port             LbPort
-	Path             string
-	ExpectedStatuses []int32 // (опционально; пусто = «любой 2xx», semantics в worker'е)
+	Port LbPort
+	Path string
+	// ExpectedCodes — healthy HTTP-коды: список и/или inclusive-диапазоны через
+	// запятую, напр. "200-299" или "200,204". Пусто → «любой 2xx».
+	ExpectedCodes string
+	// Host — опциональный override заголовка Host в probe-запросе.
+	Host string
+	// Headers — опциональные доп. заголовки probe-запроса.
+	Headers map[string]string
 }
 
-// HealthCheckHTTPS — HTTPS-probe.
+// HealthCheckHTTPS — HTTPS-probe (как HTTP, но поверх TLS).
 type HealthCheckHTTPS struct {
-	Port             LbPort
-	Path             string
-	ExpectedStatuses []int32
+	Port          LbPort
+	Path          string
+	ExpectedCodes string
+	Host          string
+	Headers       map[string]string
 }
 
 // HealthCheckGRPC — gRPC health-probe.
@@ -54,8 +62,34 @@ type HealthCheckGRPC struct {
 	ServiceName string
 }
 
+// EffectivePort — резолв probe-порта: override пробы если задан (>0), иначе
+// backend-порт группы `tgPort` (наследование отсутствием). Output-only derived,
+// проецируется в `HealthCheck.effective_port`.
+func (h HealthCheck) EffectivePort(tgPort LbPort) LbPort {
+	if p := h.probePort(); p > 0 {
+		return p
+	}
+	return tgPort
+}
+
+// probePort — port-override выбранной пробы (0 если проба не задана или без
+// override).
+func (h HealthCheck) probePort() LbPort {
+	switch {
+	case h.TCP != nil:
+		return h.TCP.Port
+	case h.HTTP != nil:
+		return h.HTTP.Port
+	case h.HTTPS != nil:
+		return h.HTTPS.Port
+	case h.GRPC != nil:
+		return h.GRPC.Port
+	}
+	return 0
+}
+
 // Validate — exactly-one-of TCP/HTTP/HTTPS/GRPC + bound checks (interval,
-// timeout, thresholds). Покрывает.
+// timeout, thresholds). `name` снят в NLB-1c.
 func (h HealthCheck) Validate() error {
 	probeErr := h.validateProbeOneOf()
 
@@ -99,7 +133,6 @@ func (h HealthCheck) Validate() error {
 	}
 
 	return multierr.Combine(
-		h.Name.Validate(),
 		probeErr,
 		intervalErr,
 		timeoutErr,
@@ -109,8 +142,8 @@ func (h HealthCheck) Validate() error {
 }
 
 // validateProbeOneOf — exactly-one-of TCP/HTTP/HTTPS/GRPC + port-range на
-// выбранном probe. Acceptance / с фиксированным текстом:
-// `"health_check must specify exactly one of: tcp, http, https, grpc"`.
+// probe-override (0 = inherit, валиден; non-zero → [1,65535]). Фиксированный
+// текст: `"health_check must specify exactly one of: tcp, http, https, grpc"`.
 func (h HealthCheck) validateProbeOneOf() error {
 	count := 0
 	if h.TCP != nil {
@@ -131,15 +164,15 @@ func (h HealthCheck) validateProbeOneOf() error {
 				"health_check must specify exactly one of: tcp, http, https, grpc").
 			Err()
 	}
-	switch {
-	case h.TCP != nil:
-		return h.TCP.Port.Validate()
-	case h.HTTP != nil:
-		return h.HTTP.Port.Validate()
-	case h.HTTPS != nil:
-		return h.HTTPS.Port.Validate()
-	case h.GRPC != nil:
-		return h.GRPC.Port.Validate()
+	// probe-port override опционален: 0 → inherit TG.port (валиден); non-zero
+	// валидируется как обычный порт.
+	return validateProbePort(h.probePort())
+}
+
+// validateProbePort — 0 (inherit) валиден; иначе [PortMin, PortMax].
+func validateProbePort(p LbPort) error {
+	if p == 0 {
+		return nil
 	}
-	return nil
+	return p.Validate()
 }

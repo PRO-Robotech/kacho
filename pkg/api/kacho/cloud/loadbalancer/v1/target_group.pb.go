@@ -13,6 +13,7 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -95,22 +96,25 @@ type TargetGroup struct {
 	// (design §5.2); this field is populated on Get/List via a join. Add/Remove
 	// go through dedicated RPCs (TargetGroupService.AddTargets / RemoveTargets).
 	Targets []*Target `protobuf:"bytes,9,rep,name=targets,proto3" json:"targets,omitempty"`
-	// Embedded health check — single HC per group (parity with upstream YC's
-	// 1-HC-per-AttachedTargetGroup constraint, hoisted to TG-level).
-	HealthCheck *HealthCheck `protobuf:"bytes,10,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
-	// Drain timeout applied when a target is removed (design §4.4 two-phase
-	// RemoveTargets). 0-3600 seconds; default 300.
-	DeregistrationDelaySeconds int32 `protobuf:"varint,11,opt,name=deregistration_delay_seconds,json=deregistrationDelaySeconds,proto3" json:"deregistration_delay_seconds,omitempty"`
-	// Slow-start ramp window for newly added targets. 0-900 seconds; default 0
-	// (no ramp).
-	SlowStartSeconds int32              `protobuf:"varint,12,opt,name=slow_start_seconds,json=slowStartSeconds,proto3" json:"slow_start_seconds,omitempty"`
-	Status           TargetGroup_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.TargetGroup_Status" json:"status,omitempty"`
+	// Embedded health check — single HC per group (hoisted to TG-level; embedded
+	// value-object, redesigned in NLB-1c to drop `name` and carry the 4-way
+	// tcp/http/https/grpc oneof).
+	HealthCheck *HealthCheck       `protobuf:"bytes,10,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
+	Status      TargetGroup_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.TargetGroup_Status" json:"status,omitempty"`
 	// port — single backend port of the group (net-new, NLB-1b F6-co-req). Every
 	// target of the group receives forwarded traffic on this port; it is the sole
 	// backend-port source echoed by Listener.resolved_backend_port (design NLB-1
-	// §Listener wiring). Required, range 1..65535. Set-at-create in NLB-1b;
-	// LIVE-mutable re-echo semantics arrive in NLB-1c.
-	Port          int32 `protobuf:"varint,14,opt,name=port,proto3" json:"port,omitempty"`
+	// §Listener wiring). Required, range 1..65535. LIVE-mutable in NLB-1c
+	// (re-echoes into wired listeners' resolved_backend_port).
+	Port int32 `protobuf:"varint,14,opt,name=port,proto3" json:"port,omitempty"`
+	// deregistration_delay — drain timeout applied when a target is removed
+	// (design §4.4 two-phase RemoveTargets). NLB-1c (B8): Duration string,
+	// bounds [0s, 3600s]; default 300s. Replaces int32 deregistration_delay_seconds.
+	DeregistrationDelay *durationpb.Duration `protobuf:"bytes,15,opt,name=deregistration_delay,json=deregistrationDelay,proto3" json:"deregistration_delay,omitempty"`
+	// slow_start — ramp window for newly added targets. NLB-1c (B8): Duration
+	// string, bounds [0s, 900s]; default 0s (no ramp). Replaces int32
+	// slow_start_seconds.
+	SlowStart     *durationpb.Duration `protobuf:"bytes,16,opt,name=slow_start,json=slowStart,proto3" json:"slow_start,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -208,20 +212,6 @@ func (x *TargetGroup) GetHealthCheck() *HealthCheck {
 	return nil
 }
 
-func (x *TargetGroup) GetDeregistrationDelaySeconds() int32 {
-	if x != nil {
-		return x.DeregistrationDelaySeconds
-	}
-	return 0
-}
-
-func (x *TargetGroup) GetSlowStartSeconds() int32 {
-	if x != nil {
-		return x.SlowStartSeconds
-	}
-	return 0
-}
-
 func (x *TargetGroup) GetStatus() TargetGroup_Status {
 	if x != nil {
 		return x.Status
@@ -234,6 +224,20 @@ func (x *TargetGroup) GetPort() int32 {
 		return x.Port
 	}
 	return 0
+}
+
+func (x *TargetGroup) GetDeregistrationDelay() *durationpb.Duration {
+	if x != nil {
+		return x.DeregistrationDelay
+	}
+	return nil
+}
+
+func (x *TargetGroup) GetSlowStart() *durationpb.Duration {
+	if x != nil {
+		return x.SlowStart
+	}
+	return nil
 }
 
 // Target — one backend endpoint. 4-way identity oneof (design §2.5):
@@ -486,7 +490,7 @@ var File_kacho_cloud_loadbalancer_v1_target_group_proto protoreflect.FileDescrip
 
 const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/loadbalancer/v1/target_group.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\x98\x06\n" +
+	".kacho/cloud/loadbalancer/v1/target_group.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xd7\x06\n" +
 	"\vTargetGroup\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -499,12 +503,12 @@ const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\tregion_id\x18\a \x01(\tR\bregionId\x12=\n" +
 	"\atargets\x18\t \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\x12K\n" +
 	"\fhealth_check\x18\n" +
-	" \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckR\vhealthCheck\x12L\n" +
-	"\x1cderegistration_delay_seconds\x18\v \x01(\x05B\n" +
-	"\xfa\xc71\x060-3600R\x1aderegistrationDelaySeconds\x127\n" +
-	"\x12slow_start_seconds\x18\f \x01(\x05B\t\xfa\xc71\x050-900R\x10slowStartSeconds\x12G\n" +
+	" \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckR\vhealthCheck\x12G\n" +
 	"\x06status\x18\r \x01(\x0e2/.kacho.cloud.loadbalancer.v1.TargetGroup.StatusR\x06status\x12\x1f\n" +
-	"\x04port\x18\x0e \x01(\x05B\v\xfa\xc71\a1-65535R\x04port\x1a9\n" +
+	"\x04port\x18\x0e \x01(\x05B\v\xfa\xc71\a1-65535R\x04port\x12L\n" +
+	"\x14deregistration_delay\x18\x0f \x01(\v2\x19.google.protobuf.DurationR\x13deregistrationDelay\x128\n" +
+	"\n" +
+	"slow_start\x18\x10 \x01(\v2\x19.google.protobuf.DurationR\tslowStart\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\":\n" +
@@ -512,7 +516,7 @@ const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06ACTIVE\x10\x01\x12\f\n" +
-	"\bDELETING\x10\x02J\x04\b\b\x10\tJ\x04\b2\x10<\"\xce\x03\n" +
+	"\bDELETING\x10\x02J\x04\b\b\x10\tJ\x04\b2\x10<J\x04\b\v\x10\fJ\x04\b\f\x10\rR\x1cderegistration_delay_secondsR\x12slow_start_seconds\"\xce\x03\n" +
 	"\x06Target\x12!\n" +
 	"\vinstance_id\x18\x03 \x01(\tH\x00R\n" +
 	"instanceId\x12\x17\n" +
@@ -556,6 +560,7 @@ var file_kacho_cloud_loadbalancer_v1_target_group_proto_goTypes = []any{
 	(*Target_ExternalIP)(nil),     // 5: kacho.cloud.loadbalancer.v1.Target.ExternalIP
 	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 	(*HealthCheck)(nil),           // 7: kacho.cloud.loadbalancer.v1.HealthCheck
+	(*durationpb.Duration)(nil),   // 8: google.protobuf.Duration
 }
 var file_kacho_cloud_loadbalancer_v1_target_group_proto_depIdxs = []int32{
 	6, // 0: kacho.cloud.loadbalancer.v1.TargetGroup.created_at:type_name -> google.protobuf.Timestamp
@@ -563,13 +568,15 @@ var file_kacho_cloud_loadbalancer_v1_target_group_proto_depIdxs = []int32{
 	2, // 2: kacho.cloud.loadbalancer.v1.TargetGroup.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
 	7, // 3: kacho.cloud.loadbalancer.v1.TargetGroup.health_check:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
 	0, // 4: kacho.cloud.loadbalancer.v1.TargetGroup.status:type_name -> kacho.cloud.loadbalancer.v1.TargetGroup.Status
-	4, // 5: kacho.cloud.loadbalancer.v1.Target.ip_ref:type_name -> kacho.cloud.loadbalancer.v1.Target.InCloudIP
-	5, // 6: kacho.cloud.loadbalancer.v1.Target.external_ip:type_name -> kacho.cloud.loadbalancer.v1.Target.ExternalIP
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	8, // 5: kacho.cloud.loadbalancer.v1.TargetGroup.deregistration_delay:type_name -> google.protobuf.Duration
+	8, // 6: kacho.cloud.loadbalancer.v1.TargetGroup.slow_start:type_name -> google.protobuf.Duration
+	4, // 7: kacho.cloud.loadbalancer.v1.Target.ip_ref:type_name -> kacho.cloud.loadbalancer.v1.Target.InCloudIP
+	5, // 8: kacho.cloud.loadbalancer.v1.Target.external_ip:type_name -> kacho.cloud.loadbalancer.v1.Target.ExternalIP
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_target_group_proto_init() }

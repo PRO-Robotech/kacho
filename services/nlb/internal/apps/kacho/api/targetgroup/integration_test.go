@@ -130,16 +130,15 @@ func TestIntegration_CreateTargetGroup_EndToEnd(t *testing.T) {
 		Labels:    map[string]string{"env": "prod"},
 		Port:      8080,
 		HealthCheck: &lbv1.HealthCheck{
-			Name:               "hc-http",
 			Interval:           durationpb.New(2 * time.Second),
 			Timeout:            durationpb.New(1 * time.Second),
 			UnhealthyThreshold: 2,
 			HealthyThreshold:   2,
-			Options: &lbv1.HealthCheck_HttpOptions_{
-				HttpOptions: &lbv1.HealthCheck_HttpOptions{Port: 8080, Path: "/healthz"},
+			Options: &lbv1.HealthCheck_Http{
+				Http: &lbv1.HealthCheck_HttpOptions{Port: 8080, Path: "/healthz"},
 			},
 		},
-		DeregistrationDelaySeconds: 300,
+		DeregistrationDelay: durationpb.New(300 * time.Second),
 	})
 	require.NoError(t, err)
 	require.False(t, op.GetDone())
@@ -214,11 +213,11 @@ func TestIntegration_AddRemoveTargets_Lifecycle(t *testing.T) {
 	createOp, err := h.Create(ctx, &lbv1.CreateTargetGroupRequest{
 		ProjectId: "prj-life", RegionId: "ru-central1", Name: "life-tg", Port: 8080,
 		HealthCheck: &lbv1.HealthCheck{
-			Name: "hc-tcp", Interval: durationpb.New(2 * time.Second),
-			Timeout: durationpb.New(1 * time.Second), UnhealthyThreshold: 2, HealthyThreshold: 2,
-			Options: &lbv1.HealthCheck_TcpOptions_{TcpOptions: &lbv1.HealthCheck_TcpOptions{Port: 80}},
+			Interval: durationpb.New(2 * time.Second),
+			Timeout:  durationpb.New(1 * time.Second), UnhealthyThreshold: 2, HealthyThreshold: 2,
+			Options: &lbv1.HealthCheck_Tcp{Tcp: &lbv1.HealthCheck_TcpOptions{Port: 80}},
 		},
-		DeregistrationDelaySeconds: 300,
+		DeregistrationDelay: durationpb.New(300 * time.Second),
 	})
 	require.NoError(t, err)
 	createFinal := pollOpDone(t, opsRepo, createOp.GetId())

@@ -44,14 +44,19 @@ func scanTG(row pgx.Row) (*kacho.TargetGroupRecord, error) {
 		labelsRaw []byte
 		hcRaw     []byte
 		portVal   int32
+		deregSec  int32
+		slowSec   int32
 	)
 	if err := row.Scan(
 		&idStr, &projIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
 		&nameStr, &descStr, &labelsRaw, &hcRaw,
-		&rec.DeregistrationDelaySeconds, &rec.SlowStartSeconds, &portVal, &statusStr, &rec.Xmin,
+		&deregSec, &slowSec, &portVal, &statusStr, &rec.Xmin,
 	); err != nil {
 		return nil, err
 	}
+	// DB stores integer seconds; domain carries Duration (NLB-1c B8).
+	rec.DeregistrationDelay = dto.SecondsToDuration(deregSec)
+	rec.SlowStart = dto.SecondsToDuration(slowSec)
 	rec.Port = domain.LbPort(portVal)
 	rec.ID = domain.ResourceID(idStr)
 	rec.ProjectID = domain.ProjectID(projIDs)
@@ -294,7 +299,8 @@ func (w *targetGroupWriter) Insert(ctx context.Context, tg *domain.TargetGroup) 
 	row := w.tx.QueryRow(ctx, q,
 		string(tg.ID), string(tg.ProjectID), string(tg.RegionID),
 		string(tg.Name), string(tg.Description), labelsJSON, hcJSON,
-		tg.DeregistrationDelaySeconds, tg.SlowStartSeconds, int32(tg.Port), string(tg.Status),
+		dto.DurationToSeconds(tg.DeregistrationDelay), dto.DurationToSeconds(tg.SlowStart),
+		int32(tg.Port), string(tg.Status),
 	)
 	rec, err := scanTG(row)
 	if err != nil {
@@ -330,6 +336,9 @@ func (w *targetGroupWriter) Update(ctx context.Context, tg *domain.TargetGroup, 
 	// OCC на read-modify-write (`WHERE xmin::text=$exp`): concurrent-modify между
 	// Get и этим UPDATE → 0 rows → FailedPrecondition (защита от lost update на
 	// partial-mask Update). См. data-integrity.md OCC / LoadBalancerRecord.Xmin.
+	// port is LIVE-mutable (NLB-1c NLB-1-56) — included in the SET so a
+	// TargetGroup.Update repointing the backend port re-echoes into wired
+	// listeners' resolved_backend_port (derived from tg.port on read).
 	q := fmt.Sprintf(`
         UPDATE kacho_nlb.target_groups
            SET name = $2,
@@ -338,13 +347,15 @@ func (w *targetGroupWriter) Update(ctx context.Context, tg *domain.TargetGroup, 
                health_check = $5::jsonb,
                deregistration_delay_seconds = $6,
                slow_start_seconds = $7,
+               port = $8,
                updated_at = now()
-         WHERE id = $1 AND xmin::text = $8
+         WHERE id = $1 AND xmin::text = $9
         RETURNING %s`, targetGroupCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(tg.ID),
 		string(tg.Name), string(tg.Description), labelsJSON, hcJSON,
-		tg.DeregistrationDelaySeconds, tg.SlowStartSeconds,
+		dto.DurationToSeconds(tg.DeregistrationDelay), dto.DurationToSeconds(tg.SlowStart),
+		int32(tg.Port),
 		expectedXmin,
 	)
 	rec, err := scanTG(row)

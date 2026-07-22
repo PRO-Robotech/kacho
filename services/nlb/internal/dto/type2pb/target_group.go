@@ -5,6 +5,9 @@ package type2pb
 
 import (
 	"fmt"
+	"time"
+
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
@@ -46,19 +49,19 @@ func (targetGroup) toPb(rec kachorepo.TargetGroupRecord) (*lbv1.TargetGroup, err
 		}
 	}
 	return &lbv1.TargetGroup{
-		Id:                         string(rec.ID),
-		ProjectId:                  string(rec.ProjectID),
-		CreatedAt:                  ts,
-		Name:                       string(rec.Name),
-		Description:                string(rec.Description),
-		Labels:                     domain.LabelsToMap(rec.Labels),
-		RegionId:                   string(rec.RegionID),
-		Targets:                    targetsPb,
-		HealthCheck:                healthCheckToPb(rec.HealthCheck),
-		DeregistrationDelaySeconds: rec.DeregistrationDelaySeconds,
-		SlowStartSeconds:           rec.SlowStartSeconds,
-		Status:                     statusPb,
-		Port:                       int32(rec.Port),
+		Id:                  string(rec.ID),
+		ProjectId:           string(rec.ProjectID),
+		CreatedAt:           ts,
+		Name:                string(rec.Name),
+		Description:         string(rec.Description),
+		Labels:              domain.LabelsToMap(rec.Labels),
+		RegionId:            string(rec.RegionID),
+		Targets:             targetsPb,
+		HealthCheck:         healthCheckToPb(rec.HealthCheck, rec.Port),
+		DeregistrationDelay: durationpb.New(time.Duration(rec.DeregistrationDelay)),
+		SlowStart:           durationpb.New(time.Duration(rec.SlowStart)),
+		Status:              statusPb,
+		Port:                int32(rec.Port),
 	}, nil
 }
 

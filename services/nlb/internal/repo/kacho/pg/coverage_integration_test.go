@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/H-BF/corlib/pkg/option"
 	"github.com/stretchr/testify/assert"
@@ -155,14 +156,14 @@ func TestCoverage_TGUpdate_MoveProject_SetStatusCAS(t *testing.T) {
 	})
 
 	tg.Name = "cov4-tg-renamed"
-	tg.DeregistrationDelaySeconds = 60
+	tg.DeregistrationDelay = domain.LbDuration(60 * time.Second)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		cur, gerr := w.TargetGroups().Get(ctx, string(tg.ID))
 		require.NoError(t, gerr)
 		rec, err := w.TargetGroups().Update(ctx, tg, cur.Xmin)
 		require.NoError(t, err)
 		assert.Equal(t, domain.LbName("cov4-tg-renamed"), rec.Name)
-		assert.Equal(t, int32(60), rec.DeregistrationDelaySeconds)
+		assert.Equal(t, domain.LbDuration(60*time.Second), rec.DeregistrationDelay)
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
