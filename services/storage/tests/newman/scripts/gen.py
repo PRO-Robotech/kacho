@@ -238,13 +238,25 @@ def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
                    test_script=guard + list(step.test_script))
 
 
-def poll_operation_until_done() -> Step:
+_poll_seq = [0]
+
+
+def poll_operation_until_done(auth: Optional[str] = None) -> Step:
     """Reusable poll step: до 30 попыток с ~500ms задержкой между ними (через setNextRequest),
-    потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1)."""
+    потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1).
+
+    name уникален (`poll-op-<n>`) — setNextRequest(pm.info.requestName) резолвит self-retry
+    ОДНОЗНАЧНО (newman берёт ПЕРВЫЙ item с этим именем; фикс-имя ломало бы multi-poll кейс —
+    retry прыгал бы на первый poll-op коллекции с чужим auth/opId). `auth` — op-poll обязан
+    идти под тем же actor'ом, что создал операцию: OperationService.Get — creator-only
+    (checkOperationOwnership, анти-BOLA); async-op под `auth=`-override обязан поллиться под
+    тем же creator, иначе gateway денаит 404 (testing.md fixture-discipline)."""
+    _poll_seq[0] += 1
     return Step(
-        name="poll-op",
+        name=f"poll-op-{_poll_seq[0]}",
         method="GET",
         path="/operations/{{opId}}",
+        auth=auth,
         test_script=[
             "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
             "const j = pm.response.json();",
@@ -307,8 +319,10 @@ def assert_op_error_oneof(codes: List[int], code_names: str,
     return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", test_script=body)
 
 
-def assert_op_success() -> Step:
-    return Step(name="assert-op-success", method="GET", path="/operations/{{opId}}",
+def assert_op_success(auth: Optional[str] = None) -> Step:
+    # `auth`: single-GET op read; must run under the op's CREATOR (creator-only
+    # OperationService.Get, анти-BOLA) when the create ran under an auth= override.
+    return Step(name="assert-op-success", method="GET", path="/operations/{{opId}}", auth=auth,
                 test_script=[
                     "const j = pm.response.json();",
                     "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
