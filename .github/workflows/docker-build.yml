@@ -90,7 +90,7 @@ jobs:
       # кэш buildkit живёт в томе этого контейнера → переживает прогоны, и cache-from/to
       # по сети не нужны вовсе. На ubuntu-latest так нельзя (VM одноразовая).
       - name: Buildx (персистентный builder)
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           name: kacho-persistent
           driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
