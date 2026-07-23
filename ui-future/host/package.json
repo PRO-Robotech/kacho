@@ -24,8 +24,8 @@
     "@ant-design/icons": "^6.2.2",
     "antd": "^6.3.7",
     "lucide-react": "^1.25.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "react-router-dom": "^7.17.0"
   },
   "devDependencies": {
