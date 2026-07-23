@@ -16,6 +16,7 @@ package registry
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
@@ -184,6 +185,26 @@ type RepoRegistrar interface {
 	UnregisterRepository(ctx context.Context, intent domain.RegisterIntent) error
 }
 
+// SyncRegistrar — порт СИНХРОННОЙ регистрации owner/parent/public-grant tuple'ов в
+// kacho-iam СРАЗУ после durable-commit ресурса (immediate materialization). Реализуется
+// clients/iam.SyncRegistrar поверх InternalIAMService.RegisterResource (idempotent).
+//
+// Отличие от RepoRegistrar (durable outbox-emit в writer-tx): SyncRegistrar применяет тот
+// же register-tuple-набор СИНХРОННО через iam post-commit — чтобы owner-grant / pull-grant
+// был виден без гонки с async register-drainer'ом. Без него под burst создания repo/registry
+// drainer сериализуется, owner-tuple поздних ресурсов лагает, и repo GET 404-ит в окне
+// материализации (read-your-writes EC). register-ONLY: снятие tuple (unregister) идёт
+// исключительно async-drainer'ом (не read-your-writes-критично).
+//
+// Best-effort у вызывающего: ошибка НЕ валит Create — durable outbox-intent + register-drainer
+// остаются at-least-once backstop'ом (та же идемпотентная регистрация повторно безопасна).
+// nil-port (dev/no-iam) → sync-путь пропускается, остаётся ТОЛЬКО async-drainer.
+type SyncRegistrar interface {
+	// Register синхронно применяет каждый tuple каждого intent через iam RegisterResource
+	// (per-call deadline — в adapter'е). Возвращает первую ошибку; вызывающий логирует WARN.
+	Register(ctx context.Context, intents []domain.RegisterIntent) error
+}
+
 // UseCase — бизнес-логика Registry поверх портов (CQRS repo + config-overlay repo +
 // zot + iam + repo-registrar) и LRO-стека operations.
 type UseCase struct {
@@ -196,6 +217,10 @@ type UseCase struct {
 	repoReg      RepoRegistrar
 	ops          operations.Repo
 	endpointBase string
+	// syncReg — синхронная регистрация owner-tuple в kacho-iam после durable-commit
+	// (immediate materialization; nil → sync-путь пропускается, остаётся async
+	// register-drainer как at-least-once backstop). Инжектится WithSyncRegistrar.
+	syncReg SyncRegistrar
 }
 
 // New собирает UseCase. reader/writer — одна pg-реализация (CQRS-разделение на
@@ -208,6 +233,45 @@ func New(reader RegistryReader, writer RegistryWriter, cfg RepositoryConfigRepo,
 		endpointBase = "registry.kacho.local"
 	}
 	return &UseCase{reader: reader, writer: writer, cfg: cfg, zot: zot, iam: iam, geo: geo, repoReg: repoReg, ops: ops, endpointBase: endpointBase}
+}
+
+// WithSyncRegistrar подключает синхронный owner-tuple registrar (парити storage/vpc/nlb):
+// после успешного Create-commit register-type tuple'ы регистрируются сразу, чтобы
+// repo/registry GET и authz-filtered List на свежий ресурс разрешались без гонки с async
+// register-drainer'ом. Best-effort: durable outbox-intent + register-drainer — at-least-once
+// backstop, поэтому sync-ошибка НЕ валит Create (ban #9 async-мутация). nil → sync-путь
+// пропускается (dev/no-iam). Возвращает тот же UseCase (chainable).
+func (u *UseCase) WithSyncRegistrar(r SyncRegistrar) *UseCase {
+	u.syncReg = r
+	return u
+}
+
+// syncRegisterOwnerTuples — best-effort синхронная регистрация register-type owner-tuple'ов
+// после durable-commit. Ошибка НЕ пробрасывается: durable outbox-intent уже записан в
+// writer-tx, register-drainer применит его at-least-once (idempotent). Логируем WARN, чтобы
+// потерянная sync-регистрация была видна (async backstop подхватит). nil registrar / пустой
+// набор → no-op.
+func (u *UseCase) syncRegisterOwnerTuples(ctx context.Context, intents ...domain.RegisterIntent) {
+	if u.syncReg == nil || len(intents) == 0 {
+		return
+	}
+	if err := u.syncReg.Register(ctx, intents); err != nil {
+		slog.WarnContext(ctx, "sync owner-tuple register failed; async register-drainer will apply", "err", err)
+	}
+}
+
+// registerIntents извлекает register-type intents (Event==FGAEventRegister) из смешанного
+// OutboxIntent-набора — sync-registrar регистрирует ТОЛЬКО register-tuple'ы (owner/parent/
+// public-grant); unregister идёт исключительно async-drainer'ом (снятие tuple не
+// read-your-writes-критично).
+func registerIntents(intents []OutboxIntent) []domain.RegisterIntent {
+	out := make([]domain.RegisterIntent, 0, len(intents))
+	for _, it := range intents {
+		if it.Event == domain.FGAEventRegister {
+			out = append(out, it.Intent)
+		}
+	}
+	return out
 }
 
 // EndpointFor возвращает tenant-facing OCI-endpoint реестра ("<base>/<id>").

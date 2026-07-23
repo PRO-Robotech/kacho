@@ -164,6 +164,15 @@ func runServe(cfg config.Config) error {
 	// ── use-case (CQRS repo + config-overlay + zot + iam + geo + repo-registrar + LRO) ──
 	registryUC := registry.New(registryRepo, registryRepo, repoConfigRepo, zotAdapter, iamAdapter, geoAdapter, registryRepo, opsRepo, cfg.EndpointBase)
 
+	// ── sync-registrar: применяет register-type owner/parent/public-grant tuple СРАЗУ
+	// после durable-commit (immediate materialization; repo/registry GET не 404-ит в окне,
+	// пока async register-drainer не догнал под burst create). Тот же iamConn (:9091, mTLS)
+	// + порт, что drainer; register-drainer остаётся at-least-once backstop'ом. nil iamConn
+	// (breakglass/dev-insecure) → sync-путь пропускается (syncReg остаётся nil).
+	if iamConn != nil {
+		registryUC.WithSyncRegistrar(iamclient.NewSyncRegistrar(iamclient.NewRegisterResourceClient(iamConn)))
+	}
+
 	// ── register-drainer: owner-tuple register/unregister intent из registry_outbox
 	// применяется через kacho-iam fga-proxy (:9091, mTLS, идемпотентно, at-least-once,
 	// exactly-once claim FOR UPDATE SKIP LOCKED между репликами). iam недоступен →

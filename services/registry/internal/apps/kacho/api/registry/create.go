@@ -119,6 +119,11 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 		return nil, syncErr
 	}
 
+	// Строка реестра + register-intent (project+owner tuple) durable в writer-tx (outbox);
+	// СИНХРОННО регистрируем тот же intent для immediate authz-list-visibility свежего
+	// реестра (best-effort non-fatal — register-drainer применит at-least-once, ban #9 async).
+	u.syncRegisterOwnerTuples(ctx, intent)
+
 	operations.Run(ctx, u.ops, op.ID, func(_ context.Context) (*anypb.Any, error) {
 		// Строка реестра + owner-tuple intent уже записаны СИНХРОННО (writer.Insert
 		// с request-ctx, несущим principal). zot-namespace lazy — материализуется на
