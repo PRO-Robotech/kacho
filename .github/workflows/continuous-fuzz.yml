@@ -53,7 +53,7 @@ jobs:
       # Корпус переживает прогоны: фаззер накапливает интересные входы, и без
       # восстановления каждая ночь начинала бы с нуля.
       - name: restore fuzz corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
