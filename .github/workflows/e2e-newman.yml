@@ -66,7 +66,7 @@ jobs:
       # (аннотацию объявляет чарт kacho-iam и патчит openfga-bootstrap-job — двойное
       # владение, для Helm 3 безобидное). Гейт при этом «зеленел», проверяя чарты НЕ той
       # версией, которой разворачивается прод, — ложная уверенность.
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v3.17.0
       - uses: actions/setup-node@v4
