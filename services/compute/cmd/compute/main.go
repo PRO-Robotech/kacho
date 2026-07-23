@@ -319,7 +319,9 @@ func runServe(cfg config.Config) error {
 		defer closeReg()
 		svcs.instance.WithOwnerRegistrar(reg)
 		svcs.disk.WithOwnerRegistrar(reg)
-		logger.Info("owner-tuple sync-registrar enabled (Instance/Disk Create)")
+		svcs.image.WithOwnerRegistrar(reg)
+		svcs.snapshot.WithOwnerRegistrar(reg)
+		logger.Info("owner-tuple sync-registrar enabled (Instance/Disk/Image/Snapshot Create)")
 	}
 
 	// FGA-filtered List handlers. Build the filter from

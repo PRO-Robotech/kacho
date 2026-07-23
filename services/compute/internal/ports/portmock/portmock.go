@@ -736,6 +736,47 @@ type ProjectClient struct{ OK bool }
 // Exists возвращает ProjectClient.OK.
 func (c *ProjectClient) Exists(_ context.Context, _ string) (bool, error) { return c.OK, nil }
 
+// ---- OwnerRegistrar ----
+
+// RegisterCall — одна запись вызова OwnerRegistrar.Register (для проверок в тестах).
+type RegisterCall struct {
+	Kind       string
+	ResourceID string
+	ProjectID  string
+	Labels     map[string]string
+}
+
+// OwnerRegistrar — in-memory fake ports.OwnerRegistrar: записывает каждый
+// Register-вызов, позволяя service-тесту проверить, что Create синхронно
+// регистрирует owner-tuple (window-оптимизация). Err инъектит ошибку регистрара —
+// Create обязан пережить её (best-effort: durable outbox-intent + drainer backstop).
+type OwnerRegistrar struct {
+	mu    sync.Mutex
+	calls []RegisterCall
+	// Err — инъецируемая ошибка (nil = успех). best-effort: Create не проваливается.
+	Err error
+}
+
+// NewOwnerRegistrar создаёт пустой OwnerRegistrar.
+func NewOwnerRegistrar() *OwnerRegistrar { return &OwnerRegistrar{} }
+
+// Register записывает вызов и возвращает инъецированную Err.
+func (r *OwnerRegistrar) Register(_ context.Context, kind, resourceID, projectID string, labels map[string]string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, RegisterCall{Kind: kind, ResourceID: resourceID, ProjectID: projectID, Labels: labels})
+	return r.Err
+}
+
+// Calls возвращает копию записанных Register-вызовов (thread-safe снимок).
+func (r *OwnerRegistrar) Calls() []RegisterCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]RegisterCall, len(r.calls))
+	copy(out, r.calls)
+	return out
+}
+
 // ---- NicClient ----
 
 // NicClient — in-memory fake ports.NicClient. Models the kacho-vpc side of the

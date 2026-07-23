@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -151,4 +152,84 @@ func TestSnapshot_Update_Immutable(t *testing.T) {
 	repo.Seed(&domain.Snapshot{ID: "s1", ProjectID: "f"})
 	_, err := svc.Update(context.Background(), UpdateSnapshotReq{SnapshotID: "s1", UpdateMask: []string{"disk_size"}})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// ---- owner-tuple sync-registration parity (Image/Snapshot ↔ Disk/Instance) ----
+// Regression-lock: Disk/Instance sync-register owner-tuple post-commit
+// (syncRegisterOwner, window-оптимизация EC-окна). Image/Snapshot ранее полагались
+// ТОЛЬКО на async register-drainer → read-your-writes лаг на list/GLF свежего
+// ресурса. Эти тесты фиксируют паритетный sync-register в Create-success-path.
+
+func TestImage_Create_SyncRegistersOwner(t *testing.T) {
+	svc, _, _, _, ops := newImageSvc(t, true)
+	reg := portmock.NewOwnerRegistrar()
+	svc.WithOwnerRegistrar(reg)
+	labels := map[string]string{"env": "prod"}
+	op, err := svc.Create(context.Background(), CreateImageReq{
+		ProjectID: "proj-img", Name: "img-owner", Labels: labels, URI: "https://storage/x.qcow2",
+	})
+	require.NoError(t, err)
+	img := imageFromOp(t, portmock.AwaitOpDone(t, ops, op.ID))
+
+	calls := reg.Calls()
+	require.Len(t, calls, 1, "Image.Create must sync-register owner-tuple (parity with Disk/Instance)")
+	require.Equal(t, "Image", calls[0].Kind)
+	require.Equal(t, img.Id, calls[0].ResourceID)
+	require.Equal(t, "proj-img", calls[0].ProjectID)
+	require.Equal(t, labels, calls[0].Labels)
+}
+
+// registrar-фейл НЕ проваливает Create: durable outbox-intent + register-drainer —
+// at-least-once backstop (best-effort sync — чистая window-оптимизация).
+func TestImage_Create_SyncRegisterFailure_NonFatal(t *testing.T) {
+	svc, repo, _, _, ops := newImageSvc(t, true)
+	reg := portmock.NewOwnerRegistrar()
+	reg.Err = errors.New("iam unavailable")
+	svc.WithOwnerRegistrar(reg)
+	op, err := svc.Create(context.Background(), CreateImageReq{
+		ProjectID: "p", Name: "img-nf", URI: "https://storage/x.qcow2",
+	})
+	require.NoError(t, err)
+	done := portmock.AwaitOpDone(t, ops, op.ID)
+	require.Nil(t, done.Error, "registrar failure must NOT fail Create (outbox+drainer backstop)")
+	img := imageFromOp(t, done)
+	stored, err := repo.Get(context.Background(), img.Id)
+	require.NoError(t, err)
+	require.Equal(t, "img-nf", stored.Name)
+}
+
+func TestSnapshot_Create_SyncRegistersOwner(t *testing.T) {
+	svc, _, diskRepo, ops := newSnapshotSvc(t, true)
+	reg := portmock.NewOwnerRegistrar()
+	svc.WithOwnerRegistrar(reg)
+	diskRepo.Seed(&domain.Disk{ID: "d1", ProjectID: "f", Size: diskSizeMin * 5, Status: domain.DiskStatusReady})
+	labels := map[string]string{"team": "core"}
+	op, err := svc.Create(context.Background(), CreateSnapshotReq{
+		ProjectID: "f", DiskID: "d1", Name: "snap-owner", Labels: labels,
+	})
+	require.NoError(t, err)
+	snap := snapshotFromOp(t, portmock.AwaitOpDone(t, ops, op.ID))
+
+	calls := reg.Calls()
+	require.Len(t, calls, 1, "Snapshot.Create must sync-register owner-tuple (parity with Disk/Instance)")
+	require.Equal(t, "Snapshot", calls[0].Kind)
+	require.Equal(t, snap.Id, calls[0].ResourceID)
+	require.Equal(t, "f", calls[0].ProjectID)
+	require.Equal(t, labels, calls[0].Labels)
+}
+
+func TestSnapshot_Create_SyncRegisterFailure_NonFatal(t *testing.T) {
+	svc, repo, diskRepo, ops := newSnapshotSvc(t, true)
+	reg := portmock.NewOwnerRegistrar()
+	reg.Err = errors.New("iam unavailable")
+	svc.WithOwnerRegistrar(reg)
+	diskRepo.Seed(&domain.Disk{ID: "d1", ProjectID: "f", Size: diskSizeMin * 5, Status: domain.DiskStatusReady})
+	op, err := svc.Create(context.Background(), CreateSnapshotReq{ProjectID: "f", DiskID: "d1", Name: "snap-nf"})
+	require.NoError(t, err)
+	done := portmock.AwaitOpDone(t, ops, op.ID)
+	require.Nil(t, done.Error, "registrar failure must NOT fail Create (outbox+drainer backstop)")
+	snap := snapshotFromOp(t, done)
+	stored, err := repo.Get(context.Background(), snap.Id)
+	require.NoError(t, err)
+	require.Equal(t, "snap-nf", stored.Name)
 }
