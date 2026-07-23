@@ -40,10 +40,27 @@ fi
 DID_RESEED=0
 if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
   echo "[prodrun] seeding matrix -> $CACHE (stale=$STALE)" >&2
-  # Bounded-retry: prodseed's owner db_lookup can transiently race the account/project
-  # provisioning EC on a FRESH stand (owner-a account/project not yet queryable after the
-  # first OIDC login) → "db_lookup(...) empty after retries". A single re-attempt clears
-  # it; without this a flaked reseed leaves an empty matrix → the whole suite washes.
+  # Re-extract the iam-internal mTLS client-cert BEFORE reseeding. After a fresh
+  # dev-up, cert-manager regenerates the internal-CA, so a `/tmp/iam-mtls/client.crt`
+  # left from a PRIOR stand is signed by the OLD CA → iam-internal :9091 rejects it
+  # (SPIFFE/CA-mismatch) → prodseed's `UpsertFromIdentity` grpcurl HANGS on the dial
+  # deadline → 0 users seeded → `db_lookup(...) empty` (the persistent, NON-transient
+  # reseed blocker; a plain retry just re-hangs). Pull the current cert from the
+  # api-gateway-client-tls secret so prodseed authenticates against the live CA.
+  # Best-effort: if kubectl/secret is unavailable (CI without cluster access) leave the
+  # existing cert in place. Same secret/keys prodseed_matrix.py reads (MTLS_CERT/KEY).
+  if command -v kubectl >/dev/null 2>&1; then
+    mkdir -p /tmp/iam-mtls
+    if kubectl -n kacho get secret api-gateway-client-tls >/dev/null 2>&1; then
+      kubectl -n kacho get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > /tmp/iam-mtls/client.crt 2>/dev/null
+      kubectl -n kacho get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' 2>/dev/null | base64 -d > /tmp/iam-mtls/client.key 2>/dev/null
+      echo "[prodrun] refreshed /tmp/iam-mtls client-cert from api-gateway-client-tls (live CA)" >&2
+    fi
+  fi
+  # Bounded-retry: with the cert fresh, a residual failure is the genuine transient
+  # owner-provisioning EC (account/project not yet queryable after the first OIDC
+  # login) → "db_lookup(...) empty"; a re-attempt clears it. Without this a flaked
+  # reseed leaves an empty matrix → the whole suite washes.
   reseed_ok=0
   for attempt in 1 2 3; do
     tmp="$(mktemp)"
