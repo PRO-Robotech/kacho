@@ -105,5 +105,5 @@ message HealthCheck {
   // effective_port — output-only derived: the probe-port override if set,
   // otherwise the group's backend port (`TargetGroup.port`). Surfaces the
   // probe-vs-traffic port divergence by construction.
-  int64 effective_port = 10;
+  int32 effective_port = 10;
 }

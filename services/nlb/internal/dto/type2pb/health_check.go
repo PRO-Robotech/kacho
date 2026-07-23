@@ -33,7 +33,7 @@ func healthCheckToPb(hc domain.HealthCheck, tgPort domain.LbPort) *lbv1.HealthCh
 		UnhealthyThreshold: int64(hc.UnhealthyThreshold),
 		HealthyThreshold:   int64(hc.HealthyThreshold),
 		// effective_port — output-only derived: probe-override || TG.port.
-		EffectivePort: int64(hc.EffectivePort(tgPort)),
+		EffectivePort: int32(hc.EffectivePort(tgPort)),
 	}
 	switch {
 	case hc.TCP != nil:
