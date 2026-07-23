@@ -63,8 +63,21 @@ type Config struct {
 	Enabled bool
 	// Timeout — per-request deadline к iam.ListObjects.
 	Timeout time.Duration
-	// CacheTTL — TTL одной записи в in-process decision cache.
+	// CacheTTL — TTL одной записи в in-process decision cache (NON-empty allow-set).
 	CacheTTL time.Duration
+	// EmptyCacheTTL — negative-cache TTL for an EMPTY allow-set. Deliberately SHORT
+	// (default 1s ≪ CacheTTL): under read-your-writes an empty result is the MOST
+	// likely to be stale — the subject may have just created a resource whose owner
+	// tuple has not yet materialised in the FGA replica the list-authz call landed
+	// on. Pinning an empty for the full CacheTTL would keep the caller's OWN fresh
+	// resource invisible on List for up to CacheTTL (the compute list-includes flake).
+	// But empty is still cached BRIEFLY (not zero-cached) so a zero-grant subject
+	// under the polling (2-5s) + bounded-retry model gets backpressure — at most one
+	// iam.ListObjects per EmptyCacheTTL — instead of a HIGHER_CONSISTENCY strong read
+	// (FGA-primary hit) on EVERY List. The short window is comfortably absorbed by the
+	// client read-your-writes retry budget (≈500ms interval / ≈10s), so it does NOT
+	// reintroduce the flake. Zero ⇒ NewFGAFilter defaults to 1s (clamped ≤ CacheTTL).
+	EmptyCacheTTL time.Duration
 	// CacheMaxEntries — bound для cache size. TTL — первичный механизм вытеснения
 	// (записи живут CacheTTL); при превышении bound putCache сбрасывает одну
 	// произвольную запись (не LRU — см. putCache; TTL-short делает выбор жертвы
@@ -85,13 +98,20 @@ type Config struct {
 // cap, independent of cache sizing.
 const defaultListMaxResults = 10000
 
-// DefaultConfig — sane defaults: filter включён, 500ms timeout, 5s TTL, 10000 cache
-// entries, 10000 allow-list result cap, fail-closed.
+// defaultEmptyCacheTTL — negative-cache TTL for an empty allow-set (see
+// Config.EmptyCacheTTL). Short enough that a pre-materialization empty cannot pin a
+// caller's own fresh resource invisible, long enough to give a zero-grant subject
+// backpressure under polling + bounded-retry.
+const defaultEmptyCacheTTL = 1 * time.Second
+
+// DefaultConfig — sane defaults: filter включён, 500ms timeout, 5s TTL (non-empty) /
+// 1s negative-TTL (empty), 10000 cache entries, 10000 allow-list result cap, fail-closed.
 func DefaultConfig() Config {
 	return Config{
 		Enabled:         true,
 		Timeout:         500 * time.Millisecond,
 		CacheTTL:        5 * time.Second,
+		EmptyCacheTTL:   defaultEmptyCacheTTL,
 		CacheMaxEntries: 10000,
 		MaxResults:      defaultListMaxResults,
 		FailOpen:        false,
@@ -140,6 +160,14 @@ func NewFGAFilter(cli AuthorizeClient, cfg Config) *FGAFilter {
 	}
 	if cfg.CacheTTL <= 0 {
 		cfg.CacheTTL = 5 * time.Second
+	}
+	if cfg.EmptyCacheTTL <= 0 {
+		cfg.EmptyCacheTTL = defaultEmptyCacheTTL
+	}
+	if cfg.EmptyCacheTTL > cfg.CacheTTL {
+		// A negative-TTL longer than the positive TTL is nonsensical — an empty
+		// must never be pinned longer than a populated allow-set.
+		cfg.EmptyCacheTTL = cfg.CacheTTL
 	}
 	if cfg.CacheMaxEntries <= 0 {
 		cfg.CacheMaxEntries = 10000
@@ -196,6 +224,14 @@ func (f *FGAFilter) ListAllowedIDs(ctx context.Context, subject, resourceType, a
 		AllowedIDs: ids,
 		Empty:      len(ids) == 0,
 	}
+	// An EMPTY allow-set is cached under the SHORT EmptyCacheTTL (negative cache), a
+	// non-empty one under the full CacheTTL — putCache picks the TTL by d.Empty. An
+	// empty result is the most likely to be stale under read-your-writes (owner tuple
+	// not yet materialised in the replica this call landed on), so it must not be
+	// pinned for the full CacheTTL — but a brief negative-cache still gives a zero-grant
+	// subject backpressure (≤1 iam.ListObjects per EmptyCacheTTL) under polling +
+	// bounded-retry, rather than a HIGHER_CONSISTENCY strong read on EVERY List. See
+	// Config.EmptyCacheTTL. Errors / fail-open / bypass are already never cached.
 	f.putCache(key, d)
 	return d, nil
 }
@@ -262,9 +298,14 @@ func (f *FGAFilter) putCache(key string, d Decision) {
 			break
 		}
 	}
+	// Empty allow-sets get the short negative-TTL; populated sets the full TTL.
+	ttl := f.cfg.CacheTTL
+	if d.Empty {
+		ttl = f.cfg.EmptyCacheTTL
+	}
 	f.cache[key] = cacheEntry{
 		decision: d,
-		expires:  f.now().Add(f.cfg.CacheTTL),
+		expires:  f.now().Add(ttl),
 	}
 }
 
