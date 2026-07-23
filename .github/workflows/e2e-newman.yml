@@ -49,7 +49,7 @@ jobs:
     # Цель ≤30м на leaf; iam-волна добавляет ~11м → ~40м; 55 — запас на 2-фазу.
     timeout-minutes: 55
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # На ранере из тулчейнов есть только docker/git/jq/make — go/helm/node/kubectl/kind
       # ставим сами (setup-* кэшируют их в tool-cache ранера, т.е. платим один раз).
