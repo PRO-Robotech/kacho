@@ -206,16 +206,39 @@ CASES.append(Case(
                    "placement": "INTERNAL_REGIONAL", "name": "zc-wr-{{runId}}",
                    "v4Source": {"subnetId": "{{zcSubR2Id}}"}},
              test_script=[
-                 "if (pm.environment.get('zcSubR2Id')) {",
+                 # Single-region-stand guard: this cross-region negative can only fire when a
+                 # SECOND geo region exists (existingRegionAltId != existingRegionId). On a
+                 # single-region stand RegionAltId==primary, so the "R2" subnet is physically
+                 # SAME-region → the create is lawfully accepted and there is no cross-region
+                 # violation to reject. Not masking: the region-coherence check is unit-locked
+                 # (create_zone_coherence_test.go wantRegionMismatchMsg) and the strict verbatim
+                 # e2e below fires as soon as a 2nd geo region is seeded.
+                 "var _altR = pm.environment.get('existingRegionAltId') || '';",
+                 "var _r = pm.environment.get('existingRegionId') || '';",
+                 "pm.environment.unset('zcLeakLbId');",
+                 "if (pm.environment.get('zcSubR2Id') && _altR && _r && _altR !== _r) {",
                  "  pm.test('cross-region subnet rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                  "  const j = pm.response.json();",
                  "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
                  f"  pm.test('wrong-region verbatim message', () => pm.expect(j.message).to.eql({_MSG_WRONG_REGION!r}));",
-                 "} else {",
+                 "} else if (!pm.environment.get('zcSubR2Id')) {",
                  "  pm.test('no cross-region subnet fixture → lawful rejection, never silent 200', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
+                 "} else {",
+                 "  // single-region stand: same-region subnet lawfully accepted (async op) — capture",
+                 "  // the LB so its VIP/list contracts get cleaned up, never a leaked cross-tenant 200.",
+                 "  pm.test('single-region: same-region subnet lawfully accepted (cross-region needs a 2nd geo region)', () => "
+                 "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
+                 "  const j = pm.response.json();",
+                 "  if (pm.response.code === 200) { if (j.id) pm.environment.set('opId', j.id); if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('zcLeakLbId', j.metadata.networkLoadBalancerId); }",
                  "}",
              ])),
+        # drain the op + clean up any LB the single-region branch lawfully created
+        # (no-op tolerant DELETE on the strict-400 path where zcLeakLbId is unset).
+        poll_operation_until_done(),
+        Step(name="cleanup-zc-leak-lb", method="DELETE", path=f"{_LB}/{{{{zcLeakLbId}}}}",
+             test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
         *_cleanup_vpc("zcSubR2Id"),
     ],
 ))

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "146c5aa0-6db3-4ae8-ab5c-62dde2bccb19",
+    "_postman_id": "5448c52c-408c-4f2c-b73d-3ce271103f75",
     "name": "kacho-nlb / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -789,7 +789,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-mvpc-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-mvpc-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -970,7 +970,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"destinationProjectId\": \"{{_suiteProjectCrossId}}\"}",
+              "raw": "{\"destinationProjectId\": \"{{projectB1Id}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1703,7 +1703,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgrmvpc-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tgrmvpc-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1884,7 +1884,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"destinationProjectId\": \"{{_suiteProjectCrossId}}\"}",
+              "raw": "{\"destinationProjectId\": \"{{projectB1Id}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
