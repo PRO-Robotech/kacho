@@ -128,6 +128,11 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 		return nil, mapRepoErr(werr)
 	}
 
+	// re-register нового repo (parent+owner (+public-grant)) durable в той же tx (outbox);
+	// СИНХРОННО регистрируем register-type intents для immediate pull/authz-резолва под
+	// новым именем (best-effort non-fatal — drainer at-least-once; unregister old — async).
+	u.syncRegisterOwnerTuples(ctx, registerIntents(intents)...)
+
 	proj, perr := u.zot.RepositoryProjection(ctx, registryID, newName)
 	if perr != nil {
 		return nil, mapRepoErr(perr)

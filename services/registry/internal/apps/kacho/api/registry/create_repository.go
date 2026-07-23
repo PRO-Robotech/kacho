@@ -108,6 +108,11 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 		return nil, syncErr
 	}
 
+	// owner/parent (+public-grant) tuple уже durable в writer-TX (outbox); СИНХРОННО
+	// регистрируем register-type intents для immediate pull/authz-резолва свежего repo
+	// (best-effort non-fatal — register-drainer применит at-least-once, ban #9 async).
+	u.syncRegisterOwnerTuples(ctx, registerIntents(intents)...)
+
 	operations.Run(ctx, u.ops, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		wctx := operations.WithPrincipal(workerCtx, principal)
 		// Overlay уже вставлен (created несёт DB-assigned created_at) + intents эмитированы
