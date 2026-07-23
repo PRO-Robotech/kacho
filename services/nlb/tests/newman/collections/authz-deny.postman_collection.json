@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "b8ffd8ea-7a49-49c6-a09c-0bee13de0915",
+    "_postman_id": "146c5aa0-6db3-4ae8-ab5c-62dde2bccb19",
     "name": "kacho-nlb / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -289,7 +289,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya305",
+          "name": "get-viewer-rya309",
           "request": {
             "method": "GET",
             "header": [
@@ -3605,7 +3605,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr306",
+          "name": "setup-cr-cr310",
           "request": {
             "method": "POST",
             "header": [
@@ -3741,7 +3741,7 @@
           ]
         },
         {
-          "name": "del-rya307",
+          "name": "del-rya311",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4157,7 +4157,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya308",
+          "name": "del-by-creator-rya312",
           "request": {
             "method": "DELETE",
             "header": [

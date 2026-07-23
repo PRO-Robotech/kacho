@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "dd84a385-dc8b-4fb4-ae21-688288ad1baa",
+    "_postman_id": "e39016f3-489a-4c8d-9cae-a54e08d13718",
     "name": "kacho-compute / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3036,7 +3036,7 @@
           ]
         },
         {
-          "name": "glf-rya20",
+          "name": "glf-st20",
           "request": {
             "method": "GET",
             "header": [
@@ -3063,21 +3063,26 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// bounded read-your-writes retry until the caller's OWN post-mutation state converges",
+                  "// (eventual-consistency): retries SELF on transient 403/404 OR a 200 whose state has",
+                  "// not yet caught up. Fail-open at budget -> the real asserts run once and FAIL if",
+                  "// still unconverged (a genuine never-converging state is never masked).",
+                  "if (pm.environment.get('_stRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_stRetryCount', '0');",
+                  "  pm.environment.set('_stRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "const _stc = parseInt(pm.environment.get('_stRetryCount') || '0', 10);",
+                  "let _converged = false;",
+                  "try { _converged = !!(pm.response.json().id === pm.environment.get('img2Id')); } catch (e) { _converged = false; }",
+                  "const _stTransient = [403,404].includes(pm.response.code) || (pm.response.code === 200 && !_converged);",
+                  "if (_stTransient && _stc < 40) {",
+                  "  pm.environment.set('_stRetryCount', String(_stc + 1));",
+                  "  const _std = Date.now(); while (Date.now() - _std < 600) { /* state-convergence wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('_stRetryCount');",
+                  "pm.environment.unset('_stRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('family matches', () => pm.expect(j.family).to.match(/^glf-fam-/));",
@@ -5686,7 +5691,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('imageId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 40) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

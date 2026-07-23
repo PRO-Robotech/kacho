@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "378f3eb8-e145-4ce5-bde4-5c8ac836623d",
+    "_postman_id": "7f794798-caf4-4de2-ada1-aa8e797e5b4d",
     "name": "kacho-registry / newman / registry",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -181,7 +181,7 @@
           ]
         },
         {
-          "name": "warm-regId-rya55",
+          "name": "warm-regId-rya61",
           "request": {
             "method": "GET",
             "header": [
@@ -578,7 +578,7 @@
           ]
         },
         {
-          "name": "warm-dupRegId-rya56",
+          "name": "warm-dupRegId-rya62",
           "request": {
             "method": "GET",
             "header": [
@@ -2791,7 +2791,7 @@
           ]
         },
         {
-          "name": "warm-delRegId-rya57",
+          "name": "warm-delRegId-rya63",
           "request": {
             "method": "GET",
             "header": [
@@ -3174,7 +3174,7 @@
           ]
         },
         {
-          "name": "warm-ddRegId-rya58",
+          "name": "warm-ddRegId-rya64",
           "request": {
             "method": "GET",
             "header": [

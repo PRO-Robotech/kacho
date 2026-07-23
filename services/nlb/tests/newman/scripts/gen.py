@@ -295,6 +295,58 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
                    test_script=guard + list(step.test_script))
 
 
+def retry_until_state(step: Step, converged_expr: str, budget: int = 25,
+                      interval_ms: int = 500, retry_on=(403, 404)) -> Step:
+    """Wrap the FIRST post-mutation / after-op VERIFY of the caller's OWN fresh resource
+    in a bounded read-your-writes retry until the OBSERVED STATE has CONVERGED.
+
+    Operation.done means the mutated resource is DURABLE (api-conventions.md), but the
+    read that verifies a specific post-mutation FIELD VALUE can briefly be transient in
+    TWO ways: (a) the owner-tuple authz gate returns 403/404 before the tuple
+    materialises, OR (b) the read returns 200 but with a STALE field value before the
+    write is reflected on the read path (e.g. a PATCH'd field / a status that settles a
+    beat after the Operation is durable). retry_until_authorized covers only (a); this
+    helper covers BOTH — it retries SELF while the response is a transient 403/404 OR a
+    200 whose `converged_expr` (a JS boolean, TRUE once the expected state is observed)
+    is still false, spacing attempts by ~interval_ms (busy-wait — newman fires
+    setNextRequest before any setTimeout).
+
+    Fail-OPEN at the budget: once spent, the wrapped step's real asserts run exactly once
+    on the terminal response — a genuine never-converging state (a real product bug) STILL
+    FAILS (never masked, never infinite). Use ONLY on a POSITIVE verify of the caller's
+    OWN fresh resource — NEVER a negative / cross-account-deny / absent-id read (a poll
+    there would mask a real deny). It is a strict superset of retry_until_authorized:
+    converting an authz-only wrap to this never hides anything the authz-retry caught, it
+    only ADDS the state-convergence wait. Unique step name (`-st<n>`) keeps the self-retry
+    setNextRequest unambiguous (same discipline as retry_until_authorized / poll-op)."""
+    retry_set = ",".join(str(c) for c in retry_on)
+    guard = [
+        "// bounded read-your-writes retry until the caller's OWN post-mutation state converges",
+        "// (eventual-consistency): retries SELF on transient 403/404 OR a 200 whose state has",
+        "// not yet caught up. Fail-open at budget -> the real asserts run once and FAIL if",
+        "// still unconverged (a genuine never-converging state is never masked).",
+        "if (pm.environment.get('_stRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_stRetryCount', '0');",
+        "  pm.environment.set('_stRetryStarted', pm.info.requestName);",
+        "}",
+        "const _stc = parseInt(pm.environment.get('_stRetryCount') || '0', 10);",
+        "let _converged = false;",
+        f"try {{ _converged = !!({converged_expr}); }} catch (e) {{ _converged = false; }}",
+        f"const _stTransient = [{retry_set}].includes(pm.response.code) || (pm.response.code === 200 && !_converged);",
+        f"if (_stTransient && _stc < {budget}) {{",
+        "  pm.environment.set('_stRetryCount', String(_stc + 1));",
+        f"  const _std = Date.now(); while (Date.now() - _std < {interval_ms}) {{ /* state-convergence wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_stRetryCount');",
+        "pm.environment.unset('_stRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-st{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
 def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 500) -> Step:
     """Wrap a CREATE/POST step that references a peer resource (e.g. a vpc Subnet /
     Address) just provisioned inline in the SAME case, in a bounded read-your-writes
@@ -557,6 +609,7 @@ def load_cases_module(path: Path):
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present
+    mod.retry_until_state = retry_until_state
     mod.retry_create_until_present = retry_create_until_present
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block

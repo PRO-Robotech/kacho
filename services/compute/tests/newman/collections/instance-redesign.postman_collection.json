@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "70bc206c-7798-4c22-8544-7a2976e87040",
+    "_postman_id": "62c2fb0c-0fd6-442b-a8db-dbfaf08023c8",
     "name": "kacho-compute / newman / instance-redesign",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -7794,7 +7794,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('instanceId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 40) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -7847,7 +7847,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('instanceId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 40) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

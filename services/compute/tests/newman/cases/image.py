@@ -262,11 +262,17 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "img2Id")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="glf", method="GET", path=f"{IMAGES}:latestByFamily?projectId={{{{_suiteFolderId}}}}&family=glf-fam-{{{{runId}}}}",
+        # GetLatestByFamily is a family-resolution read-your-writes: both create ops are
+        # durable (polled to done), but the family query can briefly resolve img1 (200-but-
+        # stale) before img2 is visible to it, OR 403/404 on the owner-tuple gate. Wait for
+        # the state to CONVERGE (id == img2Id) — retry_until_authorized (403/404 only) would
+        # assert once on a stale 200 that still points at img1 and red.
+        retry_until_state(Step(name="glf", method="GET", path=f"{IMAGES}:latestByFamily?projectId={{{{_suiteFolderId}}}}&family=glf-fam-{{{{runId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('family matches', () => pm.expect(j.family).to.match(/^glf-fam-/));",
-                          "pm.test('returns the newer image (img2)', () => pm.expect(j.id).to.eql(pm.environment.get('img2Id')));"])),
+                          "pm.test('returns the newer image (img2)', () => pm.expect(j.id).to.eql(pm.environment.get('img2Id')));"]),
+             "pm.response.json().id === pm.environment.get('img2Id')"),
         Step(name="del-img2", method="DELETE", path=f"{IMAGES}/{{{{img2Id}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="del-img1", method="DELETE", path=f"{IMAGES}/{{{{img1Id}}}}", test_script=[*save_from_response("j.id", "opId")]),

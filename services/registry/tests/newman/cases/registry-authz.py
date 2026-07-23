@@ -109,6 +109,15 @@ CASES.append(Case(
                           "pm.test('setup op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                           *save_from_response("(j.response&&j.response.id)||''", "regIdAz"),
                           "pm.test('fixture regId captured (prefix reg)', () => pm.expect((pm.environment.get('regIdAz')||'').startsWith('reg')).to.be.true);"]),
+        # Read-your-writes warm-up (mirrors registry-repository.py `_create_registry`): force
+        # the registry owner-tuple (as project-editor) to materialize — register-outbox →
+        # drainer → IAM RegisterResource → FGA reconciler — BEFORE REPO-AZ-SETUP does a
+        # CreateRepository under {{regIdAz}} (whose handler runs registryGate(v_create) on this
+        # parent registry). Without it the first repo-create can 403/404 on the not-yet-visible
+        # parent tuple. Bounded-retry over own fresh resource only (fail-open at budget).
+        retry_until_authorized(
+            Step(name="reg-warm", method="GET", path=f"{REG}/{{{{regIdAz}}}}",
+                 test_script=[*assert_status(200)])),
     ],
 ))
 
@@ -259,14 +268,27 @@ CASES.append(Case(
     title="Setup: CreateRepository durable overlay repo under {{regIdAz}} (editor) → poll → capture",
     classes=["AZD"], priority="P1",
     steps=[
-        Step(name="repo-az-create", method="POST", path=_AZ_REPO,
+        # CreateRepository under {{regIdAz}} runs registryGate(v_create) on the parent
+        # registry, whose owner-tuple is eventually-consistent after REG-AZ-SETUP-FIXTURE
+        # (now warmed by reg-warm). Wrap the create in the same bounded read-your-writes
+        # retry so a transient 403/404 on the not-yet-visible parent tuple is retried, not
+        # asserted-once (create→dependent-create over the parent materialization window).
+        retry_until_authorized(Step(name="repo-az-create", method="POST", path=_AZ_REPO,
              body={"repository": "az-repo-{{runId}}", "description": "per-repo authz fixture"},
              test_script=[*assert_status(200), *assert_operation_envelope(_OP_PREFIX),
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="repo-az-confirm", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
                           "pm.test('repo setup op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"]),
+        # Read-your-writes warm-up (mirrors `_create_repo` repo-warm): materialize the CREATOR's
+        # per-repo owner-tuple (register-outbox → drainer → IAM → FGA) before downstream cases
+        # read it — the sync-registrar (#102) is best-effort, so the creator's own first read
+        # can briefly 404 until the tuple lands. This is the creator residual the task targets;
+        # the separate viewer-grant EC (REPO-AZ-GET-VIEWER-OK) is intentionally left untouched.
+        retry_until_authorized(
+            Step(name="repo-az-warm", method="GET", path=_AZ_REPO + "/az-repo-{{runId}}",
+                 test_script=[*assert_status(200)])),
     ],
 ))
 

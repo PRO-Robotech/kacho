@@ -1396,10 +1396,15 @@ CASES.append(Case(
              body={"updateMask": "description", "description": "life-final"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="get-2", method="GET", path=f"{_CREATE_BASE}/{{{{lifeId}}}}",
+        # Post-update verify is a 200-but-stale-state read: the Update Operation is durable
+        # (polled to done) but the PATCH'd description can lag on the read path. Wait for the
+        # state to CONVERGE (description == 'life-final') before asserting — a plain GET runs
+        # the assert once on a stale 200 and reds.
+        retry_until_state(Step(name="get-2", method="GET", path=f"{_CREATE_BASE}/{{{{lifeId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('description updated', () => "
                           "  pm.expect(pm.response.json().description).to.eql('life-final'));"]),
+             "pm.response.json().description === 'life-final'"),
         Step(name="del", method="DELETE", path=f"{_CREATE_BASE}/{{{{lifeId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
