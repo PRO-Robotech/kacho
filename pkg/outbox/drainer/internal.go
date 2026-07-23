@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -340,11 +341,13 @@ func truncErr(s string) string {
 // drainBatch — один цикл «получить batch → обработать → отдать управление».
 //
 // Алгоритм:
-//  1. Random small-batch limit [1, min(4, BatchSize)] на каждый claim для HA-fairness:
-//     при HA-running две реплики не должны сгреб одной волны за один шот.
+//  1. Per-claim limit = claimLimit(): random [1, min(4, BatchSize)] для HA-fairness
+//     (две реплики не сгребают одну волну за шот) ЛИБО ровно ApplyConcurrency, если
+//     он >1 (полная параллельная apply-волна за один claim).
 //  2. Обрабатываем claim'd rows в транзакции, которая держит row-lock на
 //     время apply (FOR UPDATE SKIP LOCKED) — exactly-once guarantee
-//     (другой drainer SKIP'нет lock'нутые rows до commit'а).
+//     (другой drainer SKIP'нет lock'нутые rows до commit'а). При ApplyConcurrency>1
+//     apply-вызовы батча идут ПАРАЛЛЕЛЬНО (внешние, без tx), mark'и — последовательно.
 //  3. После commit — короткий jitter (0-10ms) перед следующим claim,
 //     дает другому drainer'у шанс на следующую волну.
 //  4. Если claim вернул 0 rows — выходим (вернемся в select main-loop ждать
@@ -360,15 +363,7 @@ func (d *Drainer[T]) drainBatch(ctx context.Context) {
 			return
 		}
 
-		// Random small batch (1..4) per claim. Single-drainer overhead
-		// negligible (5 iterations vs 1 на 20-row catch-up, ~5ms total
-		// при 1ms per row); HA-fairness гарантирована.
-		// math/rand достаточно: это HA-СПРАВЕДЛИВОСТЬ, а не крипто. Предсказуемость
-		// размера батча не даёт атакующему ничего (он не влияет ни на доступ, ни на
-		// содержимое), а crypto/rand стоил бы syscall на каждой итерации claim-цикла.
-		limit := 1 + rand.IntN(haFairnessLimit(d.cfg.BatchSize)) // #nosec G404 -- см. выше
-
-		rows, tx, err := d.claimRows(ctx, limit)
+		rows, tx, err := d.claimRows(ctx, d.claimLimit())
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -381,12 +376,40 @@ func (d *Drainer[T]) drainBatch(ctx context.Context) {
 		}
 
 		// Обрабатываем batch внутри одной транзакции (держит row-lock).
+		// exactly-once инвариант ОДИНАКОВ для обоих путей: claim-tx держит
+		// FOR UPDATE SKIP LOCKED lock КАЖДОЙ строки батча до commit'а; apply не
+		// трогает DB. ApplyConcurrency>1 лишь распараллеливает ВНЕШНИЕ apply-вызовы
+		// (mark'и всегда последовательны на единственной tx — pgx.Tx не
+		// конкурентно-безопасна).
 		retry := make([]bool, len(rows))
 		needsRetryAfter := false
-		for i, r := range rows {
-			retry[i] = d.processRowInTx(ctx, tx, r)
-			if retry[i] {
-				needsRetryAfter = true
+		if d.cfg.ApplyConcurrency > 1 {
+			// Phase 1: параллельный apply (только внешние вызовы, БЕЗ доступа к tx;
+			// батч сайзнут ≤ ApplyConcurrency, поэтому fan-out ограничен). Никаких
+			// доп. conn'ов пула: apply — gRPC/HTTP к target, не запрос к своей БД.
+			outcomes := make([]applyOutcome, len(rows))
+			var wg sync.WaitGroup
+			for i := range rows {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					outcomes[i] = d.applyRow(ctx, rows[i])
+				}(i)
+			}
+			wg.Wait()
+			// Phase 2: последовательный mark на общей claim-tx.
+			for i := range rows {
+				retry[i] = d.markRow(ctx, tx, rows[i], outcomes[i])
+				if retry[i] {
+					needsRetryAfter = true
+				}
+			}
+		} else {
+			for i, r := range rows {
+				retry[i] = d.processRowInTx(ctx, tx, r)
+				if retry[i] {
+					needsRetryAfter = true
+				}
 			}
 		}
 		// Bounded shutdown-tolerant ctx for commit: survives parent ctx cancel
@@ -438,6 +461,22 @@ func interBatchJitter() time.Duration {
 	return time.Duration(rand.IntN(11)) * time.Millisecond // #nosec G404 -- джиттер HA-справедливости
 }
 
+// claimLimit returns the per-claim row LIMIT.
+//   - ApplyConcurrency>1: the batch is sized EXACTLY to the concurrency so one
+//     claim feeds a full parallel apply-wave (len(rows) ≤ ApplyConcurrency bounds
+//     the goroutine fan-out with no separate semaphore).
+//   - otherwise (default): a random small batch [1, min(4, BatchSize)] preserving
+//     HA-fairness (two replicas don't grab one wave in a single shot — see
+//     drainBatch godoc). math/rand is fine here: HA-fairness, not crypto — a
+//     predictable batch size grants an attacker nothing (it gates neither access
+//     nor content), and crypto/rand would cost a syscall per claim iteration.
+func (d *Drainer[T]) claimLimit() int {
+	if d.cfg.ApplyConcurrency > 1 {
+		return d.cfg.ApplyConcurrency
+	}
+	return 1 + rand.IntN(haFairnessLimit(d.cfg.BatchSize)) // #nosec G404 -- HA-fairness, не крипто
+}
+
 // haFairnessLimit returns max(1, min(4, batchSize)) — upper bound для random
 // per-claim LIMIT. Меньше = лучше HA-fairness; больше = выше catch-up throughput.
 // 4 — компромисс: 32 BatchSize / 4 = 8 claim-итераций для дренажа полной волны,
@@ -452,72 +491,69 @@ func haFairnessLimit(batchSize int) int {
 	return 4
 }
 
-// processRowInTx обрабатывает одну claim'ed row внутри claim-batch transaction.
-//
-//	decode → apply(с inner-ctx WithoutCancel + ApplyTimeout) → markSuccess/Failure/Poisoned (в tx).
-//
-// Apply вызывается с inner-ctx отвязанным от parent — это дает graceful-shutdown
-// guarantee: даже если parent ctx cancel'ится в момент in-flight apply, applier
-// дозавершается в пределах ApplyTimeout, mark делается корректно.
-//
-// DB-операции (mark*) используют переданную tx, которая держит row-lock с
-// момента claim'а — exactly-once guarantee: другой drainer SKIP'нет row пока tx
-// не commit'нется.
-//
-// Returns true если эта row нуждается в retry-backoff (transient error) — caller
-// агрегирует это решение по всему batch.
-func (d *Drainer[T]) processRowInTx(parentCtx context.Context, tx pgx.Tx, r claimedRow) bool {
-	// Detached ctx для самого Apply: грейс при shutdown.
+// applyOutcome carries the result of the apply-phase (decode + Apply) of one row
+// to the mark-phase. It holds NO DB handle, so the apply-phase can run
+// concurrently across rows of one claim-batch (ApplyConcurrency>1) while the
+// mark-phase stays sequential on the single claim-tx.
+type applyOutcome struct {
+	decodeErr error // non-nil → decode failed (permanent poison), applyErr unused
+	applyErr  error // classify with Classify(); nil = success
+}
+
+// applyRow runs the APPLY phase of one row: decode → Apply. It touches NO
+// transaction / DB state, only the external target via d.applier, so it is safe
+// to invoke concurrently for distinct rows of one claim-batch. Apply uses a
+// detached (WithoutCancel) ApplyTimeout budget for graceful-shutdown grace: an
+// in-flight apply finishes within ApplyTimeout even if parentCtx is cancelled.
+func (d *Drainer[T]) applyRow(parentCtx context.Context, r claimedRow) applyOutcome {
+	payload, derr := d.decoder(r.payload)
+	if derr != nil {
+		return applyOutcome{decodeErr: derr}
+	}
 	applyCtx, applyCancel := context.WithTimeout(
 		context.WithoutCancel(parentCtx),
 		d.cfg.ApplyTimeout,
 	)
 	defer applyCancel()
+	return applyOutcome{applyErr: d.applier(applyCtx, r.eventType, payload)}
+}
 
-	// markCtx mints a FRESH, detached ApplyTimeout budget for the mark* DB write,
-	// measured from the instant the mark is issued — deliberately NOT shared with
-	// applyCtx. Both must be detached (WithoutCancel) for graceful-shutdown grace
-	// (the mark completes even after parentCtx is cancelled), but they must NOT
-	// share a deadline: an apply that consumes the WHOLE ApplyTimeout (a hung peer
-	// that only errors at its own deadline) would otherwise leave the mark's ctx
-	// already expired ("context already done"). Then markTransientFailure never
-	// lands its attempt_count cap, the claim's attempt_count++ commits unbounded,
-	// and a merely-slow *transient* row climbs into the poison gate — false-poisoned,
-	// its owner-tuple intent lost forever (violating the transient no-poison rule).
-	// A fresh budget per mark guarantees the outcome is always recorded.
-	markCtx := func() (context.Context, context.CancelFunc) {
-		return context.WithTimeout(context.WithoutCancel(parentCtx), d.cfg.ApplyTimeout)
-	}
+// markRow runs the MARK phase of one row on the claim-batch tx (which holds the
+// row's FOR UPDATE SKIP LOCKED lock since claim). It is invoked SEQUENTIALLY per
+// batch (a pgx.Tx is not safe for concurrent use), after that row's applyRow has
+// returned. Returns true if the row needs retry-backoff (transient).
+//
+// The mark budget (dbCtx) is minted FRESH here — after apply returned —
+// deliberately NOT sharing a deadline with the apply. Both are detached
+// (WithoutCancel) for graceful-shutdown grace, but they must NOT share a
+// deadline: an apply that consumes the WHOLE ApplyTimeout (a hung peer that only
+// errors at its own deadline) would otherwise leave the mark's ctx already
+// expired ("context already done"). Then markTransientFailure never lands its
+// attempt_count cap, the claim's attempt_count++ commits unbounded, and a
+// merely-slow *transient* row climbs into the poison gate — false-poisoned, its
+// intent lost forever (violating the transient no-poison rule). A fresh budget
+// per mark guarantees the outcome is always recorded.
+func (d *Drainer[T]) markRow(parentCtx context.Context, tx pgx.Tx, r claimedRow, out applyOutcome) bool {
+	dbCtx, dbCancel := context.WithTimeout(context.WithoutCancel(parentCtx), d.cfg.ApplyTimeout)
+	defer dbCancel()
 
-	// 1. Decode. Decoder-fail = permanent (malformed payload, no retry helps).
-	payload, derr := d.decoder(r.payload)
-	if derr != nil {
+	// Decode-fail = permanent (malformed payload, no retry helps).
+	if out.decodeErr != nil {
 		d.logger.Warn("decode_failed_poison",
 			slog.Int64("id", r.id),
-			slog.String("err", derr.Error()))
-		dbCtx, dbCancel := markCtx()
-		defer dbCancel()
-		d.poison(dbCtx, tx, r.id, derr.Error())
+			slog.String("err", out.decodeErr.Error()))
+		d.poison(dbCtx, tx, r.id, out.decodeErr.Error())
 		return false
 	}
 
-	// 2. Apply.
-	aerr := d.applier(applyCtx, r.eventType, payload)
-	applyCancel() // release the apply budget before marking
-
-	// The mark budget starts NOW — after apply returned — so it is unaffected by
-	// how much of ApplyTimeout the apply consumed (see markCtx rationale above).
-	dbCtx, dbCancel := markCtx()
-	defer dbCancel()
-
-	// 3. Classify + mark. The classifier is the single
-	//    decision point: transient errors (Unavailable/timeout/conn) NEVER
-	//    poison — they retry unbounded with backoff (markTransientFailure caps
-	//    attempt_count below the poison gate). Only ErrPermanent / gRPC
-	//    InvalidArgument poison; ErrAlreadyApplied is idempotent success.
-	switch Classify(aerr) {
+	// Classify + mark. The classifier is the single decision point: transient
+	// errors (Unavailable/timeout/conn) NEVER poison — they retry unbounded with
+	// backoff (markTransientFailure caps attempt_count below the poison gate).
+	// Only ErrPermanent / gRPC InvalidArgument poison; ErrAlreadyApplied is
+	// idempotent success.
+	switch Classify(out.applyErr) {
 	case ClassSuccess, ClassAlreadyApplied:
-		if Classify(aerr) == ClassAlreadyApplied {
+		if Classify(out.applyErr) == ClassAlreadyApplied {
 			d.logger.Debug("target_already_applied",
 				slog.Int64("id", r.id), slog.String("event_type", r.eventType))
 		}
@@ -530,20 +566,27 @@ func (d *Drainer[T]) processRowInTx(parentCtx context.Context, tx pgx.Tx, r clai
 		d.logger.Warn("apply_permanent_poison",
 			slog.Int64("id", r.id),
 			slog.String("event_type", r.eventType),
-			slog.String("err", aerr.Error()))
-		d.poison(dbCtx, tx, r.id, aerr.Error())
+			slog.String("err", out.applyErr.Error()))
+		d.poison(dbCtx, tx, r.id, out.applyErr.Error())
 		return false
 	default: // ClassTransient — never poison; retry unbounded with backoff.
 		d.logger.Debug("apply_transient_retry",
 			slog.Int64("id", r.id),
 			slog.Int("attempt", r.attemptCount),
-			slog.String("err", aerr.Error()))
-		if err := d.markTransientFailure(dbCtx, tx, r.id, aerr.Error()); err != nil {
+			slog.String("err", out.applyErr.Error()))
+		if err := d.markTransientFailure(dbCtx, tx, r.id, out.applyErr.Error()); err != nil {
 			d.logger.Error("mark_transient_failed",
 				slog.Int64("id", r.id), slog.String("err", err.Error()))
 		}
 		return true
 	}
+}
+
+// processRowInTx — sequential apply+mark of one row (the ApplyConcurrency<=1 /
+// default path). Behaviour is byte-equivalent to the historical inlined version:
+// applyRow (decode+Apply) then markRow (classify+mark on tx).
+func (d *Drainer[T]) processRowInTx(parentCtx context.Context, tx pgx.Tx, r claimedRow) bool {
+	return d.markRow(parentCtx, tx, r, d.applyRow(parentCtx, r))
 }
 
 // poison marks the row poisoned (attempt_count = MaxAttempts) and notifies the
