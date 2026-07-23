@@ -181,7 +181,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        # status ACTIVE is a 200-but-stale-state read: it settles after the create Operation
+        # is durable, so wait for it to CONVERGE (not just for the owner-tuple 403/404 gate) —
+        # retry_until_authorized would assert once on a transient pre-ACTIVE 200 and red.
+        retry_until_state(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           # sub-phase 8.1: the per-family VIP moved Listener->LoadBalancer; the
@@ -189,12 +192,17 @@ CASES.append(Case(
                           # reserved 12-15 in listener.proto). The listener reaches ACTIVE; the
                           # EXTERNAL auto public VIP is asserted on the parent LB below
                           # (v4AddressId output -> bound vpc Address).
-                          "pm.test('status ACTIVE', () => pm.expect(j.status).to.eql('ACTIVE'));"])),
-        retry_until_authorized(Step(name="get-lb-vip", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+                          "pm.test('status ACTIVE', () => pm.expect(j.status).to.eql('ACTIVE'));"]),
+             "pm.response.json().status === 'ACTIVE'"),
+        # The EXTERNAL auto public VIP (v4AddressId) resolves onto the LB as the VIP binds;
+        # wait for it to CONVERGE to a bound vpc Address rather than asserting once on a
+        # transient empty-VIP 200.
+        retry_until_state(Step(name="get-lb-vip", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('EXTERNAL parent auto public VIP: v4AddressId resolved to bound vpc Address', () => "
-                          "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));"])),
+                          "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));"]),
+             "/^adr[a-z0-9]+$/.test(pm.response.json().v4AddressId || '')"),
         *_cleanup_lst(),
         *_cleanup_lb(),
     ],

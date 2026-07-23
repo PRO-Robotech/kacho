@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a26f3f5a-9c98-4658-ab6b-aca9864fad82",
+    "_postman_id": "5bab39dc-8005-4f96-89c2-590b7b3a6602",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -145,7 +145,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya309",
+          "name": "materialize-lb-rya313",
           "request": {
             "method": "GET",
             "header": [
@@ -194,7 +194,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya310",
+          "name": "get-lb-inactive-rya314",
           "request": {
             "method": "GET",
             "header": [
@@ -248,7 +248,7 @@
           ]
         },
         {
-          "name": "create-listener-rya311",
+          "name": "create-listener-rya315",
           "request": {
             "method": "POST",
             "header": [
@@ -371,7 +371,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya312",
+          "name": "get-listener-vip-rya316",
           "request": {
             "method": "GET",
             "header": [
@@ -533,7 +533,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya313",
+          "name": "materialize-tg-rya317",
           "request": {
             "method": "GET",
             "header": [
@@ -582,7 +582,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya314",
+          "name": "add-instance-target-rya318",
           "request": {
             "method": "POST",
             "header": [
@@ -800,7 +800,7 @@
           ]
         },
         {
-          "name": "verify-default-tg-set",
+          "name": "verify-default-tg-set-st319",
           "request": {
             "method": "GET",
             "header": [
@@ -828,6 +828,26 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry until the caller's OWN post-mutation state converges",
+                  "// (eventual-consistency): retries SELF on transient 403/404 OR a 200 whose state has",
+                  "// not yet caught up. Fail-open at budget -> the real asserts run once and FAIL if",
+                  "// still unconverged (a genuine never-converging state is never masked).",
+                  "if (pm.environment.get('_stRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_stRetryCount', '0');",
+                  "  pm.environment.set('_stRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _stc = parseInt(pm.environment.get('_stRetryCount') || '0', 10);",
+                  "let _converged = false;",
+                  "try { _converged = !!(pm.environment.get('lastOpError') || pm.response.json().defaultTargetGroupId === pm.environment.get('tgId')); } catch (e) { _converged = false; }",
+                  "const _stTransient = [403,404].includes(pm.response.code) || (pm.response.code === 200 && !_converged);",
+                  "if (_stTransient && _stc < 25) {",
+                  "  pm.environment.set('_stRetryCount', String(_stc + 1));",
+                  "  const _std = Date.now(); while (Date.now() - _std < 500) { /* state-convergence wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_stRetryCount');",
+                  "pm.environment.unset('_stRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "if (!pm.environment.get('lastOpError')) {",
@@ -839,7 +859,7 @@
           ]
         },
         {
-          "name": "get-lb-after-attach",
+          "name": "get-lb-after-attach-rya320",
           "request": {
             "method": "GET",
             "header": [
@@ -867,6 +887,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('LB status ACTIVE or INACTIVE (listener-VIP dependent)', () =>   pm.expect(j.status).to.be.oneOf(['ACTIVE', 'INACTIVE']));"
@@ -876,7 +911,7 @@
           ]
         },
         {
-          "name": "get-target-states",
+          "name": "get-target-states-rya321",
           "request": {
             "method": "GET",
             "header": [
@@ -905,6 +940,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const states = j.targetStates || [];",
@@ -1493,7 +1543,7 @@
           ]
         },
         {
-          "name": "get-lb-v6-vip-rya315",
+          "name": "get-lb-v6-vip-rya322",
           "request": {
             "method": "GET",
             "header": [
@@ -1750,7 +1800,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya316",
+          "name": "materialize-lb-rya323",
           "request": {
             "method": "GET",
             "header": [
@@ -1799,7 +1849,7 @@
           ]
         },
         {
-          "name": "create-listener-rya317",
+          "name": "create-listener-rya324",
           "request": {
             "method": "POST",
             "header": [
@@ -1961,7 +2011,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya318",
+          "name": "verify-listener-unchanged-rya325",
           "request": {
             "method": "GET",
             "header": [
@@ -2305,7 +2355,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya319",
+          "name": "materialize-lb-rya326",
           "request": {
             "method": "GET",
             "header": [
@@ -2354,7 +2404,7 @@
           ]
         },
         {
-          "name": "create-listener-family-mismatch-rya320",
+          "name": "create-listener-family-mismatch-rya327",
           "request": {
             "method": "POST",
             "header": [
@@ -2710,7 +2760,7 @@
           ]
         },
         {
-          "name": "create-internal-lb-cr321",
+          "name": "create-internal-lb-cr328",
           "request": {
             "method": "POST",
             "header": [
@@ -2830,7 +2880,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya322",
+          "name": "get-internal-lb-rya329",
           "request": {
             "method": "GET",
             "header": [
@@ -2888,7 +2938,7 @@
           ]
         },
         {
-          "name": "create-internal-listener-rya323",
+          "name": "create-internal-listener-rya330",
           "request": {
             "method": "POST",
             "header": [
@@ -3153,7 +3203,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya324",
+          "name": "materialize-tg-rya331",
           "request": {
             "method": "GET",
             "header": [
@@ -3764,7 +3814,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya325",
+          "name": "get-no-network-rya332",
           "request": {
             "method": "GET",
             "header": [
@@ -4074,7 +4124,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya326",
+          "name": "materialize-lb-rya333",
           "request": {
             "method": "GET",
             "header": [
@@ -4123,7 +4173,7 @@
           ]
         },
         {
-          "name": "create-listener-rya327",
+          "name": "create-listener-rya334",
           "request": {
             "method": "POST",
             "header": [
@@ -4349,7 +4399,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya328",
+          "name": "materialize-tg-rya335",
           "request": {
             "method": "GET",
             "header": [
@@ -4398,7 +4448,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya329",
+          "name": "add-external-target-rya336",
           "request": {
             "method": "POST",
             "header": [
@@ -5430,7 +5480,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya330",
+          "name": "materialize-lb-rya337",
           "request": {
             "method": "GET",
             "header": [
@@ -5479,7 +5529,7 @@
           ]
         },
         {
-          "name": "create-listener-rya331",
+          "name": "create-listener-rya338",
           "request": {
             "method": "POST",
             "header": [
@@ -6014,7 +6064,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya332",
+          "name": "materialize-lb-rya339",
           "request": {
             "method": "GET",
             "header": [
@@ -6171,7 +6221,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya333",
+          "name": "materialize-tg-rya340",
           "request": {
             "method": "GET",
             "header": [
@@ -6220,7 +6270,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya334",
+          "name": "add-instance-target-rya341",
           "request": {
             "method": "POST",
             "header": [
@@ -6812,7 +6862,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya335",
+          "name": "materialize-lb-rya342",
           "request": {
             "method": "GET",
             "header": [

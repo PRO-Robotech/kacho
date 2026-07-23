@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "26b734cd-ab14-4f9c-bc05-53c789f4e1e7",
+    "_postman_id": "779da6be-2065-4856-8296-55f1ea1b8e3e",
     "name": "kacho-compute / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -407,7 +407,7 @@
                   "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
                   "let _present = false;",
                   "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('lfInstanceId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 40) {",
+                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
                   "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
                   "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",

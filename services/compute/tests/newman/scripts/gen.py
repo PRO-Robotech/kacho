@@ -194,7 +194,7 @@ _POLL_SEQ = [0]
 _RYA_SEQ = [0]
 
 
-def retry_until_present(step: Step, id_env_var: str, budget: int = 40,
+def retry_until_present(step: Step, id_env_var: str, budget: int = 50,
                         interval_ms: int = 600) -> Step:
     """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
     the returned array (read-your-writes over the list-authz visibility window; opgate
@@ -202,7 +202,16 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 40,
     ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
     apply -- we retry while the id is missing. Fail-open after budget: the real
     assertion then runs once and FAILS if still absent (never masked, never infinite).
-    Use ONLY on a list of the caller's OWN just-created resource."""
+    Use ONLY on a list of the caller's OWN just-created resource.
+
+    budget*interval_ms bounds the wait (default 50*600ms = 30s). Raised 40->50 (24s->30s,
+    modest and targeted to THIS helper — not a blanket suite-wide widen): the create op is
+    already polled to done and the owner-tuple direct-read warmed before every list-includes,
+    yet the list-authz (ListObjects) materialization tail was observed to exceed the 24s
+    default on the umbrella parallel lane (ListObjects consistency can lag the direct Check
+    that the warm-GET satisfies). Fast lanes never consume the extra window (they converge in
+    the first few polls), so the raise only extends the genuine tail — it does not mask a
+    real over-hide, which still FAILS at budget."""
     guard = [
         "// bounded read-your-writes retry until own fresh id is present in the list",
         "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
@@ -281,6 +290,55 @@ def retry_until_authorized(step: Step, budget: int = 40, interval_ms: int = 600,
     # name repeats would otherwise jump the retry to an earlier same-named step — the
     # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
     return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_state(step: Step, converged_expr: str, budget: int = 40,
+                      interval_ms: int = 600, retry_on=(403, 404)) -> Step:
+    """Wrap the FIRST post-mutation / after-op VERIFY of the caller's OWN fresh resource
+    in a bounded read-your-writes retry until the OBSERVED STATE has CONVERGED.
+
+    Operation.done means the mutated resource is DURABLE (api-conventions.md), but a read
+    that verifies a specific post-mutation field value can be transient in TWO ways: (a)
+    the owner-tuple authz gate returns 403/404 before the tuple materialises, OR (b) the
+    read returns 200 but with a STALE value before the write is reflected on the read path
+    (e.g. GetLatestByFamily resolving the older image before the newer one is visible to
+    the family query). retry_until_authorized covers only (a); this covers BOTH — retries
+    SELF while the response is a transient 403/404 OR a 200 whose `converged_expr` (a JS
+    boolean, TRUE once the expected state is observed) is still false, spacing attempts by
+    ~interval_ms (busy-wait — newman fires setNextRequest before any setTimeout).
+
+    Fail-OPEN at the budget: once spent, the wrapped step's real asserts run exactly once
+    on the terminal response — a genuine never-converging state (a real product bug) STILL
+    FAILS (never masked, never infinite). Use ONLY on a POSITIVE verify of the caller's OWN
+    fresh resource — NEVER a negative / cross-account / absent-id read. Strict superset of
+    retry_until_authorized (never hides what the authz-retry caught, only ADDS the
+    state-convergence wait)."""
+    retry_set = ",".join(str(c) for c in retry_on)
+    guard = [
+        "// bounded read-your-writes retry until the caller's OWN post-mutation state converges",
+        "// (eventual-consistency): retries SELF on transient 403/404 OR a 200 whose state has",
+        "// not yet caught up. Fail-open at budget -> the real asserts run once and FAIL if",
+        "// still unconverged (a genuine never-converging state is never masked).",
+        "if (pm.environment.get('_stRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_stRetryCount', '0');",
+        "  pm.environment.set('_stRetryStarted', pm.info.requestName);",
+        "}",
+        "const _stc = parseInt(pm.environment.get('_stRetryCount') || '0', 10);",
+        "let _converged = false;",
+        f"try {{ _converged = !!({converged_expr}); }} catch (e) {{ _converged = false; }}",
+        f"const _stTransient = [{retry_set}].includes(pm.response.code) || (pm.response.code === 200 && !_converged);",
+        f"if (_stTransient && _stc < {budget}) {{",
+        "  pm.environment.set('_stRetryCount', String(_stc + 1));",
+        f"  const _std = Date.now(); while (Date.now() - _std < {interval_ms}) {{ /* state-convergence wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_stRetryCount');",
+        "pm.environment.unset('_stRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-st{_RYA_SEQ[0]}",
                    test_script=guard + list(step.test_script))
 
 
@@ -783,6 +841,7 @@ def load_cases_module(path: Path):
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present
+    mod.retry_until_state = retry_until_state
     mod.retry_until_absent = retry_until_absent
     mod.assert_op_error = assert_op_error
     mod.assert_op_error_oneof = assert_op_error_oneof

@@ -194,30 +194,41 @@ CASES.append(Case(
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="verify-default-tg-set", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        # set-default-tg is an async Operation (polled to done above) — but the PATCH'd
+        # defaultTargetGroupId is a 200-but-stale-state read: the field can lag the durable
+        # Operation on the read path. Wait for the state to CONVERGE (defaultTargetGroupId ==
+        # tgId) before asserting; retry_until_authorized (403/404 only) would run the assert
+        # once on a stale 200 and red. lastOpError short-circuits convergence (op errored →
+        # nothing to reflect, matching the original `if (!lastOpError)` guard).
+        retry_until_state(Step(name="verify-default-tg-set", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "if (!pm.environment.get('lastOpError')) {",
                           "  pm.test('default_target_group_id resolves to attached TG', () => "
                           "    pm.expect(j.defaultTargetGroupId).to.eql(pm.environment.get('tgId')));",
                           "}"]),
+             "pm.environment.get('lastOpError') || pm.response.json().defaultTargetGroupId === pm.environment.get('tgId')"),
         # Linkage: LB recomputed to ACTIVE once it has a listener + attached TG
         # (lb_status_recompute trigger). On a bare lane the listener VIP alloc may
-        # fail → LB stays INACTIVE; assert the allowed pair.
-        Step(name="get-lb-after-attach", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+        # fail → LB stays INACTIVE; assert the allowed pair. The status assert is already
+        # tolerant (ACTIVE|INACTIVE), so only the transient owner-tuple 403/404 needs the
+        # read-your-writes retry (no state to converge past the tolerant pair).
+        retry_until_authorized(Step(name="get-lb-after-attach", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('LB status ACTIVE or INACTIVE (listener-VIP dependent)', () => "
-                          "  pm.expect(j.status).to.be.oneOf(['ACTIVE', 'INACTIVE']));"]),
-        # Step 7: computed target states (control-plane, peer-independent).
-        Step(name="get-target-states", method="GET",
+                          "  pm.expect(j.status).to.be.oneOf(['ACTIVE', 'INACTIVE']));"])),
+        # Step 7: computed target states (control-plane, peer-independent). Structural assert
+        # (array + valid enum members) → only the transient owner-tuple 403/404 gate needs the
+        # bounded read-your-writes retry.
+        retry_until_authorized(Step(name="get-target-states", method="GET",
              path=f"{_LB_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "const states = j.targetStates || [];",
                           "pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));",
                           "states.forEach(s => pm.test('target status is a valid enum member', () => "
-                          f"  pm.expect(s.status).to.be.oneOf({_VALID_TARGET_STATE_JS})));"]),
+                          f"  pm.expect(s.status).to.be.oneOf({_VALID_TARGET_STATE_JS})));"])),
         # Teardown (bottom-up; clear the listener default before deleting the TG — FK RESTRICT).
         Step(name="clear-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "3d4f7756-196f-4bed-90e4-8fd4282ad111",
+    "_postman_id": "da6a9178-5405-48b8-aa51-21f58ba9ce7d",
     "name": "kacho-registry / newman / registry-repository",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -180,7 +180,7 @@
           ]
         },
         {
-          "name": "reg-warm-rya38",
+          "name": "reg-warm-rya44",
           "request": {
             "method": "GET",
             "header": [
@@ -379,7 +379,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya39",
+          "name": "repo-warm-rya45",
           "request": {
             "method": "GET",
             "header": [
@@ -634,7 +634,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya40",
+          "name": "repo-warm-rya46",
           "request": {
             "method": "GET",
             "header": [
@@ -923,7 +923,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya41",
+          "name": "repo-warm-rya47",
           "request": {
             "method": "GET",
             "header": [
@@ -1268,7 +1268,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya42",
+          "name": "repo-warm-rya48",
           "request": {
             "method": "GET",
             "header": [
@@ -1519,7 +1519,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya43",
+          "name": "repo-warm-rya49",
           "request": {
             "method": "GET",
             "header": [
@@ -1907,7 +1907,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya44",
+          "name": "repo-warm-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -2294,7 +2294,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya45",
+          "name": "repo-warm-rya51",
           "request": {
             "method": "GET",
             "header": [
@@ -2545,7 +2545,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya46",
+          "name": "repo-warm-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -2784,7 +2784,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya47",
+          "name": "repo-warm-rya53",
           "request": {
             "method": "GET",
             "header": [
@@ -3027,7 +3027,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya48",
+          "name": "repo-warm-rya54",
           "request": {
             "method": "GET",
             "header": [
@@ -3716,7 +3716,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya49",
+          "name": "repo-warm-rya55",
           "request": {
             "method": "GET",
             "header": [
@@ -3966,7 +3966,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya50",
+          "name": "repo-warm-rya56",
           "request": {
             "method": "GET",
             "header": [
@@ -4159,7 +4159,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya51",
+          "name": "repo-warm-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -4504,7 +4504,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya52",
+          "name": "repo-warm-rya58",
           "request": {
             "method": "GET",
             "header": [
@@ -4755,7 +4755,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya53",
+          "name": "repo-warm-rya59",
           "request": {
             "method": "GET",
             "header": [
@@ -5290,7 +5290,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya54",
+          "name": "repo-warm-rya60",
           "request": {
             "method": "GET",
             "header": [
