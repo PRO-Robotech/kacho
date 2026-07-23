@@ -53,7 +53,7 @@ jobs:
 
       # На ранере из тулчейнов есть только docker/git/jq/make — go/helm/node/kubectl/kind
       # ставим сами (setup-* кэшируют их в tool-cache ранера, т.е. платим один раз).
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
