@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "81728afb-570d-4158-9a0b-76cb5e683716",
+    "_postman_id": "98d26042-f16c-41a4-afcd-90c326ba3444",
     "name": "kacho-storage / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -85,7 +85,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-59",
           "request": {
             "method": "GET",
             "header": [
@@ -210,7 +210,7 @@
           ]
         },
         {
-          "name": "poll-op",
+          "name": "poll-op-60",
           "request": {
             "method": "GET",
             "header": [

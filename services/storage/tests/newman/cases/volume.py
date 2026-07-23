@@ -123,13 +123,17 @@ CASES.append(Case(
              body={"updateMask": "sizeBytes", "sizeBytes": _GROW_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           "pm.test('project-editor Operation envelope (v_update materialized)', () => pm.expect(pm.response.json().id).to.match(/^sop/));"])),
-        poll_operation_until_done(), assert_op_success(),
+        # The Update op was CREATED by jwtProjectEditorA → it must be POLLED by the same
+        # creator: OperationService.Get is creator-only (checkOperationOwnership, анти-BOLA);
+        # polling under the default cluster-admin actor → gateway denies 404 (#71 fixture-fix).
+        poll_operation_until_done(auth="jwtProjectEditorA"), assert_op_success(auth="jwtProjectEditorA"),
         # DELETE as the project-scoped editor → object-self v_delete (editor co-materializes delete).
         retry_until_authorized(Step(name="objself-delete", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           "pm.test('project-editor deletes own volume (v_delete materialized)', () => pm.expect(pm.response.json().id).to.match(/^sop/));"])),
-        poll_operation_until_done(), assert_op_success(),
+        # Delete op created by jwtProjectEditorA → poll under the same creator (creator-only Op.Get).
+        poll_operation_until_done(auth="jwtProjectEditorA"), assert_op_success(auth="jwtProjectEditorA"),
     ],
 ))
 
