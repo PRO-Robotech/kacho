@@ -12,9 +12,11 @@ import coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 
 // ---- AdminState ------------------------------------------------------------
 // AdminState — desired administrative state of a NetworkLoadBalancer (redesign
-// replacement for the :start/:stop power-verbs). LIVE-mutable. In EXPAND it is
-// stored + echoed but does not yet gate status recompute (0013 trigger rewrite —
-// MIGRATE). Empty string means "unset" and is normalised to ENABLED at persist.
+// replacement for the :start/:stop power-verbs). LIVE-mutable. Stored + echoed and
+// GATES the computed per-target TargetState (GetTargetStates: DISABLED ⇒ targets
+// INACTIVE — get_target_states.go computeTargetState). It does not (yet) feed the
+// LB's own status recompute trigger (0013 has no admin_state — MIGRATE). Empty
+// string means "unset" and is normalised to ENABLED at persist.
 
 type AdminState string
 
