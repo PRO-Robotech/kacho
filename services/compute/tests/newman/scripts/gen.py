@@ -205,12 +205,12 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 50,
     Use ONLY on a list of the caller's OWN just-created resource.
 
     budget*interval_ms bounds the wait (default 50*600ms = 30s). Raised 40->50 (24s->30s,
-    modest and targeted to THIS helper — not a blanket suite-wide widen): the create op is
-    already polled to done and the owner-tuple direct-read warmed before every list-includes,
-    yet the list-authz (ListObjects) materialization tail was observed to exceed the 24s
-    default on the umbrella parallel lane (ListObjects consistency can lag the direct Check
-    that the warm-GET satisfies). Fast lanes never consume the extra window (they converge in
-    the first few polls), so the raise only extends the genuine tail — it does not mask a
+    modest and targeted to THIS helper — not a blanket suite-wide widen): every call site
+    already polls the create op to done first (most also warm the owner-tuple with a direct-
+    read GET), yet the list-authz (ListObjects) materialization tail was observed to exceed
+    the 24s default on the umbrella parallel lane (ListObjects consistency can lag the direct
+    Check that a warm-GET satisfies). Fast lanes never consume the extra window (they converge
+    in the first few polls), so the raise only extends the genuine tail — it does not mask a
     real over-hide, which still FAILS at budget."""
     guard = [
         "// bounded read-your-writes retry until own fresh id is present in the list",
