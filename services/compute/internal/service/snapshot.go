@@ -47,11 +47,23 @@ type SnapshotService struct {
 	diskRepo      DiskRepo
 	projectClient ProjectClient
 	opsRepo       operations.Repo
+	// ownerRegistrar — sync-registrar owner-tuple (best-effort post-commit
+	// window-оптимизация; register-drainer — at-least-once backstop). nil = только
+	// drainer. Подключается в composition-root через WithOwnerRegistrar.
+	ownerRegistrar OwnerRegistrar
 }
 
 // NewSnapshotService создаёт SnapshotService.
 func NewSnapshotService(repo SnapshotRepo, diskRepo DiskRepo, projectClient ProjectClient, opsRepo operations.Repo) *SnapshotService {
 	return &SnapshotService{repo: repo, diskRepo: diskRepo, projectClient: projectClient, opsRepo: opsRepo}
+}
+
+// WithOwnerRegistrar подключает sync-registrar owner-tuple: немедленная post-commit
+// (best-effort) регистрация, сужающая eventual-consistency-окно до poll'а
+// register-drainer'а. nil-safe. Вызывается один раз из composition-root до трафика.
+func (s *SnapshotService) WithOwnerRegistrar(registrar OwnerRegistrar) *SnapshotService {
+	s.ownerRegistrar = registrar
+	return s
 }
 
 // Get возвращает Snapshot по ID.
@@ -130,9 +142,13 @@ func (s *SnapshotService) doCreate(ctx context.Context, snapID string, req Creat
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
-	// the compute_snapshot→project owner-tuple is registered transactionally
-	// via the FGA register-intent written in repo.Insert's writer-tx and applied by
-	// the register-drainer through kacho-iam (no direct FGA, no dual-write).
+	// the compute_snapshot→project owner-tuple is registered transactionally — repo.Insert
+	// writes the FGA register-intent in the SAME writer-tx as the row
+	// (compute_fga_register_outbox), applied async by the register-drainer through
+	// kacho-iam (no direct FGA, no dual-write). Sync-register post-commit (best-effort,
+	// parity с Disk/Instance) делает owner-tuple эффективным немедленно, сужая
+	// read-your-writes-окно list свежего снапшота до drainer-poll'а.
+	syncRegisterOwner(ctx, s.ownerRegistrar, "Snapshot", created.ID, created.ProjectID, created.Labels)
 	return anypb.New(protoconv.Snapshot(created))
 }
 

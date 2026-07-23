@@ -78,11 +78,23 @@ type ImageService struct {
 	snapshotRepo  SnapshotRepo
 	projectClient ProjectClient
 	opsRepo       operations.Repo
+	// ownerRegistrar — sync-registrar owner-tuple (best-effort post-commit
+	// window-оптимизация; register-drainer — at-least-once backstop). nil = только
+	// drainer. Подключается в composition-root через WithOwnerRegistrar.
+	ownerRegistrar OwnerRegistrar
 }
 
 // NewImageService создаёт ImageService.
 func NewImageService(repo ImageRepo, diskRepo DiskRepo, snapshotRepo SnapshotRepo, projectClient ProjectClient, opsRepo operations.Repo) *ImageService {
 	return &ImageService{repo: repo, diskRepo: diskRepo, snapshotRepo: snapshotRepo, projectClient: projectClient, opsRepo: opsRepo}
+}
+
+// WithOwnerRegistrar подключает sync-registrar owner-tuple: немедленная post-commit
+// (best-effort) регистрация, сужающая eventual-consistency-окно до poll'а
+// register-drainer'а. nil-safe. Вызывается один раз из composition-root до трафика.
+func (s *ImageService) WithOwnerRegistrar(registrar OwnerRegistrar) *ImageService {
+	s.ownerRegistrar = registrar
+	return s
 }
 
 // Get возвращает Image по ID.
@@ -231,9 +243,13 @@ func (s *ImageService) doCreate(ctx context.Context, imageID string, req CreateI
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
-	// the compute_image→project owner-tuple is registered transactionally
-	// via the FGA register-intent written in repo.Insert's writer-tx and applied
-	// by the register-drainer through kacho-iam (no direct FGA, no dual-write).
+	// the compute_image→project owner-tuple is registered transactionally — repo.Insert
+	// writes the FGA register-intent in the SAME writer-tx as the row
+	// (compute_fga_register_outbox), applied async by the register-drainer through
+	// kacho-iam (no direct FGA, no dual-write). Sync-register post-commit (best-effort,
+	// parity с Disk/Instance) делает owner-tuple эффективным немедленно, сужая
+	// read-your-writes-окно list/GetLatestByFamily свежего образа до drainer-poll'а.
+	syncRegisterOwner(ctx, s.ownerRegistrar, "Image", created.ID, created.ProjectID, created.Labels)
 	return anypb.New(protoconv.Image(created))
 }
 
