@@ -474,14 +474,20 @@ func (d *Drainer[T]) processRowInTx(parentCtx context.Context, tx pgx.Tx, r clai
 	)
 	defer applyCancel()
 
-	// Для tx-DB-операций (mark*) тоже используем detached ctx — иначе при
-	// shutdown row останется с inc'd attempt_count но без mark'а success
-	// (после rollback все откатится, но при partial commit hazardous).
-	dbCtx, dbCancel := context.WithTimeout(
-		context.WithoutCancel(parentCtx),
-		d.cfg.ApplyTimeout,
-	)
-	defer dbCancel()
+	// markCtx mints a FRESH, detached ApplyTimeout budget for the mark* DB write,
+	// measured from the instant the mark is issued — deliberately NOT shared with
+	// applyCtx. Both must be detached (WithoutCancel) for graceful-shutdown grace
+	// (the mark completes even after parentCtx is cancelled), but they must NOT
+	// share a deadline: an apply that consumes the WHOLE ApplyTimeout (a hung peer
+	// that only errors at its own deadline) would otherwise leave the mark's ctx
+	// already expired ("context already done"). Then markTransientFailure never
+	// lands its attempt_count cap, the claim's attempt_count++ commits unbounded,
+	// and a merely-slow *transient* row climbs into the poison gate — false-poisoned,
+	// its owner-tuple intent lost forever (violating the transient no-poison rule).
+	// A fresh budget per mark guarantees the outcome is always recorded.
+	markCtx := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(context.WithoutCancel(parentCtx), d.cfg.ApplyTimeout)
+	}
 
 	// 1. Decode. Decoder-fail = permanent (malformed payload, no retry helps).
 	payload, derr := d.decoder(r.payload)
@@ -489,12 +495,20 @@ func (d *Drainer[T]) processRowInTx(parentCtx context.Context, tx pgx.Tx, r clai
 		d.logger.Warn("decode_failed_poison",
 			slog.Int64("id", r.id),
 			slog.String("err", derr.Error()))
+		dbCtx, dbCancel := markCtx()
+		defer dbCancel()
 		d.poison(dbCtx, tx, r.id, derr.Error())
 		return false
 	}
 
 	// 2. Apply.
 	aerr := d.applier(applyCtx, r.eventType, payload)
+	applyCancel() // release the apply budget before marking
+
+	// The mark budget starts NOW — after apply returned — so it is unaffected by
+	// how much of ApplyTimeout the apply consumed (see markCtx rationale above).
+	dbCtx, dbCancel := markCtx()
+	defer dbCancel()
 
 	// 3. Classify + mark. The classifier is the single
 	//    decision point: transient errors (Unavailable/timeout/conn) NEVER

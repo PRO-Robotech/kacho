@@ -77,6 +77,74 @@ func Test_1_4_04_LongTransientOutage_NoPoison(t *testing.T) {
 		"expected ≥9 apply attempts (8 transient + ≥1 success), got %d", len(calls))
 }
 
+// Test_1_4_06_ApplyConsumesFullApplyTimeout_TransientStillCapped_NoPoison —
+// regression for the mark-context bug.
+//
+// When the peer hangs and the apply only returns AT the ApplyTimeout deadline
+// (DeadlineExceeded — a transient class), the drainer must STILL record the
+// transient outcome and keep attempt_count capped below MaxAttempts (the
+// documented transient no-poison invariant). The bug: processRowInTx derived the
+// DB-mark context with the SAME ApplyTimeout budget as the apply, started at the
+// same instant — so an apply that consumed the whole budget left the mark's
+// context already expired ("context already done"), markTransientFailure never
+// landed its cap, and attempt_count (bumped by the claim UPDATE) climbed to
+// MaxAttempts → the row false-poisoned and its owner-tuple was lost forever.
+//
+// This case (apply consuming the full ApplyTimeout) is exactly what the existing
+// no-poison tests miss: they use a FAST-failing applier, so the mark context
+// still has budget and the bug is invisible.
+func Test_1_4_06_ApplyConsumesFullApplyTimeout_TransientStillCapped_NoPoison(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	pool, _ := setupDrainerPG(t)
+	fa := newFakeApplier()
+
+	cfg := testCfg()
+	cfg.MaxAttempts = 3
+	cfg.ApplyTimeout = 200 * time.Millisecond
+	cfg.BackoffMin = 10 * time.Millisecond
+	cfg.BackoffMax = 20 * time.Millisecond
+
+	// Apply blocks until its (ApplyTimeout-bounded) ctx is cancelled, then returns
+	// ctx.Err() (DeadlineExceeded) — deterministically consuming the FULL
+	// ApplyTimeout on every attempt (models a hung IAM that only errors at the
+	// deadline). Always transient; never succeeds.
+	fa.setDelay("fga.tuple.write", 10*time.Second) // >> ApplyTimeout → blocks to deadline
+
+	dCancel, done, _ := startDrainer(t, ctx, pool, cfg, fa)
+	defer func() { dCancel(); <-done }()
+
+	waitForListenerReady(t, ctx, pool, cfg.Channel)
+	id := insertOutboxRow(t, ctx, pool, "fga.tuple.write",
+		`{"resource_kind":"apps_application","resource_id":"app-slow","project_id":"prj-X"}`)
+
+	// The drainer must attempt the row at least MaxAttempts times. With the bug it
+	// stops here (poisoned after the cap fails to land); with the fix it keeps
+	// re-claiming unbounded.
+	require.Truef(t, fa.waitForCalls(cfg.MaxAttempts, 20*time.Second),
+		"drainer must attempt the hung transient row ≥ MaxAttempts (got %d)", fa.countCalls())
+
+	// Settle so the MaxAttempts-th claim's commit has landed and any poison would
+	// be observable.
+	time.Sleep(1 * time.Second)
+
+	r := readOutboxRow(t, ctx, pool, id)
+	assert.Nil(t, r.sentAt, "hung transient apply never succeeds → row not sent")
+	assert.Lessf(t, r.attemptCount, cfg.MaxAttempts,
+		"transient no-poison invariant: attempt_count must stay capped < MaxAttempts even when apply "+
+			"consumes the FULL ApplyTimeout (got attempt_count=%d, MaxAttempts=%d) — a poisoned row "+
+			"(attempt_count>=MaxAttempts) permanently loses the owner-tuple", r.attemptCount, cfg.MaxAttempts)
+
+	// Positive proof of no-poison: the row stays claimable, so the drainer keeps
+	// re-attempting it past MaxAttempts (unbounded transient retry). With the bug
+	// the poison gate freezes the call count at MaxAttempts.
+	assert.Greaterf(t, fa.countCalls(), cfg.MaxAttempts,
+		"no-poison row must keep being re-claimed past MaxAttempts (got %d applies, MaxAttempts=%d)",
+		fa.countCalls(), cfg.MaxAttempts)
+}
+
 // Test_1_4_05_PermanentError_PoisonAndSurface — a permanent error poisons and
 // surfaces the row while normal rows keep draining.
 //
