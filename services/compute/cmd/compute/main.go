@@ -904,6 +904,23 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 		drainer.Config{
 			Table:   computeFGAOutboxTable,
 			Channel: computeFGAOutboxChannel,
+			// Parallel apply of a claim-batch's RegisterResource calls: a sequential
+			// drainer ceilings at ~1/apply_latency (~0.2–0.5 tuple/s when iam
+			// RegisterResource times out under write-burst) — an order of magnitude
+			// below the create-worker's ~6.7/s, so the outbox backlog diverges and
+			// v_list never materialises in the list read-your-writes window. Exactly-once
+			// is unchanged (claim-tx holds each row's FOR UPDATE SKIP LOCKED lock;
+			// applies are external gRPC, no extra pool conns). The iam applier is a
+			// grpc.ClientConn-backed client → safe for concurrent invocation.
+			//
+			// Same-object apply-order is NOT preserved under concurrency (see
+			// drainer.Config.ApplyConcurrency ORDERING note). Safe here because iam
+			// materialisation is source_version-LWW (resource_mirror UPSERT guarded by
+			// `source_version < EXCLUDED.source_version`) + a level-triggered reconciler
+			// reading the CURRENT mirror — a reordered stale Register is a no-op and
+			// enforcement converges regardless of apply order. This convergence, not
+			// "independent tuple writes", is the invariant this knob relies on.
+			ApplyConcurrency: cfg.FGARegisterApplyConcurrency,
 		},
 		func(b []byte) (fgaintent.Payload, error) {
 			p, decErr := fgaintent.Decode(b)

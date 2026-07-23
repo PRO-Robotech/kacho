@@ -139,6 +139,19 @@ type Config struct {
 	// DENY). Это in-process goroutine, не cross-cluster rollout-flag.
 	FGARegisterDrainerEnabled bool `envconfig:"KACHO_COMPUTE_FGA_REGISTER_DRAINER_ENABLED" default:"true"`
 
+	// FGARegisterApplyConcurrency — сколько owner-tuple register-intent'ов одного
+	// claim-батча drainer применяет ПАРАЛЛЕЛЬНО через kacho-iam RegisterResource
+	// (corelib drainer.Config.ApplyConcurrency). Последовательный drainer упирается
+	// в ~1/apply_latency: под write-burst RegisterResource таймаутит (~5s) →
+	// ceiling ~0.2–0.5 tuple/s, что на порядок НИЖЕ create-throughput воркера
+	// (~6.7/s) → outbox-backlog расходится без границы, v_list не материализуется в
+	// окне ретрая (list-read-your-writes fail). Параллельный apply (N вызовов —
+	// внешний gRPC, БЕЗ доп. conn'ов пула, exactly-once не меняется: claim-tx держит
+	// per-row lock) поднимает ceiling до ~N/apply_latency, закрывая инверсию
+	// producer/consumer. Default 16 — headroom при высокой apply-latency; тюнится
+	// без ребилда. 1 = историческое последовательное поведение.
+	FGARegisterApplyConcurrency int `envconfig:"KACHO_COMPUTE_FGA_REGISTER_APPLY_CONCURRENCY" default:"16"`
+
 	// RequireIAM — fail-closed boot-gate. When true,
 	// mutating Create is refused (UNAVAILABLE) and readiness is NotReady until the
 	// register-drainer is IAM-connected, so no resource is ever created without a

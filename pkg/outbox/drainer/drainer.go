@@ -33,6 +33,36 @@ type Config struct {
 	//   non-cancellable inner ctx с этим deadline, чтобы row не осталась
 	//   half-applied при ctx.Cancel parent-loop'а.
 	ApplyTimeout time.Duration
+	// ApplyConcurrency — сколько строк одного claim-батча применять ПАРАЛЛЕЛЬНО
+	// (default 1 = последовательно, историческое поведение). >1 разворачивает
+	// внешние Apply-вызовы батча по N горутинам, скрывая per-call latency пира:
+	// одиночный drainer с последовательными ApplyTimeout-bounded apply'ями
+	// упирается в ~1/apply_latency (при таймаутящем пире — ~1/ApplyTimeout, что
+	// катастрофически мало под write-burst). Claim-батч при ApplyConcurrency>1
+	// сайзится ровно в ApplyConcurrency, поэтому вся волна применяется за один
+	// проход параллельно; mark'и остаются ПОСЛЕДОВАТЕЛЬНЫМИ на единственной
+	// claim-транзакции. Exactly-once НЕ меняется: та же claim-tx держит
+	// FOR UPDATE SKIP LOCKED lock КАЖДОЙ заклейменной строки до commit'а, а
+	// Apply не трогает DB-состояние (только внешний вызов) → параллельные apply
+	// не создают ни второй tx, ни лишних conn'ов пула. Требование: Applier
+	// БЕЗОПАСЕН для конкурентного вызова (см. Applier godoc).
+	//
+	// ORDERING (важно): при ApplyConcurrency>1 порядок apply ВНУТРИ батча НЕ
+	// сохраняется (строки применяются конкурентно), поэтому две intent-строки
+	// ОДНОГО объекта (напр. register создания и unregister удаления, или два
+	// label-register) могут закоммититься в target в обратном к id-порядке.
+	// Включать ТОЛЬКО когда финальное состояние target'а СХОДИТСЯ независимо от
+	// порядка: либо операции коммутативны, либо target идемпотентен И
+	// монотонен/level-triggered (stale-apply — no-op). Канонические register-
+	// appliers kacho (compute/vpc/…) безопасны НЕ из-за «независимости записей», а
+	// потому что материализация в iam — source_version-LWW (resource_mirror UPSERT
+	// с `WHERE source_version < EXCLUDED.source_version`) + level-triggered
+	// reconciler (читает ТЕКУЩИЙ mirror), поэтому reordered stale register — no-op,
+	// а enforcement сходится к mirror-состоянию при любом порядке. НЕ включать для
+	// applier'а с order-sensitive target'ом без версионирования (напр. iam level-2
+	// fga_outbox несёт СЫРОЙ, не-source_version-guarded owner-hierarchy tuple —
+	// оставлен sequential намеренно).
+	ApplyConcurrency int
 }
 
 // withDefaults заполняет нулевые поля конфигом по умолчанию.
@@ -55,6 +85,9 @@ func (c Config) withDefaults() Config {
 	if c.ApplyTimeout <= 0 {
 		c.ApplyTimeout = 5 * time.Second
 	}
+	if c.ApplyConcurrency < 1 {
+		c.ApplyConcurrency = 1
+	}
 	return c
 }
 
@@ -69,6 +102,14 @@ type Decoder[T any] func(payload []byte) (T, error)
 // Возвращает любую другую error → transient (retry с exp backoff)
 //
 //	ИЛИ permanent (если errors.Is(err, ErrPermanent)).
+//
+// CONCURRENCY: при Config.ApplyConcurrency>1 drainer вызывает Applier из
+// НЕСКОЛЬКИХ горутин одновременно (разные строки одного claim-батча) — Applier
+// ОБЯЗАН быть безопасен для конкурентного вызова. Канонические appliers это
+// gRPC-клиенты поверх *grpc.ClientConn (конкурентно-безопасен) + чистое
+// построение запроса — они уже удовлетворяют требованию. Applier, шарящий
+// mutable-состояние без синхронизации, обязан либо синхронизироваться, либо
+// оставить ApplyConcurrency=1.
 type Applier[T any] func(ctx context.Context, eventType string, payload T) error
 
 // ErrAlreadyApplied — applier возвращает, когда target-система сообщила «уже есть»
