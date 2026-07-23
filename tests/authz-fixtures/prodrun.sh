@@ -40,7 +40,20 @@ fi
 DID_RESEED=0
 if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
   echo "[prodrun] seeding matrix -> $CACHE (stale=$STALE)" >&2
-  python3 "$FIX/prodseed_matrix.py" > "$CACHE"
+  # Bounded-retry: prodseed's owner db_lookup can transiently race the account/project
+  # provisioning EC on a FRESH stand (owner-a account/project not yet queryable after the
+  # first OIDC login) → "db_lookup(...) empty after retries". A single re-attempt clears
+  # it; without this a flaked reseed leaves an empty matrix → the whole suite washes.
+  reseed_ok=0
+  for attempt in 1 2 3; do
+    tmp="$(mktemp)"
+    if python3 "$FIX/prodseed_matrix.py" > "$tmp" 2>/tmp/prodseed-matrix.err && [[ -s "$tmp" ]]; then
+      mv "$tmp" "$CACHE"; reseed_ok=1; break
+    fi
+    echo "[prodrun] reseed attempt $attempt failed (provisioning EC?) — retrying in 8s" >&2
+    rm -f "$tmp"; sleep 8
+  done
+  [[ "$reseed_ok" == 1 ]] || { echo "[prodrun] FATAL: matrix reseed failed after 3 attempts" >&2; tail -3 /tmp/prodseed-matrix.err >&2; exit 1; }
   rm -f /tmp/matrix-*-ext.json   # subject ids change on reseed → invalidate ext caches
   DID_RESEED=1
 fi
