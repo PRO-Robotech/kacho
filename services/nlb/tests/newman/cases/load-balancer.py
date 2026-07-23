@@ -640,16 +640,31 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.210"}, "weight": 100}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
+        # AdminState enum members are PREFIXED (ADMIN_STATE_ENABLED / ADMIN_STATE_DISABLED —
+        # network_load_balancer.proto), UNLIKE SessionAffinity/Placement whose non-zero members
+        # drop the prefix (FIVE_TUPLE / EXTERNAL_REGIONAL). The proto3-JSON enum value is the
+        # FULL name: "ADMIN_STATE_DISABLED". The bare "DISABLED" is not a valid AdminState value
+        # → parsed as ADMIN_STATE_UNSPECIFIED(0) → adminStateFromPb "" → Update preserves current
+        # (ENABLED) → GetTargetStates computed HEALTHY (root cause of the got-HEALTHY-want-INACTIVE
+        # fail; the product Update+gating are correct — this was a wrong enum-value string).
         retry_until_authorized(Step(name="disable", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "adminState", "adminState": "DISABLED"},
+             body={"updateMask": "adminState", "adminState": "ADMIN_STATE_DISABLED"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        # The adminState=DISABLED PATCH is a durable Operation (polled to done), but the
-        # computed TargetState reflects it on the read path a beat later — GetTargetStates
-        # recomputes from the LB's adminState, and a transient pre-DISABLED read yields the
-        # default INITIAL ramp instead of INACTIVE (200-but-stale-state, drain-lag EC).
-        # Wait for EVERY target state to CONVERGE to INACTIVE before asserting; a plain
-        # retry_until_authorized (403/404 only) would assert once on a stale INITIAL 200.
+        # Diagnostic RED-lock: confirm the disable actually PERSISTED before reading the derived
+        # target state, so a future adminState-update regression fails LOUDLY here (on the LB's
+        # own field) instead of surfacing confusingly as gts-HEALTHY. The op is durable (polled),
+        # so this converges immediately; retry_until_state also absorbs read-replica lag.
+        retry_until_state(Step(name="verify-adminstate-disabled", method="GET",
+             path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('adminState persisted DISABLED', () => "
+                          "  pm.expect(pm.response.json().adminState).to.eql('ADMIN_STATE_DISABLED'));"]),
+             "pm.response.json().adminState === 'ADMIN_STATE_DISABLED'"),
+        # GetTargetStates recomputes from the LB's (now DISABLED) adminState → every target
+        # reports INACTIVE (get_target_states.go computeTargetState). retry_until_state guards
+        # any residual read-replica lag on the derived state; a plain retry_until_authorized
+        # (403/404 only) would assert once on a stale pre-DISABLED 200.
         retry_until_state(Step(name="gts", method="GET",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[*assert_status(200),

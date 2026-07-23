@@ -50,8 +50,11 @@ type LoadBalancer struct {
 	SessionAffinity    SessionAffinity
 	DeletionProtection bool
 	// AdminState — NLB-1b EXPAND (additive): desired administrative state
-	// (ENABLED|DISABLED), LIVE-mutable. Persisted + echoed; does NOT yet gate
-	// status recompute (MIGRATE). Empty → normalised to ENABLED at persist.
+	// (ENABLED|DISABLED), LIVE-mutable. Persisted + echoed, and GATES the computed
+	// per-target TargetState (GetTargetStates: DISABLED ⇒ every target INACTIVE —
+	// get_target_states.go computeTargetState). It does NOT feed the LB's own
+	// status (ACTIVE/INACTIVE) recompute trigger (0013 has no admin_state — MIGRATE).
+	// Empty → normalised to ENABLED at persist.
 	AdminState AdminState
 	// Placement — NLB-1b EXPAND (additive): merged placement discriminator,
 	// derived-consistent with Type/PlacementType. Persisted + echoed; not yet
