@@ -181,6 +181,133 @@ func TestFGAFilter_EmptyGrant(t *testing.T) {
 	}
 }
 
+// An EMPTY allow-set is cached only under the SHORT negative-TTL (EmptyCacheTTL),
+// NEVER the full CacheTTL. Under read-your-writes an empty result is the most likely
+// to be STALE (the subject just created a resource whose owner tuple has not yet
+// materialised in the FGA replica the list-authz call landed on). Pinning the empty
+// for the full CacheTTL would keep the caller's OWN fresh resource invisible on List
+// for up to 5s (the compute list-includes flake); the short negative-TTL bounds that
+// to EmptyCacheTTL, comfortably inside the client read-your-writes retry budget. The
+// brief cache still gives a zero-grant subject backpressure (no iam.ListObjects
+// hammering under polling/retry).
+//
+// RED before the fix: the empty was cached for the FULL 5s CacheTTL → a re-query
+// after EmptyCacheTTL but before CacheTTL was served the stale empty from cache and
+// the now-materialised id never surfaced until the full TTL elapsed.
+func TestFGAFilter_EmptyAllowSetShortNegativeTTL(t *testing.T) {
+	mock := &mockAuthClient{
+		responses: []*iamv1.ListObjectsResponse{
+			{ResourceIds: []string{}},                 // 1st: pre-materialization empty (stale replica)
+			{ResourceIds: []string{"epd-instance-1"}}, // 2nd (post negative-TTL): tuple materialised
+		},
+	}
+	cfg := DefaultConfig()
+	f := NewFGAFilter(mock, cfg)
+	// The negative-TTL must be strictly shorter than the full TTL, else an empty
+	// could be pinned as long as a populated set (the flake this guards against).
+	if !(cfg.EmptyCacheTTL > 0 && cfg.EmptyCacheTTL < cfg.CacheTTL) {
+		t.Fatalf("EmptyCacheTTL (%s) must be >0 and < CacheTTL (%s)", cfg.EmptyCacheTTL, cfg.CacheTTL)
+	}
+
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	f.now = clk.now
+	ctx := context.Background()
+
+	// 1st: fresh empty (stale replica), cached under the negative-TTL.
+	d1, err := f.ListAllowedIDs(ctx, "user:usr_alice", ResourceTypeInstance, ActionInstanceRead)
+	if err != nil {
+		t.Fatalf("first call err: %v", err)
+	}
+	if !d1.Empty || d1.FromCache {
+		t.Fatalf("first call: expected a fresh empty decision, got %+v", d1)
+	}
+
+	// WITHIN the negative-TTL: a cache hit (backpressure — a zero-grant subject must
+	// not hammer iam→FGA with a strong read on every poll).
+	clk.advance(cfg.EmptyCacheTTL / 2)
+	dHit, err := f.ListAllowedIDs(ctx, "user:usr_alice", ResourceTypeInstance, ActionInstanceRead)
+	if err != nil {
+		t.Fatalf("in-window call err: %v", err)
+	}
+	if !dHit.FromCache || !dHit.Empty {
+		t.Fatalf("in-window: expected a cached empty (backpressure), got %+v", dHit)
+	}
+	if mock.calls.Load() != 1 {
+		t.Fatalf("in-window: empty must be briefly cached → still 1 iam call, got %d", mock.calls.Load())
+	}
+
+	// PAST the negative-TTL but well WITHIN the full CacheTTL: the empty entry has
+	// expired → re-query iam (which, iam-side, now reads HIGHER_CONSISTENCY) and the
+	// now-materialised id surfaces — it is NOT pinned for the full 5s CacheTTL.
+	clk.advance(cfg.EmptyCacheTTL) // total elapsed = 1.5×EmptyCacheTTL  (< CacheTTL)
+	d2, err := f.ListAllowedIDs(ctx, "user:usr_alice", ResourceTypeInstance, ActionInstanceRead)
+	if err != nil {
+		t.Fatalf("post-negative-TTL call err: %v", err)
+	}
+	if d2.FromCache {
+		t.Fatalf("post-negative-TTL: empty must have expired, expected a fresh re-query, got a cache hit")
+	}
+	if got := d2.IDs(); len(got) != 1 || got[0] != "epd-instance-1" {
+		t.Fatalf("post-negative-TTL: expected re-query to surface the materialised id, got %v", got)
+	}
+	if mock.calls.Load() != 2 {
+		t.Fatalf("expected 2 iam calls (empty expired → re-query), got %d", mock.calls.Load())
+	}
+}
+
+// A non-empty allow-set is cached under the FULL CacheTTL (not the short negative-TTL):
+// a populated set is authoritative and must not incur an iam RTT on every List within
+// the TTL. Guards against a regression that applied the short negative-TTL to all
+// entries.
+func TestFGAFilter_NonEmptyUsesFullTTL(t *testing.T) {
+	mock := &mockAuthClient{
+		responses: []*iamv1.ListObjectsResponse{{ResourceIds: []string{"epd-instance-1"}}},
+	}
+	cfg := DefaultConfig()
+	f := NewFGAFilter(mock, cfg)
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	f.now = clk.now
+	ctx := context.Background()
+
+	if _, err := f.ListAllowedIDs(ctx, "user:usr_alice", ResourceTypeInstance, ActionInstanceRead); err != nil {
+		t.Fatalf("first call err: %v", err)
+	}
+	// Advance past the short negative-TTL but well within the full CacheTTL: a
+	// populated entry must STILL be a cache hit (it uses CacheTTL, not EmptyCacheTTL).
+	clk.advance(cfg.EmptyCacheTTL + cfg.EmptyCacheTTL/2) // > EmptyCacheTTL, < CacheTTL
+	d2, err := f.ListAllowedIDs(ctx, "user:usr_alice", ResourceTypeInstance, ActionInstanceRead)
+	if err != nil {
+		t.Fatalf("second call err: %v", err)
+	}
+	if !d2.FromCache {
+		t.Fatalf("non-empty: must remain cached for the full CacheTTL, got a re-query")
+	}
+	if mock.calls.Load() != 1 {
+		t.Fatalf("non-empty: expected 1 iam call (still cached), got %d", mock.calls.Load())
+	}
+}
+
+// NewFGAFilter clamps EmptyCacheTTL: zero → default (1s); a value longer than
+// CacheTTL is nonsensical (an empty pinned longer than a populated set) → clamped
+// down to CacheTTL.
+func TestFGAFilter_EmptyCacheTTLClamped(t *testing.T) {
+	// Zero → default.
+	cfg := DefaultConfig()
+	cfg.EmptyCacheTTL = 0
+	f := NewFGAFilter(nil, cfg)
+	if f.cfg.EmptyCacheTTL != defaultEmptyCacheTTL {
+		t.Fatalf("zero EmptyCacheTTL: want default %s, got %s", defaultEmptyCacheTTL, f.cfg.EmptyCacheTTL)
+	}
+	// Longer than CacheTTL → clamped down to CacheTTL.
+	cfg2 := DefaultConfig()
+	cfg2.CacheTTL = 2 * time.Second
+	cfg2.EmptyCacheTTL = 30 * time.Second
+	f2 := NewFGAFilter(nil, cfg2)
+	if f2.cfg.EmptyCacheTTL != cfg2.CacheTTL {
+		t.Fatalf("over-long EmptyCacheTTL: want clamp to CacheTTL %s, got %s", cfg2.CacheTTL, f2.cfg.EmptyCacheTTL)
+	}
+}
+
 // Bypass when filter disabled (config gate).
 func TestFGAFilter_DisabledIsBypass(t *testing.T) {
 	mock := &mockAuthClient{}
@@ -289,23 +416,29 @@ func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
 	}
 }
 
-// Cache bound: max-entries-bounds-and-evicts.
+// Cache bound: max-entries-bounds-and-evicts. Each subject gets a distinct NON-empty
+// allow-set so entries are actually cached (empty allow-sets are deliberately not
+// cached — see TestFGAFilter_EmptyAllowSetNotCached) and the eviction bound is
+// genuinely exercised.
 func TestFGAFilter_CacheBounded(t *testing.T) {
-	mock := &mockAuthClient{responses: []*iamv1.ListObjectsResponse{{}}}
+	mock := &mockAuthClient{}
 	cfg := DefaultConfig()
 	cfg.CacheMaxEntries = 3
 	cfg.CacheTTL = time.Hour // ensure entries don't expire during test
 	f := NewFGAFilter(mock, cfg)
 
 	for i := 0; i < 10; i++ {
-		mock.responses = []*iamv1.ListObjectsResponse{{}}
 		subj := "user:usr_" + string(rune('a'+i))
+		mock.responses = []*iamv1.ListObjectsResponse{{ResourceIds: []string{"epd-" + subj}}}
 		if _, err := f.ListAllowedIDs(context.Background(), subj, ResourceTypeInstance, ActionInstanceRead); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if size := f.Size(); size > cfg.CacheMaxEntries {
 		t.Fatalf("cache bound violated: size=%d > max=%d", size, cfg.CacheMaxEntries)
+	}
+	if size := f.Size(); size == 0 {
+		t.Fatalf("cache bound test vacuous: non-empty allow-sets should have been cached, size=0")
 	}
 }
 
