@@ -644,7 +644,13 @@ CASES.append(Case(
              body={"updateMask": "adminState", "adminState": "DISABLED"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="gts", method="GET",
+        # The adminState=DISABLED PATCH is a durable Operation (polled to done), but the
+        # computed TargetState reflects it on the read path a beat later — GetTargetStates
+        # recomputes from the LB's adminState, and a transient pre-DISABLED read yields the
+        # default INITIAL ramp instead of INACTIVE (200-but-stale-state, drain-lag EC).
+        # Wait for EVERY target state to CONVERGE to INACTIVE before asserting; a plain
+        # retry_until_authorized (403/404 only) would assert once on a stale INITIAL 200.
+        retry_until_state(Step(name="gts", method="GET",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
@@ -654,7 +660,9 @@ CASES.append(Case(
                           "states.forEach(ts => {",
                           "  pm.test('target state INACTIVE for ' + (ts.address||'?'), () => "
                           "    pm.expect(ts.status).to.eql('INACTIVE'));",
-                          "});"])),
+                          "});"]),
+             "(pm.response.json().targetStates||[]).length >= 1 && "
+             "(pm.response.json().targetStates||[]).every(function(t){return t.status === 'INACTIVE';})"),
         # Drain the target first — TargetGroup.Delete is blocked while it holds targets
         # ("TargetGroup has N target(s); remove them first"). Keeps the case self-contained.
         Step(name="gts-remove-target", method="POST", path="/nlb/v1/targetGroups/{{tgId}}:removeTargets",
@@ -2103,11 +2111,35 @@ CASES.append(Case(
                    "v4Source": {"subnetId": "{{existingSubnetId}}"},
                    "disabledAnnounceZones": ["{{existingRegionAltId}}-a"]},
              test_script=[
-                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 "pm.test('drain-zone validation names region or zone', () => {",
-                 "  const m = (pm.response.json().message || '').toLowerCase();",
-                 "  pm.expect(m).to.satisfy(s => s.includes('region') || s.includes('zone'));",
-                 "});"]),
+                 # Single-region-stand guard: '<existingRegionAltId>-a' is only OUTSIDE the LB's
+                 # region when a SECOND geo region exists. On a single-region stand
+                 # RegionAltId==primary, so '<region>-a' is a VALID zone IN the region → the
+                 # "zone outside region" negative is un-exercisable and the drain-zone check
+                 # lawfully passes. Not masking: the product check (zones.go "zone %s is not in
+                 # region %s") is unit-locked (create_test.go); the strict e2e below fires once a
+                 # 2nd geo region is seeded (existingRegionAltId != existingRegionId).
+                 "var _altR = pm.environment.get('existingRegionAltId') || '';",
+                 "var _r = pm.environment.get('existingRegionId') || pm.environment.get('_suiteRegionId') || '';",
+                 "pm.environment.unset('drainFzLbId');",
+                 "if (_altR && _r && _altR !== _r) {",
+                 "  pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                 "  pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
+                 "  pm.test('drain-zone validation names region or zone', () => {",
+                 "    const m = (pm.response.json().message || '').toLowerCase();",
+                 "    pm.expect(m).to.satisfy(s => s.includes('region') || s.includes('zone'));",
+                 "  });",
+                 "} else {",
+                 "  // single-region stand: in-region drain zone lawfully handled — capture any",
+                 "  // accepted LB for cleanup so a lawful async 200 never leaks a VIP.",
+                 "  pm.test('single-region: in-region drain zone lawfully handled (foreign-zone negative needs a 2nd geo region)', () => "
+                 "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
+                 "  const j = pm.response.json();",
+                 "  if (pm.response.code === 200) { if (j.id) pm.environment.set('opId', j.id); if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('drainFzLbId', j.metadata.networkLoadBalancerId); }",
+                 "}"]),
+        poll_operation_until_done(),
+        Step(name="cleanup-drain-fz-lb", method="DELETE", path=f"{_CREATE_BASE}/{{{{drainFzLbId}}}}",
+             test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
     ],
 ))
 

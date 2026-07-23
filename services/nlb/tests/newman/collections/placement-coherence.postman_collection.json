@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "dccc1da5-ed55-4504-abfb-c0e53ee0f500",
+    "_postman_id": "851c8d66-d699-4737-93a5-9c5d735edf17",
     "name": "kacho-nlb / newman / placement-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1297,14 +1297,162 @@
                   "}",
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
-                  "if (pm.environment.get('zcSubR2Id')) {",
+                  "var _altR = pm.environment.get('existingRegionAltId') || '';",
+                  "var _r = pm.environment.get('existingRegionId') || '';",
+                  "pm.environment.unset('zcLeakLbId');",
+                  "if (pm.environment.get('zcSubR2Id') && _altR && _r && _altR !== _r) {",
                   "  pm.test('cross-region subnet rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "  const j = pm.response.json();",
                   "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
                   "  pm.test('wrong-region verbatim message', () => pm.expect(j.message).to.eql('load balancer vip subnet must be in the same region as the load balancer'));",
-                  "} else {",
+                  "} else if (!pm.environment.get('zcSubR2Id')) {",
                   "  pm.test('no cross-region subnet fixture → lawful rejection, never silent 200', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
+                  "} else {",
+                  "  // single-region stand: same-region subnet lawfully accepted (async op) — capture",
+                  "  // the LB so its VIP/list contracts get cleaned up, never a leaked cross-tenant 200.",
+                  "  pm.test('single-region: same-region subnet lawfully accepted (cross-region needs a 2nd geo region)', () =>     pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
+                  "  const j = pm.response.json();",
+                  "  if (pm.response.code === 200) { if (j.id) pm.environment.set('opId', j.id); if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('zcLeakLbId', j.metadata.networkLoadBalancerId); }",
                   "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-12",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-zc-leak-lb",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{zcLeakLbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{zcLeakLbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-13",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
                 ]
               }
             }
@@ -1350,7 +1498,7 @@
           ]
         },
         {
-          "name": "poll-op-12",
+          "name": "poll-op-14",
           "request": {
             "method": "GET",
             "header": [
@@ -1468,7 +1616,7 @@
           ]
         },
         {
-          "name": "poll-op-13",
+          "name": "poll-op-15",
           "request": {
             "method": "GET",
             "header": [
@@ -1588,7 +1736,7 @@
           ]
         },
         {
-          "name": "poll-op-14",
+          "name": "poll-op-16",
           "request": {
             "method": "GET",
             "header": [
@@ -1678,7 +1826,7 @@
           ]
         },
         {
-          "name": "poll-op-15",
+          "name": "poll-op-17",
           "request": {
             "method": "GET",
             "header": [
@@ -1767,7 +1915,7 @@
           ]
         },
         {
-          "name": "poll-op-16",
+          "name": "poll-op-18",
           "request": {
             "method": "GET",
             "header": [

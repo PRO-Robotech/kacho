@@ -172,19 +172,21 @@ CASES.append(Case(
     steps=[
         # Determinism guard (SEC): the whole point of this P0 is that the caller
         # (editor A) holds `editor` on the SOURCE project but has NO `editor`
-        # grant on the DESTINATION (cross) project. The suite fixture binds
-        # jwtProjectEditorA to existingProjectId only and jwtProjectEditorB to
-        # existingProjectCrossId only (env description), so editor A MUST be
-        # denied a direct Create in the cross project — the same
-        # `editor on project:<cross>` Check that Move.authorizeDestination
-        # performs. Asserting it here makes the deny GUARANTEED, not
-        # lenient-tolerated: if the fixture is ever mis-seeded so editor A gains
-        # editor on cross, this fails LOUDLY instead of the Move silently
-        # succeeding (a cross-tenant bypass). A denied Create writes nothing, so
-        # there is no resource to clean up.
+        # grant on the DESTINATION project. The destination MUST be a project the
+        # actor is genuinely foreign to — a CROSS-ACCOUNT project (projectB1Id in
+        # account B). The same-account cross project (_suiteProjectCrossId = projA2)
+        # is NOT foreign: prodseed grants the nlb move actor editor+v_update on
+        # projA2 (in-account), so a Move there is a LAWFUL 200 — targeting it made
+        # this "cross-tenant deny" P0 assert a bypass on a legitimate relocation.
+        # projectB1Id lives in account B where the actor has no binding, so the
+        # `editor on project:<dst>` Check that Move.authorizeDestination performs
+        # genuinely denies. Asserting the direct-Create deny here makes it
+        # GUARANTEED, not lenient-tolerated: a mis-seed granting editor A on
+        # account B fails LOUDLY instead of the Move silently succeeding. A denied
+        # Create writes nothing, so there is no resource to clean up.
         Step(name="precond-editorA-denied-on-dst", method="POST", path=_NLB,
              auth="jwtProjectEditorA",
-             body={"projectId": "{{_suiteProjectCrossId}}", "regionId": "{{_suiteRegionId}}",
+             body={"projectId": "{{projectB1Id}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-mvpc-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED")]),
         Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
@@ -205,7 +207,11 @@ CASES.append(Case(
         # so relaxing the code here to the deny-family does NOT weaken the security contract.
         Step(name="mv-as-src-editor-only", method="POST", path=f"{_NLB}/{{{{nlbId}}}}:move",
              auth="jwtProjectEditorA",
-             body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
+             # cross-ACCOUNT dst (account B) — the actor has no binding there, so
+             # authorizeDestination(`editor on project:<dst>`) genuinely denies. The
+             # same-account _suiteProjectCrossId (projA2) is NOT foreign to this actor
+             # (in-account editor grant) → a 200 there is lawful, not a bypass.
+             body={"destinationProjectId": "{{projectB1Id}}"},
              test_script=[
                  # STRICT must-DENY (never 200) — ordering-tolerant (authz-first 403 OR
                  # peer-first hide-existence 400/404 "not found"). Parity with the sibling
@@ -344,13 +350,16 @@ CASES.append(Case(
     classes=["AZD"], priority="P0",
     steps=[
         # Determinism guard (SEC) — parity with AZD-NLB-MV-SCOPE-DST-DENIED.
-        # editor A is editor on src only; a direct Create in the cross project
-        # (same `editor on project:<cross>` Check that Move.authorizeDestination
+        # dst MUST be a genuinely-foreign CROSS-ACCOUNT project (projectB1Id, account
+        # B) — the actor has no binding there. The same-account _suiteProjectCrossId
+        # (projA2) is NOT foreign (prodseed grants the actor editor+v_update on projA2
+        # in-account), so a Move there is a LAWFUL 200, not a bypass. A direct Create
+        # in projectB1Id (same `editor on project:<dst>` Check authorizeDestination
         # runs) MUST be denied, so the Move dst-scope deny is guaranteed and a
         # mis-seed fails loudly here rather than as a silent 200 on the Move.
         Step(name="precond-editorA-denied-on-dst", method="POST", path=_TGR,
              auth="jwtProjectEditorA",
-             body={"projectId": "{{_suiteProjectCrossId}}", "regionId": "{{_suiteRegionId}}",
+             body={"projectId": "{{projectB1Id}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-tgrmvpc-{{runId}}", "port": 8080,
                    "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
@@ -374,7 +383,8 @@ CASES.append(Case(
         # `precond-editorA-denied-on-dst` above (403 on a direct Create).
         Step(name="mv-no-dst-editor", method="POST", path=f"{_TGR}/{{{{tgId}}}}:move",
              auth="jwtProjectEditorA",
-             body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
+             # cross-ACCOUNT dst (account B) — actor has no binding → genuine deny.
+             body={"destinationProjectId": "{{projectB1Id}}"},
              test_script=[
                  # STRICT must-DENY (never 200) — ordering-tolerant (authz-first 403 OR
                  # peer-first hide-existence 400/404 "not found"). Parity with the sibling
