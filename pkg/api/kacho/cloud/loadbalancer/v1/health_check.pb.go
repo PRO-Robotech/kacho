@@ -62,7 +62,7 @@ type HealthCheck struct {
 	// effective_port — output-only derived: the probe-port override if set,
 	// otherwise the group's backend port (`TargetGroup.port`). Surfaces the
 	// probe-vs-traffic port divergence by construction.
-	EffectivePort int64 `protobuf:"varint,10,opt,name=effective_port,json=effectivePort,proto3" json:"effective_port,omitempty"`
+	EffectivePort int32 `protobuf:"varint,10,opt,name=effective_port,json=effectivePort,proto3" json:"effective_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -168,7 +168,7 @@ func (x *HealthCheck) GetGrpc() *HealthCheck_GrpcOptions {
 	return nil
 }
 
-func (x *HealthCheck) GetEffectivePort() int64 {
+func (x *HealthCheck) GetEffectivePort() int32 {
 	if x != nil {
 		return x.EffectivePort
 	}
@@ -491,7 +491,7 @@ const file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDesc = "" +
 	"\x05https\x18\b \x01(\v25.kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptionsH\x00R\x05https\x12J\n" +
 	"\x04grpc\x18\t \x01(\v24.kacho.cloud.loadbalancer.v1.HealthCheck.GrpcOptionsH\x00R\x04grpc\x12%\n" +
 	"\x0eeffective_port\x18\n" +
-	" \x01(\x03R\reffectivePort\x1a \n" +
+	" \x01(\x05R\reffectivePort\x1a \n" +
 	"\n" +
 	"TcpOptions\x12\x12\n" +
 	"\x04port\x18\x01 \x01(\x03R\x04port\x1a\x89\x02\n" +
