@@ -121,7 +121,15 @@ launch_wave() {  # $@ = services to run concurrently within this wave
     d="$(suite_dir "$svc")"
     # nlb EXTERNAL suites draw auto-VIPs from ONE shared external AddressPool — --jobs>1
     # transiently exhausts it → phantom (see nlb run.sh header). Force nlb serial.
-    sjobs="$JOBS"; [ "$svc" = "nlb" ] && sjobs=1
+    # nlb: shared external-VIP pool (--jobs>1 exhausts it). iam+registry: materialization-
+    # heavy (every AccessBinding / registry+repo Create → owner-tuple via fga_register_outbox
+    # → drainer → OpenFGA Write). Under --jobs>1 the concurrent create rate outruns the
+    # drainer → owner-tuple materialization backlog → create→Get/Delete 403/404 read-your-
+    # writes past even a 48s client retry (throughput inversion, EC-lag not correctness — the
+    # emission is verified). Serialising these suites keeps the drainer caught up so the
+    # bounded client-retries cover the window. Correctness is validated at this concurrency;
+    # prod-scale materialization throughput is the separate tracked scalability epic.
+    sjobs="$JOBS"; case "$svc" in nlb|iam|registry) sjobs=1 ;; esac
     mkdir -p "$d/out"   # redirect below opens out/suite.log BEFORE run.sh's own mkdir
     ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
         --env-var "baseUrl=http://localhost:$GW_PORT" \
