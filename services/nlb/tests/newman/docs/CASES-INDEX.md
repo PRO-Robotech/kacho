@@ -170,6 +170,8 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-UPD-STATE-IMMUTABLE-IP-VERSION` — STATE,VAL/P1 — ip_version immutable
 - `*-UPD-STATE-IMMUTABLE-ADDRESS-ID` — STATE,VAL/P1 — address_id immutable
 - `*-UPD-STATE-DEFAULT-TG-REGION-MISMATCH` — STATE,NEG/P1 — default_target_group_id in different region → FailedPrecondition
+- `*-CR-SEC-TG-CROSS-PROJECT` — NEG,AZD/P0 — wiring a TargetGroup of another project on Create (new + legacy field) → refused as "no such target group", never wired (Verifies REQ-LST-TG-SAME-PROJECT)
+- `*-UPD-SEC-TG-CROSS-PROJECT` — NEG,AZD,STATE/P0 — repointing to a TargetGroup of another project → refused, reference unchanged (Verifies REQ-LST-TG-SAME-PROJECT)
 
 ### HTTP method semantics
 - `*-METHOD-PUT-NOT-ALLOWED` — VAL,NEG/P3 — see NLB block

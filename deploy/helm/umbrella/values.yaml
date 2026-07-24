@@ -263,6 +263,29 @@ mtls:
     caNamespace: ""
     caDuration: "87600h"      # 10y root
     caRenewBefore: "720h"     # 30d
+  # ─── bootstrap-operator identity (templates/bootstrap-operator-certificate.yaml) ─
+  # A client-auth-ONLY internal-CA leaf whose sole purpose is to call
+  # iam.v1.InternalBootstrapTokenService/MintBootstrapToken on kacho-iam :9091
+  # (the cluster-admin token mint has no ReBAC gate and no gateway REST route —
+  # its ONLY credential is the caller's client certificate). Deliberately NOT the
+  # api-gateway identity: "is the api-gateway" must never be a licence to mint
+  # cluster-admin.
+  #
+  # Issuing it grants NOTHING by itself — kacho-iam must also carry this exact SAN
+  # in `kacho-iam.config.authn.bootstrapMint.allowedClientSANs` (empty list ⇒ the
+  # mint denies everyone, in every mode). Rendered only when mtls.enabled, so the
+  # base profile (mTLS off) emits nothing.
+  bootstrapOperator:
+    enabled: true
+    secretName: kacho-bootstrap-operator-client-tls
+    spiffe:
+      trustDomain: kacho.cloud
+      # Pinned (not release-namespace-derived) so the SAN in the cert and the SAN
+      # in the iam allow-list are the same literal across profiles.
+      namespace: kacho
+      saName: kacho-bootstrap-operator
+    leafDuration: "2160h"     # 90d
+    leafRenewBefore: "720h"   # 30d
 
 # cert-manager (jetstack) sub-chart — controller + CRDs + webhook. Installed only
 # when mtls.enabled (Chart.yaml condition). Deploys into the umbrella release

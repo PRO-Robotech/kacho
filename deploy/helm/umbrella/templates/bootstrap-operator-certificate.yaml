@@ -1,0 +1,78 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+  ─── bootstrap-operator client identity (internal-CA leaf, client auth only) ───
+
+  A DEDICATED operator identity for the cluster-admin token mint
+  (`iam.v1.InternalBootstrapTokenService/MintBootstrapToken`, kacho-iam :9091).
+
+  WHY IT EXISTS AT ALL. The mint hands out a Hydra-signed RS256 Bearer for a
+  cluster `system_admin` ServiceAccount. It cannot be gated by a ReBAC relation
+  (it exists to obtain the FIRST token, when no relation exists yet) and it must
+  NOT be gated by network position ("internal = trusted" is a forbidden premise,
+  security.md). Its ONLY credential is therefore the CALLER'S CLIENT CERTIFICATE:
+  kacho-iam admits exactly the SPIFFE SANs listed in
+  `authn.bootstrap-mint.allowed-client-sans` (authzguard.CallerPolicy arm 3,
+  enforced in EVERY mode; an empty list denies everyone).
+
+  WHY A SEPARATE IDENTITY (not the api-gateway client cert). Reusing
+  `api-gateway-client-tls` would make "is the api-gateway" a licence to mint
+  cluster-admin — and the gateway is reachable from the whole cluster and fronts
+  tenant traffic. The mint has NO REST route on the gateway precisely so that the
+  gateway is NOT one of its callers; issuing it the gateway's own SAN would put
+  that door straight back. This leaf is a client-auth-only identity nothing else
+  uses, so possession of it means exactly one thing: "may mint a bootstrap token".
+
+  Consumers are OPERATOR TOOLING, not pods — nothing mounts this Secret. The
+  seed/fixture path reads it out of the cluster (`kubectl get secret
+  kacho-bootstrap-operator-client-tls`) and dials kacho-iam :9091 directly over
+  mTLS (tests/authz-fixtures/mint_rs256.py). A real cluster hands the material to
+  a human/CI operator the same way.
+
+  Issuing the cert grants NOTHING on its own: kacho-iam must ALSO carry this SAN
+  in its allow-list (values.dev.yaml / values.dev-prod.yaml →
+  kacho-iam.config.authn.bootstrapMint.allowedClientSANs). The two halves are
+  locked together by deploy/tests/helm/bootstrap-mint-operator-identity-test.sh.
+
+  Rendered only when the internal-CA PKI is up (mtls.enabled) and the identity is
+  wanted (mtls.bootstrapOperator.enabled). NB: `and` in Go templates is NOT
+  short-circuiting — both operands are `default dict` guarded so a profile that
+  omits the section renders nothing instead of nil-pointering (same fix as
+  pg-certificates.yaml).
+*/ -}}
+{{- $mtls := .Values.mtls | default dict -}}
+{{- $op := $mtls.bootstrapOperator | default dict -}}
+{{- if and $mtls.enabled $op.enabled -}}
+{{- $ca := $mtls.internalCA | default dict -}}
+{{- $issuerName := $ca.clusterIssuerName | default "kacho-internal-ca" -}}
+{{- $sp := $op.spiffe | default dict -}}
+{{- $trust := $sp.trustDomain | default "kacho.cloud" -}}
+{{- $spNs := $sp.namespace | default .Release.Namespace -}}
+{{- $sa := $sp.saName | default "kacho-bootstrap-operator" -}}
+{{- $secret := $op.secretName | default "kacho-bootstrap-operator-client-tls" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $secret | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    kacho.cloud/component: cert-manager-internal-ca
+    app.kubernetes.io/name: {{ $sa | quote }}
+    app.kubernetes.io/managed-by: helm
+spec:
+  secretName: {{ $secret | quote }}
+  duration: {{ $op.leafDuration | default "2160h" | quote }}
+  renewBefore: {{ $op.leafRenewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $issuerName | quote }}
+    kind: ClusterIssuer
+    group: cert-manager.io
+  uris:
+    - {{ printf "spiffe://%s/ns/%s/sa/%s" $trust $spNs $sa | quote }}
+  usages:
+    - client auth        # client-only — this identity never terminates a listener
+{{- end }}

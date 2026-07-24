@@ -572,7 +572,7 @@ const file_kacho_cloud_iam_v1_user_service_proto_rawDesc = "" +
 	"\x04List\x12$.kacho.cloud.iam.v1.ListUsersRequest\x1a%.kacho.cloud.iam.v1.ListUsersResponse\"!\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x0f\x12\r/iam/v1/users\x12\xcc\x01\n" +
 	"\x06Invite\x12%.kacho.cloud.iam.v1.InviteUserRequest\x1a .kacho.cloud.operation.Operation\"y\x8a\xb5\x18\x10iam.users.invite\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
-	"account_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
+	"account_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +
 	"\x12InviteUserMetadata\x12\x04User\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/iam/v1/users:invite\x12\xcf\x01\n" +
 	"\x06Update\x12%.kacho.cloud.iam.v1.UpdateUserRequest\x1a .kacho.cloud.operation.Operation\"|\x8a\xb5\x18\x10iam.users.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +

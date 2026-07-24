@@ -151,6 +151,36 @@ func (e *ResourceExtractor) ExtractFromHTTP(r *http.Request, fqn string, entry C
 // definition_tier is set it takes precedence").
 const definitionTierField = "definition_tier"
 
+// definitionTierScopedFQNs — the CLOSED set of RPCs whose request message
+// declares the `definition_tier` anchor and may therefore have their authz scope
+// resolved from it. Today that is exactly RoleService/Create (the only request
+// message in proto/ carrying the field).
+//
+// The binding is a SECURITY invariant, not a micro-optimisation. The anchor is
+// read from the RAW request payload — on the HTTP path straight out of the JSON
+// body, BEFORE grpc-gateway decodes it and silently drops unknown keys. Without
+// an FQN binding a caller could smuggle
+// `{"definitionTier":{"tierType":"iam.project","tierId":"<a project I own>"}}`
+// into the body of ANY JSON-bodied RPC and re-point the FGA Check at a scope of
+// their own choosing while the backend still acted on the real (victim) scope —
+// a BOLA/privilege-escalation primitive (security.md §object-scoped authz).
+// Scope resolution must never depend on unauthenticated client input that the
+// handler itself ignores.
+//
+// A new RPC gains the anchor by adding `definition_tier` to its request message
+// AND its FQN here (both, deliberately — the code-driven allow-list keeps the
+// generated permission-catalog byte-identical).
+var definitionTierScopedFQNs = map[string]struct{}{
+	"kacho.cloud.iam.v1.RoleService/Create": {},
+}
+
+// definitionTierAnchored reports whether fqn is allowed to resolve its authz
+// scope from the `definition_tier` anchor.
+func definitionTierAnchored(fqn string) bool {
+	_, ok := definitionTierScopedFQNs[strings.TrimPrefix(strings.TrimSpace(fqn), "/")]
+	return ok
+}
+
 // definitionTierObjectType maps a dotted definition-tier type to its FGA object
 // type: iam.account→account, iam.project→project. iam.cluster (system roles are
 // seeded, never API-created) and any unknown type → ok=false, so the caller keeps
@@ -172,12 +202,19 @@ func definitionTierObjectType(tierType string) (string, bool) {
 // F4 `definition_tier` anchor and, when present + resolvable, returns the FGA
 // (objectType, id) the authz scope MUST use — SUPERSEDING the legacy
 // account_id/project_id catalog extraction (proto precedence semantics). ok=false
-// when the message has no definition_tier field, it is empty, or its tier_type is
-// unresolvable (iam.cluster / unknown) — the caller then keeps the catalog's
-// static scope extraction (legacy account_id/project_id). Code-driven (like the
-// nested ResourceRef `.id` handling) so the byte-identical permission-catalog is
+// when fqn does not declare the anchor (definitionTierScopedFQNs), the message has
+// no definition_tier field, it is empty, or its tier_type is unresolvable
+// (iam.cluster / unknown) — the caller then keeps the catalog's static scope
+// extraction (legacy account_id/project_id). Code-driven (like the nested
+// ResourceRef `.id` handling) so the byte-identical permission-catalog is
 // untouched.
-func (e *ResourceExtractor) ResolveDefinitionTierScope(req any) (objectType, id string, ok bool) {
+//
+// fqn is REQUIRED and gates the whole resolution: the anchor may only re-scope the
+// RPCs that declare it (see definitionTierScopedFQNs).
+func (e *ResourceExtractor) ResolveDefinitionTierScope(fqn string, req any) (objectType, id string, ok bool) {
+	if !definitionTierAnchored(fqn) {
+		return "", "", false
+	}
 	msg, okp := protoMessageFromAny(req)
 	if !okp {
 		return "", "", false
@@ -207,7 +244,14 @@ func (e *ResourceExtractor) ResolveDefinitionTierScope(req any) (objectType, id 
 // object out of the JSON request body (camelCase, grpc-gateway spelling) and
 // restores the body for the downstream handler. Same precedence + resolvability
 // contract; ok=false → caller keeps the legacy static extraction.
-func (e *ResourceExtractor) ResolveDefinitionTierScopeHTTP(r *http.Request) (objectType, id string, ok bool) {
+//
+// The fqn gate is load-bearing HERE above all: this is the arm that reads
+// UNAUTHENTICATED client input (the raw body) — an unbound resolution would let
+// any caller re-scope any JSON-bodied RPC (see definitionTierScopedFQNs).
+func (e *ResourceExtractor) ResolveDefinitionTierScopeHTTP(fqn string, r *http.Request) (objectType, id string, ok bool) {
+	if !definitionTierAnchored(fqn) {
+		return "", "", false
+	}
 	if r == nil {
 		return "", "", false
 	}

@@ -134,12 +134,37 @@ func (r *ImageRepo) List(ctx context.Context, p image.Pagination) ([]*domain.Ima
 	return out, next, nil
 }
 
+// imageInsertCoherentSQL — атомарная вставка-если-можно (INSERT…SELECT, ban #10 — НЕ
+// Get→check→INSERT): источник (snapshot ЛИБО volume) обязан принадлежать ТОМУ ЖЕ
+// проекту, что создаваемый Image. Голого FK недостаточно — он проверяет лишь
+// существование строки, поэтому caller мог засеять свой образ ЧУЖИМ приватным
+// снапшотом/томом и вычитать содержимое чужого тома (cross-project disclosure/BOLA).
+// Предикат project-coherence вычисляется в ТОМ ЖЕ стейтменте, что вставка (row-lock
+// FK-проверки), поэтому TOCTOU-окна нет. size_bytes/min_disk_bytes снимаются с той же
+// project-scoped строки источника. Источник не задан (”→NULL, пост-SET-NULL форма) →
+// предикат тривиально истинен, size 0 — прежнее поведение сохранено.
+const imageInsertCoherentSQL = `
+	INSERT INTO images
+		(id, project_id, name, description, labels, region_id,
+		 source_snapshot_id, source_volume_id, size_bytes, min_disk_bytes, format, state)
+	SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,$8::text,
+	       COALESCE((SELECT s.size_bytes FROM snapshots s WHERE s.id=$7 AND s.project_id=$2),
+	                (SELECT v.size_bytes FROM volumes   v WHERE v.id=$8 AND v.project_id=$2), 0),
+	       COALESCE((SELECT s.size_bytes FROM snapshots s WHERE s.id=$7 AND s.project_id=$2),
+	                (SELECT v.size_bytes FROM volumes   v WHERE v.id=$8 AND v.project_id=$2), 0),
+	       $9::text,'READY'
+	 WHERE ($7::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$7 AND s.project_id=$2))
+	   AND ($8::text IS NULL OR EXISTS (SELECT 1 FROM volumes   v WHERE v.id=$8 AND v.project_id=$2))
+	RETURNING created_at, updated_at, size_bytes, min_disk_bytes`
+
 // Insert реализует image.Writer: state=READY сразу; size_bytes/min_disk_bytes derived
-// из размера источника (snapshot ЛИБО volume) на INSERT; source_* ”→NULL. source FK
-// (23503) / source at-most-one mutual-exclusion CHECK (23514) / partial UNIQUE(name)
-// (23505) → контрактные sentinel'ы. exactly-one на Create — domain.Validate() (sync).
-// storage_outbox CREATED + fga_register_outbox (owner-tuple
-// storage_image) — та же writer-TX (один commit).
+// из размера источника (snapshot ЛИБО volume) на INSERT; source_* ”→NULL. Источник
+// обязан лежать в ТОМ ЖЕ проекте (project-coherent CAS, imageInsertCoherentSQL) —
+// иначе 0 rows → hide-existence "<Resource> <id> not found" (byte-identical настоящему
+// miss'у, security.md §6). source FK (23503) / source at-most-one mutual-exclusion
+// CHECK (23514) / partial UNIQUE(name) (23505) → контрактные sentinel'ы. exactly-one
+// на Create — domain.Validate() (sync). storage_outbox CREATED + fga_register_outbox
+// (owner-tuple storage_image) — та же writer-TX (один commit).
 func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image) (*domain.Image, error) {
 	labels, err := json.Marshal(nonNilLabels(i.Labels))
 	if err != nil {
@@ -154,19 +179,14 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image) (*domain.Image,
 	}
 	created := *i
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		serr := tx.QueryRow(ctx, `
-			INSERT INTO images
-				(id, project_id, name, description, labels, region_id,
-				 source_snapshot_id, source_volume_id, size_bytes, min_disk_bytes, format, state)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
-				COALESCE((SELECT size_bytes FROM snapshots WHERE id=$7),(SELECT size_bytes FROM volumes WHERE id=$8),0),
-				COALESCE((SELECT size_bytes FROM snapshots WHERE id=$7),(SELECT size_bytes FROM volumes WHERE id=$8),0),
-				$9,'READY')
-			RETURNING created_at, updated_at, size_bytes, min_disk_bytes`,
+		serr := tx.QueryRow(ctx, imageInsertCoherentSQL,
 			i.ID, i.ProjectID, i.Name, i.Description, labels, i.RegionID,
 			srcSnap, srcVol, domain.FormatStandard).
 			Scan(&created.CreatedAt, &created.UpdatedAt, &created.SizeBytes, &created.MinDiskBytes)
 		if serr != nil {
+			if errors.Is(serr, pgx.ErrNoRows) {
+				return imageSourceUnavailable(i.SourceSnapshot, i.SourceVolume)
+			}
 			return serr
 		}
 		if oerr := outbox.Emit(ctx, tx, outboxTable, "Image", i.ID, "CREATED", map[string]any{
@@ -189,6 +209,23 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image) (*domain.Image,
 	created.Placement = domain.ImagePlacementRegional
 	created.Status = domain.ImageStatusFromState("READY")
 	return &created, nil
+}
+
+// imageSourceUnavailable разбирает 0-row исход project-coherent CAS: заданный источник
+// не резолвится В ПРОЕКТЕ образа — либо его нет вовсе, либо он принадлежит ЧУЖОМУ
+// проекту. Оба исхода отдают ОДИН И ТОТ ЖЕ контрактный текст "<Resource> <id> not
+// found" (FailedPrecondition) — byte-identical с настоящим FK-miss'ом (security.md §6):
+// различимый ответ был бы existence-oracle («чужой ресурс существует»). 0 rows без
+// заданного источника невозможно (предикат тривиально истинен) → opaque INTERNAL.
+func imageSourceUnavailable(snapshotID, volumeID string) error {
+	switch {
+	case snapshotID != "":
+		return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, snapshotID)
+	case volumeID != "":
+		return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, volumeID)
+	default:
+		return ports.ErrInternal
+	}
 }
 
 // Update реализует image.Writer: mutable name/description/labels (COALESCE, nil →

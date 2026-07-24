@@ -49,7 +49,11 @@ type CreateUseCase struct {
 	// вызывается BEST-EFFORT после durable commit листенера. nil → только async
 	// register-drainer. См. WithRegistrar.
 	registrar Registrar
-	logger    *slog.Logger
+	// checkClient — object-scoped authz-gate для caller-supplied `targetGroupId`
+	// (per-RPC interceptor скоупит только parent LB). nil → Check пропускается
+	// (dev/unwired); owning-project-инвариант энфорсится безусловно. См. tg_ref.go.
+	checkClient CheckClient
+	logger      *slog.Logger
 }
 
 // NewCreateUseCase — конструктор. Зависимости — port-интерфейсы (composition
@@ -76,6 +80,16 @@ func (u *CreateUseCase) WithRegistrar(r Registrar) *CreateUseCase {
 	return u
 }
 
+// WithCheckClient подключает object-scoped authz-gate для caller-supplied
+// `targetGroupId` (`viewer` на `nlb_target_group:<id>`). Per-RPC interceptor
+// авторизует caller'а только на parent LoadBalancer, поэтому TG — необойдённый
+// caller-supplied объект (CWE-863). nil → Check пропускается (dev/unwired);
+// owning-project-инвариант при этом энфорсится безусловно. Возвращает self.
+func (u *CreateUseCase) WithCheckClient(c CheckClient) *CreateUseCase {
+	u.checkClient = c
+	return u
+}
+
 // Run — sync validation + Operation creation + async worker spawn. Возвращает
 // Operation клиенту до завершения worker'а; клиент поллит OperationService.Get.
 func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest) (*operations.Operation, error) {
@@ -97,15 +111,16 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	}
 
 	// NLB-1b MIGRATE (F4/NLB-1-23): the listener wires to a TargetGroup DIRECTLY
-	// (single authoritative targetGroupId). Sync-precheck existence +
-	// region-coherence with the parent LB — a missing TG yields actionable guidance;
-	// the direct FK (0018) is the atomic race backstop. target_group_id takes
-	// precedence over the legacy default_target_group_id (both coexist until CONTRACT).
+	// (single authoritative targetGroupId). Sync-precheck owning-project scope +
+	// object-scoped authz + existence + region-coherence with the parent LB — a
+	// missing TG yields actionable guidance; the direct FK (0018/0023) is the atomic
+	// race backstop. target_group_id takes precedence over the legacy
+	// default_target_group_id (both coexist until CONTRACT).
 	tgID := req.GetTargetGroupId()
 	if tgID == "" {
 		tgID = req.GetDefaultTargetGroupId()
 	}
-	if err := u.prevalidateTargetGroup(ctx, tgID, string(lb.RegionID)); err != nil {
+	if err := u.prevalidateTargetGroup(ctx, tgID, string(lb.ProjectID), string(lb.RegionID)); err != nil {
 		return nil, err
 	}
 
@@ -205,11 +220,14 @@ func (u *CreateUseCase) fetchParentLB(ctx context.Context, lbID string) (*parent
 }
 
 // prevalidateTargetGroup — NLB-1b MIGRATE (F4/NLB-1-23): sync precheck that the
-// wired targetGroupId references an EXISTING TargetGroup region-coherent with the
-// parent LB. Missing → actionable FAILED_PRECONDITION (guides the client to create
-// the TG first or use the one-shot LB.Create); region mismatch → region-coherence
-// FAILED_PRECONDITION. The direct FK (0018) is the atomic backstop for races.
-func (u *CreateUseCase) prevalidateTargetGroup(ctx context.Context, tgID, lbRegion string) error {
+// wired targetGroupId references a TargetGroup of the parent LB's OWN project,
+// authorized to the caller, and region-coherent with the LB. Unresolved (missing
+// OR owned by another project — deliberately indistinguishable, see tg_ref.go) →
+// actionable FAILED_PRECONDITION (guides the client to create the TG first or use
+// the one-shot LB.Create); unauthorized → PermissionDenied; region mismatch →
+// region-coherence FAILED_PRECONDITION. The composite FK (0018/0023) is the atomic
+// backstop for the precheck→worker race.
+func (u *CreateUseCase) prevalidateTargetGroup(ctx context.Context, tgID, lbProject, lbRegion string) error {
 	if tgID == "" {
 		return nil
 	}
@@ -218,14 +236,19 @@ func (u *CreateUseCase) prevalidateTargetGroup(ctx context.Context, tgID, lbRegi
 		return mapDomainErr(err)
 	}
 	defer func() { _ = rd.Close() }()
-	tg, err := rd.TargetGroups().Get(ctx, tgID)
+	tg, err := lookupWiredTargetGroup(ctx, rd.TargetGroups(), tgID, lbProject)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
+		if errors.Is(err, errTargetGroupUnresolved) {
 			return status.Error(codes.FailedPrecondition,
 				"listener requires an existing targetGroupId; create the TargetGroup first "+
 					"(POST /nlb/v1/targetGroups) or use one-shot NetworkLoadBalancer.Create")
 		}
 		return mapDomainErr(err)
+	}
+	// Object-scoped authz AFTER the owning-project resolve — a cross-project id must
+	// stay hidden as a miss (a PermissionDenied here would confirm it exists).
+	if err := checkTargetGroupViewer(ctx, u.checkClient, tgID); err != nil {
+		return err
 	}
 	if string(tg.RegionID) != lbRegion {
 		return status.Errorf(codes.FailedPrecondition,

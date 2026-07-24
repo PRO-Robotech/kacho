@@ -196,7 +196,11 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Image, stri
 // СИНХРОННО (InvalidArgument: name / source exactly-one), cross-domain ссылки
 // (region→geo, project→iam) валидируются на request-path fail-closed (peer
 // Unavailable → UNAVAILABLE). Валидный вход → LRO-строка + worker (writer.Insert;
-// state→READY сразу; source FK / partial UNIQUE(name) → Operation error).
+// state→READY сразу; source / partial UNIQUE(name) → Operation error). Источник
+// (source_snapshot_id / source_volume_id) резолвится repo СТРОГО в проекте образа
+// (project-coherent CAS): чужой приватный снапшот/том неотличим от несуществующего —
+// Operation error FAILED_PRECONDITION "<Resource> <id> not found" (анти-BOLA
+// hide-existence; иначе содержимое чужого тома утекало бы в образ caller'а).
 func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Operation, error) {
 	i.Placement = domain.ImagePlacementRegional
 	if err := i.Validate(); err != nil {

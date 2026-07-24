@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "c198eb86-80e6-4332-a50a-e6823374b0d8",
+    "_postman_id": "62f569f6-15f0-45ba-a3a5-229ce224bb54",
     "name": "kacho-nlb / newman / placement-coherence",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -261,7 +261,7 @@
           ]
         },
         {
-          "name": "create-cross-zone-cr557",
+          "name": "create-cross-zone-cr569",
           "request": {
             "method": "POST",
             "header": [
@@ -737,7 +737,7 @@
           ]
         },
         {
-          "name": "create-same-zone-cr558",
+          "name": "create-same-zone-cr570",
           "request": {
             "method": "POST",
             "header": [
@@ -1243,7 +1243,7 @@
           ]
         },
         {
-          "name": "create-wrong-region-cr559",
+          "name": "create-wrong-region-cr571",
           "request": {
             "method": "POST",
             "header": [
@@ -1666,7 +1666,7 @@
           ]
         },
         {
-          "name": "create-same-region-cr560",
+          "name": "create-same-region-cr572",
           "request": {
             "method": "POST",
             "header": [

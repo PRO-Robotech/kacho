@@ -204,6 +204,24 @@ config:
       sslMode: disable
   authn:
     mode: dev
+    # ─── bootstrap-mint caller allow-list (#58 hardening) ────────────────────
+    # SPIFFE SANs of the client certificates permitted to call
+    # InternalBootstrapTokenService/MintBootstrapToken on :9091 — the cluster-admin
+    # token mint. It has NO ReBAC gate (it exists to obtain the FIRST token, before
+    # any relation exists) and NO gateway REST route, so this list IS the
+    # authN+authZ gate; authzguard.CallerPolicy enforces it in EVERY mode.
+    #
+    # DEFAULT EMPTY = deny everyone (the mint has no default caller). An operator
+    # names the identity explicitly — the umbrella issues one for exactly this
+    # purpose (mtls.bootstrapOperator → spiffe://kacho.cloud/ns/kacho/sa/
+    # kacho-bootstrap-operator). In production an ENABLED mint (signing key
+    # present) with an empty list REFUSES TO BOOT (Config.Validate, core rule #16),
+    # so the insecure combination cannot be reached by omission.
+    #
+    # Rendered into config.yaml as authn.bootstrap-mint.allowed-client-sans (env
+    # override: KACHO_IAM_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS, comma-separated).
+    bootstrapMint:
+      allowedClientSANs: []
   extapi:
     # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
     openfga:

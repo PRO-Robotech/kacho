@@ -170,8 +170,10 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Snapshot, s
 // Create создаёт Snapshot тома (async Operation). Sync-фаза: domain-validate
 // (source_volume_id обязателен, name-длина) → project_id peer-validate (kacho-iam,
 // fail-closed Unavailable). Async-worker: repo.Insert — атомарный INSERT…SELECT
-// (source volume существует И state=READY; size_bytes=volumes.size_bytes; state→READY
-// сразу). Не-READY/отсутствующий источник → Operation error FAILED_PRECONDITION.
+// (source volume существует В ТОМ ЖЕ проекте И state=READY; size_bytes=
+// volumes.size_bytes; state→READY сразу). Не-READY/отсутствующий источник → Operation
+// error FAILED_PRECONDITION; том ЧУЖОГО проекта неотличим от несуществующего
+// ("Volume <id> not found") — анти-BOLA hide-existence, чужой том не снапшотится.
 func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.Operation, error) {
 	if err := s.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))

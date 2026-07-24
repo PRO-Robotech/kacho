@@ -35,6 +35,19 @@ software TOCTOU — data-integrity.md ban #10):
   контрактный `FAILED_PRECONDITION`: расходится зона → `Volume and Instance must be in
   the same zone`; расходится проект → `Volume and Instance must be in the same project`
   (zone-текст НЕ переиспользуется — исправление относительно companion S2-04).
+- **Source project-coherence — предикат в самом INSERT (анти-BOLA).** Ссылка «ресурс
+  засеян из другого ресурса» (`images.source_snapshot_id`/`source_volume_id`,
+  `volumes.source_snapshot_id`/`source_image_id`, `snapshots.source_volume_id`) обязана
+  указывать на строку **того же проекта**. Голого FK недостаточно — он проверяет лишь
+  существование, поэтому caller мог подставить id ЧУЖОГО приватного тома/снапшота/образа
+  и материализовать его содержимое в свой ресурс (cross-project data disclosure). Предикат
+  `AND <src>.project_id = $project` живёт **в том же INSERT…SELECT**, что и вставка
+  (атомарно, не software check-then-act — ban #10). 0-row исход дизамбигуируется в
+  контрактный `FAILED_PRECONDITION` `"<Resource> <id> not found"` — **byte-identical**
+  настоящему miss'у (hide-existence, security.md §6): «чужой ресурс существует»
+  неотличимо от «ресурса нет». По той же причине disambiguation снапшота резолвит том
+  project-scoped — иначе чужой не-READY том выдавал бы себя текстом `is not ready`
+  (state-oracle). Regression: `internal/repo/pg/source_project_coherence_integration_test.go`.
 - **Auto device-name — retry-until-free (INV-2).** Пустой `deviceName` → repo выбирает
   первое свободное `sdb..sdz` и вставляет; конкурент, занявший имя между выбором и
   вставкой, даёт `23505` на `UNIQUE(instance_id,device_name)` → repo пересчитывает

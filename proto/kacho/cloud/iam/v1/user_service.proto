@@ -68,7 +68,14 @@ service UserService {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    // Step-up (acr=2) — Invite is a PRIVILEGE-GRANT surface, not routine
+    // lifecycle: `project_id` + `role_id` make it create an AccessBinding
+    // ATOMICALLY with the invite row (see the Invite use-case), i.e. it hands
+    // out exactly what AccessBindingService/Create hands out. Leaving it at the
+    // AAL1 floor while Create demands acr=2 would be a step-up BYPASS — the same
+    // grant issued through the cheaper door. Step-up stays sensitive-only (the
+    // routine User lifecycle Get/Update/Delete keeps "1").
+    option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
 
   // Updates the specified User. Единственное mutable-поле — `labels` (User —

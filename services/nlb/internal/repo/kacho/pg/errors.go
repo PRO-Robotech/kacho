@@ -74,12 +74,19 @@ func mapPgErr(err error, kind, id string) error {
 		case "23503":
 			switch pgErr.ConstraintName {
 			case "listeners_target_group_fk":
-				// NLB-1b MIGRATE direct FK listeners.default_target_group_id →
-				// target_groups(id) ON DELETE RESTRICT (0018). Fires in two
-				// directions, disambiguated by the operating table (kind):
-				//   * TargetGroup delete while referenced by a listener → RESTRICT.
-				//   * listener wiring a non-existent TargetGroup → missing referent.
-				// Both → stable contract tone (no pgx leak). See grind-note #3.
+				// Direct composite FK
+				// listeners(default_target_group_id, project_id) →
+				// target_groups(id, project_id) ON DELETE RESTRICT (0018 existence,
+				// widened to same-project in 0023). Fires in three directions,
+				// disambiguated by the operating table (kind):
+				//   * TargetGroup delete while referenced by a listener → RESTRICT;
+				//   * listener wiring a non-existent TargetGroup → missing referent;
+				//   * listener wiring a TargetGroup of ANOTHER project → same
+				//     "requires an existing target group" tone on purpose: a distinct
+				//     message would confirm the foreign TG exists (existence-oracle,
+				//     security.md #6). The use-case precheck (listener/tg_ref.go)
+				//     normally answers first; this is the race backstop.
+				// All → stable contract tone (no pgx leak). See grind-note #3.
 				if kind == "TargetGroup" {
 					return fmt.Errorf("%w: target group is referenced by one or more listeners", kacho.ErrFailedPrecondition)
 				}

@@ -132,14 +132,16 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	lbv1.RegisterNetworkLoadBalancerServiceServer(publicSrv, lbHandler)
 
 	// ListenerService (public only). InternalAddress нужен только для release
-	// legacy-VIP в Delete (nil → Unavailable).
+	// legacy-VIP в Delete (nil → Unavailable). Check — object-scoped authz-gate на
+	// caller-supplied `targetGroupId` в Create/Update (per-RPC interceptor скоупит
+	// только parent LB / сам Listener, TG остался бы необойдённым — CWE-863).
 	listenerHandler := listener.NewHandler(
 		w.repo,
 		w.opsRepo,
 		w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(syncRegistrar)
+	).WithRegistrar(syncRegistrar).WithCheckClient(w.peers.Check)
 	lbv1.RegisterListenerServiceServer(publicSrv, listenerHandler)
 
 	// TargetGroupService (public only). Фаза B drain — отдельный background-runner.

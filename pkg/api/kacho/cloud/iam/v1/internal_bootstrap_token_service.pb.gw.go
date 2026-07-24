@@ -74,7 +74,7 @@ func RegisterInternalBootstrapTokenServiceHandlerServer(ctx context.Context, mux
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken", runtime.WithHTTPPathPattern("/iam/v1/internal/bootstrapToken:mint"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -132,7 +132,7 @@ func RegisterInternalBootstrapTokenServiceHandlerClient(ctx context.Context, mux
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken", runtime.WithHTTPPathPattern("/iam/v1/internal/bootstrapToken:mint"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -149,7 +149,7 @@ func RegisterInternalBootstrapTokenServiceHandlerClient(ctx context.Context, mux
 }
 
 var (
-	pattern_InternalBootstrapTokenService_MintBootstrapToken_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"iam", "v1", "internal", "bootstrapToken"}, "mint"))
+	pattern_InternalBootstrapTokenService_MintBootstrapToken_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalBootstrapTokenService", "MintBootstrapToken"}, ""))
 )
 
 var (

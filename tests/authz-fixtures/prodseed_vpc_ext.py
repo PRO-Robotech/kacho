@@ -27,7 +27,7 @@ import prodseed_matrix as pm  # noqa: E402  (reuse helpers: _curl,_await,make_sa
 MATRIX = json.loads(open("/tmp/matrix.json").read())
 # Mint a FRESH bootstrap token — the cached jwtBootstrap has a 1h TTL and may have
 # expired since the matrix was seeded (silent code=16 "token validation failed").
-pm.boot = m.mint_bootstrap(pm.INTERNAL)   # rebind module-level boot for helper reuse
+pm.boot = m.mint_bootstrap()   # rebind module-level boot for helper reuse
 boot = pm.boot
 acctA = MATRIX["accountAId"]
 RID = pm.RID

@@ -5,7 +5,7 @@ package middleware_test
 
 // permission_catalog_acr_invariant_test.go — SEC-acr-stepup-refinement (R3).
 //
-// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 41
+// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 42
 // named grant/credential/tenancy-root FQNs carry required_acr_min="2"; every
 // other non-exempt RPC carries "1" (routine, AAL1 floor); exempt RPCs carry ""
 // (no step-up requirement). Both embedded catalog copies (gateway + iam) are
@@ -13,7 +13,12 @@ package middleware_test
 // NOT changed by the acr addition (net-strengthening: exempt-permission + acr=2).
 //
 // This is the primary RED→GREEN lock: before the proto refinement 372 RPCs carry
-// "2" (blanket step-up); after it, exactly 41 do.
+// "2" (blanket step-up); after it, exactly 42 do.
+//
+// Set revision (hardening round): UserService/Invite JOINED category B — it
+// creates an AccessBinding atomically (project_id+role_id) and is therefore a
+// privilege-grant surface; leaving it at the AAL1 floor was a step-up bypass of
+// AccessBindingService/Create. 41 → 42.
 
 import (
 	"os"
@@ -27,7 +32,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 41 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 42 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -38,11 +43,14 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.UserTokenService/Revoke",
 		"kacho.cloud.iam.v1.SAKeyService/Issue",
 		"kacho.cloud.iam.v1.SAKeyService/Revoke",
-		// B — iam binding grant (4; Create is exempt-permission + acr=2, net-strengthening)
+		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
+		// Invite belongs here: it inlines an AccessBinding create (project_id+role_id)
+		// in the invite tx — the same privilege AccessBindingService/Create issues.
 		"kacho.cloud.iam.v1.AccessBindingService/Create",
 		"kacho.cloud.iam.v1.AccessBindingService/Update",
 		"kacho.cloud.iam.v1.AccessBindingService/Delete",
 		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
+		"kacho.cloud.iam.v1.UserService/Invite",
 		// C — compute per-resource grant (22; non-iam grant-surface)
 		"kacho.cloud.compute.v1.DiskService/SetAccessBindings",
 		"kacho.cloud.compute.v1.DiskService/UpdateAccessBindings",
@@ -97,7 +105,7 @@ func TestPermissionCatalog_ACR_41SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 41, "the acceptance-doc sensitive set must contain exactly 41 FQNs")
+	require.Len(t, sensitive, 42, "the acceptance-doc sensitive set must contain exactly 42 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -118,7 +126,7 @@ func TestPermissionCatalog_ACR_41SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive-41 allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 41, "exactly 41 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 42, "exactly 42 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -199,9 +207,10 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 }
 
 // TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
-// catalog splits 41×"2" / 328×"1" / 65×"" = 434, and both embedded copies
+// catalog splits 42×"2" / 327×"1" / 65×"" = 434, and both embedded copies
 // (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
-// loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328.)
+// loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328;
+// the UserService/Invite grant-surface correction moved one more 1→2: 328→327.)
 func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -220,8 +229,8 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 			t.Fatalf("unexpected required_acr_min %q on %s", e.RequiredACRMin, fqn)
 		}
 	}
-	assert.Equal(t, 41, n2, "sensitive count")
-	assert.Equal(t, 328, n1, "routine count")
+	assert.Equal(t, 42, n2, "sensitive count")
+	assert.Equal(t, 327, n1, "routine count")
 	assert.Equal(t, 65, nEmpty, "no-requirement (exempt) count")
 	assert.Equal(t, 434, n2+n1+nEmpty, "catalog total")
 

@@ -69,6 +69,19 @@ data:
       # derive from this. A config value (not a duplicate env) so it resolves deterministically.
       hydra-issuer: {{ . | quote }}
       {{- end }}
+      {{- $bm := .Values.config.authn.bootstrapMint | default dict }}
+      # bootstrap-mint — caller gate for InternalBootstrapTokenService/
+      # MintBootstrapToken (:9091), the cluster `system_admin` token mint. The RPC
+      # carries no ReBAC Check (it issues the FIRST token, before any relation
+      # exists) and no api-gateway REST route, so this allow-list of client-
+      # certificate SPIFFE SANs IS the gate — enforced by authzguard.CallerPolicy
+      # in EVERY mode. EMPTY ⇒ nobody may mint (fail-closed, no default caller);
+      # in production an enabled mint (signing key present) with an empty list
+      # refuses to boot. The umbrella issues the matching client leaf —
+      # mtls.bootstrapOperator (templates/bootstrap-operator-certificate.yaml).
+      bootstrap-mint:
+        allowed-client-sans:
+{{ toYaml ($bm.allowedClientSANs | default list) | indent 10 }}
 
     extapi:
       def-dial-duration: 10s

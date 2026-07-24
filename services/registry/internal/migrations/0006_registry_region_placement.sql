@@ -16,11 +16,32 @@
 -- на Create (peer-validate geo.v1.RegionService.Get, fail-closed). Immutable после Create
 -- (перенос региона сломал бы storage-locality блобов) — энфорс в use-case (update_mask).
 --
--- Fresh-catalog: NOT NULL region_id вводится БЕЗ DEFAULT-backfill (пустой каталог
--- безопасен). placement_type — DEFAULT 'REGIONAL' (единственное значение) + CHECK.
+-- UPGRADE-SAFE ввод NOT NULL: ADD COLUMN nullable → backfill → SET NOT NULL (эталон —
+-- vpc 0007_network_vrf_id). Прямой `ADD COLUMN region_id TEXT NOT NULL` без DEFAULT
+-- падает (23502 «contains null values») на ЛЮБОМ стенде с уже созданными реестрами, а
+-- починить это последующей миграцией НЕЛЬЗЯ: goose обрывается ровно здесь и 0007+ не
+-- выполняются — единственный возможный фикс живёт в этом файле. DEFAULT-путь тут не
+-- годится: placement-anchor CHECK требует region_id <> '', т.е. backfill обязан дать
+-- РЕАЛЬНЫЙ регион, а не пустую строку.
+--
+-- Значение backfill'а: реестры, созданные ДО F4, физически лежат в единственном
+-- регионе своего стенда. По умолчанию — baseline-регион платформы ('ru-central1',
+-- тот же, что в geo-baseline). Мультирегиональный оператор задаёт свой:
+--   PGOPTIONS / DSN options: -c kacho.registry_backfill_region=<regionId>
+--   либо ALTER DATABASE <db> SET kacho.registry_backfill_region = '<regionId>';
+-- Свежий (пустой) каталог: UPDATE трогает 0 строк — путь идентичен прежнему.
+--
+-- placement_type — DEFAULT 'REGIONAL' (единственное значение) + CHECK; DEFAULT
+-- backfill'ит существующие строки by construction.
 SET search_path TO kacho_registry, public;
 
-ALTER TABLE registries ADD COLUMN region_id TEXT NOT NULL;
+ALTER TABLE registries ADD COLUMN region_id TEXT;
+
+UPDATE registries
+   SET region_id = COALESCE(NULLIF(current_setting('kacho.registry_backfill_region', true), ''), 'ru-central1')
+ WHERE region_id IS NULL OR region_id = '';
+
+ALTER TABLE registries ALTER COLUMN region_id SET NOT NULL;
 
 ALTER TABLE registries ADD COLUMN placement_type TEXT NOT NULL DEFAULT 'REGIONAL';
 

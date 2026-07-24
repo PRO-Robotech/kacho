@@ -133,7 +133,31 @@ func TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject(t *testing.T) {
 	})
 
 	// Listener.MoveProject (cascaded helper, exposed for direct ops).
+	//
+	// A listener WIRED to a target group cannot change project: the composite FK
+	// (default_tg_fk, project_id) → target_groups(id, project_id) (0023) forbids the
+	// resulting cross-project reference. This mirrors the LB-level guard
+	// (`loadBalancerWriter.MoveProject` refuses to move an LB with a wired listener)
+	// and is the DB backstop for it.
 	const dst = "prj01CVR4DST7890ABCDl"
+	func() {
+		w, err := repo.Writer(ctx)
+		require.NoError(t, err)
+		defer w.Abort()
+		_, err = w.Listeners().MoveProject(ctx, string(lb.ID), dst)
+		require.Error(t, err, "moving a listener wired to a same-project TG must be rejected")
+		require.ErrorIs(t, err, kacho.ErrFailedPrecondition)
+	}()
+
+	// Unwire first (the contract's "repoint them before moving"), then the move
+	// succeeds — keeps MoveProject covered.
+	l.DefaultTargetGroupID = option.ValueOf[domain.ResourceID]{}
+	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		cur, gerr := w.Listeners().Get(ctx, string(l.ID))
+		require.NoError(t, gerr)
+		_, err := w.Listeners().Update(ctx, l, cur.Xmin)
+		require.NoError(t, err)
+	})
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		rows, err := w.Listeners().MoveProject(ctx, string(lb.ID), dst)
 		require.NoError(t, err)

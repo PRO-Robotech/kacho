@@ -344,11 +344,14 @@ CASES.append(Case(
 # REG-1-16 (negative + positive-control): caller has v_update but NOT registry admin
 # (project-editor materializes v_* but not `admin` relation — flat Contract-A). Update
 # defaultRepositoryVisibility→PUBLIC → sync 403 PERMISSION_DENIED (any-path-to-PUBLIC
-# admin-gate, D-6; НЕ existence-hiding — caller уже доказал v_update). Тот же caller с
+# admin-gate, D-6; НЕ existence-hiding — caller уже доказал v_update). Гейт обязан
+# срабатывать на КАЖДОМ применяющем поле пути: и с полем в updateMask, и БЕЗ mask
+# (full-object PATCH — REG-1-28 семантика «пустой mask применяет все mutable-поля»).
+# Пустой mask как обход гейта = раскрытие приватных образов не-админом. Тот же caller с
 # updateMask=description (без visibility) → Operation OK (editor-путь узко не сломан).
 CASES.append(Case(
     id="REG-RD-F5-NEG-PUBLIC-ADMIN-GATE",  # verifies REG-1-16
-    title="Non-admin drives defaultRepositoryVisibility→PUBLIC → 403 PERMISSION_DENIED; description-only Update → OK",
+    title="Non-admin drives defaultRepositoryVisibility→PUBLIC (masked AND empty-mask full-PATCH) → 403 PERMISSION_DENIED; description-only Update → OK",
     classes=["NEG", "AZ"], priority="P0",
     steps=[
         Step(name="update-default-public", method="PATCH", path=REG + "/{{rdRegId}}",
@@ -357,6 +360,18 @@ CASES.append(Case(
                  *assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED"),
                  "pm.test('names required capability (registry admin)', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('registry admin'));",
              ]),
+        # Тот же переход БЕЗ updateMask (full-object PATCH) — гейт не обходится маской.
+        Step(name="update-default-public-emptymask", method="PATCH", path=REG + "/{{rdRegId}}",
+             body={"defaultRepositoryVisibility": "PUBLIC", "description": "sneak-{{runId}}"},
+             test_script=[
+                 *assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED"),
+                 "pm.test('empty-mask full-PATCH does not bypass the admin-gate', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('registry admin'));",
+             ]),
+        # Пост-проверка эффекта: реестр остался PRIVATE (отказ был реальным, не косметикой).
+        _get_self_with_retry("verify-still-private", REG + "/{{rdRegId}}", [
+            *assert_status(200),
+            "pm.test('registry stays PRIVATE after denied flips', () => pm.expect(pm.response.json().defaultRepositoryVisibility).to.eql('PRIVATE'));",
+        ]),
         Step(name="update-description-ok", method="PATCH", path=REG + "/{{rdRegId}}",
              body={"updateMask": "description", "description": "editor-path-{{runId}}"},
              test_script=[

@@ -1227,3 +1227,138 @@ CASES.append(Case(
              test_script=[*assert_absent_id_rejected()]),
     ],
 ))
+
+
+# ---------------------------------------------------------------------------
+# SEC — cross-project TargetGroup wiring (BOLA / CWE-639)
+# ---------------------------------------------------------------------------
+#
+# `targetGroupId` (and its legacy twin `defaultTargetGroupId`) is a caller-supplied
+# object the per-RPC gateway Check does NOT scope: CreateListener is scoped on
+# `loadBalancerId`, UpdateListener on `listenerId`. Wiring a TargetGroup owned by
+# ANOTHER project must be refused — otherwise this LB would forward live traffic to
+# the other project's targets, and the victim's TG would become undeletable
+# (FK RESTRICT). The refusal must look exactly like "no such target group": a
+# distinct code/message would confirm the foreign TG exists (existence-oracle).
+
+def _cross_project_tg_setup(suffix: str):
+    """Create a TargetGroup in the suite's CROSS project (`_suiteProjectCrossId`).
+
+    Fixture-tolerant: when the cross project is unseeded on this stand the Create
+    is rejected and `tgCrossId` stays UNSET, so the wiring step below sends an
+    unresolvable reference — which must be rejected all the same. Either way the
+    assertion "the listener is never wired to a foreign TG" holds.
+    """
+    return [
+        Step(name="setup-tg-cross", method="POST", path="/nlb/v1/targetGroups",
+             body={"projectId": "{{_suiteProjectCrossId}}", "regionId": "{{_suiteRegionId}}",
+                   "name": f"xtg-{suffix}-{{{{runId}}}}", "port": 8080,
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
+                                   "unhealthyThreshold": 3, "healthyThreshold": 2,
+                                   "tcp": {"port": 80}}},
+             test_script=[
+                 "pm.environment.unset('opId');",
+                 "pm.environment.set('tgCrossId', 'tgrabsent0000000000x');",
+                 "if (pm.response.code === 200) {",
+                 "  const j = pm.response.json();",
+                 "  if (j.id) pm.environment.set('opId', j.id);",
+                 "  if (j.metadata && j.metadata.targetGroupId) "
+                 "    pm.environment.set('tgCrossId', j.metadata.targetGroupId);",
+                 "}",
+             ]),
+        poll_operation_until_done(),
+    ]
+
+
+def _cross_project_tg_cleanup():
+    return [
+        Step(name="cleanup-tg-cross", method="DELETE", path="/nlb/v1/targetGroups/{{tgCrossId}}",
+             test_script=[
+                 "pm.test('cross-project TG reclaim best-effort (never fails the case)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 409]));",
+                 "pm.environment.unset('opId');",
+                 "if (pm.response.code === 200) { try { const j = pm.response.json();"
+                 " if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
+                 "pm.environment.unset('tgCrossId');",
+             ]),
+        poll_operation_until_done(),
+    ]
+
+
+# The rejection must not disclose the foreign project — asserted on the body.
+_ASSERT_NO_PROJECT_LEAK = [
+    "pm.test('rejection does not disclose the foreign project id', () => "
+    "  pm.expect(pm.response.text()).to.not.include(pm.environment.get('_suiteProjectCrossId')));",
+]
+
+CASES.append(Case(
+    id="LST-CR-SEC-TG-CROSS-PROJECT",
+    title="Create listener wiring a TargetGroup of another project → rejected, never wired",
+    classes=["NEG", "AZD"], priority="P0",
+    steps=[
+        *_setup_lb("xtg-cr"),
+        *_cross_project_tg_setup("cr"),
+        # NOT wrapped in retry_until_authorized: this is a negative — a retry loop
+        # would only mask the deny it is meant to observe.
+        Step(name="cr-lst-cross-tg", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "xtg-{{runId}}",
+                   "protocol": "TCP", "port": 8443, "targetPort": 8080,
+                   "ipVersion": "IPV4", "targetGroupId": "{{tgCrossId}}"},
+             test_script=[
+                 "pm.test('cross-project target group is refused (never 200)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
+                 *_ASSERT_NO_PROJECT_LEAK,
+             ]),
+        # Same guard on the legacy wiring field — both map to the same reference.
+        Step(name="cr-lst-cross-tg-legacy", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "xtgl-{{runId}}",
+                   "protocol": "TCP", "port": 8444, "targetPort": 8080,
+                   "ipVersion": "IPV4", "defaultTargetGroupId": "{{tgCrossId}}"},
+             test_script=[
+                 "pm.test('cross-project target group is refused via the legacy field too', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
+                 *_ASSERT_NO_PROJECT_LEAK,
+             ]),
+        *_cross_project_tg_cleanup(),
+        *_cleanup_lb(),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-UPD-SEC-TG-CROSS-PROJECT",
+    title="Repoint listener to a TargetGroup of another project → rejected, reference unchanged",
+    classes=["NEG", "AZD", "STATE"], priority="P0",
+    steps=[
+        *_setup_lb("xtg-upd"),
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "xtgu-{{runId}}",
+                   "protocol": "TCP", "port": 8445, "targetPort": 8080, "ipVersion": "IPV4"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
+        poll_operation_until_done(),
+        *_cross_project_tg_setup("upd"),
+        # The listener itself already exists and was read back above, so the only
+        # lawful outcomes here are refusals — retry_on=(403,) covers the owner-tuple
+        # lag on the listener object without masking the TG refusal (403 is also a
+        # lawful refusal, so the budget simply expires and the assertion still runs).
+        Step(name="upd-cross-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
+             body={"updateMask": "targetGroupId", "targetGroupId": "{{tgCrossId}}"},
+             test_script=[
+                 "pm.test('cross-project repoint is refused (never 200)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
+                 *_ASSERT_NO_PROJECT_LEAK,
+             ]),
+        retry_until_authorized(Step(name="get-after-refused-repoint", method="GET",
+             path=f"{_LST_BASE}/{{{{lstId}}}}",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('the refused repoint left no target group wired', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j.targetGroupId || j.defaultTargetGroupId || '').to.eql('');",
+                 "});",
+             ])),
+        *_cross_project_tg_cleanup(),
+        *_cleanup_lst(),
+        *_cleanup_lb(),
+    ],
+))

@@ -27,7 +27,7 @@ import mint_rs256 as m  # noqa: E402
 import prodseed_matrix as pm  # noqa: E402
 
 MATRIX = json.loads(open("/tmp/matrix.json").read())
-pm.boot = m.mint_bootstrap(pm.INTERNAL)   # fresh bootstrap (cached one may be expired)
+pm.boot = m.mint_bootstrap()   # fresh bootstrap (cached one may be expired)
 boot = pm.boot
 RID = pm.RID
 

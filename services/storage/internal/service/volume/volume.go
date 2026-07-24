@@ -207,7 +207,10 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Volume, str
 // СИНХРОННО (InvalidArgument: size/name), cross-domain ссылки (zone→geo,
 // project→iam) валидируются на request-path fail-closed (peer Unavailable →
 // UNAVAILABLE). Валидный вход → LRO-строка + worker (writer.Insert; state→READY
-// сразу; disk_type/source_snapshot FK → Operation error).
+// сразу; disk_type FK → Operation error). Источник тома (source_snapshot_id /
+// source_image_id) резолвится repo СТРОГО в проекте тома (project-coherent CAS):
+// чужой приватный снапшот/образ неотличим от несуществующего — Operation error
+// FAILED_PRECONDITION "<Resource> <id> not found" (анти-BOLA hide-existence).
 func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Operation, error) {
 	if err := v.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))

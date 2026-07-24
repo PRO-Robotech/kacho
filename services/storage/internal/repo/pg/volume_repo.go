@@ -178,10 +178,29 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 	return out, next, nil
 }
 
+// volumeInsertCoherentSQL — атомарная вставка-если-можно (INSERT…SELECT, ban #10 — НЕ
+// Get→check→INSERT): источник тома (snapshot ЛИБО image) обязан принадлежать ТОМУ ЖЕ
+// проекту, что создаваемый Volume. Голого FK недостаточно — он проверяет лишь
+// существование строки, поэтому caller мог засеять свой boot-Volume ЧУЖИМ приватным
+// образом/снапшотом и вычитать чужие данные (cross-project disclosure/BOLA). Предикат
+// вычисляется в ТОМ ЖЕ стейтменте, что вставка → TOCTOU-окна нет. Источник не задан
+// (”→NULL) → предикат тривиально истинен (прежнее поведение source-less тома).
+const volumeInsertCoherentSQL = `
+	INSERT INTO volumes
+		(id, project_id, name, description, labels, zone_id, disk_type_id,
+		 size_bytes, block_size, source_snapshot_id, source_image_id, state)
+	SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
+	       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
+	 WHERE ($10::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$10 AND s.project_id=$2))
+	   AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM images   i WHERE i.id=$11 AND i.project_id=$2))
+	RETURNING created_at, updated_at`
+
 // Insert реализует volume.Writer: state=READY сразу (§1.4), storage_outbox CREATED
-// в той же tx. source_snapshot_id=” → NULL (иначе FK ловит пустую ссылку).
-// disk_type_id RESTRICT / source_snapshot_id FK / partial UNIQUE(name) → контрактные
-// sentinel'ы через mapVolumeErr.
+// в той же tx. source_snapshot_id/source_image_id=” → NULL (иначе FK ловит пустую
+// ссылку); заданный источник обязан лежать в ТОМ ЖЕ проекте (project-coherent CAS,
+// volumeInsertCoherentSQL) — иначе 0 rows → hide-existence "<Resource> <id> not found"
+// (byte-identical настоящему miss'у, security.md §6). disk_type_id RESTRICT /
+// source FK / partial UNIQUE(name) → контрактные sentinel'ы через mapVolumeErr.
 func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume) (*domain.Volume, error) {
 	blockSize := v.BlockSize
 	if blockSize == 0 {
@@ -204,16 +223,14 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume) (*domain.Volu
 	created := *v
 	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		serr := tx.QueryRow(ctx, `
-			INSERT INTO volumes
-				(id, project_id, name, description, labels, zone_id, disk_type_id,
-				 size_bytes, block_size, source_snapshot_id, source_image_id, state)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'READY')
-			RETURNING created_at, updated_at`,
+		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
 			v.SizeBytes, blockSize, srcSnap, srcImg).
 			Scan(&created.CreatedAt, &created.UpdatedAt)
 		if serr != nil {
+			if errors.Is(serr, pgx.ErrNoRows) {
+				return volumeSourceUnavailable(v.SourceSnapshot, v.SourceImage)
+			}
 			return serr
 		}
 		if oerr := outbox.Emit(ctx, tx, outboxTable, "Volume", v.ID, "CREATED", map[string]any{
@@ -235,6 +252,23 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume) (*domain.Volu
 	}
 	created.Status = domain.DeriveStatus("READY", false) // just created → AVAILABLE
 	return &created, nil
+}
+
+// volumeSourceUnavailable разбирает 0-row исход project-coherent CAS: заданный источник
+// не резолвится В ПРОЕКТЕ тома — либо его нет вовсе, либо он принадлежит ЧУЖОМУ
+// проекту. Оба исхода отдают ОДИН И ТОТ ЖЕ контрактный текст "<Resource> <id> not
+// found" (FailedPrecondition) — byte-identical с настоящим FK-miss'ом (security.md §6):
+// различимый ответ был бы existence-oracle («чужой ресурс существует»). 0 rows без
+// заданного источника невозможно (предикат тривиально истинен) → opaque INTERNAL.
+func volumeSourceUnavailable(snapshotID, imageID string) error {
+	switch {
+	case snapshotID != "":
+		return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, snapshotID)
+	case imageID != "":
+		return fmt.Errorf("%w: Image %s not found", ports.ErrFailedPrecondition, imageID)
+	default:
+		return ports.ErrInternal
+	}
 }
 
 // Update реализует volume.Writer: атомарный размер-CAS increase-only (§3b) +

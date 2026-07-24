@@ -62,6 +62,18 @@ func (h *Handler) WithRegistrar(r Registrar) *Handler {
 	return h
 }
 
+// WithCheckClient инжектит object-scoped authz-gate (iam
+// InternalIAMService.Check) в Create/Update use-case'ы: caller-supplied
+// `targetGroupId` авторизуется отдельно (`viewer` на `nlb_target_group:<id>`),
+// потому что per-RPC interceptor скоупит только parent LoadBalancer / сам
+// Listener. nil → Check пропускается (dev/unwired); owning-project-инвариант
+// энфорсится безусловно. Возвращает self для chaining.
+func (h *Handler) WithCheckClient(c CheckClient) *Handler {
+	h.create.WithCheckClient(c)
+	h.update.WithCheckClient(c)
+	return h
+}
+
 // Get — sync read.
 func (h *Handler) Get(ctx context.Context, req *lbv1.GetListenerRequest) (*lbv1.Listener, error) {
 	return h.get.Run(ctx, req)

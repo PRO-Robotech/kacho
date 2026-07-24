@@ -628,16 +628,28 @@ func NewMux(
 			if err := iampb.RegisterInternalOperationsServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalOperationsService: %w", err)
 			}
-			// InternalBootstrapTokenService.MintBootstrapToken — non-interactive
-			// bootstrap RS256 token mint (#58) under POST
-			// /iam/v1/internal/bootstrapToken:mint. Internal-only; isInternalPath
-			// routes /iam/v1/internal/* to the internal sub-mux and the dispatcher
-			// 404s it on the external TLS listener (HasInternalSuffix also blocks the
-			// Internal* suffix on the public listener). permission="<exempt>": the
-			// mTLS listener boundary is the gate.
-			if err := iampb.RegisterInternalBootstrapTokenServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
-				return nil, fmt.Errorf("register iam InternalBootstrapTokenService: %w", err)
-			}
+			// InternalBootstrapTokenService.MintBootstrapToken (#58) is DELIBERATELY
+			// NOT registered here — do not add it back.
+			//
+			// It mints a Hydra-signed RS256 Bearer for a cluster `system_admin`
+			// ServiceAccount, and its catalog permission is `<exempt>`. The authz
+			// middleware admits an `<exempt>` Internal* RPC that arrives on the
+			// cluster-internal listener WITHOUT extracting a principal
+			// (phaseInternalOriginExempt), and this internal REST listener is plain
+			// HTTP/1.1 — no TLS, no client cert (cmd/api-gateway/main.go). A REST route
+			// would therefore be a CREDENTIAL-FREE control-plane takeover: any pod that
+			// can reach the `internal-rest` Service port, or anyone holding a
+			// port-forward, could POST an empty body and get a cluster-admin token.
+			// Network position is not a credential (security.md — "internal = trusted"
+			// is a forbidden assumption).
+			//
+			// The mint keeps exactly ONE door: a direct mTLS gRPC dial to kacho-iam
+			// :9091, where authzguard.CallerPolicy checks the caller's verified
+			// client-certificate SAN against an explicit allow-list
+			// (`authn.bootstrap-mint.allowed-client-sans`). The proto carries no
+			// `google.api.http` binding, and the grpc-gateway default unbound route is
+			// unreachable because the handler is never registered on this mux.
+			// Locked by restmux/bootstrap_token_no_rest_route_test.go.
 		}
 
 		// --- loadbalancer.v1 (kacho-nlb): NetworkLoadBalancer + Listener + TargetGroup ---

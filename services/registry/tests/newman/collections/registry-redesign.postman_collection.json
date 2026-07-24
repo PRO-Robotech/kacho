@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "7aea3206-3a3c-4b1a-8baf-54a8658245c1",
+    "_postman_id": "003819e4-4dbd-44b5-9e3c-cad8f8b0d030",
     "name": "kacho-registry / newman / registry-redesign",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -179,7 +179,7 @@
           ]
         },
         {
-          "name": "warm-rdRegId-rya57",
+          "name": "warm-rdRegId-rya54",
           "request": {
             "method": "GET",
             "header": [
@@ -796,7 +796,7 @@
           ]
         },
         {
-          "name": "warm-rnRegId-rya58",
+          "name": "warm-rnRegId-rya55",
           "request": {
             "method": "GET",
             "header": [
@@ -1172,7 +1172,7 @@
           ]
         },
         {
-          "name": "repo-create-rya59",
+          "name": "repo-create-rya56",
           "request": {
             "method": "POST",
             "header": [
@@ -1328,7 +1328,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya60",
+          "name": "repo-warm-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -1383,7 +1383,7 @@
       ]
     },
     {
-      "name": "REG-RD-F5-NEG-PUBLIC-ADMIN-GATE — Non-admin drives defaultRepositoryVisibility→PUBLIC → 403 PERMISSION_DENIED; description-only Update → OK",
+      "name": "REG-RD-F5-NEG-PUBLIC-ADMIN-GATE — Non-admin drives defaultRepositoryVisibility→PUBLIC (masked AND empty-mask full-PATCH) → 403 PERMISSION_DENIED; description-only Update → OK",
       "description": "class:NEG | class:AZ | priority:P0",
       "item": [
         {
@@ -1430,6 +1430,99 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
                   "});",
                   "pm.test('names required capability (registry admin)', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('registry admin'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-default-public-emptymask",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{rdRegId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{rdRegId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"defaultRepositoryVisibility\": \"PUBLIC\", \"description\": \"sneak-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('empty-mask full-PATCH does not bypass the admin-gate', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('registry admin'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "verify-still-private",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{rdRegId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{rdRegId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _rc = parseInt(pm.environment.get('_rdRetry') || '0', 10);",
+                  "if ((pm.response.code === 403 || pm.response.code === 404) && _rc < 20) {",
+                  "  pm.environment.set('_rdRetry', String(_rc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* EC read-your-writes wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rdRetry');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('registry stays PRIVATE after denied flips', () => pm.expect(pm.response.json().defaultRepositoryVisibility).to.eql('PRIVATE'));"
                 ]
               }
             }
@@ -1492,7 +1585,7 @@
       "description": "class:CRUD | priority:P0",
       "item": [
         {
-          "name": "repo-create-rya61",
+          "name": "repo-create-rya58",
           "request": {
             "method": "POST",
             "header": [
@@ -1649,7 +1742,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya62",
+          "name": "repo-warm-rya59",
           "request": {
             "method": "GET",
             "header": [
@@ -1708,7 +1801,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya63",
+          "name": "repo-create-rya60",
           "request": {
             "method": "POST",
             "header": [
@@ -1864,7 +1957,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya64",
+          "name": "repo-warm-rya61",
           "request": {
             "method": "GET",
             "header": [
@@ -1923,7 +2016,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya65",
+          "name": "repo-create-rya62",
           "request": {
             "method": "POST",
             "header": [
@@ -2079,7 +2172,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya66",
+          "name": "repo-warm-rya63",
           "request": {
             "method": "GET",
             "header": [
@@ -2190,7 +2283,7 @@
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya67",
+          "name": "repo-create-rya64",
           "request": {
             "method": "POST",
             "header": [
@@ -2346,7 +2439,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya68",
+          "name": "repo-warm-rya65",
           "request": {
             "method": "GET",
             "header": [
@@ -2601,7 +2694,7 @@
           ]
         },
         {
-          "name": "warm-emRegId-rya69",
+          "name": "warm-emRegId-rya66",
           "request": {
             "method": "GET",
             "header": [

@@ -75,8 +75,10 @@ func (h *RegistryHandler) CreateRepository(ctx context.Context, req *registryv1.
 
 // UpdateRepository запускает async FieldMask-PATCH overlay и возвращает Operation.
 // Malformed registry_id → InvalidArgument ПЕРВЫМ (A06). per-repo v_update Check
-// (deny|absent → NOT_FOUND). visibility→PUBLIC в mask требует registry admin (B02 →
-// PERMISSION_DENIED). immutable/unknown mask + payload-границы — sync reject в use-case.
+// (deny|absent → NOT_FOUND). visibility=PUBLIC требует registry admin (B02 →
+// PERMISSION_DENIED) на ЛЮБОМ применяющем поле пути — и через mask, и через
+// full-object PATCH (пустой mask применяет visibility, см. maskApplies).
+// immutable/unknown mask + payload-границы — sync reject в use-case.
 func (h *RegistryHandler) UpdateRepository(ctx context.Context, req *registryv1.UpdateRepositoryRequest) (*operationProto, error) {
 	registryID, repository := req.GetRegistryId(), req.GetRepository()
 	if err := registry.ValidateRegistryID(registryID); err != nil {
@@ -88,7 +90,7 @@ func (h *RegistryHandler) UpdateRepository(ctx context.Context, req *registryv1.
 	if err := h.authz.checkRepository(ctx, registryID, repository, relationVUpdate); err != nil {
 		return nil, err
 	}
-	if maskContains(req.GetUpdateMask().GetPaths(), "visibility") && req.GetVisibility() == registryv1.Visibility_PUBLIC {
+	if req.GetVisibility() == registryv1.Visibility_PUBLIC && maskApplies(req.GetUpdateMask().GetPaths(), "visibility") {
 		if err := h.authz.requireRegistryAdmin(ctx, registryID, "changing repository visibility requires registry admin"); err != nil {
 			return nil, err
 		}
@@ -207,6 +209,26 @@ func toProtoReferrer(r *domain.Referrer) *registryv1.Referrer {
 func maskContains(mask []string, field string) bool {
 	for _, p := range mask {
 		if p == field {
+			return true
+		}
+	}
+	return false
+}
+
+// maskApplies сообщает, будет ли поле (любой из его proto/JSON-алиасов) ФАКТИЧЕСКИ
+// применено PATCH'ем — единственный корректный триггер authz-гейтов на изменение поля.
+// Зеркалит update_mask discipline use-case'а (api-conventions.md, resolve*UpdateMask):
+//   - ПУСТОЙ mask → full-object PATCH: применяются ВСЕ mutable-поля → true;
+//   - непустой mask → поле применяется, только если присутствует в mask.
+//
+// Гейт, keyed на одном лишь maskContains, обходится пустым mask'ом (full-object PATCH —
+// легальная семантика, а не «не передано»): не-admin с v_update публиковал реестр/repo.
+func maskApplies(mask []string, aliases ...string) bool {
+	if len(mask) == 0 {
+		return true
+	}
+	for _, a := range aliases {
+		if maskContains(mask, a) {
 			return true
 		}
 	}

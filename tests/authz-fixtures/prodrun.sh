@@ -49,6 +49,11 @@ if [[ ! -s "$CACHE" || "$RESEED" == 1 || "$STALE" == 1 ]]; then
   # api-gateway-client-tls secret so prodseed authenticates against the live CA.
   # Best-effort: if kubectl/secret is unavailable (CI without cluster access) leave the
   # existing cert in place. Same secret/keys prodseed_matrix.py reads (MTLS_CERT/KEY).
+  #
+  # NB this is the GATEWAY identity, used for the gateway-fronted internal RPCs
+  # (UpsertFromIdentity). The bootstrap-token MINT deliberately does NOT accept it:
+  # it admits only the dedicated operator SAN (secret kacho-bootstrap-operator-client-tls)
+  # — mint_rs256.py pulls that one itself. Do not "fix" a mint 403 by pointing it here.
   if command -v kubectl >/dev/null 2>&1; then
     mkdir -p /tmp/iam-mtls
     if kubectl -n kacho get secret api-gateway-client-tls >/dev/null 2>&1; then

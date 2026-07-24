@@ -186,6 +186,11 @@ func TestResourceExtractor_FromProto_NonProto_Wildcard(t *testing.T) {
 }
 
 // --- redesign-2026 F4: Role definition_tier scope resolution (MIGRATE) ---
+//
+// The anchor resolution is FQN-BOUND: only the RPCs whose request message
+// declares `definition_tier` (today RoleService/Create) may be re-scoped by it.
+// roleCreateFQN is that FQN; the unrelated-FQN arm is locked below.
+const roleCreateFQN = "kacho.cloud.iam.v1.RoleService/Create"
 
 func TestResourceExtractor_DefinitionTierScope_Account(t *testing.T) {
 	e := middleware.NewResourceExtractor(nil)
@@ -193,7 +198,7 @@ func TestResourceExtractor_DefinitionTierScope_Account(t *testing.T) {
 		Name:           "reader",
 		DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.account", TierId: "acc_alpha"},
 	}
-	ot, id, ok := e.ResolveDefinitionTierScope(req)
+	ot, id, ok := e.ResolveDefinitionTierScope(roleCreateFQN, req)
 	require.True(t, ok)
 	assert.Equal(t, "account", ot)
 	assert.Equal(t, "acc_alpha", id)
@@ -205,7 +210,7 @@ func TestResourceExtractor_DefinitionTierScope_Project(t *testing.T) {
 		Name:           "reader",
 		DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.project", TierId: "prj_beta"},
 	}
-	ot, id, ok := e.ResolveDefinitionTierScope(req)
+	ot, id, ok := e.ResolveDefinitionTierScope(roleCreateFQN, req)
 	require.True(t, ok)
 	assert.Equal(t, "project", ot)
 	assert.Equal(t, "prj_beta", id)
@@ -218,7 +223,7 @@ func TestResourceExtractor_DefinitionTierScope_ClusterAndUnknown_NotResolved(t *
 	e := middleware.NewResourceExtractor(nil)
 	for _, tt := range []string{"iam.cluster", "iam.bogus", ""} {
 		req := &iamv1.CreateRoleRequest{DefinitionTier: &iamv1.DefinitionTier{TierType: tt, TierId: "x"}}
-		_, _, ok := e.ResolveDefinitionTierScope(req)
+		_, _, ok := e.ResolveDefinitionTierScope(roleCreateFQN, req)
 		assert.Falsef(t, ok, "tierType %q must not resolve", tt)
 	}
 }
@@ -228,7 +233,7 @@ func TestResourceExtractor_DefinitionTierScope_ClusterAndUnknown_NotResolved(t *
 func TestResourceExtractor_DefinitionTierScope_LegacyNoTier_NotResolved(t *testing.T) {
 	e := middleware.NewResourceExtractor(nil)
 	req := &iamv1.CreateRoleRequest{Name: "reader", AccountId: "acc_alpha"}
-	_, _, ok := e.ResolveDefinitionTierScope(req)
+	_, _, ok := e.ResolveDefinitionTierScope(roleCreateFQN, req)
 	assert.False(t, ok)
 }
 
@@ -237,11 +242,33 @@ func TestResourceExtractor_DefinitionTierScope_HTTP_JSONBody(t *testing.T) {
 	body := `{"name":"reader","definitionTier":{"tierType":"iam.account","tierId":"acc_gamma"},"rules":[]}`
 	r := httptest.NewRequest(http.MethodPost, "/iam/v1/roles", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
-	ot, id, ok := e.ResolveDefinitionTierScopeHTTP(r)
+	ot, id, ok := e.ResolveDefinitionTierScopeHTTP(roleCreateFQN, r)
 	require.True(t, ok)
 	assert.Equal(t, "account", ot)
 	assert.Equal(t, "acc_gamma", id)
 	// body restored for the downstream handler
 	rest, _ := io.ReadAll(r.Body)
 	assert.Equal(t, body, string(rest))
+}
+
+// TestResourceExtractor_DefinitionTierScope_UnrelatedFQN_NotResolved — the FQN
+// binding: an RPC that does not declare the anchor is never re-scoped by it, on
+// EITHER arm (typed proto and raw-JSON HTTP). Without the binding a caller could
+// smuggle `definitionTier` into any JSON body and choose their own authz scope.
+func TestResourceExtractor_DefinitionTierScope_UnrelatedFQN_NotResolved(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	const otherFQN = "kacho.cloud.iam.v1.UserService/Invite"
+
+	req := &iamv1.CreateRoleRequest{
+		Name:           "reader",
+		DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.project", TierId: "prj_attacker"},
+	}
+	_, _, ok := e.ResolveDefinitionTierScope(otherFQN, req)
+	assert.False(t, ok, "proto arm: anchor must not resolve on an FQN that does not declare it")
+
+	body := `{"accountId":"acc_victim","definitionTier":{"tierType":"iam.project","tierId":"prj_attacker"}}`
+	r := httptest.NewRequest(http.MethodPost, "/iam/v1/users:invite", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	_, _, ok = e.ResolveDefinitionTierScopeHTTP(otherFQN, r)
+	assert.False(t, ok, "HTTP arm: anchor must not resolve on an FQN that does not declare it")
 }

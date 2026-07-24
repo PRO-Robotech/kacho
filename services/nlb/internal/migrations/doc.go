@@ -9,7 +9,8 @@
 // nlb_outbox, nlb_watch_cursors), sequences, FK/CHECK/
 // UNIQUE/partial-UNIQUE-NULLS-NOT-DISTINCT + triggers. (Baseline also created the
 // attached_target_groups M:N pivot; `0022` drops it — a listener wires directly
-// to one target group.)
+// to one target group, and `0023` widens that FK to (target_group, project) so the
+// wiring can never cross a project boundary.)
 //
 // FS потребляется `cmd/migrator/main.go` (goose up/down/status) и
 // `cmd/kacho-loadbalancer/main.go` (на serve startup — health-check / version).

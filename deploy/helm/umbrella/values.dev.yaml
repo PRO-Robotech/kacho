@@ -1142,6 +1142,24 @@ kacho-iam:
         sslMode: disable
     authn:
       mode: dev
+      # Bootstrap-mint caller allow-list (#58 hardening). MintBootstrapToken is
+      # gated ONLY by the caller's client-certificate SPIFFE SAN (no ReBAC Check is
+      # possible before the first token exists; no gateway REST route exists), and
+      # authzguard enforces that gate in EVERY mode — dev included. Without this
+      # list even the dev stand denies every mint (empty = deny everyone). The SAN
+      # is the dedicated operator leaf the umbrella issues
+      # (mtls.bootstrapOperator → secret kacho-bootstrap-operator-client-tls);
+      # NOT the api-gateway identity — see values.yaml mtls.bootstrapOperator.
+      #
+      # Orthogonal to ENABLEMENT: the mint only issues tokens when a signing key
+      # is present (kacho.iam.bootstrapToken.signingKeySecretName + the in-cluster
+      # Hydra token endpoint, both supplied by the values.dev-prod.yaml overlay).
+      # Listing the caller here costs nothing on a stand that never mints, and
+      # means the ONE knob that stays fail-closed by default is the credential
+      # gate — not a forgotten allow-list that silently 403s the operator.
+      bootstrapMint:
+        allowedClientSANs:
+          - spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-operator
     extapi:
       # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
       openfga:

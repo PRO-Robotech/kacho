@@ -22,7 +22,6 @@ import urllib.request
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
 
-INTERNAL = "http://localhost:18081"   # api-gateway internal-rest (bootstrap-mint, geo internal)
 PUBLIC = "http://localhost:18080"     # api-gateway public
 IAM_GRPC = "localhost:19091"          # iam-internal :9091 (mTLS)
 HYDRA_TOKEN = "http://localhost:14444/oauth2/token"
@@ -135,7 +134,7 @@ def make_sa_token(account_id, name, role_id=None, scope_type=None, scope_id=None
 ROLE_EDIT = "rolde95b43bceeb4b998"  # md5('edit')[:17] → FGA editor
 RID = str(int(time.time()))[-6:]    # run-id suffix — fresh names per run (idempotent reruns)
 
-boot = m.mint_bootstrap(INTERNAL)
+boot = m.mint_bootstrap()
 
 # 1) org structure: seed-owner user → personal account + default project (A1).
 owner_ext = "prodseed-net-owner@example.com"

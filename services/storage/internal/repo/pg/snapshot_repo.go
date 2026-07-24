@@ -128,14 +128,17 @@ func (r *SnapshotRepo) List(ctx context.Context, p snapshot.Pagination) ([]*doma
 	return out, next, nil
 }
 
-// snapshotInsertCAS — атомарная вставка-если-можно: source volume существует И READY;
-// size_bytes снимается из volumes на момент; state→READY сразу (§1.4). 0 rows →
-// disambiguation (том нет / не READY). partial UNIQUE(name) collision → 23505 (не 0-row).
+// snapshotInsertCAS — атомарная вставка-если-можно: source volume существует, лежит В
+// ТОМ ЖЕ проекте, что снимок, И READY; size_bytes снимается из volumes на момент;
+// state→READY сразу (§1.4). project-предикат обязателен: без него caller снимал бы
+// снапшот с ЧУЖОГО приватного тома и вычитывал его содержимое (cross-project
+// disclosure/BOLA). 0 rows → disambiguation (том не резолвится в проекте / не READY).
+// partial UNIQUE(name) collision → 23505 (не 0-row).
 const snapshotInsertCAS = `
 	INSERT INTO snapshots (id, project_id, name, description, labels, source_volume_id, size_bytes, state)
 	SELECT $1, $2, $3, $4, $5::jsonb, v.id, v.size_bytes, 'READY'
 	  FROM volumes v
-	 WHERE v.id = $6 AND v.state = 'READY'
+	 WHERE v.id = $6 AND v.project_id = $2 AND v.state = 'READY'
 	RETURNING created_at, size_bytes`
 
 // Insert реализует snapshot.Repo: from-READY-volume CAS + storage_outbox CREATED в
@@ -166,7 +169,7 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 		if !errors.Is(serr, pgx.ErrNoRows) {
 			return serr // 23505 name-collision / 23514 CHECK → mapSnapshotErr снаружи
 		}
-		return disambiguateSnapshotSource(ctx, tx, s.SourceVolumeID) // 0 rows → sentinel
+		return disambiguateSnapshotSource(ctx, tx, s.ProjectID, s.SourceVolumeID) // 0 rows → sentinel
 	})
 	if txErr != nil {
 		return nil, mapSnapshotErr(txErr, snapErrCtx{
@@ -177,12 +180,17 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 	return &created, nil
 }
 
-// disambiguateSnapshotSource разбирает 0-row исход from-READY-CAS (в той же tx): том
-// не существует → "Volume <id> not found"; существует, но state != READY → "Volume
-// <id> is not ready" (оба FailedPrecondition — existence same-DB, не cross-service).
-func disambiguateSnapshotSource(ctx context.Context, tx pgx.Tx, srcVolumeID string) error {
+// disambiguateSnapshotSource разбирает 0-row исход from-READY-CAS (в той же tx). Резолв
+// тома — СТРОГО в проекте снимка: том не резолвится (нет вовсе ЛИБО принадлежит чужому
+// проекту) → "Volume <id> not found"; свой том, но state != READY → "Volume <id> is not
+// ready" (оба FailedPrecondition — existence same-DB, не cross-service). project-скоуп
+// обязателен и здесь: неограниченный SELECT отдавал бы на ЧУЖОЙ не-READY том
+// отличимое "is not ready" — existence/state-oracle (security.md §6, hide-existence
+// byte-identity с настоящим miss'ом).
+func disambiguateSnapshotSource(ctx context.Context, tx pgx.Tx, projectID, srcVolumeID string) error {
 	var state string
-	verr := tx.QueryRow(ctx, `SELECT state FROM volumes WHERE id = $1`, srcVolumeID).Scan(&state)
+	verr := tx.QueryRow(ctx, `SELECT state FROM volumes WHERE id = $1 AND project_id = $2`,
+		srcVolumeID, projectID).Scan(&state)
 	if verr != nil {
 		if errors.Is(verr, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, srcVolumeID)

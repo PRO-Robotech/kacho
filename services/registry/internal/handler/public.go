@@ -88,13 +88,16 @@ func (h *RegistryHandler) Create(ctx context.Context, req *registryv1.CreateRegi
 }
 
 // Update запускает async-смену mutable-полей (labels/description/defaultRepositoryVisibility)
-// и возвращает Operation. Переход defaultRepositoryVisibility→PUBLIC требует registry admin
-// (D-6 any-path-to-PUBLIC gate, B10/B11): admin-Check В ХЕНДЛЕРЕ при "defaultRepositoryVisibility"
-// в mask И target=PUBLIC → не-admin → PERMISSION_DENIED (не ломает editor description-путь).
+// и возвращает Operation. Установка defaultRepositoryVisibility=PUBLIC требует registry admin
+// (D-6 any-path-to-PUBLIC gate, B10/B11): admin-Check В ХЕНДЛЕРЕ на ЛЮБОМ пути, которым
+// поле РЕАЛЬНО применяется — и через "defaultRepositoryVisibility" в mask, и через
+// full-object PATCH (пустой mask применяет все mutable-поля, api-conventions.md; см.
+// maskApplies) → не-admin → PERMISSION_DENIED. Editor description-путь не ломается:
+// без PUBLIC в теле (UNSPECIFIED) визибилити не применяется и гейт не срабатывает.
 func (h *RegistryHandler) Update(ctx context.Context, req *registryv1.UpdateRegistryRequest) (*operationProto, error) {
 	paths := req.GetUpdateMask().GetPaths()
-	if (maskContains(paths, "default_repository_visibility") || maskContains(paths, "defaultRepositoryVisibility")) &&
-		req.GetDefaultRepositoryVisibility() == registryv1.Visibility_PUBLIC {
+	if req.GetDefaultRepositoryVisibility() == registryv1.Visibility_PUBLIC &&
+		maskApplies(paths, "default_repository_visibility", "defaultRepositoryVisibility") {
 		if err := registry.ValidateRegistryID(req.GetRegistryId()); err != nil {
 			return nil, mapErr(err)
 		}

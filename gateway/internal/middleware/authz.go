@@ -649,6 +649,23 @@ func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 // An external caller of any Internal* RPC is not admitted here and falls through
 // to the normal catalog/authN path (deny / 401); the REST dispatcher
 // independently 404s these on the external listener.
+//
+// SECURITY — be exact about what this phase is: it admits the request WITHOUT
+// EXTRACTING A PRINCIPAL, and the listener it trusts is plain HTTP/1.1 with no
+// TLS and no client certificate (cmd/api-gateway/main.go). The only thing it
+// verifies is WHERE the connection arrived — i.e. NETWORK POSITION, which is not
+// a credential ("internal = trusted" is a forbidden premise, security.md). Any
+// RPC routed through this phase is effectively callable by anything that can
+// reach the `internal-rest` Service port or hold a port-forward.
+//
+// Therefore: an RPC that MINTS CREDENTIALS or GRANTS PRIVILEGE must never be
+// registered on the REST mux at all — no route, rather than an exempt route.
+// InternalBootstrapTokenService/MintBootstrapToken (a cluster `system_admin`
+// token mint) is deliberately unrouted for exactly this reason; it lives only on
+// iam :9091 behind a client-certificate SAN allow-list. See restmux/mux.go and
+// restmux/bootstrap_token_no_rest_route_test.go. The RPCs that legitimately pass
+// here are identity-bootstrap / hot-path lookups that necessarily run before a
+// principal exists and that hand out nothing on their own.
 func (m *AuthzMiddleware) phaseInternalOriginExempt(dr decisionRequest) (decision, bool) {
 	if allowlist.HasInternalSuffix("/"+dr.FQN) && !m.isExternalRequest(dr) {
 		if entry, found := m.cfg.Catalog.Lookup(dr.FQN); found && entry.IsExempt() {
@@ -875,12 +892,18 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// → keep the legacy scope; the iam handler surfaces the canonical
 	// INVALID_ARGUMENT. Code-driven (like the nested ResourceRef `.id` handling),
 	// so the byte-identical permission-catalog is untouched.
+	//
+	// The resolution is BOUND TO THE FQN (definitionTierScopedFQNs): the anchor is
+	// read from the raw request payload — on the REST arm straight out of the JSON
+	// body, before grpc-gateway drops unknown keys — so an unbound override would
+	// let a caller pick their own authz scope for any JSON-bodied RPC while the
+	// handler acted on the real one (BOLA, security.md §object-scoped authz).
 	if dr.ProtoReq != nil {
-		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScope(dr.ProtoReq); ok {
+		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScope(dr.FQN, dr.ProtoReq); ok {
 			resourceType, resourceID = ot, ResourceID(id)
 		}
 	} else if dr.HTTPReq != nil {
-		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScopeHTTP(dr.HTTPReq); ok {
+		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScopeHTTP(dr.FQN, dr.HTTPReq); ok {
 			resourceType, resourceID = ot, ResourceID(id)
 		}
 	}

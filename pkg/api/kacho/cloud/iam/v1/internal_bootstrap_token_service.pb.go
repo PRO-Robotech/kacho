@@ -8,10 +8,16 @@
 // source: kacho/cloud/iam/v1/internal_bootstrap_token_service.proto
 
 // InternalBootstrapTokenService — Internal-only (cluster-internal :9091, mTLS).
-// Registered EXCLUSIVELY on the api-gateway internal mux under
-// `/iam/v1/internal/bootstrapToken:mint`; never on the external TLS endpoint
-// (the `Internal…Service` name matches `HasInternalSuffix`, so the gRPC router
-// 404s it on the public listener — ban #6).
+// Reachable ONLY by a DIRECT mTLS gRPC dial to kacho-iam :9091. It carries NO
+// `google.api.http` binding and is NOT registered on the api-gateway REST mux —
+// deliberately, and this is a SECURITY invariant, not a style choice: the
+// gateway's cluster-internal REST listener is plain HTTP/1.1 (no TLS, no client
+// cert) and the authz middleware admits `<exempt>` Internal* RPCs arriving there
+// WITHOUT extracting a principal, so a REST route would make this a
+// credential-free cluster-admin token mint for anything that can reach the
+// `internal-rest` Service port (or hold a port-forward). Never on the external
+// TLS endpoint either (the `Internal…Service` name matches `HasInternalSuffix`,
+// so the gRPC router 404s it on the public listener — ban #6).
 //
 // Purpose (#58): a NON-INTERACTIVE entry point to a first real RS256 Bearer for
 // production-mode seed. Production authN (`api-gateway authn.mode=
@@ -38,17 +44,27 @@
 // subject/principal field in the request — a "mint token for any principal"
 // skeleton-key is rejected by construction (acceptance IBT-11 / D-2).
 //
-// Authorization gate: the mTLS listener boundary IS the gate
-// (`permission = "<exempt>"`, like the Hydra token-hooks). `<exempt>` bypasses
-// the per-RPC FGA Check but NOT transport authN — mTLS remains mandatory
-// ("internal = trusted" is forbidden, security.md §authN-everywhere).
+// Authorization gate: an EXPLICIT per-RPC allow-list of client-certificate
+// SPIFFE SANs, enforced on the :9091 listener by
+// `authzguard.CallerPolicy` (`authn.bootstrap-mint.allowed-client-sans`). The
+// gate is the caller's VERIFIED CLIENT CERTIFICATE — a named identity — NOT its
+// network position: "internal = trusted" / "the listener boundary is the gate"
+// are FORBIDDEN premises (security.md §authN-everywhere). An empty allow-list
+// denies every caller (fail-closed, no default caller), and an ENABLED mint
+// (signing key present) with an empty allow-list REFUSES TO BOOT in production
+// (`Config.Validate`, core rule #16).
+//
+// `permission = "<exempt>"` marks only that there is no per-RPC FGA/ReBAC Check:
+// this RPC exists to obtain the FIRST token on a stand where no token — and
+// therefore no relation to check — exists yet (chicken-and-egg). `<exempt>` is
+// NOT an authentication exemption; the cert allow-list above is the authN+authZ
+// gate.
 
 package iamv1
 
 import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
-	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -218,7 +234,7 @@ var File_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto protoreflect.
 
 const file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDesc = "" +
 	"\n" +
-	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"E\n" +
+	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"E\n" +
 	"\x19MintBootstrapTokenRequest\x12(\n" +
 	"\vttl_seconds\x18\x01 \x01(\x03B\a\xfa\xc71\x03>=0R\n" +
 	"ttlSeconds\"\x94\x02\n" +
@@ -231,9 +247,9 @@ const file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDesc = "
 	"\n" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12!\n" +
 	"\fprincipal_id\x18\x05 \x01(\tR\vprincipalId\x127\n" +
-	"\tissued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt2\xd2\x01\n" +
-	"\x1dInternalBootstrapTokenService\x12\xb0\x01\n" +
-	"\x12MintBootstrapToken\x12-.kacho.cloud.iam.v1.MintBootstrapTokenRequest\x1a..kacho.cloud.iam.v1.MintBootstrapTokenResponse\";\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02):\x01*\"$/iam/v1/internal/bootstrapToken:mintB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\tissued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt2\xa3\x01\n" +
+	"\x1dInternalBootstrapTokenService\x12\x81\x01\n" +
+	"\x12MintBootstrapToken\x12-.kacho.cloud.iam.v1.MintBootstrapTokenRequest\x1a..kacho.cloud.iam.v1.MintBootstrapTokenResponse\"\f\x8a\xb5\x18\b<exempt>B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDescOnce sync.Once

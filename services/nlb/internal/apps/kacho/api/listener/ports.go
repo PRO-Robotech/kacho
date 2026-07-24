@@ -37,6 +37,14 @@ type InternalAddressClient = vpcclient.InternalAddressClient
 // сбой → лог, НЕ фейлит Operation (ban #9). Impl — *iamclient.SyncRegistrar.
 type Registrar = iamclient.Registrar
 
+// CheckClient — per-object FGA authorization gate (iam.InternalIAMService.Check).
+// Create/Update используют его для авторизации caller'а на caller-supplied
+// `targetGroupId` (`viewer` на `nlb_target_group:<id>`): per-RPC interceptor
+// скоупит только parent LoadBalancer / сам Listener, поэтому TG остаётся
+// необойдённым объектом (CWE-863). nil → Check пропускается (dev/unwired).
+// Parity с `loadbalancer.CheckClient` / `targetgroup.CheckClient`.
+type CheckClient = iamclient.CheckClient
+
 // FGA owner-hierarchy / creator / parent-link tuple-регистрация — через
 // transactional-outbox (FGARegisterOutbox emit в writer-tx + register-drainer →
 // IAM), не прямым FGA-клиентом. FGA object-types / relations — `internal/domain`.

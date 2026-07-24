@@ -132,6 +132,29 @@ kacho-iam:
       # gateway (gateway.hydra.issuer already = this localhost issuer); the in-cluster POST
       # target stays hydraTokenURL. authn.go documents this override for non-derivable issuers.
       hydraIssuer: "http://localhost:28080/.ory/hydra/public/"
+      # ─── bootstrap-mint caller allow-list — REQUIRED to boot here (#58) ──────
+      # This profile ENABLES the mint (kacho.iam.bootstrapToken.signingKeySecretName
+      # below ⇒ the signing key is injected), and MintBootstrapToken issues a
+      # cluster `system_admin` RS256 Bearer. It has no ReBAC gate (it exists to
+      # obtain the FIRST token, before any relation exists) and no api-gateway REST
+      # route — the caller's client-certificate SPIFFE SAN IS the credential, checked
+      # by authzguard.CallerPolicy on :9091 against exactly this list.
+      #
+      # In production Config.Validate REFUSES TO START on "mint enabled + empty
+      # allow-list" (core rule #16 — an enabled-yet-uncallable mint invites the
+      # "fix" of reopening the hole), so this list is not optional here: without it
+      # kacho-iam CrashLoopBackOffs and `values.dev-prod` stops being a bootable
+      # production profile.
+      #
+      # The identity is the dedicated operator leaf the umbrella issues
+      # (mtls.bootstrapOperator → secret kacho-bootstrap-operator-client-tls,
+      # client-auth only). DELIBERATELY NOT the api-gateway SAN: the gateway fronts
+      # tenant traffic and is reachable cluster-wide, so "is the api-gateway" must
+      # never be a licence to mint cluster-admin. Seed/fixture path:
+      # tests/authz-fixtures/mint_rs256.py pulls that Secret and dials iam :9091.
+      bootstrapMint:
+        allowedClientSANs:
+          - spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-operator
     repository:
       postgres:
         sslMode: require         # production-strict enforces ssl-mode ∈ {require,verify-ca,verify-full}

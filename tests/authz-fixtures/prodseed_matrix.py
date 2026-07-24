@@ -185,7 +185,7 @@ def subject(account_id, name, grants=()):
 
 
 # ── org structure ───────────────────────────────────────────────────────────
-boot = m.mint_bootstrap(INTERNAL)
+boot = m.mint_bootstrap()
 
 
 def _seed_bootstrap_root_cluster():

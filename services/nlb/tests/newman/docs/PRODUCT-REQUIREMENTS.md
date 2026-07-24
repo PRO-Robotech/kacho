@@ -69,6 +69,7 @@ noted in `docs/architecture/07-known-divergences.md` of kacho-nlb.
 | **REQ-LST-UNIQ-PORT-PROTO** | Duplicate `(load_balancer_id, port, protocol)` MUST return `ALREADY_EXISTS` enforced by UNIQUE constraint in `listeners`. | LST-010 | `LST-CR-CONF-DUP-PORT-PROTO` |
 | **REQ-LST-COMP-FREEIP** | If Listener INSERT fails after VIP allocation, worker MUST execute `vpc.FreeIP` compensation before `ops.MarkDone(error)`. | LST-015 | `LST-CR-CONF-VIP-COMPENSATION` |
 | **REQ-LST-DEL-AUTO-FREE** | Delete of auto-VIP Listener MUST call `vpc.FreeIP` (returning the IP to its pool) before deleting the row. | LST-022 | `LST-DEL-CRUD-AUTO-VIP-FREE` |
+| **REQ-LST-TG-SAME-PROJECT** | The wired `target_group_id` (and its legacy twin `default_target_group_id`) MUST resolve to a TargetGroup of the listener's OWN project, on Create and on Update. A TargetGroup of another project MUST be refused with the SAME response as a non-existent one (hide-existence, no existence-oracle) and MUST NOT be persisted; the composite FK `(default_tg_fk, project_id) → target_groups(id, project_id)` is the atomic backstop. | — | `LST-CR-SEC-TG-CROSS-PROJECT`, `LST-UPD-SEC-TG-CROSS-PROJECT` |
 
 ## REQ-TGR-* — TargetGroup resource
 

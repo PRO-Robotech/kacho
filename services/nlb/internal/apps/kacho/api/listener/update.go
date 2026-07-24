@@ -5,6 +5,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -53,12 +54,26 @@ import (
 type UpdateUseCase struct {
 	repo    RepoFactory
 	opsRepo OperationsRepo
-	logger  *slog.Logger
+	// checkClient — object-scoped authz-gate для caller-supplied `targetGroupId`
+	// (per-RPC interceptor скоупит только сам Listener). nil → Check пропускается
+	// (dev/unwired); owning-project-инвариант энфорсится безусловно. См. tg_ref.go.
+	checkClient CheckClient
+	logger      *slog.Logger
 }
 
 // NewUpdateUseCase — конструктор.
 func NewUpdateUseCase(repo RepoFactory, opsRepo OperationsRepo, logger *slog.Logger) *UpdateUseCase {
 	return &UpdateUseCase{repo: repo, opsRepo: opsRepo, logger: logger}
+}
+
+// WithCheckClient подключает object-scoped authz-gate для caller-supplied
+// `targetGroupId` (`viewer` на `nlb_target_group:<id>`). Per-RPC interceptor
+// авторизует caller'а только на самом Listener, поэтому TG репойнта — необойдённый
+// caller-supplied объект (CWE-863). nil → Check пропускается (dev/unwired);
+// owning-project-инвариант при этом энфорсится безусловно. Возвращает self.
+func (u *UpdateUseCase) WithCheckClient(c CheckClient) *UpdateUseCase {
+	u.checkClient = c
+	return u
 }
 
 // Mutable update_mask paths (single source of truth).
@@ -179,12 +194,26 @@ func (u *UpdateUseCase) Run(ctx context.Context, req *lbv1.UpdateListenerRequest
 		next.ProxyProtocolV2 = req.GetProxyProtocolV2()
 	}
 
-	// Same-region precheck for default_target_group_id.
+	// Owning-project + authz + same-region precheck for the (re)wired target group.
+	// The referenced TG must belong to the listener's OWN project: repointing at a
+	// victim project's TargetGroup would forward this LB's traffic to the victim's
+	// targets (CWE-639 — the interceptor scopes only the LISTENER object). An
+	// unresolved reference (missing OR foreign-project) reports the repo's own
+	// not-found verbatim, so the two stay indistinguishable (security.md #6); the
+	// composite FK (0023) is the atomic backstop for the precheck→worker race.
 	if tgRegionCheckNeeded {
-		tg, terr := rd.TargetGroups().Get(ctx, tgIDToCheck)
+		tg, terr := lookupWiredTargetGroup(ctx, rd.TargetGroups(), tgIDToCheck, string(cur.ProjectID))
 		_ = rd.Close()
 		if terr != nil {
+			if errors.Is(terr, errTargetGroupUnresolved) {
+				return nil, targetGroupMissErr(tgIDToCheck)
+			}
 			return nil, mapDomainErr(terr)
+		}
+		// Object-scoped authz AFTER the owning-project resolve — a cross-project id
+		// must stay hidden as a miss (a PermissionDenied would confirm it exists).
+		if err := checkTargetGroupViewer(ctx, u.checkClient, tgIDToCheck); err != nil {
+			return nil, err
 		}
 		if tg.RegionID != cur.RegionID {
 			return nil, status.Errorf(codes.FailedPrecondition,
