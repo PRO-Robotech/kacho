@@ -14,9 +14,13 @@ Mechanism (chosen: psql \copy stream → staging tables → INSERT … ON CONFLI
   1. dump regions/zones from kacho_compute as CSV via `psql \copy … TO STDOUT`;
   2. load each CSV into an UNLOGGED staging table in kacho_geo via `\copy … FROM STDIN`;
   3. INSERT … SELECT FROM staging … ON CONFLICT (id) DO NOTHING.
-Idempotent: re-runs never duplicate / never fail; the geo migration already
-seeds the baseline rows (ru-central1 + ru-central1-{a,b,d}), so this carries
-only admin-added rows (ON CONFLICT DO NOTHING skips the baseline collision).
+Idempotent: re-runs never duplicate / never fail (ON CONFLICT (id) DO NOTHING).
+NOTE (doc-truthfulness): the geo goose migration does NOT seed any baseline rows
+— `services/geo/internal/migrations/0001_initial.sql` starts the catalog EMPTY.
+On a live cutover this Job carries the real Region/Zone rows out of a populated
+kacho_compute; the baseline for greenfield/ephemeral stands is seeded separately
+as a newman fixture prerequisite (tests/authz-fixtures/setup.sh::seed_geo_baseline
++ prodseed_matrix.py::_seed_geo_catalog), not by this Job or the migration.
 created_at is carried verbatim (the INSERT lists created_at explicitly — not
 DEFAULT now()), so timestamps are preserved.
 
@@ -25,9 +29,11 @@ RESTRICT → regions(id)). The Job is a post-install/post-upgrade hook → it ru
 AFTER geo + pg-geo are up and migrated. Consumers are repointed later (S4/S5
 image switch deploys after this).
 
-Greenfield/ephemeral stand (fe3455): the geo seed already covers the baseline →
-this Job is a no-op there (every row hits ON CONFLICT DO NOTHING). Still wired so
-stands WITH admin-added geography carry those rows across.
+Greenfield/ephemeral stand (fe3455): the source kacho_compute is EMPTY (compute
+dropped its Region/Zone tables in the redesign — 0011_drop_geography.sql), so this
+Job is a genuine no-op there (nothing to copy). The baseline for such stands comes
+from the newman fixture prerequisite (setup.sh::seed_geo_baseline), NOT this Job.
+Still wired so a live cutover from a populated compute carries geography across.
 */}}
 apiVersion: batch/v1
 kind: Job

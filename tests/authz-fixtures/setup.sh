@@ -29,6 +29,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 BASE_URL="${BASE_URL:-http://localhost:18080}"
+# Internal REST mux (:18081) — cluster-internal admin RPC (geo Region/Zone catalog,
+# AddressPool). Never on the external :443 surface (ban #6); reachable here via the
+# same port-forward newman-parallel.sh sets up for the internal mux.
+INTERNAL_BASE_URL="${INTERNAL_BASE_URL:-http://localhost:18081}"
 IAM_INTERNAL_GRPC="${IAM_INTERNAL_GRPC:-localhost:19091}"  # порт-форвард на kacho-iam-internal:9091 (grpcurl)
 DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 EXP_HOURS="${EXP_HOURS:-24}"
@@ -159,6 +163,19 @@ api() {
     vrun curl -sS -X "$method" "${hdrs[@]}" --data "$body" "$BASE_URL$path"
   else
     vrun curl -sS -X "$method" "${hdrs[@]}" "$BASE_URL$path"
+  fi
+}
+
+# api_internal — like api() but against the cluster-internal REST mux (:18081) for
+# Internal admin RPC (geo InternalRegion/ZoneService, AddressPool). Same bearer flow.
+api_internal() {
+  local method="$1" path="$2" token="${3:-}" body="${4:-}"
+  local hdrs=(-H "Content-Type: application/json" -H "Accept: application/json")
+  if [ -n "$token" ]; then hdrs+=(-H "Authorization: Bearer $token"); fi
+  if [ -n "$body" ]; then
+    vrun curl -sS -X "$method" "${hdrs[@]}" --data "$body" "$INTERNAL_BASE_URL$path"
+  else
+    vrun curl -sS -X "$method" "${hdrs[@]}" "$INTERNAL_BASE_URL$path"
   fi
 }
 
@@ -601,6 +618,52 @@ if [ -n "$SV_PG_PW" ] && [ -n "$USER_BOOT" ]; then
   log "    BOOT($USER_BOOT) → system_viewer@cluster:cluster_kacho_root (fga_outbox seed)"
 else
   log "    WARN: skipping system_viewer seed (PG access or USER_BOOT empty)"
+fi
+
+# 5d) GEO baseline — admin-curated catalog (region ru-central1 + zones a/b/c/d, UP).
+# Greenfield stands have an EMPTY geo catalog: geo goose-migrations create the schema
+# but seed no rows, and the compute→geo data-migration Job is disabled/no-op (compute
+# dropped its Region/Zone tables in the redesign). With no baseline EVERY zone/region-
+# referencing create (vpc Subnet, compute Instance, nlb LB — blocks 11/12/13 below,
+# and every downstream suite) fails peer-validate geo.{Zone,Region}Service.Get fail-
+# closed → "Zone/Region not found" → whole suites red. Region/Zone is an admin-curated
+# catalog, so seeding it as a NEWMAN PREREQUISITE via the Internal admin RPC (:18081,
+# system_admin@cluster = JWT_BOOTSTRAP — ready after block 5b) is the correct layer,
+# not a migration. Idempotent: re-create → AlreadyExists (tolerated); confirm-loops
+# pass immediately when already seeded. `existingZoneId`/`existingRegionId` in the env
+# below name these exact ids. Mirrors prodseed_matrix.py::_seed_geo_catalog.
+log "5d/10 seeding geo baseline (region ru-central1 + zones a/b/c/d) via :18081 admin RPC"
+if [ -n "$JWT_BOOTSTRAP" ]; then
+  api_internal POST "/geo/v1/internal/regions" "$JWT_BOOTSTRAP" \
+    '{"id":"ru-central1","name":"ru-central1","status":"UP"}' >/dev/null 2>&1 || true
+  # region durable before zones (zones.region_id FK RESTRICT → regions.id)
+  geo_region_ok=0
+  for _ in $(seq 1 20); do
+    if [ "$(api GET "/geo/v1/regions/ru-central1" "$JWT_BOOTSTRAP" 2>/dev/null | python3 -c 'import sys,json;
+try: print(json.load(sys.stdin).get("id",""))
+except Exception: print("")' 2>/dev/null)" = "ru-central1" ]; then geo_region_ok=1; break; fi
+    sleep 0.5
+  done
+  for z in a b c d; do
+    api_internal POST "/geo/v1/internal/zones" "$JWT_BOOTSTRAP" \
+      "{\"id\":\"ru-central1-$z\",\"regionId\":\"ru-central1\",\"name\":\"ru-central1-$z\",\"status\":\"UP\"}" >/dev/null 2>&1 || true
+  done
+  # zones durable (peer-validate consumers read them on the request path)
+  geo_zones=0
+  for _ in $(seq 1 30); do
+    geo_zones=$(api GET "/geo/v1/zones" "$JWT_BOOTSTRAP" 2>/dev/null | python3 -c 'import sys,json;
+try: print(len(json.load(sys.stdin).get("zones") or []))
+except Exception: print(0)' 2>/dev/null || echo 0)
+    [ "$geo_zones" -ge 4 ] 2>/dev/null && break
+    sleep 0.5
+  done
+  if [ "$geo_region_ok" = 1 ] && [ "${geo_zones:-0}" -ge 4 ] 2>/dev/null; then
+    log "    geo baseline OK (region ru-central1 durable, $geo_zones zones)"
+  else
+    log "    WARN: geo baseline NOT confirmed (region_ok=$geo_region_ok zones=$geo_zones) — zone-dependent seeds may fail 'Zone not found'"
+  fi
+else
+  log "    WARN: skipping geo baseline seed (JWT_BOOTSTRAP empty)"
 fi
 
 # 6) INV invite-flow (KAC-125): AAA invites INV into account-A as editor on project-A1.

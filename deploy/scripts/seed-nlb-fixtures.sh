@@ -171,11 +171,14 @@ if [ -z "$PROJECT_ID" ]; then
 fi
 log "1/5 project_id=$PROJECT_ID"
 
-ZONE_ID=$(curl_json GET "/compute/v1/zones?pageSize=1" | extract "zones.0.id")
+# Geography (Region/Zone) is owned by kacho-geo in the redesign — compute dropped its
+# zones table. Read the axis from the geo public catalog (project-scope EXEMPT, authN-
+# only) so the resolved zone actually exists for the AddressPool peer-validate below.
+ZONE_ID=$(curl_json GET "/geo/v1/zones?pageSize=1" | extract "zones.0.id")
 [ -n "$ZONE_ID" ] || ZONE_ID="ru-central1-a"
 log "    zone_id=$ZONE_ID"
 
-REGION_ID=$(curl_json GET "/compute/v1/zones/$ZONE_ID" | extract "regionId")
+REGION_ID=$(curl_json GET "/geo/v1/zones/$ZONE_ID" | extract "regionId")
 [ -n "$REGION_ID" ] || REGION_ID="ru-central1"
 log "    region_id=$REGION_ID"
 
