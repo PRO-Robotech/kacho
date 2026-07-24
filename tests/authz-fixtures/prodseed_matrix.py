@@ -210,6 +210,38 @@ def _seed_bootstrap_root_cluster():
 
 _seed_bootstrap_root_cluster()
 
+
+def _seed_geo_catalog():
+    """Seed the admin-curated geo baseline (region ru-central1 + zones a/b/c/d, status
+    UP) via the geo Internal admin RPC (:18081, gated system_admin@cluster = jwtBootstrap).
+
+    Greenfield/fresh stands have NO geo baseline: geo goose-migrations create the schema
+    but seed no rows, and the compute->geo data-migration Helm-job is a no-op on an empty
+    greenfield compute -> every compute/nlb/vpc create fails "Zone/Region not found"
+    (peer-validate geo.{Zone,Region}Service.Get, fail-closed) -> all downstream Get/List
+    404. Seeded here as a NEWMAN PREREQUISITE (not a migration -- geo Region/Zone is an
+    admin-curated catalog, so a fixture-seed via the admin RPC is the right layer, same as
+    every other prerequisite). Idempotent: re-create of an existing row -> AlreadyExists,
+    tolerated; the confirm-loops pass immediately when already seeded. `existingZoneId`
+    etc. in the fixtures dict below already name these ids."""
+    _curl("POST", "/geo/v1/internal/regions", boot,
+          {"id": "ru-central1", "name": "ru-central1", "status": "UP"}, base=INTERNAL)
+    for _ in range(20):  # region durable before zones (zones.region_id FK RESTRICT -> regions.id)
+        if _curl("GET", "/geo/v1/regions/ru-central1", boot).get("id") == "ru-central1":
+            break
+        time.sleep(0.5)
+    for z in ("a", "b", "c", "d"):
+        _curl("POST", "/geo/v1/internal/zones", boot,
+              {"id": f"ru-central1-{z}", "regionId": "ru-central1",
+               "name": f"ru-central1-{z}", "status": "UP"}, base=INTERNAL)
+    for _ in range(30):  # zones durable (peer-validate consumers read them on request-path)
+        if len((_curl("GET", "/geo/v1/zones", boot).get("zones") or [])) >= 4:
+            break
+        time.sleep(0.5)
+
+
+_seed_geo_catalog()
+
 owner_a = f"prodseed-owner-a-{RID}@example.com"
 owner_b = f"prodseed-owner-b-{RID}@example.com"
 usr_owner_a = upsert_user(owner_a)
