@@ -145,6 +145,18 @@ if [ "${#wave1[@]}" -gt 0 ]; then
   echo "[parallel] WAVE 1 concurrent (delay=${DELAY}ms jobs=${JOBS}/suite; nlb --jobs 1): ${wave1[*]}"
   launch_wave "${wave1[@]}"
 fi
+# Inter-wave drain-gate: WAVE 1 (vpc/compute/nlb/storage/… leaf-registrations) floods iam's
+# fga_outbox + reconcile backlog. iam's OWN authz materialization (WAVE 2 — AccessBinding
+# CRUD, label-revoke) runs the FULL EXCLUSIVE-lock ReconcileObject/drainer path; starting it
+# while WAVE 1's backlog is still draining STARVES it (get-confirms 404, revoke-not-sticking,
+# post-revoke {allowed:true} — the exact iam-suite reds under parallel load). Deterministically
+# drain the healthy fga_outbox depth → 0 (bounded by DRAIN_BUDGET) BEFORE the isolated iam wave
+# so its materialization has quiet room. Best-effort (the script degrades to a bounded settle if
+# the iam DB is unreachable); skipped when there is no WAVE 2 or no WAVE 1.
+if [ "${#wave2[@]}" -gt 0 ] && [ "${#wave1[@]}" -gt 0 ] && [ -f "$REPO_ROOT/tests/authz-fixtures/drain_fga_outbox.sh" ]; then
+  echo "[parallel] inter-wave drain-gate (settle WAVE 1 fga_outbox backlog before iam wave)…"
+  KACHO_NS="$NS" bash "$REPO_ROOT/tests/authz-fixtures/drain_fga_outbox.sh" "${DRAIN_BUDGET:-180}" || true
+fi
 if [ "${#wave2[@]}" -gt 0 ]; then
   echo "[parallel] WAVE 2 isolated (no competing load): ${wave2[*]}"
   launch_wave "${wave2[@]}"

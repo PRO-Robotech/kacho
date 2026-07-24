@@ -948,6 +948,21 @@ STORAGE_CROSS=$(ensure_project "authz-storage-cross" "$ACCOUNT_STO" "storage sui
 [ -n "$USER_BOOT" ] && [ -n "$STORAGE_CROSS" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$STORAGE_CROSS" "$JWT_BOOTSTRAP"
 log "    storage isolation: acct=$ACCOUNT_STO home=$STORAGE_HOME cross=$STORAGE_CROSS (bootstrap owner+editor)"
 
+# CS1-S1-71: project-scoped editor subject for the storage VOL-OBJSELF anti-BOLA case.
+# The storage suite's default Bearer is jwtBootstrap, but THIS case authenticates Get/
+# Update/Delete of ITS OWN volume as a project-scoped editor (jwtProjectEditorA), proving
+# the object-self Check is not masked by cluster-admin. Without a fresh HS256 mint the
+# storage env carries a STALE committed RS256 jwtProjectEditorA → the dev-mode HS256
+# gateway rejects it → 401 "token validation failed" on all 74 objself asserts. Mint an
+# HS256 subject on the isolated STORAGE_HOME + editor binding: object-self v_get/v_update/
+# v_delete on storage_volume materialize from this project-editor binding (#71 FGA model).
+# No v_create needed (the case CREATEs under jwtBootstrap; the editor only Get/Update/
+# Deletes the existing volume) — unlike the registry editor which also fga_writes v_create.
+USER_STO_EA=$(upsert_user_grpc "authz-storage-editor-a@example.com" "authz-storage-editor-a@example.com" "AuthZ Storage EditorA")
+JWT_STO_EA=$(mint_user_jwt "authz-storage-editor-a@example.com")
+[ -n "$USER_STO_EA" ] && [ -n "$STORAGE_HOME" ] && ensure_binding "$USER_STO_EA" "$ROLE_EDIT" "project" "$STORAGE_HOME" "$JWT_BOOTSTRAP"
+log "    storage editor subject: user=$USER_STO_EA editor@$STORAGE_HOME (VOL-OBJSELF jwtProjectEditorA)"
+
 REGISTRY_HOME=$(ensure_project "authz-registry-home"  "$ACCOUNT_REG" "registry suite home"  "$JWT_BOOTSTRAP")
 REGISTRY_CROSS=$(ensure_project "authz-registry-cross" "$ACCOUNT_REG" "registry suite cross" "$JWT_BOOTSTRAP")
 [ -n "$USER_BOOT" ] && [ -n "$REGISTRY_HOME" ]  && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$REGISTRY_HOME"  "$JWT_BOOTSTRAP"
@@ -1316,6 +1331,7 @@ EOF
   cat > "$OUT_DIR/storage-fixtures.json" <<EOF
 {
   "existingProjectId": "$STORAGE_HOME",
+  "jwtProjectEditorA": "$JWT_STO_EA",
   "existingProjectCrossId": "$STORAGE_CROSS"
 }
 EOF

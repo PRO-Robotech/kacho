@@ -87,9 +87,16 @@ def _create_repo(repo_expr, extra_asserts=None, body_extra=None):
     if extra_asserts:
         cap += extra_asserts
     return [
-        Step(name="repo-create", method="POST", path=_reg_base(), body=body,
-             test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+        # Read-your-writes over the PARENT registry's v_create: the FIRST CreateRepository
+        # under a freshly-created parent registry can 404 (handler registryGate(v_create) →
+        # existence-hiding deny) until the parent's owner-tuple materializes (register-outbox
+        # → drainer → IAM RegisterResource → FGA reconciler). The gate runs BEFORE the
+        # use-case, so a denied attempt creates nothing → re-POST is safe (no AlreadyExists);
+        # later creates under the same registry are 200. Bounded-retry own fresh parent only.
+        retry_until_authorized(
+            Step(name="repo-create", method="POST", path=_reg_base(), body=body,
+                 test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
+                              *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="repo-capture", method="GET", path="/operations/{{opId}}", test_script=[*assert_status(200), *cap]),
         # Read-your-writes warm-up: force the per-repo owner-tuple

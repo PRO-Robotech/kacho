@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1af3e4b9-f53f-4f3d-8807-cbd1b34685fe",
+    "_postman_id": "65eec0e5-b030-4a82-adc1-0d092da5c4f5",
     "name": "kacho-registry / newman / registry-authz",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -178,7 +178,7 @@
           ]
         },
         {
-          "name": "reg-warm-rya33",
+          "name": "reg-warm-rya49",
           "request": {
             "method": "GET",
             "header": [
@@ -812,7 +812,7 @@
       "description": "class:AZD | priority:P1",
       "item": [
         {
-          "name": "repo-az-create-rya34",
+          "name": "repo-az-create-rya50",
           "request": {
             "method": "POST",
             "header": [
@@ -966,7 +966,7 @@
           ]
         },
         {
-          "name": "repo-az-warm-rya35",
+          "name": "repo-az-warm-rya51",
           "request": {
             "method": "GET",
             "header": [
