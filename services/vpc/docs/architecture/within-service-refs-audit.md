@@ -82,11 +82,11 @@
 | `(project_id, name)` | уникальный non-empty name | `subnets_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `network_id` | существует, не nullable | `subnets_network_id_fkey` FK (NO ACTION = RESTRICT) ✅ + `NOT NULL` ✅ | redundant `networkRepo.Get` в `doCreate` | OK |
 | `zone_id` | существует в kacho-geo | N/A (cross-service) | `geo.ZoneService.Get` через `ZoneRegistry` | OK (cross-service) |
-| `route_table_id` | если задан — указывает на существующую RT (можно `NULL`) | `subnets_route_table_id_fkey` FK ON DELETE SET NULL ✅ | trigger `subnet_auto_pick_rt_trg` BEFORE INSERT | OK |
+| `route_table_id` | если задан — указывает на существующую RT (можно `NULL`) | `subnets_route_table_id_fkey` FK ON DELETE SET NULL ✅ | `Subnet.Create` подставляет `network.default_route_table_id` (share-lock, writer-TX) | OK |
 | `v4_cidr_blocks[1]` | непересечение с другими subnets той же сети по v4 | `subnets_no_overlap_v4` EXCLUDE USING gist ✅ | sync `checkCIDRDisjoint` в `subnet.go` | OK |
 | `v6_cidr_blocks[1]` | аналогично, по v6 | `subnets_no_overlap_v6` EXCLUDE ✅ | sync check | OK |
 | `v4_cidr_blocks[2..n]` (multi-CIDR через AddCidrBlocks) | непересечение | ⚠️ EXCLUDE check'ит только primary (array[1]) | `networkRepo.List` ручная проверка в `subnet.go` | OK (документировано как known limitation; addCidr — admin-path) |
-| `route_table_id` auto-association | при INSERT RT — UPDATE всех subnets без RT, эмит `Subnet.UPDATED` | `rt_auto_assoc_subnets_trg` AFTER INSERT ✅ + `subnets_outbox_emit_route_table_change_trg` AFTER UPDATE OF ✅ | n/a (DB-driven) | OK |
+| `route_table_id` — смена привязки | меняется только явной мутацией тенанта либо FK SET NULL; DB сама не переклеивает | `subnets_outbox_emit_route_table_change_trg` AFTER UPDATE OF ✅ (эмит `Subnet.UPDATED`); legacy `rt_auto_assoc_subnets_trg` снят 0019 | `Subnet.Update` mask=`route_table_id` | OK |
 
 ### 1.3 `addresses`
 
@@ -139,7 +139,7 @@
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `route_tables_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `network_id` | существует, RESTRICT удаления | `route_tables_network_id_fkey` FK ✅ (NO ACTION = RESTRICT) | sync `checkNetworkEmpty` в `Network.Delete` | OK |
-| auto-assoc subnets при Insert | новая RT применяется к subnets с `route_table_id IS NULL` той же сети | `rt_auto_assoc_subnets_trg` AFTER INSERT ✅ | n/a | OK |
+| INSERT новой RT не трогает subnets | привязка ставится один раз на `Subnet.Create`; вторая RT сети не переклеивает существующие подсети (VPC-1 F8) | `rt_auto_assoc_subnets_trg` **снят** миграцией 0019 (был единственным DB-механизмом переклейки) | n/a | OK |
 | `static_routes` JSONB items | валидные CIDR / IP, нет dup destination | ❌ нет CHECK | sync `validateStaticRoutes` | acceptable (валидация в request-path; нет admin-API писать static_routes напрямую) |
 
 ### 1.7 `security_groups`

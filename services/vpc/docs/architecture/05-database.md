@@ -90,10 +90,10 @@ CIDR-less подсеть легальна; реальное добавление
 блокируется, если у нее есть внутренние Address (v4 ИЛИ v6) или `NetworkInterface` — sync-precheck
 в сервисе + DB-backstops `addresses_internal_subnet_fkey` / `network_interfaces_subnet_id_fkey`.
 
-**Auto-association с RouteTable** (PL/pgSQL triggers):
-- `rt_auto_assoc_subnets_trg` (AFTER INSERT ON route_tables) — выставляет `route_table_id` на subnets с `route_table_id IS NULL` в той же сети.
-- `subnet_auto_pick_rt_trg` (BEFORE INSERT ON subnets) — заполняет `NEW.route_table_id` самой ранней RT этой сети, если клиент не задал.
-- `subnets_outbox_emit_route_table_change_trg` (AFTER UPDATE OF route_table_id) — эмитит `Subnet.UPDATED` в `vpc_outbox`.
+**Привязка к RouteTable** — выбор RT живёт в service-слое, не в БД (VPC-1 F8):
+- `Subnet.Create` подставляет `network.default_route_table_id` (system-created на `Network.Create`), если тенант не задал `route_table_id` явно; строка сети читается `FOR SHARE` в той же writer-TX.
+- Оба legacy-триггера DB-выбора **сняты**: `subnet_auto_pick_rt_trg` (BEFORE INSERT ON subnets, «самая ранняя RT сети») — миграцией 0017; `rt_auto_assoc_subnets_trg` (AFTER INSERT ON route_tables, «усыновить subnets с `route_table_id IS NULL`») — миграцией 0019. Двух конкурирующих механизмов выбора RT быть не должно.
+- `subnets_outbox_emit_route_table_change_trg` (AFTER UPDATE OF route_table_id) — остаётся: эмитит `Subnet.UPDATED` в `vpc_outbox`, когда `route_table_id` меняет сама БД (после 0019 это только FK ON DELETE SET NULL при `RouteTable.Delete`).
 
 ### `addresses`
 

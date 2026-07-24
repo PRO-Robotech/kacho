@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -18,45 +19,77 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
-// DB-level auto-association через PL/pgSQL-триггеры.
+// DB-уровень привязки Subnet→RouteTable после VPC-1 F3/F8.
 //
-// Проверяем 4 поведения:
-//  1. AFTER INSERT ON route_tables (`rt_auto_assoc_subnets_trg`, СОХРАНЁН) →
-//     существующие Subnet'ы с NULL route_table_id получают route_table_id =
-//     NEW.id; Subnet с explicit route_table_id не перетирается. Это legacy-
-//     усыновление осиротевших подсетей, оно не конкурирует с явным дефолтом сети.
-//  2. BEFORE INSERT ON subnets — триггер auto-pick «самая ранняя RT»
-//     (`subnet_auto_pick_rt_trg`) **СНЯТ** миграцией 0017: выбор RT для новой
-//     подсети больше не размазан по БД, его делает Subnet.Create из явного
-//     `network.defaultRouteTableId°` (VPC-1 F3/F8). На DB-уровне здесь остаётся
-//     противоположная гарантия — «БД сама RT не подставляет», плюс сохранность
-//     явного значения. Кто именно становится дефолтом — лочит
-//     TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault.
-//  3. FK subnets.route_table_id → route_tables(id) ON DELETE SET NULL.
-//  4. AFTER UPDATE OF route_table_id ON subnets → outbox-эмит Subnet.UPDATED
-//     с payload.auto_association=true.
+// Редизайн сделал `network.defaultRouteTableId°` ЕДИНСТВЕННЫМ механизмом выбора
+// RT для подсети (Network.Create провижнит системную RT в своей writer-TX,
+// Subnet.Create подставляет её id, если тенант не задал свой). Оба legacy-
+// триггера, которые выбирали RT «за» клиента, сняты:
+//
+//   - `subnet_auto_pick_rt_trg` (BEFORE INSERT ON subnets, «самая ранняя RT
+//     сети») — снят миграцией 0017;
+//   - `rt_auto_assoc_subnets_trg` (AFTER INSERT ON route_tables, «усыновить все
+//     подсети с route_table_id IS NULL») — снят миграцией 0019.
+//
+// Проверяем 3 поведения:
+//  1. БД сама RT НЕ подставляет и НЕ переклеивает: ни INSERT подсети без
+//     route_table_id, ни INSERT новой RT в сеть не меняют привязку. Явное
+//     значение сохраняется как есть.
+//  2. FK subnets.route_table_id → route_tables(id) ON DELETE SET NULL.
+//  3. AFTER UPDATE OF route_table_id ON subnets → outbox-эмит Subnet.UPDATED
+//     с payload.auto_association=true (единственный оставшийся DB-driven путь
+//     смены route_table_id — FK SET NULL при RT.Delete).
+//
+// Кто именно становится дефолтом — лочит
+// TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault.
 //
 // Тестируем напрямую через repo (без service-слоя) — это DB-level гарантия.
 
-func setupAssocRepo(t *testing.T) (kacho.Repository, func()) {
+func setupAssocRepo(t *testing.T) (kacho.Repository, *pgxpool.Pool, func()) {
 	ctx := context.Background()
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	r := kachopg.New(pool, nil)
-	return r, func() {
+	return r, pool, func() {
 		r.Close()
 		pool.Close()
 	}
 }
 
-func TestIntegration_VPC_AutoAssociation_RT_AutoAssoc_Subnets(t *testing.T) {
+// requireTriggerAbsent — снятый триггер обязан отсутствовать в каталоге, а не
+// «просто не срабатывать»: пока функция+триггер живы, следующая миграция/
+// рефактор может нечаянно вернуть DB-выбор RT в обход явного дефолта.
+func requireTriggerAbsent(t *testing.T, pool *pgxpool.Pool, name string) {
+	t.Helper()
+	var cnt int
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM pg_trigger WHERE tgname = $1`, name).Scan(&cnt))
+	require.Zero(t, cnt, "%s обязан быть снят: выбор RT живёт только в Subnet.Create", name)
+}
+
+// TestIntegration_VPC_RouteTableInsert_NeverRebindsSubnets — 0019 снял
+// `rt_auto_assoc_subnets_trg`: INSERT RouteTable больше НЕ переклеивает подсети
+// сети. Привязка ставится ровно один раз, на Subnet.Create, из явного
+// `network.defaultRouteTableId°` (VPC-1 F8), и дальше меняется только явной
+// мутацией тенанта (Subnet.Update mask=route_table_id) либо FK SET NULL.
+//
+// Почему усыновление «подсетей с route_table_id IS NULL» пришлось снять, а не
+// оставить «безобидным backstop'ом»: оно — второй, невидимый в API механизм
+// выбора RT. Достижим он через RT.Delete (FK SET NULL обнуляет и привязку
+// подсети, и default сети) — после этого следующий RouteTable.Create молча
+// привязывал бы осиротевшие подсети к себе, хотя `defaultRouteTableId°` сети
+// пуст. Два конкурирующих механизма выбора RT спека запрещает прямо (F8).
+func TestIntegration_VPC_RouteTableInsert_NeverRebindsSubnets(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 	ctx := context.Background()
-	r, cleanup := setupAssocRepo(t)
+	r, pool, cleanup := setupAssocRepo(t)
 	defer cleanup()
+
+	requireTriggerAbsent(t, pool, "rt_auto_assoc_subnets_trg")
+	requireTriggerAbsent(t, pool, "subnet_auto_pick_rt_trg")
 
 	withTx := func(t *testing.T, fn func(kacho.RepositoryWriter) error) error {
 		t.Helper()
@@ -77,12 +110,14 @@ func TestIntegration_VPC_AutoAssociation_RT_AutoAssoc_Subnets(t *testing.T) {
 		return e
 	}))
 
-	subA := &domain.Subnet{
+	// Подсеть-сирота: вставлена напрямую через repo, без route_table_id (так
+	// выглядит подсеть, чью RT удалили — FK SET NULL).
+	subOrphan := &domain.Subnet{
 		ID: ids.NewID(ids.PrefixSubnet), ProjectID: "f-assoc-a", Name: domain.RcNameVPC("sub-assoc-a"), NetworkID: net.ID, PlacementType: domain.PlacementZonal, ZoneID: "zone-a",
 		V4CidrBlocks: []string{"10.71.0.0/24"},
 	}
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
-		_, e := w.Subnets().Insert(ctx, subA)
+		_, e := w.Subnets().Insert(ctx, subOrphan)
 		return e
 	}))
 
@@ -95,21 +130,29 @@ func TestIntegration_VPC_AutoAssociation_RT_AutoAssoc_Subnets(t *testing.T) {
 		return got
 	}
 
-	require.Empty(t, subnetGet(subA.ID).RouteTableID, "auto-pick: нет RT в сети — должен остаться NULL/'' ")
+	require.Empty(t, subnetGet(subOrphan.ID).RouteTableID, "БД сама RT не подставляет")
 
-	// Создаем RT — AFTER INSERT trigger обновит subA на rtExplicit.id.
-	rtExplicit := &domain.RouteTable{
+	rtFirst := &domain.RouteTable{
 		ID: ids.NewID(ids.PrefixRouteTable), ProjectID: "f-assoc-a", Name: domain.RcNameVPC("rt-explicit"), NetworkID: net.ID,
 	}
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
-		_, e := w.RouteTables().Insert(ctx, rtExplicit)
+		_, e := w.RouteTables().Insert(ctx, rtFirst)
 		return e
 	}))
 
-	require.Equal(t, rtExplicit.ID, subnetGet(subA.ID).RouteTableID,
-		"AFTER INSERT trigger должен auto-assoc subA на новую RT")
+	require.Empty(t, subnetGet(subOrphan.ID).RouteTableID,
+		"INSERT RouteTable не усыновляет подсети с NULL route_table_id (0019)")
 
-	// Новая RT-2 не должна перетирать subA's route_table_id.
+	// Явно привязанная подсеть тоже не переклеивается следующей RT.
+	subBound := &domain.Subnet{
+		ID: ids.NewID(ids.PrefixSubnet), ProjectID: "f-assoc-a", Name: domain.RcNameVPC("sub-assoc-bound"), NetworkID: net.ID, PlacementType: domain.PlacementZonal, ZoneID: "zone-a",
+		V4CidrBlocks: []string{"10.76.0.0/24"}, RouteTableID: rtFirst.ID,
+	}
+	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
+		_, e := w.Subnets().Insert(ctx, subBound)
+		return e
+	}))
+
 	rt2 := &domain.RouteTable{
 		ID: ids.NewID(ids.PrefixRouteTable), ProjectID: "f-assoc-a", Name: domain.RcNameVPC("rt-explicit-2"), NetworkID: net.ID,
 	}
@@ -118,8 +161,10 @@ func TestIntegration_VPC_AutoAssociation_RT_AutoAssoc_Subnets(t *testing.T) {
 		return e
 	}))
 
-	require.Equal(t, rtExplicit.ID, subnetGet(subA.ID).RouteTableID,
+	require.Equal(t, rtFirst.ID, subnetGet(subBound.ID).RouteTableID,
 		"existing route_table_id не должен перетираться при INSERT новой RT")
+	require.Empty(t, subnetGet(subOrphan.ID).RouteTableID,
+		"вторая RT тоже не усыновляет сироту")
 }
 
 // TestIntegration_VPC_AutoAssociation_Subnet_NoDBAutoPick — 0017 снял
@@ -133,7 +178,7 @@ func TestIntegration_VPC_AutoAssociation_Subnet_NoDBAutoPick(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	ctx := context.Background()
-	r, cleanup := setupAssocRepo(t)
+	r, _, cleanup := setupAssocRepo(t)
 	defer cleanup()
 
 	withTx := func(t *testing.T, fn func(kacho.RepositoryWriter) error) error {
@@ -212,7 +257,7 @@ func TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	ctx := context.Background()
-	r, cleanup := setupAssocRepo(t)
+	r, _, cleanup := setupAssocRepo(t)
 	defer cleanup()
 
 	withTx := func(t *testing.T, fn func(kacho.RepositoryWriter) error) error {
@@ -274,6 +319,12 @@ func TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull(t *testing.T) {
 		"FK ON DELETE SET NULL: subnet.route_table_id должен обнулиться после RT.Delete")
 }
 
+// TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate —
+// `subnets_outbox_emit_route_table_change_trg` (AFTER UPDATE OF route_table_id)
+// остаётся: watch-клиент обязан увидеть Subnet.UPDATED и тогда, когда
+// route_table_id меняет не service-слой, а сама БД. После 0019 такой путь ровно
+// один — FK ON DELETE SET NULL при RouteTable.Delete (усыновление на INSERT RT
+// снято), поэтому эмит проверяем именно на нём.
 func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -305,26 +356,30 @@ func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing
 		return e
 	}))
 
-	sub := &domain.Subnet{
-		ID: ids.NewID(ids.PrefixSubnet), ProjectID: "f-assoc-d", Name: domain.RcNameVPC("sub-outbox"), NetworkID: net.ID, PlacementType: domain.PlacementZonal, ZoneID: "zone-a",
-		V4CidrBlocks: []string{"10.75.0.0/24"},
-	}
-	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
-		_, e := w.Subnets().Insert(ctx, sub)
-		return e
-	}))
-
-	// snapshot outbox seq до создания RT.
-	var seqBefore int64
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT COALESCE(MAX(sequence_no), 0) FROM vpc_outbox`).Scan(&seqBefore))
-
 	rt := &domain.RouteTable{
 		ID: ids.NewID(ids.PrefixRouteTable), ProjectID: "f-assoc-d", Name: domain.RcNameVPC("rt-outbox"), NetworkID: net.ID,
 	}
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
 		_, e := w.RouteTables().Insert(ctx, rt)
 		return e
+	}))
+
+	sub := &domain.Subnet{
+		ID: ids.NewID(ids.PrefixSubnet), ProjectID: "f-assoc-d", Name: domain.RcNameVPC("sub-outbox"), NetworkID: net.ID, PlacementType: domain.PlacementZonal, ZoneID: "zone-a",
+		V4CidrBlocks: []string{"10.75.0.0/24"}, RouteTableID: rt.ID,
+	}
+	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
+		_, e := w.Subnets().Insert(ctx, sub)
+		return e
+	}))
+
+	// snapshot outbox seq до удаления RT.
+	var seqBefore int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX(sequence_no), 0) FROM vpc_outbox`).Scan(&seqBefore))
+
+	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
+		return w.RouteTables().Delete(ctx, rt.ID)
 	}))
 
 	// Проверяем что в outbox есть Subnet.UPDATED с auto_association=true.
@@ -345,7 +400,8 @@ func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing
 	require.Equal(t, "Subnet", kind)
 	require.Equal(t, sub.ID, resID)
 	require.Equal(t, "UPDATED", evtType)
-	require.Equal(t, rt.ID, payload["route_table_id"])
+	require.Nil(t, payload["route_table_id"],
+		"FK SET NULL: в payload уезжает уже обнулённая привязка")
 	require.Equal(t, true, payload["auto_association"],
 		"triggered emit ставит auto_association=true маркер")
 }

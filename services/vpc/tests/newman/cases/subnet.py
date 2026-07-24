@@ -77,40 +77,48 @@ CASES.append(Case(
     ],
 ))
 
-# Auto-pick RT при Subnet.Create. Trigger BEFORE INSERT ON subnets
-# (`subnet_auto_pick_rt_trg`) выбирает самую раннюю по `created_at` RouteTable в этой
-# сети и подставляет в `NEW.route_table_id`, если клиент не задал его явно. Если RT в
-# сети нет — поле остается NULL (auto-assoc сработает позже при RT.Create).
+# VPC-1 F8: подсеть без явного routeTableId привязывается к ОБЪЯВЛЕННОМУ дефолту
+# сети (`network.defaultRouteTableId°`, system-created на Network.Create), а не к
+# «какой-нибудь» RouteTable этой сети. Кейс держит в сети ВТОРУЮ, tenant-созданную
+# RT — конкурента, которого выбрал бы снятый DB-выбор («самая ранняя»/«последняя
+# вставленная»), — и требует, чтобы подсеть взяла именно дефолт.
 CASES.append(Case(
-    id="SUB-CR-STATE-AUTO-PICK-RT",
-    title="Create Subnet в сети с RT → subnet.route_table_id auto-picked самой ранней RT (DB-trigger)",
+    id="SUB-CR-STATE-DEFAULT-RT-NOT-ARBITRARY",
+    title="Create Subnet в сети с дополнительной tenant-RT → routeTableId = network.defaultRouteTableId°, НЕ произвольная RT сети (F8)",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_make_net("autopick"),
-        # 1. Создаем RouteTable в этой сети.
+        retry_until_authorized(Step(name="get-net-default-rt", method="GET", path="/vpc/v1/networks/{{netId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('network carries a system default RT', () => "
+                          "pm.expect(pm.response.json().defaultRouteTableId, JSON.stringify(pm.response.json()))"
+                          ".to.be.a('string').and.not.empty);",
+                          *save_from_response("j.defaultRouteTableId", "defRtId")])),
+        # 1. Вторая (tenant) RouteTable в этой сети — конкурент дефолту.
         Step(name="cr-rt", method="POST", path="/vpc/v1/routeTables",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-autopick-rt-{{runId}}", "staticRoutes": []},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]),
         poll_operation_until_done(),
-        # 2. Subnet без явного route_table_id — auto-pick подставит rtId.
+        # 2. Subnet без явного routeTableId.
         Step(name="cr-sub-autopick", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-autopick-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.246.0.0/24"]},
+                   "ipv4CidrPrimary": "10.246.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         Step(name="assert-sub-created", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('Subnet.Create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        # 3. Главная проверка: subnet.route_table_id auto-picked.
+        # 3. Главная проверка: взят объявленный дефолт, а не tenant-RT.
         retry_until_authorized(Step(name="get-sub-autopicked", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
-                 "pm.test('subnet.route_table_id auto-picked == rtId (DB-trigger)', () => pm.expect(j.routeTableId).to.eql(pm.environment.get('rtId')));",
+                 "pm.test('subnet.routeTableId == network.defaultRouteTableId', () => pm.expect(j.routeTableId, JSON.stringify(j)).to.eql(pm.environment.get('defRtId')));",
+                 "pm.test('НЕ произвольная RT сети (tenant-RT не выбрана)', () => pm.expect(j.routeTableId).to.not.eql(pm.environment.get('rtId')));",
              ])),
         # Cleanup снизу вверх.
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",

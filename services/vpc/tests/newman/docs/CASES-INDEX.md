@@ -153,8 +153,8 @@
 | `NIC-CR-WITH-V6-ADDR-OK` | CRUD | P1 | 1 (nic) | Create NIC с `v6_address_ids` (предсозданный v6 internal Address) → 200, v6-address привязан. Verifies REQ-NIC-04. |
 | `NIC-CR-WITH-BOTH-ADDR-OK` | CRUD | P1 | 1 (nic) | Create NIC с `v4_address_ids` И `v6_address_ids` одновременно (dual-stack линковка при создании) → 200, оба address привязаны. Verifies REQ-NIC-04. |
 | `NIC-CR-WITH-UNBOUND-SG-OK` | CRUD | P2 | 1 (nic) | Create NIC с `security_group_ids[]` на SG (bound к сети NIC'а) → 200; NIC ссылается на SG. (SG теперь mandatory-network — network-less SG больше нет; SG привязан к `{{netId}}`.) Verifies REQ-NIC-05. |
-| `RT-CR-STATE-SUBNET-AUTO-ASSOC` | CRUD,STATE | P1 | 1 (rou) | Create RouteTable с `network_id` → Subnet'ы этой сети (с `route_table_id IS NULL`) автоматически получают `route_table_id` = id новой RT. Реализация: DB-trigger `rt_auto_assoc_subnets_trg` (миграция 0019). Verifies REQ-RT-SUBNET-AUTO-ASSOC. |
-| `SUB-CR-STATE-AUTO-PICK-RT` | CRUD,STATE | P1 | 1 (sub) | Create Subnet в сети с уже существующей RouteTable → `subnet.route_table_id` auto-picked самой ранней RT по `created_at`. Реализация: DB-trigger `subnet_auto_pick_rt_trg` BEFORE INSERT (миграция 0019). Verifies REQ-SUB-AUTO-PICK-RT. |
+| `RT-CR-STATE-SUBNET-NO-REBIND` | CRUD,STATE | P1 | 1 (rou) | Create ВТОРОЙ RouteTable в сети → уже существующая Subnet остаётся на `network.defaultRouteTableId°` и НЕ переклеивается на новую RT (привязка ставится один раз, на Subnet.Create — VPC-1 F8). DB-механизмы выбора RT сняты: `subnet_auto_pick_rt_trg` (0017), `rt_auto_assoc_subnets_trg` (0019). Verifies REQ-RT-SUBNET-NO-REBIND. |
+| `SUB-CR-STATE-DEFAULT-RT-NOT-ARBITRARY` | CRUD,STATE | P1 | 1 (sub) | Create Subnet без `routeTableId` в сети, где ЕСТЬ дополнительная tenant-RT → привязка = `network.defaultRouteTableId°` (объявленный дефолт), а НЕ произвольная/«самая ранняя» RT сети. Реализация: `Subnet.Create` (use-case), не DB-trigger. Verifies REQ-SUB-DEFAULT-RT-BINDING. |
 | `*-CR-IDM-RETRY` | CONC,IDM | P1 | 1 (net) | Retry-safe: повторный Create same input → consistent result |
 | `*-CR-NEG-CIDR-OVERLAP` | NEG | P0 | 1 (sub) | Create двух subnet с пересекающимися CIDR → второй FailedPrecondition |
 | `*-CR-NEG-DUP-NAME` | CONC,NEG | P1 | 2 (net,sub) | Create с duplicate name в project → async ALREADY_EXISTS |
@@ -520,7 +520,7 @@ NIC-ресурс и `used_by`-колонки сохранены, но через
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `RT-DEL-WITH-ASSOC-OK` | CRUD,STATE | P1 | 1 (rou,sub) | Delete RouteTable с auto-assoc'нутой Subnet → 200, `subnet.route_table_id` обнулен через FK ON DELETE SET NULL. |
+| `RT-DEL-WITH-ASSOC-OK` | CRUD,STATE | P1 | 1 (rou,sub) | Delete tenant-RouteTable, к которой Subnet привязана явным `routeTableId` (явный выбор > `network.defaultRouteTableId°`) → 200, `subnet.route_table_id` обнулен через FK ON DELETE SET NULL. |
 
 ### Operation failure shape
 
@@ -965,5 +965,7 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 > (заглавная S, не lowercase-target); delete-non-empty → `«Network <id> is not empty»` (не
 > «network is not empty»); placement-absent zone/region → sync `InvalidArgument «unknown zone/region
 > id»` (PHASE-0-GATED унификация в `FAILED_PRECONDITION` ещё не landed). id-prefix — 3-char concat
-> `net…`/`sub…` (B3 hyphen ещё не мигрирован). default-RT-provision (VPC-1 F3/F8 target) в проде
-> **не реализован** — кейсы не ассёртят `defaultRouteTableId`/RT-auto-assoc (только default-SG landed).
+> `net…`/`sub…` (B3 hyphen ещё не мигрирован). default-RT-provision (VPC-1 F3/F8) **landed**: `Network.Create`
+> безусловно провижнит default-RT в writer-TX и заполняет `defaultRouteTableId°`, `Subnet.Create` привязывается
+> к нему — кейсы ассёртят это как контракт, а legacy DB-выбор RT (`subnet_auto_pick_rt_trg` 0017,
+> `rt_auto_assoc_subnets_trg` 0019) снят.

@@ -681,41 +681,49 @@ explicit `GET /securityGroups/{defSgId}` после Network.Delete обязан 
 - Проверка: `internal/service/network.go::doCreate` (inline `CreateDefaultForNetwork`);
  `internal/service/network.go::doDelete` (predeletion default-SG cleanup).
 
-### REQ-RT-SUBNET-AUTO-ASSOC — RouteTable.Create auto-associate Subnet'ы сети [P1]
-При `RouteTable.Create` с `network_id`, все `Subnet`-ы этой сети, у которых еще **не задан**
-свой `route_table_id` (NULL), ДОЛЖНЫ автоматически получить `route_table_id` = id новой RT.
-Subnet, у которого `route_table_id` уже задан клиентом, изменяться НЕ должен (explicit
-user choice имеет приоритет).
-- Validated-by: `RT-CR-STATE-SUBNET-AUTO-ASSOC` (green), integration
- `route_table_auto_association_integration_test.go::TestIntegration_VPC_AutoAssociation_RT_AutoAssoc_Subnets`.
-- Проверка: `internal/migrations/0019_vpc_auto_associations.sql` — `rt_auto_assoc_subnets_trg`
- AFTER INSERT ON route_tables (PL/pgSQL `UPDATE subnets SET route_table_id = NEW.id WHERE network_id = NEW.network_id AND route_table_id IS NULL`).
+### REQ-SUB-DEFAULT-RT-BINDING — Subnet.Create привязывается к объявленному дефолту сети [P1]
+`Network.Create` **безусловно** провижнит системную default-RouteTable в своей writer-TX и
+объявляет её в `network.defaultRouteTableId°` (VPC-1 F3). Клиент, создающий `Subnet` **без**
+явного `routeTableId`, ДОЛЖЕН получить `routeTableId = network.defaultRouteTableId°` — именно
+объявленный дефолт, а НЕ «какую-нибудь»/«самую раннюю» RouteTable сети (VPC-1 F8, сценарий
+VPC-1-37). Explicit `routeTableId` от клиента имеет приоритет и не перетирается дефолтом.
+Legacy-сеть без дефолта → поле остаётся пустым (легальное состояние).
+- Validated-by: `SUB-CR-STATE-DEFAULT-RT-NOT-ARBITRARY`, `SUB-CR-V1-AUTO-DEFAULT-RT`, integration
+ `network_default_rt_integration_test.go::TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault`.
+- Проверка: `internal/apps/kacho/api/network/default_rt.go` (провижн + `SetDefaultRouteTableID`),
+ `internal/apps/kacho/api/subnet/create.go` (подстановка из `parentNet.DefaultRouteTableID`
+ под share-lock'ом в writer-TX).
 
-### REQ-SUB-AUTO-PICK-RT — Subnet.Create auto-pick RT, если она есть [P1]
-Если в сети уже существует одна или несколько `RouteTable`, и клиент создает `Subnet` **без**
-явного `route_table_id`, продукт ДОЛЖЕН подставить id самой ранней по `created_at` RouteTable.
-Если RT нет — `route_table_id` остается NULL (auto-assoc сработает позже при RT.Create — см.
-REQ-RT-SUBNET-AUTO-ASSOC). Explicit `route_table_id` от клиента имеет приоритет.
-- Validated-by: `SUB-CR-STATE-AUTO-PICK-RT`, integration
- `route_table_auto_association_integration_test.go::TestIntegration_VPC_AutoAssociation_Subnet_AutoPick_RT`.
-- Проверка: `internal/migrations/0019_vpc_auto_associations.sql` — `subnet_auto_pick_rt_trg`
- BEFORE INSERT ON subnets (PL/pgSQL `IF NEW.route_table_id IS NULL THEN SELECT id INTO ... FROM route_tables WHERE network_id = NEW.network_id ORDER BY created_at ASC LIMIT 1`).
+### REQ-RT-SUBNET-NO-REBIND — RouteTable.Create НЕ переклеивает существующие Subnet'ы [P1]
+Привязка `subnet.route_table_id` ставится ровно один раз — на `Subnet.Create` (см.
+REQ-SUB-DEFAULT-RT-BINDING) — и дальше меняется ТОЛЬКО явной мутацией тенанта
+(`Subnet.Update` mask=`route_table_id`) либо FK SET NULL (REQ-RT-DEL-CLEANUP-FK). Создание
+второй/следующей `RouteTable` в сети НЕ ДОЛЖНО менять привязку ни одной подсети — включая
+подсети с `route_table_id IS NULL`. Двух механизмов выбора RT (DB-триггер + явный дефолт)
+существовать не должно (VPC-1 F8: «не оставлять два конкурирующих механизма выбора RT»).
+- Validated-by: `RT-CR-STATE-SUBNET-NO-REBIND`, integration
+ `route_table_auto_association_integration_test.go::TestIntegration_VPC_RouteTableInsert_NeverRebindsSubnets`,
+ `::TestIntegration_VPC_AutoAssociation_Subnet_NoDBAutoPick`.
+- Проверка: `internal/migrations/0017_network_default_route_table.sql` (снят `subnet_auto_pick_rt_trg`),
+ `internal/migrations/0019_drop_rt_auto_assoc_trigger.sql` (снят `rt_auto_assoc_subnets_trg` + функция).
 
 ### REQ-RT-DEL-CLEANUP-FK — RouteTable.Delete очищает subnet.route_table_id [P1]
 При `RouteTable.Delete` все `Subnet`-ы, ссылающиеся на эту RT через `route_table_id`, ДОЛЖНЫ
 получить `route_table_id = NULL` (не оставлять dangling ref). Реализуется DB-уровневым FK
 `subnets.route_table_id → route_tables(id) ON DELETE SET NULL` — никакой service-логики
 не требуется.
-- Validated-by: integration `route_table_auto_association_integration_test.go::TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull`.
-- Проверка: `internal/migrations/0019_vpc_auto_associations.sql` — `subnets_route_table_id_fkey`.
+- Validated-by: `RT-DEL-WITH-ASSOC-OK`, integration `route_table_auto_association_integration_test.go::TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull`.
+- Проверка: `internal/migrations/0001_initial.sql` — `subnets.route_table_id text REFERENCES route_tables(id) ON DELETE SET NULL`.
 
 ### REQ-VPC-OUTBOX-TRIGGER-EMIT — outbox-эмит для triggered UPDATE'ов subnets [P2]
-Изменения `subnets.route_table_id`, вызванные DB-trigger'ом (RT auto-assoc / FK SET NULL),
+Изменения `subnets.route_table_id`, вызванные самой БД (FK SET NULL при RT.Delete),
 ДОЛЖНЫ эмитить `Subnet.UPDATED` событие в `vpc_outbox` — watch-клиенты должны видеть state
 change даже если service-слой не делал прямую UPDATE-операцию. Payload (упрощенный
-`jsonb_build_object`) содержит маркер `auto_association: true`.
+`jsonb_build_object`) содержит маркер `auto_association: true`. После снятия legacy-триггеров
+выбора RT (0017/0019) единственный DB-driven путь смены `route_table_id` — FK SET NULL при
+`RouteTable.Delete`; на нём эмит и проверяется.
 - Validated-by: integration `route_table_auto_association_integration_test.go::TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate`.
-- Проверка: `internal/migrations/0019_vpc_auto_associations.sql` — `subnets_outbox_emit_route_table_change_trg`
+- Проверка: `internal/migrations/0001_initial.sql` — `subnets_outbox_emit_route_table_change_trg`
  AFTER UPDATE OF route_table_id ON subnets (WHEN OLD.route_table_id IS DISTINCT FROM NEW.route_table_id).
 
 ---

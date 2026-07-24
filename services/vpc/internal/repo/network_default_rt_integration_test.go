@@ -222,10 +222,13 @@ func TestIntegration_Network_VPC_1_11_DefaultRTBackfill(t *testing.T) {
 		`SELECT count(*) FROM pg_trigger WHERE tgname = 'subnet_auto_pick_rt_trg'`).Scan(&trg))
 	assert.Zero(t, trg, "subnet_auto_pick_rt_trg обязан быть снят (0017)")
 
-	// rt_auto_assoc_subnets сохранён намеренно — legacy-усыновление NULL-подсетей.
+	// Здесь дерево остановлено на версии 17, поэтому парный rt_auto_assoc_subnets
+	// ещё на месте — его снимает 0019 (второй DB-механизм выбора RT, F8 запрещает
+	// держать два). Отсутствие на HEAD лочит
+	// TestIntegration_VPC_RouteTableInsert_NeverRebindsSubnets.
 	require.NoError(t, pool2.QueryRow(ctx,
 		`SELECT count(*) FROM pg_trigger WHERE tgname = 'rt_auto_assoc_subnets_trg'`).Scan(&trg))
-	assert.Equal(t, 1, trg)
+	assert.Equal(t, 1, trg, "на версии 17 триггер ещё жив; снимает его 0019")
 
 	// Ссылочная целостность backfill'а: дефолт (если задан) — RT ТОЙ ЖЕ сети.
 	var bad int

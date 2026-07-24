@@ -405,22 +405,30 @@ CASES.append(Case(
                 test_script=["pm.test('non-2xx', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));"])],
 ))
 
-# Auto-association реализована через PL/pgSQL trigger (`rt_auto_assoc_subnets_trg`
-# AFTER INSERT ON route_tables). При создании RouteTable с network_id все Subnet'ы
-# этой сети, у которых route_table_id IS NULL, автоматически получают
-# route_table_id = NEW.id. Subnet с уже заданным route_table_id (explicit user
-# choice) не перетирается.
+# VPC-1 F3/F8: Network.Create безусловно провижнит системную default-RouteTable
+# в своей writer-TX и объявляет её в `network.defaultRouteTableId°`; Subnet.Create
+# привязывается ИМЕННО к ней (если тенант не задал свою RT). Привязка ставится
+# ОДИН раз, на Subnet.Create, поэтому создание ВТОРОЙ RouteTable в сети не
+# переклеивает уже существующие подсети — DB-механизмы выбора RT сняты (0017
+# `subnet_auto_pick_rt_trg`, 0019 `rt_auto_assoc_subnets_trg`). Re-point — только
+# явная мутация (`Subnet.Update` mask=routeTableId).
 CASES.append(Case(
-    id="RT-CR-STATE-SUBNET-AUTO-ASSOC",
-    title="Create RouteTable c networkId → Subnet этой сети получает route_table_id (DB-trigger)",
+    id="RT-CR-STATE-SUBNET-NO-REBIND",
+    title="Create второй RouteTable в сети → существующая Subnet остаётся на network.defaultRouteTableId° (F8, без DB-переклейки)",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
-        # 1. Network.
+        # 1. Network — вместе с ней система создаёт default-RT.
         Step(name="cr-net", method="POST", path="/vpc/v1/networks",
              body={"projectId": "{{_suiteProjectId}}", "name": "rt-autoassoc-net-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-net-default-rt", method="GET", path="/vpc/v1/networks/{{netId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('network carries a system default RT', () => "
+                          "pm.expect(pm.response.json().defaultRouteTableId, JSON.stringify(pm.response.json()))"
+                          ".to.be.a('string').and.not.empty);",
+                          *save_from_response("j.defaultRouteTableId", "defRtId")])),
         # 2. Subnet (без явного route_table_id).
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
@@ -429,11 +437,13 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
-        # 2a. Verify subnet.route_table_id пустой до создания RT (precondition).
+        # 2a. Precondition: подсеть УЖЕ привязана к дефолту сети (не пуста).
         retry_until_authorized(Step(name="get-sub-before-rt", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('subnet.route_table_id empty before RT.Create', () => pm.expect(pm.response.json().routeTableId || '').to.eql(''));"])),
-        # 3. RouteTable.
+                          "pm.test('subnet bound to network.defaultRouteTableId at Create', () => "
+                          "pm.expect(pm.response.json().routeTableId, JSON.stringify(pm.response.json()))"
+                          ".to.eql(pm.environment.get('defRtId')));"])),
+        # 3. Вторая (tenant) RouteTable в той же сети.
         Step(name="cr-rt", method="POST", path="/vpc/v1/routeTables",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "rt-autoassoc-{{runId}}", "staticRoutes": []},
@@ -443,13 +453,13 @@ CASES.append(Case(
         Step(name="assert-rt-created", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('RT.Create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        # 4. Главная проверка: Subnet.route_table_id обновился до новой RT
-        # (DB-trigger `rt_auto_assoc_subnets_trg`).
+        # 4. Главная проверка: подсеть НЕ переехала на новую RT.
         Step(name="get-sub-after-rt", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
-                 "pm.test('subnet.route_table_id == newly-created RT.id (DB-trigger)', () => pm.expect(j.routeTableId).to.eql(pm.environment.get('rtId')));",
+                 "pm.test('subnet still bound to the network default RT', () => pm.expect(j.routeTableId, JSON.stringify(j)).to.eql(pm.environment.get('defRtId')));",
+                 "pm.test('second RouteTable does NOT re-bind existing subnets', () => pm.expect(j.routeTableId).to.not.eql(pm.environment.get('rtId')));",
              ]),
         # Cleanup снизу вверх: RT → Subnet → Network.
         Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
@@ -484,33 +494,47 @@ for c in security_injection_block("RT", "/vpc/v1/routeTables", "/vpc/v1/routeTab
 # RT delete-with-association
 # ---------------------------------------------------------------------------
 
+# Привязка подсети к RT снимается на удалении RT через FK
+# `subnets.route_table_id → route_tables(id) ON DELETE SET NULL` (dangling-ref не
+# остаётся). Подсеть привязывается к УДАЛЯЕМОЙ (tenant-созданной) таблице явным
+# `routeTableId` на Create — это же лочит вторую половину контракта F8: явный
+# выбор тенанта имеет приоритет над `network.defaultRouteTableId°` и не
+# перетирается системным дефолтом.
 CASES.append(Case(
     id="RT-DEL-WITH-ASSOC-OK",
     title="Delete RouteTable с привязанной Subnet → 200 + Subnet.routeTableId обнулен (FK ON DELETE SET NULL)",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_net_steps("delAssoc"),
-        # Создаем Subnet (auto-pick RT нет, поскольку RT в этой сети еще нет).
-        Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "rt-da-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "ipv4CidrPrimary": "10.235.0.0/24"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
-        poll_operation_until_done(),
-        # Create RouteTable — DB-trigger auto-assoc'ит Subnet'ы этой сети.
+        retry_until_authorized(Step(name="get-net-default-rt", method="GET", path="/vpc/v1/networks/{{netId}}",
+             test_script=[*assert_status(200),
+                          *save_from_response("j.defaultRouteTableId", "defRtId")])),
+        # Tenant-RouteTable, к которой явно привяжем подсеть. Берём именно её, а
+        # не системный дефолт сети: предмет кейса — FK SET NULL, тогда как
+        # удаление ОБЪЯВЛЕННОГО дефолта дополнительно обнуляет
+        # `network.defaultRouteTableId°` (FK 0017) и оставляет сеть без дефолта —
+        # отдельный контракт, приземляется вместе с `SetDefaultRouteTable` (VPC-2).
         Step(name="create-rt", method="POST", path="/vpc/v1/routeTables",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "rt-da-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]),
         poll_operation_until_done(),
+        # Subnet с ЯВНЫМ routeTableId — приоритет над дефолтом сети.
+        Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "rt-da-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "ipv4CidrPrimary": "10.235.0.0/24", "routeTableId": "{{rtId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
+        poll_operation_until_done(),
         retry_until_authorized(Step(name="verify-subnet-rt-set", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[
                  *assert_status(200),
                  "const j = pm.response.json();",
-                 "pm.test('Subnet auto-assoc к свежему RT (BEFORE INSERT trigger или AFTER INSERT ON route_tables)', () => {",
+                 "pm.test('explicit routeTableId выигрывает у network.defaultRouteTableId', () => {",
                  "  pm.expect(j.routeTableId, JSON.stringify(j)).to.eql(pm.environment.get('rtId'));",
+                 "  pm.expect(j.routeTableId).to.not.eql(pm.environment.get('defRtId'));",
                  "});",
              ])),
         Step(name="del-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
