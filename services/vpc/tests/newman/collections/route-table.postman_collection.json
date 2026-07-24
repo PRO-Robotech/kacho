@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "0fa35fd3-d5dc-49f6-a650-cecc94eb7e15",
+    "_postman_id": "d1ad6666-1cea-4dc4-8115-9dbd5c8737c1",
     "name": "kacho-vpc / newman / route-table",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -69,7 +69,9 @@
               "let zs = [];",
               "if (code === 200) { try { zs = (pm.response.json().zones) || []; } catch (e) {} }",
               "const up = zs.filter(z => !z.status || String(z.status).indexOf('UP') !== -1);",
-              "const pick = up.length ? up : zs;",
+              "const stable = up.filter(z => String(z.id || '').indexOf('qa-') !== 0);",
+              "const baseline = stable.filter(z => String(z.id || '').indexOf('ru-central1-') === 0);",
+              "const pick = baseline.length ? baseline : (stable.length ? stable : up);",
               "if (pick.length) {",
               "  const at = (i) => (pick[i] || pick[pick.length - 1]).id;",
               "  pm.environment.set('zoneA', at(0));",

@@ -1756,7 +1756,19 @@ _ZONE_SETUP_TEST = [
     "let zs = [];",
     "if (code === 200) { try { zs = (pm.response.json().zones) || []; } catch (e) {} }",
     "const up = zs.filter(z => !z.status || String(z.status).indexOf('UP') !== -1);",
-    "const pick = up.length ? up : zs;",
+    # EPHEMERAL-ZONE GUARD (cross-suite race). The geo suite creates throwaway zones
+    # (`qa-zr-crud-<runId>-a`, `qa-zr-dflt-<runId>-a`, status UP) and DELETES them at
+    # cleanup. Under newman-parallel those live concurrently with this resolve, and the
+    # zone list sorts them BEFORE the admin-curated baseline (`qa-` < `ru-`), so a naive
+    # pick[0] latched onto a zone that geo then removed → every later Subnet/Address
+    # Create in this suite failed `unknown zone id 'qa-zr-dflt-…'` (CI run 30112149890,
+    # vpc/concurrency 8 asserts). Resolve ONLY stable, admin-curated zones: drop the
+    # `qa-`-prefixed QA-ephemerals, then prefer the canonical baseline family; fall back
+    # to whatever is left (and finally to the committed env defaults) so a standalone or
+    # differently-seeded stand still resolves.
+    "const stable = up.filter(z => String(z.id || '').indexOf('qa-') !== 0);",
+    "const baseline = stable.filter(z => String(z.id || '').indexOf('ru-central1-') === 0);",
+    "const pick = baseline.length ? baseline : (stable.length ? stable : up);",
     "if (pick.length) {",
     "  const at = (i) => (pick[i] || pick[pick.length - 1]).id;",
     "  pm.environment.set('zoneA', at(0));",
