@@ -208,171 +208,173 @@ def _seed_bootstrap_root_cluster():
         seed_fga_cluster(f"user:{uid}", rel)
 
 
-_seed_bootstrap_root_cluster()
-
-
-def _seed_geo_catalog():
-    """Seed the admin-curated geo baseline (region ru-central1 + zones a/b/c/d, status
-    UP) via the geo Internal admin RPC (:18081, gated system_admin@cluster = jwtBootstrap).
-
-    Greenfield/fresh stands have NO geo baseline: geo goose-migrations create the schema
-    but seed no rows, and the compute->geo data-migration Helm-job is a no-op on an empty
-    greenfield compute -> every compute/nlb/vpc create fails "Zone/Region not found"
-    (peer-validate geo.{Zone,Region}Service.Get, fail-closed) -> all downstream Get/List
-    404. Seeded here as a NEWMAN PREREQUISITE (not a migration -- geo Region/Zone is an
-    admin-curated catalog, so a fixture-seed via the admin RPC is the right layer, same as
-    every other prerequisite). Idempotent: re-create of an existing row -> AlreadyExists,
-    tolerated; the confirm-loops pass immediately when already seeded. `existingZoneId`
-    etc. in the fixtures dict below already name these ids."""
-    _curl("POST", "/geo/v1/internal/regions", boot,
-          {"id": "ru-central1", "name": "ru-central1", "status": "UP"}, base=INTERNAL)
-    for _ in range(20):  # region durable before zones (zones.region_id FK RESTRICT -> regions.id)
-        if _curl("GET", "/geo/v1/regions/ru-central1", boot).get("id") == "ru-central1":
-            break
-        time.sleep(0.5)
-    for z in ("a", "b", "c", "d"):
-        _curl("POST", "/geo/v1/internal/zones", boot,
-              {"id": f"ru-central1-{z}", "regionId": "ru-central1",
-               "name": f"ru-central1-{z}", "status": "UP"}, base=INTERNAL)
-    for _ in range(30):  # zones durable (peer-validate consumers read them on request-path)
-        if len((_curl("GET", "/geo/v1/zones", boot).get("zones") or [])) >= 4:
-            break
-        time.sleep(0.5)
-
-
-_seed_geo_catalog()
-
-
-def _seed_address_pool():
-    """Seed the default EXTERNAL_PUBLIC AddressPool (IPAM source for external VIPs:
-    nlb external LB VIP alloc + vpc Address EXTERNAL create). Greenfield stands have no
-    pool (deploy/scripts/seed-nlb-fixtures.sh is a dev-mode step, not run in prod-mode /
-    not adapted to prodseed) -> vpc address-EXTERNAL / nlb external creates fail (no
-    default pool for zone). Cluster-level admin resource (Internal admin :18081,
-    system_admin@cluster = jwtBootstrap; Create returns the pool sync, not an Operation).
-    Idempotent: AlreadyExists / CIDR-overlap on re-seed -> reuse the existing named pool.
-    Requires the geo zone seeded first (pool.zone_id references the geo catalog). Newman
-    prerequisite, not a migration -- same layer as _seed_geo_catalog."""
-    r = _curl("POST", "/vpc/v1/addressPools", boot,
-              {"name": "kac-nlb-seed-ext-pool", "description": "seed external VIP pool",
-               "kind": "EXTERNAL_PUBLIC", "zoneId": "ru-central1-a",
-               "v4CidrBlocks": ["198.51.100.0/24"], "v6CidrBlocks": []}, base=INTERNAL)
-    pid = r.get("id", "")
-    if not pid:  # AlreadyExists / CIDR-overlap -> reuse the existing named pool
-        lst = _curl("GET", "/vpc/v1/addressPools?pageSize=200", boot, base=INTERNAL)
-        pid = next((p.get("id", "") for p in (lst.get("pools") or [])
-                    if p.get("name") == "kac-nlb-seed-ext-pool"), "")
-    if pid:  # make it the default IPAM source for its (zone, kind)
-        _curl("PATCH", f"/vpc/v1/addressPools/{pid}", boot,
-              {"updateMask": "isDefault", "isDefault": True}, base=INTERNAL)
-
-
-_seed_address_pool()
-
-owner_a = f"prodseed-owner-a-{RID}@example.com"
-owner_b = f"prodseed-owner-b-{RID}@example.com"
-usr_owner_a = upsert_user(owner_a)
-usr_owner_b = upsert_user(owner_b)
-acctA, projA1 = db_lookup(owner_a)
-acctB, projB1 = db_lookup(owner_b)
-
-# AccessBinding-subject users (userNOBId/userINVId/userAAAId/userAABId/userPA1Id).
-# The iam newman cases reference these as subjectId when creating AccessBindings and
-# as ownerUserId / reviewerUserId. Migration 0049 (access_binding_subject_exists)
-# rejects a Create whose subject User does not exist → the stale hardcoded env values
-# (usr… baked into local.postman_environment.json by the dev-mode setup.sh) do NOT
-# exist in a fresh production-mode iam DB, so Create fails FAILED_PRECONDITION
-# ("referenced resource not found") and every downstream Get/Delete/revoke cascades
-# (404/403). Seed REAL users here and emit their ids so prod-mode binding cases resolve
-# a live subject. userAAAId/userAABId map to the owner users (accountAId is owned by
-# userAAAId — iam-account.py ownerUserId assertions); NOB/INV/PA1 are plain users.
-usr_nob = upsert_user(f"prodseed-nob-{RID}@example.com")
-usr_inv = upsert_user(f"prodseed-inv-{RID}@example.com")
-usr_pa1 = upsert_user(f"prodseed-pa1-{RID}@example.com")
-projA2 = _await(_curl("POST", "/iam/v1/projects", boot,
-                      {"accountId": acctA, "name": f"prodseed-a2-{RID}"}), boot, "projectId")
-
-P = "iam.project"
-A = "iam.account"
-
-# ── subjects (all SA-principals) ────────────────────────────────────────────
-sva_editorA, tok_editorA = subject(acctA, f"ps-ed-a-{RID}",
-                                   [(ROLE_EDIT, P, projA1), (ROLE_EDIT, P, projA2)])
-sva_nogrant, tok_nogrant = subject(acctA, f"ps-nogrant-{RID}")
-_, tok_viewerA = subject(acctA, f"ps-view-a-{RID}", [(ROLE_VIEW, P, projA1)])
-_, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
-_, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
-_, tok_invitee = subject(acctA, f"ps-inv-{RID}", [(ROLE_ADMIN, A, acctB), (ROLE_EDIT, P, projA1)])
-_, tok_editorB = subject(acctB, f"ps-ed-b-{RID}", [(ROLE_EDIT, P, projB1)])
-_, tok_ownerA = subject(acctA, f"ps-own-a-{RID}", [(ROLE_ADMIN, P, projA1)])
-# editor on cross project A2 ONLY (nlb cross-tenant move tier)
-_, tok_editorCrossA2 = subject(acctA, f"ps-ed-a2-{RID}", [(ROLE_EDIT, P, projA2)])
-
-fixtures = {
-    "jwtBootstrap": boot,
-    # no-grant slots
-    "jwtNoBindings": tok_nogrant,
-    "jwtPureNoBindings": tok_nogrant,
-    "jwtSANoGrant": tok_nogrant,
-    "jwtStranger": tok_nogrant,
-    # editor @ A1 (+A2) slots
-    "jwtProjectAdminA1": tok_editorA,
-    "jwtProjectEditorA": tok_editorA,
-    "jwtSAA": tok_editorA,
-    "jwtServiceAccountEditor": tok_editorA,
-    # viewer @ A1
-    "jwtProjectViewerA": tok_viewerA,
-    # account-admin A / B
-    "jwtAccountAdminA": tok_adminA,
-    "jwtAccountAdminB": tok_adminB,
-    # invitee (admin@acctB + editor@projA1)
-    "jwtInvitee": tok_invitee,
-    # editor @ B / cross project A2
-    "jwtProjectEditorB": tok_editorCrossA2,
-    # project-owner (admin) @ A1
-    "jwtProjectOwnerA": tok_ownerA,
-    # tolerant nlb subjects (cases assert oneOf): group-member behaves as editor@A1
-    # (clean 200 + cleanup); custom-role operator/targetManager are ungranted so their
-    # denial asserts (oneOf([403,404])) hold — a valid-but-ungranted SA yields 403.
-    "jwtGroupMemberEditor": tok_editorA,
-    "jwtCustomRoleOperator": tok_nogrant,
-    "jwtCustomRoleTargetManager": tok_nogrant,
-    # ids
-    "accountAId": acctA,
-    "accountBId": acctB,
-    "existingProjectId": projA1,
-    "projectA1Id": projA1,
-    "existingProjectCrossId": projA2,
-    "projectA2Id": projA2,
-    "projectB1Id": projB1,
-    "existingAccountId": acctA,
-    "svaAId": sva_editorA,
-    "svaNoGrantId": sva_nogrant,
-    # AccessBinding-subject / ownerUserId users (must EXIST — migration 0049).
-    "userAAAId": usr_owner_a,
-    "userAABId": usr_owner_b,
-    "userNOBId": usr_nob,
-    "userINVId": usr_inv,
-    "userPA1Id": usr_pa1,
-    # zones / regions (admin-curated geo catalog)
-    "existingZoneId": "ru-central1-a",
-    "existingZoneAltId": "ru-central1-b",
-    "zoneA": "ru-central1-a",
-    "zoneB": "ru-central1-b",
-    "zoneC": "ru-central1-c",
-    "zoneD": "ru-central1-d",
-    "existingRegionId": "ru-central1",
-    "existingRegionAltId": "ru-central1",
-    "baseUrl": PUBLIC,
-    "internalBaseUrl": INTERNAL,
-}
-
-
-def _print():
-    print(json.dumps(fixtures))
 
 
 if __name__ == "__main__":
+    _seed_bootstrap_root_cluster()
+
+
+    def _seed_geo_catalog():
+        """Seed the admin-curated geo baseline (region ru-central1 + zones a/b/c/d, status
+        UP) via the geo Internal admin RPC (:18081, gated system_admin@cluster = jwtBootstrap).
+
+        Greenfield/fresh stands have NO geo baseline: geo goose-migrations create the schema
+        but seed no rows, and the compute->geo data-migration Helm-job is a no-op on an empty
+        greenfield compute -> every compute/nlb/vpc create fails "Zone/Region not found"
+        (peer-validate geo.{Zone,Region}Service.Get, fail-closed) -> all downstream Get/List
+        404. Seeded here as a NEWMAN PREREQUISITE (not a migration -- geo Region/Zone is an
+        admin-curated catalog, so a fixture-seed via the admin RPC is the right layer, same as
+        every other prerequisite). Idempotent: re-create of an existing row -> AlreadyExists,
+        tolerated; the confirm-loops pass immediately when already seeded. `existingZoneId`
+        etc. in the fixtures dict below already name these ids."""
+        _curl("POST", "/geo/v1/internal/regions", boot,
+              {"id": "ru-central1", "name": "ru-central1", "status": "UP"}, base=INTERNAL)
+        for _ in range(20):  # region durable before zones (zones.region_id FK RESTRICT -> regions.id)
+            if _curl("GET", "/geo/v1/regions/ru-central1", boot).get("id") == "ru-central1":
+                break
+            time.sleep(0.5)
+        for z in ("a", "b", "c", "d"):
+            _curl("POST", "/geo/v1/internal/zones", boot,
+                  {"id": f"ru-central1-{z}", "regionId": "ru-central1",
+                   "name": f"ru-central1-{z}", "status": "UP"}, base=INTERNAL)
+        for _ in range(30):  # zones durable (peer-validate consumers read them on request-path)
+            if len((_curl("GET", "/geo/v1/zones", boot).get("zones") or [])) >= 4:
+                break
+            time.sleep(0.5)
+
+
+    _seed_geo_catalog()
+
+
+    def _seed_address_pool():
+        """Seed the default EXTERNAL_PUBLIC AddressPool (IPAM source for external VIPs:
+        nlb external LB VIP alloc + vpc Address EXTERNAL create). Greenfield stands have no
+        pool (deploy/scripts/seed-nlb-fixtures.sh is a dev-mode step, not run in prod-mode /
+        not adapted to prodseed) -> vpc address-EXTERNAL / nlb external creates fail (no
+        default pool for zone). Cluster-level admin resource (Internal admin :18081,
+        system_admin@cluster = jwtBootstrap; Create returns the pool sync, not an Operation).
+        Idempotent: AlreadyExists / CIDR-overlap on re-seed -> reuse the existing named pool.
+        Requires the geo zone seeded first (pool.zone_id references the geo catalog). Newman
+        prerequisite, not a migration -- same layer as _seed_geo_catalog."""
+        r = _curl("POST", "/vpc/v1/addressPools", boot,
+                  {"name": "kac-nlb-seed-ext-pool", "description": "seed external VIP pool",
+                   "kind": "EXTERNAL_PUBLIC", "zoneId": "ru-central1-a",
+                   "v4CidrBlocks": ["198.51.100.0/24"], "v6CidrBlocks": []}, base=INTERNAL)
+        pid = r.get("id", "")
+        if not pid:  # AlreadyExists / CIDR-overlap -> reuse the existing named pool
+            lst = _curl("GET", "/vpc/v1/addressPools?pageSize=200", boot, base=INTERNAL)
+            pid = next((p.get("id", "") for p in (lst.get("pools") or [])
+                        if p.get("name") == "kac-nlb-seed-ext-pool"), "")
+        if pid:  # make it the default IPAM source for its (zone, kind)
+            _curl("PATCH", f"/vpc/v1/addressPools/{pid}", boot,
+                  {"updateMask": "isDefault", "isDefault": True}, base=INTERNAL)
+
+
+    _seed_address_pool()
+
+    owner_a = f"prodseed-owner-a-{RID}@example.com"
+    owner_b = f"prodseed-owner-b-{RID}@example.com"
+    usr_owner_a = upsert_user(owner_a)
+    usr_owner_b = upsert_user(owner_b)
+    acctA, projA1 = db_lookup(owner_a)
+    acctB, projB1 = db_lookup(owner_b)
+
+    # AccessBinding-subject users (userNOBId/userINVId/userAAAId/userAABId/userPA1Id).
+    # The iam newman cases reference these as subjectId when creating AccessBindings and
+    # as ownerUserId / reviewerUserId. Migration 0049 (access_binding_subject_exists)
+    # rejects a Create whose subject User does not exist → the stale hardcoded env values
+    # (usr… baked into local.postman_environment.json by the dev-mode setup.sh) do NOT
+    # exist in a fresh production-mode iam DB, so Create fails FAILED_PRECONDITION
+    # ("referenced resource not found") and every downstream Get/Delete/revoke cascades
+    # (404/403). Seed REAL users here and emit their ids so prod-mode binding cases resolve
+    # a live subject. userAAAId/userAABId map to the owner users (accountAId is owned by
+    # userAAAId — iam-account.py ownerUserId assertions); NOB/INV/PA1 are plain users.
+    usr_nob = upsert_user(f"prodseed-nob-{RID}@example.com")
+    usr_inv = upsert_user(f"prodseed-inv-{RID}@example.com")
+    usr_pa1 = upsert_user(f"prodseed-pa1-{RID}@example.com")
+    projA2 = _await(_curl("POST", "/iam/v1/projects", boot,
+                          {"accountId": acctA, "name": f"prodseed-a2-{RID}"}), boot, "projectId")
+
+    P = "iam.project"
+    A = "iam.account"
+
+    # ── subjects (all SA-principals) ────────────────────────────────────────────
+    sva_editorA, tok_editorA = subject(acctA, f"ps-ed-a-{RID}",
+                                       [(ROLE_EDIT, P, projA1), (ROLE_EDIT, P, projA2)])
+    sva_nogrant, tok_nogrant = subject(acctA, f"ps-nogrant-{RID}")
+    _, tok_viewerA = subject(acctA, f"ps-view-a-{RID}", [(ROLE_VIEW, P, projA1)])
+    _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
+    _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
+    _, tok_invitee = subject(acctA, f"ps-inv-{RID}", [(ROLE_ADMIN, A, acctB), (ROLE_EDIT, P, projA1)])
+    _, tok_editorB = subject(acctB, f"ps-ed-b-{RID}", [(ROLE_EDIT, P, projB1)])
+    _, tok_ownerA = subject(acctA, f"ps-own-a-{RID}", [(ROLE_ADMIN, P, projA1)])
+    # editor on cross project A2 ONLY (nlb cross-tenant move tier)
+    _, tok_editorCrossA2 = subject(acctA, f"ps-ed-a2-{RID}", [(ROLE_EDIT, P, projA2)])
+
+    fixtures = {
+        "jwtBootstrap": boot,
+        # no-grant slots
+        "jwtNoBindings": tok_nogrant,
+        "jwtPureNoBindings": tok_nogrant,
+        "jwtSANoGrant": tok_nogrant,
+        "jwtStranger": tok_nogrant,
+        # editor @ A1 (+A2) slots
+        "jwtProjectAdminA1": tok_editorA,
+        "jwtProjectEditorA": tok_editorA,
+        "jwtSAA": tok_editorA,
+        "jwtServiceAccountEditor": tok_editorA,
+        # viewer @ A1
+        "jwtProjectViewerA": tok_viewerA,
+        # account-admin A / B
+        "jwtAccountAdminA": tok_adminA,
+        "jwtAccountAdminB": tok_adminB,
+        # invitee (admin@acctB + editor@projA1)
+        "jwtInvitee": tok_invitee,
+        # editor @ B / cross project A2
+        "jwtProjectEditorB": tok_editorCrossA2,
+        # project-owner (admin) @ A1
+        "jwtProjectOwnerA": tok_ownerA,
+        # tolerant nlb subjects (cases assert oneOf): group-member behaves as editor@A1
+        # (clean 200 + cleanup); custom-role operator/targetManager are ungranted so their
+        # denial asserts (oneOf([403,404])) hold — a valid-but-ungranted SA yields 403.
+        "jwtGroupMemberEditor": tok_editorA,
+        "jwtCustomRoleOperator": tok_nogrant,
+        "jwtCustomRoleTargetManager": tok_nogrant,
+        # ids
+        "accountAId": acctA,
+        "accountBId": acctB,
+        "existingProjectId": projA1,
+        "projectA1Id": projA1,
+        "existingProjectCrossId": projA2,
+        "projectA2Id": projA2,
+        "projectB1Id": projB1,
+        "existingAccountId": acctA,
+        "svaAId": sva_editorA,
+        "svaNoGrantId": sva_nogrant,
+        # AccessBinding-subject / ownerUserId users (must EXIST — migration 0049).
+        "userAAAId": usr_owner_a,
+        "userAABId": usr_owner_b,
+        "userNOBId": usr_nob,
+        "userINVId": usr_inv,
+        "userPA1Id": usr_pa1,
+        # zones / regions (admin-curated geo catalog)
+        "existingZoneId": "ru-central1-a",
+        "existingZoneAltId": "ru-central1-b",
+        "zoneA": "ru-central1-a",
+        "zoneB": "ru-central1-b",
+        "zoneC": "ru-central1-c",
+        "zoneD": "ru-central1-d",
+        "existingRegionId": "ru-central1",
+        "existingRegionAltId": "ru-central1",
+        "baseUrl": PUBLIC,
+        "internalBaseUrl": INTERNAL,
+    }
+
+
+    def _print():
+        print(json.dumps(fixtures))
+
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--deps", default="", help="comma list: vpc,compute,storage,registry,nlb")
     args = ap.parse_args()
