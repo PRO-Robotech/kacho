@@ -46,13 +46,35 @@ func subnetPlacementMatches(subnetPlacement string, lbPlacement domain.Placement
 	return false
 }
 
-// allocAcquireErr — анти-oracle маппинг ошибок auto-аллокации (ёмкость/недоступность).
-func allocAcquireErr(err error) error {
+// allocAcquireErr — by-lane маппинг ошибок auto-аллокации VIP.
+//
+// `subnetRef` — caller-supplied `v4Source/v6Source.subnetId` (пусто на public-
+// полосе, где ссылку выбирает платформа, а не tenant).
+//
+// Три полосы (api-conventions §By-lane code-split):
+//
+//   - peer недоступен            → UNAVAILABLE (fail-closed, retryable);
+//   - ССЫЛКА не резолвится, и она caller-supplied → FAILED_PRECONDITION тем же
+//     текстом `"subnet %s not found"`, что и SYNC-precheck этого же RPC
+//     (`subnetPeerErr`). Раскрытия нет by construction: sync-полоса уже
+//     отвечает ровно это на тот же id в том же запросе. Молчать здесь —
+//     doc-untruth: клиент-исправимая проблема ссылки выдавалась за ёмкость
+//     платформы (и была неотличима от неё под cross-service read-your-writes,
+//     когда подсеть только что создана и ещё не видна address-create-пути);
+//   - всё остальное (ёмкость пула/подсети И peer-miss инфра-объекта на public-
+//     полосе) → фиксированный непрозрачный текст. Ёмкость и наличие
+//     AddressPool в underlay-зоне — инфра-чувствительные данные
+//     (security.md), их не раскрываем НИКОГДА.
+//
+// Вызывающий ОБЯЗАН залогировать проглоченную причину (CWE-778): наружу она не
+// уходит, поэтому без лога отказ аллокации неатрибутируем в проде.
+func allocAcquireErr(err error, subnetRef string) error {
 	switch {
 	case errors.Is(err, domain.ErrUnavailable):
 		return status.Error(codes.Unavailable, "load balancer address allocation unavailable")
+	case errors.Is(err, domain.ErrNotFound) && subnetRef != "":
+		return status.Errorf(codes.FailedPrecondition, "subnet %s not found", subnetRef)
 	}
-	// ErrFailedPrecondition (пул/подсеть исчерпаны) и прочее → generic (без ёмкости).
 	return status.Error(codes.FailedPrecondition, "could not allocate load balancer address")
 }
 

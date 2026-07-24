@@ -438,9 +438,16 @@ type vipAllocResult struct {
 }
 
 // acquireFamilyVIP — внешний side-effect одного семейства: auto-аллокация
-// (subnet internal / platform public) либо link существующего Address. Анти-oracle:
-// alloc-провал (ёмкость) → generic FAILED_PRECONDITION; link-конфликт → generic
-// `Illegal argument addressId`; vpc недоступен → Unavailable.
+// (subnet internal / platform public) либо link существующего Address.
+//
+// Ответ клиенту намеренно ЛОССИ (анти-oracle): ёмкость → generic
+// FAILED_PRECONDITION; link-конфликт → generic `Illegal argument addressId`; vpc
+// недоступен → Unavailable; нерезолвящаяся caller-supplied подсеть → тот же
+// текст, что уже даёт sync-precheck (см. allocAcquireErr). Поэтому каждая
+// alloc-неудача ЛОГИРУЕТСЯ с исходной причиной — иначе провал аллокации
+// неатрибутируем в проде (CWE-778 silent swallow: реальный инцидент — vpc
+// отвечал `Subnet <id> not found` под cross-service read-your-writes, а в логе
+// и в Operation.error было только «could not allocate»).
 func (u *CreateLoadBalancerUseCase) acquireFamilyVIP(
 	ctx context.Context, lb domain.LoadBalancer, fs familyVIPSpec,
 ) (vipAllocResult, error) {
@@ -480,7 +487,10 @@ func (u *CreateLoadBalancerUseCase) acquireFamilyVIP(
 			resp, err2 = u.addressClient.AllocateExternalIP(ctx, req)
 		}
 		if err2 != nil {
-			return vipAllocResult{}, allocAcquireErr(err2)
+			// public-полоса: ссылку выбирает платформа, subnetRef пуст → ответ
+			// остаётся непрозрачным (underlay-зона/пул — инфра-данные).
+			u.logVIPAcquireFailure(lb, fs, err2)
+			return vipAllocResult{}, allocAcquireErr(err2, "")
 		}
 		return vipAllocResult{addressID: resp.AddressID, address: resp.Value, origin: domain.VipOriginAuto}, nil
 	default: // srcSubnetAuto
@@ -500,10 +510,32 @@ func (u *CreateLoadBalancerUseCase) acquireFamilyVIP(
 			resp, err = u.addressClient.AllocateInternalIP(ctx, req)
 		}
 		if err != nil {
-			return vipAllocResult{}, allocAcquireErr(err)
+			u.logVIPAcquireFailure(lb, fs, err)
+			return vipAllocResult{}, allocAcquireErr(err, fs.subnetID)
 		}
 		return vipAllocResult{addressID: resp.AddressID, address: resp.Value, origin: domain.VipOriginAuto}, nil
 	}
+}
+
+// logVIPAcquireFailure — фиксирует причину, которую ответ клиенту намеренно
+// теряет (анти-oracle). Без этого лога отказ VIP-аллокации неатрибутируем:
+// «could not allocate load balancer address» одинаково покрывает исчерпанный
+// пул, отсутствующий AddressPool и нерезолвящуюся подсеть.
+func (u *CreateLoadBalancerUseCase) logVIPAcquireFailure(
+	lb domain.LoadBalancer, fs familyVIPSpec, err error,
+) {
+	logger := u.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Warn("load_balancer_vip_acquire_failed",
+		"load_balancer_id", string(lb.ID),
+		"project_id", string(lb.ProjectID),
+		"family", string(fs.family),
+		"source_kind", fs.kind.String(),
+		"subnet_id", fs.subnetID,
+		"err", err.Error(),
+	)
 }
 
 // deriveUnderlayZone — детерминированная underlying-зона public-VIP из региона

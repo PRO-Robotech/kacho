@@ -36,6 +36,9 @@ type createDeps struct {
 	zone   ZoneClient
 	region RegionClient
 	sg     SecurityGroupClient // NLB-1b MIGRATE: vpc SecurityGroup peer-validate
+	// logger — nil → slog.Default(). Injected by the tests that assert the
+	// use-case LOGS what its anti-oracle client answer deliberately drops.
+	logger *slog.Logger
 }
 
 func newCreateUC(repo *fakeRepo, opsRepo *fakeOpsRepo, d createDeps) *CreateLoadBalancerUseCase {
@@ -54,8 +57,11 @@ func newCreateUC(repo *fakeRepo, opsRepo *fakeOpsRepo, d createDeps) *CreateLoad
 	if d.region == nil {
 		d.region = &fakeRegionClient{}
 	}
+	if d.logger == nil {
+		d.logger = slog.Default()
+	}
 	return NewCreateLoadBalancerUseCase(repo, opsRepo,
-		&fakeProjectClient{}, d.region, d.zone, d.subnet, d.reader, d.addr, slog.Default()).
+		&fakeProjectClient{}, d.region, d.zone, d.subnet, d.reader, d.addr, d.logger).
 		WithSecurityGroupClient(d.sg)
 }
 

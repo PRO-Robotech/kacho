@@ -67,6 +67,30 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
     # runs. Cases whose semantics REQUIRE an external parent (BYO external address) pass
     # lb_type="EXTERNAL" explicitly.
     if lb_type == "INTERNAL":
+        # cross-service read-your-writes: the just-provisioned subnet can be briefly
+        # invisible to nlb's vpc peer-read under parallel load -> `subnet <id> not found`.
+        # Bounded create-retry re-POSTs (leak-free) until the subnet materialises, so the
+        # parent INTERNAL LB is real (not phantom) before the child listener flow.
+        #
+        # The SAME window can land on the WORKER instead of the sync precheck: the
+        # subnet is visible to `SubnetService.Get` (precheck passes, 200 + Operation)
+        # but still stale to the worker's own vpc address-allocate, which then fails
+        # the Operation. The create-step wrapper cannot see that — hence the
+        # `retry_from` re-drive on the poll below, plus `fixture_ids` so a spent
+        # budget FAILS here instead of publishing the pre-allocated (phantom) LB id
+        # into `nlbId` and cascading into unrelated 403/404 on the child listener.
+        setup_lb = retry_create_until_present(Step(name="setup-lb", method="POST", path=_LB_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "name": f"lst-{name_suffix}-{{{{runId}}}}", "placement": "INTERNAL_ZONAL", "v4Source": {"subnetId": "{{lstSubnetId}}"}},
+             test_script=[
+                 "pm.environment.unset('nlbId');",
+                 "if (pm.environment.get('lstSubnetId')) {",
+                 "  pm.test('parent INTERNAL LB created', () => pm.expect(pm.response.code).to.eql(200));",
+                 "  const j = pm.response.json();",
+                 "  if (j.id) pm.environment.set('opId', j.id);",
+                 "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
+                 "} else { pm.environment.unset('opId'); }",
+             ]))
         return [
             Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS,
                  pre_script=_CIDR_ALLOC_PRE,
@@ -81,24 +105,9 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                      "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
                      "} else { pm.environment.unset('opId'); }",
                  ]),
-            poll_operation_until_done(),
-            # cross-service read-your-writes: the just-provisioned subnet can be briefly
-            # invisible to nlb's vpc peer-read under parallel load -> `subnet <id> not found`.
-            # Bounded create-retry re-POSTs (leak-free) until the subnet materialises, so the
-            # parent INTERNAL LB is real (not phantom) before the child listener flow.
-            retry_create_until_present(Step(name="setup-lb", method="POST", path=_LB_BASE,
-                 body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                       "name": f"lst-{name_suffix}-{{{{runId}}}}", "placement": "INTERNAL_ZONAL", "v4Source": {"subnetId": "{{lstSubnetId}}"}},
-                 test_script=[
-                     "pm.environment.unset('nlbId');",
-                     "if (pm.environment.get('lstSubnetId')) {",
-                     "  pm.test('parent INTERNAL LB created', () => pm.expect(pm.response.code).to.eql(200));",
-                     "  const j = pm.response.json();",
-                     "  if (j.id) pm.environment.set('opId', j.id);",
-                     "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                     "} else { pm.environment.unset('opId'); }",
-                 ])),
-            poll_operation_until_done(),
+            poll_operation_until_done(fixture_ids=["lstSubnetId"]),
+            setup_lb,
+            poll_operation_until_done(fixture_ids=["nlbId"], retry_from=setup_lb.name),
             # read-your-writes: materialize the PARENT LB owner-tuple before the child
             # Listener.Create (which is authorized against editor@nlb_network_load_balancer)
             # -> avoids a spurious 403 on the fresh LB whose tuple is eventually-consistent.
@@ -116,7 +125,11 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                    "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        # No async re-drive here: the EXTERNAL lane draws from the shared public
+        # AddressPool, whose exhaustion is a genuine capacity refusal (opaque text)
+        # and must NOT be retried away. `fixture_ids` still applies — a failed
+        # allocation must fail HERE, not publish the pre-allocated (phantom) LB id.
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         # read-your-writes: materialize the PARENT LB owner-tuple before Listener.Create.
         retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
              path=f"{_LB_BASE}/{{{{nlbId}}}}", test_script=[])),

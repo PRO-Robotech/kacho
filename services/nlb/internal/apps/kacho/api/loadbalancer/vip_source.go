@@ -23,6 +23,20 @@ const (
 	srcAddressLink                      // address_id → линк существующего Address
 )
 
+// String — читаемая метка для server-логов (иначе в структурированном логе
+// остаётся голое число, по которому полосу не восстановить).
+func (k vipSourceKind) String() string {
+	switch k {
+	case srcSubnetAuto:
+		return "subnet_auto"
+	case srcPublicAuto:
+		return "public_auto"
+	case srcAddressLink:
+		return "address_link"
+	}
+	return "unknown"
+}
+
 // familyVIPSpec — разобранный + резолвнутый per-family источник VIP.
 type familyVIPSpec struct {
 	family    domain.IPVersion

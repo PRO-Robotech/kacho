@@ -576,11 +576,11 @@ func (c *internalAddressClient) createAddressAndWait(
 	})
 	createCancel()
 	if err != nil {
-		return nil, mapAllocErr("", err)
+		return nil, mapCreateAllocErr(err)
 	}
 	resp, err := c.waitOperation(ctx, op)
 	if err != nil {
-		return nil, mapAllocErr("", err)
+		return nil, mapCreateAllocErr(err)
 	}
 	if resp == nil {
 		return nil, fmt.Errorf("vpc create address: operation %s returned no response", op.GetId())
@@ -639,8 +639,38 @@ func operationResult(op *operationpb.Operation) (*anypb.Any, error) {
 	return op.GetResponse(), nil
 }
 
+// mapCreateAllocErr — маппер CREATE-полосы (AddressService.Create + poll его
+// Operation), где адреса ЕЩЁ НЕТ.
+//
+// Поэтому NOT_FOUND от vpc на этой полосе НИКОГДА не означает «адрес не найден»
+// — он всегда указывает на ССЫЛАЕМЫЙ объект: caller-supplied `subnet_id`
+// (`assertSubnetOwned` в vpc отвечает `NotFound "Subnet <id> not found"` и на
+// отсутствующую, и на чужую подсеть — без existence-oracle) либо инфра-объект
+// (AddressPool underlay-зоны для public-VIP). Раньше обе ветки шли через
+// `mapAllocErr("", err)`, чей NotFound-арм форматирует `"address %s not found"`
+// с ПУСТЫМ id → наружу уходило `"address  not found"` под sentinel'ом
+// ErrInvalidArg. Оба факта неверны (architecture.md doc-truthfulness), а
+// мисклассификация не давала use-case'у отличить «твоя ссылка не резолвится» от
+// «ёмкость исчерпана» — обе схлопывались в непрозрачное
+// `"could not allocate load balancer address"`.
+//
+// Отдаём `domain.ErrNotFound` (отдельная полоса) и СОХРАНЯЕМ текст peer'а — он
+// идёт в server-log; наружу его не эхает никто (loadbalancer.allocAcquireErr
+// маппит полосу в фиксированный контрактный текст). Остальные коды — как в
+// `mapAllocErr` (единый маппер, без дрейфа).
+func mapCreateAllocErr(err error) error {
+	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+		return fmt.Errorf("%w: vpc address allocate: %s", domain.ErrNotFound, st.Message())
+	}
+	return mapAllocErr("", err)
+}
+
 // mapAllocErr транслирует gRPC-status в domain-sentinel-ошибки для allocate-
-// флоу (Create/Delete Address operations).
+// флоу (Delete Address operation, Set/ClearReference, Get) — полос, работающих
+// над СУЩЕСТВУЮЩИМ address_id. Там NOT_FOUND действительно значит «этот
+// address_id не резолвится» и намеренно мапится в generic ErrInvalidArg
+// («Illegal argument addressId»), чтобы не подтверждать чужой ownership
+// (анти-oracle). CREATE-полоса использует `mapCreateAllocErr`.
 func mapAllocErr(addressID string, err error) error {
 	st, ok := status.FromError(err)
 	if !ok {

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "4beaabae-2c87-475d-bfe0-84bcfc82d980",
+    "_postman_id": "2a98624c-76c5-44f4-84c9-57abdae0e218",
     "name": "kacho-nlb / newman / listener",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -142,7 +142,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -807,7 +811,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -1413,7 +1421,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -1530,7 +1542,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr362');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -2083,7 +2122,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -2200,7 +2243,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr365');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -2806,7 +2876,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -2923,7 +2997,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr369');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -3304,7 +3405,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -3421,7 +3526,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr371');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -4086,7 +4218,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -4653,7 +4789,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -5221,7 +5361,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -5338,7 +5482,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr381');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -5944,7 +6115,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -6061,7 +6236,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr385');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -6468,7 +6670,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -6585,7 +6791,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr388');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -6993,7 +7226,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -7110,7 +7347,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr391');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -7514,7 +7778,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -7631,7 +7899,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr394');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -8035,7 +8330,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -8152,7 +8451,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr397');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -8645,7 +8971,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -8762,7 +9092,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr400');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -9170,7 +9527,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -9287,7 +9648,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr403');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -9840,7 +10228,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -9957,7 +10349,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr406');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -10510,7 +10929,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -10627,7 +11050,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr409');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -11120,7 +11570,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -11237,7 +11691,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr412');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -11696,7 +12177,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -11813,7 +12298,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr415');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -12312,7 +12824,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -12429,7 +12945,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr417');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -13095,7 +13638,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -13212,7 +13759,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr421');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -13951,7 +14525,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -14068,7 +14646,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr424');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -15188,7 +15793,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -15305,7 +15914,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr428');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -15713,7 +16349,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -15830,7 +16470,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr431');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -16238,7 +16905,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -16355,7 +17026,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr434');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -16759,7 +17457,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -16876,7 +17578,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr437');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -17280,7 +18009,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -17397,7 +18130,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr440');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -17801,7 +18561,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -17918,7 +18682,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr443');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -18471,7 +19262,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -18588,7 +19383,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr446');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -19192,7 +20014,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -19309,7 +20135,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr450');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -20057,7 +20910,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -20174,7 +21031,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr454');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -20693,7 +21577,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -20810,7 +21698,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr456');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -21802,7 +22717,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -21919,7 +22838,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr459');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -22540,7 +23486,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -22657,7 +23607,34 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr461');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }

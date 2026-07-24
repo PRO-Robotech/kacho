@@ -34,6 +34,29 @@ CASES = []
 _NLB = "/nlb/v1/networkLoadBalancers"
 _TGR = "/nlb/v1/targetGroups"
 
+# Pool-INDEPENDENT fixture LB for the list-isolation cases below.
+#
+# These cases assert per-object List filtering (owner sees own / stranger does not);
+# the VIP placement is INCIDENTAL to what they verify. They used to auto-allocate a
+# public VIP, which draws from the SINGLE seeded external AddressPool
+# (198.51.100.0/24) shared by all `--jobs 4` parallel collections. That pool is
+# transiently exhausted mid-run, so the create returned 200 and its Operation then
+# finished `done:true` WITH `error: could not allocate load balancer address` — a
+# PHANTOM LB whose pre-allocated metadata id was published anyway, after which the
+# owner's own DELETE reddened 403 (no owner-tuple on a resource that never existed).
+# That is a fixture artefact, not a list-filter defect, and it also made the
+# stranger-no-leak assertion pass VACUOUSLY (nothing existed to leak).
+#
+# The seeded ZONAL subnet (`existingSubnetId`, a /24 provisioned once by
+# seed-nlb-fixtures.sh) is pool-independent AND free of the cross-service
+# read-your-writes window an inline per-case subnet carries. Same remedy already
+# applied to load-balancer.py::_setup_lb and listener.py::_setup_lb.
+# External auto-VIP semantics stay covered by the dedicated EXTERNAL cases there.
+_LB_FIXTURE_BODY = {
+    "projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+    "placement": "INTERNAL_ZONAL", "v4Source": {"subnetId": "{{existingSubnetId}}"},
+}
+
 
 # ---------------------------------------------------------------------------
 # D-40/D-45 — read==enforce happy: editor sees own NLB in (filtered) List.
@@ -44,11 +67,13 @@ CASES.append(Case(
     classes=["AZD", "LSG"], priority="P0",
     steps=[
         Step(name="create-own", method="POST", path=_NLB, auth="jwtProjectEditorA",
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "lf-nlb-own-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
+             body={**_LB_FIXTURE_BODY, "name": "lf-nlb-own-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "lfNlbId")]),
-        poll_operation_until_done(),
+        # fixture_ids: an Operation carries the PRE-ALLOCATED id in metadata even when it
+        # ends with an error, so a failed create must invalidate it here rather than let a
+        # phantom id cascade into an unrelated 403/404 downstream (testing.md).
+        poll_operation_until_done(fixture_ids=["lfNlbId"]),
         # read-your-writes over the list-authz visibility window: the per-object filtered
         # List returns 200 with the fresh id ABSENT until the viewer/owner tuple materializes
         # (opgate removed -> eventual-consistency) -> retry while own id is missing.
@@ -130,11 +155,13 @@ CASES.append(Case(
     classes=["AZD", "NEG", "LSG"], priority="P1",
     steps=[
         Step(name="create-a", method="POST", path=_NLB, auth="jwtProjectEditorA",
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "lf-nlb-xleak-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
+             body={**_LB_FIXTURE_BODY, "name": "lf-nlb-xleak-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "lfXleakNlbId")]),
-        poll_operation_until_done(),
+        # fixture_ids: without it a failed create still published the pre-allocated id, so
+        # `list-stranger` asserted "no leak" against a resource that never existed (vacuous
+        # green) and `del-a` then 403'd on the phantom — the reported symptom.
+        poll_operation_until_done(fixture_ids=["lfXleakNlbId"]),
         # Stranger lists the same project → must NOT see editor's NLB (filter
         # either empties the list or 403s before any row; either way no leak).
         Step(name="list-stranger", method="GET",

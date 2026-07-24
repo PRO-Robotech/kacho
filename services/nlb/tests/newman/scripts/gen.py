@@ -402,7 +402,13 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
                    test_script=guard + list(step.test_script))
 
 
-def poll_operation_until_done() -> Step:
+def poll_operation_until_done(
+    fixture_ids: Optional[List[str]] = None,
+    retry_from: Optional[str] = None,
+    retry_when: str = "not found",
+    retry_budget: int = 8,
+    retry_interval_ms: int = 700,
+) -> Step:
     """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
     guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
     hammering back-to-back (~15ms/poll) which never waits for the op (Koren #1).
@@ -410,40 +416,112 @@ def poll_operation_until_done() -> Step:
     Each emitted step carries a unique name (`poll-op-<n>`) so the
     setNextRequest self-retry is unambiguous under `newman run <collection>`
     (see `_poll_seq` note): a duplicate "poll-op" name would make newman resolve
-    the retry jump to the first such step and skip intervening folders."""
+    the retry jump to the first such step and skip intervening folders.
+
+    `fixture_ids` — PHANTOM-ID GUARD (testing.md: «Fixture-seed обязан проверять
+    `op.error` перед извлечением resource-id из `metadata`»). A Kachō Operation
+    carries the PRE-ALLOCATED resource id in `metadata` even when it finishes
+    `done:true` WITH an `error` (the id is minted before the async worker runs), so
+    a create step that stores `metadata.<res>Id` unconditionally publishes the id of
+    a resource that does NOT exist. Downstream steps then address a phantom: the
+    gateway scope_extractor cannot resolve target→project and answers 403, or the
+    backend answers 404 — a cascade whose symptom (authz denial) has nothing to do
+    with its cause (a failed create). Naming the env vars a create step published
+    makes this poll UNSET them on `op.error` and FAIL right here, attributably.
+    Use ONLY for fixture creates that must succeed — never where an op error is the
+    asserted outcome.
+
+    `retry_from` — bounded ASYNC-LANE read-your-writes re-drive. `retry_create_until_present`
+    only sees the SYNC response of a create, so it covers a peer miss that is rejected
+    before the Operation is minted. The very same cross-service window can instead land
+    on the WORKER (peer visible to the sync precheck, still stale to the worker's own
+    peer call) — the create then returns 200 and the Operation fails afterwards.
+    Re-drives the named create step while the op error message matches `retry_when`
+    (default `not found` — the peer-visibility discriminator, NOT capacity: an
+    exhausted pool answers with the opaque capacity text and is never retried).
+    Fail-open on budget: the `fixture_ids` assertion below then runs and FAILS.
+    """
     global _poll_seq
     _poll_seq += 1
+    ids = list(fixture_ids or [])
+    script = [
+        "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+        "  pm.environment.unset('_pollCount');",
+        "  return;",
+        "}",
+        "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+        "const j = pm.response.json();",
+        "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+        # Poll budget raised 6→30 to match the Koren-1 baseline of the other
+        # suites; with the ~500ms inter-poll delay below this covers ~15s.
+        "if (!j.done && pc < 30) {",
+        "  pm.environment.set('_pollCount', String(pc + 1));",
+        # Real inter-poll delay (~500ms) between retries. newman runs test scripts
+        # synchronously and fires setNextRequest before any setTimeout callback, so a
+        # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
+        # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
+        # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
+        "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_pollCount');",
+        "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+        "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+        "else pm.environment.unset('lastOpError');",
+        "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+    ]
+
+    if ids:
+        # Phantom-id guard: a pre-allocated metadata id whose op FAILED never
+        # reaches a downstream step.
+        script += [
+            "if (j.error) {",
+            *[f"  pm.environment.unset('{v}');" for v in ids],
+            "}",
+        ]
+
+    if retry_from:
+        script += [
+            "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+            "// peer was visible to the sync precheck but still stale to the worker's",
+            "// own peer call, so the failure surfaced on the Operation, not on the",
+            "// create response. Discriminated on the peer-miss text — a capacity",
+            "// refusal reads differently and is NEVER retried.",
+            "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+            "  pm.environment.set('_opRedriveCount', '0');",
+            "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+            "}",
+            "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+            "let _opTransient = false;",
+            f"try {{ _opTransient = !!j.error && /{retry_when}/i.test(j.error.message || ''); }} catch (e) {{}}",
+            f"if (_opTransient && _orc < {retry_budget}) {{",
+            "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+            # The create step's OWN sync-retry counter is keyed on its request name and
+            # only resets when the name changes; re-entering the same step would find a
+            # spent budget. Clear it so each re-drive gets a full sync-retry window.
+            "  pm.environment.unset('_crRetryStarted');",
+            "  pm.environment.unset('_crRetryCount');",
+            "  pm.environment.unset('opId');",
+            f"  const _ord = Date.now(); while (Date.now() - _ord < {retry_interval_ms}) {{ /* peer-visibility wait */ }}",
+            f"  pm.execution.setNextRequest('{retry_from}');",
+            "  return;",
+            "}",
+            "pm.environment.unset('_opRedriveCount');",
+            "pm.environment.unset('_opRedriveStarted');",
+        ]
+
+    if ids:
+        script += [
+            "pm.test('fixture operation succeeded (no phantom resource id)', () => "
+            "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
+        ]
+
     return Step(
         name=f"poll-op-{_poll_seq}",
         method="GET",
         path="/operations/{{opId}}",
-        test_script=[
-            "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-            "  pm.environment.unset('_pollCount');",
-            "  return;",
-            "}",
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            # Poll budget raised 6→30 to match the Koren-1 baseline of the other
-            # suites; with the ~500ms inter-poll delay below this covers ~15s.
-            "if (!j.done && pc < 30) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
+        test_script=script,
     )
 
 
