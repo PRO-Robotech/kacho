@@ -513,20 +513,32 @@ sentinel→code в отдельный слой (если когда-либо) �
   `Decision.IsEmpty()` (handler'ы ветвятся по `len(IDs())`). Исправлен stale-коммент
   в `ports.go` (колонка `project_id`, а не legacy `folder_id` — переименована 0009).
 
-**Осознанно НЕ меняется** (verbatim-YC контракт / платформенная консистентность):
+**Осознанно НЕ меняется** (платформенная консистентность; первый пункт с тех пор
+закрыт — оставлен как след, чтобы не «фиксили» по второму разу в обратную сторону):
 
-- **`fqdn()` шьёт `.ru-central1.internal` в tenant-facing `Instance.fqdn`; сервис-слой
-  оперирует `folder`-словарём и текстом `"Folder with id %s not found"`
-  (instance/image/disk/snapshot).** Формально это ban #2 (термины/регион чужого
-  облака). Но compute смоделирован как **verbatim-YC Compute API** (см. вступление
-  этого файла и §1: `folder`-scoped ресурсы, зоны `ru-central1-{a,b,d}` — их сидит
-  kacho-geo, а не compute). `folder`-словарь и `ru-central1` пронизывают контракт
-  насквозь: proto-поля, geo-seed зон, newman-env `_suiteFolderId`, тексты ошибок
-  (часть контракта per api-conventions — меняются только через тикет),
-  `TenantCtx.HasFolderAccess`. Неймингом это единый де-YC-брендинг-эпик (proto →
-  geo-seed → сервисы → newman → error-texts синхронно), а не точечный compute-only
-  security-фикс — иначе получаем split-vocabulary и красный e2e на замороженном
-  контракте. Держим как известный ban #2-residual до координированного эпика.
+- ~~**сервис-слой оперирует `folder`-словарём и текстом `"Folder with id %s not
+  found"`**~~ — **ЗАКРЫТО** (audit 2026-07). Обоснование «паритет с контрактом
+  стороннего облака» само по себе нарушало core-правило #2 (проектируем в терминах
+  Kachō, без оглядки на чужие облака), поэтому пункт снят, а не продлён. Ресурс
+  называется **`Project`** (`proto/kacho/cloud/iam/v1/project.proto`), клиент шлёт
+  `projectId` — `Folder` не именует ничего на публичной поверхности, искать его в
+  доке бесполезно. `service/project_check.go` отдаёт конвенционные
+  `NotFound "Project %s not found"` и `Unavailable "project check: upstream project
+  service unavailable"` (api-conventions.md, тон `"<Resource> %s not found"`).
+  Regression-lock — `service/project_check_test.go` (текст + отсутствие `folder`
+  в сообщении). **Код НЕ менялся**: `NOT_FOUND` остаётся `NOT_FOUND`; перевод этой
+  peer-validate-линии на `FAILED_PRECONDITION` (api-conventions.md by-lane
+  code-split) — отдельное ломающее решение под свой тикет.
+- **`fqdn()` шьёт `.ru-central1.internal` в tenant-facing `Instance.fqdn`.** Остаток
+  того же класса (ban #2), но **не** точечно исправимый: суффикс — часть
+  DNS-адресации инстанса и совпадает с id зон, которые сидит **kacho-geo**
+  (`ru-central1-{a,b,d}`). Смена суффикса в одиночку рассинхронизирует compute с
+  geo-seed и с уже выданными клиентам FQDN. Закрывается координированной сменой
+  зональной топологии (geo-seed → compute `fqdn()` → newman), не compute-only
+  правкой. Того же класса legacy-нейминг, НЕ являющийся error-контрактом:
+  DB-колонки/индексы `folder_id`, newman-env `_suiteFolderId`, `TenantCtx.HasFolderAccess` —
+  внутренние идентификаторы (миграция схемы + перегенерация фикстур), на публичной
+  REST-поверхности их нет (`projectId`).
 - **`InternalWatchHandler` (transport-слой) держит `*pgxpool.Pool` + raw DSN и сам
   делает pgx-`Connect`/`LISTEN`/raw SELECT по `compute_outbox`** — обход repo-порта
   (dependency-rule). Структурно идентичен `kacho-vpc/internal/handler/internal_watch_handler.go`

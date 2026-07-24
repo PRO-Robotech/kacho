@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a8b363f1-2c1f-4f99-99c4-80a9dd66abfe",
+    "_postman_id": "38d6f3c4-547c-4409-a906-c8b07b25d776",
     "name": "kacho-compute / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2326,7 +2326,7 @@
       ]
     },
     {
-      "name": "IMG-CR-NEG-FOLDER-NOTFOUND — Create image в garbage projectId → async NOT_FOUND 'Folder ... not found'",
+      "name": "IMG-CR-NEG-FOLDER-NOTFOUND — Create image в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
       "description": "class:NEG | priority:P0",
       "item": [
         {
@@ -2453,7 +2453,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 5 (NOT_FOUND)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('error text includes \"folder\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('folder'));"
+                  "pm.test('error text matches /^Project .+ not found$/', () => pm.expect(j.error && j.error.message || '').to.match(/^Project .+ not found$/));"
                 ]
               }
             }

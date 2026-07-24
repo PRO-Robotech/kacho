@@ -87,10 +87,11 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 
 **Async (внутри Operation worker):**
 - project (владелец) existence (`projectClient.Exists` через
-  `kacho-iam.ProjectService.Get` → `NotFound "Folder with id <X> not
-  found"` — error-text — legacy-формулировка, колонка-владелец в схеме хранит
-  projectId под именем `folder_id`; error → `Unavailable "folder check: <err>"`;
-  retry on `Unavailable` через `kacho-corelib/retry`).
+  `kacho-iam.ProjectService.Get` → `NotFound "Project <X> not found"`;
+  error → `Unavailable "project check: upstream project service unavailable"`;
+  retry on `Unavailable` через `kacho-corelib/retry`). NB: колонка-владелец в
+  схеме всё ещё зовётся `folder_id` — это legacy-имя КОЛОНКИ, на wire и в текстах
+  ошибок его нет (`projectId` / `Project`).
 - zone / type_id / source image|snapshot|disk existence → `NotFound` /
   `InvalidArgument`.
 - Instance.Create: ⚠️ **без авто-NIC** — auto-NIC материализация `materializeNICs`
@@ -113,7 +114,7 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 
 | Sentinel error (`internal/ports`) | gRPC code | Verbatim YC text source |
 |---|---|---|
-| `ErrNotFound` | `NOT_FOUND` | `"<Resource> <id> not found"` (`Disk`, `Image`, `Snapshot`, `Instance`, `Disk type`, `Zone`) / `"Folder with id <X> not found"` / `"Subnet <X> not found"` |
+| `ErrNotFound` | `NOT_FOUND` | `"<Resource> <id> not found"` (`Disk`, `Image`, `Snapshot`, `Instance`, `Disk type`, `Zone`, `Project`, `Subnet`) |
 | `ErrAlreadyExists` | `ALREADY_EXISTS` | `"<resource> with name '<n>' already exists ..."` (probe verbatim YC text) |
 | `ErrFailedPrecondition` | `FAILED_PRECONDITION` | varies (`"The disk <id> is being used"`, `"Instance must be stopped"`, `"Instance is not running"`, ... — probe verbatim) |
 | `ErrInvalidArg` | `INVALID_ARGUMENT` | varies (size, block_size, cores, `"Disk size can only be increased"`, ...) |

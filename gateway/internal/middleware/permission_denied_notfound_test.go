@@ -33,20 +33,37 @@ func TestNotFoundMessage_ContractTone(t *testing.T) {
 		{"vpc security_group", "vpc_security_group", id, "Security group SecurityGroup.Id(value=" + id + ") not found"},
 		{"vpc gateway", "vpc_gateway", id, "Gateway " + id + " not found"},
 		{"vpc network_interface", "vpc_network_interface", id, "Network interface " + id + " not found"},
-		// nlb — must equal services/nlb/internal/repo/kacho/pg/load_balancer_repo.go.
+		// nlb — must equal services/nlb/internal/repo/kacho/pg/*_repo.go.
 		{"nlb load balancer", "nlb_network_load_balancer", id, "NetworkLoadBalancer " + id + " not found"},
+		{"nlb listener", "nlb_listener", id, "Listener " + id + " not found"},
+		{"nlb target group", "nlb_target_group", id, "TargetGroup " + id + " not found"},
+		// iam — must equal services/iam/internal/repo/kacho/pg/*_repo.go.
+		{"iam account", "account", id, "Account " + id + " not found"},
+		{"iam project", "project", id, "Project " + id + " not found"},
+		{"iam user", "iam_user", id, "User " + id + " not found"},
+		{"iam group", "iam_group", id, "Group " + id + " not found"},
+		{"iam service account", "iam_service_account", id, "ServiceAccount " + id + " not found"},
+		{"iam access binding", "iam_access_binding", id, "AccessBinding " + id + " not found"},
+		// compute — must equal services/compute/internal/repo/*_repo.go.
+		{"compute disk", "compute_disk", id, "Disk " + id + " not found"},
+		{"compute image", "compute_image", id, "Image " + id + " not found"},
+		{"compute instance", "compute_instance", id, "Instance " + id + " not found"},
+		{"compute snapshot", "compute_snapshot", id, "Snapshot " + id + " not found"},
+		// registry — must equal services/registry/internal/repo/kacho/pg/registry.go.
+		{"registry registry", "registry_registry", id, "Registry " + id + " not found"},
 
-		// Non-vpc/nlb object types are NOT remapped — the fallback stays the bare
-		// "<type> not found" so other services' contracts are unaffected (e.g.
-		// registry-repository Newman asserts exactly "repository not found").
-		{"registry repository fallback", "repository", id, "repository not found"},
-		{"unmapped type fallback", "some_other_type", "", "some_other_type not found"},
+		// Fallback (unmapped type / no concrete id) is the NEUTRAL "not found":
+		// echoing the FGA object type would leak the internal type dictionary and
+		// be distinguishable from every backend miss — the oracle this map closes.
+		// See TestNotFoundMessage_UnmappedTypeIsNeutral for the dedicated lock.
+		{"unmapped type fallback", "some_other_type", "", "not found"},
+		{"unmapped type fallback with id", "some_other_type", id, "not found"},
 		// Empty resource type → neutral fallback.
 		{"empty type", "", "", "not found"},
 		// Mapped type but no concrete id (wildcard/empty scope) → neutral fallback
 		// rather than a malformed "Subnet  not found".
-		{"mapped type wildcard id", "vpc_subnet", "*", "vpc_subnet not found"},
-		{"mapped type empty id", "vpc_subnet", "", "vpc_subnet not found"},
+		{"mapped type wildcard id", "vpc_subnet", "*", "not found"},
+		{"mapped type empty id", "vpc_subnet", "", "not found"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

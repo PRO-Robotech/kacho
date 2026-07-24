@@ -113,9 +113,11 @@ func buildGRPCDenyStatus(desc permissionDeniedDescriptor, reasons []string) *sta
 // buildGRPCNotFoundStatus constructs a *status.Status{Code: NotFound} for a
 // hide-existence read deny. It carries NO PreconditionFailure / deny reasons /
 // ErrorInfo — the flat message IS the contract, and any reason text would leak
-// the existence of (and the authz path to) the resource. The message is a fixed,
-// resource-neutral string so a denied caller cannot distinguish "exists but
-// forbidden" from "does not exist".
+// the existence of (and the authz path to) the resource. The message comes from
+// notFoundMessage: for a mapped object type it byte-matches the owning service's
+// genuine NotFound, so a denied caller cannot distinguish "exists but forbidden"
+// from "does not exist"; otherwise it is the neutral "not found" (see the
+// fallback caveat on notFoundMessage).
 func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 	return status.New(codes.NotFound, notFoundMessage(desc))
 }
@@ -126,44 +128,89 @@ func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 // To keep that 404 indistinguishable from a genuine miss, the message MUST
 // byte-match what the owning service returns for a real NotFound — otherwise a
 // denied caller can tell "exists but forbidden" (gateway text) from "does not
-// exist" (backend text), an existence oracle. Each format has a single %s for
-// the caller-supplied resource id (echoed back — the caller already knows it, so
-// no leak) and the text is copied verbatim from the service's repo-layer NotFound
-// (services/vpc/internal/repo/kacho/pg/*.go, services/nlb/.../load_balancer_repo.go).
+// exist" (backend text), an existence oracle (security.md hardening-invariant #6).
+// Each format has a single %s for the caller-supplied resource id (echoed back —
+// the caller already knows it, so no leak).
 //
-// Only vpc / nlb object types are listed: object types owned by other services
-// (iam "account", registry "repository", ...) fall through to the neutral
-// "<type> not found" form to avoid changing their contracts. New object-scoped
-// resources add their entry here to keep hide-existence coherent with the backend.
+// Every text is copied VERBATIM from the owning service's repo-layer NotFound.
+// That repo format is the wire text: each service's error mapper strips only the
+// sentinel prefix (iam shared.MapRepoErr → iamerr.StripSentinel, compute
+// service.mapRepoErr → stripSentinel, nlb shared.StripSentinel, registry
+// wrapPgErr) and passes the message through unchanged. Sources:
+//
+//	iam       services/iam/internal/repo/kacho/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
+//	compute   services/compute/internal/repo/{disk,image,instance,snapshot}_repo.go
+//	vpc       services/vpc/internal/repo/kacho/pg/*.go (+ repo/helpers/sg.go)
+//	nlb       services/nlb/internal/repo/kacho/pg/{load_balancer,listener,target_group}_repo.go
+//	registry  services/registry/internal/repo/kacho/pg/registry.go (wrapPgErr resource="Registry")
+//
+// The map must cover every object type reachable through
+// CatalogEntry.HidesExistenceOnDeny; the drift guard
+// TestHideExistenceMap_CoversCatalogReachableTypes derives that set from the
+// embedded catalog and fails when a new object-scoped resource is added without
+// its entry. A new resource adds its line here (text taken from its repo layer,
+// never invented) in the same change that makes it object-scoped.
 var hideExistenceNotFoundFormats = map[string]string{
+	// iam — services/iam/internal/repo/kacho/pg/*.go
+	"account":             "Account %s not found",
+	"project":             "Project %s not found",
+	"iam_user":            "User %s not found",
+	"iam_group":           "Group %s not found",
+	"iam_service_account": "ServiceAccount %s not found",
+	"iam_access_binding":  "AccessBinding %s not found",
+	// compute — services/compute/internal/repo/*.go
+	"compute_disk":     "Disk %s not found",
+	"compute_image":    "Image %s not found",
+	"compute_instance": "Instance %s not found",
+	"compute_snapshot": "Snapshot %s not found",
 	// vpc — services/vpc/internal/repo/kacho/pg/*.go
-	"vpc_network":           "Network %s not found",
-	"vpc_subnet":            "Subnet %s not found",
-	"vpc_address":           "Address %s not found",
-	"vpc_route_table":       "Route table %s not found",
+	"vpc_network":     "Network %s not found",
+	"vpc_subnet":      "Subnet %s not found",
+	"vpc_address":     "Address %s not found",
+	"vpc_route_table": "Route table %s not found",
+	// NOTE: the vpc security-group text carries a leaked debug rendering of the
+	// id ("SecurityGroup.Id(value=%s)") rather than the plain contract tone. It is
+	// reproduced verbatim ON PURPOSE: byte-identity with the backend is what closes
+	// the oracle, so this side may only change together with
+	// services/vpc/internal/repo/helpers/sg.go (+ the vpc Newman verbatim-text pack).
 	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
-	// nlb — services/nlb/internal/repo/kacho/pg/load_balancer_repo.go
+	// nlb — services/nlb/internal/repo/kacho/pg/*.go
 	"nlb_network_load_balancer": "NetworkLoadBalancer %s not found",
+	"nlb_listener":              "Listener %s not found",
+	"nlb_target_group":          "TargetGroup %s not found",
+	// registry — services/registry/internal/repo/kacho/pg/registry.go
+	"registry_registry": "Registry %s not found",
 }
 
 // notFoundMessage — the stable hide-existence message.
 //
-// For an object-scoped vpc / nlb resource with a concrete caller-supplied id it
-// returns the Kachō contract tone "<Resource> <id> not found" — byte-identical
-// to the owning service's real NotFound so hide-existence cannot be told apart
-// from a genuine miss (see hideExistenceNotFoundFormats). For any other object
-// type, or when the scope id is absent/wildcard, it falls back to the neutral
-// "<type> not found" (or bare "not found"). It never includes the subject or any
+// For a mapped object type with a concrete caller-supplied id it returns the
+// Kachō contract tone "<Resource> <id> not found" — byte-identical to the owning
+// service's real NotFound, so hide-existence cannot be told apart from a genuine
+// miss (see hideExistenceNotFoundFormats). It never includes the subject or any
 // deny reason.
+//
+// Fallback (unmapped object type, or a wildcard/absent scope id): the neutral,
+// resource-free "not found". It deliberately does NOT echo the FGA object type:
+// that token is an internal identifier that appears nowhere on the public surface
+// (the resource is `Disk`, the path `/disks`, the field `diskId`), so emitting it
+// both leaks the internal type dictionary and — being unlike any backend text —
+// is itself the existence oracle this function exists to close.
+//
+// Truthfully: the fallback is NOT byte-identical to a genuine miss (the backend
+// would name the resource and echo the id). Full indistinguishability holds only
+// for mapped types; the fallback is the fail-closed remainder, deliberately kept
+// as the least-informative option for the two cases where byte-identity is
+// impossible — an object type with no owning-service implementation (nothing to
+// match), and a wildcard/absent scope id (no id to echo, and "<Resource>  not
+// found" would itself be a distinguishable, malformed text). The drift guard
+// keeps that remainder from silently growing.
 func notFoundMessage(desc permissionDeniedDescriptor) string {
 	if f, ok := hideExistenceNotFoundFormats[desc.ResourceType]; ok &&
 		desc.ResourceID != "" && desc.ResourceID != "*" {
 		return fmt.Sprintf(f, desc.ResourceID)
-	}
-	if desc.ResourceType != "" {
-		return desc.ResourceType + " not found"
 	}
 	return "not found"
 }

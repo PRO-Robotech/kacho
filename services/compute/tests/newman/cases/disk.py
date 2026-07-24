@@ -111,7 +111,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DISK-CR-NEG-FOLDER-NOTFOUND",
-    title="Create в garbage projectId → async NOT_FOUND 'Folder ... not found'",
+    title="Create в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
     classes=["NEG"], priority="P0",
     steps=[
         # # requires peer-validation enabled (KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true)
@@ -119,7 +119,7 @@ CASES.append(Case(
              body=_disk_body("bf", projectId="{{garbageRmId}}"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(5, "NOT_FOUND", msg_substr="folder"),
+        assert_op_error(5, "NOT_FOUND", msg_regex="^Project .+ not found$"),
     ],
 ))
 

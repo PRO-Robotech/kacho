@@ -46,6 +46,14 @@ type Operation struct {
 	// Service-specific metadata associated with the operation.
 	// It typically contains the ID of the target resource that the operation is performed on.
 	// Any method that returns a long-running operation should document the metadata type, if any.
+	//
+	// The resource ID here is assigned when the operation is ACCEPTED, before the
+	// work is carried out — so it is present even when the operation ultimately
+	// fails, and then points at a resource that does not exist. Do NOT treat it as
+	// "the created resource" on `done == true` alone: check `result` first and use
+	// the ID only when `error` is not set. Reading it on a failed operation yields
+	// a phantom ID whose later use fails as NOT_FOUND, or worse, resolves to an
+	// unrelated resource.
 	Metadata *anypb.Any `protobuf:"bytes,7,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	// The operation result.
 	// If `done == false` and there was no failure detected, neither `error` nor `response` is set.

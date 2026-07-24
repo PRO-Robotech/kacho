@@ -94,10 +94,10 @@ sequenceDiagram
 
   rect rgb(255,247,230)
   Note over S: async worker
-  S->>RM: projectClient.Exists(folder_id)
-  alt folder not found
-    S->>DB: UPDATE operation error=NotFound "Folder with id <X> not found"
-  else folder OK
+  S->>RM: projectClient.Exists(project_id)
+  alt project not found
+    S->>DB: UPDATE operation error=NotFound "Project <X> not found"
+  else project OK
     S->>ZR: zone existence (zones table)
     Note over ZR: unknown zone → InvalidArgument (паритет с VPC; probe — YC может давать NotFound "Zone <X> not found")
     S->>DTR: type_id existence (default network-ssd if empty) → unknown → NotFound "Disk type <X> not found"

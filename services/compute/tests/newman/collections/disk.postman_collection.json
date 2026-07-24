@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "19f986e2-92b2-4263-9e1d-862e1bd42f98",
+    "_postman_id": "e7526fe9-4a82-4e2b-885d-c2775053bc6a",
     "name": "kacho-compute / newman / disk",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -700,7 +700,7 @@
       ]
     },
     {
-      "name": "DISK-CR-NEG-FOLDER-NOTFOUND — Create в garbage projectId → async NOT_FOUND 'Folder ... not found'",
+      "name": "DISK-CR-NEG-FOLDER-NOTFOUND — Create в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
       "description": "class:NEG | priority:P0",
       "item": [
         {
@@ -827,7 +827,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 5 (NOT_FOUND)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('error text includes \"folder\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('folder'));"
+                  "pm.test('error text matches /^Project .+ not found$/', () => pm.expect(j.error && j.error.message || '').to.match(/^Project .+ not found$/));"
                 ]
               }
             }

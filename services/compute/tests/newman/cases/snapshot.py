@@ -99,7 +99,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNAP-CR-NEG-FOLDER-NOTFOUND",
-    title="Create snapshot в garbage projectId → async NOT_FOUND 'Folder ... not found'",
+    title="Create snapshot в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
     classes=["NEG"], priority="P0",
     steps=[
         # # requires peer-validation enabled
@@ -108,7 +108,7 @@ CASES.append(Case(
              body={"projectId": "{{garbageRmId}}", "name": "snap-bf-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(5, "NOT_FOUND", msg_substr="folder"),
+        assert_op_error(5, "NOT_FOUND", msg_regex="^Project .+ not found$"),
         *_cleanup_base_disk(),
     ],
 ))

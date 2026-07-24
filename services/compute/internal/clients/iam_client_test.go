@@ -64,7 +64,7 @@ func TestProjectClient_Exists_Found(t *testing.T) {
 }
 
 // TestProjectClient_Exists_NotFound — iam NOT_FOUND → (false, nil), не ошибка
-// (checkProject маппит exists=false в NotFound "Folder ... not found").
+// (checkProject маппит exists=false в NotFound "Project <id> not found").
 func TestProjectClient_Exists_NotFound(t *testing.T) {
 	fake := &fakeProjectServiceClient{getFn: func(_ context.Context, _ *iamv1.GetProjectRequest) (*iamv1.Project, error) {
 		return nil, status.Error(codes.NotFound, "Project no-such-project not found")
@@ -78,7 +78,7 @@ func TestProjectClient_Exists_NotFound(t *testing.T) {
 
 // TestProjectClient_Exists_MalformedInvalidArgument — iam InvalidArgument (malformed
 // project id, e.g. wrong prefix) → (false, nil), NOT an error. A non-resolvable peer
-// ref (absent OR malformed) is exists=false → checkProject NotFound "Folder not found";
+// ref (absent OR malformed) is exists=false → checkProject NotFound "Project <id> not found";
 // it must NOT map to Unavailable (which falsely says "retry later" for a bad input).
 // Regression for DISK-CR-NEG-FOLDER-NOTFOUND (garbageRmId=b1g... → was code 14). Parity
 // with vpc ProjectClient.Exists.
@@ -95,7 +95,7 @@ func TestProjectClient_Exists_MalformedInvalidArgument(t *testing.T) {
 
 // TestProjectClient_Exists_Unavailable — iam недоступен (transport-ошибка) →
 // Exists пробрасывает ошибку (НЕ трактует как not-found, НЕ silent-success);
-// checkProject мапит это в Unavailable "folder check: ..." (fail-closed).
+// checkProject мапит это в Unavailable "project check: ..." (fail-closed).
 //
 // retry.OnUnavailable имеет 30s-бюджет; ctx отменяется до вызова, чтобы тест
 // был быстрым и детерминированным (retry-цикл прерывается немедленно).
