@@ -184,6 +184,71 @@ type claimedRow struct {
 	// store tx per-row because that would suggest per-row independence.
 }
 
+// buildClaimQuery renders the claim SQL for the outbox table.
+//
+// ORDER BY (attempt_count, id) — fairness against transient head-of-line
+// starvation. The transient handling caps a persistently-transient-failing row's
+// attempt_count at MaxAttempts-1 so it stays claimable forever — under a plain
+// `ORDER BY id` a backlog of such stuck low-id rows would permanently shadow a
+// freshly enqueued higher-id intent (the small per-claim LIMIT never advances
+// past them) and the new intent would never be delivered, breaking at-least-once
+// under a sustained outage. Ordering by attempt_count first makes a fresh row
+// (attempt_count=0) sort ahead of capped rows, so new intents are claimed
+// promptly. FIFO for the happy path is preserved: equal attempt_count → id order.
+//
+// partitionExpr == "" (default) → the historical query, BYTE-for-byte unchanged
+// (every consumer except iam fga_outbox keeps its exact prior behaviour).
+//
+// partitionExpr != "" → partition-head-only claim: a row t is claimable only if
+// its partition (partitionExpr) has NO DELIVERABLE (sent_at IS NULL AND
+// attempt_count < MaxAttempts) predecessor with a smaller id. This makes a
+// successor never claimable ahead of an unsent predecessor of the same partition
+// — cross-batch AND cross-replica (a peer's uncommitted claim is still
+// sent_at IS NULL in this tx's snapshot, so the successor stays blocked until the
+// peer commits the mark). Per-partition FIFO therefore holds by construction, and
+// at most ONE row per partition is claimable in any snapshot (its head), so one
+// claim batch never carries two rows of one partition → no intra-batch concurrent
+// reorder within a partition. A POISONED predecessor (attempt_count = MaxAttempts)
+// is excluded from the blocking set (`p.attempt_count < $1`): it will never apply,
+// so it must not wedge its partition forever; a poisoned write creates no tuple,
+// so skipping it introduces no over-grant. partitionExpr must begin with a column
+// identifier so `<alias>.<partitionExpr>` is valid SQL (see Config.PartitionColumn).
+func buildClaimQuery(table, partitionExpr string) string {
+	if partitionExpr == "" {
+		return fmt.Sprintf(`
+			UPDATE %s
+			   SET attempt_count = attempt_count + 1
+			 WHERE id IN (
+			     SELECT id FROM %s
+			      WHERE sent_at IS NULL AND attempt_count < $1
+			      ORDER BY attempt_count, id
+			      FOR UPDATE SKIP LOCKED
+			      LIMIT $2
+			 )
+			RETURNING id, event_type, payload, attempt_count
+		`, table, table)
+	}
+	return fmt.Sprintf(`
+		UPDATE %[1]s
+		   SET attempt_count = attempt_count + 1
+		 WHERE id IN (
+		     SELECT t.id FROM %[1]s t
+		      WHERE t.sent_at IS NULL AND t.attempt_count < $1
+		        AND NOT EXISTS (
+		            SELECT 1 FROM %[1]s p
+		             WHERE p.sent_at IS NULL
+		               AND p.attempt_count < $1
+		               AND p.id < t.id
+		               AND p.%[2]s = t.%[2]s
+		        )
+		      ORDER BY t.attempt_count, t.id
+		      FOR UPDATE OF t SKIP LOCKED
+		      LIMIT $2
+		 )
+		RETURNING id, event_type, payload, attempt_count
+	`, table, partitionExpr)
+}
+
 // claimRows — атомарный pre-claim до `limit` pending rows.
 // Открывает одну транзакцию, в ней `SELECT … FOR UPDATE SKIP LOCKED`,
 // `UPDATE attempt_count` через RETURNING. Транзакция возвращается caller'у —
@@ -219,28 +284,7 @@ func (d *Drainer[T]) claimRows(ctx context.Context, limit int) ([]claimedRow, pg
 		_ = tx.Rollback(rbCtx)
 	}
 
-	// ORDER BY (attempt_count, id): fairness against transient head-of-line
-	// starvation. The transient handling caps a persistently-transient-failing
-	// row's attempt_count at MaxAttempts-1 so it stays claimable forever — under a
-	// plain `ORDER BY id` a backlog of such stuck low-id rows would permanently
-	// shadow a freshly enqueued higher-id intent (the small per-claim LIMIT never
-	// advances past them) and the new intent would never be delivered, breaking
-	// at-least-once under a sustained outage. Ordering by attempt_count first
-	// makes a fresh row (attempt_count=0) sort ahead of capped rows, so new
-	// intents are always claimed promptly. FIFO for the happy path is preserved:
-	// rows with equal attempt_count fall back to id order.
-	q := fmt.Sprintf(`
-		UPDATE %s
-		   SET attempt_count = attempt_count + 1
-		 WHERE id IN (
-		     SELECT id FROM %s
-		      WHERE sent_at IS NULL AND attempt_count < $1
-		      ORDER BY attempt_count, id
-		      FOR UPDATE SKIP LOCKED
-		      LIMIT $2
-		 )
-		RETURNING id, event_type, payload, attempt_count
-	`, d.cfg.Table, d.cfg.Table)
+	q := buildClaimQuery(d.cfg.Table, d.cfg.PartitionColumn)
 
 	rows, err := tx.Query(ctx, q, d.cfg.MaxAttempts, limit)
 	if err != nil {
@@ -357,6 +401,7 @@ func truncErr(s string) string {
 //
 // Все ошибки логируются; функция не возвращает err — drainer-loop устойчив.
 func (d *Drainer[T]) drainBatch(ctx context.Context) {
+	d.maybeReportWedge(ctx)
 	iter := 0
 	for {
 		if ctx.Err() != nil {
@@ -450,6 +495,53 @@ func (d *Drainer[T]) drainBatch(ctx context.Context) {
 			}
 		}
 		iter++
+	}
+}
+
+// maybeReportWedge surfaces partitions whose oldest unsent row is older than
+// Config.WedgeWarnAfter (head-of-line wedge attribution). No-op unless an
+// onWedge observer is registered AND PartitionColumn + WedgeWarnAfter>0 are set.
+// Rate-limited to at most once per WedgeWarnAfter (called from the single
+// drainBatch goroutine, so lastWedgeCheck needs no synchronisation). Best-effort:
+// a failed scan is logged at Debug and never disturbs the drain.
+func (d *Drainer[T]) maybeReportWedge(ctx context.Context) {
+	if d.onWedge == nil || d.cfg.PartitionColumn == "" || d.cfg.WedgeWarnAfter <= 0 {
+		return
+	}
+	if !d.lastWedgeCheck.IsZero() && time.Since(d.lastWedgeCheck) < d.cfg.WedgeWarnAfter {
+		return
+	}
+	d.lastWedgeCheck = time.Now()
+
+	// Oldest unsent row per partition, filtered to those exceeding the threshold.
+	// Uses the same partial index as the claim ((<PartitionColumn>), id) WHERE
+	// sent_at IS NULL. NULL partition keys are excluded (they carry no ordering).
+	q := fmt.Sprintf(`
+		SELECT %[2]s AS part,
+		       EXTRACT(EPOCH FROM (now() - min(created_at)))::float8 AS age_s
+		  FROM %[1]s
+		 WHERE sent_at IS NULL AND (%[2]s) IS NOT NULL
+		 GROUP BY %[2]s
+		HAVING min(created_at) < now() - make_interval(secs => $1)
+	`, d.cfg.Table, d.cfg.PartitionColumn)
+
+	rows, err := d.pool.Query(ctx, q, d.cfg.WedgeWarnAfter.Seconds())
+	if err != nil {
+		d.logger.Debug("wedge_scan_failed", slog.String("err", err.Error()))
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var part string
+		var ageS float64
+		if err := rows.Scan(&part, &ageS); err != nil {
+			d.logger.Debug("wedge_scan_row_failed", slog.String("err", err.Error()))
+			return
+		}
+		d.onWedge(part, time.Duration(ageS*float64(time.Second)))
+	}
+	if err := rows.Err(); err != nil {
+		d.logger.Debug("wedge_scan_iter_failed", slog.String("err", err.Error()))
 	}
 }
 

@@ -59,10 +59,83 @@ type Config struct {
 	// с `WHERE source_version < EXCLUDED.source_version`) + level-triggered
 	// reconciler (читает ТЕКУЩИЙ mirror), поэтому reordered stale register — no-op,
 	// а enforcement сходится к mirror-состоянию при любом порядке. НЕ включать для
-	// applier'а с order-sensitive target'ом без версионирования (напр. iam level-2
-	// fga_outbox несёт СЫРОЙ, не-source_version-guarded owner-hierarchy tuple —
-	// оставлен sequential намеренно).
+	// applier'а с order-sensitive target'ом без версионирования, ЕСЛИ порядок
+	// внутри партиции не защищён PartitionColumn (см. ниже) — напр. iam
+	// fga_outbox несёт СЫРОЙ, не-source_version-guarded owner-hierarchy tuple:
+	// WRITE(grant) и DELETE(revoke) ОДНОГО (user,relation,object) НЕ коммутативны,
+	// поэтому iam включает ApplyConcurrency>1 ТОЛЬКО вместе с PartitionColumn.
 	ApplyConcurrency int
+
+	// PartitionColumn — SQL-выражение над строкой outbox-таблицы, дающее ключ
+	// ПАРТИЦИИ порядка (для iam fga_outbox = `payload->>'object'`). Пусто (default)
+	// = фича выключена, claim-запрос БАЙТ-в-БАЙТ прежний (нулевое изменение
+	// поведения для всех текущих consumer'ов, кроме iam).
+	//
+	// # Зачем (order-preserving concurrent drain без cross-batch reorder-leak)
+	//
+	// ApplyConcurrency>1 сам по себе НЕ сохраняет порядок apply НИ внутри батча
+	// (горутины конкурентны), НИ МЕЖДУ батчами: claim `ORDER BY (attempt_count,id)`
+	// разносит bumped-предшественника (attempt≥1 после transient) и fresh-преемника
+	// (attempt=0) в РАЗНЫЕ claim-батчи → преемник может заклеймиться и примениться
+	// РАНЬШЕ своего предшественника. Для order-sensitive target'а (iam raw-tuple:
+	// WRITE потом DELETE того же tuple) это delete-before-write → tuple ВЫЖИВАЕТ →
+	// authz over-grant / cross-account LEAK.
+	//
+	// PartitionColumn закрывает это на CLAIM-уровне (не на apply-re-sort, который
+	// бессилен, если предшественник в другом батче): claim НЕ берёт строку t, если
+	// в её партиции существует ДОСТАВЛЯЕМЫЙ (sent_at IS NULL AND
+	// attempt_count < MaxAttempts) предшественник с меньшим id. Тогда:
+	//   - преемник НИКОГДА не заклеймлен впереди unsent-предшественника (cross-batch
+	//     И cross-replica: незакоммиченный claim соседа виден как sent_at IS NULL в
+	//     снапшоте → его преемник остаётся заблокирован до commit'а) →
+	//     per-partition FIFO держится by construction;
+	//   - в любом снапшоте claimable ровно ОДНА строка партиции (её head), поэтому
+	//     один claim-батч НИКОГДА не содержит две строки одной партиции → intra-batch
+	//     конкурентный reorder двух строк одной партиции НЕВОЗМОЖЕН by construction
+	//     (apply-level partition-grouping не нужен — было бы vestigial).
+	// Строки РАЗНЫХ партиций по-прежнему клеймятся и применяются конкурентно
+	// (пропускная способность ApplyConcurrency сохранена — предикат сериализует
+	// только внутри одной партиции).
+	//
+	// # Head-of-line wedge (осознанный trade-off leak-safety > per-partition liveness)
+	//
+	// Пока head партиции доставляем-но-ещё-не-доставлен (transient-stuck: peer down,
+	// attempt капнут на MaxAttempts-1, ретраится вечно с backoff) — его преемники
+	// ЖДУТ. Это ВРЕМЕННЫЙ wedge: transient-строка НИКОГДА не отравляется (cap ниже
+	// poison-gate) → применится, как только peer оживёт → wedge рассосётся. Границей
+	// wedge является восстановление peer'а, не бесконечность. ОТРАВЛЕННЫЙ (poisoned,
+	// attempt_count=MaxAttempts) предшественник из блокирующего набора ИСКЛЮЧЁН
+	// (предикат `attempt_count < MaxAttempts`), т.к. он НИКОГДА не применится —
+	// вечно wedge'ить партицию им нельзя; преемник «перепрыгивает» мёртвого
+	// предшественника. Leak это НЕ реинтродуцирует: отравленный WRITE не создаёт
+	// tuple → последующий DELETE (или отсутствие эффекта) не оставляет над-гранта;
+	// порядок между ДОСТАВЛЯЕМЫМИ строками партиции по-прежнему строгий. Wedge
+	// наблюдаем: (а) table-wide `outbox_oldest_pending_age_seconds{table}` (metrics
+	// Collector) растёт, пока любой head застрял → alertable; (б) per-partition
+	// атрибуция — опциональный WithWedgeObserver + WedgeWarnAfter (см. ниже).
+	//
+	// # Контракт выражения
+	//
+	// PartitionColumn — выражение над НЕквалифицированными колонками строки,
+	// начинающееся с идентификатора колонки, так что префикс `<alias>.` даёт
+	// валидный квалифицированный SQL (`payload->>'object'` → `t.payload->>'object'`,
+	// парсится как `(t.payload)->>'object'`). Значение выражения используется в
+	// equi-сравнении партиций в claim-предикате; в claim-пути оно не логируется, но
+	// per-partition wedge-observer (WithWedgeObserver) НАМЕРЕННО surfaces ключ в WARN
+	// для атрибуции застрявшей партиции — это id-based object-handle (напр.
+	// `vpc_network:<id>`), не PII/инфра-чувствительное. Rows с NULL-ключом партиции трактуются как
+	// независимые (NULL=NULL не true) — для iam невозможно (object всегда задан).
+	// Для перф NOT EXISTS ОБЯЗАТЕЛЕН partial-index
+	// `((<PartitionColumn>), id) WHERE sent_at IS NULL` (миграция сервиса).
+	PartitionColumn string
+
+	// WedgeWarnAfter — если >0 И задан PartitionColumn И зарегистрирован
+	// WithWedgeObserver, drainer периодически (rate-limited) сообщает партиции, чей
+	// самый старый unsent-row старше этого порога (head-of-line wedge, см. выше).
+	// 0 (default) = per-partition wedge-репорт выключен (нулевая стоимость; table-wide
+	// oldest-pending-age метрика всё равно покрывает «доставка застряла»). Опрос
+	// использует тот же partial-index, что и claim.
+	WedgeWarnAfter time.Duration
 }
 
 // withDefaults заполняет нулевые поля конфигом по умолчанию.
@@ -155,6 +228,18 @@ type Drainer[T any] struct {
 	// drainer issues ZERO claims across an observation window (busy-poll guard)
 	// without depending on asynchronous pg_stat counters.
 	onClaim func()
+
+	// onWedge, if set (with Config.PartitionColumn and Config.WedgeWarnAfter>0),
+	// is invoked once per partition whose oldest unsent row is older than
+	// WedgeWarnAfter — the head-of-line wedge signal for a partition-ordered drain
+	// (a stuck/transient partition head blocks its successors by design). Wire it
+	// to a WARN log / metric for per-partition attribution beyond the table-wide
+	// outbox_oldest_pending_age_seconds gauge. The scan is rate-limited to at most
+	// once per WedgeWarnAfter and uses the same partial index as the claim.
+	onWedge func(partition string, oldestUnsentAge time.Duration)
+	// lastWedgeCheck throttles the wedge scan. Accessed only from the single
+	// Run/drainBatch goroutine — no synchronisation needed.
+	lastWedgeCheck time.Time
 }
 
 // Option customises a Drainer at construction (functional-options pattern).
@@ -178,6 +263,20 @@ func WithClaimObserver[T any](fn func()) Option[T] {
 	return func(d *Drainer[T]) {
 		if fn != nil {
 			d.onClaim = fn
+		}
+	}
+}
+
+// WithWedgeObserver registers a callback invoked (rate-limited) once per
+// partition whose oldest unsent row exceeds Config.WedgeWarnAfter — the
+// head-of-line wedge signal for a partition-ordered drain. Requires
+// Config.PartitionColumn set and Config.WedgeWarnAfter>0 (otherwise the scan is
+// skipped and this is a no-op). Wire it to a WARN log / gauge for per-partition
+// attribution. nil is ignored.
+func WithWedgeObserver[T any](fn func(partition string, oldestUnsentAge time.Duration)) Option[T] {
+	return func(d *Drainer[T]) {
+		if fn != nil {
+			d.onWedge = fn
 		}
 	}
 }

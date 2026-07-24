@@ -48,6 +48,12 @@ CREATE TABLE kacho_iam.fga_outbox (
 CREATE INDEX fga_outbox_pending_idx
     ON kacho_iam.fga_outbox (created_at) WHERE sent_at IS NULL;
 
+-- Mirrors kacho-iam migration 0061: partition-head-only claim NOT EXISTS support
+-- (PartitionColumn = payload->>'object'). Partial (sent_at IS NULL) so it stays
+-- as small as the pending backlog.
+CREATE INDEX fga_outbox_partition_head_idx
+    ON kacho_iam.fga_outbox ((payload->>'object'), id) WHERE sent_at IS NULL;
+
 CREATE OR REPLACE FUNCTION kacho_iam.fga_outbox_notify() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
 BEGIN
