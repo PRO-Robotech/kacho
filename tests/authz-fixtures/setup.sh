@@ -969,6 +969,20 @@ REGISTRY_CROSS=$(ensure_project "authz-registry-cross" "$ACCOUNT_REG" "registry 
 [ -n "$USER_BOOT" ] && [ -n "$REGISTRY_CROSS" ] && ensure_binding "$USER_BOOT" "$ROLE_EDIT" "project" "$REGISTRY_CROSS" "$JWT_BOOTSTRAP"
 log "    registry isolation: acct=$ACCOUNT_REG home=$REGISTRY_HOME cross=$REGISTRY_CROSS (bootstrap owner+editor)"
 
+# Grant-materialization gate BEFORE the Phase B resource-seed blocks (11-14). Those blocks
+# create real subnets / networks / SGs / SAs AS JWT_AAA (account-admin), which requires AAA's
+# project grants (seeded in blocks 4b/5/6) to be MATERIALIZED in OpenFGA. On a fresh stand the
+# owner-tuple/grant materialization (fga_outbox → drainer → OpenFGA) lags; a create running
+# before AAA's v_create@project is visible 403s → ensure_subnet returns empty → the vpc
+# list-filter fixture id stays "{{subnetVisibleId}}" (unsubstituted) → the suite reds with
+# "invalid resource id". Deterministically drain the healthy fga_outbox → 0 (bounded) so the
+# grants are visible before the resource creates. Best-effort (degrades to a bounded settle if
+# the iam DB is unreachable). Mirrors the prodrun/newman-parallel drain-gate.
+if [ -f "$SCRIPT_DIR/drain_fga_outbox.sh" ]; then
+  log "    grant-materialization drain-gate before Phase B resource seeds…"
+  KACHO_NS="${SETUP_NS:-kacho}" bash "$SCRIPT_DIR/drain_fga_outbox.sh" "${SEED_DRAIN_BUDGET:-120}" >/dev/null 2>&1 || true
+fi
+
 # ---------------------------------------------------------------------------
 # 11) COMPUTE — real project + cross-project + network + subnet + sg.
 #     compute newman env references existingProjectId (→ _suiteFolderId),
