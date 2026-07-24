@@ -163,6 +163,52 @@ jobs:
             exit 1
           fi
 
+  authz-artifacts:
+    name: permission-catalog · rest-route-table (staleness + copy-drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # cache: false — та же причина, что в job `proto` выше: go.mod несёт
+          # toolchain-директиву, setup-go скачивает тулчейн, а restore кэша
+          # распаковывает его же поверх → `tar: ... Cannot open: File exists`.
+          cache: false
+      # Тот же пин, что в job `proto`: каталог и route-table ГЕНЕРИРУЮТСЯ через buf,
+      # значит версия buf влияет на содержимое артефакта. Разъезд версий local-vs-CI
+      # превратил бы гейт в источник фантомного диффа.
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 1.69.0
+
+      # Permission catalog — рантайм source-of-truth per-RPC authz. Он вшит ДВУМЯ
+      # копиями (gateway/internal/middleware/embed + iam seed/embedded), и до этого
+      # гейта их расхождение НИЧЕМ не ловилось: `grep permission.catalog .github/`
+      # был пуст. Цена дрейфа — не «некрасиво», а прод-инцидент: RPC без записи в
+      # каталоге получает `catalog: no entry for method` → AUTHZ_DENIED (fail-closed)
+      # на КАЖДЫЙ вызов, независимо от грантов (security.md инв. 4).
+      #
+      # Гейт ПАДАЕТ (не warn) в двух случаях:
+      #   1. embedded-каталог STALE относительно proto (новый/переименованный RPC
+      #      уехал без записи);
+      #   2. iam-копия разошлась с gateway-копией байт-в-байт.
+      # Обе проверки — внутри `make permission-catalog-check` (gateway/Makefile),
+      # существующего таргета: гейт не изобретает свою логику сравнения, а
+      # переиспользует ту, которой пользуется разработчик локально.
+      - name: permission-catalog staleness + copy-drift
+        working-directory: gateway
+        run: make permission-catalog-check
+
+      # REST route-table — тот же класс: генерируемый из `google.api.http`-аннотаций
+      # committed-артефакт, по которому authz-middleware переводит REST-путь в FQN.
+      # Stale-таблица = endpoint, чей путь middleware не резолвит → каждый вызов
+      # denied (уже стреляло 6 registry Repository-роутами). Таргет тоже уже
+      # существовал и тоже не был подключён к CI.
+      - name: rest-route-table staleness
+        working-directory: gateway
+        run: make rest-route-table-check
+
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest

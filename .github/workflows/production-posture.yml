@@ -1,0 +1,125 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# production-posture — стенд ДЕЙСТВИТЕЛЬНО поднимается в production-режиме.
+#
+# ЗАКРЫВАЕМЫЙ ПРОБЕЛ. security.md требует: «values.prod ОБЯЗАН реально boots
+# (helm install + rollout-ready в production-mode, не только helm template)». До этого
+# workflow единственной проверкой чартов был `helm lint` + `helm template` в ci.yaml, а
+# единственной РЕАЛЬНОЙ установкой — `make dev-up` внутри e2e-newman, и та по DEV-профилю.
+# То есть production-профиль не поднимался автоматически НИКОГДА.
+#
+# Почему template недостаточно: production boot-guard'ы (Config.Validate → refuse-to-start
+# при insecure config) срабатывают в РАНТАЙМЕ, шаблон при этом рендерится идеально.
+# Реальный инцидент: chart api-gateway рендерился зелёным, но не нёс knob'а для
+# mTLS+SPIFFE на internal :9091 → crash-loop ровно на values.prod. Ловится только
+# подъёмом + ожиданием rollout.
+#
+# ЧТО ГЕЙТ ДОКАЗЫВАЕТ: каждый сервис СТАРТУЕТ с production-конфигом (authMode=
+# production/-strict, mTLS везде, sslmode=require, breakglass off) и доходит до Ready,
+# т.е. чарты несут все knob'ы, которых требуют их boot-guard'ы.
+# ЧЕГО НЕ ДОКАЗЫВАЕТ: функциональную корректность authz/токенов — это e2e-newman.
+#
+# ── ПОЧЕМУ ОТДЕЛЬНЫЙ WORKFLOW, А НЕ ДЖОБА В ci.yaml ────────────────────────────
+# 1. Не влезает на ubuntu-latest. Стенд требует ~4.2 ГБ memory.requests; e2e-newman уже
+#    переехал на self-hosted именно поэтому (замерено, см. его шапку). Джоба в ci.yaml
+#    крутится на ubuntu-latest — там этот стенд просто не поднимется.
+# 2. Один self-hosted ранер и ОДНО имя kind-кластера (`kacho`) с e2e-newman. Триггер на
+#    каждый PR означал бы два прогона, дерущихся за один кластер: любой из них сносит
+#    чужой (`kind delete cluster --name kacho`) — оба краснеют по причине, не связанной с
+#    кодом. Поэтому НИКАКОГО pull_request-триггера: только расписание (ночью, когда
+#    PR-прогонов нет) + ручной workflow_dispatch перед релизом/после правки чартов.
+# Это ровно та форма, которую предписывает регламент, когда полноценный install слишком
+# тяжёл для pre-merge джобы: гейт СУЩЕСТВУЕТ и ПАДАЕТ при недоборе rollout.
+#
+# ── ЧТО ИМЕННО ЗАПУСКАЕТСЯ ─────────────────────────────────────────────────────
+# `make dev-prod-up` (deploy/Makefile): проверенный двухфазный bring-up dev-up
+# (cert-manager CRD → mTLS → fga-bootstrap), затем фаза 3 — `helm upgrade` с
+# values.dev-prod.yaml (production-posture поверх kind-локальных адаптаций), затем:
+#   * assert-rollout-ready       — КАЖДЫЙ Deployment/StatefulSet rollout-complete,
+#                                  БЕЗ `|| true`; на провале печатает describe + логи
+#                                  (в т.ч. --previous, где и виден boot-guard Fatalf);
+#   * assert-production-posture  — на живом стенде НЕТ ни одного mode=dev (защита от
+#                                  ложного зелёного, если профиль не применился).
+name: production-posture
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 02:17 UTC ежедневно — окно, в котором PR-прогоны e2e-newman на том же ранере
+    # практически не идут (см. пункт 2 выше про общий kind-кластер).
+    - cron: '17 2 * * *'
+
+permissions:
+  contents: read
+
+# Своя группа + cancel-in-progress: false. Отменять НЕЛЬЗЯ: прерванный прогон оставит
+# kind-кластер и займёт диск ранера (29 ГБ всего, ~11 свободно) до следующей уборки.
+concurrency:
+  group: production-posture
+  cancel-in-progress: false
+
+jobs:
+  stand:
+    name: values.dev-prod boots (kind, production posture)
+    runs-on: self-hosted
+    # dev-up ~13м + фаза 3 (перезапуск всех подов с production-конфигом) + rollout-wait.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # На ранере из тулчейнов есть только docker/git/jq/make — go/helm/kubectl/kind
+      # ставим сами (setup-* кэшируют их в tool-cache, платим один раз).
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # ПИН ОБЯЗАТЕЛЕН — та же причина, что в ci.yaml/e2e-newman: setup-helm без version
+      # ставит Helm 4, у которого server-side apply вместо client-side 3-way merge
+      # (другая семантика владения полями → UPGRADE FAILED на чужом field-manager).
+      # Гейт обязан проверять чарты ТОЙ версией, которой разворачивается прод.
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+      - uses: azure/setup-kubectl@v4
+
+      # kind — БИНАРЬ, без создания кластера: кластер поднимает `make dev-up` своим
+      # kind-config (host-port mappings для ingress). БЕЗ sudo — на self-hosted
+      # беспарольный sudo не гарантирован.
+      - name: kind
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -sSLo "$HOME/bin/kind" https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64
+          chmod +x "$HOME/bin/kind"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/kind" version
+
+      # Сносим ДО, а не только ПОСЛЕ: прошлый прогон мог упасть жёстко (timeout/kill) и
+      # не дойти до уборки, а переиспользованный кластер — источник ложных результатов.
+      - name: снести кластер от прошлого прогона
+        run: |
+          kind delete cluster --name kacho 2>/dev/null || true
+          echo "=== диск до стенда:"; df -h / | tail -1
+
+      # ГЕЙТ. Падает, если хоть один workload не дошёл до rollout-complete в
+      # production-posture, либо если стенд поднялся не в production-режиме.
+      - name: стенд в production-posture (dev-prod-up)
+        working-directory: deploy
+        run: make dev-prod-up
+
+      - name: что поднялось
+        if: always()
+        run: |
+          kubectl -n kacho get pods -o wide || true
+          echo "=== auth-mode на живом стенде ==="
+          kubectl -n kacho get pods -o json 2>/dev/null \
+            | jq -r '.items[].spec.containers[]?.env[]? | select(.name|test("AUTH_?N?_MODE$")) | "\(.name)=\(.value)"' \
+            | sort -u || true
+
+      # Кластер сносится ВСЕГДА: диск ранера — узкое место (29 ГБ, ~11 свободно), и
+      # переживший прогон кластер ломает следующий e2e-newman.
+      - name: снести стенд
+        if: always()
+        run: |
+          kind delete cluster --name kacho 2>/dev/null || true
+          echo "=== диск после уборки:"; df -h / | tail -1

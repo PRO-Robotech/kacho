@@ -120,14 +120,15 @@ func TestValidateAuthMode_ProductionStrict_SkipPeerValidationDropsPeerEdges(t *t
 	}
 }
 
-// AuthZBreakglass снимает требование на authz Check-ребро (interceptor не
-// навешивается), но server-listener'ы обязаны быть mTLS.
-func TestValidateAuthMode_ProductionStrict_BreakglassDropsAuthzEdge(t *testing.T) {
+// AuthZBreakglass в production-strict ОТКАЗЫВАЕТ старту (раньше — только снимал
+// требование на authz-ребро и проходил). См.
+// TestValidateAuthMode_Production_BreakglassRefusesBoot ниже.
+func TestValidateAuthMode_ProductionStrict_BreakglassRefusesBoot(t *testing.T) {
 	cfg := allEdgesSecured()
 	cfg.AuthZBreakglass = true
 	cfg.IAMAuthzMTLS.Enable = false
-	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
-		t.Fatalf("authz edge not dialed under breakglass; gate must not require it: %v", err)
+	if _, err := validateAuthMode(cfg, discardLogger()); err == nil {
+		t.Fatalf("breakglass in production-strict must refuse boot, got nil")
 	}
 }
 
@@ -315,12 +316,18 @@ func TestValidateAuthMode_Production_RequiresDBSSL(t *testing.T) {
 	}
 }
 
-// breakglass в production — намеренный emergency-escape (зеркалит kacho-vpc:
-// warn-not-reject; существующий TestValidateAuthMode_ProductionStrict_
-// BreakglassDropsAuthzEdge подтверждает, что gate его пропускает). НО он не должен
-// быть МОЛЧАЛИВЫМ: boot ОБЯЗАН громко предупредить, что per-RPC authz Check
-// целиком обойдён. Finding r9b-1: «production gate silently disables all authz».
-func TestValidateAuthMode_Production_BreakglassEmitsLoudWarn(t *testing.T) {
+// breakglass в production — ОТКАЗ СТАРТА (fail-closed), а не громкий WARN.
+//
+// Раньше compute (и vpc) лишь предупреждали, тогда как geo и nlb отвергали: одна и
+// та же настройка означала «сервис поднят без авторизации вообще» в одних сервисах
+// и «сервис не поднимется» в других. WARN не защищает — leftover breakglass после
+// инцидента переживает рестарт и оставляет ОБА листенера без per-RPC Check
+// (object-self v_get/v_update/v_delete и cross-tenant Check не оцениваются),
+// нарушая инвариант security.md «AuthN+AuthZ ВЕЗДЕ» + kacho core rule «production-mode обязателен ВЕЗДЕ».
+//
+// Assert'им СООБЩЕНИЕ, а не только факт ошибки: причина отказа — часть контракта
+// оператора (он должен понять, что снимать, а не гадать).
+func TestValidateAuthMode_Production_BreakglassRefusesBoot(t *testing.T) {
 	for _, mode := range []string{"production", "production-strict"} {
 		t.Run(mode, func(t *testing.T) {
 			var cfg config.Config
@@ -331,25 +338,34 @@ func TestValidateAuthMode_Production_BreakglassEmitsLoudWarn(t *testing.T) {
 			}
 			cfg.AuthMode = mode
 			cfg.AuthZBreakglass = true
-			// production-strict иначе потребует IAM_AUTHZ_MTLS; breakglass снимает это.
+			// production-strict иначе потребует IAM_AUTHZ_MTLS; breakglass его снимал.
 			cfg.IAMAuthzMTLS.Enable = false
 
 			var buf bytes.Buffer
-			prod, err := validateAuthMode(cfg, captureLogger(&buf))
-			if err != nil {
-				t.Fatalf("breakglass in %s must NOT reject boot (emergency escape, mirrors kacho-vpc); got err: %v", mode, err)
+			_, err := validateAuthMode(cfg, captureLogger(&buf))
+			if err == nil {
+				t.Fatalf("breakglass in %s must refuse boot (fail-closed), got nil", mode)
 			}
-			if !prod {
-				t.Errorf("%s must report productionMode=true", mode)
+			msg := err.Error()
+			if !strings.Contains(msg, "KACHO_COMPUTE_AUTHZ_BREAKGLASS") {
+				t.Errorf("error must name the offending knob KACHO_COMPUTE_AUTHZ_BREAKGLASS; got: %q", msg)
 			}
-			got := strings.ToLower(buf.String())
-			if !strings.Contains(got, "breakglass") {
-				t.Errorf("%s + breakglass must emit a boot WARN naming breakglass; got log: %q", mode, buf.String())
-			}
-			if !strings.Contains(got, "bypass") {
-				t.Errorf("%s + breakglass WARN must state that authz Check is BYPASSED; got log: %q", mode, buf.String())
+			if !strings.Contains(strings.ToLower(msg), "production") {
+				t.Errorf("error must state that the mode is production; got: %q", msg)
 			}
 		})
+	}
+}
+
+// dev-режим breakglass'ом не затронут: аварийный обход остаётся доступным там, где
+// он и задуман (in-process фикстуры / локальная отладка), — ужесточение не должно
+// превращаться в запрет самого механизма.
+func TestValidateAuthMode_Dev_BreakglassAllowed(t *testing.T) {
+	var cfg config.Config
+	cfg.AuthMode = "dev"
+	cfg.AuthZBreakglass = true
+	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
+		t.Fatalf("breakglass in dev must remain allowed; got: %v", err)
 	}
 }
 

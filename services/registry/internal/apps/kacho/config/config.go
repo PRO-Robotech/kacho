@@ -51,7 +51,11 @@ type Config struct {
 	InternalGrpcPort string `envconfig:"KACHO_REGISTRY_INTERNAL_PORT" default:"9091"`
 
 	// AuthMode — fail-closed режим: dev | production | production-strict.
-	AuthMode string `envconfig:"KACHO_REGISTRY_AUTH_MODE" default:"dev"`
+	//
+	// Дефолт — production (secure-by-default, core rule #16): незаданный env НЕ должен
+	// поднимать сервис в insecure-posture. dev — явный opt-in локальных фикстур и
+	// dev-профиля стенда (values.dev.yaml выставляет его явно).
+	AuthMode string `envconfig:"KACHO_REGISTRY_AUTH_MODE" default:"production"`
 
 	// AuthZIAMGRPCAddr — internal endpoint kacho-iam (:9091) для per-RPC Check
 	// (ребро registry→iam authz) И для fga-proxy RegisterResource/UnregisterResource

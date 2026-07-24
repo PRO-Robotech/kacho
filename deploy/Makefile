@@ -1,6 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-.PHONY: dev-up dev-down reload-svc logs-svc psql preflight e2e-test helm-lint seed-ipam \
+.PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-production-posture \
+        reload-svc logs-svc psql preflight e2e-test helm-lint seed-ipam \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman
@@ -153,6 +154,97 @@ dev-up: preflight
 
 dev-down:
 	kind delete cluster --name $(CLUSTER_NAME) || true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# dev-prod-up — стенд в PRODUCTION-security-posture + СТРОГАЯ проверка, что он
+# действительно поднялся.
+#
+# ЗАЧЕМ ОТДЕЛЬНАЯ ЦЕЛЬ. `helm lint`/`helm template` НЕ являются доказательством
+# работоспособности production-профиля: production boot-guard'ы (Config.Validate →
+# refuse-to-start при insecure config) срабатывают в РАНТАЙМЕ, а шаблон при этом
+# рендерится идеально. Реальный инцидент: chart api-gateway рендерился зелёным, но
+# не нёс knob'а для mTLS+SPIFFE на internal :9091 → под уходил в crash-loop ровно на
+# values.prod. Единственный способ это поймать — поднять и дождаться rollout.
+#
+# ЧТО ЭТО ДОКАЗЫВАЕТ: каждый сервис СТАРТУЕТ с production-конфигом (authMode=
+# production/-strict, mTLS везде, sslmode=require, breakglass off) и доходит до
+# Ready. То есть чарты несут все knob'ы, которых требуют их boot-guard'ы.
+# ЧЕГО НЕ ДОКАЗЫВАЕТ: функциональную корректность authz/токенов — это e2e-newman.
+#
+# ПОЧЕМУ ПОВЕРХ dev-up, а не отдельный fresh-install: bootstrap чистого кластера
+# двухфазный (cert-manager CRD появляются только после фазы 1, см. MTLS_OFF), плюс
+# fga-bootstrap. Дублировать этот рецепт значит завести вторую копию, которая
+# разъедется с оригиналом. Здесь мы переиспользуем проверенный bring-up и затем
+# ПЕРЕВОДИМ стенд в production-posture — каждый под перезапускается с production-
+# конфигом и обязан снова стать Ready. Именно это и есть boot-guard-тест.
+dev-prod-up: dev-up
+	@set -e; \
+	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
+	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
+	  -f ./helm/umbrella/values.dev.yaml \
+	  -f ./helm/umbrella/values.dev-prod.yaml \
+	  --wait --timeout 12m; \
+	$(MAKE) --no-print-directory assert-rollout-ready; \
+	$(MAKE) --no-print-directory assert-production-posture; \
+	echo "production-posture stand is UP and READY"
+
+# assert-rollout-ready — КАЖДЫЙ workload в ns kacho обязан быть rollout-complete.
+#
+# Без `|| true`, в отличие от финальных проверок dev-up: там это удобство (стенд для
+# человека), здесь — гейт. Недобранный rollout ОБЯЗАН валить цель, иначе «зелёный»
+# прогон означал бы ровно то, что мы и ловим — сервис не поднялся в production.
+# На провале печатаем диагностику (pods + describe + логи не-Ready подов), чтобы
+# красный CI был actionable, а не «timed out».
+assert-rollout-ready:
+	@set -e; \
+	fail=0; \
+	for kind in deployment statefulset; do \
+	  for w in $$(kubectl -n kacho get $$kind -o name 2>/dev/null); do \
+	    echo "--- rollout: $$w"; \
+	    kubectl -n kacho rollout status "$$w" --timeout=300s || fail=1; \
+	  done; \
+	done; \
+	if [ "$$fail" -ne 0 ]; then \
+	  echo; echo "!!! ROLLOUT INCOMPLETE — production posture did NOT come up"; \
+	  echo "=== pods ==="; kubectl -n kacho get pods -o wide; \
+	  echo "=== not-ready pods: describe + logs ==="; \
+	  for p in $$(kubectl -n kacho get pods -o json \
+	      | jq -r '.items[] | select(((.status.containerStatuses // []) | length) == 0 or ((.status.containerStatuses // []) | map(.ready) | all | not)) | .metadata.name'); do \
+	    echo "--- describe $$p"; kubectl -n kacho describe pod "$$p" | tail -40; \
+	    echo "--- logs $$p (все контейнеры, last 60)"; \
+	    kubectl -n kacho logs "$$p" --all-containers --tail=60 --prefix 2>&1 | tail -80 || true; \
+	    echo "--- logs $$p (previous — boot-guard Fatalf виден именно тут)"; \
+	    kubectl -n kacho logs "$$p" --all-containers --previous --tail=60 --prefix 2>&1 | tail -80 || true; \
+	  done; \
+	  exit 1; \
+	fi; \
+	echo "all workloads rollout-complete"
+
+# assert-production-posture — стенд обязан быть поднят ИМЕННО в production-режиме.
+#
+# Защита от ложного зелёного: если бы профиль не применился (опечатка в values,
+# сабчарт не подхватил override), rollout всё равно прошёл бы — в dev-posture — и
+# гейт «доказал» бы ровно ничего. Поэтому читаем режим у ЖИВЫХ подов и валим цель на
+# любом `dev`. Источник — env-переменные контейнеров (KACHO_*_AUTH_MODE /
+# KACHO_API_GATEWAY_AUTHN_MODE); сервисы, отдающие режим через config-файл
+# (iam/vpc/nlb), проверяются по своим ConfigMap'ам.
+assert-production-posture:
+	@set -e; \
+	bad=$$(kubectl -n kacho get pods -o json \
+	  | jq -r '.items[].spec.containers[]?.env[]? | select(.name|test("AUTH_?N?_MODE$$")) | select(.value=="dev") | .name' \
+	  | sort -u); \
+	if [ -n "$$bad" ]; then \
+	  echo "!!! стенд поднят в DEV-posture, а гейт обязан проверять production:"; \
+	  echo "$$bad" | sed 's/^/    /'; exit 1; \
+	fi; \
+	bad_cm=$$(kubectl -n kacho get configmap -o json \
+	  | jq -r '.items[] | .metadata.name as $$n | (.data // {}) | to_entries[] | select(.value | split("\n") | any(test("^\\s*mode: *\"?dev\"?\\s*$$"))) | $$n' \
+	  | sort -u); \
+	if [ -n "$$bad_cm" ]; then \
+	  echo "!!! config-файл сервиса всё ещё несёт mode: dev:"; \
+	  echo "$$bad_cm" | sed 's/^/    /'; exit 1; \
+	fi; \
+	echo "production posture confirmed (нет ни одного mode=dev на стенде)"
 
 helm-lint:
 	cd helm/umbrella && helm dep update >/dev/null && helm lint -f values.dev.yaml

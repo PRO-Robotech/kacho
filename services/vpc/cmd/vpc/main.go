@@ -145,10 +145,8 @@ func runServe(cfg config.Config) error {
 	if cfg.AuthN.Mode == config.ModeProductionStrict {
 		logger.Warn("authn.mode=production-strict: anonymous rejected + TLS+SSL strictly validated")
 	}
-	// Громкое предупреждение, когда authz целиком обойден в production (emergency).
-	if cfg.AuthN.Mode.IsProduction() && cfg.AuthZ.Breakglass {
-		logger.Warn(fmt.Sprintf(config.WarnBreakglassProduction, cfg.AuthN.Mode))
-	}
+	// breakglass в production сюда не доходит: Config.Validate() отвергает такой
+	// конфиг ещё до этой точки (fail-closed вместо прежнего WARN).
 
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {

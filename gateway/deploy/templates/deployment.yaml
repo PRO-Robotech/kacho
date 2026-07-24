@@ -140,7 +140,7 @@ spec:
             {{- end }}
             {{- if .Values.authn }}
             - name: KACHO_API_GATEWAY_AUTHN_MODE
-              value: {{ .Values.authn.mode | default "dev" | quote }}
+              value: {{ .Values.authn.mode | default "production" | quote }}
             {{- if .Values.authn.devSecretSecretRef }}
             # HMAC dev-signing secret (CWE-522): sourced from a k8s Secret, never a
             # plaintext PodSpec `value:`. A leaked dev secret enables symmetric-key

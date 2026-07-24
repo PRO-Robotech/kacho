@@ -16,6 +16,8 @@ import (
 	"io/fs"
 
 	"github.com/pressly/goose/v3"
+
+	"github.com/PRO-Robotech/kacho/pkg/dbready"
 )
 
 // postgresDialect — реализация [Dialect] для PostgreSQL.
@@ -31,7 +33,7 @@ func newPostgresDialect() *postgresDialect { return &postgresDialect{} }
 func (p *postgresDialect) Spec() DialectSpec { return SpecPostgres }
 
 func (p *postgresDialect) Up(ctx context.Context, dsn string, fsys fs.FS, dir string, target string) error {
-	db, err := openPgxDB(dsn, p.Spec())
+	db, err := openPgxDB(ctx, dsn, p.Spec())
 	if err != nil {
 		return err
 	}
@@ -51,7 +53,7 @@ func (p *postgresDialect) Up(ctx context.Context, dsn string, fsys fs.FS, dir st
 }
 
 func (p *postgresDialect) Down(ctx context.Context, dsn string, fsys fs.FS, dir string, target string) error {
-	db, err := openPgxDB(dsn, p.Spec())
+	db, err := openPgxDB(ctx, dsn, p.Spec())
 	if err != nil {
 		return err
 	}
@@ -71,7 +73,7 @@ func (p *postgresDialect) Down(ctx context.Context, dsn string, fsys fs.FS, dir 
 }
 
 func (p *postgresDialect) Status(ctx context.Context, dsn string, fsys fs.FS, dir string, out io.Writer) error {
-	db, err := openPgxDB(dsn, p.Spec())
+	db, err := openPgxDB(ctx, dsn, p.Spec())
 	if err != nil {
 		return err
 	}
@@ -102,10 +104,22 @@ func (p *postgresDialect) Create(physDir, name string) error {
 // openPgxDB и setupGoose — helpers postgres-диалекта (pgx driver +
 // goose-dialect="postgres").
 
-func openPgxDB(dsn string, spec DialectSpec) (*sql.DB, error) {
+func openPgxDB(ctx context.Context, dsn string, spec DialectSpec) (*sql.DB, error) {
 	db, err := sql.Open(spec.SQLDriver, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db (driver=%s): %w", spec.SQLDriver, err)
+	}
+	// Барьер готовности PG. sql.Open ЛЕНИВ (не дозванивается до сервера), поэтому
+	// гонка init-контейнера с подом Postgres проявлялась не здесь, а на первой
+	// goose-операции: мигратор падал и уходил в CrashLoopBackOff до подъёма PG.
+	// Ждём ТОЛЬКО «БД не принимает соединения» и ТОЛЬКО в пределах бюджета;
+	// неверный пароль / несуществующая БД / сломанная миграция падают сразу.
+	if err := dbready.Wait(ctx, db, dbready.Options{}); err != nil {
+		_ = db.Close()
+		// Текст нейтральный: сюда приходит И «не дождались» (ошибка уже несёт
+		// бюджет), И настоящая ошибка (пароль/DSN/БД) — второй случай называть
+		// «not ready» было бы враньём в логе.
+		return nil, fmt.Errorf("database connection check failed: %w", err)
 	}
 	return db, nil
 }

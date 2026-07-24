@@ -203,7 +203,8 @@ config:
       maxConns: 100
       sslMode: disable
   authn:
-    mode: dev
+    # secure-by-default (core rule #16); dev — явный opt-in dev-профиля.
+    mode: production
     # ─── bootstrap-mint caller allow-list (#58 hardening) ────────────────────
     # SPIFFE SANs of the client certificates permitted to call
     # InternalBootstrapTokenService/MintBootstrapToken on :9091 — the cluster-admin

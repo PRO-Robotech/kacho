@@ -6,6 +6,7 @@ package main
 import (
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
@@ -157,6 +158,34 @@ func TestValidateSecurityConfig(t *testing.T) {
 			err := validateSecurityConfig(tc.cfg)
 			if tc.wantErr != (err != nil) {
 				t.Fatalf("wantErr=%v, got err=%v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
+// TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob — message-lock
+// на отказ старта при breakglass в production.
+//
+// Таблица выше проверяет только ФАКТ ошибки; для security-гейта этого мало — при
+// рефакторе он мог бы начать падать по другой причине (напр. по mTLS), и тест
+// остался бы зелёным, потеряв сам инвариант. Причина отказа — часть контракта
+// оператора и должна называть конкретный knob. Тот же message-lock стоит у
+// compute/vpc/registry, приведённых к geo/nlb-строгости.
+func TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob(t *testing.T) {
+	for _, mode := range []string{"production", "production-strict"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := secure()
+			cfg.AuthMode = mode
+			cfg.AuthZBreakglass = true
+			err := validateSecurityConfig(cfg)
+			if err == nil {
+				t.Fatalf("breakglass in %s must refuse boot, got nil", mode)
+			}
+			if !strings.Contains(err.Error(), "KACHO_GEO_AUTHZ_BREAKGLASS") {
+				t.Errorf("error must name the offending knob; got: %q", err.Error())
+			}
+			if !strings.Contains(err.Error(), "production") {
+				t.Errorf("error must state that the mode is production; got: %q", err.Error())
 			}
 		})
 	}

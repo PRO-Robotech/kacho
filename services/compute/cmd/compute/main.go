@@ -460,6 +460,24 @@ func runServe(cfg config.Config) error {
 // production-strict валидирует cross-service TLS + DB sslmode, логирует insecure
 // dev-defaults. Зеркалит kacho-vpc/cmd/vpc/main.go::validateAuthMode.
 func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bool, err error) {
+	// Breakglass в production — ОТКАЗ СТАРТА, и проверяется ПЕРВЫМ, чтобы причина
+	// не тонула в жалобах на другие рёбра (breakglass как раз их и снимал).
+	//
+	// Раньше здесь был WARN «зеркалим kacho-vpc warn-not-reject», тогда как geo и nlb
+	// отвергали: одна и та же настройка означала «сервис поднят вообще без
+	// авторизации» в одних сервисах и «сервис не поднимется» в других. WARN не
+	// защищает — leftover breakglass после инцидента переживает рестарт и оставляет
+	// ОБА листенера без per-RPC InternalIAMService.Check (object-self
+	// v_get/v_update/v_delete и cross-tenant Check не оцениваются, остаётся только
+	// AuthN). Это прямое нарушение security.md «AuthN+AuthZ ВЕЗДЕ» и kacho core rule «production-mode обязателен ВЕЗДЕ»
+	// («production-mode boot-guard fail-closed → refuse-to-start»). В dev аварийный
+	// обход остаётся доступным — там он и задуман.
+	if cfg.AuthZBreakglass && (cfg.AuthMode == "production" || cfg.AuthMode == "production-strict") {
+		return false, fmt.Errorf("production mode (%s): KACHO_COMPUTE_AUTHZ_BREAKGLASS must not be enabled "+
+			"— it bypasses ALL per-RPC authz Check on both listeners (every RPC allowed without IAM "+
+			"authorization); breakglass is a non-production emergency escape only", cfg.AuthMode)
+	}
+
 	switch cfg.AuthMode {
 	case "dev":
 		productionMode = false
@@ -517,21 +535,7 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 			logger.Warn("KACHO_COMPUTE_DB_SSLMODE=disable — DB plaintext (dev only)")
 		}
 	}
-	// Breakglass — намеренный emergency-escape (не reject: зеркалит kacho-vpc
-	// warn-not-reject; production-strict-gate его пропускает — см.
-	// insecureEdgesInProductionStrict + TestValidateAuthMode_ProductionStrict_
-	// BreakglassDropsAuthzEdge). Но он не должен быть МОЛЧАЛИВЫМ: в production
-	// breakglass=true целиком обходит per-RPC InternalIAMService.Check на ОБОИХ
-	// листенерах (object-self v_get/v_update/v_delete + cross-tenant Check не
-	// оцениваются, остаётся только AuthN) — нарушение инварианта security.md
-	// «AuthN+AuthZ ВЕЗДЕ». Громкий boot-WARN делает обход наблюдаемым (leftover
-	// после инцидента не проходит незамеченным). Rationale — docs/architecture/
-	// 07-known-divergences.md, section "breakglass в production".
-	if productionMode && cfg.AuthZBreakglass {
-		logger.Warn("KACHO_COMPUTE_AUTHZ_BREAKGLASS=true in production mode: ALL per-RPC authz Check is BYPASSED "+
-			"— every RPC on both listeners is allowed without IAM authorization; emergency use only",
-			"auth_mode", cfg.AuthMode)
-	}
+	// breakglass в production сюда не доходит — отвергнут в самом начале функции.
 	return productionMode, nil
 }
 

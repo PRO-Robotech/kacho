@@ -69,6 +69,26 @@ func staticClusterCatalog() authz.ObjectExtractor {
 	}
 }
 
+// unscopedProject — extractor, всегда возвращающий (project, "*").
+//
+// Зеркалит `scope_extractor: {object_type: "project", from_request_field: "*"}`
+// из permission_catalog.json — ровно то, что gateway шлёт в iam для RPC, чей
+// request НЕ несёт скоупового поля (`access.*AccessBindingsRequest` знает только
+// resource_id). Не «дырка»: iam на `Resource.ID == "*"` отдаёт
+// `no path: unscoped resource` → PermissionDenied для всех, кроме cluster-admin
+// (authorize_service.go). То есть оба тира выносят ОДНО И ТО ЖЕ решение.
+//
+// Почему это вообще нужно: без записи в карте corelib-интерсептор fail-close'ит
+// RPC как DecisionUnmapped → `permission denied (rpc not mapped)`. Это не
+// authz-решение, а дыра в проводке, маскирующаяся под отказ: cluster-admin,
+// которому gateway доступ РАЗРЕШАЕТ, на backend'е получал 403 вместо честного
+// Unimplemented от AAA-скелета (handler не переопределён, см. handler/*.go).
+func unscopedProject() authz.ObjectExtractor {
+	return func(req any) (string, string, error) {
+		return objectTypeProject, "*", nil
+	}
+}
+
 // PermissionMap — карта RPC → required relation+extract.
 //
 // Семантика per-RPC (enforcement по verb, развязан с tier):
@@ -139,6 +159,24 @@ func PermissionMap() authz.RPCMap {
 				return req.(*computev1.ListDiskSnapshotSchedulesRequest).GetDiskId(), nil
 			}),
 		},
+		// access-bindings — AAA-скелет (handler не переопределён → Unimplemented).
+		// Записи зеркалят permission_catalog.json 1:1 (relation + unscoped project-scope),
+		// см. unscopedProject(). Без них интерсептор отдавал «rpc not mapped».
+		"/kacho.cloud.compute.v1.DiskService/ListAccessBindings": {
+			Relation:   relationViewer,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.listAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.DiskService/SetAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.setAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.DiskService/UpdateAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.updateAccessBindings",
+		},
 
 		// =========================
 		// ImageService
@@ -185,6 +223,22 @@ func PermissionMap() authz.RPCMap {
 				return req.(*computev1.ListImageOperationsRequest).GetImageId(), nil
 			}),
 		},
+		// access-bindings — AAA-скелет, зеркало каталога (см. DiskService выше).
+		"/kacho.cloud.compute.v1.ImageService/ListAccessBindings": {
+			Relation:   relationViewer,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.listAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.ImageService/SetAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.setAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.ImageService/UpdateAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.updateAccessBindings",
+		},
 
 		// =========================
 		// SnapshotService
@@ -224,6 +278,22 @@ func PermissionMap() authz.RPCMap {
 			Extract: authz.StaticExtractor(objectTypeSnapshot, func(req any) (string, error) {
 				return req.(*computev1.ListSnapshotOperationsRequest).GetSnapshotId(), nil
 			}),
+		},
+		// access-bindings — AAA-скелет, зеркало каталога (см. DiskService выше).
+		"/kacho.cloud.compute.v1.SnapshotService/ListAccessBindings": {
+			Relation:   relationViewer,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.listAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.SnapshotService/SetAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.setAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.SnapshotService/UpdateAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.updateAccessBindings",
 		},
 
 		// =========================
@@ -352,6 +422,22 @@ func PermissionMap() authz.RPCMap {
 			Extract: authz.StaticExtractor(objectTypeInstance, func(req any) (string, error) {
 				return req.(*computev1.ListInstanceOperationsRequest).GetInstanceId(), nil
 			}),
+		},
+		// access-bindings — AAA-скелет, зеркало каталога (см. DiskService выше).
+		"/kacho.cloud.compute.v1.InstanceService/ListAccessBindings": {
+			Relation:   relationViewer,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.listAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.InstanceService/SetAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.setAccessBindings",
+		},
+		"/kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings": {
+			Relation:   relationEditor,
+			Extract:    unscopedProject(),
+			Permission: "compute.access_bindingses.updateAccessBindings",
 		},
 		"/kacho.cloud.compute.v1.InstanceService/Relocate": {
 			Relation: relationVUpdate,

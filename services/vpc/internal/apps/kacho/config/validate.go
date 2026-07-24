@@ -40,10 +40,18 @@ const (
 		"— the filter degrades to passthrough (unfiltered), leaving %d ScopeFiltered RPC(s) fail-open; " +
 		"set authz.list-filter.authorize-endpoint (or authz.iam-endpoint)"
 
-	// WarnBreakglassProduction — громкое предупреждение boot'а, когда authz целиком
-	// обойден в production (emergency-обход). Логируется composition root'ом на WARN.
-	WarnBreakglassProduction = "authz.breakglass=true in production mode (%s): " +
-		"ALL authz Check is BYPASSED — every RPC is allowed without IAM authorization; emergency use only"
+	// errBreakglassForbiddenInProduction — breakglass в production ОТКАЗЫВАЕТ старту
+	// (раньше был только WARN, см. историю ниже). %s = Mode.String(). Текст — часть
+	// контракта оператора (наблюдаемая причина отказа), меняется только осознанно.
+	//
+	// Почему fail-closed, а не WARN: geo и nlb отвергали, vpc и compute — лишь
+	// предупреждали, т.е. одна и та же настройка означала «поднят вообще без
+	// авторизации» в одних сервисах и «не поднимется» в других. WARN не защищает:
+	// leftover breakglass после инцидента переживает рестарт и оставляет ОБА
+	// листенера без per-RPC Check (security.md «AuthN+AuthZ ВЕЗДЕ», core rule #16).
+	// В dev обход остаётся доступным — там он и задуман.
+	errBreakglassForbiddenInProduction = "authz.breakglass: forbidden in production mode (%s) — " +
+		"it bypasses ALL per-RPC authz Check on both listeners; breakglass is a dev-only emergency escape"
 
 	// S4-гардрейлы (транспорт исходящих vpc→iam рёбер обязан быть verified в
 	// production). %s = Mode.String(). Тексты — часть контракта (наблюдаемый отказ
@@ -120,9 +128,18 @@ func (c Config) Validate() error {
 			fmt.Errorf("repository.postgres.url is empty"))
 	}
 
+	// S1-pre: breakglass в production — ОТКАЗ СТАРТА (fail-closed), не WARN.
+	// Обоснование — у errBreakglassForbiddenInProduction.
+	if c.AuthN.Mode.IsProduction() && c.AuthZ.Breakglass {
+		errs = multierr.Append(errs,
+			fmt.Errorf(errBreakglassForbiddenInProduction, c.AuthN.Mode))
+	}
+
 	// S1: production (любой вариант) обязан нести сконфигурированный authz-эндпоинт
 	// либо явный break-glass. Без authz-Check production-инстанс принял бы
 	// подделанную x-kacho-* metadata как полноправного админа — обход авторизации.
+	// (В production breakglass отвергнут выше, поэтому там ветка сводится к
+	// «эндпоинт обязателен»; исключение остаётся значимым для dev.)
 	if c.AuthN.Mode.IsProduction() &&
 		strings.TrimSpace(c.AuthZ.IAMEndpoint) == "" &&
 		!c.AuthZ.Breakglass {

@@ -698,10 +698,11 @@ sentinel→code в отдельный слой (если когда-либо) �
   `v_delete` + cross-tenant Check не оцениваются — остаётся только AuthN). Раньше
   `validateAuthMode` в production/production-strict пропускала breakglass **без
   единого сигнала**; leftover-breakglass после инцидента проходил незамеченным
-  (finding r9b#1: «gate silently disables all authz», CWE-862). Теперь
-  `validateAuthMode` эмитит WARN «ALL per-RPC authz Check is BYPASSED … emergency
-  use only». Тесты: `authmode_gate_test.go` (`*_BreakglassEmitsLoudWarn` prod+strict,
-  `*_NoBreakglassNoWarn`). **НЕ hard-reject** — см. «Осознанно НЕ меняется» ниже.
+  (finding r9b#1: «gate silently disables all authz», CWE-862). Тогда решением стал
+  громкий WARN.
+  > **СУПЕРСЕДНУТО (production-readiness P0-5):** WARN заменён на **hard-reject** —
+  > `validateAuthMode` в production/production-strict ОТКАЗЫВАЕТ старту. См. запись
+  > «breakglass в production — hard-reject (супе­рседит warn-not-reject)» ниже.
 - **`FuzzInstanceSpecValidate` больше не гоняет length-stub, а реальный
   validation-путь.** Прежний таргет вызывал `validateInstanceSpecStub` (только
   `len(s)>0 && ≤256KB`), пакет `internal/fuzz` не импортировал ни строки прод-кода —
@@ -726,15 +727,20 @@ sentinel→code в отдельный слой (если когда-либо) �
 
 **Осознанно НЕ меняется** (workspace-wide / by-design):
 
-- **breakglass в production — warn-not-reject (не hard-reject, как предлагал finding).**
-  Breakglass — намеренный emergency-escape (авторизационная система/IAM недоступна →
-  оператор осознанно снимает Check). Канонический mirror `kacho-vpc` тоже
-  **warn-not-reject** (`cmd/vpc/main.go` → `WarnBreakglassProduction`), а существующий
-  committed-тест `TestValidateAuthMode_ProductionStrict_BreakglassDropsAuthzEdge`
-  фиксирует, что gate breakglass **пропускает** (снимает требование на IAM_AUTHZ_MTLS-ребро).
-  Hard-reject сломал бы этот контракт-тест и убрал бы легитимный аварийный механизм;
-  минимальный contract-safe fix — сделать обход **наблюдаемым** (громкий WARN), а не
-  запретить. (finding r9b#1)
+- ~~**breakglass в production — warn-not-reject (не hard-reject, как предлагал finding).**~~
+  **ОТМЕНЕНО.** Прежнее обоснование опиралось на то, что «канонический mirror `kacho-vpc`
+  тоже warn-not-reject». Это оказалось не каноном, а **расхождением**: `kacho-geo` и
+  `kacho-nlb` breakglass в production **отвергали**, а `kacho-registry` не гейтил его
+  вовсе. Одна и та же настройка означала «сервис поднят вообще без авторизации» в одних
+  сервисах и «сервис не поднимется» в других.
+  WARN не защищает: leftover breakglass после инцидента переживает рестарт и оставляет
+  ОБА листенера без per-RPC Check — прямое нарушение `security.md` «AuthN+AuthZ ВЕЗДЕ» и
+  core-правила «production-mode boot-guard fail-closed → refuse-to-start».
+  Выровнено по самому строгому: **hard-reject** в compute, vpc и registry (geo/nlb уже
+  отвергали). Аварийный механизм не убран — он остаётся в `dev`, где и задуман
+  (`TestValidateAuthMode_Dev_BreakglassAllowed`). Тесты: `authmode_gate_test.go`
+  (`*_Production_BreakglassRefusesBoot` prod+strict — assert'ит СООБЩЕНИЕ, не только факт
+  ошибки; `*_ProductionStrict_BreakglassRefusesBoot`; `*_Dev_BreakglassAllowed`).
 - **`internal/authzfilter.FGAFilter` — per-service hand-rolled TTL-cache, не
   `kacho-corelib/authz.ListObjectsService`.** Тот же класс, что «corelib-копии
   helper'ов» (findings7 #1 / r7b): подъём в corelib — координированная workspace-wide

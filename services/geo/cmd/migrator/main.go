@@ -11,6 +11,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"log"
@@ -19,6 +20,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует database/sql-драйвер "pgx"
 	"github.com/pressly/goose/v3"
 
+	"github.com/PRO-Robotech/kacho/pkg/dbready"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/migrations"
 )
@@ -44,6 +46,18 @@ func main() {
 		log.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
+
+	// Барьер готовности PG. sql.Open ЛЕНИВ (не дозванивается до сервера), поэтому
+	// гонка init-контейнера с подом Postgres проявлялась не здесь, а ниже — на
+	// goose: мигратор падал log.Fatalf'ом и уходил в CrashLoopBackOff до подъёма
+	// PG. Ждём ТОЛЬКО «БД не принимает соединения» и ТОЛЬКО в пределах бюджета;
+	// неверный пароль / несуществующая БД / сломанная миграция падают сразу.
+	if err := dbready.Wait(context.Background(), db, dbready.Options{}); err != nil {
+		// Текст нейтральный: сюда приходит И «не дождались» (ошибка уже несёт
+		// бюджет), И настоящая ошибка (пароль/DSN/БД) — второй случай называть
+		// «not ready» было бы враньём в логе.
+		log.Fatalf("database connection check failed: %v", err)
+	}
 
 	var gerr error
 	switch direction {

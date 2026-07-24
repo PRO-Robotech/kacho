@@ -61,9 +61,37 @@ func TestValidate_ProductionStrict_NoAuthzEndpoint_Fails(t *testing.T) {
 	require.Contains(t, err.Error(), "production mode (production-strict)")
 }
 
-// vpc8-C-04: production + breakglass=true → старт разрешен (явный аварийный обход).
-func TestValidate_Production_Breakglass_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "", true)
+// vpc8-C-04 (ужесточено): production + breakglass=true → ОТКАЗ СТАРТА.
+//
+// Раньше vpc (как и compute) лишь предупреждал, а geo/nlb отвергали: одна и та же
+// настройка означала «поднят вообще без авторизации» в одних сервисах и «не
+// поднимется» в других. WARN не защищает — leftover breakglass после инцидента
+// переживает рестарт и оставляет оба листенера без per-RPC Check (security.md
+// «AuthN+AuthZ ВЕЗДЕ» + core rule #16). Assert'им СООБЩЕНИЕ: причина отказа —
+// часть контракта оператора.
+func TestValidate_Production_Breakglass_Fails(t *testing.T) {
+	for _, mode := range []Mode{ModeProduction, ModeProductionStrict} {
+		t.Run(mode.String(), func(t *testing.T) {
+			c := prodCfg(mode, "kacho-iam.kacho.svc.cluster.local:9091", true)
+			err := c.Validate()
+			require.Errorf(t, err, "breakglass in %s must refuse boot", mode)
+			require.Contains(t, err.Error(), "authz.breakglass")
+			require.Contains(t, err.Error(), "forbidden in production mode")
+		})
+	}
+}
+
+// dev-режим breakglass'ом не затронут: аварийный обход остаётся доступным там, где
+// он и задуман, — ужесточение не запрещает сам механизм.
+func TestValidate_Dev_Breakglass_Passes(t *testing.T) {
+	var c Config
+	c.AuthN.Mode = ModeDev
+	c.AuthZ.Breakglass = true
+	c.APIServer.Endpoint = "tcp://0.0.0.0:9090"
+	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"
+	c.Repository.Postgres.URL = "postgres://u@h:5432/db"
+	c.Repository.Postgres.SSLMode = "disable"
+	c.Logger.Level = "INFO"
 	require.NoError(t, c.Validate())
 }
 

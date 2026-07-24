@@ -75,7 +75,11 @@ type Config struct {
 	SkipPeerValidation bool `envconfig:"KACHO_COMPUTE_SKIP_PEER_VALIDATION" default:"false"`
 
 	// AuthMode — fail-closed гейт перед IAM merge: `dev` | `production` | `production-strict`.
-	AuthMode string `envconfig:"KACHO_COMPUTE_AUTH_MODE" default:"dev"`
+	//
+	// Дефолт — production (secure-by-default, kacho core rule «production-mode обязателен ВЕЗДЕ»): незаданный env НЕ должен
+	// поднимать сервис в insecure-posture. dev — явный opt-in локальных фикстур и
+	// dev-профиля стенда (values.dev.yaml выставляет его явно).
+	AuthMode string `envconfig:"KACHO_COMPUTE_AUTH_MODE" default:"production"`
 
 	// AuthZIAMGRPCAddr — gRPC адрес kacho-iam internal-port'а для Check.
 	// Если пуст и AuthZBreakglass=false — interceptor НЕ

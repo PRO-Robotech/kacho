@@ -140,13 +140,15 @@ type Config struct {
 	AdvertisedEndpointAddr string `envconfig:"KACHO_API_GATEWAY_ADVERTISED_ENDPOINT" default:"api.kacho.local:443"`
 
 	// AuthNMode — режим auth-interceptor:
-	//   - "dev" (default): backwards-compat. Без Bearer = anonymous; невалидный
-	//     Bearer = fallback anonymous. С валидным Bearer + subject в kacho-iam =
-	//     real Principal.
-	//   - "production": Bearer обязателен. Невалидный или unknown subject =
+	//   - "dev": backwards-compat. Без Bearer = anonymous; невалидный Bearer =
+	//     fallback anonymous. С валидным Bearer + subject в kacho-iam = real Principal.
+	//   - "production" (default): Bearer обязателен. Невалидный или unknown subject =
 	//     Unauthenticated.
 	//   - "production-strict": то же что production + reject missing Bearer.
-	AuthNMode string `envconfig:"KACHO_API_GATEWAY_AUTHN_MODE" default:"dev"`
+	//
+	// Дефолт — production (secure-by-default, core rule #16): незаданный env НЕ должен
+	// поднимать edge в anonymous-fallback posture. dev — явный opt-in dev-профиля.
+	AuthNMode string `envconfig:"KACHO_API_GATEWAY_AUTHN_MODE" default:"production"`
 
 	// AuthNDevSecret — HMAC-secret для подписи dev-JWT (mode=dev).
 	// Если пуст — Bearer-токены в dev-режиме игнорируются (всегда anonymous).

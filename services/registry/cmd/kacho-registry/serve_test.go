@@ -25,6 +25,7 @@ func discardLogger() *slog.Logger {
 func TestValidateSecurityConfig(t *testing.T) {
 	bothMTLS := func() config.Config {
 		return config.Config{
+			AuthMode:           "dev",
 			AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
 			PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 			InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
@@ -36,13 +37,22 @@ func TestValidateSecurityConfig(t *testing.T) {
 		wantErr bool
 	}{
 		{"all-set-ok", func(*config.Config) {}, false},
-		{"breakglass-bypasses-everything", func(c *config.Config) {
-			// breakglass=true даже при пустом addr и выключенном mTLS → nil.
+		{"breakglass-bypasses-everything-in-dev", func(c *config.Config) {
+			// breakglass=true в DEV даже при пустом addr и выключенном mTLS → nil.
+			// Аварийный обход остаётся доступным там, где он и задуман.
 			c.AuthZBreakglass = true
 			c.AuthZIAMGRPCAddr = ""
 			c.PublicServerMTLS.Enable = false
 			c.InternalServerMTLS.Enable = false
 		}, false},
+		{"breakglass-in-production-rejected", func(c *config.Config) {
+			c.AuthMode = "production"
+			c.AuthZBreakglass = true
+		}, true},
+		{"breakglass-in-production-strict-rejected", func(c *config.Config) {
+			c.AuthMode = "production-strict"
+			c.AuthZBreakglass = true
+		}, true},
 		{"empty-iam-addr-rejected", func(c *config.Config) { c.AuthZIAMGRPCAddr = "" }, true},
 		{"public-mtls-disabled-rejected", func(c *config.Config) { c.PublicServerMTLS.Enable = false }, true},
 		{"internal-mtls-disabled-rejected", func(c *config.Config) { c.InternalServerMTLS.Enable = false }, true},
@@ -61,6 +71,37 @@ func TestValidateSecurityConfig(t *testing.T) {
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("want nil, got %v", err)
+			}
+		})
+	}
+}
+
+// TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob — registry
+// был единственным сервисом, где breakglass не гейтился ВООБЩЕ (ни fatal, ни WARN):
+// `if cfg.AuthZBreakglass { return nil }` первым стейтментом снимал и authz-Check,
+// и mTLS на ОБОИХ листенерах в любом режиме, включая production-strict.
+//
+// Assert'им СООБЩЕНИЕ, а не только факт ошибки: причина отказа — часть контракта
+// оператора (иначе «почему не стартует» решается перебором).
+func TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob(t *testing.T) {
+	for _, mode := range []string{"production", "production-strict"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := config.Config{
+				AuthMode:           mode,
+				AuthZBreakglass:    true,
+				AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+				PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
+				InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
+			}
+			err := validateSecurityConfig(cfg)
+			if err == nil {
+				t.Fatalf("breakglass in %s must refuse boot, got nil", mode)
+			}
+			if !strings.Contains(err.Error(), "KACHO_REGISTRY_AUTHZ_BREAKGLASS") {
+				t.Errorf("error must name the offending knob; got: %q", err.Error())
+			}
+			if !strings.Contains(err.Error(), "production mode") {
+				t.Errorf("error must state that the mode is production; got: %q", err.Error())
 			}
 		})
 	}

@@ -58,7 +58,7 @@ data:
         password-from-env: KACHO_IAM_DB_PASSWORD
 
     authn:
-      mode: {{ default "dev" .Values.config.authn.mode | quote }}
+      mode: {{ default "production" .Values.config.authn.mode | quote }}
       {{- with .Values.config.authn.hydraIssuer }}
       # Explicit Hydra issuer override (ResolveHydraIssuer highest precedence, ahead of
       # the KACHO_IAM_HYDRA_ISSUER env + the domain-derived default). Set it when Hydra

@@ -343,10 +343,15 @@ pg-storage:
 # (mirrors compute/vpc). authzIam stays wired at iam-internal :9091.
 kacho-geo:
   # Branch build (kacho-geo:dev, kind-loaded by `make build-services`). Verified
-  # locally: geo:dev boots clean (authMode=dev from subchart default, mTLS server-creds
-  # mounted) and serves — the earlier CI CrashLoop was NOT a runtime-broken image but a
-  # cert-provisioning race in a fresh helm install. authMode stays dev (subchart default,
-  # NOT production) so DB sslmode=disable + insecure dev posture is permitted.
+  # locally: geo:dev boots clean (authMode=dev, mTLS server-creds mounted) and serves —
+  # the earlier CI CrashLoop was NOT a runtime-broken image but a cert-provisioning race
+  # in a fresh helm install. authMode=dev so DB sslmode=disable + insecure dev posture
+  # is permitted.
+  #
+  # ЯВНО dev. Раньше бралось из дефолта сабчарта, который был `dev`; дефолт переведён
+  # на `production` (secure-by-default, core rule #16), поэтому dev-профиль обязан
+  # declar'ить свою insecure-posture сам, а не наследовать её.
+  authMode: dev
   image: kacho-geo:dev
   imagePullPolicy: IfNotPresent
   env:
@@ -457,6 +462,11 @@ vpc:
   # KAC-127 — local kind-loaded image (см. комментарий у api-gateway выше).
   image: kacho-vpc:dev
   imagePullPolicy: IfNotPresent
+  # ЯВНО dev. Раньше бралось из дефолта чарта, который был `dev`; дефолт
+  # переведён на `production` (secure-by-default, core rule #16), поэтому
+  # dev-профиль обязан declar'ить свою insecure-posture сам, а не наследовать её.
+  authn:
+    mode: dev
   # mTLS: server (gateway/compute/nlb dial here) + client (vpc→iam, vpc→compute, vpc→geo).
   mtls:
     enable: true

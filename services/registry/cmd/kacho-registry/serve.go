@@ -569,13 +569,24 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) error {
 
 // validateSecurityConfig — secure-by-default: операции без авторизации и mTLS
 // запрещены. Per-RPC authz Check (адрес kacho-iam) и mTLS на ОБОИХ листенерах
-// обязательны; единственный способ запустить без них — аварийный
+// обязательны; обойти их можно ТОЛЬКО в dev через
 // KACHO_REGISTRY_AUTHZ_BREAKGLASS=true.
 //
-// ⚠ ВНИМАНИЕ: breakglass=true — ПОЛНЫЙ обход authz+mTLS (emergency-only). Включать
-// ТОЛЬКО при инциденте.
+// ⚠ ВНИМАНИЕ: breakglass=true — ПОЛНЫЙ обход authz+mTLS (emergency-only, dev-only).
+// В любом production-режиме он ОТКАЗЫВАЕТ старту (см. ниже).
 func validateSecurityConfig(cfg config.Config) error {
 	if cfg.AuthZBreakglass {
+		// Registry был единственным сервисом, где breakglass не гейтился вообще:
+		// ни fatal (как geo/nlb), ни даже WARN (как compute/vpc) — `return nil`
+		// первым стейтментом снимал и authz-Check, и mTLS на ОБОИХ листенерах в
+		// ЛЮБОМ режиме, включая production-strict. Теперь — fail-closed
+		// (security.md «AuthN+AuthZ ВЕЗДЕ», core rule #16); в dev обход сохранён.
+		switch cfg.AuthMode {
+		case "production", "production-strict":
+			return fmt.Errorf("production mode (%s): KACHO_REGISTRY_AUTHZ_BREAKGLASS must not be enabled "+
+				"— it bypasses per-RPC authz Check and mTLS on both listeners; breakglass is a "+
+				"non-production emergency escape only", cfg.AuthMode)
+		}
 		return nil
 	}
 	if cfg.AuthZIAMGRPCAddr == "" {

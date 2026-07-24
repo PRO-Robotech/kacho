@@ -65,9 +65,10 @@ db:
   sslmode: disable
 
 # AUTH_MODE — fail-closed gate: dev | production | production-strict.
-# dev (default) allows insecure + skip authz (local fixtures only). prod profile
-# overrides to production (anonymous fail-closed + mTLS + non-empty authz addr).
-authMode: dev
+# production (default, core rule #16) = anonymous fail-closed + mTLS + non-empty authz
+# addr. dev allows insecure + skip authz and is an explicit opt-in of local fixtures /
+# the dev profile (values.dev.yaml sets it).
+authMode: production
 
 # AUTHZ_IAM_GRPC_ADDR — kacho-iam INTERNAL listener for per-RPC Check
 # (geo→iam authz edge; InternalIAMService.Check lives on :9091, NOT :9090).

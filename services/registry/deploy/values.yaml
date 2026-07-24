@@ -149,10 +149,11 @@ db:
   statementTimeout: "30s"
 
 # AUTH_MODE — fail-closed gate: dev | production | production-strict.
-# dev (default) allows insecure/plaintext (local fixtures). production/-strict enforce
-# the serve.go prod-guards (mTLS both listeners + issuer-pinning + dataplane TLS ack +
-# https JWKS). production-strict additionally requires DB sslmode require|verify-*.
-authMode: dev
+# production (default, core rule #16) enforces the serve.go prod-guards (mTLS both
+# listeners + issuer-pinning + dataplane TLS ack + https JWKS); production-strict
+# additionally requires DB sslmode require|verify-*. dev allows insecure/plaintext and
+# is an explicit opt-in of the local dev profile (values.dev.yaml sets it).
+authMode: production
 
 # ─── registry→iam edges + authz ──────────────────────────────────────────────
 authz:
