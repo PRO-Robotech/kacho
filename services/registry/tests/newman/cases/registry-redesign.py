@@ -125,10 +125,16 @@ def _create_repo(reg_var, repo_expr, capture_tests, body_extra=None):
     if body_extra:
         body.update(body_extra)
     return [
-        Step(name="repo-create", method="POST", path=REG + "/{{" + reg_var + "}}/repositories",
-             body=body,
-             test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+        # Read-your-writes over the PARENT registry's v_create: the FIRST CreateRepository
+        # under a freshly-created parent registry can 404 (handler registryGate(v_create) →
+        # existence-hiding deny) until the parent's owner-tuple materializes. The gate runs
+        # BEFORE the use-case, so a denied attempt creates nothing → re-POST is safe (no
+        # AlreadyExists). Same discipline as registry-repository.py::_create_repo.
+        retry_until_authorized(
+            Step(name="repo-create", method="POST", path=REG + "/{{" + reg_var + "}}/repositories",
+                 body=body,
+                 test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
+                              *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="repo-capture", method="GET", path="/operations/{{opId}}",
              test_script=[
