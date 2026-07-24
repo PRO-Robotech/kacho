@@ -80,7 +80,11 @@ fi
 
 if [ "$SEED" = "true" ]; then
   echo "[parallel] seeding auth fixtures (per-service isolated) + patching envs"
-  env BASE_URL="http://localhost:$GW_PORT" IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
+  # INTERNAL_BASE_URL (:8081 internal mux, already port-forwarded above) lets setup.sh
+  # seed the geo baseline (region/zones) + any Internal admin catalog via the :18081 mux.
+  # Without it the greenfield geo catalog stays empty → every zone/region create fails.
+  env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
+      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
       DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
 
