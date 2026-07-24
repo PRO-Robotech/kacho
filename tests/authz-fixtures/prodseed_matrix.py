@@ -242,6 +242,33 @@ def _seed_geo_catalog():
 
 _seed_geo_catalog()
 
+
+def _seed_address_pool():
+    """Seed the default EXTERNAL_PUBLIC AddressPool (IPAM source for external VIPs:
+    nlb external LB VIP alloc + vpc Address EXTERNAL create). Greenfield stands have no
+    pool (deploy/scripts/seed-nlb-fixtures.sh is a dev-mode step, not run in prod-mode /
+    not adapted to prodseed) -> vpc address-EXTERNAL / nlb external creates fail (no
+    default pool for zone). Cluster-level admin resource (Internal admin :18081,
+    system_admin@cluster = jwtBootstrap; Create returns the pool sync, not an Operation).
+    Idempotent: AlreadyExists / CIDR-overlap on re-seed -> reuse the existing named pool.
+    Requires the geo zone seeded first (pool.zone_id references the geo catalog). Newman
+    prerequisite, not a migration -- same layer as _seed_geo_catalog."""
+    r = _curl("POST", "/vpc/v1/addressPools", boot,
+              {"name": "kac-nlb-seed-ext-pool", "description": "seed external VIP pool",
+               "kind": "EXTERNAL_PUBLIC", "zoneId": "ru-central1-a",
+               "v4CidrBlocks": ["198.51.100.0/24"], "v6CidrBlocks": []}, base=INTERNAL)
+    pid = r.get("id", "")
+    if not pid:  # AlreadyExists / CIDR-overlap -> reuse the existing named pool
+        lst = _curl("GET", "/vpc/v1/addressPools?pageSize=200", boot, base=INTERNAL)
+        pid = next((p.get("id", "") for p in (lst.get("pools") or [])
+                    if p.get("name") == "kac-nlb-seed-ext-pool"), "")
+    if pid:  # make it the default IPAM source for its (zone, kind)
+        _curl("PATCH", f"/vpc/v1/addressPools/{pid}", boot,
+              {"updateMask": "isDefault", "isDefault": True}, base=INTERNAL)
+
+
+_seed_address_pool()
+
 owner_a = f"prodseed-owner-a-{RID}@example.com"
 owner_b = f"prodseed-owner-b-{RID}@example.com"
 usr_owner_a = upsert_user(owner_a)
