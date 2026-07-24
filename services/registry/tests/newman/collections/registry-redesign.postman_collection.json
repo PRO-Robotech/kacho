@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6af475a0-4051-4609-b9f1-990b758452a8",
+    "_postman_id": "7aea3206-3a3c-4b1a-8baf-54a8658245c1",
     "name": "kacho-registry / newman / registry-redesign",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -179,7 +179,7 @@
           ]
         },
         {
-          "name": "warm-rdRegId-rya54",
+          "name": "warm-rdRegId-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -796,7 +796,7 @@
           ]
         },
         {
-          "name": "warm-rnRegId-rya55",
+          "name": "warm-rnRegId-rya58",
           "request": {
             "method": "GET",
             "header": [
@@ -1172,7 +1172,7 @@
           ]
         },
         {
-          "name": "repo-create-rya56",
+          "name": "repo-create-rya59",
           "request": {
             "method": "POST",
             "header": [
@@ -1328,7 +1328,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya57",
+          "name": "repo-warm-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -1492,7 +1492,7 @@
       "description": "class:CRUD | priority:P0",
       "item": [
         {
-          "name": "repo-create-rya58",
+          "name": "repo-create-rya61",
           "request": {
             "method": "POST",
             "header": [
@@ -1649,7 +1649,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya59",
+          "name": "repo-warm-rya62",
           "request": {
             "method": "GET",
             "header": [
@@ -1708,7 +1708,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya60",
+          "name": "repo-create-rya63",
           "request": {
             "method": "POST",
             "header": [
@@ -1864,7 +1864,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya61",
+          "name": "repo-warm-rya64",
           "request": {
             "method": "GET",
             "header": [
@@ -1923,7 +1923,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya62",
+          "name": "repo-create-rya65",
           "request": {
             "method": "POST",
             "header": [
@@ -2079,7 +2079,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya63",
+          "name": "repo-warm-rya66",
           "request": {
             "method": "GET",
             "header": [
@@ -2190,7 +2190,7 @@
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya64",
+          "name": "repo-create-rya67",
           "request": {
             "method": "POST",
             "header": [
@@ -2346,7 +2346,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya65",
+          "name": "repo-warm-rya68",
           "request": {
             "method": "GET",
             "header": [
@@ -2601,7 +2601,7 @@
           ]
         },
         {
-          "name": "warm-emRegId-rya66",
+          "name": "warm-emRegId-rya69",
           "request": {
             "method": "GET",
             "header": [

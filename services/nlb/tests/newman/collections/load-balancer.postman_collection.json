@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "89242412-a5cf-42b1-833d-70a6a716cc8c",
+    "_postman_id": "629429f4-be47-4a7c-8aa3-275e34f5ec50",
     "name": "kacho-nlb / newman / load-balancer",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -14276,6 +14276,7 @@
                   "const lc = parseInt(pm.environment.get('_lifeLstCount') || '0', 10);",
                   "if (!ids.includes(pm.environment.get('lifeId')) && lc < 6) {",
                   "  pm.environment.set('_lifeLstCount', String(lc + 1));",
+                  "  const _ipd1 = Date.now(); while (Date.now() - _ipd1 < 500) void 0; /* real inter-poll delay: cap 6 x 500ms ~= 3s budget (testing.md) */",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",

@@ -1409,6 +1409,7 @@ CASES.append(Case(
                           "const lc = parseInt(pm.environment.get('_lifeLstCount') || '0', 10);",
                           "if (!ids.includes(pm.environment.get('lifeId')) && lc < 6) {",
                           "  pm.environment.set('_lifeLstCount', String(lc + 1));",
+                          "  const _ipd1 = Date.now(); while (Date.now() - _ipd1 < 500) void 0; /* real inter-poll delay: cap 6 x 500ms ~= 3s budget (testing.md) */",
                           "  pm.execution.setNextRequest(pm.info.requestName);",
                           "  return;",
                           "}",

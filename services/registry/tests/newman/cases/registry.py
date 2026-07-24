@@ -277,6 +277,7 @@ CASES.append(Case(
                     "const rc = parseInt(pm.environment.get('_listRetry') || '0', 10);",
                     "if (!found && rc < 6) {",
                     "  pm.environment.set('_listRetry', String(rc + 1));",
+                    "  const _ipd1 = Date.now(); while (Date.now() - _ipd1 < 500) void 0; /* real inter-poll delay: cap 6 x 500ms ~= 3s budget (testing.md) */",
                     "  pm.execution.setNextRequest(pm.info.requestName);",
                     "  return;",
                     "}",
