@@ -405,16 +405,31 @@ func (w *targetGroupWriter) SetStatusCAS(ctx context.Context, id string, expecte
 // TG, на который ссылается хоть один listener (listeners.default_target_group_id),
 // двигать НЕЛЬЗЯ — иначе listener в проекте A ссылался бы на TG в проекте B
 // (cross-project ref, запрещён моделью). Sync-precheck ReferencingListenerIDs в
-// use-case'е — только UX/fast-fail; здесь инвариант прибит гвоздём атомарным
-// CAS-guard'ом `UPDATE ... WHERE NOT EXISTS(referencing listener)`.
+// use-case'е — UX/fast-fail; `NOT EXISTS`-guard ниже — второй fast-fail с
+// контрактным тоном сообщения.
 //
-// Гарантия против Move↔wire TOCTOU (парно с Listener.Insert/repoint, который берёт
-// `FOR NO KEY UPDATE OF lb`): listener, привязавшийся до commit'а Move, попадёт в
-// NOT EXISTS → 0 rows → FailedPrecondition; move-first держит row-lock на tg, и
-// конкурентный listener-wire ловит свежий project через EvalPlanQual.
+// ЧТО РЕАЛЬНО ЗАКРЫВАЕТ Move↔wire TOCTOU — композитный FK миграции 0023
+// (`listeners(default_tg_fk, project_id) → target_groups(id, project_id)`), НЕ
+// `NOT EXISTS` сам по себе: guard читает listeners на СНАПШОТЕ своей TX, а
+// wire-путь после сноса pivot'а — плоский `UPDATE listeners SET
+// default_target_group_id=…` (OCC по xmin), который никаких lock'ов на
+// target_groups/load_balancers сам не берёт. Работает это так: UNIQUE
+// (id, project_id) делает project_id КЛЮЧЕВОЙ колонкой referenced-стороны,
+// поэтому
+//   - move-first: смена ключа берёт exclusive tuple-lock → RI-проба
+//     конкурентного wire (`… FOR KEY SHARE`) конфликтует, ждёт и после commit'а
+//     перечитывает через EvalPlanQual уже НЕ тот project → 23503;
+//   - wire-first: KEY SHARE удерживает tuple → key-update ждёт, а
+//     referenced-side ON UPDATE NO ACTION триггер (пробует свежим снапшотом)
+//     видит закоммиченную ссылку → 23503.
+//
+// Отзыв композитного FK (или UNIQUE (id, project_id), молча понижающего
+// tuple-lock до «no key update») снова открывает гонку — это ловят
+// tg_move_repoint_race_integration_test.go.
 //
 // 0 rows при существующем TG → на него сослался listener между sync-check и apply →
-// FailedPrecondition; отсутствующий TG → NotFound.
+// FailedPrecondition; отсутствующий TG → NotFound; проигравшая гонку TX получает
+// FailedPrecondition из 23503-маппинга (pg/errors.go, тот же контрактный тон).
 func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kacho.TargetGroupRecord, error) {
 	q := fmt.Sprintf(`
         UPDATE kacho_nlb.target_groups

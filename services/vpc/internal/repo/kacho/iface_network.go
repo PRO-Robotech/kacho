@@ -57,11 +57,29 @@ type NetworkWriterIface interface {
 	// writer-TX), без верхнеуровневого `UPDATE networks SET name=…, …`, который
 	// перезаписывал бы immutable-поля.
 	SetDefaultSGID(ctx context.Context, id, sgID string) (*NetworkRecord, error)
+	// SetDefaultRouteTableID — точная симметрия SetDefaultSGID для системной
+	// default-RouteTable сети (VPC-1 F3): узкий CAS-update одной колонки внутри
+	// writer-TX Network.Create (Insert(Network) → Insert(RT) →
+	// SetDefaultRouteTableID), не трогающий immutable/descriptive колонки.
+	// Идемпотентен (уже равен rtID → ok); занят ДРУГИМ id → ErrFailedPrecondition,
+	// без second-writer-wins.
+	SetDefaultRouteTableID(ctx context.Context, id, rtID string) (*NetworkRecord, error)
 	// SetCidrBlocks атомарно перезаписывает declared-супернет
 	// ipv4_cidr_blocks / ipv6_cidr_blocks (для AddCidrBlocks/RemoveCidrBlocks) —
 	// узкий UPDATE, не трогающий immutable-колонки. Мутирует ТОЛЬКО супернет-массивы;
 	// caller уже собрал merged/remaining наборы под network row-lock (GetForUpdate).
 	SetCidrBlocks(ctx context.Context, id string, v4, v6 []string) (*NetworkRecord, error)
+	// GetForShare — Get с `SELECT ... FOR SHARE` (share row-lock) внутри
+	// writer-TX. Для читателей, чьё РЕШЕНИЕ зависит от строки сети, но которые
+	// саму строку не мутируют: Subnet.Create / Subnet.AddCidrBlocks валидируют
+	// containment CIDR подсети в объявленном супернете (F7). FOR SHARE конфликтует
+	// с FOR UPDATE (значит, конкурентный Network.Add/RemoveCidrBlocks либо ждёт
+	// нас — и тогда его ∉-guard увидит нашу подсеть, — либо мы ждём его и
+	// перечитываем актуальный супернет), но НЕ конфликтует сам с собой: подсети
+	// одной сети продолжают создаваться параллельно. Плain `Get` здесь был бы
+	// software check-then-act (ban #10): решение по снимку, который конкурентный
+	// writer уже переписывает.
+	GetForShare(ctx context.Context, id string) (*NetworkRecord, error)
 	// GetForUpdate — Get с `SELECT ... FOR UPDATE` (row-lock) внутри writer-TX.
 	// Сериализует конкурентный read-modify-write в Update (Get → applyMask →
 	// UPDATE всех mutable-колонок): без него две Update с disjoint update_mask

@@ -295,7 +295,7 @@ func applyUpdateMask(
 	// NLB-1b MIGRATE (revival): security_group_ids LIVE-mutable (replace-whole; the
 	// peer-validate runs in Execute when the mask touches it).
 	if apply("security_group_ids") {
-		out.SecurityGroupIDs = req.GetSecurityGroupIds()
+		out.SecurityGroupIDs = normalizeSecurityGroupIDs(req.GetSecurityGroupIds())
 	}
 	return out
 }

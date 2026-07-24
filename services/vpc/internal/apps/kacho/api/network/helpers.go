@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 
 	// Blank-import регистрирует трансферы Network/time через init().
@@ -24,6 +25,11 @@ import (
 // host-битами (canonical network form). Нарушение → InvalidArgument c
 // редизайн-тоном "invalid CIDR block '<X>'" ДО создания Operation (format-класс).
 // Семейство блока (v4/v6) обязано совпадать с полем, в котором он объявлен.
+//
+// Cardinality-потолок здесь НЕ проверяется: этот валидатор общий для growth-
+// (Create/:add-cidr-blocks) и shrink-пути (:remove-cidr-blocks), а сужение
+// набора потолком блокировать нельзя. Потолок — `validateSupernetCardinality`,
+// вызывается точечно на growth-путях.
 func validateNetworkSupernet(v4, v6 []string) error {
 	for _, b := range v4 {
 		if err := validateSupernetBlock(b, true); err != nil {
@@ -34,6 +40,23 @@ func validateNetworkSupernet(v4, v6 []string) error {
 		if err := validateSupernetBlock(b, false); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateSupernetCardinality — потолок числа блоков супернета на семейство
+// (domain.MaxNetworkCidrBlocks). Применяется ТОЛЬКО на growth-путях:
+//   - вход Create / :add-cidr-blocks (sync, до Operation) — bound на parse-cost
+//     запроса;
+//   - НАКОПЛЕННЫЙ набор после merge под network row-lock в worker'е AddCidrBlocks
+//     — merge дедуплицирует, поэтому итоговый размер известен только post-merge;
+//     без этой проверки набор рос бы неограниченно серией формально-легальных
+//     запросов (каждый сам по себе ниже потолка).
+//
+// :remove-cidr-blocks потолком НЕ гейтится — сужение обязано проходить всегда.
+func validateSupernetCardinality(v4, v6 []string) error {
+	if len(v4) > domain.MaxNetworkCidrBlocks || len(v6) > domain.MaxNetworkCidrBlocks {
+		return status.Errorf(codes.InvalidArgument, "too many CIDR blocks (max %d)", domain.MaxNetworkCidrBlocks)
 	}
 	return nil
 }

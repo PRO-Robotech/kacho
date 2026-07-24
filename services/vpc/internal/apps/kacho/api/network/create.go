@@ -28,21 +28,28 @@ import (
 // backstop через FK/UNIQUE.
 //
 // Worker открывает ОДНУ Writer-TX и делает в ней Insert(Network) →
-// Insert(SG, default) → SetDefaultSGID(Network, sg.ID) с тремя outbox-emit'ами.
-// Либо все три DML видны (Commit), либо ни один (Abort/crash) — orphan-SG window
-// исключен.
+// [Insert(SG, default) → SetDefaultSGID] → Insert(RT, default) →
+// SetDefaultRouteTableID со всеми outbox-emit'ами. Либо весь композит виден
+// (Commit), либо ни один DML (Abort/crash) — orphan-window исключён.
 //
 // Default-SG creation управляется флагом `defaultSGInline`. При
-// `defaultSGInline=false` worker создает только Network — admin может досоздать
-// default SG через public API. Сама inline-логика вынесена в отдельный
-// `CreateDefaultSGUseCase` (см. `default_sg.go`) и вызывается ВНУТРИ writer-TX
-// `doCreate` перед `Commit()`, чем и сохраняется atomic-семантика.
+// `defaultSGInline=false` worker default-SG не создаёт — admin может досоздать
+// его через public API. Default-RouteTable (F3) флагом НЕ гейтится: она
+// материализует `Network.defaultRouteTableId°`, от которого зависит
+// детерминированная auto-assoc RT в Subnet.Create. Обе inline-композиции вынесены
+// в отдельные use-case'ы (`default_sg.go` / `default_rt.go`) и вызываются ВНУТРИ
+// writer-TX `doCreate` перед `Commit()`, чем и сохраняется atomic-семантика.
 type CreateNetworkUseCase struct {
 	repo            Repo
 	projectClient   ProjectClient
 	opsRepo         operations.Repo
 	defaultSGInline bool // KACHO_VPC_DEFAULT_SG_INLINE
 	createDefaultSG *CreateDefaultSGUseCase
+	// createDefaultRT — inline-провижн системной default-RouteTable (VPC-1 F3).
+	// В отличие от default-SG флагом НЕ гейтится: `Network.defaultRouteTableId°`
+	// объявлен единственным источником истины «дефолтная RT сети» и от него
+	// зависит детерминированная auto-assoc в Subnet.Create.
+	createDefaultRT *CreateDefaultRTUseCase
 
 	// registrar — синхронная регистрация owner-tuple'а в kacho-iam после commit
 	// (sync-primary; outbox-intent остается at-least-once backstop'ом). nil →
@@ -66,6 +73,7 @@ func NewCreateNetworkUseCase(r Repo, projectClient ProjectClient, opsRepo operat
 		opsRepo:         opsRepo,
 		defaultSGInline: defaultSGInline,
 		createDefaultSG: NewCreateDefaultSGUseCase(),
+		createDefaultRT: NewCreateDefaultRTUseCase(),
 	}
 }
 
@@ -99,6 +107,11 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 	}
 	// F2: объявленный супернет валидируется по формату (canonical CIDR,
 	// host-bits=0, корректное семейство) sync, ДО создания Operation.
+	// Cardinality-потолок — первым (до пер-блочного парсинга), чтобы вход-
+	// переросток не оплачивался CPU на request-path.
+	if err := validateSupernetCardinality(n.IPv4CidrBlocks, n.IPv6CidrBlocks); err != nil {
+		return nil, err
+	}
 	if err := validateNetworkSupernet(n.IPv4CidrBlocks, n.IPv6CidrBlocks); err != nil {
 		return nil, err
 	}
@@ -173,7 +186,8 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 
 // doCreate — async-часть Create (внутри Operation worker'а). Атомарный backstop:
 // project-exists + Insert (FK ограничения / UNIQUE-нарушения); inline default-SG
-// creation (builder из domain), затем link через SetDefaultSGID(Network, sg.ID).
+// creation (builder из domain) с link через SetDefaultSGID(Network, sg.ID) и
+// безусловный inline default-RouteTable с link через SetDefaultRouteTableID.
 //
 // ВСЕ идет в одной writer-TX:
 //
@@ -182,6 +196,9 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 //	(if inline) u.createDefaultSG.Execute(ctx, w, created.Network)
 //	            // → w.SGs().Insert + SG.CREATED outbox
 //	            //   + w.Networks().SetDefaultSGID + Network.UPDATED outbox
+//	u.createDefaultRT.Execute(ctx, w, created.Network)
+//	            // → w.RouteTables().Insert + RouteTable.CREATED outbox
+//	            //   + w.Networks().SetDefaultRouteTableID + Network.UPDATED outbox
 //	w.Commit()                         // либо все, либо ничего (Abort/crash)
 //
 // Так исключены частичные результаты на crash между шагами (orphan SG, Network
@@ -220,15 +237,25 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 
-	finalRec := created
 	if u.defaultSGInline {
 		// Композиция use-case'ов в одной writer-TX: CreateDefaultSGUseCase
-		// работает в нашей `w` — Abort/Commit делает caller.
-		upd, sgErr := u.createDefaultSG.Execute(ctx, w, created.Network)
-		if sgErr != nil {
+		// работает в нашей `w` — Abort/Commit делает caller. Возвращаемую им
+		// проекцию сети здесь не удерживаем: следующий шаг (default-RT) обновляет
+		// ту же строку и его RETURNING отдаёт её целиком, уже с проставленным
+		// default_security_group_id.
+		if _, sgErr := u.createDefaultSG.Execute(ctx, w, created.Network); sgErr != nil {
 			return nil, sgErr
 		}
-		finalRec = upd
+	}
+
+	// Системная default-RouteTable (F3) — в ТОЙ ЖЕ writer-TX, безусловно:
+	// `Network.defaultRouteTableId°` обязан быть непустым сразу после Create,
+	// иначе Subnet.Create нечем детерминированно ассоциировать подсеть. Её
+	// SetDefaultRouteTableID возвращает АКТУАЛЬНУЮ строку сети (RETURNING) —
+	// она и есть финальная проекция ресурса для op-response.
+	finalRec, rtErr := u.createDefaultRT.Execute(ctx, w, created.Network)
+	if rtErr != nil {
+		return nil, rtErr
 	}
 
 	// Публикуем INTENT на hierarchy-tuple vpc_network→project в ТОЙ ЖЕ writer-TX,
@@ -245,6 +272,12 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 	if finalRec.DefaultSecurityGroupID != "" {
 		items = append(items,
 			fgaregister.ProjectHierarchyItem(string(n.ProjectID), "vpc_security_group", finalRec.DefaultSecurityGroupID, nil))
+	}
+	// Системная RT — такой же owner-tuple: без него gateway scope_extractor не
+	// резолвит vpc_route_table→project и тенант получает 403 на СВОЕЙ RT.
+	if finalRec.DefaultRouteTableID != "" {
+		items = append(items,
+			fgaregister.ProjectHierarchyItem(string(n.ProjectID), "vpc_route_table", finalRec.DefaultRouteTableID, nil))
 	}
 	if err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(items...)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, err))

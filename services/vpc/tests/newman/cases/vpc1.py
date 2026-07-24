@@ -211,6 +211,55 @@ CASES.append(Case(
     ],
 ))
 
+# verifies VPC-1-11
+CASES.append(Case(
+    id="NET-CR-V1-DEFAULT-RT",
+    title="Network.Create → system-provisioned default-RouteTable, id эхается в defaultRouteTableId° (F3)",
+    classes=["CRUD", "STATE"], priority="P1",
+    steps=[
+        _net_create_step("drt", v4=[_SUPERNET_V4]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-def-rt", method="GET", path="/vpc/v1/networks/{{netId}}",
+            test_script=[*assert_status(200),
+                         "pm.test('defaultRouteTableId populated', () => "
+                         "pm.expect(pm.response.json().defaultRouteTableId, JSON.stringify(pm.response.json()))"
+                         ".to.be.a('string').and.not.empty);",
+                         *save_from_response("j.defaultRouteTableId", "defRtId")])),
+        # Дефолт — реальный ресурс, а не висячий id: RT читается и принадлежит этой сети.
+        retry_until_authorized(Step(name="get-rt-resource", method="GET", path="/vpc/v1/routeTables/{{defRtId}}",
+            test_script=[*assert_status(200),
+                         "pm.test('default RT belongs to the network', () => "
+                         "pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"])),
+        _cleanup_net(),
+        poll_operation_until_done(),
+    ],
+))
+
+# verifies VPC-1-37
+CASES.append(Case(
+    id="SUB-CR-V1-AUTO-DEFAULT-RT",
+    title="Subnet.Create без routeTableId → auto-assoc network.defaultRouteTableId° (F8, заменяет earliest-RT)",
+    classes=["CRUD", "STATE"], priority="P1",
+    steps=[
+        _net_create_step("art", v4=[_SUPERNET_V4]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-net-default-rt", method="GET", path="/vpc/v1/networks/{{netId}}",
+            test_script=[*assert_status(200),
+                         *save_from_response("j.defaultRouteTableId", "defRtId")])),
+        _subnet_create_step("art", {"zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24"}),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-sub-rt", method="GET", path="/vpc/v1/subnets/{{subId}}",
+            test_script=[*assert_status(200),
+                         "pm.test('subnet inherits network defaultRouteTableId', () => "
+                         "pm.expect(pm.response.json().routeTableId, JSON.stringify(pm.response.json()))"
+                         ".to.eql(pm.environment.get('defRtId')));"])),
+        _cleanup_subnet(),
+        poll_operation_until_done(),
+        _cleanup_net(),
+        poll_operation_until_done(),
+    ],
+))
+
 # verifies VPC-1-07
 CASES.append(Case(
     id="NET-UPD-V1-SUPERNET-IMMUTABLE",

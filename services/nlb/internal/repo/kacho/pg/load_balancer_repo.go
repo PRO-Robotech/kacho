@@ -545,9 +545,18 @@ func (w *loadBalancerWriter) markDeletingBlockReason(ctx context.Context, id str
 // LB, у которого хоть один listener привязан к TG (default_target_group_id set),
 // двигать НЕЛЬЗЯ — иначе listener в проекте B ссылался бы на TG в проекте A
 // (cross-project ref, запрещён моделью). Sync-precheck HasWiredTargetGroup в
-// use-case'е — только UX/fast-fail; здесь гвоздём прибиваем инвариант атомарным
-// `UPDATE ... WHERE NOT EXISTS(listener wired to TG)`, который сериализуется с
-// конкурентным Listener.Insert/repoint (тот держит FOR NO KEY UPDATE OF lb).
+// use-case'е и `NOT EXISTS`-guard ниже — fast-fail с контрактным тоном.
+//
+// Guard читает listeners на СНАПШОТЕ своей TX и НЕ сериализуется с конкурентным
+// wire: после сноса pivot'а Listener.Insert/repoint — обычный INSERT/UPDATE
+// listeners, никакого `FOR NO KEY UPDATE OF lb` он не берёт. Cross-project ссылку
+// физически не даёт создать композитный FK 0023 (`listeners(default_tg_fk,
+// project_id) → target_groups(id, project_id)`): каскад шага 2 переписывает
+// listeners.project_id, поэтому КАЖДАЯ затронутая строка перепроверяется FK —
+// wired-listener, закоммиченный после guard'а, роняет каскад с 23503
+// (→ FailedPrecondition). Регрессия — tg_move_repoint_race_integration_test.go
+// (TestLBMove_vs_ListenerWire_CascadeBlocked).
+//
 // 0 rows при существующем LB → listener привязался между sync-check и apply → FailedPrecondition.
 func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kacho.LoadBalancerRecord, error) {
 	// 1. Сам LB — atomic CAS-подобный guard: двигаем только если нет wired listener'ов.

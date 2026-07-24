@@ -34,6 +34,14 @@ func (u *updateSet) add(col string, val any) {
 	u.cols = append(u.cols, fmt.Sprintf("%s = $%d", col, len(u.args)))
 }
 
+// addNullIfEmpty добавляет NULLIF-присваивание — для NULLable FK-колонок,
+// чей domain-тип остаётся `string` (пустая строка = «не задано» = SQL NULL,
+// на которое FK не энфорсится). Симметрия с COALESCE на чтении.
+func (u *updateSet) addNullIfEmpty(col string, val string) {
+	u.args = append(u.args, val)
+	u.cols = append(u.cols, fmt.Sprintf("%s = NULLIF($%d,'')", col, len(u.args)))
+}
+
 // empty — true если ни одна колонка не изменена (mask не задел ни одной
 // mutable-колонки; напр. mask=[metadata_options] на Instance).
 func (u *updateSet) empty() bool { return len(u.cols) == 0 }

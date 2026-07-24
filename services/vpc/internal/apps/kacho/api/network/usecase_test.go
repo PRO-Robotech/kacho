@@ -205,16 +205,27 @@ func TestCreateUseCase_DefaultSGInline_Atomic(t *testing.T) {
 	assert.Equal(t, nets[0].ID, sgs[0].NetworkID)
 	assert.Equal(t, sgs[0].ID, nets[0].DefaultSecurityGroupID)
 
-	// Три outbox-события в правильной последовательности: Network.CREATED →
-	// SecurityGroup.CREATED → Network.UPDATED.
+	// Default RT (F3) провижнится в ТОЙ ЖЕ writer-TX и тоже линкуется в сеть.
+	rts := kr.RouteTables()
+	require.Len(t, rts, 1)
+	assert.Equal(t, nets[0].ID, rts[0].NetworkID)
+	assert.Equal(t, rts[0].ID, nets[0].DefaultRouteTableID)
+
+	// Пять outbox-событий в правильной последовательности: Network.CREATED →
+	// SecurityGroup.CREATED → Network.UPDATED → RouteTable.CREATED →
+	// Network.UPDATED. Все — в одной writer-TX (atomic).
 	events := kr.Outbox()
-	require.Len(t, events, 3, "ожидаем 3 outbox-event в одной writer-TX")
+	require.Len(t, events, 5, "ожидаем 5 outbox-event в одной writer-TX")
 	assert.Equal(t, "Network", events[0].Resource)
 	assert.Equal(t, "CREATED", events[0].Action)
 	assert.Equal(t, "SecurityGroup", events[1].Resource)
 	assert.Equal(t, "CREATED", events[1].Action)
 	assert.Equal(t, "Network", events[2].Resource)
 	assert.Equal(t, "UPDATED", events[2].Action)
+	assert.Equal(t, "RouteTable", events[3].Resource)
+	assert.Equal(t, "CREATED", events[3].Action)
+	assert.Equal(t, "Network", events[4].Resource)
+	assert.Equal(t, "UPDATED", events[4].Action)
 }
 
 // TestCreateDefaultSGUseCase_Execute_Composes — фокус-тест выделенного
@@ -294,11 +305,17 @@ func TestCreateUseCase_DefaultSGInline_OFF(t *testing.T) {
 	require.Nil(t, saved.Error)
 
 	assert.Len(t, kr.Networks(), 1)
-	assert.Empty(t, kr.SecurityGroups())
+	assert.Empty(t, kr.SecurityGroups(), "defaultSGInline=false → default-SG не создаётся")
+	// Default RT флагом НЕ гейтится (F3) — она провижнится всегда.
+	require.Len(t, kr.RouteTables(), 1, "default RT не зависит от defaultSGInline")
 	events := kr.Outbox()
-	require.Len(t, events, 1)
+	require.Len(t, events, 3)
 	assert.Equal(t, "Network", events[0].Resource)
 	assert.Equal(t, "CREATED", events[0].Action)
+	assert.Equal(t, "RouteTable", events[1].Resource)
+	assert.Equal(t, "CREATED", events[1].Action)
+	assert.Equal(t, "Network", events[2].Resource)
+	assert.Equal(t, "UPDATED", events[2].Action)
 }
 
 func TestDeleteUseCase_InvalidArg(t *testing.T) {

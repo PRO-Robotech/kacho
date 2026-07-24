@@ -57,11 +57,13 @@ func newObserverPool(t *testing.T, dsn string) *pgxpool.Pool {
 }
 
 // =============================================================================
-// TargetGroup.MoveProject — basic guard behavior. NLB CONTRACT removed the M:N
-// attach pivot; the cross-project attach TOCTOU it created (Move ↔ Attach) no
-// longer exists, so the pivot-race sub-tests were removed. The referenced-by-
-// listener move guard is covered at the use-case level
-// (targetgroup/move_test.go TestMove_ReferencedByListener).
+// TargetGroup.MoveProject — basic guard behavior (sequential happy/NotFound).
+// NLB CONTRACT removed the M:N attach pivot, so the old Move ↔ Attach pivot-race
+// sub-tests are gone. The race did NOT go with them — it merely moved to the new
+// wiring path (Listener.Insert/repoint), and is covered by
+// tg_move_repoint_race_integration_test.go (both orders + the LB-cascade
+// variant). The use-case level fast-fail is targetgroup/move_test.go
+// TestMove_ReferencedByListener — fakes, so it proves nothing about concurrency.
 // =============================================================================
 
 // TestTGMoveProject_Allowed_NoAttach — without any blocker, move proceeds.

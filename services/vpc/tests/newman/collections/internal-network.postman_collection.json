@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "3c2e86fe-218e-429e-8d58-d65b5cff4221",
+    "_postman_id": "4099ab21-c940-4a5b-94f1-d6a82520993a",
     "name": "kacho-vpc / newman / internal-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -170,7 +170,7 @@
           ]
         },
         {
-          "name": "poll-op-1006",
+          "name": "poll-op-1012",
           "request": {
             "method": "GET",
             "header": [
@@ -221,7 +221,7 @@
           ]
         },
         {
-          "name": "get-internal-rya597",
+          "name": "get-internal-rya604",
           "request": {
             "method": "GET",
             "header": [
@@ -438,7 +438,7 @@
           ]
         },
         {
-          "name": "poll-op-1007",
+          "name": "poll-op-1013",
           "request": {
             "method": "GET",
             "header": [
@@ -489,7 +489,7 @@
           ]
         },
         {
-          "name": "list-no-vrfid-lst598",
+          "name": "list-no-vrfid-lst605",
           "request": {
             "method": "GET",
             "header": [
@@ -773,7 +773,7 @@
           ]
         },
         {
-          "name": "poll-op-1008",
+          "name": "poll-op-1014",
           "request": {
             "method": "GET",
             "header": [
@@ -824,7 +824,7 @@
           ]
         },
         {
-          "name": "get-internal-before-rya599",
+          "name": "get-internal-before-rya606",
           "request": {
             "method": "GET",
             "header": [
@@ -943,7 +943,7 @@
           ]
         },
         {
-          "name": "poll-op-1009",
+          "name": "poll-op-1015",
           "request": {
             "method": "GET",
             "header": [
@@ -1154,7 +1154,7 @@
           ]
         },
         {
-          "name": "poll-op-1010",
+          "name": "poll-op-1016",
           "request": {
             "method": "GET",
             "header": [

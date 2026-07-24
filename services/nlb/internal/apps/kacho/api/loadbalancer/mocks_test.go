@@ -301,6 +301,11 @@ func (q *fakeLBWriter) Update(ctx context.Context, lb *domain.LoadBalancer, expe
 	cur.SessionAffinity = lb.SessionAffinity
 	cur.DisabledAnnounceZones = lb.DisabledAnnounceZones
 	cur.AdminState = lb.AdminState // NLB-1b EXPAND: mirror pg repo Update SET
+	// Оба поля есть в SET-списке реального loadBalancerWriter.Update
+	// (cross_zone_enabled, security_group_ids) — без них двойник молча ронял
+	// LIVE-mutable значения и любой assert на них был бы вакуумным.
+	cur.CrossZoneEnabled = lb.CrossZoneEnabled
+	cur.SecurityGroupIDs = lb.SecurityGroupIDs
 	c := *cur
 	q.w.pendingLBs = append(q.w.pendingLBs, &c)
 	return &c, nil

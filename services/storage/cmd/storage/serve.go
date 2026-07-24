@@ -264,8 +264,10 @@ func runServe(cfg config.Config) error {
 }
 
 // registerServices раскладывает сервисы по листенерам: public (Volume/Snapshot/
-// DiskType) — на :9090; Internal* (InternalVolume/InternalDiskType) — ТОЛЬКО на
-// cluster-internal :9091 (ban #6); OperationService (LRO poll) — на обоих.
+// Image/DiskType) — на :9090; Internal* (InternalVolume/InternalImage/
+// InternalDiskType) — ТОЛЬКО на cluster-internal :9091 (ban #6); OperationService
+// (LRO poll) — на обоих. Каждый зарегистрированный здесь RPC ОБЯЗАН иметь запись в
+// check.PermissionMap (иначе authz-интерсептор fail-closed'ит его «rpc not mapped»).
 func registerServices(
 	publicSrv, internalSrv grpc.ServiceRegistrar,
 	volumeUC *volume.UseCase,

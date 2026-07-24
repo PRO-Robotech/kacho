@@ -256,14 +256,14 @@ var AllowedMethods = map[string]struct{}{
 	// (HasInternalSuffix блокирует автоматически; запрет #6). gRPC-direct only.
 
 	// loadbalancer.v1 — NetworkLoadBalancerService (kacho-nlb)
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get":               {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List":              {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create":            {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Update":            {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Delete":            {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move":              {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates":   {},
-	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/ListOperations":    {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get":             {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List":            {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create":          {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Update":          {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Delete":          {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Move":            {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/GetTargetStates": {},
+	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/ListOperations":  {},
 	// loadbalancer.v1 — ListenerService (first-class FGA object)
 	"/kacho.cloud.loadbalancer.v1.ListenerService/Get":            {},
 	"/kacho.cloud.loadbalancer.v1.ListenerService/List":           {},

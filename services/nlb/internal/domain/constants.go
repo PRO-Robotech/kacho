@@ -93,6 +93,15 @@ const (
 
 	// MaxListenersPerLB —
 	MaxListenersPerLB = 50
+
+	// MaxSecurityGroupsPerLB — cap на security_group_ids. Каждый элемент набора
+	// стоит ОДНОГО синхронного peer-Get в vpc (+ FGA-Check там) на request-path,
+	// т.е. кардинальность набора напрямую умножает внешние round-trip'ы одного
+	// дешёвого Create/Update. Проверяется в LoadBalancer.Validate() — ДО фазы
+	// peer-validate (create.go/update.go), поэтому over-limit не стоит ни одного
+	// внешнего вызова. Совпадает с proto-аннотацией `[(length) = "<=50"]`, которая
+	// в рантайме не энфорсится (protovalidate-интерсептора в цепочке nlb нет).
+	MaxSecurityGroupsPerLB = 50
 )
 
 // ---- Enum-литералы для свободных строковых newtypes -----------------------

@@ -215,7 +215,19 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 
 	// Parent network existence — повторная проверка в writer-TX (atomic backstop
 	// — FK violation на subnets.network_id даст 23503; sync-check уже отверг бы).
-	parentNet, gerr := w.Networks().Get(ctx, s.NetworkID)
+	//
+	// FOR SHARE (не plain Get): решение F7-backstop'а ниже зависит от супернета
+	// этой строки, а супернет параллельно мутирует Network.Add/RemoveCidrBlocks
+	// под `FOR UPDATE`. Share-lock конфликтует с ним, поэтому пара сериализуется
+	// на DB-уровне (ban #10 — не software check-then-act): либо мы ждём writer'а
+	// и перечитываем актуальный супернет, либо он ждёт нас и его ∉-guard видит
+	// нашу закоммиченную подсеть. С plain Get оба проходили по своим снимкам и
+	// подсеть оставалась вне объявленного адресного пространства сети.
+	// Сам себе share-lock не конфликтует → параллельные Subnet.Create в одной
+	// сети не сериализуются. Порядок захвата — network, затем subnet (INSERT
+	// берёт FK KEY SHARE на уже залоченной нами строке — self-compatible), тот
+	// же, что у Network.Delete → инверсии/дедлока нет.
+	parentNet, gerr := w.Networks().GetForShare(ctx, s.NetworkID)
 	if gerr != nil {
 		return nil, status.Errorf(codes.NotFound, "Network %s not found", s.NetworkID)
 	}
@@ -228,6 +240,16 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	// network-строки (супернет мог сузиться между sync-read и Insert).
 	if err := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
 		return nil, err
+	}
+	// F8 (VPC-1-37): подсеть без явного routeTableId ассоциируется с ЯВНЫМ
+	// дефолтом сети `network.defaultRouteTableId°` — детерминированно, из строки
+	// сети, прочитанной в ЭТОЙ ЖЕ writer-TX под share-lock'ом (не software
+	// check-then-act поверх чужого снимка). Заменяет недетерминированный
+	// legacy-выбор «самая ранняя RT сети» (триггер subnet_auto_pick_rt, снят
+	// миграцией 0017). Явный routeTableId тенанта не перетирается; legacy-сеть
+	// без дефолта → поле остаётся пустым (легальное состояние).
+	if s.RouteTableID == "" && parentNet.DefaultRouteTableID != "" {
+		s.RouteTableID = parentNet.DefaultRouteTableID
 	}
 
 	// Пересечения v4 CIDR в рамках одной сети ловятся атомарно DB-level EXCLUDE

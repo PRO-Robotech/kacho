@@ -49,6 +49,11 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 	if len(v4) == 0 && len(v6) == 0 {
 		return nil, serviceerr.InvalidArg("ipv4_cidr_blocks", "ipv4_cidr_blocks or ipv6_cidr_blocks is required")
 	}
+	// Cardinality-потолок входа — ДО пер-блочного парсинга (bound на parse-cost
+	// одного запроса; накопленный набор проверяется post-merge под row-lock).
+	if err := validateSupernetCardinality(v4, v6); err != nil {
+		return nil, err
+	}
 	// Format-класс (host-bits=0, family match) — ДО создания Operation,
 	// конвенционный тон "invalid CIDR block '<X>'".
 	if err := validateNetworkSupernet(v4, v6); err != nil {
@@ -80,6 +85,13 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		}
 		mergedV4 := mergeCidrBlocks(n.IPv4CidrBlocks, v4)
 		mergedV6 := mergeCidrBlocks(n.IPv6CidrBlocks, v6)
+		// Потолок на НАКОПЛЕННЫЙ набор (не только на вход): merge дедуплицирует,
+		// поэтому серия формально-легальных Add иначе растила бы супернет
+		// неограниченно. Проверка под тем же network row-lock, что и merge, —
+		// конкурентный Add не проскочит мимо (и DB-CHECK 0016 — backstop).
+		if err := validateSupernetCardinality(mergedV4, mergedV6); err != nil {
+			return nil, err
+		}
 		updated, uerr := w.Networks().SetCidrBlocks(ctx, id, mergedV4, mergedV6)
 		if uerr != nil {
 			return nil, serviceerr.MapRepoErr(uerr)

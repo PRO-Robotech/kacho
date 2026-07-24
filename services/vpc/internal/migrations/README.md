@@ -239,6 +239,14 @@ Helper-функции включены в baseline (под `kacho_vpc` schema):
 `kacho_labels_valid`, `vpc_outbox_notify`, `rt_auto_assoc_subnets`,
 `subnet_auto_pick_rt`, `subnets_outbox_emit_route_table_change`.
 
+- `0016` — `CHECK networks_cidr_blocks_cardinality`: потолок declared-супернета
+  сети (≤64 блока на семейство), DB-зеркало `domain.MaxNetworkCidrBlocks`.
+- `0017` — `default_route_table_id` становится реальным источником истины:
+  backfill существующих сетей (самая ранняя RT — та же, что выбирал триггер) +
+  **снятие** `subnet_auto_pick_rt` / `subnet_auto_pick_rt_trg` (RT новой подсети
+  подставляет use-case из `network.defaultRouteTableId°`). `rt_auto_assoc_subnets`
+  сохранён — усыновляет только подсети с `route_table_id IS NULL` (legacy-сети).
+
 **Запрещено**: редактирование **примененной** миграции — ни `0001_initial.sql`, ни
 любой из `0002..0009`. Любая корректировка схемы — **новая миграция**
 `0NNN_<topic>.sql` с инкрементным номером (следующий — `0010_*`).

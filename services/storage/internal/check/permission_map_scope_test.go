@@ -110,6 +110,11 @@ func TestPermissionMap_ObjectAndProjectScope(t *testing.T) {
 		"/kacho.cloud.storage.v1.InternalVolumeService/GetInternal": {
 			req: &storagev1.GetInternalVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
 		},
+
+		// ---- InternalImageService (:9091 infra-projection) — object-scoped ----
+		"/kacho.cloud.storage.v1.InternalImageService/GetInternal": {
+			req: &storagev1.GetInternalImageRequest{ImageId: "img_1"}, want: want{"storage_image", "img_1"},
+		},
 	}
 
 	for fullMethod, tc := range cases {

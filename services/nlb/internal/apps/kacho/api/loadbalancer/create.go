@@ -171,7 +171,7 @@ func (u *CreateLoadBalancerUseCase) Execute(
 	lb.CrossZoneEnabled = req.GetCrossZoneEnabled()
 	// NLB-1b MIGRATE (F2/NLB-1-51): security_group_ids — vpc SecurityGroup refs
 	// firewalling the VIP (peer-validated below in the sync phase). INTERNAL-only.
-	lb.SecurityGroupIDs = req.GetSecurityGroupIds()
+	lb.SecurityGroupIDs = normalizeSecurityGroupIDs(req.GetSecurityGroupIds())
 	// ip_families — заявленные семейства VIP (проставляются ДО Insert-handle:
 	// family-guard CHECK требует семейство в ip_families прежде чем persist-VIP
 	// запишет непустой address).

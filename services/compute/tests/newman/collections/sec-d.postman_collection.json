@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "795b69c8-ca5d-41d4-85c5-d2b25bd4daf4",
+    "_postman_id": "1eeff189-cbe7-4bdf-b0ca-821615f85a37",
     "name": "kacho-compute / newman / sec-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -100,7 +100,7 @@
           ]
         },
         {
-          "name": "poll-op-195",
+          "name": "poll-op-200",
           "request": {
             "method": "GET",
             "header": [
@@ -181,7 +181,7 @@
           ]
         },
         {
-          "name": "get-rya51",
+          "name": "get-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -287,7 +287,7 @@
           ]
         },
         {
-          "name": "poll-op-196",
+          "name": "poll-op-201",
           "request": {
             "method": "GET",
             "header": [

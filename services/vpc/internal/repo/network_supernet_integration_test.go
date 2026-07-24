@@ -34,26 +34,37 @@ func TestIntegration_Network_VPC_1_06_SupernetRoundTrip(t *testing.T) {
 	defer r.Close()
 
 	netID := ids.NewID(ids.PrefixNetwork)
+	// default_route_table_id несёт FK на route_tables (0017) — дефолт обязан
+	// указывать на РЕАЛЬНУЮ RT этой сети, поэтому Insert идёт двумя шагами в
+	// одной writer-TX (как это делает Network.Create): сеть → RT → link.
 	in := &domain.Network{
-		ID:                  netID,
-		ProjectID:           "prj-supernet",
-		Name:                domain.RcNameVPC("core-prod"),
-		IPv4CidrBlocks:      []string{"10.20.0.0/16"},
-		IPv6CidrBlocks:      []string{"fd00:20::/48"},
-		DefaultRouteTableID: "rtb-9k3m7t2q5n8v1h",
+		ID:             netID,
+		ProjectID:      "prj-supernet",
+		Name:           domain.RcNameVPC("core-prod"),
+		IPv4CidrBlocks: []string{"10.20.0.0/16"},
+		IPv6CidrBlocks: []string{"fd00:20::/48"},
 	}
+	rtID := ids.NewID(ids.PrefixRouteTable)
 
 	var created *kacho.NetworkRecord
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		if _, e := w.Networks().Insert(ctx, in); e != nil {
+			return e
+		}
+		if _, e := w.RouteTables().Insert(ctx, &domain.RouteTable{
+			ID: rtID, ProjectID: "prj-supernet", Name: domain.RcNameVPC("default-rt-core"), NetworkID: netID,
+		}); e != nil {
+			return e
+		}
 		var e error
-		created, e = w.Networks().Insert(ctx, in)
+		created, e = w.Networks().SetDefaultRouteTableID(ctx, netID, rtID)
 		return e
 	}))
 	// Insert RETURNING обязан вернуть только что записанный супернет — без второго
 	// round-trip.
 	assert.Equal(t, []string{"10.20.0.0/16"}, created.IPv4CidrBlocks, "Insert must persist ipv4 supernet")
 	assert.Equal(t, []string{"fd00:20::/48"}, created.IPv6CidrBlocks, "Insert must persist ipv6 supernet")
-	assert.Equal(t, "rtb-9k3m7t2q5n8v1h", created.DefaultRouteTableID, "Insert must persist default_route_table_id")
+	assert.Equal(t, rtID, created.DefaultRouteTableID, "writer-TX must persist default_route_table_id")
 
 	// Get эхает то же (durable, second-read).
 	rd, err := r.Reader(ctx)
@@ -63,7 +74,7 @@ func TestIntegration_Network_VPC_1_06_SupernetRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"10.20.0.0/16"}, got.IPv4CidrBlocks)
 	assert.Equal(t, []string{"fd00:20::/48"}, got.IPv6CidrBlocks)
-	assert.Equal(t, "rtb-9k3m7t2q5n8v1h", got.DefaultRouteTableID)
+	assert.Equal(t, rtID, got.DefaultRouteTableID)
 
 	// Пустой супернет (legacy-путь) остаётся легальным — []{} , не nil-паника.
 	net2 := ids.NewID(ids.PrefixNetwork)

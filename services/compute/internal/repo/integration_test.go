@@ -47,7 +47,29 @@ func setupTestDB(t *testing.T) string {
 	goose.SetBaseFS(migrations.FS)
 	require.NoError(t, goose.SetDialect("postgres"))
 	require.NoError(t, goose.Up(db, "."))
+
+	seedFixtureMachineTypes(t, db)
 	return dsn
+}
+
+// seedFixtureMachineTypes заводит каталожные строки, на которые ссылаются
+// instance-фикстуры этого пакета ("mt-std2" в comp1Instance, "mt-highcpu8" в
+// resize-кейсах). Нужно с миграции 0017: instances.machine_type_id — FK на
+// machine_types(id) ON DELETE RESTRICT, поэтому без каталога КАЖДЫЙ Insert
+// инстанса падал бы 23503 и маскировал предмет своего теста.
+//
+// created_at намеренно в далёком будущем, а имена — служебные: строки не должны
+// сдвигать cursor-порядок (created_at ASC, id ASC) и name-фильтры в тестах
+// самого каталога (machine_type_repo_integration_test.go), которые опираются на
+// собственные сиды.
+func seedFixtureMachineTypes(t *testing.T, db *sql.DB) {
+	t.Helper()
+	_, err := db.Exec(`
+		INSERT INTO machine_types (id, name, family, v_cpu, memory_mib, status, created_at) VALUES
+			('mt-std2',     'itfixture-std2',     0, 2, 8192,  1, TIMESTAMPTZ '2999-01-01 00:00:00Z'),
+			('mt-highcpu8', 'itfixture-highcpu8', 0, 8, 16384, 1, TIMESTAMPTZ '2999-01-02 00:00:00Z')
+		ON CONFLICT (id) DO NOTHING`)
+	require.NoError(t, err)
 }
 
 func TestIntegration_DiskRepo_CRUD(t *testing.T) {

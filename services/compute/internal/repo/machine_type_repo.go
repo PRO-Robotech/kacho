@@ -168,9 +168,19 @@ func (r *MachineTypeRepo) Update(ctx context.Context, mt *domain.MachineType) (*
 }
 
 // Delete удаляет machine-type (admin-only). 0 rows → ErrNotFound.
+//
+// Тип, на который ссылается хотя бы один инстанс, удалить нельзя:
+// instances_machine_type_id_fkey ON DELETE RESTRICT (миграция 0017) даёт 23503 →
+// ErrFailedPrecondition. Это единственный корректный способ вывести размер из
+// эксплуатации — status=RETIRED (Bookable()=false), а не hard-DELETE занятой
+// каталожной строки (иначе живые инстансы остались бы с dangling machineTypeId).
 func (r *MachineTypeRepo) Delete(ctx context.Context, id string) error {
 	tag, err := r.pool.Exec(ctx, `DELETE FROM machine_types WHERE id = $1`, id)
 	if err != nil {
+		if isFKViolation(err) {
+			// Конвенционный тон вместо generic "The machinetype … is being used".
+			return fmt.Errorf("%w: machine type %s is in use", ports.ErrFailedPrecondition, id)
+		}
 		return wrapPgErr(err, "MachineType", id)
 	}
 	if tag.RowsAffected() == 0 {

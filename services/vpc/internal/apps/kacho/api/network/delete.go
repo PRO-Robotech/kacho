@@ -23,9 +23,13 @@ import (
 )
 
 // DeleteNetworkUseCase — sync FAILED_PRECONDITION если в Network есть subnets /
-// route tables / non-default SG. Async-часть (worker): default-SG cleanup +
-// Network.Delete + оба outbox-emit'а — все в одной writer-TX (atomic). FK
-// RESTRICT — DB-уровневый backstop.
+// tenant route tables / non-default SG. Async-часть (worker): cleanup
+// system-provisioned default-SG И default-RouteTable + Network.Delete + все
+// outbox-emit'ы — в одной writer-TX (atomic). FK RESTRICT — DB-уровневый backstop.
+//
+// Собственные system-provisioned ресурсы сети (default-SG, default-RT) НЕ делают
+// её «непустой»: их создал сам сервис при Create, и он же снимает их здесь.
+// Непустой сеть делают только tenant-ресурсы.
 type DeleteNetworkUseCase struct {
 	repo           Repo
 	subnetReader   SubnetReader      // may be nil → skip child class
@@ -96,6 +100,22 @@ func (u *DeleteNetworkUseCase) doDelete(ctx context.Context, id string) (*anypb.
 	// tuple'а; читаем его из строки до удаления.
 	var unregTuples []fgaregister.Tuple
 
+	// Системная default-RouteTable снимается в той же writer-TX (симметрия
+	// default-SG): её создал Network.Create, поэтому Delete сети обязан её
+	// забрать — иначе orphan-RT и FK RESTRICT, который сеть больше никогда не
+	// даст удалить. Tenant-RT не трогаем: их наличие уже отвергнуто
+	// checkNetworkEmpty (а если проскочит — FK RESTRICT остаётся backstop'ом).
+	if n, gerr := w.Networks().Get(ctx, id); gerr == nil && n.DefaultRouteTableID != "" {
+		if derr := w.RouteTables().Delete(ctx, n.DefaultRouteTableID); derr != nil && !errors.Is(derr, repo.ErrNotFound) {
+			return nil, serviceerr.MapRepoErr(derr)
+		}
+		if oerr := w.Outbox().Emit(ctx, "RouteTable", n.DefaultRouteTableID, "DELETED", map[string]any{"id": n.DefaultRouteTableID}); oerr != nil {
+			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
+		}
+		unregTuples = append(unregTuples,
+			fgaregister.ProjectHierarchy(n.ProjectID, "vpc_route_table", n.DefaultRouteTableID))
+	}
+
 	// Default-SG cleanup в той же writer-TX. Не-default SG — preserve, FK
 	// RESTRICT не даст удалить Network ⇒ FAILED_PRECONDITION "network is not
 	// empty". sgRepo == nil → default-SG-inline выключен, чистить нечего.
@@ -143,12 +163,25 @@ func (u *DeleteNetworkUseCase) doDelete(ctx context.Context, id string) (*anypb.
 }
 
 // checkNetworkEmpty — sync FAILED_PRECONDITION, если в сети еще есть subnets /
-// route tables / non-default security groups (текст контракта:
+// tenant route tables / non-default security groups (текст контракта:
 // "Network <id> is not empty"). Reader'ы могут быть nil — тогда соответствующий
 // child-класс не проверяется.
+//
+// Из RT-проверки исключается СОБСТВЕННАЯ system-provisioned default-RT сети
+// (`network.defaultRouteTableId°`) — ровно так же, как из SG-проверки исключается
+// default-SG (`DefaultForNetwork`). Иначе сеть, которой сервис сам провижнит RT
+// на Create, стала бы неудаляемой навсегда.
 func (u *DeleteNetworkUseCase) checkNetworkEmpty(ctx context.Context, networkID string) error {
 	notEmpty := func() error {
 		return status.Errorf(codes.FailedPrecondition, "Network %s is not empty", networkID)
+	}
+	// id системной RT (пусто, если сеть не найдена — Delete ниже вернёт NotFound).
+	var systemRT string
+	if rd, err := u.repo.Reader(ctx); err == nil {
+		if n, gerr := rd.Networks().Get(ctx, networkID); gerr == nil {
+			systemRT = n.DefaultRouteTableID
+		}
+		_ = rd.Close()
 	}
 	if u.subnetReader != nil {
 		subs, _, err := u.subnetReader.List(ctx, SubnetFilter{NetworkID: networkID}, Pagination{})
@@ -164,8 +197,10 @@ func (u *DeleteNetworkUseCase) checkNetworkEmpty(ctx context.Context, networkID 
 		if err != nil {
 			return serviceerr.MapRepoErr(err)
 		}
-		if len(rts) > 0 {
-			return notEmpty()
+		for _, rt := range rts {
+			if rt.ID != systemRT {
+				return notEmpty()
+			}
 		}
 	}
 	if u.sgRepo != nil {

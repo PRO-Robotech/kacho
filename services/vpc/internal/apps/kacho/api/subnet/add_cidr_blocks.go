@@ -93,21 +93,31 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		}
 		defer w.Abort()
 
-		// FOR UPDATE: сериализует конкурентные Add/RemoveCidrBlocks на этой
-		// подсети — закрывает lost-update.
-		sub, gerr := w.Subnets().GetForUpdate(ctx, id)
+		// Порядок захвата локов — ЕДИНЫЙ глобальный network → subnet (тот же, что
+		// у Subnet.Create и Network.Delete), поэтому родителя резолвим plain-read'ом
+		// (network_id подсети immutable) и лочим сеть ДО подсети. Обратный порядок
+		// (subnet → network) дал бы inversion с Network.Delete (lock networks-строки
+		// → FK RESTRICT key-share по subnets) и вырождался бы в 40P01.
+		sub0, gerr := w.Subnets().Get(ctx, id)
 		if gerr != nil {
 			return nil, serviceerr.MapRepoErr(gerr)
 		}
 		// F7 (VPC-1-34): добавляемый диапазон обязан лежать ВНУТРИ объявленного
-		// супернета родительской сети (within-service, та же БД). Фетчим network в
-		// той же writer-TX и валидируем containment каждого добавляемого блока ⊆
-		// одного из network CIDR-блоков соответствующего семейства. Пустой супернет
-		// (legacy-сеть) → skip (back-compat, как в Subnet.Create). Блок вне супернета
-		// → InvalidArgument "subnet CIDR <X> is not within any network CIDR block".
-		parentNet, nerr := w.Networks().Get(ctx, sub.NetworkID)
+		// супернета родительской сети (within-service, та же БД). FOR SHARE (не
+		// plain Get): супернет параллельно переписывает Network.Add/RemoveCidrBlocks
+		// под `FOR UPDATE`, и без конфликтующего лока обе стороны решали бы по своим
+		// снимкам — блок коммитился вне итогового супернета (ban #10). Пустой
+		// супернет (legacy-сеть) → skip (back-compat, как в Subnet.Create). Блок вне
+		// супернета → InvalidArgument "subnet CIDR <X> is not within any network CIDR block".
+		parentNet, nerr := w.Networks().GetForShare(ctx, sub0.NetworkID)
 		if nerr != nil {
 			return nil, serviceerr.MapRepoErr(nerr)
+		}
+		// FOR UPDATE: сериализует конкурентные Add/RemoveCidrBlocks на этой
+		// подсети — закрывает lost-update. Берётся ПОСЛЕ network-лока (см. выше).
+		sub, gerr := w.Subnets().GetForUpdate(ctx, id)
+		if gerr != nil {
+			return nil, serviceerr.MapRepoErr(gerr)
 		}
 		if verr := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, v4, v6); verr != nil {
 			return nil, verr

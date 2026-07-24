@@ -34,6 +34,7 @@ CASES = []
 
 INSTANCES = "/compute/v1/instances"
 MT_INT = "/compute/v1/internal/machineTypes"      # admin seed (:8081, ban #6)
+MT = "/compute/v1/machineTypes"                   # public read (:8080)
 
 # well-formed mt- (родовой prefix валиден), НИКОГДА не резолвится каталогом — sync-негативы
 # падают в ValidateCreateInstanceReq ДО doCreate, поэтому реальный mt не нужен.
@@ -725,4 +726,33 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[Step(name="del-absent", method="DELETE", path=f"{INSTANCES}/ins-doesnotexist000",
                 test_script=["pm.test('403 or 404, never success', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));"])],
+))
+
+CASES.append(Case(
+    id="MT-DEL-NEG-INUSE-RESTRICTED",
+    title="Hard-DELETE machine-type, на который ссылаются живые инстансы → op-error FAILED_PRECONDITION "
+          "'machine type ... is in use' (within-service FK RESTRICT instances.machine_type_id → machine_types(id); "
+          "вывод из эксплуатации — status=RETIRED, не DELETE). После удаления инстанса тип освобождается. "
+          "[class:NEG priority:P0 · data-integrity within-service п.1]",
+    classes=["NEG", "STATE", "CONF"], priority="P0",
+    steps=[
+        *_seed_instance("mtfk", name="insmtfk{{runId}}"),
+        # Тип занят живым инстансом — DELETE обязан быть отвергнут (не молча удалить,
+        # оставив инстансы с dangling machineTypeId).
+        Step(name="del-mt-inuse", method="DELETE", path=MT_INT + "/{{mtId}}", internal=True,
+             test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="is in use"),
+        # Каталожная запись на месте — public read по-прежнему резолвит sizing инстанса.
+        Step(name="mt-still-readable", method="GET", path=MT + "/{{mtId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('machine type survived the rejected delete', () => "
+                          "pm.expect(pm.response.json().id).to.eql(pm.environment.get('mtId')));"]),
+        # Снимаем ссылку → тип освобождается и удаляется штатно.
+        *_delete_inst(name="del-inst-mtfk"),
+        Step(name="del-mt-freed", method="DELETE", path=MT_INT + "/{{mtId}}", internal=True,
+             test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        assert_op_success(),
+    ],
 ))

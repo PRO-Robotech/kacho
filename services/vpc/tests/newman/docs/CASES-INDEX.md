@@ -928,6 +928,8 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 | `NET-CR-V1-SUPERNET-OK` | VPC-1-06 | CRUD,CONF | P1 | Network.Create с declared супернетом `ipv4CidrBlocks`/`ipv6CidrBlocks` → блоки эхаются на GET (F2). |
 | `NET-CR-V1-OP-IN-RESPONSE` | VPC-1-14 | CRUD,CONF | P1 | statusless op-in-response: Operation{done:true} + metadata.networkId + response.Network сразу; follow-up op-Get тот же done:true (F4). |
 | `NET-CR-V1-DEFAULT-SG` | VPC-1-11 | CRUD,STATE | P1 | system-provisioned default-SG → `defaultSecurityGroupId°` непустой (F3). |
+| `NET-CR-V1-DEFAULT-RT` | VPC-1-11 | CRUD,STATE | P1 | system-provisioned default-RouteTable → `defaultRouteTableId°` непустой И резолвится в реальную RT этой сети (F3). |
+| `SUB-CR-V1-AUTO-DEFAULT-RT` | VPC-1-37 | CRUD,STATE | P1 | Subnet.Create без `routeTableId` → auto-assoc `network.defaultRouteTableId°` (явный дефолт вместо legacy earliest-RT, F8). |
 | `NET-UPD-V1-SUPERNET-IMMUTABLE` | VPC-1-07 | STATE,VAL,NEG | P1 | Update mask=`ipv4_cidr_blocks` → sync InvalidArgument «is immutable after Network.Create» (мутируется только verb-pair, F2). |
 | `NET-UPD-V1-PROJECT-IMMUTABLE` | VPC-1-20 | STATE,VAL,NEG | P1 | Update mask=`project_id` → sync InvalidArgument «project_id is immutable after Network.Create» (Move снят, F5). |
 | `NET-ACB-V1-GROW-OK` | VPC-1-08 | CRUD,STATE | P1 | `:add-cidr-blocks` расширяет супернет (op-in-response; original+added видны, F2). |

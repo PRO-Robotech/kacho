@@ -21,11 +21,17 @@ import (
 // DB-level auto-association через PL/pgSQL-триггеры.
 //
 // Проверяем 4 поведения:
-//  1. AFTER INSERT ON route_tables → существующие Subnet'ы с NULL route_table_id
-//     получают route_table_id = NEW.id; Subnet с explicit route_table_id
-//     не перетирается.
-//  2. BEFORE INSERT ON subnets → Subnet, создаваемый в сети с RT, получает
-//     route_table_id = самой ранней RT (auto-pick); если RT нет — NULL.
+//  1. AFTER INSERT ON route_tables (`rt_auto_assoc_subnets_trg`, СОХРАНЁН) →
+//     существующие Subnet'ы с NULL route_table_id получают route_table_id =
+//     NEW.id; Subnet с explicit route_table_id не перетирается. Это legacy-
+//     усыновление осиротевших подсетей, оно не конкурирует с явным дефолтом сети.
+//  2. BEFORE INSERT ON subnets — триггер auto-pick «самая ранняя RT»
+//     (`subnet_auto_pick_rt_trg`) **СНЯТ** миграцией 0017: выбор RT для новой
+//     подсети больше не размазан по БД, его делает Subnet.Create из явного
+//     `network.defaultRouteTableId°` (VPC-1 F3/F8). На DB-уровне здесь остаётся
+//     противоположная гарантия — «БД сама RT не подставляет», плюс сохранность
+//     явного значения. Кто именно становится дефолтом — лочит
+//     TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault.
 //  3. FK subnets.route_table_id → route_tables(id) ON DELETE SET NULL.
 //  4. AFTER UPDATE OF route_table_id ON subnets → outbox-эмит Subnet.UPDATED
 //     с payload.auto_association=true.
@@ -116,7 +122,13 @@ func TestIntegration_VPC_AutoAssociation_RT_AutoAssoc_Subnets(t *testing.T) {
 		"existing route_table_id не должен перетираться при INSERT новой RT")
 }
 
-func TestIntegration_VPC_AutoAssociation_Subnet_AutoPick_RT(t *testing.T) {
+// TestIntegration_VPC_AutoAssociation_Subnet_NoDBAutoPick — 0017 снял
+// `subnet_auto_pick_rt_trg`: INSERT подсети без route_table_id в сети, где RT
+// ЕСТЬ, обязан оставить поле пустым (раньше триггер молча подставлял «самую
+// раннюю» RT). Выбор дефолта переехал в Subnet.Create и опирается на явный
+// `network.defaultRouteTableId°` — недетерминированный DB-выбор ретирован.
+// Явно заданный route_table_id по-прежнему сохраняется как есть.
+func TestIntegration_VPC_AutoAssociation_Subnet_NoDBAutoPick(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -173,8 +185,9 @@ func TestIntegration_VPC_AutoAssociation_Subnet_AutoPick_RT(t *testing.T) {
 	subGot, err := rd.Subnets().Get(ctx, sub.ID)
 	require.NoError(t, rd.Close())
 	require.NoError(t, err)
-	require.Equal(t, rtEarly.ID, subGot.RouteTableID,
-		"auto-pick должен выбрать самую раннюю RT (created_at ASC)")
+	require.Empty(t, subGot.RouteTableID,
+		"0017: БД больше не подставляет RT сама — auto-pick-триггер снят, выбор делает Subnet.Create")
+	_ = rtLate
 
 	subExplicit := &domain.Subnet{
 		ID: ids.NewID(ids.PrefixSubnet), ProjectID: "f-assoc-b", Name: domain.RcNameVPC("sub-explicit-late"), NetworkID: net.ID, PlacementType: domain.PlacementZonal, ZoneID: "zone-a",
@@ -191,7 +204,7 @@ func TestIntegration_VPC_AutoAssociation_Subnet_AutoPick_RT(t *testing.T) {
 	require.NoError(t, rd2.Close())
 	require.NoError(t, err)
 	require.Equal(t, rtLate.ID, subExplicitGot.RouteTableID,
-		"explicit route_table_id не должен перетираться auto-pick'ом")
+		"явно заданный route_table_id сохраняется как есть")
 }
 
 func TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull(t *testing.T) {
@@ -229,9 +242,11 @@ func TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull(t *testing.T) {
 		return e
 	}))
 
+	// route_table_id задаём ЯВНО: с 0017 БД сама RT не подставляет (auto-pick
+	// снят), а предмет этого теста — FK ON DELETE SET NULL, не выбор дефолта.
 	sub := &domain.Subnet{
 		ID: ids.NewID(ids.PrefixSubnet), ProjectID: "f-assoc-c", Name: domain.RcNameVPC("sub-fk-setnull"), NetworkID: net.ID, PlacementType: domain.PlacementZonal, ZoneID: "zone-a",
-		V4CidrBlocks: []string{"10.74.0.0/24"},
+		V4CidrBlocks: []string{"10.74.0.0/24"}, RouteTableID: rt.ID,
 	}
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
 		_, e := w.Subnets().Insert(ctx, sub)
@@ -243,7 +258,7 @@ func TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull(t *testing.T) {
 	subBefore, err := rd.Subnets().Get(ctx, sub.ID)
 	require.NoError(t, rd.Close())
 	require.NoError(t, err)
-	require.Equal(t, rt.ID, subBefore.RouteTableID, "auto-pick precondition")
+	require.Equal(t, rt.ID, subBefore.RouteTableID, "precondition: подсеть ссылается на RT")
 
 	// Удаляем RT — FK ON DELETE SET NULL обнулит subnet.route_table_id.
 	require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {

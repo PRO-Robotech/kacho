@@ -4,7 +4,11 @@
 package domain
 
 import (
+	"fmt"
+
 	"go.uber.org/multierr"
+
+	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 )
 
 // LoadBalancer — domain entity NetworkLoadBalancer.
@@ -77,7 +81,22 @@ type LoadBalancer struct {
 // placement и матрица источника VIP валидируются в use-case'е (точные тексты
 // сообщений) + DB CHECK; здесь — только per-field инварианты.
 func (lb LoadBalancer) Validate() error {
+	// Cardinality-cap на security_group_ids — тот же приём, что
+	// TargetGroup.Validate для targets. Мотив здесь не «raid БД», а амплификация
+	// внешних вызовов: КАЖДЫЙ элемент набора стоит одного синхронного
+	// vpc.SecurityGroupService.Get (+FGA-Check) на синхронном handler-потоке ДО
+	// создания Operation. Validate вызывается ДО фазы peer-validate (create.go /
+	// update.go), поэтому over-limit не стоит ни одного round-trip'а.
+	cardErr := error(nil)
+	if len(lb.SecurityGroupIDs) > MaxSecurityGroupsPerLB {
+		cardErr = coreerrors.InvalidArgument().
+			AddFieldViolation("security_group_ids",
+				fmt.Sprintf("too many security groups (max %d)", MaxSecurityGroupsPerLB)).
+			Err()
+	}
+
 	return multierr.Combine(
+		cardErr,
 		lb.Name.Validate(),
 		lb.Description.Validate(),
 		ValidateLabels(lb.Labels),

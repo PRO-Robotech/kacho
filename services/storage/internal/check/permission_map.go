@@ -20,7 +20,13 @@ import (
 //   - DiskType Get/List          → viewer на cluster singleton (глобальный read-only каталог);
 //   - InternalVolume Attach/Detach/GetInternal → object-self `storage_volume:<volume_id>`;
 //   - InternalVolume ListAttachments → viewer на cluster (cluster-wide internal listing);
+//   - InternalImage GetInternal  → object-self `storage_image:<image_id>`, tier viewer;
 //   - InternalDiskType CRUD      → system_admin на cluster singleton (admin каталог).
+//
+// Карта обязана покрывать КАЖДЫЙ served RPC обоих листенеров: corelib authz fail-closed
+// (`DecisionUnmapped` → «permission denied (rpc not mapped)»), поэтому пропуск = RPC,
+// нерабочий при любых грантах. Гейт класса — TestPermissionMap_CoversEveryServedStorageRPC
+// (обход protobuf-дескрипторов `kacho.cloud.storage.v1`).
 //
 // Смысл гейта здесь — AuthN+AuthZ на ОБОИХ листенерах (internal :9091 НЕ освобождён,
 // security.md): defense-in-depth поверх mTLS. Авторитетный object-scoped scope_extractor
@@ -126,6 +132,10 @@ func PermissionMap() authz.RPCMap {
 		"/kacho.cloud.storage.v1.InternalVolumeService/GetInternal": scoped(relationViewer, objectTypeVolume, "storage.volumes.getInternal",
 			func(req any) (string, error) { return req.(*storagev1.GetInternalVolumeRequest).GetVolumeId(), nil }),
 		"/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments": viewerCluster("storage.volumes.listAttachments"),
+
+		// ---- InternalImageService (:9091 infra-проекция Image) ----
+		"/kacho.cloud.storage.v1.InternalImageService/GetInternal": scoped(relationViewer, objectTypeImage, "storage.images.getInternal",
+			func(req any) (string, error) { return req.(*storagev1.GetInternalImageRequest).GetImageId(), nil }),
 
 		// ---- InternalDiskTypeService (:9091 admin CRUD, system_admin) ----
 		"/kacho.cloud.storage.v1.InternalDiskTypeService/Create": adminCluster("storage.diskTypes.create"),

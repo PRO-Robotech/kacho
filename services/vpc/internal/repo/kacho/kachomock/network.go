@@ -94,6 +94,12 @@ func (nw *networkWriter) Get(_ context.Context, id string) (*kacho.NetworkRecord
 	return &cp, nil
 }
 
+// GetForShare — in-memory mock не моделирует row-lock; семантика = Get
+// (сериализацию проверяет integration-тест на реальном Postgres).
+func (nw *networkWriter) GetForShare(ctx context.Context, id string) (*kacho.NetworkRecord, error) {
+	return nw.Get(ctx, id)
+}
+
 // GetForUpdate — in-memory mock не моделирует row-lock; семантика = Get.
 func (nw *networkWriter) GetForUpdate(ctx context.Context, id string) (*kacho.NetworkRecord, error) {
 	return nw.Get(ctx, id)
@@ -173,6 +179,20 @@ func (nw *networkWriter) SetDefaultSGID(_ context.Context, id, sgID string) (*ka
 		return nil, repo.ErrNotFound
 	}
 	n.DefaultSecurityGroupID = sgID
+	cp := *n
+	return &cp, nil
+}
+
+// SetDefaultRouteTableID — узкая UPDATE-операция (parity с pg-impl).
+func (nw *networkWriter) SetDefaultRouteTableID(_ context.Context, id, rtID string) (*kacho.NetworkRecord, error) {
+	if _, deleted := nw.w.deletedIDs[id]; deleted {
+		return nil, repo.ErrNotFound
+	}
+	n, ok := nw.w.local[id]
+	if !ok {
+		return nil, repo.ErrNotFound
+	}
+	n.DefaultRouteTableID = rtID
 	cp := *n
 	return &cp, nil
 }

@@ -77,6 +77,14 @@ const (
 	MaxDescriptionLen = 256
 	// MaxLabels — максимальное число label-пар на ресурс.
 	MaxLabels = 64
+	// MaxNetworkCidrBlocks — потолок declared-супернета сети НА СЕМЕЙСТВО
+	// (ipv4_cidr_blocks / ipv6_cidr_blocks по отдельности). Набор — tenant-
+	// управляемый и аддитивный (:add-cidr-blocks идемпотентен и накапливается
+	// между вызовами), при этом он парсится заново на КАЖДОМ Subnet.Create /
+	// Subnet.AddCidrBlocks и целиком сериализуется в каждом Network.Get/List —
+	// без потолка это unbounded рост на горячем пути. Дублируется DB-CHECK
+	// networks_cidr_blocks_cardinality (миграция 0016) как атомарный backstop.
+	MaxNetworkCidrBlocks = 64
 	// MaxLabelKeyLen — длина ключа label в байтах.
 	MaxLabelKeyLen = 63
 	// MaxLabelValueLen — длина значения label в байтах.

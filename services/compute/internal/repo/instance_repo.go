@@ -43,10 +43,20 @@ const instanceCols = `id, project_id, created_at, name, description, labels, zon
 	`instance_kind, machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
 	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec`
 
+// instanceSelectCols — тот же список для SELECT/RETURNING, но machine_type_id
+// читается через COALESCE: колонка NULLable (0017 — FK на machine_types(id),
+// а NOT NULL с пустой строкой по умолчанию не FK-able), тогда как domain-тип
+// остаётся `string`. NULL («тип не задан») читается как "" — как и до 0017.
+// Симметрично на записи — NULLIF (см. Insert/Update).
+const instanceSelectCols = `id, project_id, created_at, name, description, labels, zone_id, status, status_reason, ` +
+	`metadata, hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
+	`instance_kind, COALESCE(machine_type_id,'') AS machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
+	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec`
+
 // Get возвращает ВМ по id. AttachedDisks НЕ заполняются здесь — это зеркало из
 // kacho-storage, use-case подтягивает его на чтении (graceful-degrade).
 func (r *InstanceRepo) Get(ctx context.Context, id string) (*domain.Instance, error) {
-	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceCols)
+	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceSelectCols)
 	in, err := scanInstance(r.pool.QueryRow(ctx, q, id))
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", id)
@@ -101,7 +111,7 @@ func (r *InstanceRepo) List(ctx context.Context, f ports.InstanceFilter, p ports
 	if len(conditions) > 0 {
 		where = "WHERE " + strings.Join(conditions, " AND ")
 	}
-	q := fmt.Sprintf(`SELECT %s FROM instances %s ORDER BY created_at ASC, id ASC LIMIT $%d`, instanceCols, where, argIdx)
+	q := fmt.Sprintf(`SELECT %s FROM instances %s ORDER BY created_at ASC, id ASC LIMIT $%d`, instanceSelectCols, where, argIdx)
 	args = append(args, pageSize+1)
 
 	rows, err := r.pool.Query(ctx, q, args...)
@@ -144,7 +154,7 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	const qIns = `INSERT INTO instances (` + instanceCols + `)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING ` + instanceCols
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING ` + instanceSelectCols
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", in.Name)
@@ -207,7 +217,8 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 	// (defense-in-depth; NOT software Get→check→UPDATE), актуален в COMP-2.
 	requireStopped := false
 	if _, ok := ch["machine_type_id"]; ok {
-		us.add("machine_type_id", in.MachineTypeID)
+		// NULLable FK-колонка (0017) — "" пишется как NULL, см. instanceSelectCols.
+		us.addNullIfEmpty("machine_type_id", in.MachineTypeID)
 		requireStopped = true
 	}
 	if _, ok := ch["cpu_guarantee_percent"]; ok {
@@ -229,14 +240,14 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 	if us.empty() {
 		// mask не задел ни одной mutable-колонки — no-op: перечитываем строку
 		// (NotFound если её нет) и всё равно эмитим UPDATED (behaviour-preserving).
-		updated, err = scanInstance(tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceCols), in.ID))
+		updated, err = scanInstance(tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceSelectCols), in.ID))
 	} else {
 		where := ` WHERE id = $1`
 		if requireStopped {
 			us.args = append(us.args, instanceStatusName(domain.InstanceStatusStopped))
 			where += fmt.Sprintf(` AND status = $%d`, len(us.args))
 		}
-		q := `UPDATE instances ` + us.clause() + where + ` RETURNING ` + instanceCols
+		q := `UPDATE instances ` + us.clause() + where + ` RETURNING ` + instanceSelectCols
 		updated, err = scanInstance(tx.QueryRow(ctx, q, us.args...))
 	}
 	if err != nil {
@@ -290,7 +301,7 @@ func (r *InstanceRepo) SetStatusCAS(ctx context.Context, id string, expected, ne
 		}
 		return nil, fmt.Errorf("%w: state transition not allowed from current status", ports.ErrFailedPrecondition)
 	}
-	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceCols)
+	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceSelectCols)
 	in, err := scanInstance(tx.QueryRow(ctx, q, id))
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", id)
@@ -347,7 +358,7 @@ func (r *InstanceRepo) MarkDeleting(ctx context.Context, id string) (*domain.Ins
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", id)
 	}
-	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceCols)
+	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceSelectCols)
 	in, err := scanInstance(tx.QueryRow(ctx, q, id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -437,7 +448,7 @@ func (r *InstanceRepo) mutateAndReload(ctx context.Context, id, eventType string
 	if err := mutate(ctx, tx); err != nil {
 		return nil, wrapPgErr(err, "Instance", id)
 	}
-	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceCols)
+	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceSelectCols)
 	in, err := scanInstance(tx.QueryRow(ctx, q, id))
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", id)

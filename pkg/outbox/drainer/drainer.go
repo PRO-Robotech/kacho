@@ -47,39 +47,63 @@ type Config struct {
 	// не создают ни второй tx, ни лишних conn'ов пула. Требование: Applier
 	// БЕЗОПАСЕН для конкурентного вызова (см. Applier godoc).
 	//
-	// ORDERING (важно): при ApplyConcurrency>1 порядок apply ВНУТРИ батча НЕ
-	// сохраняется (строки применяются конкурентно), поэтому две intent-строки
-	// ОДНОГО объекта (напр. register создания и unregister удаления, или два
-	// label-register) могут закоммититься в target в обратном к id-порядке.
-	// Включать ТОЛЬКО когда финальное состояние target'а СХОДИТСЯ независимо от
-	// порядка: либо операции коммутативны, либо target идемпотентен И
-	// монотонен/level-triggered (stale-apply — no-op). Канонические register-
-	// appliers kacho (compute/vpc/…) безопасны НЕ из-за «независимости записей», а
-	// потому что материализация в iam — source_version-LWW (resource_mirror UPSERT
-	// с `WHERE source_version < EXCLUDED.source_version`) + level-triggered
-	// reconciler (читает ТЕКУЩИЙ mirror), поэтому reordered stale register — no-op,
-	// а enforcement сходится к mirror-состоянию при любом порядке. НЕ включать для
-	// applier'а с order-sensitive target'ом без версионирования, ЕСЛИ порядок
-	// внутри партиции не защищён PartitionColumn (см. ниже) — напр. iam
-	// fga_outbox несёт СЫРОЙ, не-source_version-guarded owner-hierarchy tuple:
-	// WRITE(grant) и DELETE(revoke) ОДНОГО (user,relation,object) НЕ коммутативны,
-	// поэтому iam включает ApplyConcurrency>1 ТОЛЬКО вместе с PartitionColumn.
+	// ORDERING (важно): drainer НЕ гарантирует apply в id-порядке — ни при
+	// ApplyConcurrency>1 (строки батча применяются конкурентно), ни при
+	// ApplyConcurrency=1: claim сортирует `ORDER BY attempt_count, id`, поэтому
+	// transiently-bumped предшественник (attempt≥1) уступает свежему преемнику
+	// (attempt=0) и применяется ПОСЛЕ него — внутри одного батча и тем более между
+	// батчами. Порядок ВНУТРИ ключа даёт ТОЛЬКО PartitionColumn (см. ниже);
+	// ApplyConcurrency — это throughput-ручка, а НЕ источник (и не причина)
+	// reorder'а.
+	//
+	// Держать PartitionColumn пустым допустимо ТОЛЬКО когда финальное состояние
+	// target'а СХОДИТСЯ при любом порядке применения строк ОДНОГО ключа:
+	//   (а) поток по ключу append-only/коммутативен — нет события, отменяющего
+	//       предыдущее (напр. только register/label-update, без unregister); либо
+	//   (б) target версионирует ОБЕ ветки — и upsert, и удаление (versioned
+	//       tombstone), так что stale-apply любого вида no-op'ится.
+	//
+	// Канонические register-outbox'ы kacho (`<svc>.fga_register_outbox`) под (а) и
+	// (б) НЕ подпадают и ОБЯЗАНЫ задавать PartitionColumn (ключ = колонка ресурса,
+	// напр. `resource_id`): они несут register И unregister ОДНОГО объекта, а
+	// материализация в iam версионирована лишь ЧАСТИЧНО. source_version-LWW
+	// (`resource_mirror` UPSERT `WHERE source_version < EXCLUDED.source_version`,
+	// services/iam/.../resource_mirror/emitter.go) гейтит ТОЛЬКО ветку
+	// ON CONFLICT DO UPDATE, т.е. спасает лишь register↔register. Пара
+	// register(t1)→unregister(t2>t1) НЕ коммутативна и НЕ защищена: unregister
+	// делает ЖЁСТКИЙ DELETE без tombstone, поэтому переставленный stale register
+	// попадает в ветку INSERT (сравнивать не с чем) и ВОСКРЕШАЕТ mirror-строку
+	// удалённого ресурса; level-triggered reconciler читает mirror как источник
+	// истины и вечно ре-материализует owner-tuple, самоисцеления нет. Поведение
+	// закреплено Test_1_4_45_RegisterOutbox_UnregisterThenStaleRegister
+	// (register-outbox без PartitionColumn → resurrect; с PartitionColumn →
+	// корректное ABSENT).
+	//
+	// Тот же класс — iam `fga_outbox`: он несёт СЫРОЙ, вообще не версионированный
+	// owner-hierarchy tuple, WRITE(grant) и DELETE(revoke) одного
+	// (user,relation,object) не коммутативны → iam задаёт PartitionColumn
+	// (`payload->>'object'`) вместе с ApplyConcurrency>1.
 	ApplyConcurrency int
 
 	// PartitionColumn — SQL-выражение над строкой outbox-таблицы, дающее ключ
-	// ПАРТИЦИИ порядка (для iam fga_outbox = `payload->>'object'`). Пусто (default)
+	// ПАРТИЦИИ порядка (jsonb-выражение `payload->>'object'` для iam fga_outbox;
+	// обычная колонка вроде `resource_id` для register-outbox'ов). Пусто (default)
 	// = фича выключена, claim-запрос БАЙТ-в-БАЙТ прежний (нулевое изменение
 	// поведения для всех текущих consumer'ов, кроме iam).
 	//
-	// # Зачем (order-preserving concurrent drain без cross-batch reorder-leak)
+	// # Зачем (order-preserving drain без cross-batch reorder-leak)
 	//
-	// ApplyConcurrency>1 сам по себе НЕ сохраняет порядок apply НИ внутри батча
-	// (горутины конкурентны), НИ МЕЖДУ батчами: claim `ORDER BY (attempt_count,id)`
-	// разносит bumped-предшественника (attempt≥1 после transient) и fresh-преемника
-	// (attempt=0) в РАЗНЫЕ claim-батчи → преемник может заклеймиться и примениться
-	// РАНЬШЕ своего предшественника. Для order-sensitive target'а (iam raw-tuple:
-	// WRITE потом DELETE того же tuple) это delete-before-write → tuple ВЫЖИВАЕТ →
-	// authz over-grant / cross-account LEAK.
+	// Порядок apply НЕ сохраняется и БЕЗ конкурентности: claim
+	// `ORDER BY (attempt_count,id)` разносит bumped-предшественника (attempt≥1 после
+	// transient) и fresh-преемника (attempt=0) — преемник обгоняет предшественника
+	// уже внутри одного батча при ApplyConcurrency=1 и тем более попадает в БОЛЕЕ
+	// РАННИЙ батч. ApplyConcurrency>1 добавляет сверху ещё и intra-batch reorder
+	// (горутины конкурентны), но не является причиной проблемы. Для order-sensitive
+	// target'а это ломается двумя способами: iam raw-tuple (WRITE потом DELETE того
+	// же tuple) → delete-before-write → tuple ВЫЖИВАЕТ → authz over-grant /
+	// cross-account LEAK; register-outbox (register потом unregister того же
+	// ресурса) → unregister-before-register → воскрешённая mirror-строка удалённого
+	// ресурса (см. ORDERING в ApplyConcurrency).
 	//
 	// PartitionColumn закрывает это на CLAIM-уровне (не на apply-re-sort, который
 	// бессилен, если предшественник в другом батче): claim НЕ берёт строку t, если

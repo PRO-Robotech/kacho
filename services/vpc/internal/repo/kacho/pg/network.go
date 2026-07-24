@@ -238,8 +238,9 @@ func (w *networkWriter) Insert(ctx context.Context, n *domain.Network) (*kacho.N
 	row := w.tx.QueryRow(ctx, q,
 		// default_security_group_id nullable (0005, FK): '' → NULL.
 		n.ID, n.ProjectID, now, string(n.Name), string(n.Description), labelsJSON, helpers.NullableStr(n.DefaultSecurityGroupID),
-		// declared супернет + default RT id (0015). text[] NOT NULL → textArray (nil → '{}').
-		textArray(n.IPv4CidrBlocks), textArray(n.IPv6CidrBlocks), n.DefaultRouteTableID,
+		// declared супернет + default RT id. text[] NOT NULL → textArray (nil → '{}');
+		// default_route_table_id nullable (0017, FK ON DELETE SET NULL): '' → NULL.
+		textArray(n.IPv4CidrBlocks), textArray(n.IPv6CidrBlocks), helpers.NullableStr(n.DefaultRouteTableID),
 	)
 	result, err := helpers.ScanNetwork(row)
 	if err != nil {
@@ -309,6 +310,33 @@ func (w *networkWriter) SetDefaultSGID(ctx context.Context, id, sgID string) (*k
 	return result, nil
 }
 
+// SetDefaultRouteTableID — узкий CAS-update `default_route_table_id` (VPC-1 F3),
+// симметрия SetDefaultSGID. Колонка nullable под FK (0017), поэтому CAS:
+// NULL (дефолта ещё нет) ИЛИ уже rtID (идемпотентно). Если другой writer уже
+// выставил ДРУГУЮ RT — 0 строк → ErrFailedPrecondition, без second-writer-wins.
+// Network.Create зовёт этот метод на свежевставленной строке (NULL → CAS проходит).
+func (w *networkWriter) SetDefaultRouteTableID(ctx context.Context, id, rtID string) (*kacho.NetworkRecord, error) {
+	q := fmt.Sprintf(`
+		UPDATE networks SET default_route_table_id = $2
+		WHERE id = $1
+		  AND (default_route_table_id IS NULL OR default_route_table_id = $2)
+		RETURNING %s`, helpers.NetworkCols)
+	row := w.tx.QueryRow(ctx, q, id, rtID)
+	result, err := helpers.ScanNetwork(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// 0 строк: либо сети нет, либо у неё уже задана ДРУГАЯ default-RT.
+			// Различаем повторным чтением (caller строит точный текст ошибки).
+			if _, gerr := w.Get(ctx, id); errors.Is(gerr, helpers.ErrNotFound) {
+				return nil, fmt.Errorf("%w: Network %s not found", helpers.ErrNotFound, id)
+			}
+			return nil, fmt.Errorf("%w: network %s already has a different default_route_table_id", helpers.ErrFailedPrecondition, id)
+		}
+		return nil, helpers.WrapPgErr(err, "Network", id)
+	}
+	return result, nil
+}
+
 // SetCidrBlocks атомарно перезаписывает declared-супернет
 // ipv4_cidr_blocks / ipv6_cidr_blocks — узкий column-update для
 // AddCidrBlocks/RemoveCidrBlocks, не трогающий name/description/labels/default_*.
@@ -329,6 +357,22 @@ func (w *networkWriter) SetCidrBlocks(ctx context.Context, id string, v4, v6 []s
 		return nil, helpers.WrapPgErr(err, "Network", id)
 	}
 	return result, nil
+}
+
+// GetForShare — Get с share row-lock (`FOR SHARE`) в writer-TX. Держит строку
+// сети стабильной до конца нашей TX относительно ЛЮБОГО writer'а супернета
+// (`FOR UPDATE` в Add/RemoveCidrBlocks и `UPDATE`/`DELETE` networks), не
+// сериализуя при этом читателей между собой — параллельные Subnet.Create в
+// одной сети сосуществуют. В READ COMMITTED блокировка на конфликтующем
+// writer'е завершается перечитыванием уже закоммиченной версии строки, поэтому
+// containment-проверка видит актуальный супернет, а не устаревший снимок.
+func (w *networkWriter) GetForShare(ctx context.Context, id string) (*kacho.NetworkRecord, error) {
+	q := fmt.Sprintf(`SELECT %s FROM networks WHERE id = $1 FOR SHARE`, helpers.NetworkCols)
+	n, err := helpers.ScanNetwork(w.tx.QueryRow(ctx, q, id))
+	if err != nil {
+		return nil, helpers.WrapPgErr(err, "Network", id)
+	}
+	return n, nil
 }
 
 // GetForUpdate — Get с row-lock (`FOR UPDATE`) в writer-TX. Сериализует
