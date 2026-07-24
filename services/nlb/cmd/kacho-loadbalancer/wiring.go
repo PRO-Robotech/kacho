@@ -255,6 +255,33 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 				MaxAttempts:  d.cfg.FGA.RegisterDrainer.MaxAttempts,
 				BackoffMin:   d.cfg.FGA.RegisterDrainer.BackoffMin,
 				BackoffMax:   d.cfg.FGA.RegisterDrainer.BackoffMax,
+				// Order-preserving drain, per resource. This table carries BOTH
+				// fga.register AND fga.unregister of the SAME resource (LoadBalancer /
+				// Listener / TargetGroup), and iam's materialisation is only PARTIALLY
+				// versioned: source_version-LWW (resource_mirror UPSERT guarded by
+				// `source_version < EXCLUDED.source_version`) protects the
+				// ON-CONFLICT-UPDATE branch ONLY, while unregister is a hard DELETE
+				// leaving no tombstone. A reordered STALE register has nothing to
+				// compare against, takes the INSERT branch and RESURRECTS the mirror
+				// row of a DELETED resource; the level-triggered reconciler then
+				// re-materialises its owner-tuple forever (no self-healing).
+				//
+				// Reorder does not need concurrency: the claim orders by
+				// (attempt_count, id), so a transiently-bumped register (attempt>=1
+				// after an iam blip) loses to a fresh unregister (attempt=0) even at
+				// ApplyConcurrency=1 — nlb's default — and lands in a later batch.
+				// PartitionColumn makes the claim partition-head-only: a row is never
+				// claimed while a DELIVERABLE same-resource predecessor with a smaller
+				// id is unsent, so per-resource FIFO holds cross-batch AND
+				// cross-replica; different resources keep draining in parallel.
+				//
+				// Key is resource_id: every emitter (writer-tx emitter, free_ip_runner
+				// unregister, corelib reconciler) writes one row per FGA object stamped
+				// with that object's globally-unique id (core rule #15). Requires
+				// migration 0024's partial index (resource_id, id) WHERE sent_at IS
+				// NULL for the claim's NOT EXISTS. Behaviour pinned by
+				// drainer.Test_1_4_45_RegisterOutbox_UnregisterThenStaleRegister.
+				PartitionColumn: "resource_id",
 			},
 			iamclient.DecodeFGARegisterIntent,
 			iamclient.NewRegisterApplier(d.peers.Register),

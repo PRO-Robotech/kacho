@@ -912,15 +912,34 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 			// is unchanged (claim-tx holds each row's FOR UPDATE SKIP LOCKED lock;
 			// applies are external gRPC, no extra pool conns). The iam applier is a
 			// grpc.ClientConn-backed client → safe for concurrent invocation.
-			//
-			// Same-object apply-order is NOT preserved under concurrency (see
-			// drainer.Config.ApplyConcurrency ORDERING note). Safe here because iam
-			// materialisation is source_version-LWW (resource_mirror UPSERT guarded by
-			// `source_version < EXCLUDED.source_version`) + a level-triggered reconciler
-			// reading the CURRENT mirror — a reordered stale Register is a no-op and
-			// enforcement converges regardless of apply order. This convergence, not
-			// "independent tuple writes", is the invariant this knob relies on.
 			ApplyConcurrency: cfg.FGARegisterApplyConcurrency,
+			// Order-preserving drain, per resource. This table carries BOTH
+			// fga.register AND fga.unregister of the SAME resource, and iam's
+			// materialisation is only PARTIALLY versioned: source_version-LWW
+			// (resource_mirror UPSERT guarded by `source_version <
+			// EXCLUDED.source_version`) protects the ON-CONFLICT-UPDATE branch ONLY,
+			// while unregister is a hard DELETE leaving no tombstone. A reordered
+			// STALE register therefore has nothing to compare against, takes the
+			// INSERT branch and RESURRECTS the mirror row of a DELETED resource; the
+			// level-triggered reconciler then re-materialises its owner-tuple forever
+			// (no self-healing). Reorder is NOT introduced by ApplyConcurrency: the
+			// claim orders by (attempt_count, id), so a transiently-bumped register
+			// (attempt>=1) loses to a fresh unregister (attempt=0) even at
+			// ApplyConcurrency=1 and lands in a later batch. LWW therefore does NOT
+			// make this stream order-insensitive — it only covers register↔register.
+			//
+			// PartitionColumn makes the claim partition-head-only: a row is never
+			// claimed while a DELIVERABLE same-resource predecessor with a smaller id
+			// is unsent, so per-resource FIFO holds cross-batch AND cross-replica and
+			// at most one row per resource is in flight — throughput across DIFFERENT
+			// resources is untouched, so the ApplyConcurrency backlog fix above still
+			// stands. resource_id is the object key: every emitter writes one row per
+			// FGA object stamped with that object's id, globally unique by
+			// construction. Requires migration 0018's partial index (resource_id, id)
+			// WHERE sent_at IS NULL for the claim's NOT EXISTS. Behaviour pinned by
+			// drainer.Test_1_4_45_RegisterOutbox_UnregisterThenStaleRegister and
+			// clients.TestRegisterDrainer_PartitionHead_UnregisterThenStaleRegister.
+			PartitionColumn: "resource_id",
 		},
 		func(b []byte) (fgaintent.Payload, error) {
 			p, decErr := fgaintent.Decode(b)

@@ -780,6 +780,34 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 		drainer.Config{
 			Table:   fgaRegisterOutboxTable,
 			Channel: fgaRegisterOutboxChannel,
+			// Order-preserving drain, per resource. Эта таблица несёт И fga.register,
+			// И fga.unregister ОДНОГО ресурса, а материализация в iam версионирована
+			// лишь ЧАСТИЧНО: source_version-LWW (resource_mirror UPSERT под
+			// `source_version < EXCLUDED.source_version`) гейтит ТОЛЬКО ветку
+			// ON CONFLICT DO UPDATE, а unregister делает ЖЁСТКИЙ DELETE без
+			// tombstone. Переставленный STALE register сравнивать не с чем → он
+			// попадает в ветку INSERT и ВОСКРЕШАЕТ mirror-строку УДАЛЁННОГО ресурса;
+			// level-triggered реконсайлер iam читает mirror как источник истины и
+			// вечно ре-материализует owner-tuple (самоисцеления нет).
+			//
+			// Порядок ломается и БЕЗ конкурентности: claim сортирует
+			// `ORDER BY (attempt_count, id)`, поэтому transiently-bumped register
+			// (attempt>=1 после блипа iam) уступает свежему unregister (attempt=0) —
+			// уже при ApplyConcurrency=1 (дефолт vpc) и тем более попадает в БОЛЕЕ
+			// РАННИЙ батч. PartitionColumn закрывает это на CLAIM-уровне: строка не
+			// клеймится, пока в её партиции есть ДОСТАВЛЯЕМЫЙ (sent_at IS NULL AND
+			// attempt_count < MaxAttempts) предшественник с меньшим id → per-resource
+			// FIFO держится cross-batch и cross-replica; разные ресурсы дренятся
+			// параллельно как раньше.
+			//
+			// Ключ — resource_id (миграция 0008): emitter пишет ОДНУ строку на один
+			// FGA-объект и заполняет колонку id-половиной tuple.Object, глобально
+			// уникальной by construction (core rule #15) → «одна партиция» == «один
+			// объект iam-mirror». Требует partial-index миграции 0018
+			// `(resource_id, id) WHERE sent_at IS NULL` под claim'овый NOT EXISTS.
+			// Поведение зафиксировано corelib-тестом
+			// drainer.Test_1_4_45_RegisterOutbox_UnregisterThenStaleRegister.
+			PartitionColumn: "resource_id",
 		},
 		clients.DecodeFGARegisterPayload,
 		clients.NewIAMRegisterApplier(iamClient),

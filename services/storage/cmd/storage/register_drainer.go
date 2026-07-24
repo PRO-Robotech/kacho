@@ -38,6 +38,31 @@ func startRegisterDrainer(ctx context.Context, pool *pgxpool.Pool, iamConn *grpc
 		drainer.Config{
 			Table:   fgaRegisterOutboxTable,
 			Channel: fgaRegisterOutboxChannel,
+			// Order-preserving drain, per resource. Таблица несёт И fga.register, И
+			// fga.unregister ОДНОГО ресурса, а материализация в iam версионирована
+			// лишь ЧАСТИЧНО: source_version-LWW (resource_mirror UPSERT под
+			// `source_version < EXCLUDED.source_version`) гейтит ТОЛЬКО ветку
+			// ON CONFLICT DO UPDATE, а unregister делает ЖЁСТКИЙ DELETE без
+			// tombstone. Переставленный STALE register сравнивать не с чем → ветка
+			// INSERT → ВОСКРЕШЕНИЕ mirror-строки УДАЛЁННОГО Volume/Snapshot, которую
+			// level-triggered реконсайлер iam вечно ре-материализует (самоисцеления
+			// нет).
+			//
+			// Порядок ломается и БЕЗ конкурентности: claim сортирует
+			// `ORDER BY (attempt_count, id)` → transiently-bumped register
+			// (attempt>=1) уступает свежему unregister (attempt=0) даже при
+			// ApplyConcurrency=1 (дефолт storage). PartitionColumn закрывает это на
+			// CLAIM-уровне: строка не клеймится, пока в её партиции есть
+			// ДОСТАВЛЯЕМЫЙ предшественник с меньшим id → per-resource FIFO
+			// cross-batch и cross-replica; разные ресурсы дренятся параллельно.
+			//
+			// Ключ — resource_id: emitFGARegister пишет ОДНУ строку на один
+			// FGA-объект и заполняет колонку id-половиной tuple.Object, глобально
+			// уникальной by construction (core rule #15). Требует partial-index
+			// миграции 0008 `(resource_id, id) WHERE sent_at IS NULL` под claim'овый
+			// NOT EXISTS. Поведение зафиксировано corelib-тестом
+			// drainer.Test_1_4_45_RegisterOutbox_UnregisterThenStaleRegister.
+			PartitionColumn: "resource_id",
 		},
 		clients.DecodeFGARegisterPayload,
 		clients.NewIAMRegisterApplier(iamClient),

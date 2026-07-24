@@ -180,7 +180,40 @@ func runServe(cfg config.Config) error {
 	// получат owner/project-tuple → невидимы в authz-filtered List.
 	regDrainer, derr := drainer.New[domain.RegisterIntent](
 		pool,
-		drainer.Config{Table: "kacho_registry.registry_outbox", Channel: "kacho_registry_outbox"},
+		drainer.Config{
+			Table:   "kacho_registry.registry_outbox",
+			Channel: "kacho_registry_outbox",
+			// Order-preserving drain, per resource. registry_outbox — это
+			// register-outbox (несмотря на имя): он несёт И fga.register, И
+			// fga.unregister ОДНОГО объекта (Registry Create/Update/Delete;
+			// Repository register-on-first-push / unregister-on-last-tag;
+			// adopt-owner/public-grant overlay). Материализация в iam версионирована
+			// лишь ЧАСТИЧНО: source_version-LWW (resource_mirror UPSERT под
+			// `source_version < EXCLUDED.source_version`) гейтит ТОЛЬКО ветку
+			// ON CONFLICT DO UPDATE, а unregister делает ЖЁСТКИЙ DELETE без
+			// tombstone. Переставленный STALE register сравнивать не с чем → ветка
+			// INSERT → ВОСКРЕШЕНИЕ mirror-строки УДАЛЁННОГО реестра/репозитория,
+			// которую level-triggered реконсайлер iam вечно ре-материализует (для
+			// репозитория это переживший удаление последнего тега pull-grant).
+			//
+			// Порядок ломается и БЕЗ конкурентности: claim сортирует
+			// `ORDER BY (attempt_count, id)` → transiently-bumped register
+			// (attempt>=1) уступает свежему unregister (attempt=0) даже при
+			// ApplyConcurrency=1 (дефолт registry). Per-repo
+			// pg_advisory_xact_lock в emitRepoIntent НЕ помогает — он сериализует
+			// WRITE-сторону (монотонный source_version), а не порядок claim'а.
+			//
+			// Ключ — resource_id: emitFGAIntent штампует его из
+			// RegisterIntent.ResourceID, а tuple'ы одной строки всегда целятся в
+			// РОВНО ОДИН FGA-объект с этим id — "<regId>" для registry_registry и
+			// "<regId>/<repo>" для registry_repository (оба глобально уникальны by
+			// construction, core rule #15) → «одна партиция» == «один объект
+			// iam-mirror», реестр не делит партицию со своими репозиториями.
+			// Требует partial-index миграции 0008 `(resource_id, id) WHERE sent_at IS
+			// NULL` под claim'овый NOT EXISTS. Поведение зафиксировано corelib-тестом
+			// drainer.Test_1_4_45_RegisterOutbox_UnregisterThenStaleRegister.
+			PartitionColumn: "resource_id",
+		},
 		iamclient.DecodeRegisterIntent,
 		iamclient.NewRegisterApplier(iamclient.NewRegisterResourceClient(iamConn)),
 		logger,
