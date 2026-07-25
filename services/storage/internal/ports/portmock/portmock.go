@@ -56,7 +56,9 @@ type VolumeWriter struct {
 	DetachFunc func(ctx context.Context, volumeID, instanceID string) error
 }
 
-func (m *VolumeWriter) Insert(ctx context.Context, v *domain.Volume) (*domain.Volume, error) {
+// Insert — zoneRegionID (регион зоны тома) энфорсится в SQL-CAS реального repo;
+// мок его не моделирует и передаёт вызов дальше без него.
+func (m *VolumeWriter) Insert(ctx context.Context, v *domain.Volume, _ string) (*domain.Volume, error) {
 	return m.InsertFunc(ctx, v)
 }
 func (m *VolumeWriter) Update(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error) {
@@ -75,6 +77,7 @@ func (m *VolumeWriter) Detach(ctx context.Context, volumeID, instanceID string) 
 // EnsureProjectExists на функциях-полях).
 type PeerClient struct {
 	EnsureZoneFunc    func(ctx context.Context, zoneID string) error
+	RegionOfZoneFunc  func(ctx context.Context, zoneID string) (string, error)
 	EnsureRegionFunc  func(ctx context.Context, regionID string) error
 	EnsureProjectFunc func(ctx context.Context, projectID string) error
 }
@@ -82,6 +85,17 @@ type PeerClient struct {
 func (m *PeerClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
 	return m.EnsureZoneFunc(ctx, zoneID)
 }
+
+// RegionOfZone — авторитетный регион зоны. Регион из имени зоны НЕ выводится,
+// поэтому фейк обязан его назвать: незаданный RegionOfZoneFunc → "region-1"
+// (дефолт фикстур), что делает соответствие явным, а не выводимым.
+func (m *PeerClient) RegionOfZone(ctx context.Context, zoneID string) (string, error) {
+	if m.RegionOfZoneFunc != nil {
+		return m.RegionOfZoneFunc(ctx, zoneID)
+	}
+	return "region-1", nil
+}
+
 func (m *PeerClient) EnsureRegionExists(ctx context.Context, regionID string) error {
 	return m.EnsureRegionFunc(ctx, regionID)
 }

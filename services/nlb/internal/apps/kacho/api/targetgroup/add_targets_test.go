@@ -25,7 +25,8 @@ import (
 // mkAddUC — конструктор AddTargetsUseCase с дефолтными happy peer-fakes.
 func mkAddUC(repo *fakeRepo, opsRepo *fakeOpsRepo) *AddTargetsUseCase {
 	return NewAddTargetsUseCase(repo, opsRepo,
-		&fakeInstanceClient{}, &fakeNICClient{}, &fakeSubnetClient{}, nil,
+		&fakeInstanceClient{}, &fakeNICClient{}, &fakeSubnetClient{},
+		&fakeZoneRegionClient{}, nil,
 	)
 }
 
@@ -93,9 +94,12 @@ func TestAdd_IPRef_OutsideCIDR(t *testing.T) {
 	uc := NewAddTargetsUseCase(repo, opsRepo,
 		&fakeInstanceClient{}, &fakeNICClient{},
 		&fakeSubnetClient{getFunc: func(_ context.Context, id string) (*vpc.Subnet, error) {
-			return &vpc.Subnet{ID: id, ZoneID: "ru-central1-a", V4CIDRBlocks: []string{"10.0.0.0/24"}}, nil
+			return &vpc.Subnet{
+				ID: id, PlacementType: "ZONAL", ZoneID: "ru-central1-a", RegionID: "ru-central1",
+				V4CIDRBlocks: []string{"10.0.0.0/24"},
+			}, nil
 		}},
-		nil,
+		&fakeZoneRegionClient{}, nil,
 	)
 
 	op, err := uc.Execute(context.Background(), &lbv1.AddTargetsRequest{
@@ -141,7 +145,8 @@ func TestAdd_InstanceRegionMismatch(t *testing.T) {
 		&fakeInstanceClient{getFunc: func(_ context.Context, id string) (*compute.Instance, error) {
 			return &compute.Instance{ID: id, ZoneID: "ru-central2-a"}, nil
 		}},
-		&fakeNICClient{}, &fakeSubnetClient{}, nil,
+		&fakeNICClient{}, &fakeSubnetClient{},
+		&fakeZoneRegionClient{regions: map[string]string{"ru-central2-a": "ru-central2"}}, nil,
 	)
 
 	op, err := uc.Execute(context.Background(), &lbv1.AddTargetsRequest{
@@ -169,9 +174,12 @@ func TestAdd_NICRegionMismatch(t *testing.T) {
 			return &vpc.NetworkInterface{ID: id, SubnetID: "e9b-other"}, nil
 		}},
 		&fakeSubnetClient{getFunc: func(_ context.Context, id string) (*vpc.Subnet, error) {
-			return &vpc.Subnet{ID: id, ZoneID: "ru-central2-b", V4CIDRBlocks: []string{"10.0.0.0/24"}}, nil
+			return &vpc.Subnet{
+				ID: id, PlacementType: "ZONAL", ZoneID: "ru-central2-b", RegionID: "ru-central2",
+				V4CIDRBlocks: []string{"10.0.0.0/24"},
+			}, nil
 		}},
-		nil,
+		&fakeZoneRegionClient{}, nil,
 	)
 
 	op, err := uc.Execute(context.Background(), &lbv1.AddTargetsRequest{
@@ -195,9 +203,12 @@ func TestAdd_IPRefSubnetRegionMismatch(t *testing.T) {
 	uc := NewAddTargetsUseCase(repo, opsRepo,
 		&fakeInstanceClient{}, &fakeNICClient{},
 		&fakeSubnetClient{getFunc: func(_ context.Context, id string) (*vpc.Subnet, error) {
-			return &vpc.Subnet{ID: id, ZoneID: "ru-central2-c", V4CIDRBlocks: []string{"10.0.0.0/24"}}, nil
+			return &vpc.Subnet{
+				ID: id, PlacementType: "ZONAL", ZoneID: "ru-central2-c", RegionID: "ru-central2",
+				V4CIDRBlocks: []string{"10.0.0.0/24"},
+			}, nil
 		}},
-		nil,
+		&fakeZoneRegionClient{}, nil,
 	)
 
 	op, err := uc.Execute(context.Background(), &lbv1.AddTargetsRequest{
@@ -257,7 +268,8 @@ func TestAdd_InstanceNotFound_Verbatim(t *testing.T) {
 		&fakeInstanceClient{getFunc: func(_ context.Context, id string) (*compute.Instance, error) {
 			return nil, fmt.Errorf("%w: Instance %s not found", domain.ErrInvalidArg, id)
 		}},
-		&fakeNICClient{}, &fakeSubnetClient{}, nil,
+		&fakeNICClient{}, &fakeSubnetClient{},
+		&fakeZoneRegionClient{}, nil,
 	)
 
 	op, err := uc.Execute(context.Background(), &lbv1.AddTargetsRequest{

@@ -58,6 +58,7 @@ func NewHandler(
 	peerInstance InstanceClient,
 	peerNIC NetworkInterfaceClient,
 	peerSubnet SubnetClient,
+	peerZoneRegion ZoneRegionClient,
 	listFilter authzfilter.Filter,
 	logger *slog.Logger,
 ) *Handler {
@@ -71,7 +72,7 @@ func NewHandler(
 		update:        NewUpdateTargetGroupUseCase(repo, opsRepo, logger),
 		deleteUC:      NewDeleteTargetGroupUseCase(repo, opsRepo, logger),
 		move:          NewMoveTargetGroupUseCase(repo, opsRepo, peerProject, peerCheck, logger),
-		addTargets:    NewAddTargetsUseCase(repo, opsRepo, peerInstance, peerNIC, peerSubnet, logger),
+		addTargets:    NewAddTargetsUseCase(repo, opsRepo, peerInstance, peerNIC, peerSubnet, peerZoneRegion, logger),
 		removeTargets: NewRemoveTargetsUseCase(repo, opsRepo, logger),
 		listOps:       NewListOperationsUseCase(opsRepo),
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -46,13 +47,18 @@ type AddTargetsUseCase struct {
 	instanceClient InstanceClient
 	nicClient      NetworkInterfaceClient
 	subnetClient   SubnetClient
+	zoneRegion     ZoneRegionClient
 	logger         *slog.Logger
 }
 
-// NewAddTargetsUseCase конструктор.
+// NewAddTargetsUseCase конструктор. `zoneRegion` — авторитетный zone→region
+// резолвер (geo, владелец Geography); обязателен для instance-таргетов, у которых
+// region есть только у зоны. nil → region-coherence неверифицируема → мутация
+// fail-closed UNAVAILABLE (регион НИКОГДА не выводится из имени зоны).
 func NewAddTargetsUseCase(
 	repo Repo, opsRepo OpsRepo,
 	inst InstanceClient, nic NetworkInterfaceClient, sub SubnetClient,
+	zoneRegion ZoneRegionClient,
 	logger *slog.Logger,
 ) *AddTargetsUseCase {
 	if logger == nil {
@@ -61,7 +67,8 @@ func NewAddTargetsUseCase(
 	return &AddTargetsUseCase{
 		repo: repo, opsRepo: opsRepo,
 		instanceClient: inst, nicClient: nic, subnetClient: sub,
-		logger: logger,
+		zoneRegion: zoneRegion,
+		logger:     logger,
 	}
 }
 
@@ -204,12 +211,57 @@ func (u *AddTargetsUseCase) validateInstanceTarget(
 	if err != nil {
 		return mapPeerTargetErr(idx, "instance_id", string(instID), err)
 	}
-	if r := regionFromZone(inst.ZoneID); r != "" && r != string(tgRegion) {
+	// Instance — всегда ZONAL; его регион знает ТОЛЬКО владелец Geography.
+	r, err := u.regionOfZone(ctx, inst.ZoneID)
+	if err != nil {
+		return regionUnverifiableErr(idx, "instance_id", string(instID))
+	}
+	if r != string(tgRegion) {
 		return status.Errorf(codes.InvalidArgument,
 			"target[%d].instance_id '%s' region '%s' does not match target_group region '%s'",
 			idx, instID, r, tgRegion)
 	}
 	return nil
+}
+
+// regionOfZone — авторитетный zone→region резолв через geo (владелец Geography).
+// Регион НИКОГДА не выводится из имени зоны: имена региона и зоны — произвольные
+// строки, между ними нет выводимой связи (data-integrity.md §Placement-coherence
+// «валидировать peer-вызовом geo.v1.ZoneService.Get, не локально»). Пустая зона /
+// нет резолвера / geo недоступен → ошибка (fail-closed на мутации).
+func (u *AddTargetsUseCase) regionOfZone(ctx context.Context, zoneID string) (string, error) {
+	if u.zoneRegion == nil {
+		return "", fmt.Errorf("%w: zone→region resolver not configured", domain.ErrUnavailable)
+	}
+	if zoneID == "" {
+		return "", fmt.Errorf("%w: peer resource carries no zone", domain.ErrUnavailable)
+	}
+	r, err := u.zoneRegion.RegionOfZone(ctx, zoneID)
+	if err != nil {
+		return "", err
+	}
+	if r == "" {
+		return "", fmt.Errorf("%w: zone→region resolved empty", domain.ErrUnavailable)
+	}
+	return r, nil
+}
+
+// subnetRegion — авторитетный регион подсети: `vpc.Subnet.region_id` (REGIONAL
+// несёт его напрямую; ZONAL — zone→region резолв через geo внутри adapter'а).
+// Пустое зеркало = регион неизвестен → coherence неверифицируема, fail-closed.
+func subnetRegion(sn *vpcclient.Subnet) (string, bool) {
+	if sn == nil || sn.RegionID == "" {
+		return "", false
+	}
+	return sn.RegionID, true
+}
+
+// regionUnverifiableErr — fail-closed на мутации, когда регион peer-ресурса
+// неустановим (geo недоступен / зеркало не заполнено). Никакой инфра-детали
+// наружу — только факт недоступности резолва.
+func regionUnverifiableErr(idx int, field, id string) error {
+	return status.Errorf(codes.Unavailable,
+		"target[%d].%s '%s': region lookup unavailable", idx, field, id)
 }
 
 func (u *AddTargetsUseCase) validateNicTarget(
@@ -228,7 +280,11 @@ func (u *AddTargetsUseCase) validateNicTarget(
 	if err != nil {
 		return mapPeerTargetErr(idx, "nic_id", string(nicID), err)
 	}
-	if r := regionFromZone(sub.ZoneID); r != "" && r != string(tgRegion) {
+	r, ok := subnetRegion(sub)
+	if !ok {
+		return regionUnverifiableErr(idx, "nic_id", string(nicID))
+	}
+	if r != string(tgRegion) {
 		return status.Errorf(codes.InvalidArgument,
 			"target[%d].nic_id '%s' region '%s' does not match target_group region '%s'",
 			idx, nicID, r, tgRegion)
@@ -247,7 +303,11 @@ func (u *AddTargetsUseCase) validateIPRefTarget(
 	if err != nil {
 		return mapPeerTargetErr(idx, "ip_ref.subnet_id", subID, err)
 	}
-	if r := regionFromZone(sub.ZoneID); r != "" && r != string(tgRegion) {
+	r, ok := subnetRegion(sub)
+	if !ok {
+		return regionUnverifiableErr(idx, "ip_ref.subnet_id", subID)
+	}
+	if r != string(tgRegion) {
 		return status.Errorf(codes.InvalidArgument,
 			"target[%d].ip_ref.subnet_id '%s' region '%s' does not match target_group region '%s'",
 			idx, subID, r, tgRegion)
@@ -319,29 +379,6 @@ func addressInAnyCIDR(addr netip.Addr, cidrs []string) bool {
 		}
 	}
 	return false
-}
-
-// regionFromZone — best-effort структурный pre-filter: derive region из zone-id,
-// отбрасывая trailing "-<zone-suffix>" (1..3 символа), напр. "<region>-<suffix>" →
-// "<region>". Это НЕ авторитетный region-guard — владелец Geography (Region/Zone)
-// это kacho-geo (ребро nlb→geo); zone→region резолвится там. Если shape не
-// распознан (нет dash / suffix длиннее 3 / пустой), возвращает "" (cannot-derive),
-// и caller ПРОПУСКАЕТ best-effort match вместо ложного отклонения легитимного
-// same-region таргета (авторитетная проверка остаётся за geo).
-func regionFromZone(zone string) string {
-	if zone == "" {
-		return ""
-	}
-	i := strings.LastIndex(zone, "-")
-	if i <= 0 || i == len(zone)-1 {
-		return ""
-	}
-	suffix := zone[i+1:]
-	// region-zone у kacho выглядит как "<region>-<zone-suffix>" — 1-3 char suffix.
-	if len(suffix) >= 1 && len(suffix) <= 3 {
-		return zone[:i]
-	}
-	return ""
 }
 
 // isInstanceTarget / isNicTarget — small predicates для switch (option Maybe

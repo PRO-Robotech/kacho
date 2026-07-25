@@ -397,10 +397,18 @@ func (w *networkInterfaceWriter) AttachToInstance(ctx context.Context, p kacho.A
 		   AND s.id = ni.subnet_id
 		   AND (ni.used_by_id = '' OR ni.used_by_id = $2)
 		   AND ni.project_id = $4
-		   AND (s.placement_type = 'REGIONAL' OR s.zone_id = $5)
+		   -- placement-coherence обеими полосами, атомарно в самом CAS:
+		   -- ZONAL-подсеть обязана быть в зоне инстанса; REGIONAL (anycast) зоны
+		   -- не несёт (сравнивать не с чем) — для неё сверяется регион. Пустой
+		   -- $7 = регион зоны инстанса не разрешён (geo недоступен) → anycast-
+		   -- полоса не матчится (fail-closed), зональная не затронута.
+		   AND (
+		         (s.placement_type = 'ZONAL'    AND s.zone_id   = $5)
+		      OR (s.placement_type = 'REGIONAL' AND $7 <> '' AND s.region_id = $7)
+		       )
 		RETURNING %s`, nicColsNI)
 	rec, err := helpers.ScanNI(w.tx.QueryRow(ctx, q,
-		p.NICID, p.InstanceID, p.InstanceName, p.ProjectID, p.InstanceZoneID, slot))
+		p.NICID, p.InstanceID, p.InstanceName, p.ProjectID, p.InstanceZoneID, slot, p.InstanceRegionID))
 	if err != nil {
 		if helpers.IsNICIndexCollision(err) {
 			return nil, helpers.ErrNICIndexTaken
@@ -443,13 +451,14 @@ func (w *networkInterfaceWriter) firstFreeSlot(ctx context.Context, instanceID s
 }
 
 // disambiguateAttach — разбор 0-row исхода attach-CAS в той же TX: читает NIC+subnet
-// и определяет причину. Порядок: not-found → in-use → project-mismatch → zone-mismatch.
+// и определяет причину. Порядок: not-found → in-use → project-mismatch →
+// zone-mismatch (ZONAL) → region-unverifiable/region-mismatch (REGIONAL/anycast).
 func (w *networkInterfaceWriter) disambiguateAttach(ctx context.Context, p kacho.AttachNICParams) error {
-	var usedByID, projectID, placement, zoneID string
+	var usedByID, projectID, placement, zoneID, regionID string
 	err := w.tx.QueryRow(ctx,
-		`SELECT ni.used_by_id, ni.project_id, s.placement_type, s.zone_id
+		`SELECT ni.used_by_id, ni.project_id, s.placement_type, s.zone_id, s.region_id
 		   FROM network_interfaces ni JOIN subnets s ON s.id = ni.subnet_id
-		  WHERE ni.id = $1`, p.NICID).Scan(&usedByID, &projectID, &placement, &zoneID)
+		  WHERE ni.id = $1`, p.NICID).Scan(&usedByID, &projectID, &placement, &zoneID, &regionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Network interface %s not found", helpers.ErrNotFound, p.NICID)
@@ -464,6 +473,12 @@ func (w *networkInterfaceWriter) disambiguateAttach(ctx context.Context, p kacho
 		return fmt.Errorf("%w: network interface project mismatch", helpers.ErrFailedPrecondition)
 	case placement == string(domain.PlacementZonal) && zoneID != p.InstanceZoneID:
 		return &helpers.NICZoneMismatchError{SubnetZone: zoneID, InstanceZone: p.InstanceZoneID}
+	case placement == string(domain.PlacementRegional) && p.InstanceRegionID == "":
+		// Регион зоны инстанса не разрешён (geo недоступен) — coherence
+		// anycast-подсети неверифицируема → fail-closed, а не «пропускаем».
+		return helpers.ErrNICRegionUnverifiable
+	case placement == string(domain.PlacementRegional) && regionID != p.InstanceRegionID:
+		return helpers.ErrNICRegionMismatch
 	default:
 		return fmt.Errorf("%w: network interface attach precondition", helpers.ErrFailedPrecondition)
 	}

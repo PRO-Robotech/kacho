@@ -81,6 +81,36 @@ func (c *GeoClient) GetZone(ctx context.Context, zoneID string) error {
 	})
 }
 
+// RegionOfZone возвращает region_id зоны через geo.v1.ZoneService.Get
+// (`Zone.region_id`). Регион НИКОГДА не выводится из имени зоны — имена региона и
+// зоны произвольны, единственный авторитет — владелец Geography (kacho-geo).
+// Ошибки — как у GetZone: NOT_FOUND → ports.ErrNotFound; недоступность geo →
+// проброс gRPC Unavailable (fail-closed на мутации). Пустой ответ трактуется как
+// неразрешимый (не «регион не важен»). Per-call deadline на каждой попытке.
+func (c *GeoClient) RegionOfZone(ctx context.Context, zoneID string) (string, error) {
+	var region string
+	err := retry.OnUnavailable(ctx, func(ctx context.Context) error {
+		callCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+		resp, rerr := c.zones.Get(auth.PropagateOutgoing(callCtx), &geov1.GetZoneRequest{ZoneId: zoneID})
+		if rerr != nil {
+			if st, ok := status.FromError(rerr); ok && st.Code() == codes.NotFound {
+				return ports.ErrNotFound
+			}
+			return rerr
+		}
+		region = resp.GetRegionId()
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if region == "" {
+		return "", status.Error(codes.Unavailable, "zone region unresolved")
+	}
+	return region, nil
+}
+
 // NoopGeoClient — заглушка для KACHO_COMPUTE_SKIP_PEER_VALIDATION=true (zone
 // existence-check отключён → любая зона «существует») и для unit/newman без
 // поднятого kacho-geo. GetZone всегда успешен (любая зона существует).
@@ -89,6 +119,12 @@ type NoopGeoClient struct{}
 // GetZone всегда возвращает nil без обращения к geo.
 func (NoopGeoClient) GetZone(_ context.Context, _ string) error {
 	return nil
+}
+
+// RegionOfZone без geo резолвить нечего: регион зоны из её имени НЕ выводится,
+// поэтому заглушка отвечает fail-closed Unavailable (а не «подходит любой»).
+func (NoopGeoClient) RegionOfZone(_ context.Context, _ string) (string, error) {
+	return "", status.Error(codes.Unavailable, "geo zone→region validation disabled")
 }
 
 // ensure compile-time: both impls satisfy the use-case port.

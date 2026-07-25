@@ -40,13 +40,21 @@ const (
 
 func newInstanceSvc(t *testing.T, folderOK bool) instSvcKit {
 	t.Helper()
+	return newInstanceSvcWithSubnets(t, folderOK, portmock.NewSubnetRegistry())
+}
+
+// newInstanceSvcWithSubnets — тот же харнесс с явным реестром подсетей: зона
+// подсети NIC-спеки теперь сверяется с зоной инстанса, поэтому фикстура ОБЯЗАНА
+// её называть (регион/зона ниоткуда не выводятся).
+func newInstanceSvcWithSubnets(t *testing.T, folderOK bool, subnets *portmock.SubnetRegistry) instSvcKit {
+	t.Helper()
 	instanceRepo := portmock.NewInstanceRepo()
 	mtRepo := portmock.NewMachineTypeRepo()
 	seedTestMachineTypes(mtRepo)
 	storage := portmock.NewStorageClient()
 	nic := portmock.NewNicClient()
 	ops := portmock.NewOpsRepo()
-	svc := NewInstanceService(instanceRepo, mtRepo, portmock.NewZoneRegistry(),
+	svc := NewInstanceService(instanceRepo, mtRepo, portmock.NewZoneRegistry(), subnets,
 		&portmock.ProjectClient{OK: folderOK}, nic, storage, ops)
 	return instSvcKit{svc: svc, repo: instanceRepo, machineType: mtRepo, storage: storage, nic: nic, ops: ops}
 }
@@ -526,7 +534,7 @@ func TestInstance_COMP_1_33_ZoneReject(t *testing.T) {
 	seedTestMachineTypes(mtRepo)
 	ops := portmock.NewOpsRepo()
 	zoneSrc := portmock.NewZoneRegistry("ru-central1-a")
-	svc := NewInstanceService(instanceRepo, mtRepo, zoneSrc, &portmock.ProjectClient{OK: true},
+	svc := NewInstanceService(instanceRepo, mtRepo, zoneSrc, portmock.NewSubnetRegistry(), &portmock.ProjectClient{OK: true},
 		portmock.NewNicClient(), portmock.NewStorageClient(), ops)
 
 	op, err := svc.Create(context.Background(), baseCreateReq())

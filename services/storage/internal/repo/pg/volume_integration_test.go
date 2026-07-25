@@ -32,6 +32,13 @@ import (
 // disk_type_id RESTRICT требует существующий тип).
 const seededDiskType = "block-balanced"
 
+// imageRegionFixture — регион, который фикстуры образов объявляют явно
+// (mkImageFromSnapshot(..., "ru-central1", ...)). Он же передаётся в
+// VolumeRepo.Insert как регион ЗОНЫ тома: зона фикстур называется "region-1-a" и
+// с этим регионом никак не связана по имени — регион приходит от владельца
+// Geography, а не выводится из строки зоны.
+const imageRegionFixture = "ru-central1"
+
 // newTestPool поднимает контейнер Postgres 16, прогоняет миграции kacho-storage
 // (включая seed disk_types) и возвращает pgxpool с search_path=kacho_storage.
 // Пропускается под -short. Каждый тест заводит данные сам.
@@ -81,7 +88,7 @@ func mkVolume(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) 
 		ZoneID:     "region-1-a",
 		DiskTypeID: seededDiskType,
 		SizeBytes:  size,
-	})
+	}, "")
 	require.NoError(t, err)
 	return v
 }
@@ -149,7 +156,7 @@ func TestVolumeNameUniqueRace(t *testing.T) {
 			_, err := r.Insert(context.Background(), &domain.Volume{
 				ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "dup-name",
 				ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
-			})
+			}, "")
 			switch {
 			case err == nil:
 				ok.Add(1)
@@ -250,7 +257,7 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 	_, err := r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-badtype",
 		ZoneID: "region-1-a", DiskTypeID: "dtp-nonexistent", SizeBytes: 1 << 30,
-	})
+	}, "")
 	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "DiskType dtp-nonexistent not found", err.Error()[len("failed precondition: "):])
 
@@ -258,7 +265,7 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-badsnap",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceSnapshot: "snp00000000000000000",
-	})
+	}, "")
 	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Snapshot snp00000000000000000 not found", err.Error()[len("failed precondition: "):])
 
@@ -269,7 +276,7 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 	fromSnap, err := r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-fromsnap",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30, SourceSnapshot: snapID,
-	})
+	}, "")
 	require.NoError(t, err)
 	require.Equal(t, snapID, fromSnap.SourceSnapshot)
 }

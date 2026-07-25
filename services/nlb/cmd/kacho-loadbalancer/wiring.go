@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/jobs"
+	geoclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/fgaboot"
@@ -125,6 +126,7 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	lbHandler := lbhandler.NewHandler(
 		w.repo, w.opsRepo,
 		w.peers.Project, w.peers.Check, w.peers.Region, w.peers.Zone,
+		lbZoneRegion(w.peers.ZoneRegion),
 		w.peers.Subnet, w.peers.Address, w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
@@ -149,6 +151,7 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 		w.repo, w.opsRepo,
 		w.peers.Project, w.peers.Check, w.peers.Region,
 		w.peers.Instance, w.peers.NetworkInterface, w.peers.Subnet,
+		tgZoneRegion(w.peers.ZoneRegion),
 		w.peers.ListFilter,
 		w.logger,
 	).WithRegistrar(syncRegistrar)
@@ -166,6 +169,25 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	// Инфра-чувствительные данные (BGP/route/VRF/kernel/infra-id) не выходят на external.
 	announceHandler := announceapi.NewHandler(kachopg.NewAnnounceStore(w.pool), w.logger)
 	lbv1.RegisterInternalLoadBalancerAnnounceServiceServer(internalSrv, announceHandler)
+}
+
+// tgZoneRegion — typed-nil guard: `*geoclient.ZoneRegionClient(nil)` в
+// interface-поле было бы non-nil интерфейсом и обошло бы fail-closed-ветку
+// use-case'а. Возвращает истинный nil, когда geo не сконфигурирован.
+func tgZoneRegion(c *geoclient.ZoneRegionClient) targetgroup.ZoneRegionClient {
+	if c == nil {
+		return nil
+	}
+	return c
+}
+
+// lbZoneRegion — тот же typed-nil guard, что tgZoneRegion, для Create-use-case
+// NetworkLoadBalancer.
+func lbZoneRegion(c *geoclient.ZoneRegionClient) lbhandler.ZoneRegionClient {
+	if c == nil {
+		return nil
+	}
+	return c
 }
 
 // backgroundDeps — зависимости сборки supervised background-loop'ов.

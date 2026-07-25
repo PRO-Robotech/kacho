@@ -39,6 +39,22 @@ func TestMapAttachErr_ContractTexts(t *testing.T) {
 		assert.Equal(t, "NetworkInterface subnet is in zone zone-2, instance zone is zone-1", st.Message())
 	})
 
+	t.Run("region-mismatch → FailedPrecondition, без раскрытия чужого региона", func(t *testing.T) {
+		err := s.mapAttachErr(repo.ErrNICRegionMismatch, nicID)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.FailedPrecondition, st.Code())
+		assert.Equal(t, "NetworkInterface subnet must be in the same region as the instance", st.Message())
+	})
+
+	t.Run("region-unverifiable → Unavailable (fail-closed)", func(t *testing.T) {
+		err := s.mapAttachErr(repo.ErrNICRegionUnverifiable, nicID)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.Unavailable, st.Code())
+		assert.Equal(t, "zone region lookup unavailable", st.Message())
+	})
+
 	t.Run("not-found → NotFound Network interface <id> not found", func(t *testing.T) {
 		err := s.mapAttachErr(fmt.Errorf("%w: Network interface %s not found", repo.ErrNotFound, nicID), nicID)
 		st, ok := status.FromError(err)

@@ -64,8 +64,17 @@ def _instance_body(name_suffix, project_var, mt="{{mtId}}"):
     #   instanceKind=VM · machineTypeId (single sizing channel) · bootSource{type,id} ·
     #   vmSpec (kind-matching spec-arm). Legacy platformId/resourcesSpec/bootDiskSpec are
     #   RESERVED in CreateInstanceRequest (ban #2) → the old body 400'd 'instanceKind is
-    #   required'. NIC via networkInterfaceSpecs (existence-validate → COMP-2);
-    #   sshPublicKeys lifts the F5 unreachable-guard (VM reachable).
+    #   required'. sshPublicKeys lifts the F5 unreachable-guard (VM reachable).
+    #
+    #   Net-spec arm: useDefaultNetwork, NOT networkInterfaceSpecs. These cases are
+    #   about List authz filtering; networking is incidental. The body used to point
+    #   networkInterfaceSpecs at {{existingSubnetId}} — the compute-SUITE subnet, which
+    #   lives in another project than {{projectA1Id}} the instance is created in. Such
+    #   an interface can never be attached (the vpc attach-CAS requires the NIC and the
+    #   instance to share a project), and now that the subnet of a declared interface is
+    #   peer-validated on the request path, the incoherent reference is refused outright
+    #   ("Subnet <id> not found", hide-existence). useDefaultNetwork satisfies the same
+    #   runbook guard without naming a foreign resource.
     return {
         "projectId": f"{{{{{project_var}}}}}",
         "name": f"lf-inst-{name_suffix}-{{{{runId}}}}",
@@ -75,7 +84,7 @@ def _instance_body(name_suffix, project_var, mt="{{mtId}}"):
         "bootSource": {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"},
         "vmSpec": {"userData": "#cloud-config\n{}",
                    "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
-        "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}", "securityGroupIds": ["{{existingSgId}}"]}],
+        "useDefaultNetwork": True,
         "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey lf@team"],
     }
 

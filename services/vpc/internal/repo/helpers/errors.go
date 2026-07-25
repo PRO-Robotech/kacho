@@ -82,6 +82,17 @@ var ErrNICIndexTaken = errors.New("network interface slot index taken")
 // лежит в зоне, отличной от зоны инстанса (placement-coherence). Несёт обе зоны
 // для точного contract-текста "NetworkInterface subnet is in zone %s, instance
 // zone is %s". REGIONAL(anycast)-subnet зоны не несёт → из этой проверки исключён.
+// ErrNICRegionMismatch — REGIONAL (anycast) подсеть NIC'а принадлежит другому
+// региону, чем зона инстанса. Зоны у anycast-подсети нет by construction, поэтому
+// зональная полоса для неё исключена, а региональная — обязана сойтись. Текст
+// намеренно без значений: какой регион у чужого ресурса — наружу не сообщается.
+var ErrNICRegionMismatch = errors.New("network interface subnet region differs from instance region")
+
+// ErrNICRegionUnverifiable — регион зоны инстанса не разрешён владельцем
+// Geography (geo недоступен), поэтому coherence anycast-подсети неверифицируема.
+// Мутация с непроверяемым предусловием — fail-closed.
+var ErrNICRegionUnverifiable = errors.New("network interface subnet region unverifiable")
+
 type NICZoneMismatchError struct {
 	SubnetZone   string
 	InstanceZone string

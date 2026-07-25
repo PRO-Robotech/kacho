@@ -174,14 +174,14 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		bootVol, err := vr.Insert(ctx, &domain.Volume{
 			ID: ids.NewID(domain.PrefixVolume), ProjectID: projAttacker, Name: "own-boot",
 			ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 4 << 30, SourceImage: ownImgFromSnap.ID,
-		})
+		}, imageRegionFixture)
 		require.NoError(t, err)
 		require.Equal(t, ownImgFromSnap.ID, bootVol.SourceImage)
 
 		fromSnap, err := vr.Insert(ctx, &domain.Volume{
 			ID: ids.NewID(domain.PrefixVolume), ProjectID: projAttacker, Name: "own-from-snap",
 			ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 4 << 30, SourceSnapshot: ownSnap.ID,
-		})
+		}, "")
 		require.NoError(t, err)
 		require.Equal(t, ownSnap.ID, fromSnap.SourceSnapshot)
 	})
@@ -203,6 +203,6 @@ func insertVolume(ctx context.Context, r *pg.VolumeRepo, id, project, name strin
 		ID: id, ProjectID: project, Name: name, ZoneID: "region-1-a",
 		DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceSnapshot: src.SourceSnapshot, SourceImage: src.SourceImage,
-	})
+	}, imageRegionFixture)
 	return err
 }

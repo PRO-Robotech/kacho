@@ -198,7 +198,13 @@ func TestNICAttach_InUse_Concurrent(t *testing.T) {
 }
 
 // TestNICAttach_ZoneCoherence [S4-03/A13] — ZONAL чужой зоны → zone-mismatch;
-// REGIONAL(anycast) → OK (zone-check пропущен); ZONAL своей зоны → OK.
+// REGIONAL(anycast) СВОЕГО региона → OK (зональная проверка исключена by
+// construction — зоны нет); ZONAL своей зоны → OK.
+//
+// Anycast-кейс раньше проходил БЕЗ указания региона инстанса: REGIONAL-ветка CAS
+// была безусловным пропуском, поэтому подсеть любого региона была attach'абельна
+// (см. TestNICAttach_RegionCoherence_*). Теперь anycast-полоса сверяет регион, и
+// фикстура ОБЯЗАНА его называть — регион ниоткуда не выводится.
 func TestNICAttach_ZoneCoherence(t *testing.T) {
 	e := newNICAttachEnv(t)
 	projectID := "prj-zone"
@@ -218,9 +224,9 @@ func TestNICAttach_ZoneCoherence(t *testing.T) {
 	assert.Equal(t, "zone-2", zerr.SubnetZone)
 	assert.Equal(t, "zone-1", zerr.InstanceZone)
 
-	// REGIONAL(anycast) → OK (zone-check пропущен).
-	_, err = e.attach(kacho.AttachNICParams{NICID: nicReg, InstanceID: "epdinstr000000002", InstanceName: "vm", InstanceZoneID: instanceZone, ProjectID: projectID, Index: kacho.AutoIndex})
-	require.NoError(t, err, "REGIONAL/anycast subnet — zone-check пропущен")
+	// REGIONAL(anycast) своего региона → OK (зональная проверка исключена).
+	_, err = e.attach(kacho.AttachNICParams{NICID: nicReg, InstanceID: "epdinstr000000002", InstanceName: "vm", InstanceZoneID: instanceZone, InstanceRegionID: "region-1", ProjectID: projectID, Index: kacho.AutoIndex})
+	require.NoError(t, err, "REGIONAL/anycast subnet своего региона — zone-check исключён")
 
 	// ZONAL своей зоны (zone-1 == instance zone-1) → OK.
 	_, err = e.attach(kacho.AttachNICParams{NICID: nicZ1, InstanceID: "epdinstz100000003", InstanceName: "vm", InstanceZoneID: instanceZone, ProjectID: projectID, Index: kacho.AutoIndex})

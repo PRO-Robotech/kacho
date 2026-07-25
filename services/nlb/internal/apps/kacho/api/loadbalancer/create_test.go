@@ -30,12 +30,13 @@ const (
 
 // createDeps — инъекция peer-двойников (nil → sensible default).
 type createDeps struct {
-	subnet SubnetClient
-	reader AddressClient
-	addr   InternalAddressClient
-	zone   ZoneClient
-	region RegionClient
-	sg     SecurityGroupClient // NLB-1b MIGRATE: vpc SecurityGroup peer-validate
+	subnet     SubnetClient
+	reader     AddressClient
+	addr       InternalAddressClient
+	zone       ZoneClient
+	zoneRegion ZoneRegionClient
+	region     RegionClient
+	sg         SecurityGroupClient // NLB-1b MIGRATE: vpc SecurityGroup peer-validate
 	// logger — nil → slog.Default(). Injected by the tests that assert the
 	// use-case LOGS what its anti-oracle client answer deliberately drops.
 	logger *slog.Logger
@@ -54,6 +55,9 @@ func newCreateUC(repo *fakeRepo, opsRepo *fakeOpsRepo, d createDeps) *CreateLoad
 	if d.zone == nil {
 		d.zone = &fakeZoneClient{}
 	}
+	if d.zoneRegion == nil {
+		d.zoneRegion = &fakeZoneRegionClient{}
+	}
 	if d.region == nil {
 		d.region = &fakeRegionClient{}
 	}
@@ -61,7 +65,7 @@ func newCreateUC(repo *fakeRepo, opsRepo *fakeOpsRepo, d createDeps) *CreateLoad
 		d.logger = slog.Default()
 	}
 	return NewCreateLoadBalancerUseCase(repo, opsRepo,
-		&fakeProjectClient{}, d.region, d.zone, d.subnet, d.reader, d.addr, d.logger).
+		&fakeProjectClient{}, d.region, d.zone, d.zoneRegion, d.subnet, d.reader, d.addr, d.logger).
 		WithSecurityGroupClient(d.sg)
 }
 
@@ -343,7 +347,10 @@ func TestCreate_Dualstack_DifferentNetworks(t *testing.T) {
 		if id == "sub-net2" {
 			net = "net-2"
 		}
-		return &vpcclient.Subnet{ID: id, ProjectID: "prj-a", NetworkID: net, PlacementType: vpcclient.SubnetPlacementRegional}, nil
+		return &vpcclient.Subnet{
+			ID: id, ProjectID: "prj-a", NetworkID: net,
+			PlacementType: vpcclient.SubnetPlacementRegional, RegionID: "region-1",
+		}, nil
 	}}
 	rd := &fakeAddressReader{family: vpcclient.AddressFamilyIPv6, subnetID: "sub-net2"}
 	uc := newCreateUC(repo, opsRepo, createDeps{subnet: sn, reader: rd})

@@ -41,8 +41,14 @@ type (
 
 	// ProjectClient — port для проверки существования Folder.
 	ProjectClient = ports.ProjectClient
-	// ZoneRegistry — port existence-check zone_id (Disk/Instance Create, Disk Relocate).
+	// ZoneRegistry — port existence-check zone_id (Disk/Instance Create, Disk Relocate)
+	// + авторитетный zone→region резолв (placement-coherence с anycast-подсетью).
 	ZoneRegistry = ports.ZoneRegistry
+	// SubnetRegistry — peer-валидация подсети NIC-спеки через kacho-vpc
+	// (placement-coherence зоны инстанса и его интерфейсов).
+	SubnetRegistry = ports.SubnetRegistry
+	// SubnetPlacement — placement-проекция vpc.Subnet (ZONAL zone / REGIONAL region).
+	SubnetPlacement = ports.SubnetPlacement
 
 	// NicClient — port для compute→kacho-vpc InternalNetworkInterfaceService
 	// (NIC↔Instance attach/detach + batched mirror-read).

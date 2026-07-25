@@ -393,6 +393,7 @@ func TestInstanceHandler_List_CLL05(t *testing.T) {
 		portmock.NewInstanceRepo(),
 		portmock.NewMachineTypeRepo(),
 		zoneRegistry,
+		portmock.NewSubnetRegistry(),
 		&portmock.ProjectClient{OK: true},
 		portmock.NewNicClient(),
 		portmock.NewStorageClient(),
@@ -443,7 +444,7 @@ func TestListHandlers_SendViewerResolvingAction(t *testing.T) {
 		cli := &mockAuthCli{allowedByKey: map[string][]string{}}
 		ops := portmock.NewOpsRepo()
 		svc := service.NewInstanceService(
-			portmock.NewInstanceRepo(), portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
+			portmock.NewInstanceRepo(), portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(), portmock.NewSubnetRegistry(),
 			&portmock.ProjectClient{OK: true}, portmock.NewNicClient(), portmock.NewStorageClient(), ops,
 		)
 		h := NewInstanceHandler(svc, newFilter(t, cli))

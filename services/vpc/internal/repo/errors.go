@@ -55,6 +55,16 @@ var ErrNICInUse = helpers.ErrNICInUse
 // ni_used_by_index_uniq). auto-index → service retry с пересчётом слота.
 var ErrNICIndexTaken = helpers.ErrNICIndexTaken
 
+// ErrNICRegionMismatch — NIC-attach: REGIONAL (anycast) subnet NIC в регионе,
+// отличном от региона зоны инстанса. Маппится в FailedPrecondition
+// "NetworkInterface subnet must be in the same region as the instance".
+var ErrNICRegionMismatch = helpers.ErrNICRegionMismatch
+
+// ErrNICRegionUnverifiable — NIC-attach: регион зоны инстанса не разрешён
+// владельцем Geography → coherence anycast-подсети неверифицируема (fail-closed,
+// Unavailable).
+var ErrNICRegionUnverifiable = helpers.ErrNICRegionUnverifiable
+
 // NICZoneMismatchError — NIC-attach: ZONAL-subnet NIC в зоне, отличной от зоны
 // инстанса (placement-coherence). Несёт обе зоны для точного contract-текста
 // "NetworkInterface subnet is in zone %s, instance zone is %s".

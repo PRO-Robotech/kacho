@@ -30,12 +30,21 @@ type NetworkInterfaceRecord struct {
 // Index — слот в инстансе: >=0 → явный слот; <0 → авто-назначение первого свободного
 // (repo вычисляет в той же TX; concurrency держит partial UNIQUE + retry в service).
 type AttachNICParams struct {
-	NICID          string
-	InstanceID     string
-	InstanceName   string
+	NICID        string
+	InstanceID   string
+	InstanceName string
+	// InstanceZoneID — зона инстанса. Зональная полоса coherence: ZONAL-подсеть
+	// NIC'а обязана быть в ЭТОЙ зоне.
 	InstanceZoneID string
-	ProjectID      string
-	Index          int32
+	// InstanceRegionID — регион ЗОНЫ инстанса, разрешённый владельцем Geography
+	// (geo.v1.ZoneService.Get). Региональная полоса coherence: REGIONAL (anycast)
+	// подсеть зоны не несёт, поэтому сверяется её region_id. Из имени зоны регион
+	// НЕ выводится, поэтому он приходит сюда явно; пусто = резолв не удался
+	// (geo недоступен) → REGIONAL-полоса не матчится и attach fail-closed, а
+	// ZONAL-полоса продолжает работать (радиус отказа не расширяется).
+	InstanceRegionID string
+	ProjectID        string
+	Index            int32
 }
 
 // AutoIndex — сентинел «слот не задан» для AttachNICParams.Index (авто-назначение).

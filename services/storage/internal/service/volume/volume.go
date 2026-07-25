@@ -66,7 +66,10 @@ type Reader interface {
 // Update — атомарный размер-CAS increase-only + mutable COALESCE (data-integrity.md),
 // НЕ software TOCTOU.
 type Writer interface {
-	Insert(ctx context.Context, v *domain.Volume) (*domain.Volume, error)
+	// Insert — zoneRegionID: регион ЗОНЫ тома, разрешённый владельцем Geography.
+	// Участвует в атомарной image-полосе CAS (ZONAL-том обязан лежать в регионе
+	// REGIONAL-образа). Пусто → образ-полоса не матчится (fail-closed).
+	Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, error)
 	Update(ctx context.Context, id string, u VolumeUpdate) (*domain.Volume, error)
 	Delete(ctx context.Context, id string) error
 	Attach(ctx context.Context, a *domain.VolumeAttachment) error
@@ -77,6 +80,11 @@ type Writer interface {
 // fail-closed). Ребро storage→geo (one-way).
 type GeoClient interface {
 	EnsureZoneExists(ctx context.Context, zoneID string) error
+	// RegionOfZone возвращает region_id зоны (geo.v1.ZoneService.Get →
+	// `Zone.region_id`). Регион НИКОГДА не выводится из имени зоны — имена
+	// региона и зоны произвольны, единственный авторитет — владелец Geography.
+	// Нужен для placement-coherence ZONAL-тома с REGIONAL (anycast) образом.
+	RegionOfZone(ctx context.Context, zoneID string) (string, error)
 }
 
 // IAMClient — порт peer-валидации project_id через kacho-iam (ProjectService.Get,
@@ -206,7 +214,9 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Volume, str
 // Create создаёт Volume (async Operation). Малформ/невалидный вход отвергается
 // СИНХРОННО (InvalidArgument: size/name), cross-domain ссылки (zone→geo,
 // project→iam) валидируются на request-path fail-closed (peer Unavailable →
-// UNAVAILABLE). Валидный вход → LRO-строка + worker (writer.Insert; state→READY
+// UNAVAILABLE). Для boot-тома дополнительно резолвится РЕГИОН зоны (geo) —
+// placement-coherence с REGIONAL (anycast) образом энфорсится атомарно внутри
+// insert-CAS (зона тома ∈ регион образа; migration 0007). Валидный вход → LRO-строка + worker (writer.Insert; state→READY
 // сразу; disk_type FK → Operation error). Источник тома (source_snapshot_id /
 // source_image_id) резолвится repo СТРОГО в проекте тома (project-coherent CAS):
 // чужой приватный снапшот/образ неотличим от несуществующего — Operation error
@@ -229,6 +239,18 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	if err := u.iam.EnsureProjectExists(ctx, v.ProjectID); err != nil {
 		return nil, u.errStatus(err)
 	}
+	// Регион ЗОНЫ тома — у владельца Geography (из имени зоны он не выводится).
+	// Нужен, только когда том засевается образом: Image REGIONAL (anycast),
+	// Volume ZONAL, и зона обязана лежать в регионе образа. Резолвится на
+	// request-path, fail-closed; энфорсится атомарно внутри insert-CAS.
+	zoneRegionID := ""
+	if v.SourceImage != "" {
+		region, rerr := u.geo.RegionOfZone(ctx, v.ZoneID)
+		if rerr != nil {
+			return nil, u.errStatus(rerr)
+		}
+		zoneRegionID = region
+	}
 	v.ID = ids.NewID(domain.PrefixVolume)
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Create volume %s", v.ID),
@@ -242,7 +264,7 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	}
 	created := *v
 	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
-		res, derr := u.writer.Insert(ctx, &created)
+		res, derr := u.writer.Insert(ctx, &created, zoneRegionID)
 		if derr != nil {
 			return nil, u.errStatus(derr)
 		}

@@ -703,6 +703,12 @@ var _ ports.MachineTypeRepo = (*MachineTypeRepo)(nil)
 type ZoneRegistry struct {
 	mu   sync.Mutex
 	data map[string]struct{} // set of known zoneIDs (existence-check)
+	// Regions — явное zone→region соответствие (регион из имени НЕ выводится).
+	Regions map[string]string
+	// DefaultRegion — регион зон, не перечисленных в Regions ("" → "ru-central1").
+	DefaultRegion string
+	// Err — принудительная ошибка zone→region резолва (недоступность geo).
+	Err error
 }
 
 // NewZoneRegistry создаёт ZoneRegistry с seed-зонами (ru-central1-{a,b,d} по умолчанию).
@@ -726,6 +732,86 @@ func (r *ZoneRegistry) GetZone(_ context.Context, zoneID string) error {
 		return ports.ErrNotFound
 	}
 	return nil
+}
+
+// RegionOfZone — реализация ports.ZoneRegistry: авторитетный регион зоны.
+// Регион из имени зоны НЕ выводится, поэтому фейк задаёт соответствие явно —
+// Regions[zone], иначе DefaultRegion ("ru-central1"). Err имитирует недоступность
+// geo (fail-closed). Неизвестная зона → ErrNotFound, как у GetZone.
+func (r *ZoneRegistry) RegionOfZone(_ context.Context, zoneID string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.Err != nil {
+		return "", r.Err
+	}
+	if _, ok := r.data[zoneID]; !ok {
+		return "", ports.ErrNotFound
+	}
+	if region, ok := r.Regions[zoneID]; ok {
+		return region, nil
+	}
+	if r.DefaultRegion != "" {
+		return r.DefaultRegion, nil
+	}
+	return "ru-central1", nil
+}
+
+// ---- SubnetRegistry ----
+
+// SubnetPlacement — алиас на placement-проекцию подсети (удобство фикстур).
+type SubnetPlacement = ports.SubnetPlacement
+
+// SubnetRegistry — in-memory ports.SubnetRegistry. В проде реализуется
+// clients.VPCSubnetClient (vpc.v1.SubnetService.Get) — подсеть принадлежит
+// kacho-vpc. Незасеянный id → ErrNotFound (hide-existence); Err имитирует
+// недоступность vpc (fail-closed).
+type SubnetRegistry struct {
+	mu   sync.Mutex
+	data map[string]ports.SubnetPlacement
+	// Err — принудительная ошибка резолва (недоступность peer'а).
+	Err error
+}
+
+// NewSubnetRegistry создаёт SubnetRegistry. Без аргументов засевает подсети,
+// которыми пользуются общие Create-фикстуры (их placement обязан быть ЯВНЫМ —
+// зона подсети теперь сверяется с зоной инстанса): sub-abc/sub-a/e9bsub в
+// ru-central1-a, sub-b в ru-central1-b.
+func NewSubnetRegistry(placements ...ports.SubnetPlacement) *SubnetRegistry {
+	r := &SubnetRegistry{data: make(map[string]ports.SubnetPlacement)}
+	if len(placements) == 0 {
+		placements = []ports.SubnetPlacement{
+			{ID: "sub-abc", ProjectID: "prj-acme", PlacementType: ports.SubnetPlacementZonal, ZoneID: "ru-central1-a"},
+			{ID: "sub-a", ProjectID: "prj-acme", PlacementType: ports.SubnetPlacementZonal, ZoneID: "ru-central1-a"},
+			{ID: "e9bsub", ProjectID: "prj-acme", PlacementType: ports.SubnetPlacementZonal, ZoneID: "ru-central1-a"},
+			{ID: "sub-b", ProjectID: "prj-acme", PlacementType: ports.SubnetPlacementZonal, ZoneID: "ru-central1-b"},
+		}
+	}
+	for _, p := range placements {
+		r.data[p.ID] = p
+	}
+	return r
+}
+
+// Seed добавляет/переопределяет placement подсети.
+func (r *SubnetRegistry) Seed(p ports.SubnetPlacement) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.data[p.ID] = p
+}
+
+// GetSubnet — реализация ports.SubnetRegistry.
+func (r *SubnetRegistry) GetSubnet(_ context.Context, subnetID string) (*ports.SubnetPlacement, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.Err != nil {
+		return nil, r.Err
+	}
+	p, ok := r.data[subnetID]
+	if !ok {
+		return nil, ports.ErrNotFound
+	}
+	out := p
+	return &out, nil
 }
 
 // ---- ProjectClient ----

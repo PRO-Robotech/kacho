@@ -168,7 +168,7 @@ func TestVolumeInsert_FailedFK_NoFGAIntent(t *testing.T) {
 		ZoneID:     "region-1-a",
 		DiskTypeID: "block-unicorn", // нет в каталоге → FK RESTRICT 23503 → rollback
 		SizeBytes:  10 << 30,
-	})
+	}, "")
 	require.Error(t, err)
 
 	require.Empty(t, selectFGARows(t, pool), "откат TX не оставляет orphan register-intent")

@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -15,6 +16,65 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
+
+// A boot volume resolves the region of its zone from the owner of Geography, and
+// a mutation whose precondition cannot be established fails closed rather than
+// proceeding with an unknown region.
+func TestCreateBootVolume_ZoneRegionUnavailable_FailsClosed(t *testing.T) {
+	geo := &portmock.PeerClient{
+		EnsureZoneFunc: func(context.Context, string) error { return nil },
+		RegionOfZoneFunc: func(context.Context, string) (string, error) {
+			return "", status.Error(codes.Unavailable, "geo zone validation unavailable")
+		},
+	}
+	uc := volume.New(
+		&portmock.VolumeReader{},
+		&portmock.VolumeWriter{InsertFunc: func(_ context.Context, v *domain.Volume) (*domain.Volume, error) {
+			t.Fatal("writer must not be reached when the zone region is unresolved")
+			return nil, nil
+		}},
+		geo,
+		&portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
+		portmock.NewOpsRepo(),
+		serviceerr.ToStatus,
+	)
+
+	_, err := uc.Create(context.Background(), &domain.Volume{
+		ProjectID: "prj-1", Name: "boot-geo-down", ZoneID: "region-1-a",
+		DiskTypeID: "block-balanced", SizeBytes: 1 << 30, SourceImage: "img00000000000000000",
+	})
+	require.Error(t, err)
+	require.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+// A source-less volume needs no region at all — geo is never asked for one.
+func TestCreatePlainVolume_DoesNotResolveZoneRegion(t *testing.T) {
+	asked := false
+	geo := &portmock.PeerClient{
+		EnsureZoneFunc: func(context.Context, string) error { return nil },
+		RegionOfZoneFunc: func(context.Context, string) (string, error) {
+			asked = true
+			return "region-1", nil
+		},
+	}
+	uc := volume.New(
+		&portmock.VolumeReader{},
+		&portmock.VolumeWriter{InsertFunc: func(_ context.Context, v *domain.Volume) (*domain.Volume, error) {
+			return v, nil
+		}},
+		geo,
+		&portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
+		portmock.NewOpsRepo(),
+		serviceerr.ToStatus,
+	)
+
+	_, err := uc.Create(context.Background(), &domain.Volume{
+		ProjectID: "prj-1", Name: "plain-vol", ZoneID: "region-1-a",
+		DiskTypeID: "block-balanced", SizeBytes: 1 << 30,
+	})
+	require.NoError(t, err)
+	require.False(t, asked, "no image source → no region to compare, geo must not be asked")
+}
 
 // TestCreateSourceMutualExclusion — STOR-1-19 (NET-NEW): Volume нельзя засеять
 // одновременно из snapshot и image → sync InvalidArgument (domain mutual-exclusion,

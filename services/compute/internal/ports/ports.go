@@ -316,4 +316,41 @@ type StorageClient interface {
 // иная ошибка (peer недоступен) пробрасывается для fail-closed на мутации.
 type ZoneRegistry interface {
 	GetZone(ctx context.Context, zoneID string) error
+	// RegionOfZone возвращает region_id, которому принадлежит зона
+	// (geo.v1.ZoneService.Get → `Zone.region_id`). Регион НИКОГДА не выводится из
+	// имени зоны — имена региона и зоны произвольны, выводимой связи между ними
+	// нет; единственный авторитет — владелец Geography. Нужен для
+	// placement-coherence с REGIONAL (anycast) peer-ресурсом, у которого зоны нет.
+	// Ошибка (зона неизвестна / geo недоступен) → fail-closed на мутации.
+	RegionOfZone(ctx context.Context, zoneID string) (string, error)
+}
+
+// SubnetPlacement — placement-проекция vpc.Subnet, ограниченная тем, что нужно
+// consumer'у для placement-coherence (data-integrity.md, placement-coherence).
+// Дискриминатор — PlacementType: ZONAL несёт ZoneID (RegionID пуст), REGIONAL
+// (anycast) несёт RegionID (ZoneID пуст, зоны нет by construction).
+type SubnetPlacement struct {
+	ID            string
+	ProjectID     string
+	PlacementType string // "ZONAL" | "REGIONAL"
+	ZoneID        string
+	RegionID      string
+}
+
+// Значения SubnetPlacement.PlacementType (parity с vpc.SubnetPlacementType).
+const (
+	SubnetPlacementZonal    = "ZONAL"
+	SubnetPlacementRegional = "REGIONAL"
+)
+
+// SubnetRegistry — port peer-валидации подсети NIC-спеки через kacho-vpc
+// (vpc.v1.SubnetService.Get) на request-path Instance.Create: машина создаётся в
+// своей зоне, и её интерфейсы обязаны быть в той же зоне; REGIONAL (anycast)
+// подсеть из зональной проверки исключена by construction (зоны нет — сравнивать
+// не с чем), для неё остаётся региональная когерентность.
+//
+// Семантика ошибок: подсети нет / нет доступа → ErrNotFound (hide-existence,
+// анти-BOLA); peer недоступен → gRPC Unavailable (fail-closed на мутации).
+type SubnetRegistry interface {
+	GetSubnet(ctx context.Context, subnetID string) (*SubnetPlacement, error)
 }

@@ -105,7 +105,7 @@ func runServe(cfg config.Config) error {
 
 	opsRepo := operations.NewRepo(pool, "public")
 
-	projectClient, geoZones, nicClient, storageClient, closers, err := dialPeers(cfg, logger)
+	projectClient, geoZones, subnetPlacement, nicClient, storageClient, closers, err := dialPeers(cfg, logger)
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func runServe(cfg config.Config) error {
 		}
 	}()
 
-	svcs := buildServices(pool, projectClient, geoZones, nicClient, storageClient, opsRepo)
+	svcs := buildServices(pool, projectClient, geoZones, subnetPlacement, nicClient, storageClient, opsRepo)
 
 	// Fail-closed boot-gate: when KACHO_COMPUTE_REQUIRE_IAM=true, mutating Create is
 	// refused and readiness is NotReady until the register-drainer is IAM-connected.
@@ -615,8 +615,8 @@ func insecureListenersInProduction(cfg config.Config) error {
 //
 //   - оба server-listener'а (PublicServerMTLS / InternalServerMTLS) — принимают
 //     forwarded principal, всегда обязательны;
-//   - project/geo peer-рёбра (IAMProjectMTLS / GeoMTLS) — дозваниваются на
-//     request-path каждой мутации, кроме SkipPeerValidation;
+//   - project/geo/vpc-subnet peer-рёбра (IAMProjectMTLS / GeoMTLS / VPCMTLS) —
+//     дозваниваются на request-path каждой мутации, кроме SkipPeerValidation;
 //   - authz Check-ребро (IAMAuthzMTLS) — per-RPC FGA-gate, активно кроме breakglass;
 //   - register-drainer ребро (IAMRegisterMTLS) — реплеит FGA-registration в iam,
 //     активно при FGARegisterDrainerEnabled.
@@ -634,6 +634,11 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 		}
 		if !cfg.GeoMTLS.Enable {
 			insecure = append(insecure, "GEO_MTLS_ENABLE")
+		}
+		// vpc SubnetService.Get — placement-валидация NIC-спеки на Instance.Create;
+		// несёт forwarded principal, значит plaintext на нём компрометирует subject.
+		if cfg.VPCGRPCAddr != "" && !cfg.VPCMTLS.Enable {
+			insecure = append(insecure, "VPC_MTLS_ENABLE")
 		}
 	}
 	if !cfg.AuthZBreakglass && !cfg.IAMAuthzMTLS.Enable {
@@ -657,10 +662,10 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 // zone_id-валидация Instance идёт через geo.v1.ZoneService.Get (clients.GeoClient);
 // Geography (Region/Zone) принадлежит kacho-geo — compute их больше не обслуживает,
 // а лишь валидирует свой zone_id как consumer.
-func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, service.ZoneRegistry, service.NicClient, service.StorageClient, []*grpc.ClientConn, error) {
+func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, service.ZoneRegistry, service.SubnetRegistry, service.NicClient, service.StorageClient, []*grpc.ClientConn, error) {
 	if cfg.SkipPeerValidation {
 		logger.Warn("KACHO_COMPUTE_SKIP_PEER_VALIDATION=true — cross-service existence-check disabled (dev/test only)")
-		return clients.NoopProjectClient{}, clients.NoopGeoClient{}, clients.NoopNicClient{}, clients.NoopStorageClient{}, nil, nil
+		return clients.NoopProjectClient{}, clients.NoopGeoClient{}, clients.NoopSubnetClient{}, clients.NoopNicClient{}, clients.NoopStorageClient{}, nil, nil
 	}
 	// iam (public ProjectService.Get) — активно используется на request-path каждой
 	// мутации → idle=false (трафик есть, idle-пинги не нужны; keepalive всё равно
@@ -673,11 +678,11 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 	// required client-cert).
 	iamCreds, err := grpcclient.TLSClientTransportCreds(cfg.IAMProjectMTLS)
 	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("compute→iam ProjectService.Get mTLS creds: %w", err)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("compute→iam ProjectService.Get mTLS creds: %w", err)
 	}
 	iamConn, err := dialPeerCreds(cfg.IAMGRPCAddr, iamCreds, false)
 	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("dial iam: %w", err)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("dial iam: %w", err)
 	}
 	// compute→geo zone_id-валидация Instance (geo.v1.ZoneService.Get,
 	// public :9090). Per-edge client-cert mTLS через cfg.GeoMTLS (enable=false →
@@ -686,12 +691,12 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 	geoCreds, err := grpcclient.TLSClientTransportCreds(cfg.GeoMTLS)
 	if err != nil {
 		_ = iamConn.Close()
-		return nil, nil, nil, nil, nil, fmt.Errorf("compute→geo ZoneService.Get mTLS creds: %w", err)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("compute→geo ZoneService.Get mTLS creds: %w", err)
 	}
 	geoConn, err := dialPeerCreds(cfg.GeoGRPCAddr, geoCreds, false)
 	if err != nil {
 		_ = iamConn.Close()
-		return nil, nil, nil, nil, nil, fmt.Errorf("dial geo: %w", err)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("dial geo: %w", err)
 	}
 	logger.Info("compute→geo resource-validation mTLS state",
 		"geo_zone_validate_mtls", cfg.GeoMTLS.Enable,
@@ -711,20 +716,50 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 			for _, c := range conns {
 				_ = c.Close()
 			}
-			return nil, nil, nil, nil, nil, fmt.Errorf("compute→vpc InternalNetworkInterfaceService mTLS creds: %w", cerr)
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("compute→vpc InternalNetworkInterfaceService mTLS creds: %w", cerr)
 		}
 		vpcConn, cerr := dialPeerCreds(cfg.VPCInternalGRPCAddr, vpcCreds, false)
 		if cerr != nil {
 			for _, c := range conns {
 				_ = c.Close()
 			}
-			return nil, nil, nil, nil, nil, fmt.Errorf("dial vpc: %w", cerr)
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("dial vpc: %w", cerr)
 		}
 		conns = append(conns, vpcConn)
 		nicClient = clients.NewVPCNicClient(vpcConn)
 		logger.Info("compute→vpc NIC-attach mTLS state", "vpc_nic_attach_mtls", cfg.VPCNicMTLS.Enable)
 	} else {
 		logger.Warn("KACHO_COMPUTE_VPC_INTERNAL_GRPC_ADDR empty — NIC-attach edge disabled (NoopNicClient)")
+	}
+
+	// compute→vpc SubnetService.Get (публичный :9090) — peer-валидация placement'а
+	// подсети NIC-спеки на Instance.Create: машина создаётся в своей зоне, и её
+	// интерфейсы обязаны быть в той же зоне (REGIONAL/anycast подсеть исключена из
+	// зональной проверки by construction). Читается под идентичностью вызывающего
+	// (auth.PropagateOutgoing) — недоступная тенанту подсеть неотличима от
+	// несуществующей. Пустой addr → ребро не сконфигурировано: nil-клиент, и
+	// Create с NIC-спеками fail-closed Unavailable (coherence неверифицируема).
+	var subnetClient service.SubnetRegistry
+	if cfg.VPCGRPCAddr != "" {
+		subnetCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.VPCMTLS)
+		if cerr != nil {
+			for _, c := range conns {
+				_ = c.Close()
+			}
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("compute→vpc SubnetService.Get mTLS creds: %w", cerr)
+		}
+		subnetConn, cerr := dialPeerCreds(cfg.VPCGRPCAddr, subnetCreds, false)
+		if cerr != nil {
+			for _, c := range conns {
+				_ = c.Close()
+			}
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("dial vpc public: %w", cerr)
+		}
+		conns = append(conns, subnetConn)
+		subnetClient = clients.NewVPCSubnetClient(subnetConn)
+		logger.Info("compute→vpc subnet placement mTLS state", "vpc_subnet_mtls", cfg.VPCMTLS.Enable)
+	} else {
+		logger.Warn("KACHO_COMPUTE_VPC_GRPC_ADDR empty — NIC-spec placement coherence unverifiable (Create fails closed)")
 	}
 
 	// compute→storage InternalVolumeService (volume-attach saga, :9091 internal).
@@ -739,14 +774,14 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 			for _, c := range conns {
 				_ = c.Close()
 			}
-			return nil, nil, nil, nil, nil, fmt.Errorf("compute→storage InternalVolumeService mTLS creds: %w", cerr)
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("compute→storage InternalVolumeService mTLS creds: %w", cerr)
 		}
 		storageConn, cerr := dialPeerCreds(cfg.StorageInternalGRPCAddr, storageCreds, false)
 		if cerr != nil {
 			for _, c := range conns {
 				_ = c.Close()
 			}
-			return nil, nil, nil, nil, nil, fmt.Errorf("dial storage: %w", cerr)
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("dial storage: %w", cerr)
 		}
 		conns = append(conns, storageConn)
 		storageClient = clients.NewStorageClient(storageConn)
@@ -755,7 +790,7 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 		logger.Warn("KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR empty — volume-attach edge disabled (NoopStorageClient)")
 	}
 
-	return clients.NewProjectClient(iamConn), clients.NewGeoClient(geoConn), nicClient, storageClient, conns, nil
+	return clients.NewProjectClient(iamConn), clients.NewGeoClient(geoConn), subnetClient, nicClient, storageClient, conns, nil
 }
 
 // peerKeepalive — keepalive-параметры для peer-conn. idle=true для
@@ -797,7 +832,7 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // saga). Wired here at the composition root; the Instance use-case consumes it in a
 // follow-up cutover slice (attach-state moves from the local attached_disks table to
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
-func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZones service.ZoneRegistry, nicClient service.NicClient, storageClient service.StorageClient, opsRepo operations.Repo) *services {
+func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZones service.ZoneRegistry, subnets service.SubnetRegistry, nicClient service.NicClient, storageClient service.StorageClient, opsRepo operations.Repo) *services {
 	diskRepo := repo.NewDiskRepo(pool)
 	imageRepo := repo.NewImageRepo(pool)
 	snapshotRepo := repo.NewSnapshotRepo(pool)
@@ -812,7 +847,7 @@ func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZ
 		snapshot:    service.NewSnapshotService(snapshotRepo, diskRepo, projectClient, opsRepo),
 		diskType:    diskTypeSvc,
 		machineType: service.NewMachineTypeService(machineTypeRepo, opsRepo),
-		instance:    service.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, projectClient, nicClient, storageClient, opsRepo),
+		instance:    service.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
 	}
 }
 

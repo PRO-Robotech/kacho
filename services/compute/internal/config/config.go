@@ -62,6 +62,14 @@ type Config struct {
 	// зеркало опускается).
 	VPCInternalGRPCAddr string `envconfig:"KACHO_COMPUTE_VPC_INTERNAL_GRPC_ADDR" default:"kacho-vpc.kacho.svc.cluster.local:9091"`
 
+	// VPCGRPCAddr — адрес kacho-vpc PUBLIC listener (:9090) для
+	// vpc.v1.SubnetService.Get: placement-валидация подсети NIC-спеки на
+	// Instance.Create (зона инстанса == зона подсети; REGIONAL/anycast — только
+	// региональная когерентность). Читается под идентичностью вызывающего.
+	// Пустое значение → ребро не сконфигурировано: Create с NIC-спеками
+	// fail-closed Unavailable (coherence неверифицируема).
+	VPCGRPCAddr string `envconfig:"KACHO_COMPUTE_VPC_GRPC_ADDR" default:"kacho-vpc.kacho.svc.cluster.local:9090"`
+
 	// StorageInternalGRPCAddr — адрес kacho-storage internal listener (:9091) для
 	// InternalVolumeService.Attach/Detach/ListAttachments (volume↔Instance attach-saga).
 	// Internal-only (не external endpoint). Пустое значение → storage-ребро не
@@ -206,6 +214,15 @@ type Config struct {
 	// enable=true без валидного cert-trio → startup error (fail-closed) — паритет с
 	// Geo/IAM*MTLS.
 	VPCNicMTLS grpcclient.TLSClient `envconfig:"VPC_NIC_MTLS"`
+
+	// VPCMTLS — client-creds для ребра compute→vpc SubnetService.Get (:9090
+	// public, placement-валидация подсети NIC-спеки). Имя envconfig-группы
+	// (`KACHO_COMPUTE_VPC_MTLS_*`) уже рендерится чартом под блоком
+	// `mtls.edges.vpc` («compute→vpc NIC-spec validation») — до появления самого
+	// ребра эта группа была объявлена в чарте, но не читалась ни одним полем
+	// конфига. Enable=false (default) → insecure (dev backward-compat);
+	// enable=true без валидного cert-trio → startup error (fail-closed).
+	VPCMTLS grpcclient.TLSClient `envconfig:"VPC_MTLS"`
 
 	// StorageMTLS — client-creds для ребра compute→storage InternalVolumeService
 	// (:9091 internal). Enable=false (default) → insecure (dev backward-compat);

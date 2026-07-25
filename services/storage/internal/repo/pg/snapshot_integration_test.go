@@ -169,7 +169,7 @@ func TestSnapshotDeleteFKSetNull(t *testing.T) {
 	fromSnap, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-2",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 3 << 30, SourceSnapshot: snap.ID,
-	})
+	}, "")
 	require.NoError(t, err)
 	require.Equal(t, snap.ID, fromSnap.SourceSnapshot)
 

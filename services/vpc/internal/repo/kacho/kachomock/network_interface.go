@@ -293,9 +293,10 @@ func (nw *networkInterfaceWriter) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// AttachToInstance — in-memory CAS (used_by_id=” OR =$instance). Zone-coherence и
-// slot-index не моделируются (нужны subnets/UNIQUE-индекс — только в pg); проверяются
-// integration-тестами. Здесь — used_by CAS + idempotent replay + in-use sentinel.
+// AttachToInstance — in-memory CAS (used_by_id=” OR =$instance). Placement-coherence
+// (зональная И региональная полосы) и slot-index не моделируются (нужны subnets/
+// UNIQUE-индекс — только в pg); проверяются integration-тестами. Здесь — used_by CAS
+// + idempotent replay + in-use sentinel.
 func (nw *networkInterfaceWriter) AttachToInstance(_ context.Context, p kacho.AttachNICParams) (*kacho.NetworkInterfaceRecord, error) {
 	if _, deleted := nw.w.deletedNIIDs[p.NICID]; deleted {
 		return nil, repo.ErrNotFound

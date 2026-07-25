@@ -24,6 +24,7 @@ import (
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 )
 
@@ -126,8 +127,12 @@ type InstanceService struct {
 	// machineTypes — sync-каталог sizing (COMP-1 F2/F7). Резолвит machineTypeId
 	// (mt-slug ИЛИ стабильное имя) в effectiveResources + family + status.
 	machineTypes MachineTypeRepo
-	// zones — existence-check zone_id (авторитет — kacho-geo).
-	zones         ZoneRegistry
+	// zones — existence-check zone_id + авторитетный zone→region (авторитет — kacho-geo).
+	zones ZoneRegistry
+	// subnets — peer-валидация подсети NIC-спеки (авторитет — kacho-vpc):
+	// placement-coherence зоны инстанса и его интерфейсов на request-path.
+	// nil → coherence неверифицируема → Create fail-closed Unavailable.
+	subnets       SubnetRegistry
 	projectClient ProjectClient
 	// nicClient — compute→kacho-vpc InternalNetworkInterfaceService. Может быть nil.
 	nicClient NicClient
@@ -143,9 +148,9 @@ type InstanceService struct {
 }
 
 // NewInstanceService создаёт InstanceService.
-func NewInstanceService(repo InstanceRepo, machineTypes MachineTypeRepo, zones ZoneRegistry, projectClient ProjectClient, nicClient NicClient, storageClient StorageClient, opsRepo operations.Repo) *InstanceService {
+func NewInstanceService(repo InstanceRepo, machineTypes MachineTypeRepo, zones ZoneRegistry, subnets SubnetRegistry, projectClient ProjectClient, nicClient NicClient, storageClient StorageClient, opsRepo operations.Repo) *InstanceService {
 	return &InstanceService{
-		repo: repo, machineTypes: machineTypes, zones: zones, projectClient: projectClient,
+		repo: repo, machineTypes: machineTypes, zones: zones, subnets: subnets, projectClient: projectClient,
 		nicClient: nicClient, storageClient: storageClient, opsRepo: opsRepo,
 	}
 }
@@ -302,6 +307,12 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	}
 	if err := s.zones.GetZone(ctx, req.ZoneID); err != nil {
 		return nil, mapZoneRefErr(err, req.ZoneID)
+	}
+	// Машина создаётся в своей зоне — её интерфейсы обязаны быть в той же зоне.
+	// Проверяется ЗДЕСЬ, на пути создания (до Insert), а не откладывается до
+	// launch-саги: иначе инстанс с интерфейсом в чужой зоне становится durable.
+	if err := s.checkNicSpecPlacement(ctx, req); err != nil {
+		return nil, err
 	}
 	// F2/F7 — резолв machineTypeId (mt-slug ИЛИ стабильное имя) в каталоге → canonical
 	// mt-slug + effectiveResources; RETIRED/unknown → FailedPrecondition.
@@ -967,4 +978,71 @@ func instanceStatusName(s domain.InstanceStatus) string {
 		return v
 	}
 	return "STATUS_UNSPECIFIED"
+}
+
+// checkNicSpecPlacement — placement-coherence зоны инстанса и подсетей его
+// сетевых интерфейсов (data-integrity.md, placement-coherence). Подсеть — чужой
+// ресурс (владелец kacho-vpc), поэтому это peer-validate на request-path, а не
+// локальная догадка:
+//
+//   - ZONAL-подсеть   → её zone_id обязан совпадать с zone_id инстанса;
+//   - REGIONAL (anycast) подсеть → зоны у неё НЕТ by construction, зональная
+//     проверка исключена; остаётся региональная: region_id подсети обязан
+//     совпадать с регионом ЗОНЫ инстанса. Регион зоны берётся у владельца
+//     Geography (geo), из имени зоны он не выводится;
+//   - подсеть не резолвится (нет / нет доступа) → FAILED_PRECONDITION с тем же
+//     hide-existence текстом, что и настоящий miss (анти-BOLA);
+//   - vpc/geo недоступны → UNAVAILABLE (fail-closed на мутации).
+func (s *InstanceService) checkNicSpecPlacement(ctx context.Context, req CreateInstanceReq) error {
+	if len(req.NetworkInterfaceSpecs) == 0 {
+		return nil
+	}
+	if s.subnets == nil {
+		return status.Error(codes.Unavailable, "subnet lookup unavailable")
+	}
+	// Регион зоны инстанса резолвится лениво — он нужен только anycast-подсети.
+	instRegion := ""
+	for i := range req.NetworkInterfaceSpecs {
+		subnetID := req.NetworkInterfaceSpecs[i].SubnetID
+		sn, err := s.subnets.GetSubnet(ctx, subnetID)
+		if err != nil {
+			// Задокументированное dev-послабление KACHO_COMPUTE_SKIP_PEER_VALIDATION
+			// (тот же класс, что NoopGeoClient «любая зона существует»); на
+			// развёрнутом стенде флаг выключен и маркер не возникает.
+			if errors.Is(err, ports.ErrPeerValidationSkipped) {
+				return nil
+			}
+			return mapSubnetRefErr(err, subnetID)
+		}
+		if sn.PlacementType == ports.SubnetPlacementRegional {
+			if instRegion == "" {
+				r, rerr := s.zones.RegionOfZone(ctx, req.ZoneID)
+				if rerr != nil {
+					return status.Error(codes.Unavailable, "zone region lookup unavailable")
+				}
+				instRegion = r
+			}
+			if sn.RegionID != instRegion {
+				return status.Error(codes.FailedPrecondition,
+					"NetworkInterface subnet must be in the same region as the instance")
+			}
+			continue
+		}
+		if sn.ZoneID != req.ZoneID {
+			return status.Errorf(codes.FailedPrecondition,
+				"NetworkInterface subnet is in zone %s, instance zone is %s", sn.ZoneID, req.ZoneID)
+		}
+	}
+	return nil
+}
+
+// mapSubnetRefErr — peer-ошибка резолва подсети NIC-спеки → gRPC-status.
+// Не найдено / нет доступа → FAILED_PRECONDITION тем же текстом, что настоящий
+// miss (hide-existence, анти-BOLA); недоступность vpc → UNAVAILABLE (fail-closed
+// на мутации), непрозрачным текстом — детали peer'а наружу не идут.
+func mapSubnetRefErr(err error, subnetID string) error {
+	if errors.Is(err, ports.ErrNotFound) {
+		return status.Errorf(codes.FailedPrecondition, "Subnet %s not found", subnetID)
+	}
+	return status.Error(codes.Unavailable, "subnet lookup unavailable")
 }

@@ -34,9 +34,18 @@ import (
 // хвостом — защита от патологической гонки, а не нормальный путь.
 const attachMaxRetries = 64
 
+// ZoneRegistry — узкий port резолва зоны в её регион у владельца Geography
+// (kacho-geo, `geo.v1.ZoneService.Get` → `Zone.region_id`). Регион НИКОГДА не
+// выводится из имени зоны — имена региона и зоны произвольны. Impl —
+// `*clients.GeoZoneClient` (per-call deadline, positive-TTL кэш).
+type ZoneRegistry = repo.ZoneRegistry
+
 // Service — координатор NIC↔Instance attach поверх CQRS-Repository.
 type Service struct {
 	repo kachorepo.Repository
+	// zones — резолв зоны инстанса в регион для региональной полосы
+	// placement-coherence (anycast-подсеть). nil → полоса fail-closed.
+	zones ZoneRegistry
 }
 
 // NewService создаёт Service.
@@ -44,11 +53,39 @@ func NewService(r kachorepo.Repository) *Service {
 	return &Service{repo: r}
 }
 
+// WithZoneRegistry подключает резолвер зоны инстанса в её регион (владелец
+// Geography — kacho-geo). Нужен для региональной полосы placement-coherence:
+// REGIONAL (anycast) подсеть зоны не несёт, поэтому её region_id сверяется с
+// регионом ЗОНЫ инстанса. Регион из имени зоны НЕ выводится — только резолв у
+// владельца. nil / ошибка резолва → регион не передаётся в CAS, и attach в
+// anycast-подсеть fail-closed; зональная полоса при этом продолжает работать.
+// Вызывается один раз из composition-root до приёма трафика.
+func (s *Service) WithZoneRegistry(z ZoneRegistry) *Service {
+	s.zones = z
+	return s
+}
+
+// resolveInstanceRegion — регион зоны инстанса через владельца Geography.
+// Ошибка/отсутствие резолвера → "" (CAS не сматчит anycast-полосу → fail-closed
+// с ErrNICRegionUnverifiable), ZONAL-полоса не затрагивается.
+func (s *Service) resolveInstanceRegion(ctx context.Context, zoneID string) string {
+	if s.zones == nil || zoneID == "" {
+		return ""
+	}
+	z, err := s.zones.Get(ctx, zoneID)
+	if err != nil || z == nil {
+		return ""
+	}
+	return z.RegionID
+}
+
 // Attach — атомарный CAS NIC↔Instance (§3a). p.Index >=0 → явный слот; <0
 // (kachorepo.AutoIndex) → первый свободный, с retry на slot-collision. Возвращает
 // обновлённую NIC-запись либо gRPC-status с contract-текстом:
 //   - "NetworkInterface is in use"                               (NIC занят другим инстансом)
 //   - "NetworkInterface subnet is in zone %s, instance zone is %s" (ZONAL zone mismatch)
+//   - "NetworkInterface subnet must be in the same region as the instance" (REGIONAL/anycast)
+//   - "zone region lookup unavailable"                            (регион зоны не разрешён)
 //   - "Network interface %s not found"                           (NIC отсутствует)
 //   - leak-safe "attach network interface failed" fallback       (незамапленная DB-ошибка)
 func (s *Service) Attach(ctx context.Context, p kachorepo.AttachNICParams) (*kachorepo.NetworkInterfaceRecord, error) {
@@ -77,6 +114,9 @@ func (s *Service) Attach(ctx context.Context, p kachorepo.AttachNICParams) (*kac
 // attachOnce — одна попытка attach-CAS в свежей writer-TX (commit при успехе, abort
 // при ошибке). Ошибку не транслирует — это делает Attach (для retry-классификации).
 func (s *Service) attachOnce(ctx context.Context, p kachorepo.AttachNICParams) (*kachorepo.NetworkInterfaceRecord, error) {
+	if p.InstanceRegionID == "" {
+		p.InstanceRegionID = s.resolveInstanceRegion(ctx, p.InstanceZoneID)
+	}
 	w, err := s.repo.Writer(ctx)
 	if err != nil {
 		return nil, err
@@ -101,6 +141,11 @@ func (s *Service) mapAttachErr(err error, nicID string) error {
 	case errors.As(err, &zoneErr):
 		return status.Errorf(codes.FailedPrecondition,
 			"NetworkInterface subnet is in zone %s, instance zone is %s", zoneErr.SubnetZone, zoneErr.InstanceZone)
+	case errors.Is(err, repo.ErrNICRegionMismatch):
+		return status.Error(codes.FailedPrecondition,
+			"NetworkInterface subnet must be in the same region as the instance")
+	case errors.Is(err, repo.ErrNICRegionUnverifiable):
+		return status.Error(codes.Unavailable, "zone region lookup unavailable")
 	case errors.Is(err, repo.ErrNotFound):
 		return status.Errorf(codes.NotFound, "Network interface %s not found", nicID)
 	default:

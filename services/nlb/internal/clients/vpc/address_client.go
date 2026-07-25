@@ -51,7 +51,12 @@ type Address struct {
 	// SubnetID — подсеть internal-адреса (пусто для external). Нужна consumer'у
 	// для placement-guard link'а (подсеть адреса == placement LB).
 	SubnetID string
-	UsedBy   *AddressOwner // nil если адрес свободен (Used=false)
+	// ZoneID — зона EXTERNAL-адреса (`external_ipv4/ipv6.zone_id`). Пусто =
+	// anycast (zone-independent by construction — сравнивать не с чем; см.
+	// data-integrity.md §Placement-coherence «Anycast/regional исключение»).
+	// Для internal-адреса зона наследуется через SubnetID и здесь не дублируется.
+	ZoneID string
+	UsedBy *AddressOwner // nil если адрес свободен (Used=false)
 }
 
 // AddressOwner — текущий referrer Address-ресурса.
@@ -150,6 +155,7 @@ func (c *addressClient) Get(ctx context.Context, addressID string) (*Address, er
 		addr.Value = resp.GetExternalIpv4Address().GetAddress()
 		addr.Family = AddressFamilyIPv4
 		addr.External = true
+		addr.ZoneID = resp.GetExternalIpv4Address().GetZoneId()
 	case resp.GetInternalIpv4Address() != nil:
 		addr.Value = resp.GetInternalIpv4Address().GetAddress()
 		addr.Family = AddressFamilyIPv4
@@ -164,6 +170,7 @@ func (c *addressClient) Get(ctx context.Context, addressID string) (*Address, er
 		addr.Value = resp.GetExternalIpv6Address().GetAddress()
 		addr.Family = AddressFamilyIPv6
 		addr.External = true
+		addr.ZoneID = resp.GetExternalIpv6Address().GetZoneId()
 	}
 
 	if resp.GetUsed() {

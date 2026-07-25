@@ -75,19 +75,3 @@ func TestPeerErrToStatus(t *testing.T) {
 		})
 	}
 }
-
-func TestRegionFromZone(t *testing.T) {
-	cases := []struct {
-		zone, region string
-	}{
-		{"alpha1-a", "alpha1"}, // <region>-<suffix> → <region>
-		{"beta2-xyz", "beta2"}, // 3-char suffix parseable
-		{"", ""},               // empty → cannot derive
-		{"flat", ""},           // no dash → cannot derive (deferred to geo)
-		{"gamma-wxyz", ""},     // suffix >3 → cannot derive
-		{"delta-", ""},         // trailing dash → cannot derive
-	}
-	for _, c := range cases {
-		assert.Equalf(t, c.region, regionFromZone(c.zone), "zone=%q", c.zone)
-	}
-}

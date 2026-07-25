@@ -185,6 +185,13 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // образом/снапшотом и вычитать чужие данные (cross-project disclosure/BOLA). Предикат
 // вычисляется в ТОМ ЖЕ стейтменте, что вставка → TOCTOU-окна нет. Источник не задан
 // (”→NULL) → предикат тривиально истинен (прежнее поведение source-less тома).
+//
+// Для source_image добавлена ВТОРАЯ полоса — placement-coherence: Image
+// REGIONAL (anycast), Volume ZONAL, поэтому зона тома обязана принадлежать
+// РЕГИОНУ образа (migration 0007 и storage/v1/image.proto заявляют ровно это).
+// Регион зоны разрешает владелец Geography и передаёт сюда параметром $12 —
+// из имени зоны он не выводится. Пустой $12 = регион не разрешён → образ-полоса
+// не матчится (fail-closed); source-less вставка им не затронута.
 const volumeInsertCoherentSQL = `
 	INSERT INTO volumes
 		(id, project_id, name, description, labels, zone_id, disk_type_id,
@@ -192,7 +199,10 @@ const volumeInsertCoherentSQL = `
 	SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
 	       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
 	 WHERE ($10::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$10 AND s.project_id=$2))
-	   AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM images   i WHERE i.id=$11 AND i.project_id=$2))
+	   AND ($11::text IS NULL OR EXISTS (
+	            SELECT 1 FROM images i
+	             WHERE i.id=$11 AND i.project_id=$2
+	               AND $12::text <> '' AND i.region_id = $12::text))
 	RETURNING created_at, updated_at`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), storage_outbox CREATED
@@ -201,7 +211,9 @@ const volumeInsertCoherentSQL = `
 // volumeInsertCoherentSQL) — иначе 0 rows → hide-existence "<Resource> <id> not found"
 // (byte-identical настоящему miss'у, security.md §6). disk_type_id RESTRICT /
 // source FK / partial UNIQUE(name) → контрактные sentinel'ы через mapVolumeErr.
-func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume) (*domain.Volume, error) {
+// zoneRegionID — регион ЗОНЫ тома, разрешённый владельцем Geography (use-case);
+// участвует в image-полосе CAS (Volume ZONAL ∈ регион REGIONAL-образа).
+func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, error) {
 	blockSize := v.BlockSize
 	if blockSize == 0 {
 		blockSize = defaultBlockSize
@@ -225,7 +237,7 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume) (*domain.Volu
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
-			v.SizeBytes, blockSize, srcSnap, srcImg).
+			v.SizeBytes, blockSize, srcSnap, srcImg, zoneRegionID).
 			Scan(&created.CreatedAt, &created.UpdatedAt)
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {

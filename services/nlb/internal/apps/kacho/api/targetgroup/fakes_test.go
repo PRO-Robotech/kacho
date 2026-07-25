@@ -761,8 +761,37 @@ func (f *fakeSubnetClient) Get(ctx context.Context, id string) (*vpc.Subnet, err
 	if f.getFunc != nil {
 		return f.getFunc(ctx, id)
 	}
-	return &vpc.Subnet{ID: id, ZoneID: "ru-central1-a", V4CIDRBlocks: []string{"10.0.0.0/24"}}, nil
+	return &vpc.Subnet{
+		ID: id, PlacementType: "ZONAL", ZoneID: "ru-central1-a", RegionID: "ru-central1",
+		V4CIDRBlocks: []string{"10.0.0.0/24"},
+	}, nil
 }
+
+// fakeZoneRegionClient — авторитетный zone→region резолвер (владелец Geography).
+// Регион НИКОГДА не выводится из имени зоны, поэтому фейк резолвит его явно:
+// `regions` задаёт точечные соответствия, `def` (или "ru-central1" — регион
+// makeTG) — остальные, `err` — недоступность geo (fail-closed).
+type fakeZoneRegionClient struct {
+	regions map[string]string
+	def     string
+	err     error
+}
+
+func (f *fakeZoneRegionClient) RegionOfZone(_ context.Context, zoneID string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	if r, ok := f.regions[zoneID]; ok {
+		return r, nil
+	}
+	if f.def != "" {
+		return f.def, nil
+	}
+	return "ru-central1", nil
+}
+
+// errZoneRegionUnavailable — geo недоступен: zone→region неустановим.
+var errZoneRegionUnavailable = fmt.Errorf("%w: geo zone lookup failed", domain.ErrUnavailable)
 
 // fakeFGARegisterOutbox records FGARegisterOutbox.Emit into the writer's
 // pending buffer (flushed to fakeRepo.fga on Commit, dropped on Abort).
@@ -786,6 +815,7 @@ var (
 	_ InstanceClient         = (*fakeInstanceClient)(nil)
 	_ NetworkInterfaceClient = (*fakeNICClient)(nil)
 	_ SubnetClient           = (*fakeSubnetClient)(nil)
+	_ ZoneRegionClient       = (*fakeZoneRegionClient)(nil)
 )
 
 // ---- Shared test helpers ----

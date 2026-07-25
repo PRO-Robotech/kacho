@@ -39,6 +39,7 @@ type CreateLoadBalancerUseCase struct {
 	regionClient  RegionClient
 	zoneClient    ZoneClient
 	subnetClient  SubnetClient
+	zoneRegion    ZoneRegionClient      // авторитетный zone→region (geo)
 	addressReader AddressClient         // public AddressService.Get — link-resolution
 	addressClient InternalAddressClient // VIP alloc/link/release
 	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource)
@@ -55,7 +56,7 @@ type CreateLoadBalancerUseCase struct {
 // NewCreateLoadBalancerUseCase конструктор.
 func NewCreateLoadBalancerUseCase(
 	repo Repo, opsRepo operations.Repo,
-	pc ProjectClient, rc RegionClient, zc ZoneClient,
+	pc ProjectClient, rc RegionClient, zc ZoneClient, zrc ZoneRegionClient,
 	snc SubnetClient, ar AddressClient, ac InternalAddressClient,
 	logger *slog.Logger,
 ) *CreateLoadBalancerUseCase {
@@ -64,7 +65,7 @@ func NewCreateLoadBalancerUseCase(
 	}
 	return &CreateLoadBalancerUseCase{
 		repo: repo, opsRepo: opsRepo,
-		projectClient: pc, regionClient: rc, zoneClient: zc,
+		projectClient: pc, regionClient: rc, zoneClient: zc, zoneRegion: zrc,
 		subnetClient: snc, addressReader: ar, addressClient: ac,
 		logger: logger,
 	}
@@ -331,31 +332,70 @@ func (u *CreateLoadBalancerUseCase) resolveLinkedAddress(ctx context.Context, lb
 		addr.External == internalWanted {
 		return status.Error(codes.InvalidArgument, "Illegal argument addressId")
 	}
+	// EXTERNAL: у внешнего адреса нет подсети — его placement несёт он сам
+	// (`external_ipv*.zone_id`). LB типа EXTERNAL всегда REGIONAL, поэтому
+	// проверяется региональная когерентность (зона адреса ∈ регион LB), а
+	// anycast-адрес (зоны нет) из зональной проверки исключён by construction.
+	if !internalWanted {
+		return u.externalAddressRegionCoherent(ctx, lb, addr)
+	}
 	// INTERNAL: placement подсети адреса == placement LB (derived network).
-	if internalWanted {
-		if u.subnetClient == nil {
-			return nil
+	if u.subnetClient == nil {
+		return nil
+	}
+	sn, err := u.subnetClient.Get(ctx, addr.SubnetID)
+	if err != nil {
+		// подсеть адреса не резолвится — не подтверждаем детали (generic),
+		// vpc недоступен → Unavailable (fail-closed).
+		if errors.Is(err, domain.ErrUnavailable) {
+			return status.Error(codes.Unavailable, "subnet lookup unavailable")
 		}
-		sn, err := u.subnetClient.Get(ctx, addr.SubnetID)
+		return status.Error(codes.InvalidArgument, "Illegal argument addressId")
+	}
+	if !subnetPlacementMatches(sn.PlacementType, lb.PlacementType) {
+		return status.Error(codes.InvalidArgument, "Illegal argument addressId")
+	}
+	// region-coherence: linked address_id → generic текст (анти-oracle, не
+	// подтверждаем placement чужого адреса), в отличие от descriptive-текста
+	// caller-supplied subnet_id (resolveOneSource).
+	if err := subnetRegionCoherentOpaque(sn, lb.RegionID); err != nil {
+		return err
+	}
+	fs.networkID = sn.NetworkID
+	fs.zoneID = sn.ZoneID
+	return nil
+}
+
+// externalAddressRegionCoherent — region-coherence зоно-привязанного EXTERNAL
+// адреса: его зона обязана принадлежать региону LB. Регион зоны берётся ТОЛЬКО у
+// владельца Geography (geo.v1.ZoneService.Get) — из имени зоны он не выводится.
+//
+//   - `zone_id` пуст → anycast: адрес зоне-независим by construction, зональной
+//     координаты нет, сравнивать не с чем (data-integrity.md §Placement-coherence,
+//     «Anycast/regional исключение») → coherent;
+//   - резолв невозможен (нет резолвера / geo недоступен / пустой ответ) →
+//     UNAVAILABLE (fail-closed на мутации);
+//   - чужой регион → generic "Illegal argument addressId" (анти-oracle: не
+//     раскрываем, в какой зоне/регионе лежит адрес).
+func (u *CreateLoadBalancerUseCase) externalAddressRegionCoherent(
+	ctx context.Context, lb domain.LoadBalancer, addr *vpcclient.Address,
+) error {
+	if addr.ZoneID == "" {
+		return nil
+	}
+	if u.zoneRegion == nil {
+		return status.Error(codes.Unavailable, "address region lookup unavailable")
+	}
+	region, err := u.zoneRegion.RegionOfZone(ctx, addr.ZoneID)
+	if err != nil || region == "" {
 		if err != nil {
-			// подсеть адреса не резолвится — не подтверждаем детали (generic),
-			// vpc недоступен → Unavailable (fail-closed).
-			if errors.Is(err, domain.ErrUnavailable) {
-				return status.Error(codes.Unavailable, "subnet lookup unavailable")
-			}
-			return status.Error(codes.InvalidArgument, "Illegal argument addressId")
+			u.logger.Warn("LoadBalancer.Create: zone→region resolve failed for linked external address",
+				"err", err, "address_id", addr.ID)
 		}
-		if !subnetPlacementMatches(sn.PlacementType, lb.PlacementType) {
-			return status.Error(codes.InvalidArgument, "Illegal argument addressId")
-		}
-		// region-coherence: linked address_id → generic текст (анти-oracle, не
-		// подтверждаем placement чужого адреса), в отличие от descriptive-текста
-		// caller-supplied subnet_id (resolveOneSource).
-		if !subnetRegionMatches(sn, lb.RegionID) {
-			return status.Error(codes.InvalidArgument, "Illegal argument addressId")
-		}
-		fs.networkID = sn.NetworkID
-		fs.zoneID = sn.ZoneID
+		return status.Error(codes.Unavailable, "address region lookup unavailable")
+	}
+	if region != string(lb.RegionID) {
+		return status.Error(codes.InvalidArgument, "Illegal argument addressId")
 	}
 	return nil
 }

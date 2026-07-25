@@ -60,6 +60,7 @@ func NewHandler(
 	peerCheck CheckClient,
 	peerRegion RegionClient,
 	peerZone ZoneClient,
+	peerZoneRegion ZoneRegionClient,
 	peerSubnet SubnetClient,
 	peerAddress AddressClient,
 	peerInternalAddr InternalAddressClient,
@@ -72,7 +73,7 @@ func NewHandler(
 	return &Handler{
 		get:             NewGetLoadBalancerUseCase(repo),
 		list:            NewListLoadBalancersUseCase(repo, listFilter),
-		create:          NewCreateLoadBalancerUseCase(repo, opsRepo, peerProject, peerRegion, peerZone, peerSubnet, peerAddress, peerInternalAddr, logger),
+		create:          NewCreateLoadBalancerUseCase(repo, opsRepo, peerProject, peerRegion, peerZone, peerZoneRegion, peerSubnet, peerAddress, peerInternalAddr, logger),
 		update:          NewUpdateLoadBalancerUseCase(repo, opsRepo, peerZone, logger),
 		deleteUC:        NewDeleteLoadBalancerUseCase(repo, opsRepo, peerInternalAddr, logger),
 		move:            NewMoveLoadBalancerUseCase(repo, opsRepo, peerProject, peerCheck, logger),

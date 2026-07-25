@@ -32,7 +32,7 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-vol",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 21474836480,
 		SourceImage: img.ID,
-	})
+	}, imageRegionFixture)
 	require.NoError(t, err)
 	require.Equal(t, img.ID, boot.SourceImage)
 
@@ -54,7 +54,7 @@ func TestVolumeSourceImageFKNotFound(t *testing.T) {
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-badimg",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceImage: "img00000000000000000",
-	})
+	}, imageRegionFixture)
 	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Image img00000000000000000 not found", err.Error()[len("failed precondition: "):])
 }
@@ -74,7 +74,7 @@ func TestImageDeleteSetsVolumeSourceImageNull(t *testing.T) {
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "prov-boot",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 21474836480,
 		SourceImage: img.ID,
-	})
+	}, imageRegionFixture)
 	require.NoError(t, err)
 
 	// Delete Image, засевшего в томе → проходит (provenance SET NULL, не RESTRICT).

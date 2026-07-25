@@ -64,6 +64,47 @@ func TestAddressClient_Get_ExternalIPv4Used(t *testing.T) {
 	require.NotNil(t, got.UsedBy)
 	assert.Equal(t, "nlb_listener", got.UsedBy.Kind)
 	assert.Equal(t, "lst-1", got.UsedBy.ID)
+	// The zone an external address declares is its placement anchor: the consumer
+	// needs it to check region-coherence against the load balancer. Dropping it
+	// left the EXTERNAL lane with nothing to check.
+	assert.Equal(t, "ru-central1-a", got.ZoneID)
+}
+
+// An external address with no zone is anycast — the projection carries the empty
+// zone verbatim (zone-independent by construction, nothing to compare).
+func TestAddressClient_Get_ExternalAnycast_NoZone(t *testing.T) {
+	addr := &vpcpb.Address{
+		Id:        "e9b-ip-any",
+		ProjectId: "prj-1",
+		Address: &vpcpb.Address_ExternalIpv4Address{
+			ExternalIpv4Address: &vpcpb.ExternalIpv4Address{Address: "203.0.113.9"},
+		},
+	}
+	conn := startFakeVPC(t, nil, nil, &fakeAddressService{resp: addr}, nil, nil)
+	got, err := NewAddressClient(conn).Get(ctxBackground(), "e9b-ip-any")
+	require.NoError(t, err)
+	assert.True(t, got.External)
+	assert.Empty(t, got.ZoneID)
+}
+
+// IPv6 external address carries its zone through the same lane.
+func TestAddressClient_Get_ExternalIPv6_CarriesZone(t *testing.T) {
+	addr := &vpcpb.Address{
+		Id:        "e9b-ip-6",
+		ProjectId: "prj-1",
+		Address: &vpcpb.Address_ExternalIpv6Address{
+			ExternalIpv6Address: &vpcpb.ExternalIpv6Address{
+				Address: "2001:db8::5",
+				ZoneId:  "ru-central1-b",
+			},
+		},
+	}
+	conn := startFakeVPC(t, nil, nil, &fakeAddressService{resp: addr}, nil, nil)
+	got, err := NewAddressClient(conn).Get(ctxBackground(), "e9b-ip-6")
+	require.NoError(t, err)
+	assert.Equal(t, AddressFamilyIPv6, got.Family)
+	assert.True(t, got.External)
+	assert.Equal(t, "ru-central1-b", got.ZoneID)
 }
 
 func TestAddressClient_Get_InternalIPv4Free(t *testing.T) {

@@ -4,6 +4,8 @@
 package targetgroup
 
 import (
+	"context"
+
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	computeclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/compute"
@@ -54,6 +56,16 @@ type NetworkInterfaceClient = vpcclient.NetworkInterfaceClient
 // SubnetClient — vpc.SubnetService.Get adapter. Используется AddTargets-worker'ом
 // для ip_ref-target peer-validate (Subnet existence + IP-in-CIDR + region-match).
 type SubnetClient = vpcclient.SubnetClient
+
+// ZoneRegionClient — авторитетный zone→region резолв через владельца Geography
+// (geo.v1.ZoneService.Get → `Zone.region_id`, ребро nlb→geo). Нужен там, где у
+// peer-ресурса есть только зона (compute.Instance): регион **никогда** не
+// выводится из имени зоны — имена региона и зоны произвольны, выводимой связи
+// между ними нет. Impl — `*geoclient.ZoneRegionClient` (per-call deadline,
+// fail-closed). nil → region-coherence неверифицируема → мутация UNAVAILABLE.
+type ZoneRegionClient interface {
+	RegionOfZone(ctx context.Context, zoneID string) (string, error)
+}
 
 // Registrar — sync-primary owner-tuple registrar (kacho-iam
 // InternalIAMService.RegisterResource). Create после durable commit TG + его

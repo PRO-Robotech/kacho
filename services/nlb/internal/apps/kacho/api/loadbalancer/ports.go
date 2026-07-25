@@ -43,6 +43,15 @@ type RegionClient = geoclient.RegionClient
 // public-VIP (EXTERNAL auto) через geo.ZoneService.List (ребро nlb→geo).
 type ZoneClient = geoclient.ZoneClient
 
+// ZoneRegionClient — авторитетный zone→region резолв через владельца Geography
+// (geo.v1.ZoneService.Get → `Zone.region_id`, ребро nlb→geo). Нужен для
+// region-coherence зоно-привязанного EXTERNAL-адреса: регион НИКОГДА не
+// выводится из имени зоны. Impl — `*geoclient.ZoneRegionClient` (per-call
+// deadline, fail-closed). nil → регион зоны неустановим → мутация UNAVAILABLE.
+type ZoneRegionClient interface {
+	RegionOfZone(ctx context.Context, zoneID string) (string, error)
+}
+
 // InternalAddressClient — VIP-lifecycle port над vpc InternalAddressService:
 // per-family auto-аллокация (AllocateInternalIP/IPv6 из подсети, AllocateExternalIP/
 // IPv6 — платформенный public), link существующего Address (AttachExisting) и

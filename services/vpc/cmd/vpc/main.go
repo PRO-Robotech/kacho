@@ -1031,8 +1031,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		networkInterfaceHandler: niHandler,
 		// InternalNetworkInterfaceService — NIC↔Instance attach-CAS (:9091, §3a).
 		// Работает напрямую через CQRS-Repository (kachoRepo): attach/detach — writer-TX
-		// с атомарным CAS, ListByInstance — batched reader.
-		networkInterfaceInternal: nicinternal.NewService(kachoRepo),
+		// с атомарным CAS, ListByInstance — batched reader. geoClient резолвит зону
+		// инстанса в регион для региональной полосы placement-coherence (anycast-
+		// подсеть зоны не несёт) — регион из имени зоны не выводится.
+		networkInterfaceInternal: nicinternal.NewService(kachoRepo).WithZoneRegistry(geoClient),
 	}
 }
 

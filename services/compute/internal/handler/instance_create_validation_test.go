@@ -34,6 +34,7 @@ func newInstanceHandlerForValidation(t *testing.T) (*InstanceHandler, *portmock.
 		portmock.NewInstanceRepo(),
 		mtRepo,
 		portmock.NewZoneRegistry("ru-central1-a"),
+		portmock.NewSubnetRegistry(),
 		&portmock.ProjectClient{OK: true},
 		portmock.NewNicClient(),
 		portmock.NewStorageClient(),

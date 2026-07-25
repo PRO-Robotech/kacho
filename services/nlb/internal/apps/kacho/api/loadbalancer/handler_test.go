@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+
+	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 )
 
 // TestHandler_DispatchesAll — Handler — тонкая обёртка над use-case'ами.
@@ -24,7 +26,14 @@ func TestHandler_DispatchesAll(t *testing.T) {
 	lbID := seedLB(t, repo, "prj-a", "edge")
 	tgID := seedTG(t, repo, "prj-a", "ru-central1", "tg-1")
 	opsRepo := newFakeOpsRepo()
-	h := NewHandler(repo, opsRepo, &fakeProjectClient{}, nil, &fakeRegionClient{}, &fakeZoneClient{}, &fakeSubnetClient{}, &fakeAddressReader{}, &fakeAddressClient{}, nil, slog.Default())
+	h := NewHandler(repo, opsRepo, &fakeProjectClient{}, nil, &fakeRegionClient{}, &fakeZoneClient{}, &fakeZoneRegionClient{}, &fakeSubnetClient{getFunc: func(_ context.Context, id string) (*vpcclient.Subnet, error) {
+		// This handler test drives Create in region "ru-central1" — the subnet
+		// projection must carry that same authoritative region.
+		return &vpcclient.Subnet{
+			ID: id, ProjectID: "prj-a", NetworkID: "net-1",
+			PlacementType: vpcclient.SubnetPlacementRegional, RegionID: "ru-central1",
+		}, nil
+	}}, &fakeAddressReader{}, &fakeAddressClient{}, nil, slog.Default())
 
 	ctx := context.Background()
 
@@ -82,13 +91,13 @@ func TestHandler_DispatchesAll(t *testing.T) {
 
 func TestHandler_NewHandler_NilLogger_OK(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.NotNil(t, h)
 }
 
 func TestHandler_Get_PropagatesErr(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, slog.Default())
+	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, nil, slog.Default())
 	_, err := h.Get(context.Background(), &lbv1.GetNetworkLoadBalancerRequest{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

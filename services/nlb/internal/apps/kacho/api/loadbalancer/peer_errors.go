@@ -14,23 +14,37 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// subnetRegionMatches — region-coherence: регион подсети совпадает с регионом LB
-// (placement-coherence). subnet.RegionID — denormalised mirror, заполняемый
-// adapter'ом (REGIONAL → region_id; ZONAL → zone→region резолв через geo). Пустой
-// RegionID (mirror не заполнен — только в back-compat без zone-resolver'а) →
-// проверка пропускается: в проде adapter всегда заполняет его либо fail-closed
-// Unavailable. Возвращает true при совпадении/пропуске.
-func subnetRegionMatches(sn *vpcclient.Subnet, lbRegion domain.RegionID) bool {
-	return sn.RegionID == "" || sn.RegionID == string(lbRegion)
-}
+// errSubnetRegionUnverifiable — регион подсети неустановим: denormalised mirror
+// `Subnet.RegionID` пуст (zone→region резолвер не сконфигурирован или geo не
+// ответил). Мутация с непроверяемым предусловием — **fail-closed** (UNAVAILABLE,
+// retryable), НЕ «считаем совпавшим»: иначе отсутствие geo-ребра молча
+// отключало бы region-coherence (data-integrity.md §Placement-coherence,
+// "cross-service — peer-validate на request-path, fail-closed").
+var errSubnetRegionUnverifiable = status.Error(codes.Unavailable, "subnet region lookup unavailable")
 
 // subnetRegionCoherent — региональная проверка для caller-supplied subnet_id
 // (descriptive текст — форма запроса, не oracle). Несовпадение → InvalidArgument
 // со стабильным контракт-текстом (data-integrity.md §Placement-coherence).
 func subnetRegionCoherent(sn *vpcclient.Subnet, lbRegion domain.RegionID) error {
-	if !subnetRegionMatches(sn, lbRegion) {
+	if sn == nil || sn.RegionID == "" {
+		return errSubnetRegionUnverifiable
+	}
+	if sn.RegionID != string(lbRegion) {
 		return status.Error(codes.InvalidArgument,
 			"load balancer vip subnet must be in the same region as the load balancer")
+	}
+	return nil
+}
+
+// subnetRegionCoherentOpaque — та же региональная проверка на linked-address
+// полосе: анти-oracle (не подтверждаем placement чужого адреса) → generic
+// "Illegal argument addressId". Неустановимый регион — по-прежнему fail-closed.
+func subnetRegionCoherentOpaque(sn *vpcclient.Subnet, lbRegion domain.RegionID) error {
+	if sn == nil || sn.RegionID == "" {
+		return errSubnetRegionUnverifiable
+	}
+	if sn.RegionID != string(lbRegion) {
+		return status.Error(codes.InvalidArgument, "Illegal argument addressId")
 	}
 	return nil
 }

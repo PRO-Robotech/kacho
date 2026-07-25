@@ -14,6 +14,14 @@ import "errors"
 var (
 	// ErrNotFound возвращается, когда ресурс не найден.
 	ErrNotFound = errors.New("not found")
+
+	// ErrPeerValidationSkipped — маркер Noop-peer'а при
+	// KACHO_COMPUTE_SKIP_PEER_VALIDATION=true (dev/test): cross-service проверка
+	// НЕ выполнялась. Use-case пропускает такую проверку явно — тем же
+	// задокументированным dev-послаблением, что NoopGeoClient («любая зона
+	// существует»). В любом развёрнутом стенде флаг выключен, и это никогда не
+	// возвращается.
+	ErrPeerValidationSkipped = errors.New("peer validation skipped")
 	// ErrAlreadyExists возвращается при нарушении UNIQUE constraint.
 	ErrAlreadyExists = errors.New("already exists")
 	// ErrInvalidArg возвращается при некорректных входных данных.

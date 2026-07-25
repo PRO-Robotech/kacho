@@ -646,6 +646,31 @@ func (f *fakeZoneClient) ListZoneIDsInRegion(ctx context.Context, regionID strin
 	return []string{"region-1-a", "region-1-b"}, nil
 }
 
+// fakeZoneRegionClient — двойник авторитетного zone→region резолвера (geo).
+// Регион НИКОГДА не выводится из имени зоны, поэтому фейк задаёт соответствие
+// явно: `regions` — точечные пары, `def` — остальные, `err` — geo недоступен.
+type fakeZoneRegionClient struct {
+	regions map[string]string
+	def     string
+	err     error
+}
+
+func (f *fakeZoneRegionClient) RegionOfZone(_ context.Context, zoneID string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	if r, ok := f.regions[zoneID]; ok {
+		return r, nil
+	}
+	if f.def != "" {
+		return f.def, nil
+	}
+	return "region-1", nil
+}
+
+// errZoneRegionUnavailable — geo недоступен: zone→region неустановим.
+var errZoneRegionUnavailable = fmt.Errorf("%w: geo zone lookup failed", domain.ErrUnavailable)
+
 // recordedAlloc — запись одного auto-alloc вызова (с семейством, т.к. семейство
 // теперь задаётся выбором метода AllocateInternalIP/AllocateInternalIPv6, а не полем).
 type recordedAlloc struct {
@@ -765,7 +790,17 @@ func (f *fakeSubnetClient) Get(ctx context.Context, subnetID string) (*vpcclient
 	if pt == "" {
 		pt = vpcclient.SubnetPlacementRegional
 	}
-	return &vpcclient.Subnet{ID: subnetID, ProjectID: "prj-a", NetworkID: "net-1", PlacementType: pt}, nil
+	// RegionID — authoritative mirror the prod adapter always fills (REGIONAL →
+	// region_id verbatim; ZONAL → geo zone→region). An empty one now means
+	// "unverifiable" and fails closed, so the default fixture states it.
+	sn := &vpcclient.Subnet{
+		ID: subnetID, ProjectID: "prj-a", NetworkID: "net-1",
+		PlacementType: pt, RegionID: "region-1",
+	}
+	if pt != vpcclient.SubnetPlacementRegional {
+		sn.ZoneID = "region-1-a"
+	}
+	return sn, nil
 }
 
 // fakeAddressReader — двойник vpc.AddressClient (публичный AddressService.Get) для
@@ -777,6 +812,7 @@ type fakeAddressReader struct {
 	family    string // "" → AddressFamilyIPv4
 	external  bool   // kind: internal (false) / external (true)
 	subnetID  string // подсеть internal-адреса ("" → "snt-01" для internal)
+	zoneID    string // зона EXTERNAL-адреса ("" → anycast, zone-independent)
 	getFunc   func(ctx context.Context, addressID string) (*vpcclient.Address, error)
 }
 
@@ -798,7 +834,7 @@ func (f *fakeAddressReader) Get(ctx context.Context, addressID string) (*vpcclie
 	}
 	return &vpcclient.Address{
 		ID: addressID, ProjectID: pid, Family: fam,
-		External: f.external, SubnetID: sn,
+		External: f.external, SubnetID: sn, ZoneID: f.zoneID,
 	}, nil
 }
 

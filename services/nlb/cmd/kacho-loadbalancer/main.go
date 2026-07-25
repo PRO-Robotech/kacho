@@ -72,6 +72,9 @@ type peerClients struct {
 	// Geo (Region/Zone-валидация — ребро nlb→geo, kacho-geo)
 	Region geoclient.RegionClient
 	Zone   geoclient.ZoneClient
+	// ZoneRegion — авторитетный zone→region резолв (тот же geo-conn). Регион
+	// НИКОГДА не выводится из имени зоны — только вызовом владельца Geography.
+	ZoneRegion *geoclient.ZoneRegionClient
 	// Compute (Instance-resolve — НЕ geography, ребро nlb→compute остаётся)
 	Instance computeclient.InstanceClient
 	// VPC
@@ -655,6 +658,7 @@ func dialPeers(
 	if geoConn != nil {
 		peers.Region = geoclient.NewRegionClient(geoConn)
 		peers.Zone = geoclient.NewZoneClient(geoConn)
+		peers.ZoneRegion = geoclient.NewZoneRegionClient(geoConn)
 	}
 
 	// kacho-compute — один conn на public listener (InstanceService.Get —
@@ -670,8 +674,8 @@ func dialPeers(
 		// region-precheck (ребро nlb→geo). geoConn nil → nil resolver → RegionID
 		// ZONAL пуст (region-precheck пропускается, REGIONAL всё равно заполняется).
 		var zoneRegion vpcclient.ZoneRegionResolver
-		if geoConn != nil {
-			zoneRegion = geoclient.NewZoneRegionClient(geoConn)
+		if peers.ZoneRegion != nil {
+			zoneRegion = peers.ZoneRegion
 		}
 		peers.Subnet = vpcclient.NewSubnetClientWithZoneRegion(vpcPublicConn, zoneRegion)
 		peers.NetworkInterface = vpcclient.NewNetworkInterfaceClient(vpcPublicConn)

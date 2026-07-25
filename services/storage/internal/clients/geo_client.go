@@ -54,6 +54,32 @@ func NewGeoClient(conn *grpc.ClientConn) *GeoClient {
 // request-path Create. Несуществующая/невалидная зона → InvalidArgument
 // "unknown zone id '<X>'" (зеркалит vpc/compute→geo). Peer недоступен → Unavailable
 // (fail-closed для мутации). Identity вызывающего форвардится (auth.PropagateOutgoing).
+// RegionOfZone возвращает region_id зоны (geo.v1.ZoneService.Get →
+// `Zone.region_id`). Регион НИКОГДА не выводится из имени зоны — авторитет один,
+// владелец Geography. Ошибки зеркалят EnsureZoneExists: неизвестная зона →
+// ErrInvalidArg; недоступность geo / пустой region_id → Unavailable (fail-closed
+// на мутации — непроверяемое предусловие не считается выполненным).
+func (c *GeoClient) RegionOfZone(ctx context.Context, zoneID string) (string, error) {
+	if c.cli == nil {
+		return "", status.Error(codes.Unavailable, "storage→geo ZoneService not configured")
+	}
+	cctx, cancel := context.WithTimeout(ctx, peerCallTimeout)
+	defer cancel()
+	resp, err := c.cli.Get(auth.PropagateOutgoing(cctx), &geov1.GetZoneRequest{ZoneId: zoneID})
+	if err != nil {
+		switch status.Code(err) {
+		case codes.NotFound, codes.InvalidArgument:
+			return "", fmt.Errorf("%w: unknown zone id '%s'", ports.ErrInvalidArg, zoneID)
+		default:
+			return "", status.Error(codes.Unavailable, "geo zone validation unavailable")
+		}
+	}
+	if resp.GetRegionId() == "" {
+		return "", status.Error(codes.Unavailable, "geo zone validation unavailable")
+	}
+	return resp.GetRegionId(), nil
+}
+
 func (c *GeoClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
 	if c.cli == nil {
 		return status.Error(codes.Unavailable, "storage→geo ZoneService not configured")
