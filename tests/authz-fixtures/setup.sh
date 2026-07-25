@@ -432,9 +432,29 @@ delete_binding_if_exists() {
   # ошибки, python его успешно парсил, `.get('accessBindings', [])` давал пустой
   # список — и очистка молча не удаляла НИЧЕГО. Мусорные binding'и от прошлых
   # прогонов копились, ломая кейсы, которые ждут чистое состояние.
-  local resp ab_ids
-  resp=$(api GET "/iam/v1/accessBindings:listByScope?resourceType=${resource_type}&resourceId=${resource_id}" "$grantor_token" 2>/dev/null || true)
-  ab_ids=$(echo "$resp" | python3 -c "
+  #
+  # ВАЖНО — постраничный обход. `:listByScope` — cursor-paginated, page_size по
+  # умолчанию 50 (api-conventions.md). `account:accountA` — долгоживущий общий
+  # фикстур-скоуп, который копит binding'и между прогонами (на kind-стенде 73
+  # строки, и ВСЕ `usr`-субъекты лежат на индексах 53-55, т.е. на 2-й странице).
+  # Запрос одной страницы по умолчанию возвращал 50 чужих `sva`-строк, фильтр по
+  # субъекту не находил НИЧЕГО, и очистка молча не удаляла ни одного binding'а —
+  # ровно тот же симптом, что и у прежнего :listByResource-бага, описанного выше,
+  # но по другой причине. Устаревшие гранты userNOB на account-A доживали до
+  # прогона, и вся deny-матрица authz-deny для NOB отвечала ALLOW вместо DENY.
+  # Поэтому: pageSize=1000 (максимум) + обход по nextPageToken до исчерпания.
+  local resp ab_ids page_token page_count
+  ab_ids=""
+  page_token=""
+  page_count=0
+  while :; do
+    local url="/iam/v1/accessBindings:listByScope?resourceType=${resource_type}&resourceId=${resource_id}&pageSize=1000"
+    if [ -n "$page_token" ]; then
+      url="${url}&pageToken=${page_token}"
+    fi
+    resp=$(api GET "$url" "$grantor_token" 2>/dev/null || true)
+    local page_ids next
+    page_ids=$(echo "$resp" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -446,6 +466,22 @@ for ab in d.get('accessBindings', []):
         if abid:
             print(abid)
 " 2>/dev/null || true)
+    if [ -n "$page_ids" ]; then
+      ab_ids=$(printf '%s\n%s' "$ab_ids" "$page_ids")
+    fi
+    next=$(echo "$resp" | python3 -c 'import sys,json
+try:
+    print(json.load(sys.stdin).get("nextPageToken",""))
+except Exception:
+    pass' 2>/dev/null || true)
+    page_count=$((page_count + 1))
+    # Обрываем на исчерпании курсора либо на страховочном пределе (25k строк).
+    if [ -z "$next" ] || [ "$page_count" -ge 25 ]; then
+      break
+    fi
+    page_token="$next"
+  done
+  ab_ids=$(echo "$ab_ids" | sed '/^$/d')
   if [ -z "$ab_ids" ]; then
     return 0  # nothing to delete
   fi
@@ -585,7 +621,10 @@ if [ -n "$JWT_BOOTSTRAP" ] && [ -n "$ACCOUNT_A" ]; then
     # бюджет CLUSTER_ADMIN_WAIT_SECS (180с) на КАЖДОМ прогоне и заканчивалась
     # «WARN: cluster cases may fail». Проба, которая не может стать зелёной, не
     # проверяет готовность — она измеряет только собственный таймаут.
-    code=$(api_status GET "/iam/v1/accessBindings:listByScope?resourceType=cluster&resourceId=cluster_kacho_root" "$JWT_BOOTSTRAP" 2>/dev/null || echo 000)
+    # pageSize=1 — пробе нужен ТОЛЬКО HTTP-код готовности, не содержимое страницы;
+    # явный page_size вдобавок держит инвариант «ни одного :listByScope без
+    # заданного размера страницы» (см. delete_binding_if_exists выше).
+    code=$(api_status GET "/iam/v1/accessBindings:listByScope?resourceType=cluster&resourceId=cluster_kacho_root&pageSize=1" "$JWT_BOOTSTRAP" 2>/dev/null || echo 000)
     if [ "$code" = "200" ]; then boot_ok=1; log "    bootstrap cluster-admin ready (${i}x2s, code=200)"; break; fi
     sleep 2
   done
