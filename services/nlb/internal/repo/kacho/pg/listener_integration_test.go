@@ -61,20 +61,21 @@ func TestListener_UniquePortProto(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Abort()
 	dup := newListener(lb.ID, string(lb.ProjectID), "lst-2", 80) // same port+proto, different name
-	dup.AllocatedAddress = "203.0.113.20"
 	_, err = w.Listeners().Insert(ctx, dup)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrAlreadyExists), "got %v", err)
 }
 
-// NOTE: baseline 0001's listener-level partial UNIQUE listeners_region_vip_uniq
-// (region_id, allocated_address, port, protocol) was dropped in migration 0009 when
-// the VIP was consolidated on the LoadBalancer (anycast). NLB-1b MIGRATE F5 relocates
-// the VIP anchor back to the Listener and RE-CREATES that index (migration 0021); its
-// per-region uniqueness / concurrent-race / recycle-on-delete contract is locked in
-// listener_vip_uniq_integration_test.go (NLB-1-30/31/55). The LoadBalancer-level VIP
-// uniqueness (load_balancers_region_v4_uniq / _v6_uniq) stays present as a fallback
-// until the CONTRACT pass removes VIP-on-LB.
+// NOTE: a Listener carries no VIP — the VIP is anchored on the LoadBalancer
+// (address_v4/_v6 + address_id_v4/_v6), so per-region VIP uniqueness lives there
+// (load_balancers_region_v4_uniq / _v6_uniq; locked by
+// load_balancer_vip_concurrent_integration_test.go) and single-VIP-per-LB is the
+// AttachVIP CAS. The listener-level partial UNIQUE listeners_region_vip_uniq
+// (baseline 0001, dropped by 0009, re-created by 0021 for a listener-anchored VIP the
+// service never implemented) enforced nothing — no production path writes
+// listeners.allocated_address — and is dropped by migration 0025. What a Listener
+// guarantees is TestListener_UniquePortProto above: one (port, protocol) per LB,
+// which over a single-VIP-per-family LB is one (VIP, port, protocol) binding.
 
 // TestListener_PortOutOfRange — CHECK port BETWEEN 1 AND 65535.
 func TestListener_PortOutOfRange(t *testing.T) {
