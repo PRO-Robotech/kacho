@@ -349,6 +349,13 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
+    # FIXTURE TRUTH (не маскировка, а декларация): `absentInstanceCrossRegionId` — это
+    # НЕСУЩЕСТВУЮЩИЙ id, а не засеянный инстанс в другом регионе. Cross-REGION Instance
+    # непроизводим на односорегионном стенде (geo baseline сеет только ru-central1;
+    # prodseed_nlb_ext.py прямым текстом оставляет instance-target deps незасеянными).
+    # Поэтому кейс реально проверяет отказ по НЕИЗВЕСТНОМУ peer'у, а не region-mismatch;
+    # переименование env-ключа `existing*`→`absent*` убирает вид «значение засеяно».
+    # Настоящее покрытие REQ-TGT-PEER-REGION требует второго geo-региона (follow-up).
     id="TGT-ADD-NEG-INSTANCE-REGION-MISMATCH",
     title="AddTargets instance in different region → InvalidArgument (Verifies REQ-TGT-PEER-REGION)",
     classes=["NEG"], priority="P0",
@@ -356,7 +363,7 @@ CASES.append(Case(
         *_setup_tg("inst-region-mismatch"),
         Step(name="add-inst-other-region", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
-             body={"targets": [{"instanceId": "{{existingInstanceCrossRegionId}}", "weight": 100}]},
+             body={"targets": [{"instanceId": "{{absentInstanceCrossRegionId}}", "weight": 100}]},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                  *save_from_response("j.id", "opId"),
@@ -367,6 +374,9 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
+    # Тот же fixture-truth, что и у TGT-ADD-NEG-INSTANCE-REGION-MISMATCH выше:
+    # `absentNicCrossRegionId` — несуществующий id (даже префикс не `nic`), а не NIC из
+    # другого региона. Кейс проверяет отказ по неизвестному peer'у.
     id="TGT-ADD-NEG-NIC-REGION-MISMATCH",
     title="AddTargets NIC in different region → InvalidArgument",
     classes=["NEG"], priority="P1",
@@ -374,7 +384,7 @@ CASES.append(Case(
         *_setup_tg("nic-region-mismatch"),
         Step(name="add-nic-other-region", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
-             body={"targets": [{"nicId": "{{existingNicCrossRegionId}}", "weight": 100}]},
+             body={"targets": [{"nicId": "{{absentNicCrossRegionId}}", "weight": 100}]},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                  *save_from_response("j.id", "opId"),

@@ -14,15 +14,17 @@
 #
 # --jobs default is 1 (serial collections) — the nlb load-balancer / cross-resource /
 # listener collections all draw EXTERNAL auto-VIPs from the SINGLE seeded external
-# AddressPool (kac-nlb-seed-ext-pool, 198.51.100.0/24 = 254 addrs). Under >1 concurrent
+# AddressPool (kac-nlb-seed-ext-pool, a ZONE-DERIVED /24 = 254 addrs — 100.102.<zone-octet>.0/24,
+# see deploy/scripts/seed-nlb-fixtures.sh). Under >1 concurrent
 # collection that pool is transiently exhausted mid-run (`could not allocate load balancer
 # address`) even though the VIP is correctly recycled on LB delete (release VIP =
 # ClearReference→FreeIP + free_ip_runner self-heal, delete.go) — it is bursty concurrent
 # HOLD, not a pool leak. Serial collections keep the peak concurrent VIP hold tiny (each
 # EXTERNAL case creates then deletes its LB before the next) → no exhaustion, no masking.
-# The external pool's (kind, block) EXCLUDE is GLOBAL and shared with the vpc seed
-# (same 198.51.100.0/24), so simply enlarging THIS seed's CIDR would collide with vpc's
-# /24 and fall back to reusing the /24 — serialization is the reliable, self-contained fix.
+# The external pool's (kind, block) EXCLUDE is GLOBAL (blind to name AND zone), which is why
+# the seed now derives its block from the zone (100.102.<octet>.0/24) instead of sharing one
+# fixed /24 with every other zone/suite. Capacity per zone is unchanged (254), so serialization
+# remains the reliable, self-contained answer to concurrent VIP hold.
 #   ./scripts/run.sh --env environments/kind-stand.postman_environment.json
 #
 # Each collection is isolated via {{runId}}-suffixed resource names within a

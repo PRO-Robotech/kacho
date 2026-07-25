@@ -11,29 +11,70 @@
 # tests/authz-fixtures/out/authz-fixtures.json, falling back to the first
 # project returned by /iam/v1/projects):
 #
-#   - VPC Network        (name: kac-nlb-seed-net)
-#   - VPC Subnet         (name: kac-nlb-seed-subnet, cidr 10.130.0.0/24,
-#                         existingZoneId from compute) — populates
+#   - VPC Network        (name: kac-nlb-seed-net — placement-FREE, see below)
+#   - VPC Subnet         (name: kac-nlb-seed-subnet-<zone>, cidr 10.130.<zone-octet>.0/24,
+#                         zone = NLB_ZONE_ID) — populates
 #                         `existingSubnetId` (Target.ip_ref tests + INTERNAL
 #                         listener subnet binding).
 #   - VPC AddressPool EXT (name: kac-nlb-seed-ext-pool; EXTERNAL_PUBLIC, zonal,
 #                         is_default=true — the IPAM source every EXTERNAL nlb
 #                         auto-VIP + zonal external Address resolves via
 #                         GetDefaultForZone. Internal mux only, ban #6).
-#   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr; allocated from the pool
-#                         above — populates `existingExternalAddressId` for
-#                         BYO-VIP test).
+#   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr-<zone>; v4 allocated from the
+#                         pool above — populates `existingExternalAddressId` for
+#                         the BYO-VIP test)
+#   - VPC Address  EXT v6 (name: kac-nlb-seed-ext-addr6-<zone>; v6 from the same pool)
+#                         — populates `existingAddressIPv6Id`, the BYO-IPv6 handle the
+#                         nlb family/slot-mismatch negatives (NLB-CR-VAL-ADDRESS-FAMILY-SLOT,
+#                         LST-CR-VAL-BYO-IP-VERSION-MISMATCH, XRES-E2E-V4-LISTENER-V6-ADDRESS-
+#                         INVALID) and NLB-CR-CRUD-DUALSTACK-MIXED need. Left unseeded it was a
+#                         committed PLACEHOLDER id: the family-mismatch negatives were rejected
+#                         for "unknown address" instead of the family/slot reason they claim to
+#                         verify, and the two guarded cases fell into their tolerant else-branch
+#                         (vacuously green).
 #   - Compute MachineType (name: kac-nlb-seed-mt; Internal :8081 admin RPC) — the
 #                         COMP-1 single sizing channel the Instance body needs.
-#   - Compute Instance   (name: kac-nlb-seed-inst; COMP-1 shape
+#   - Compute Instance   (name: kac-nlb-seed-inst-<zone>; COMP-1 shape
 #                         instanceKind/machineTypeId/bootSource + NIC spec on the
 #                         seed subnet) — populates `existingInstanceId` for
 #                         Target.instance_id tests.
-#   - VPC NIC            (kac-nlb-seed-nic in the seed subnet) — populates
+#   - VPC NIC            (kac-nlb-seed-nic-<zone> in the seed subnet) — populates
 #                         `existingNicId` for Target.nic_id tests. Seeded as a
 #                         first-class vpc NetworkInterface because Instance NIC
 #                         materialisation is the COMP-2 launch saga (not landed);
 #                         the Instance's own NIC is preferred as soon as it exists.
+#
+# PLACEMENT-COHERENT REUSE (the whole fixture set, not just the pool)
+# ------------------------------------------------------------------
+# Every reuse probe matches on (name AND placement), never on name alone. A name-only
+# probe silently ADOPTS a fixture that lives in a DIFFERENT zone, which is exactly how
+# this seed produced an internally INCOHERENT set: with NLB_ZONE_ID=ru-central1-e the
+# Instance was (re)created in zone e while the Subnet / Address / AddressPool were
+# adopted by name from zone a (a pre-dedication run) — so `existingZoneId`=e pointed at
+# a zone-a subnet, and the "dedicated zone" fix did not take effect at all (observed on
+# the live stand: kac-nlb-seed-subnet zone=a, kac-nlb-seed-inst zone=e, kac-nlb-seed-
+# ext-pool zone=a is_default v4+v6 → vpc ADR-CR-EXT-V6-FAMILY-FALLTHROUGH still red).
+# Two different mechanisms, because the resources are two different KINDS of thing:
+#
+#   * project-scoped fixtures (Subnet / Address / Instance / NIC) carry a ZONE-QUALIFIED
+#     NAME (`…-<zone>`) and a zone-derived CIDR. Per-zone fixture sets then coexist BY
+#     CONSTRUCTION (UNIQUE(project,name) is per-name; the subnet EXCLUDE is per-CIDR), a
+#     mis-zoned legacy twin can no longer even be name-matched, and nothing has to be
+#     destroyed to re-seed into a new zone. A name hit whose zone still differs is an
+#     anomaly (someone else took our name) → abort loudly, never adopt.
+#   * the AddressPool is NOT project-scoped: `is_default for (zone, kind)` is a GLOBAL,
+#     cluster-wide slot, and this script is the sole author of the name
+#     `kac-nlb-seed-ext-pool`. A pool of ours sitting in a FOREIGN zone therefore keeps
+#     occupying that zone's default slot and keeps breaking the suite that owns the zone —
+#     leaving it alone is not neutral. So it is RECLAIMED (is_default cleared first — that
+#     alone removes the cross-suite harm — then our own addresses in it released, then the
+#     pool deleted) and a fresh pool is created in NLB_ZONE_ID. Reclaim is best-effort: a
+#     pool still holding OTHER suites' leases cannot be deleted, and deleting foreign
+#     leases is not this script's business — the un-default already un-breaks the zone.
+#     The pool's CIDR blocks are ZONE-DERIVED (100.102.<octet>.0/24 + 2001:db8:e2e:<octet>::/64,
+#     mirroring the per-suite block convention: vpc internal-pool 100.100/16, vpc address
+#     100.101/16) precisely so a surviving stale pool cannot block the new one via the
+#     GLOBAL `address_pool_cidrs EXCLUDE (kind, block &&)`.
 #
 # Outputs (idempotent):
 #   - .seeded-ids.env at repo root — sourceable KEY=VALUE pairs, used by
@@ -50,6 +91,12 @@
 # ADR-CR-EXT-V6-FAMILY-FALLTHROUGH (it asserts zone a has NO v6-capable pool, so an
 # external-v6 Create must fail FailedPrecondition; with our pool present the address
 # allocated and the Operation succeeded). Cross-suite fixture collision, not a flake.
+# Pinning NLB_ZONE_ID was only HALF the fix: the reuse probe still matched the pool by
+# NAME alone, so on any stand that already carried the zone-a pool the seeder logged
+# "reusing existing external AddressPool" and kept the zone-a one — the dedicated zone
+# never got a pool at all (its EXTERNAL VIP allocations then failed: live stand shows
+# nlb-lb-*-v4 addresses with an EMPTY externalIpv4Address). Hence the placement-aware
+# probe + reclaim above.
 #
 # Env:
 #   BASE_URL  api-gateway REST endpoint (default http://localhost:28080).
@@ -154,10 +201,28 @@ curl_internal() {
   fi
 }
 
-# wait_op <operation-id> — poll OperationService.Get until done=true.
+# wait_op <operation-id> [channel] — poll OperationService.Get until done=true.
 # Returns the operation JSON on stdout. Times out after 60s.
+#
+# channel ∈ {public (default) | internal} — POLL THE OPERATION THROUGH THE SAME CHANNEL
+# THAT CREATED IT, i.e. same listener AND same credential (`public` = BASE_URL + $JWT,
+# `internal` = INTERNAL_BASE_URL + $ADMIN_JWT — see curl_json / curl_internal).
+#
+# Why this matters (measured on the live stand, operation epd6rpv73d2r8fa76a4f = the
+# MachineType create): OperationService HIDES another principal's operation as
+# `404 {"code":5,"message":"operation … not found"}` (existence-hiding, not a 403).
+# The MachineType is created with $ADMIN_JWT on the internal mux, but wait_op polled with
+# curl_json = $JWT (the project grantor) — that principal gets the 404 FOREVER, so the loop
+# could never observe done=true. Measured, same op id:
+#     ADMIN_JWT  → public 200 done:true   internal 200 done:true
+#     JWT        → public 404             internal 404
+# i.e. the discriminator is the PRINCIPAL, not the port. The old code therefore burned the
+# whole 60s budget on every seed run and logged the misleading
+# `FATAL: operation … did not finish in 60s` for a MachineType that had in fact been
+# created a second earlier (the by-name re-probe below then found it, which is why the
+# failure looked cosmetic while costing a minute — and hid a real op.error if there was one).
 wait_op() {
-  local op_id="$1"
+  local op_id="$1" channel="${2:-public}"
   # Fast-fail on empty id: a Create that returned an error envelope (e.g.
   # ALREADY_EXISTS, or a validation reject) has no operation id — polling it
   # would just burn the full 60s deadline before FATAL. Surface it immediately
@@ -169,7 +234,11 @@ wait_op() {
   local deadline=$(( $(date +%s) + 60 ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
     local op
-    op=$(curl_json GET "/operations/$op_id")
+    if [ "$channel" = "internal" ]; then
+      op=$(curl_internal GET "/operations/$op_id")
+    else
+      op=$(curl_json GET "/operations/$op_id")
+    fi
     if [ "$(printf '%s' "$op" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin); print("1" if d.get("done") else "")
 except Exception: print("")')" = "1" ]; then
@@ -178,7 +247,7 @@ except Exception: print("")')" = "1" ]; then
     fi
     sleep 1
   done
-  log "FATAL: operation $op_id did not finish in 60s"
+  log "FATAL: operation $op_id did not finish in 60s (polled on the $channel listener)"
   return 1
 }
 
@@ -189,8 +258,8 @@ except Exception: print("")')" = "1" ]; then
 # env then points at nothing and every downstream cross-service peer-check 404s
 # (.claude/rules/testing.md, fixture-seed rule). Prints nothing + returns 1 on error.
 wait_op_field() {
-  local op_id="$1" field="$2" op err
-  op=$(wait_op "$op_id") || return 1
+  local op_id="$1" field="$2" channel="${3:-public}" op err
+  op=$(wait_op "$op_id" "$channel") || return 1
   err=$(printf '%s' "$op" | extract "error")
   if [ -n "$err" ] && [ "$err" != "null" ] && [ "$err" != "{}" ]; then
     log "    operation $op_id finished with error: $err"
@@ -221,6 +290,73 @@ elif isinstance(d, (str, int, bool)):
     print(d)
 else:
     print(json.dumps(d))
+'
+}
+
+# api_err <response-body> — prints the gRPC error when the body is an error envelope
+# ({"code":N,"message":"…"}), prints nothing on success. curl exits 0 on 4xx/5xx (no -f),
+# so `curl … >/dev/null || log "failed"` NEVER fires and reports success for a refused
+# call — which is how the reclaim below claimed "deleted stale pool" while the pool was
+# still there (it was refused: FailedPrecondition, leases still allocated). Grade the
+# BODY, not the process exit status.
+api_err() {
+  printf '%s' "$1" | python3 -c '
+import sys, json
+raw = sys.stdin.read().strip()
+if not raw:                      # empty body = success (Delete → google.protobuf.Empty)
+    sys.exit(0)
+try:
+    d = json.loads(raw)
+except Exception:
+    print("non-JSON response: " + raw[:120]); sys.exit(0)
+if isinstance(d, dict) and isinstance(d.get("code"), int) and d.get("message"):
+    print("%s (code %s)" % (d["message"], d["code"]))
+'
+}
+
+# probe_fixture <list-key> <want-name> <want-zone> <zone-path> — PLACEMENT-AWARE reuse probe.
+# Reads a List response on stdin, prints "<status>\t<id>\t<zone>" where
+#   match     — a resource with that name AND that placement exists → safe to reuse
+#   mismatch  — the name exists, but in ANOTHER zone → our own stale/foreign artifact,
+#               NEVER reuse (adopting it is what silently defeated NLB_ZONE_ID)
+#   none      — no such name (or the list was unreadable) → create it
+# zone-path is a dotted JSON path, or several '|'-separated alternatives (an Address
+# carries its zone under externalIpv4Address.zoneId OR externalIpv6Address.zoneId). An
+# EMPTY zone-path declares the resource placement-FREE (vpc Network): name-only reuse is
+# then correct, not sloppy — there is no placement to disagree about.
+probe_fixture() {
+  LIST_KEY="$1" WANT_NAME="$2" WANT_ZONE="$3" ZONE_PATH="$4" python3 -c '
+import os, sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("none\t\t"); sys.exit(0)
+items = d.get(os.environ["LIST_KEY"]) or []
+want_name = os.environ["WANT_NAME"]
+want_zone = os.environ["WANT_ZONE"]
+paths = [p for p in os.environ["ZONE_PATH"].split("|") if p]
+
+def zone_of(it):
+    for p in paths:
+        cur = it
+        for seg in p.split("."):
+            if not isinstance(cur, dict):
+                cur = None
+                break
+            cur = cur.get(seg)
+        if cur:
+            return cur
+    return ""
+
+hits = [it for it in items if it.get("name") == want_name]
+if not hits:
+    print("none\t\t"); sys.exit(0)
+if not paths:                      # placement-free resource — name is the whole identity
+    print("match\t%s\t" % hits[0].get("id", "")); sys.exit(0)
+same = [it for it in hits if zone_of(it) == want_zone]
+if same:
+    print("match\t%s\t%s" % (same[0].get("id", ""), zone_of(same[0]))); sys.exit(0)
+print("mismatch\t%s\t%s" % (hits[0].get("id", ""), zone_of(hits[0])))
 '
 }
 
@@ -272,49 +408,75 @@ REGION_ID=$(curl_json GET "/geo/v1/zones/$ZONE_ID" | extract "regionId")
 [ -n "$REGION_ID" ] || REGION_ID="ru-central1"
 log "    region_id=$REGION_ID"
 
+# ─── 1.5) Zone-derived fixture identity --------------------------------------
+# Placement-scoped fixtures are NAMED and ADDRESSED per zone, so a set seeded for zone X
+# can never be confused with (or blocked by) a set left behind for zone Y — see the
+# PLACEMENT-COHERENT REUSE note in the header. ZOCT is a stable per-zone octet (1..254,
+# never 0 → never collides with the legacy zone-a 10.130.0.0/24 seed subnet).
+ZTAG=$(printf '%s' "$ZONE_ID" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-')
+ZOCT=$(ZONE="$ZONE_ID" python3 -c 'import hashlib, os; print(int(hashlib.md5(os.environ["ZONE"].encode()).hexdigest(), 16) % 254 + 1)')
+
+NET_NAME="kac-nlb-seed-net"                    # placement-FREE (a vpc Network carries no zone)
+SUBNET_NAME="kac-nlb-seed-subnet-$ZTAG"
+SUBNET_CIDR="10.130.$ZOCT.0/24"                # per-network EXCLUDE (network_id, cidr &&)
+POOL_NAME="kac-nlb-seed-ext-pool"              # GLOBAL default slot — one at a time, reclaimed
+POOL_V4="100.102.$ZOCT.0/24"                   # GLOBAL EXCLUDE (kind, block &&) → per-zone block
+POOL_V6=$(printf '2001:db8:e2e:%x::/64' "$ZOCT")
+ADDR_NAME="kac-nlb-seed-ext-addr-$ZTAG"
+ADDR6_NAME="kac-nlb-seed-ext-addr6-$ZTAG"
+INST_NAME="kac-nlb-seed-inst-$ZTAG"
+NIC_NAME="kac-nlb-seed-nic-$ZTAG"
+log "    fixture identity: subnet=$SUBNET_NAME ($SUBNET_CIDR) pool=$POOL_NAME ($POOL_V4 + $POOL_V6)"
+
+# refuse_mismatch <kind> <name> <id> <found-zone> — a placement-scoped fixture carrying OUR
+# zone-qualified name but living in ANOTHER zone. Never adopt it (that is the bug this
+# whole block exists to kill) and never silently create a twin (UNIQUE(project,name) would
+# reject it anyway): stop with an actionable message.
+refuse_mismatch() {
+  log "FATAL: $1 '$2' already exists as $3 in zone '$4', but this seed targets zone '$ZONE_ID'."
+  log "       The name is zone-qualified, so this can only mean the name was taken by something"
+  log "       else (or the zone was re-created under the same id). REFUSING to adopt a fixture from"
+  log "       a foreign zone — that is exactly how existingZoneId ended up disagreeing with the"
+  log "       seeded subnet/address. Delete $3 (or re-point NLB_ZONE_ID) and re-run."
+  exit 1
+}
+
 # ─── 2) Ensure VPC Network ---------------------------------------------------
+# Placement-free: a vpc Network has no zone_id (its SUBNETS carry placement), so name-only
+# reuse is coherent here — the per-zone subnets simply live side by side inside it.
 NET_LIST=$(curl_json GET "/vpc/v1/networks?projectId=$PROJECT_ID&pageSize=200")
-NET_ID=$(printf '%s' "$NET_LIST" | python3 -c '
-import sys, json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-for n in d.get("networks", []):
-    if n.get("name") == "kac-nlb-seed-net":
-        print(n.get("id","")); sys.exit(0)
-print("")
-')
+NET_SEL=$(printf '%s' "$NET_LIST" | probe_fixture networks "$NET_NAME" "" "")
+NET_ID=$(printf '%s' "$NET_SEL" | cut -f2)
 if [ -z "$NET_ID" ]; then
-  log "2/6 creating Network kac-nlb-seed-net"
-  body='{"projectId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-net","description":"KAC-NLB seed fixture"}'
+  log "2/6 creating Network $NET_NAME"
+  body='{"projectId":"'"$PROJECT_ID"'","name":"'"$NET_NAME"'","description":"KAC-NLB seed fixture"}'
   op=$(curl_json POST "/vpc/v1/networks" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   NET_ID=$(wait_op "$op_id" | extract "metadata.networkId")
 else
-  log "2/6 reusing existing Network $NET_ID"
+  log "2/6 reusing existing Network $NET_ID (placement-free)"
 fi
 
 # ─── 3) Ensure VPC Subnet ----------------------------------------------------
 SUB_LIST=$(curl_json GET "/vpc/v1/networks/$NET_ID/subnets?pageSize=200")
-SUBNET_ID=$(printf '%s' "$SUB_LIST" | python3 -c '
-import sys, json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-for n in d.get("subnets", []):
-    if n.get("name") == "kac-nlb-seed-subnet":
-        print(n.get("id","")); sys.exit(0)
-print("")
-')
-if [ -z "$SUBNET_ID" ]; then
-  log "3/6 creating Subnet kac-nlb-seed-subnet"
-  # placement_type is server-derived from zoneId (ZONAL) — do NOT send it (redesign
-  # placement-coherence: sending placement_type → InvalidArgument).
-  body='{"projectId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","ipv4CidrPrimary":"10.130.0.0/24"}'
-  op=$(curl_json POST "/vpc/v1/subnets" "$body")
-  op_id=$(printf '%s' "$op" | extract "id")
-  SUBNET_ID=$(wait_op "$op_id" | extract "metadata.subnetId")
-else
-  log "3/6 reusing existing Subnet $SUBNET_ID"
-fi
+SUB_SEL=$(printf '%s' "$SUB_LIST" | probe_fixture subnets "$SUBNET_NAME" "$ZONE_ID" "zoneId")
+SUB_STATUS=$(printf '%s' "$SUB_SEL" | cut -f1)
+SUBNET_ID=$(printf '%s' "$SUB_SEL" | cut -f2)
+case "$SUB_STATUS" in
+  mismatch) refuse_mismatch "Subnet" "$SUBNET_NAME" "$SUBNET_ID" "$(printf '%s' "$SUB_SEL" | cut -f3)" ;;
+  match)    log "3/6 reusing existing Subnet $SUBNET_ID (zone $ZONE_ID)" ;;
+  *)
+    SUBNET_ID=""
+    log "3/6 creating Subnet $SUBNET_NAME (zone=$ZONE_ID, cidr=$SUBNET_CIDR)"
+    # placement_type is server-derived from zoneId (ZONAL) — do NOT send it (redesign
+    # placement-coherence: sending placement_type → InvalidArgument).
+    body='{"projectId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"'"$SUBNET_NAME"'","zoneId":"'"$ZONE_ID"'","ipv4CidrPrimary":"'"$SUBNET_CIDR"'"}'
+    op=$(curl_json POST "/vpc/v1/subnets" "$body")
+    op_id=$(printf '%s' "$op" | extract "id")
+    SUBNET_ID=$(wait_op_field "$op_id" "subnetId" || true)
+    [ -n "$SUBNET_ID" ] || log "    Subnet.Create rejected — leaving existingSubnetId blank (see the operation error above)"
+    ;;
+esac
 
 # ─── 3.5) Ensure External AddressPool (IPAM source for external VIPs) --------
 # The nlb EXTERNAL suites auto-allocate a public VIP (v4Source:{public:{}}) and
@@ -329,34 +491,106 @@ fi
 # best-effort (|| true) so a stand without the internal port-forward degrades to the
 # pre-existing behaviour instead of aborting the whole seed.
 POOL_LIST=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null || echo '{}')
-POOL_ID=$(printf '%s' "$POOL_LIST" | python3 -c '
-import sys, json
-try: d=json.load(sys.stdin)
+POOL_SEL=$(printf '%s' "$POOL_LIST" | probe_fixture pools "$POOL_NAME" "$ZONE_ID" "zoneId")
+POOL_STATUS=$(printf '%s' "$POOL_SEL" | cut -f1)
+POOL_ID=$(printf '%s' "$POOL_SEL" | cut -f2)
+POOL_FOUND_ZONE=$(printf '%s' "$POOL_SEL" | cut -f3)
+POOL_HAS_V6=""
+if [ "$POOL_STATUS" = "match" ]; then
+  POOL_HAS_V6=$(printf '%s' "$POOL_LIST" | POOL="$POOL_ID" python3 -c '
+import os, sys, json
+try: d = json.load(sys.stdin)
 except Exception: sys.exit(0)
 for p in d.get("pools", []):
-    if p.get("name") == "kac-nlb-seed-ext-pool":
-        # trailing marker: does the pool already carry v6 blocks?
-        print("%s %s" % (p.get("id",""), "v6" if p.get("v6CidrBlocks") else "nov6")); sys.exit(0)
-print("")
+    if p.get("id") == os.environ["POOL"]:
+        print("v6" if p.get("v6CidrBlocks") else "nov6")
+        break
 ')
-POOL_HAS_V6=$(printf '%s' "$POOL_ID" | awk '{print $2}')
-POOL_ID=$(printf '%s' "$POOL_ID" | awk '{print $1}')
+fi
+
+if [ "$POOL_STATUS" = "mismatch" ]; then
+  # OUR name, FOREIGN zone: a pool this very script planted before the zone-dedication.
+  # It is not inert — it holds the GLOBAL `is_default for (zone, kind)` slot of a zone
+  # another suite makes assertions about (vpc ADR-CR-EXT-V6-FAMILY-FALLTHROUGH asserts
+  # zone a has no v6-capable default). Adopting it (the old name-only probe) left this
+  # suite's dedicated zone without any pool AND kept the foreign zone broken. Reclaim it.
+  log "3.5/6 RECLAIM: $POOL_NAME ($POOL_ID) lives in zone '$POOL_FOUND_ZONE', this seed owns zone '$ZONE_ID'"
+  log "    (not adopting it — that is what silently defeated NLB_ZONE_ID and kept zone '$POOL_FOUND_ZONE' broken)"
+  # (a) drop the default flag FIRST — this alone releases the foreign zone's global slot,
+  #     and unlike the delete it can never be refused by allocated leases.
+  reclaim_err=$(api_err "$(curl_internal PATCH "/vpc/v1/addressPools/$POOL_ID" \
+       '{"updateMask":"isDefault","isDefault":false}' 2>/dev/null || true)")
+  if [ -z "$reclaim_err" ]; then
+    log "    cleared is_default on $POOL_ID → zone '$POOL_FOUND_ZONE' no longer resolves it via GetDefaultForZone"
+  else
+    log "    WARNING: could not clear is_default on $POOL_ID ($reclaim_err) — zone '$POOL_FOUND_ZONE' still resolves this pool"
+  fi
+  # (b) release OUR OWN addresses in that zone (they, and only they, are ours to free);
+  #     an AddressPool with allocated IPs is Delete-refused (FailedPrecondition).
+  STALE_ADDRS=$(curl_json GET "/vpc/v1/addresses?projectId=$PROJECT_ID&pageSize=200" 2>/dev/null \
+    | ZONE="$POOL_FOUND_ZONE" python3 -c '
+import os, sys, json
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(0)
+zone = os.environ["ZONE"]
+for a in d.get("addresses", []) or []:
+    if not (a.get("name") or "").startswith("kac-nlb-seed-ext-addr"):
+        continue
+    z = ((a.get("externalIpv4Address") or {}).get("zoneId")
+         or (a.get("externalIpv6Address") or {}).get("zoneId") or "")
+    if z == zone:
+        print(a.get("id", ""))
+' || true)
+  for sa in $STALE_ADDRS; do
+    [ -n "$sa" ] || continue
+    op=$(curl_json DELETE "/vpc/v1/addresses/$sa" 2>/dev/null || true)
+    reclaim_err=$(api_err "$op")
+    if [ -n "$reclaim_err" ]; then
+      log "    could not release our stale Address $sa: $reclaim_err"
+      continue
+    fi
+    op_id=$(printf '%s' "$op" | extract "id")
+    if [ -n "$op_id" ] && wait_op "$op_id" >/dev/null 2>&1; then
+      log "    released our stale Address $sa (zone $POOL_FOUND_ZONE)"
+    else
+      log "    stale Address $sa delete did not confirm (op $op_id) — pool delete below may be refused"
+    fi
+  done
+  # (c) delete the pool. Best-effort BY DESIGN: leases held by OTHER suites' resources
+  #     (nlb-lb-*-v4 VIPs from earlier runs) legitimately block it and are not ours to
+  #     reap. The un-default in (a) already removed the cross-suite harm, and the new
+  #     pool's zone-derived CIDR does not overlap this one, so a surviving stale pool
+  #     cannot block the fresh Create either.
+  reclaim_err=$(api_err "$(curl_internal DELETE "/vpc/v1/addressPools/$POOL_ID" 2>/dev/null || true)")
+  if [ -z "$reclaim_err" ]; then
+    log "    deleted stale pool $POOL_ID"
+  else
+    log "    NOTE: stale pool $POOL_ID NOT deleted — $reclaim_err"
+    log "          (it still holds leases that are not ours to reap — typically nlb-lb-*-v4 VIPs from"
+    log "          earlier runs). Left in place but NO LONGER DEFAULT for zone '$POOL_FOUND_ZONE', which"
+    log "          is the part that broke the other suite; the new pool's zone-derived CIDR does not"
+    log "          overlap it, so the fresh Create below is unaffected. Drop it once those leases are gone."
+  fi
+  POOL_ID=""      # fall through to the create-in-$ZONE_ID branch below
+  POOL_STATUS="none"
+fi
+
 if [ -z "$POOL_ID" ]; then
-  log "3.5/6 creating external AddressPool kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, zone=$ZONE_ID)"
-  # 198.51.100.0/24 = TEST-NET-2 (RFC 5737) — the documented production external
-  # CIDR (see `make seed-ipam`). 2001:db8::/32 = RFC 3849 documentation prefix; the
-  # /64 below is the v6 half of the SAME pool, because an EXTERNAL LB with
-  # `v6Source:{public:{}}` resolves the very same GetDefaultForZone(zone,
-  # EXTERNAL_PUBLIC) pool and then asks it for a v6 block. A v4-only pool answers
-  # `address pool %s has no v6_cidr_blocks`, which the nlb use-case collapses into
-  # the capacity-opaque "could not allocate load balancer address" — so
-  # XRES-E2E-EXTERNAL-IPV6-VIP could never allocate and its positive assertion was
-  # skipped by the `lastOpError` guard, i.e. VACUOUSLY green (CI 30135586348: 0/1 v6
-  # allocations succeeded vs 36/39 v4).
-  # On a truly fresh stand (CI wipes the vpc DB) no EXTERNAL_PUBLIC pool exists, so the
-  # address_pool_cidrs EXCLUDE (kind, block &&) does not conflict. On a re-run /
-  # shared vpc DB it CAN conflict (see fallback below).
-  pbody='{"name":"kac-nlb-seed-ext-pool","description":"KAC-NLB seed external VIP pool","kind":"EXTERNAL_PUBLIC","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["198.51.100.0/24"],"v6CidrBlocks":["2001:db8:e2e:100::/64"]}'
+  log "3.5/6 creating external AddressPool $POOL_NAME (EXTERNAL_PUBLIC, zone=$ZONE_ID, v4=$POOL_V4 v6=$POOL_V6)"
+  # ZONE-DERIVED blocks. `address_pool_cidrs` EXCLUDE is (kind, block &&) — GLOBAL per
+  # kind, i.e. blind to name AND zone — so a fixed block makes the pool of zone X block
+  # the pool of zone Y forever (that is precisely the state a stale pool leaves behind).
+  # 100.102.<zone-octet>.0/24 continues the per-suite block convention (vpc internal-pool
+  # 100.100/16, vpc address 100.101/16) and is disjoint from both, and from the legacy
+  # 198.51.100.0/24 a pre-dedication pool may still be sitting on. Capacity is unchanged
+  # (a /24 = 254 leases), so the nlb suite's `--jobs 1` pool-contention rule still holds.
+  # The v6 half lives in the SAME pool because an EXTERNAL LB with `v6Source:{public:{}}`
+  # resolves the very same GetDefaultForZone(zone, EXTERNAL_PUBLIC) pool and then asks it
+  # for a v6 block; a v4-only pool answers `address pool %s has no v6_cidr_blocks`, which
+  # the nlb use-case collapses into the capacity-opaque "could not allocate load balancer
+  # address" — XRES-E2E-EXTERNAL-IPV6-VIP was VACUOUSLY green that way (CI 30135586348:
+  # 0/1 v6 allocations vs 36/39 v4). 2001:db8::/32 = RFC 3849 documentation prefix.
+  pbody='{"name":"'"$POOL_NAME"'","description":"KAC-NLB seed external VIP pool","kind":"EXTERNAL_PUBLIC","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["'"$POOL_V4"'"],"v6CidrBlocks":["'"$POOL_V6"'"]}'
   POOL_ID=$(curl_internal POST "/vpc/v1/addressPools" "$pbody" | extract "id" || true)
   if [ -z "$POOL_ID" ]; then
     # Create returned no id. The most common cause on a re-run / shared vpc DB is the
@@ -432,57 +666,98 @@ print("none\t\t%s" % desc)
     # Allocation picks the pool ONLY when is_default=true for (zone, kind); the
     # Create RPC has no isDefault field, so flip it via Update (update_mask=isDefault).
     # Idempotent: PATCH on an already-default pool is a no-op.
-    curl_internal PATCH "/vpc/v1/addressPools/$POOL_ID" \
-      '{"updateMask":"isDefault","isDefault":true}' >/dev/null 2>&1 || \
-      log "    could not set is_default on $POOL_ID (a default pool for this zone/kind may already exist)"
+    # Graded on the RESPONSE BODY (curl exits 0 on 4xx — see api_err): a refused PATCH
+    # here means the pool exists but nothing resolves it, i.e. every EXTERNAL VIP in this
+    # zone fails later with a capacity-opaque error. That must be visible now.
+    pool_err=$(api_err "$(curl_internal PATCH "/vpc/v1/addressPools/$POOL_ID" \
+      '{"updateMask":"isDefault","isDefault":true}' 2>/dev/null || true)")
+    [ -z "$pool_err" ] || \
+      log "    WARNING: could not set is_default on $POOL_ID ($pool_err) — another default pool may already hold the ($ZONE_ID, EXTERNAL_PUBLIC) slot; external VIP allocation in this zone will fail"
   else
     log "    AddressPool.Create did not return an id and no EXTERNAL_PUBLIC pool exists in zone $ZONE_ID (internal mux unreachable at $INTERNAL_BASE_URL, or insufficient admin tier) — external VIP allocation may fail; whitelist non-T31 nlb external-create cases if so"
   fi
 else
-  log "3.5/6 reusing existing external AddressPool $POOL_ID"
+  log "3.5/6 reusing existing external AddressPool $POOL_ID (zone $ZONE_ID — placement verified, not name-only)"
+  # Re-assert the default flag: a reused pool that lost it (reclaimed by an earlier run
+  # targeting another zone, or cleared by hand) resolves nothing via GetDefaultForZone.
+  pool_err=$(api_err "$(curl_internal PATCH "/vpc/v1/addressPools/$POOL_ID" \
+    '{"updateMask":"isDefault","isDefault":true}' 2>/dev/null || true)")
+  [ -z "$pool_err" ] || \
+    log "    WARNING: could not (re-)set is_default on $POOL_ID ($pool_err) — another default pool may already hold the ($ZONE_ID, EXTERNAL_PUBLIC) slot"
   if [ "$POOL_HAS_V6" != "v6" ]; then
     # A pool seeded by an older revision of this script is v4-only, so
     # `v6Source:{public:{}}` cannot allocate from it. Blocks are immutable via
     # Update by design — top up through the dedicated :addCidrBlocks action.
-    log "    pool has no v6 blocks (pre-v6 seed) — adding 2001:db8:e2e:100::/64 via :addCidrBlocks"
-    if ! curl_internal POST "/vpc/v1/addressPools/$POOL_ID:addCidrBlocks" \
-        '{"v6CidrBlocks":["2001:db8:e2e:100::/64"]}' >/dev/null 2>&1; then
-      log "    WARNING: could not add the v6 block to $POOL_ID — EXTERNAL v6 auto-VIP will fail (v6 e2e lane)."
-    fi
+    log "    pool has no v6 blocks (pre-v6 seed) — adding $POOL_V6 via :addCidrBlocks"
+    pool_err=$(api_err "$(curl_internal POST "/vpc/v1/addressPools/$POOL_ID:addCidrBlocks" \
+        '{"v6CidrBlocks":["'"$POOL_V6"'"]}' 2>/dev/null || true)")
+    [ -z "$pool_err" ] || \
+      log "    WARNING: could not add the v6 block to $POOL_ID ($pool_err) — EXTERNAL v6 auto-VIP will fail (v6 e2e lane)."
   fi
 fi
 
-# ─── 4) Ensure External Address (BYO VIP) ----------------------------------
+# ─── 4) Ensure External Addresses (BYO VIP: v4 + v6) ------------------------
+# Both are placement-scoped (ExternalIpv{4,6}AddressSpec carries zoneId) and both are
+# probed by (name AND zone): an address adopted from another zone would be allocated out
+# of THAT zone's pool, so a "BYO VIP" fixture would silently point at a lease the suite's
+# own zone cannot serve.
 ADDR_LIST=$(curl_json GET "/vpc/v1/addresses?projectId=$PROJECT_ID&pageSize=200")
-EXT_ADDR_ID=$(printf '%s' "$ADDR_LIST" | python3 -c '
-import sys, json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-for a in d.get("addresses", []):
-    if a.get("name") == "kac-nlb-seed-ext-addr":
-        print(a.get("id","")); sys.exit(0)
-print("")
-')
-if [ -z "$EXT_ADDR_ID" ]; then
-  log "4/6 creating external Address kac-nlb-seed-ext-addr (ZONAL, zone=$ZONE_ID)"
-  # External Address IPAM is ZONE-scoped: the request field is
-  # `externalIpv4AddressSpec` (not `externalIpv4Address`, which is a field on the
-  # Address *resource*), and ExternalIpv4AddressSpec carries only zoneId — there is
-  # NO regionId on it (proto address_service.proto). The resolver keys the default
-  # pool by zone (address_pool.go GetDefaultForZone($zone, EXTERNAL_PUBLIC)), so a
-  # zoneId that matches the ZONAL pool seeded in 3.5 is required; a region-scoped /
-  # zone-less spec would only match a GLOBAL (zone_id IS NULL) pool and 404 here.
-  # This mirrors the passing newman body ADR-CR-CRUD-EXT (address.py).
-  body='{"projectId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-ext-addr","externalIpv4AddressSpec":{"zoneId":"'"$ZONE_ID"'"}}'
-  op=$(curl_json POST "/vpc/v1/addresses" "$body")
-  op_id=$(printf '%s' "$op" | extract "id")
-  EXT_ADDR_ID=$(wait_op "$op_id" | extract "metadata.addressId" || true)
-  if [ -z "$EXT_ADDR_ID" ]; then
-    log "    Address.Create rejected (no AddressPool seeded?) — leaving existingExternalAddressId blank"
-  fi
-else
-  log "4/6 reusing existing Address $EXT_ADDR_ID"
-fi
+ADDR_ZONE_PATH="externalIpv4Address.zoneId|externalIpv6Address.zoneId"
+
+ADDR_SEL=$(printf '%s' "$ADDR_LIST" | probe_fixture addresses "$ADDR_NAME" "$ZONE_ID" "$ADDR_ZONE_PATH")
+ADDR_STATUS=$(printf '%s' "$ADDR_SEL" | cut -f1)
+EXT_ADDR_ID=$(printf '%s' "$ADDR_SEL" | cut -f2)
+case "$ADDR_STATUS" in
+  mismatch) refuse_mismatch "Address" "$ADDR_NAME" "$EXT_ADDR_ID" "$(printf '%s' "$ADDR_SEL" | cut -f3)" ;;
+  match)    log "4/6 reusing existing Address $EXT_ADDR_ID (zone $ZONE_ID)" ;;
+  *)
+    EXT_ADDR_ID=""
+    log "4/6 creating external Address $ADDR_NAME (ZONAL v4, zone=$ZONE_ID)"
+    # External Address IPAM is ZONE-scoped: the request field is
+    # `externalIpv4AddressSpec` (not `externalIpv4Address`, which is a field on the
+    # Address *resource*), and ExternalIpv4AddressSpec carries only zoneId — there is
+    # NO regionId on it (proto address_service.proto). The resolver keys the default
+    # pool by zone (address_pool.go GetDefaultForZone($zone, EXTERNAL_PUBLIC)), so a
+    # zoneId that matches the ZONAL pool seeded in 3.5 is required; a region-scoped /
+    # zone-less spec would only match a GLOBAL (zone_id IS NULL) pool and 404 here.
+    # This mirrors the passing newman body ADR-CR-CRUD-EXT (address.py).
+    body='{"projectId":"'"$PROJECT_ID"'","name":"'"$ADDR_NAME"'","externalIpv4AddressSpec":{"zoneId":"'"$ZONE_ID"'"}}'
+    op=$(curl_json POST "/vpc/v1/addresses" "$body")
+    op_id=$(printf '%s' "$op" | extract "id")
+    EXT_ADDR_ID=$(wait_op_field "$op_id" "addressId" || true)
+    if [ -z "$EXT_ADDR_ID" ]; then
+      log "    Address.Create rejected (no AddressPool seeded in $ZONE_ID?) — leaving existingExternalAddressId blank"
+    fi
+    ;;
+esac
+
+# 4b) External IPv6 Address — `existingAddressIPv6Id`. Four nlb cases need a REAL v6
+# address handle: the family/slot negatives (NLB-CR-VAL-ADDRESS-FAMILY-SLOT,
+# LST-CR-VAL-BYO-IP-VERSION-MISMATCH, XRES-E2E-V4-LISTENER-V6-ADDRESS-INVALID) claim to
+# verify "v4 slot referencing an IPv6 address → Illegal argument addressId", and
+# NLB-CR-CRUD-DUALSTACK-MIXED links it as the v6 leg. With the id left as a committed
+# placeholder those negatives were satisfied by "unknown address" instead of the family
+# mismatch they name, and the two guarded cases took their tolerant else-branch. Allocated
+# from the same seed pool (its v6 half), so it is coherent with the suite's zone.
+ADDR6_SEL=$(printf '%s' "$ADDR_LIST" | probe_fixture addresses "$ADDR6_NAME" "$ZONE_ID" "$ADDR_ZONE_PATH")
+ADDR6_STATUS=$(printf '%s' "$ADDR6_SEL" | cut -f1)
+EXT_ADDR6_ID=$(printf '%s' "$ADDR6_SEL" | cut -f2)
+case "$ADDR6_STATUS" in
+  mismatch) refuse_mismatch "Address(v6)" "$ADDR6_NAME" "$EXT_ADDR6_ID" "$(printf '%s' "$ADDR6_SEL" | cut -f3)" ;;
+  match)    log "    reusing existing IPv6 Address $EXT_ADDR6_ID (zone $ZONE_ID)" ;;
+  *)
+    EXT_ADDR6_ID=""
+    log "    creating external Address $ADDR6_NAME (ZONAL v6, zone=$ZONE_ID)"
+    body6='{"projectId":"'"$PROJECT_ID"'","name":"'"$ADDR6_NAME"'","externalIpv6AddressSpec":{"zoneId":"'"$ZONE_ID"'"}}'
+    op=$(curl_json POST "/vpc/v1/addresses" "$body6")
+    op_id=$(printf '%s' "$op" | extract "id")
+    EXT_ADDR6_ID=$(wait_op_field "$op_id" "addressId" || true)
+    if [ -z "$EXT_ADDR6_ID" ]; then
+      log "    IPv6 Address.Create rejected (pool has no v6 block in $ZONE_ID?) — leaving existingAddressIPv6Id blank;"
+      log "    the nlb family/slot negatives then fall back to their unseeded branch instead of testing family mismatch."
+    fi
+    ;;
+esac
 
 # ─── 5) Ensure MachineType (sizing channel for the seed Instance) -----------
 # COMP-1 redesign: CreateInstanceRequest lost platformId/resourcesSpec/bootDiskSpec
@@ -527,7 +802,11 @@ EOF
   )
   op=$(curl_internal POST "/compute/v1/internal/machineTypes" "$mtbody")
   op_id=$(printf '%s' "$op" | extract "id")
-  MT_ID=$(wait_op_field "$op_id" "machineTypeId" || true)
+  # Poll through the SAME channel that created it (internal mux + $ADMIN_JWT). The create
+  # is an Internal admin RPC authorized on the cluster singleton; polling it as the project
+  # grantor $JWT (what the default public channel does) returns a permanent existence-hiding
+  # 404, so the loop never converged — 60s burned + a misleading FATAL. See wait_op.
+  MT_ID=$(wait_op_field "$op_id" "machineTypeId" internal || true)
   if [ -z "$MT_ID" ]; then
     # UNIQUE(name) re-run, or the internal mux is unreachable — re-probe by name so an
     # AlreadyExists does NOT degrade into "no machine type" and blank the Instance.
@@ -548,23 +827,24 @@ fi
 [ -n "$MT_ID" ] || log "    WARNING: no MachineType available — Instance.Create will fail 'machine type  not found'"
 
 # ─── 6) Ensure Compute Instance + its NIC ----------------------------------
+# Zone-aware, like everything else: an Instance is ZONAL, and its NIC-spec subnet must be
+# in the same zone (placement-coherence). Reusing a same-named Instance from another zone
+# is what made the fixture set self-contradictory (instance in zone e, NIC/subnet in a).
 INST_LIST=$(curl_json GET "/compute/v1/instances?projectId=$PROJECT_ID&pageSize=200")
-INSTANCE_ID=$(printf '%s' "$INST_LIST" | python3 -c '
-import sys, json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-for i in d.get("instances", []):
-    if i.get("name") == "kac-nlb-seed-inst":
-        print(i.get("id","")); sys.exit(0)
-print("")
-')
-if [ -z "$INSTANCE_ID" ] && [ -n "$MT_ID" ]; then
-  log "6/6 creating Instance kac-nlb-seed-inst (COMP-1 shape: instanceKind/machineTypeId/bootSource)"
+INST_SEL=$(printf '%s' "$INST_LIST" | probe_fixture instances "$INST_NAME" "$ZONE_ID" "zoneId")
+INST_STATUS=$(printf '%s' "$INST_SEL" | cut -f1)
+INSTANCE_ID=$(printf '%s' "$INST_SEL" | cut -f2)
+if [ "$INST_STATUS" = "mismatch" ]; then
+  refuse_mismatch "Instance" "$INST_NAME" "$INSTANCE_ID" "$(printf '%s' "$INST_SEL" | cut -f3)"
+fi
+[ "$INST_STATUS" = "match" ] || INSTANCE_ID=""
+if [ -z "$INSTANCE_ID" ] && [ -n "$MT_ID" ] && [ -n "$SUBNET_ID" ]; then
+  log "6/6 creating Instance $INST_NAME (COMP-1 shape: instanceKind/machineTypeId/bootSource, zone=$ZONE_ID)"
   body=$(cat <<EOF
 {
   "projectId":"$PROJECT_ID",
   "zoneId":"$ZONE_ID",
-  "name":"kac-nlb-seed-inst",
+  "name":"$INST_NAME",
   "instanceKind":"VM",
   "machineTypeId":"$MT_ID",
   "bootSource":{"type":"storage.image","id":"img-9k2m4x7q1n8p:22.04-lts"},
@@ -581,7 +861,9 @@ EOF
     log "    Instance.Create rejected — leaving existingInstanceId blank (see the operation error above)"
   fi
 elif [ -n "$INSTANCE_ID" ]; then
-  log "6/6 reusing existing Instance $INSTANCE_ID"
+  log "6/6 reusing existing Instance $INSTANCE_ID (zone $ZONE_ID)"
+else
+  log "6/6 skipping Instance $INST_NAME — no MachineType and/or no Subnet in zone $ZONE_ID to place it on"
 fi
 
 # NIC. Instance.networkInterfaces is an OUTPUT-ONLY mirror materialised by the COMP-2
@@ -606,25 +888,27 @@ else:
 ')
 fi
 if [ -z "$NIC_ID" ] && [ -n "$SUBNET_ID" ]; then
+  # A NIC carries no zone of its own — it INHERITS placement from its subnet. So the
+  # coherence predicate here is `subnetId == the subnet we just resolved for THIS zone`,
+  # not a zoneId field: a NIC named after us but hanging off another zone's subnet is
+  # exactly the artifact that made existingNicId contradict existingZoneId.
   NIC_LIST=$(curl_json GET "/vpc/v1/networkInterfaces?projectId=$PROJECT_ID&pageSize=200" 2>/dev/null || echo '{}')
-  NIC_ID=$(printf '%s' "$NIC_LIST" | python3 -c '
-import sys, json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-for n in d.get("networkInterfaces", []):
-    if n.get("name") == "kac-nlb-seed-nic":
-        print(n.get("id","")); sys.exit(0)
-print("")
-')
+  NIC_SEL=$(printf '%s' "$NIC_LIST" | probe_fixture networkInterfaces "$NIC_NAME" "$SUBNET_ID" "subnetId")
+  NIC_STATUS=$(printf '%s' "$NIC_SEL" | cut -f1)
+  NIC_ID=$(printf '%s' "$NIC_SEL" | cut -f2)
+  if [ "$NIC_STATUS" = "mismatch" ]; then
+    refuse_mismatch "NetworkInterface" "$NIC_NAME" "$NIC_ID" "subnet $(printf '%s' "$NIC_SEL" | cut -f3)"
+  fi
+  [ "$NIC_STATUS" = "match" ] || NIC_ID=""
   if [ -z "$NIC_ID" ]; then
-    log "    creating standalone vpc NIC kac-nlb-seed-nic (Instance NIC materialisation is COMP-2)"
-    nicbody='{"projectId":"'"$PROJECT_ID"'","subnetId":"'"$SUBNET_ID"'","name":"kac-nlb-seed-nic"}'
+    log "    creating standalone vpc NIC $NIC_NAME on subnet $SUBNET_ID (Instance NIC materialisation is COMP-2)"
+    nicbody='{"projectId":"'"$PROJECT_ID"'","subnetId":"'"$SUBNET_ID"'","name":"'"$NIC_NAME"'"}'
     op=$(curl_json POST "/vpc/v1/networkInterfaces" "$nicbody")
     op_id=$(printf '%s' "$op" | extract "id")
     NIC_ID=$(wait_op_field "$op_id" "networkInterfaceId" || true)
     [ -n "$NIC_ID" ] || log "    NIC.Create rejected — leaving existingNicId blank"
   else
-    log "    reusing existing NIC $NIC_ID"
+    log "    reusing existing NIC $NIC_ID (subnet $SUBNET_ID)"
   fi
 fi
 
@@ -639,9 +923,19 @@ existingNetworkId=$NET_ID
 existingSubnetId=$SUBNET_ID
 existingExternalPoolId=$POOL_ID
 existingExternalAddressId=$EXT_ADDR_ID
+existingAddressIPv6Id=$EXT_ADDR6_ID
 existingInstanceId=$INSTANCE_ID
 existingNicId=$NIC_ID
 EOF
+
+# Placement self-check — the whole point of this revision. Every id written above must
+# belong to $ZONE_ID; a blank id is "not seeded" (loudly logged upstream), never a
+# mismatch. Printing the coherence verdict here means a set that silently drifts (the
+# state this script shipped in: zone-a subnet under an existingZoneId=e env) is visible
+# in the seed log itself instead of surfacing 20 minutes later as an nlb/vpc red.
+log "placement self-check (all fixtures must be in $ZONE_ID):"
+log "    subnet=${SUBNET_ID:-<unseeded>} address=${EXT_ADDR_ID:-<unseeded>} address6=${EXT_ADDR6_ID:-<unseeded>}"
+log "    instance=${INSTANCE_ID:-<unseeded>} nic=${NIC_ID:-<unseeded>} pool=${POOL_ID:-<unseeded>}"
 
 log "done"
 cat "$OUT_FILE"

@@ -13,10 +13,13 @@ project. Тесты создают только runId-суффиксованны
 Parallel-safety (EXTERNAL_PUBLIC pool namespaces are GLOBAL, not project/zone-scoped):
   * CIDR: address_pool_cidrs EXCLUDE is `(kind, block &&)` — cross-zone GLOBAL per-kind.
     This suite therefore uses a DEDICATED v4 block (100.100.0.0/16) that does NOT
-    overlap the persistent nlb seed pool `kac-nlb-seed-ext-pool` (198.51.100.0/24,
-    seeded once by deploy/scripts/seed-nlb-fixtures.sh and live for the whole run) nor
-    the address suite's block (100.101.0.0/16). Reusing 198.51.100.0/24 here collided
-    with that seed under the parallel umbrella (nlb runs alongside vpc) → 400 overlap.
+    overlap the persistent nlb seed pool `kac-nlb-seed-ext-pool` (now a ZONE-DERIVED
+    100.102.<zone-octet>.0/24 — it used to be a fixed 198.51.100.0/24; seeded once by
+    deploy/scripts/seed-nlb-fixtures.sh and live for the whole run) nor the address
+    suite's block (100.101.0.0/16). Sharing a block with that seed collided under the
+    parallel umbrella (nlb runs alongside vpc) → 400 overlap.
+    NB: a legacy 198.51.100.0/24 pool may still sit in zone a on a long-lived stand
+    (pre-dedication seed, since un-defaulted by the seeder's reclaim) — do not reuse it.
   * is_default: address_pools_zone_kind_default_uniq is `(zone_id, kind) WHERE is_default`.
     Only 3 geo zones exist (ru-central1-a/b/d), so zoneC≡zoneD (both = ru-central1-d).
     The throwaway is_default pools this suite and the address suite create there share a

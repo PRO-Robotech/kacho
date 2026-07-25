@@ -1212,7 +1212,7 @@ if [ -f "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" ]; then
     bash "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" >"$seed_log" 2>&1 \
     || log "    WARN seed-nlb-fixtures.sh partial/failed (existing* ids may be blank) — see $seed_log"
 fi
-NLB_NET=""; NLB_SUBNET=""; NLB_INSTANCE=""; NLB_NIC=""; NLB_ADDR=""
+NLB_NET=""; NLB_SUBNET=""; NLB_INSTANCE=""; NLB_NIC=""; NLB_ADDR=""; NLB_ADDR6=""
 if [ -f "$NLB_SEEDED_IDS" ]; then
   # shellcheck disable=SC1090
   NLB_NET=$(grep -E '^existingNetworkId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
@@ -1220,9 +1220,13 @@ if [ -f "$NLB_SEEDED_IDS" ]; then
   NLB_INSTANCE=$(grep -E '^existingInstanceId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
   NLB_NIC=$(grep -E '^existingNicId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
   NLB_ADDR=$(grep -E '^existingExternalAddressId=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
+  # existingAddressIPv6Id — real BYO-IPv6 handle (seeder step 4b). Left unseeded it was a
+  # committed placeholder, and the nlb family/slot negatives were then satisfied by
+  # "unknown address" instead of the family mismatch they claim to verify.
+  NLB_ADDR6=$(grep -E '^existingAddressIPv6Id=' "$NLB_SEEDED_IDS" | cut -d= -f2- || true)
 fi
 log "    nlb subjects: EA=$USER_NLB_EA EB=$USER_NLB_EB VA=$USER_NLB_VA OA=$USER_NLB_OA STR=$USER_NLB_STR SA=$SVA_NLB"
-log "    nlb resources: net=$NLB_NET subnet=$NLB_SUBNET instance=$NLB_INSTANCE nic=$NLB_NIC addr=$NLB_ADDR"
+log "    nlb resources: net=$NLB_NET subnet=$NLB_SUBNET instance=$NLB_INSTANCE nic=$NLB_NIC addr=$NLB_ADDR addr6=$NLB_ADDR6"
 
 # ---------------------------------------------------------------------------
 # 14) REGISTRY — project-scope authz subjects (REG-1-32 authz-matrix).
@@ -1448,6 +1452,7 @@ EOF
   "existingInstanceId": "$NLB_INSTANCE",
   "existingNicId": "$NLB_NIC",
   "existingAddressId": "$NLB_ADDR",
+  "existingAddressIPv6Id": "$NLB_ADDR6",
   "jwtProjectEditorA": "$JWT_NLB_EA",
   "jwtProjectEditorB": "$JWT_NLB_EB",
   "jwtProjectViewerA": "$JWT_NLB_VA",

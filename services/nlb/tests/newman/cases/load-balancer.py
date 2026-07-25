@@ -243,7 +243,7 @@ CASES.append(Case(
 def _setup_lb(name_suffix: str, body_extra: dict = None):
     # Pool-INDEPENDENT setup LB: an INTERNAL ZONAL LB whose VIP is auto-allocated from a
     # per-case inline ZONAL subnet (fresh /24 = 254 IPs), NOT from the shared external
-    # AddressPool. The seeded external pool (198.51.100.0/24) is a single contended IPAM
+    # AddressPool. The seeded external pool (a zone-derived /24, 254 leases) is a single contended IPAM
     # source across the `--jobs 4` parallel collections and its addresses are not recycled
     # promptly within a run: ci-rep2 shows only 82 distinct VIPs ever allocated against
     # 115 `could not allocate load balancer address` FailedPrecondition errors on a

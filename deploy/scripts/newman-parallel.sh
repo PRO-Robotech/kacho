@@ -18,7 +18,14 @@
 #   4. regenerate every suite's collections (gen.py)
 #   5. run all four suites in parallel (each = its own scripts/run.sh, which itself
 #      fans its collections out with --jobs); per-suite logs to out/<svc>-suite.log
-#   6. aggregate: print each suite's summary, exit non-zero if ANY suite is red
+#   6. aggregate TWICE and print BOTH:
+#        RAW   — every failed assertion / request exactly as newman reported it
+#        GATED — the SAME gate CI runs (services/iam/tests/newman/scripts/
+#                assert-suites-green.sh: known-RED whitelist + DNS-isolation filter)
+#      exit code = GATED, so a local run and CI agree on the verdict. The RAW block is
+#      NOT optional output: it is what keeps the whitelist honest — you can always see
+#      how much was failing BEFORE the filter, and a whitelist that starts absorbing new
+#      failures shows up as a growing raw-vs-gated gap instead of as silence.
 #
 # Usage (after `make dev-up`):
 #   ./scripts/newman-parallel.sh                 # all four
@@ -178,5 +185,56 @@ if [ "${#wave2[@]}" -gt 0 ]; then
 fi
 
 echo
-if [ "$RC" -eq 0 ]; then echo "[parallel] ALL SUITES GREEN"; else echo "[parallel] one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi
-exit "$RC"
+# ─── Verdict: RAW (what newman reported) + GATED (what CI grades) ────────────
+# Local runners used to grade on RAW only, while CI graded through
+# services/iam/tests/newman/scripts/assert-suites-green.sh — so the two disagreed by
+# construction. Concrete example: `iam-internal-only-check` reports 0 failed ASSERTIONS
+# but a non-zero exit because 8 requests cannot resolve api.kacho.local (the case treats
+# an unreachable advertised-external host as PASS — that IS the internal-only invariant);
+# CI subtracts those EAI_AGAIN/ENOTFOUND requests, a local run counted them and called
+# iam RED. Same script, same numbers, one verdict — and the RAW block below stays printed
+# so the whitelist can never turn into a way of not seeing.
+GATE="${GATE:-true}"
+GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+echo "===== RAW (pre-whitelist, pre-DNS-filter) ====="
+printf "%-12s %10s %10s %10s\n" "SUITE" "ASSERT-F" "REQ-F" "REPORTS"
+raw_total_a=0; raw_total_r=0
+for svc in $SERVICES; do
+  d="$(suite_dir "$svc")"
+  a=0; r=0; n=0
+  for f in "$d"/out/*.json; do
+    [ -e "$f" ] || continue
+    n=$((n + 1))
+    a=$((a + $(jq -r '.run.stats.assertions.failed // 0' "$f" 2>/dev/null || echo 0)))
+    r=$((r + $(jq -r '.run.stats.requests.failed // 0' "$f" 2>/dev/null || echo 0)))
+  done
+  printf "%-12s %10s %10s %10s\n" "$svc" "$a" "$r" "$n"
+  raw_total_a=$((raw_total_a + a)); raw_total_r=$((raw_total_r + r))
+done
+printf "%-12s %10s %10s\n" "TOTAL" "$raw_total_a" "$raw_total_r"
+if [ "$RC" -eq 0 ]; then echo "[parallel] RAW verdict: ALL SUITES GREEN"; else echo "[parallel] RAW verdict: one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi
+
+if [ "$GATE" != "true" ] || [ ! -f "$GATE_SCRIPT" ]; then
+  echo "[parallel] CI gate skipped (GATE=$GATE, script=$GATE_SCRIPT) — grading on RAW"
+  exit "$RC"
+fi
+
+echo
+echo "===== GATED (the exact gate CI runs: assert-suites-green.sh) ====="
+GATE_RC=0
+for svc in $SERVICES; do
+  d="$(suite_dir "$svc")"
+  echo "--- $svc"
+  # cwd = the suite's newman dir: the gate walks collections/*.json vs out/<name>.json there.
+  if ( cd "$d" && bash "$GATE_SCRIPT" ); then :; else GATE_RC=1; fi
+done
+
+echo
+if [ "$GATE_RC" -eq 0 ]; then
+  echo "[parallel] GATED verdict: GREEN (CI would pass)"
+  [ "$RC" -eq 0 ] || echo "[parallel] NOTE: raw failures above are covered by the known-RED whitelist / DNS filter — read them, do not extend the list to keep this green."
+else
+  echo "[parallel] GATED verdict: RED (CI would fail) — see the per-collection lines above"
+fi
+exit "$GATE_RC"

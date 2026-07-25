@@ -39,7 +39,7 @@ _TGR = "/nlb/v1/targetGroups"
 # These cases assert per-object List filtering (owner sees own / stranger does not);
 # the VIP placement is INCIDENTAL to what they verify. They used to auto-allocate a
 # public VIP, which draws from the SINGLE seeded external AddressPool
-# (198.51.100.0/24) shared by all `--jobs 4` parallel collections. That pool is
+# (kac-nlb-seed-ext-pool, a zone-derived /24) shared by all `--jobs 4` parallel collections. That pool is
 # transiently exhausted mid-run, so the create returned 200 and its Operation then
 # finished `done:true` WITH `error: could not allocate load balancer address` — a
 # PHANTOM LB whose pre-allocated metadata id was published anyway, after which the

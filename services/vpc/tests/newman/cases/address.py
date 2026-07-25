@@ -613,7 +613,7 @@ CASES.append(conformance_lifecycle_pack("ADR", "/vpc/v1/addresses",
 #
 # Parallel-safety: EXTERNAL_PUBLIC pool namespaces are GLOBAL. The v4 fall-through
 # pool below uses the address-suite block 100.101.0.0/16 (NOT the nlb seed's
-# 198.51.100.0/24, live for the whole umbrella run, nor the internal-pool suite's
+# a zone-derived 100.102.<octet>.0/24, live for the whole umbrella run, nor the internal-pool suite's
 # 100.100.0.0/16). Only 3 geo zones exist so {{zoneD}}≡{{zoneC}}≡ru-central1-d;
 # the is_default pools here therefore share ONE (zone,kind) partition with the
 # internal-pool suite → run.sh serial-collections.txt keeps the two collections
@@ -841,7 +841,7 @@ CASES.append(Case(
                    "zoneId": "{{zoneD}}",
                    # Dedicated address-suite v4 block (100.101.0.0/16): the
                    # address_pool_cidrs EXCLUDE is GLOBAL per-kind, so this must not
-                   # overlap the persistent nlb seed pool (198.51.100.0/24) nor the
+                   # overlap the persistent nlb seed pool (zone-derived 100.102.<octet>.0/24) nor the
                    # internal-pool suite's block (100.100.0.0/16). See address.py
                    # header note + internal-pool.py parallel-safety docstring.
                    "v4CidrBlocks": ["100.101.0.0/24"], "v6CidrBlocks": [],

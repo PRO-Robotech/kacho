@@ -140,7 +140,34 @@ else
   # Поэтому передаём --env-var через argv, а не через env: иначе {{internalBaseUrl}}
   # остаётся пустым и Internal*-шаги молча уходят на публичный порт → 404
   # (internal-pool: 78/0 в одиночном прогоне, но 62/56 в полном — ровно этот разрыв).
+  set +e
   ./scripts/run.sh --service "" --delay 15 \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT"
+  RAW_RC=$?
+  set -e
+
+  # ── same two-verdict discipline as newman-parallel.sh ──────────────────────
+  # RAW = run.sh's own verdict (every failed assertion / non-zero newman rc).
+  # GATED = the gate CI actually grades with (known-RED whitelist + DNS-isolation
+  # filter). Without this, a local full-suite run called iam/vpc RED where CI passed
+  # (e.g. iam-internal-only-check: 0 failed assertions, non-zero exit from 8 requests
+  # that cannot resolve api.kacho.local — which the case counts as PASS and CI filters).
+  # RAW stays printed: the whitelist must never become a way of not seeing.
+  GATE="${GATE:-true}"
+  GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
+  echo
+  echo "[e2e] RAW verdict (run.sh): rc=$RAW_RC — see out/summary.txt"
+  if [ "$GATE" = "true" ] && [ -f "$GATE_SCRIPT" ]; then
+    echo "[e2e] GATED verdict (the gate CI runs):"
+    set +e
+    bash "$GATE_SCRIPT"
+    GATE_RC=$?
+    set -e
+    [ "$GATE_RC" -eq 0 ] && [ "$RAW_RC" -ne 0 ] && \
+      echo "[e2e] NOTE: raw failures are covered by the known-RED whitelist / DNS filter — read them, do not extend the list to keep this green."
+    exit "$GATE_RC"
+  fi
+  echo "[e2e] CI gate skipped (GATE=$GATE) — grading on RAW"
+  exit "$RAW_RC"
 fi
