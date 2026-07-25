@@ -23,20 +23,41 @@
 #   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr; allocated from the pool
 #                         above — populates `existingExternalAddressId` for
 #                         BYO-VIP test).
-#   - Compute Instance   (name: kac-nlb-seed-inst; minimal NIC on the seed
-#                         subnet) — populates `existingInstanceId` for
+#   - Compute MachineType (name: kac-nlb-seed-mt; Internal :8081 admin RPC) — the
+#                         COMP-1 single sizing channel the Instance body needs.
+#   - Compute Instance   (name: kac-nlb-seed-inst; COMP-1 shape
+#                         instanceKind/machineTypeId/bootSource + NIC spec on the
+#                         seed subnet) — populates `existingInstanceId` for
 #                         Target.instance_id tests.
-#   - VPC NIC            (the primary NetworkInterface created by Instance —
-#                         id discovered post-create) — populates
-#                         `existingNicId` for Target.nic_id tests.
+#   - VPC NIC            (kac-nlb-seed-nic in the seed subnet) — populates
+#                         `existingNicId` for Target.nic_id tests. Seeded as a
+#                         first-class vpc NetworkInterface because Instance NIC
+#                         materialisation is the COMP-2 launch saga (not landed);
+#                         the Instance's own NIC is preferred as soon as it exists.
 #
 # Outputs (idempotent):
 #   - .seeded-ids.env at repo root — sourceable KEY=VALUE pairs, used by
 #     newman environment-patch scripts (tests/authz-fixtures/patch-env.py
 #     family) and ad-hoc CI invocations.
 #
+# ZONE OWNERSHIP (директива #2, перенесённая на AddressPool): kac-nlb-seed-ext-pool is
+# EXTERNAL_PUBLIC + is_default, and "default for (zone, kind)" is a GLOBAL, cluster-wide
+# slot — it cannot be isolated by account/project, only by ZONE. The nlb suite therefore
+# owns a DEDICATED zone (NLB_ZONE_ID, ru-central1-e on the umbrella stand) and seeds its
+# network/subnet/instance/address/pool there. Previously this script took
+# `GET /geo/v1/zones?pageSize=1` = ru-central1-a and planted a default pool CARRYING
+# 2001:db8:e2e:100::/64 in it, which deterministically broke the vpc case
+# ADR-CR-EXT-V6-FAMILY-FALLTHROUGH (it asserts zone a has NO v6-capable pool, so an
+# external-v6 Create must fail FailedPrecondition; with our pool present the address
+# allocated and the Operation succeeded). Cross-suite fixture collision, not a flake.
+#
 # Env:
 #   BASE_URL  api-gateway REST endpoint (default http://localhost:28080).
+#   NLB_ZONE_ID  zone this suite owns; every seeded resource (subnet/instance/address)
+#             and the external AddressPool land there. Unset → falls back to the first
+#             zone of the geo catalog (standalone `make seed-nlb` behaviour). The id is
+#             validated against the geo catalog: a non-existent zone aborts loudly
+#             instead of silently degrading to zone[0] and re-creating the collision.
 #   JWT       Bearer to use for the Create calls. Empty → anonymous (works
 #             only on dev stand with authn=dev + authz disabled). CI passes
 #             $jwtAccountAdminA from authz-fixtures.json.
@@ -99,6 +120,24 @@ curl_json() {
   fi
 }
 
+# curl_admin — PUBLIC listener, but with $ADMIN_JWT. Needed for reads whose
+# scope_extractor is the CLUSTER SINGLETON rather than the caller's project — e.g.
+# MachineTypeService/List (`viewer` @ cluster): the project-scoped grantor $JWT gets a
+# hard 403 there, so probing the catalog with it would look like "no machine types".
+curl_admin() {
+  local method="$1"; shift
+  local path="$1"; shift
+  local body="${1:-}"
+  if [ -n "$body" ]; then
+    vrun curl -sS -X "$method" "$BASE_URL$path" \
+      -H 'Content-Type: application/json' \
+      "${admin_auth_args[@]}" \
+      --data "$body"
+  else
+    vrun curl -sS -X "$method" "$BASE_URL$path" "${admin_auth_args[@]}"
+  fi
+}
+
 # curl_internal — same as curl_json but against the cluster-internal REST listener
 # (Internal*-RPC live there only, ban #6).
 curl_internal() {
@@ -143,6 +182,23 @@ except Exception: print("")')" = "1" ]; then
   return 1
 }
 
+# wait_op_field <operation-id> <metadata-field> — poll to done, REJECT on op.error, then
+# print metadata.<field>. Kachō pre-allocates the resource id in Operation.metadata even
+# on a done+error Operation (the id is minted before the async failure), so extracting it
+# without checking `error` yields a PHANTOM id for a resource that does not exist — the
+# env then points at nothing and every downstream cross-service peer-check 404s
+# (.claude/rules/testing.md, fixture-seed rule). Prints nothing + returns 1 on error.
+wait_op_field() {
+  local op_id="$1" field="$2" op err
+  op=$(wait_op "$op_id") || return 1
+  err=$(printf '%s' "$op" | extract "error")
+  if [ -n "$err" ] && [ "$err" != "null" ] && [ "$err" != "{}" ]; then
+    log "    operation $op_id finished with error: $err"
+    return 1
+  fi
+  printf '%s' "$op" | extract "metadata.$field"
+}
+
 # extract <jq-like-path> <json-on-stdin>
 extract() {
   PYPATH="$1" python3 -c '
@@ -185,13 +241,31 @@ if [ -z "$PROJECT_ID" ]; then
   log "FATAL: cannot resolve a projectId (no fixtures, no projects in /iam/v1/projects). Run tests/authz-fixtures/setup.sh first."
   exit 1
 fi
-log "1/5 project_id=$PROJECT_ID"
+log "1/6 project_id=$PROJECT_ID"
 
 # Geography (Region/Zone) is owned by kacho-geo in the redesign — compute dropped its
 # zones table. Read the axis from the geo public catalog (project-scope EXEMPT, authN-
 # only) so the resolved zone actually exists for the AddressPool peer-validate below.
-ZONE_ID=$(curl_json GET "/geo/v1/zones?pageSize=1" | extract "zones.0.id")
-[ -n "$ZONE_ID" ] || ZONE_ID="ru-central1-a"
+#
+# NLB_ZONE_ID (the suite's DEDICATED zone — see the header) wins when set; it is
+# EXISTENCE-CHECKED against the catalog rather than trusted blindly, because a silent
+# fallback to zone[0] is exactly how the default external pool ends up in a zone another
+# suite makes assertions about.
+if [ -n "${NLB_ZONE_ID:-}" ]; then
+  if [ "$(curl_json GET "/geo/v1/zones/$NLB_ZONE_ID" | extract "id")" = "$NLB_ZONE_ID" ]; then
+    ZONE_ID="$NLB_ZONE_ID"
+    log "    using nlb-dedicated zone NLB_ZONE_ID=$ZONE_ID"
+  else
+    log "FATAL: NLB_ZONE_ID='$NLB_ZONE_ID' is not in the geo catalog."
+    log "       Seed it first (tests/authz-fixtures/setup.sh block 5d) — refusing to fall back to"
+    log "       zone[0], which would plant this suite's default EXTERNAL_PUBLIC pool in a zone owned"
+    log "       by another suite (vpc ADR-CR-EXT-V6-FAMILY-FALLTHROUGH / IPL-RESOLVE-NETWORK-DEFAULT-FAMILY-SKIP)."
+    exit 1
+  fi
+else
+  ZONE_ID=$(curl_json GET "/geo/v1/zones?pageSize=1" | extract "zones.0.id")
+  [ -n "$ZONE_ID" ] || ZONE_ID="ru-central1-a"
+fi
 log "    zone_id=$ZONE_ID"
 
 REGION_ID=$(curl_json GET "/geo/v1/zones/$ZONE_ID" | extract "regionId")
@@ -210,13 +284,13 @@ for n in d.get("networks", []):
 print("")
 ')
 if [ -z "$NET_ID" ]; then
-  log "2/5 creating Network kac-nlb-seed-net"
+  log "2/6 creating Network kac-nlb-seed-net"
   body='{"projectId":"'"$PROJECT_ID"'","name":"kac-nlb-seed-net","description":"KAC-NLB seed fixture"}'
   op=$(curl_json POST "/vpc/v1/networks" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   NET_ID=$(wait_op "$op_id" | extract "metadata.networkId")
 else
-  log "2/5 reusing existing Network $NET_ID"
+  log "2/6 reusing existing Network $NET_ID"
 fi
 
 # ─── 3) Ensure VPC Subnet ----------------------------------------------------
@@ -231,7 +305,7 @@ for n in d.get("subnets", []):
 print("")
 ')
 if [ -z "$SUBNET_ID" ]; then
-  log "3/5 creating Subnet kac-nlb-seed-subnet"
+  log "3/6 creating Subnet kac-nlb-seed-subnet"
   # placement_type is server-derived from zoneId (ZONAL) — do NOT send it (redesign
   # placement-coherence: sending placement_type → InvalidArgument).
   body='{"projectId":"'"$PROJECT_ID"'","networkId":"'"$NET_ID"'","name":"kac-nlb-seed-subnet","zoneId":"'"$ZONE_ID"'","ipv4CidrPrimary":"10.130.0.0/24"}'
@@ -239,7 +313,7 @@ if [ -z "$SUBNET_ID" ]; then
   op_id=$(printf '%s' "$op" | extract "id")
   SUBNET_ID=$(wait_op "$op_id" | extract "metadata.subnetId")
 else
-  log "3/5 reusing existing Subnet $SUBNET_ID"
+  log "3/6 reusing existing Subnet $SUBNET_ID"
 fi
 
 # ─── 3.5) Ensure External AddressPool (IPAM source for external VIPs) --------
@@ -268,7 +342,7 @@ print("")
 POOL_HAS_V6=$(printf '%s' "$POOL_ID" | awk '{print $2}')
 POOL_ID=$(printf '%s' "$POOL_ID" | awk '{print $1}')
 if [ -z "$POOL_ID" ]; then
-  log "3.5/5 creating external AddressPool kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, zone=$ZONE_ID)"
+  log "3.5/6 creating external AddressPool kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, zone=$ZONE_ID)"
   # 198.51.100.0/24 = TEST-NET-2 (RFC 5737) — the documented production external
   # CIDR (see `make seed-ipam`). 2001:db8::/32 = RFC 3849 documentation prefix; the
   # /64 below is the v6 half of the SAME pool, because an EXTERNAL LB with
@@ -329,12 +403,12 @@ print("none\t\t%s" % desc)
     POOL_DETAIL=$(printf '%s' "$POOL_SELECTION" | cut -f3)
     case "$POOL_STATUS" in
       ok)
-        log "3.5/5 AddressPool.Create conflicted (CIDR overlap?); reusing EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID ($POOL_DETAIL)"
+        log "3.5/6 AddressPool.Create conflicted (CIDR overlap?); reusing EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID ($POOL_DETAIL)"
         ;;
       partial)
         # v4 works, v6 does not. Do NOT pretend the seed is complete: the external-v6
         # lane will fail, and it must be attributable to this line, not to nlb.
-        log "3.5/5 AddressPool.Create conflicted; reusing v4-only EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID"
+        log "3.5/6 AddressPool.Create conflicted; reusing v4-only EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID"
         log "    WARNING: no EXTERNAL_PUBLIC pool in zone $ZONE_ID carries v6 blocks (candidates: $POOL_DETAIL)"
         log "    → EXTERNAL LoadBalancers with v6Source:{public:{}} CANNOT allocate; the v6 e2e lane will fail."
         log "    Fix the stand (drop the conflicting pool or add a v6 block to $POOL_ID), do not whitelist the case."
@@ -365,7 +439,7 @@ print("none\t\t%s" % desc)
     log "    AddressPool.Create did not return an id and no EXTERNAL_PUBLIC pool exists in zone $ZONE_ID (internal mux unreachable at $INTERNAL_BASE_URL, or insufficient admin tier) — external VIP allocation may fail; whitelist non-T31 nlb external-create cases if so"
   fi
 else
-  log "3.5/5 reusing existing external AddressPool $POOL_ID"
+  log "3.5/6 reusing existing external AddressPool $POOL_ID"
   if [ "$POOL_HAS_V6" != "v6" ]; then
     # A pool seeded by an older revision of this script is v4-only, so
     # `v6Source:{public:{}}` cannot allocate from it. Blocks are immutable via
@@ -390,7 +464,7 @@ for a in d.get("addresses", []):
 print("")
 ')
 if [ -z "$EXT_ADDR_ID" ]; then
-  log "4/5 creating external Address kac-nlb-seed-ext-addr (ZONAL, zone=$ZONE_ID)"
+  log "4/6 creating external Address kac-nlb-seed-ext-addr (ZONAL, zone=$ZONE_ID)"
   # External Address IPAM is ZONE-scoped: the request field is
   # `externalIpv4AddressSpec` (not `externalIpv4Address`, which is a field on the
   # Address *resource*), and ExternalIpv4AddressSpec carries only zoneId — there is
@@ -407,10 +481,73 @@ if [ -z "$EXT_ADDR_ID" ]; then
     log "    Address.Create rejected (no AddressPool seeded?) — leaving existingExternalAddressId blank"
   fi
 else
-  log "4/5 reusing existing Address $EXT_ADDR_ID"
+  log "4/6 reusing existing Address $EXT_ADDR_ID"
 fi
 
-# ─── 5) Ensure Compute Instance + discover its NIC -------------------------
+# ─── 5) Ensure MachineType (sizing channel for the seed Instance) -----------
+# COMP-1 redesign: CreateInstanceRequest lost platformId/resourcesSpec/bootDiskSpec
+# (RESERVED, ban #2) and gained instanceKind + machineTypeId + bootSource. The old body
+# here still sent `resourcesSpec` and no instanceKind → the live gateway answered
+# `400 instanceKind is required`, so existingInstanceId/existingNicId were ALWAYS blank
+# (the compute suite itself was migrated; this seeder was missed — cases/list-filter.py
+# documents exactly this error). machineTypeId resolves against the compute catalog
+# (mt- slug OR stable name; unknown → FailedPrecondition), so a MachineType must exist.
+# Catalog reads are CLUSTER-scoped (`viewer` @ cluster) and Create is Internal :8081
+# system_admin (ban #6) → both go through $ADMIN_JWT, not the project grantor.
+# NB: available_zones is catalog metadata; Instance.Create resolves the type by id/name
+# and only rejects RETIRED — it does NOT filter by zone. We still list the seed zone so
+# the catalog entry is truthful about where this fixture type is bookable.
+MT_NAME="kac-nlb-seed-mt"
+MT_ID=$(curl_admin GET "/compute/v1/machineTypes?pageSize=200" 2>/dev/null | MT_NAME="$MT_NAME" python3 -c '
+import os, sys, json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+want = os.environ["MT_NAME"]
+for m in d.get("machineTypes", []):
+    if m.get("name") == want and m.get("status") != "RETIRED":
+        print(m.get("id","")); sys.exit(0)
+# no fixture type — fall back to ANY non-retired catalog entry before seeding a new one
+for m in d.get("machineTypes", []):
+    if m.get("status") not in ("RETIRED",):
+        print(m.get("id","")); sys.exit(0)
+print("")
+' || true)
+if [ -z "$MT_ID" ]; then
+  log "5/6 creating MachineType $MT_NAME (STANDARD 2 vCPU / 4096 MiB, zone=$ZONE_ID)"
+  mtbody=$(cat <<EOF
+{
+  "name":"$MT_NAME",
+  "description":"KAC-NLB seed machine type",
+  "family":"STANDARD",
+  "effectiveResources":{"vCpu":2,"memoryMib":4096,"gpus":0},
+  "availableZones":["$ZONE_ID"],
+  "status":"AVAILABLE"
+}
+EOF
+  )
+  op=$(curl_internal POST "/compute/v1/internal/machineTypes" "$mtbody")
+  op_id=$(printf '%s' "$op" | extract "id")
+  MT_ID=$(wait_op_field "$op_id" "machineTypeId" || true)
+  if [ -z "$MT_ID" ]; then
+    # UNIQUE(name) re-run, or the internal mux is unreachable — re-probe by name so an
+    # AlreadyExists does NOT degrade into "no machine type" and blank the Instance.
+    MT_ID=$(curl_admin GET "/compute/v1/machineTypes?pageSize=200" 2>/dev/null | MT_NAME="$MT_NAME" python3 -c '
+import os, sys, json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+want = os.environ["MT_NAME"]
+for m in d.get("machineTypes", []):
+    if m.get("name") == want:
+        print(m.get("id","")); sys.exit(0)
+print("")
+' || true)
+  fi
+else
+  log "5/6 reusing MachineType $MT_ID"
+fi
+[ -n "$MT_ID" ] || log "    WARNING: no MachineType available — Instance.Create will fail 'machine type  not found'"
+
+# ─── 6) Ensure Compute Instance + its NIC ----------------------------------
 INST_LIST=$(curl_json GET "/compute/v1/instances?projectId=$PROJECT_ID&pageSize=200")
 INSTANCE_ID=$(printf '%s' "$INST_LIST" | python3 -c '
 import sys, json
@@ -421,28 +558,39 @@ for i in d.get("instances", []):
         print(i.get("id","")); sys.exit(0)
 print("")
 ')
-if [ -z "$INSTANCE_ID" ]; then
-  log "5/5 creating Instance kac-nlb-seed-inst"
+if [ -z "$INSTANCE_ID" ] && [ -n "$MT_ID" ]; then
+  log "6/6 creating Instance kac-nlb-seed-inst (COMP-1 shape: instanceKind/machineTypeId/bootSource)"
   body=$(cat <<EOF
 {
   "projectId":"$PROJECT_ID",
   "zoneId":"$ZONE_ID",
   "name":"kac-nlb-seed-inst",
-  "resourcesSpec":{"memory":"1073741824","cores":"1"},
-  "networkInterfaceSpecs":[{"subnetId":"$SUBNET_ID","primaryV4AddressSpec":{}}]
+  "instanceKind":"VM",
+  "machineTypeId":"$MT_ID",
+  "bootSource":{"type":"storage.image","id":"img-9k2m4x7q1n8p:22.04-lts"},
+  "vmSpec":{"userData":"#cloud-config\n{}","metadataOptions":{"metadataEndpoint":"ENABLED","metadataTokenRequired":true}},
+  "networkInterfaceSpecs":[{"subnetId":"$SUBNET_ID","primaryV4AddressSpec":{}}],
+  "sshPublicKeys":["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey nlb@seed"]
 }
 EOF
   )
   op=$(curl_json POST "/compute/v1/instances" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
-  INSTANCE_ID=$(wait_op "$op_id" | extract "metadata.instanceId" || true)
+  INSTANCE_ID=$(wait_op_field "$op_id" "instanceId" || true)
   if [ -z "$INSTANCE_ID" ]; then
-    log "    Instance.Create rejected (acceptance-gate / missing image?) — leaving existingInstanceId blank"
+    log "    Instance.Create rejected — leaving existingInstanceId blank (see the operation error above)"
   fi
-else
-  log "5/5 reusing existing Instance $INSTANCE_ID"
+elif [ -n "$INSTANCE_ID" ]; then
+  log "6/6 reusing existing Instance $INSTANCE_ID"
 fi
 
+# NIC. Instance.networkInterfaces is an OUTPUT-ONLY mirror materialised by the COMP-2
+# launch saga, which is not landed yet: doCreate persists the Instance at PROVISIONING
+# and does NOT create the vpc NIC, so scraping the id off the Instance yields nothing
+# today. The nlb Target.nic_id cases only need a NIC that exists in the seed subnet, so
+# seed a first-class vpc NetworkInterface directly (public /vpc/v1/networkInterfaces,
+# `editor` @ project → the project grantor $JWT). Prefer the Instance's own NIC as soon
+# as COMP-2 materialises one.
 NIC_ID=""
 if [ -n "$INSTANCE_ID" ]; then
   inst=$(curl_json GET "/compute/v1/instances/$INSTANCE_ID")
@@ -456,6 +604,28 @@ if nics:
 else:
     print("")
 ')
+fi
+if [ -z "$NIC_ID" ] && [ -n "$SUBNET_ID" ]; then
+  NIC_LIST=$(curl_json GET "/vpc/v1/networkInterfaces?projectId=$PROJECT_ID&pageSize=200" 2>/dev/null || echo '{}')
+  NIC_ID=$(printf '%s' "$NIC_LIST" | python3 -c '
+import sys, json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for n in d.get("networkInterfaces", []):
+    if n.get("name") == "kac-nlb-seed-nic":
+        print(n.get("id","")); sys.exit(0)
+print("")
+')
+  if [ -z "$NIC_ID" ]; then
+    log "    creating standalone vpc NIC kac-nlb-seed-nic (Instance NIC materialisation is COMP-2)"
+    nicbody='{"projectId":"'"$PROJECT_ID"'","subnetId":"'"$SUBNET_ID"'","name":"kac-nlb-seed-nic"}'
+    op=$(curl_json POST "/vpc/v1/networkInterfaces" "$nicbody")
+    op_id=$(printf '%s' "$op" | extract "id")
+    NIC_ID=$(wait_op_field "$op_id" "networkInterfaceId" || true)
+    [ -n "$NIC_ID" ] || log "    NIC.Create rejected — leaving existingNicId blank"
+  else
+    log "    reusing existing NIC $NIC_ID"
+  fi
 fi
 
 # ─── Write .seeded-ids.env --------------------------------------------------

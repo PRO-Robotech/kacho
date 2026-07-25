@@ -15,7 +15,9 @@ placement-coherence ошибки (не только grpc-код). RED до фи�
 Operation вместо sync 400 → negative-кейсы красные до GREEN.
 
 Fixture-модель (умбрелла-стенд, environments/*.postman_environment.json):
-  * existingZoneId (ru-central1-a) и existingZoneAltId (ru-central1-b) — ДВЕ зоны
+  * existingZoneId (nlb-выделенная зона, ru-central1-e на умбрелла-стенде — суита
+    владеет её default EXTERNAL_PUBLIC пулом, см. tests/authz-fixtures/setup.sh блок 5d)
+    и existingZoneAltId (ru-central1-b) — ДВЕ зоны
     ОДНОГО региона existingRegionId (ru-central1) → cross-zone same-region для GAP-1.
   * existingRegionAltId (ru-central2) — чужой регион для GAP-2.
 Cross-domain fixture tolerance (зеркалит load-balancer.py): vpc Subnet provisioning

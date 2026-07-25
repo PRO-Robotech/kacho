@@ -620,7 +620,26 @@ else
   log "    WARN: skipping system_viewer seed (PG access or USER_BOOT empty)"
 fi
 
-# 5d) GEO baseline — admin-curated catalog (region ru-central1 + zones a/b/c/d, UP).
+# 5d) GEO baseline — admin-curated catalog (region ru-central1 + zones a/b/c/d/e, UP).
+#
+# ZONE OWNERSHIP (директива #2 «каждая суита держит свои фикстуры в своей области»,
+# перенесённая на AddressPool — он НЕ project-scoped, а cluster-admin ресурс, и его
+# «default для (zone, kind)» ГЛОБАЛЕН, поэтому изолировать его можно только ЗОНОЙ):
+#   a — vpc: постоянный default EXTERNAL_PUBLIC пул, v4-ONLY (gen.py _SETUP-POOL).
+#           Кейс ADR-CR-EXT-V6-FAMILY-FALLTHROUGH утверждает: в зоне a НЕТ пула с v6 →
+#           cascade доходит до global_default, family-фильтр его отвергает →
+#           FailedPrecondition. Чужой v6-несущий default в зоне a ЛОМАЕТ это (адрес
+#           выделяется, операция проходит).
+#   b — vpc: кейс IPL-RESOLVE-NETWORK-DEFAULT-FAMILY-SKIP утверждает обратное — в зоне b
+#           НЕТ v4 default (там ставится v6-only pool) → чужой v4-несущий default ломает.
+#   c — vpc internal-pool: throwaway пулы кейсов (создаются/удаляются внутри кейса).
+#   d — vpc address: throwaway пулы кейсов.
+#   e — nlb: ВЫДЕЛЕННАЯ зона суиты nlb (её external-VIP пул kac-nlb-seed-ext-pool,
+#           v4+v6, is_default, плюс её seed-сеть/подсеть/инстанс/адрес). Заведена именно
+#           потому, что зоны a-d уже «заняты» утверждениями vpc: сеятель nlb раньше сажал
+#           default-пул с 2001:db8:e2e:100::/64 в зону a и детерминированно ронял
+#           ADR-CR-EXT-V6-FAMILY-FALLTHROUGH. Новый placement-scoped фикстур-пул любой
+#           суиты — заводит СВОЮ зону, а не занимает чужую.
 # Greenfield stands have an EMPTY geo catalog: geo goose-migrations create the schema
 # but seed no rows, and the compute→geo data-migration Job is disabled/no-op (compute
 # dropped its Region/Zone tables in the redesign). With no baseline EVERY zone/region-
@@ -632,7 +651,9 @@ fi
 # not a migration. Idempotent: re-create → AlreadyExists (tolerated); confirm-loops
 # pass immediately when already seeded. `existingZoneId`/`existingRegionId` in the env
 # below name these exact ids. Mirrors prodseed_matrix.py::_seed_geo_catalog.
-log "5d/10 seeding geo baseline (region ru-central1 + zones a/b/c/d) via :18081 admin RPC"
+# NLB_ZONE — the nlb suite's dedicated placement zone (see the ownership table above).
+NLB_ZONE="${NLB_ZONE:-ru-central1-e}"
+log "5d/10 seeding geo baseline (region ru-central1 + zones a/b/c/d + nlb-dedicated ${NLB_ZONE}) via :18081 admin RPC"
 if [ -n "$JWT_BOOTSTRAP" ]; then
   api_internal POST "/geo/v1/internal/regions" "$JWT_BOOTSTRAP" \
     '{"id":"ru-central1","name":"ru-central1","status":"UP"}' >/dev/null 2>&1 || true
@@ -644,21 +665,37 @@ try: print(json.load(sys.stdin).get("id",""))
 except Exception: print("")' 2>/dev/null)" = "ru-central1" ]; then geo_region_ok=1; break; fi
     sleep 0.5
   done
+  # a/b/c/d FIRST (created_at ASC → they stay zoneA..zoneD for the suites that resolve
+  # the axis positionally, e.g. vpc gen.py _SETUP-ZONES pick[0..3]); the nlb-dedicated
+  # zone is appended LAST so it never shifts anyone's zoneA..D.
   for z in a b c d; do
     api_internal POST "/geo/v1/internal/zones" "$JWT_BOOTSTRAP" \
       "{\"id\":\"ru-central1-$z\",\"regionId\":\"ru-central1\",\"name\":\"ru-central1-$z\",\"status\":\"UP\"}" >/dev/null 2>&1 || true
   done
+  api_internal POST "/geo/v1/internal/zones" "$JWT_BOOTSTRAP" \
+    "{\"id\":\"$NLB_ZONE\",\"regionId\":\"ru-central1\",\"name\":\"$NLB_ZONE\",\"status\":\"UP\"}" >/dev/null 2>&1 || true
   # zones durable (peer-validate consumers read them on the request path)
   geo_zones=0
   for _ in $(seq 1 30); do
     geo_zones=$(api GET "/geo/v1/zones" "$JWT_BOOTSTRAP" 2>/dev/null | python3 -c 'import sys,json;
 try: print(len(json.load(sys.stdin).get("zones") or []))
 except Exception: print(0)' 2>/dev/null || echo 0)
-    [ "$geo_zones" -ge 4 ] 2>/dev/null && break
+    [ "$geo_zones" -ge 5 ] 2>/dev/null && break
     sleep 0.5
   done
-  if [ "$geo_region_ok" = 1 ] && [ "${geo_zones:-0}" -ge 4 ] 2>/dev/null; then
-    log "    geo baseline OK (region ru-central1 durable, $geo_zones zones)"
+  # The nlb-dedicated zone is confirmed BY ID, not by count: a concurrent geo suite's
+  # ephemeral `qa-*` zones can satisfy a bare count while the zone the nlb seeder is
+  # pinned to is missing — and the seeder fails closed on that, so make it visible here.
+  geo_nlb_zone_ok=0
+  for _ in $(seq 1 20); do
+    if [ "$(api GET "/geo/v1/zones/$NLB_ZONE" "$JWT_BOOTSTRAP" 2>/dev/null | python3 -c 'import sys,json;
+try: print(json.load(sys.stdin).get("id",""))
+except Exception: print("")' 2>/dev/null)" = "$NLB_ZONE" ]; then geo_nlb_zone_ok=1; break; fi
+    sleep 0.5
+  done
+  [ "$geo_nlb_zone_ok" = 1 ] || log "    WARN: nlb-dedicated zone $NLB_ZONE NOT confirmed — seed-nlb-fixtures.sh will refuse to seed"
+  if [ "$geo_region_ok" = 1 ] && [ "${geo_zones:-0}" -ge 5 ] 2>/dev/null && [ "$geo_nlb_zone_ok" = 1 ]; then
+    log "    geo baseline OK (region ru-central1 durable, $geo_zones zones, nlb zone $NLB_ZONE)"
   else
     log "    WARN: geo baseline NOT confirmed (region_ok=$geo_region_ok zones=$geo_zones) — zone-dependent seeds may fail 'Zone not found'"
   fi
@@ -1162,8 +1199,16 @@ if [ -f "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" ]; then
   seed_log="$OUT_DIR/nlb-seed.log"
   # ADMIN_JWT: the internal AddressPool RPCs authorize on the CLUSTER SINGLETON, which
   # the project-scoped grantor JWT_AAA cannot reach (403 → reuse-probe blind → FATAL).
+  # NLB_ZONE_ID: pin the seed to the nlb-DEDICATED zone (block 5d ownership table).
+  # Without it the seeder picks `GET /geo/v1/zones?pageSize=1` = ru-central1-a and plants
+  # kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, is_default, carrying 2001:db8:e2e:100::/64)
+  # right there — deterministically breaking the vpc case ADR-CR-EXT-V6-FAMILY-FALLTHROUGH,
+  # which asserts zone a has NO v6-capable pool (the v6 address then allocates and the
+  # Operation succeeds instead of failing FailedPrecondition). Not a flake, not a product
+  # defect: a cross-suite fixture collision, fixed by giving nlb its own zone.
   BASE_URL="$BASE_URL" INTERNAL_BASE_URL="$INTERNAL_BASE_URL" JWT="$JWT_AAA" \
   ADMIN_JWT="$JWT_BOOTSTRAP" existingProjectId="$NLB_PROJ" OUT_FILE="$NLB_SEEDED_IDS" \
+  NLB_ZONE_ID="$NLB_ZONE" \
     bash "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" >"$seed_log" 2>&1 \
     || log "    WARN seed-nlb-fixtures.sh partial/failed (existing* ids may be blank) — see $seed_log"
 fi
@@ -1386,12 +1431,18 @@ EOF
   patch_one "$OUT_DIR/registry-fixtures.json" "$REGISTRY_ENV"
 
   # nlb subjects + existing* resources.
+  # existingZoneId = the nlb-DEDICATED zone (block 5d ownership table) — the zone whose
+  # default EXTERNAL_PUBLIC pool this suite owns (kac-nlb-seed-ext-pool, v4+v6). It must
+  # match NLB_ZONE_ID passed to seed-nlb-fixtures.sh, otherwise the suite would look for
+  # its VIP pool in a zone it does not own. existingZoneAltId stays ru-central1-b: the
+  # placement-coherence cases only need a SECOND zone of the SAME region and provision
+  # plain Subnets there (no AddressPool), so they do not claim zone b's pool state.
   cat > "$OUT_DIR/nlb-fixtures.json" <<EOF
 {
   "existingProjectId": "$NLB_PROJ",
   "existingProjectCrossId": "$NLB_CROSS",
   "existingRegionId": "ru-central1",
-  "existingZoneId": "ru-central1-a",
+  "existingZoneId": "$NLB_ZONE",
   "existingNetworkId": "$NLB_NET",
   "existingSubnetId": "$NLB_SUBNET",
   "existingInstanceId": "$NLB_INSTANCE",

@@ -92,7 +92,14 @@ if [ "$SEED" = "true" ]; then
     echo "[parallel] seeding nlb external-VIP AddressPool (best-effort)"
     SEED_JWT=$(python3 "$REPO_ROOT/tests/authz-fixtures/setup-jwt.py" --secret "$DEV_SECRET" --exp-hours 24 --bulk 2>/dev/null \
       | python3 -c 'import json,sys; print(json.load(sys.stdin).get("jwtBootstrap",""))' 2>/dev/null || true)
+    # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/setup.sh block 5d owns the
+    # zone table and seeds it). setup.sh already ran the seeder for the isolated nlb project
+    # above; this second, project-agnostic pass must target the SAME zone. Unpinned it falls
+    # back to zone[0] = ru-central1-a and plants a v6-carrying default EXTERNAL_PUBLIC pool
+    # there, deterministically breaking the vpc case ADR-CR-EXT-V6-FAMILY-FALLTHROUGH (which
+    # asserts zone a has no v6-capable pool) — a cross-suite fixture collision, not a flake.
     env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" JWT="$SEED_JWT" \
+      NLB_ZONE_ID="${NLB_ZONE:-ru-central1-e}" \
       bash "$REPO_ROOT/deploy/scripts/seed-nlb-fixtures.sh" || true
   fi
 fi

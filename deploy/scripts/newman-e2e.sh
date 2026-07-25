@@ -113,9 +113,13 @@ if [ "$SVC" = "nlb" ]; then
   echo "[e2e] seeding nlb external-VIP AddressPool (idempotent, best-effort)"
   SEED_JWT=$(python3 "$REPO_ROOT/tests/authz-fixtures/setup-jwt.py" --secret "$DEV_SECRET" --exp-hours 24 --bulk 2>/dev/null \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("jwtBootstrap",""))' 2>/dev/null || true)
+  # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/setup.sh block 5d owns the
+  # zone table). Must be pinned here too: without it the seeder falls back to zone[0] =
+  # ru-central1-a and plants a v6-carrying default EXTERNAL_PUBLIC pool there, which
+  # deterministically breaks the vpc case ADR-CR-EXT-V6-FAMILY-FALLTHROUGH.
   env BASE_URL="http://localhost:$GW_PORT" \
       INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
-      JWT="$SEED_JWT" \
+      JWT="$SEED_JWT" NLB_ZONE_ID="${NLB_ZONE:-ru-central1-e}" \
     bash "$REPO_ROOT/deploy/scripts/seed-nlb-fixtures.sh" || true
 fi
 
