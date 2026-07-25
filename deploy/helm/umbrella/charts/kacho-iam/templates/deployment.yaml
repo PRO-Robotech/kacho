@@ -27,6 +27,18 @@ spec:
         # openfga-bootstrap-job patching this Deployment annotation post-install).
         # Initial value `pending` — replaced by bootstrap-job after WriteAuthorizationModel.
         kacho.cloud/openfga-model-id-rev: "pending"
+        {{- if .Values.opaSidecar.enabled }}
+        # config-checksum выше хэширует ТОЛЬКО configmap.yaml, а с включённым
+        # OPA-сайдкаром под потребляет ещё три ConfigMap'а: политику сайдкара,
+        # конфиг bundle-сервера и JWKS. Без привязки к ИХ содержимому правка
+        # любого из них не перекатывает под — процесс и сайдкар продолжают
+        # применять то, что загрузили на старте, при уже переписанном ConfigMap.
+        # Класс инцидента kacho-storage (2026-07-25), здесь — на authz-политике
+        # и на ключах верификации, то есть с более высокой ценой расхождения.
+        kacho.cloud/opa-sidecar-checksum: {{ include (print $.Template.BasePath "/opa-sidecar-configmap.yaml") . | sha256sum }}
+        kacho.cloud/opa-bundle-server-checksum: {{ include (print $.Template.BasePath "/opa-bundle-server-configmap.yaml") . | sha256sum }}
+        kacho.cloud/jwks-checksum: {{ include (print $.Template.BasePath "/jwks-configmap.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       # KACHO_IAM_* — собственный config-namespace сервиса. К-net auto-инжектит
       # KACHO_IAM_INTERNAL_PORT=tcp://<ip>:9091 (из Service `kacho-iam-internal`),

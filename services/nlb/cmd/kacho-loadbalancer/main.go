@@ -275,6 +275,13 @@ func runServe(configPath string) error {
 		return fmt.Errorf("build server TLS creds: %w", err)
 	}
 
+	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'а (config.Load → Validate,
+	// т.е. конфиг ПРИНЯТ процессом) и ДО подъёма листенеров; authz_check берётся
+	// из УЖЕ поднятой проводки (peers.Check != nil), а не из адреса в конфиге.
+	// Production-posture гейт обязан утверждать на этом наблюдаемом факте, а не
+	// на хранимом конфиге (см. observability.BootPosture).
+	observability.LogBootPosture(logger, bootPosture(cfg, peers.Check != nil))
+
 	// boot-gate: fgaboot.GuardCreateUnary FIRST on the public chain —
 	// a mutating tenant-resource Create is refused (UNAVAILABLE) when require-iam is
 	// armed and the register-drainer is not IAM-connected, so no resource is created
@@ -739,9 +746,18 @@ func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logg
 		CacheMaxEntries: lf.CacheMaxEntries,
 		FailOpen:        lf.FailOpen,
 	}
+	f := authzfilter.NewFGAFilter(authzfilter.NewIAMAuthorizeClient(iamConn), fcfg)
 	logger.Info("list_filter_enabled",
-		"timeout", lf.Timeout, "cache_ttl", lf.CacheTTL,
+		// per_call_timeout гейтит ОДИН BatchCheck; operation_budget — потолок всей
+		// фильтрации страницы (выводится из per-call и batch_parallelism).
+		// Логируем все три: иначе по конфигу не видно, какое число реально
+		// ограничивает запрос.
+		"per_call_timeout", lf.Timeout,
+		"batch_parallelism", f.Parallelism(),
+		"operation_budget", f.Budget(),
+		"worst_case_depth_waves", f.WorstCaseDepth(),
+		"cache_ttl", lf.CacheTTL,
 		"cache_max_entries", lf.CacheMaxEntries, "fail_open", lf.FailOpen,
 		"iam_authz_mtls", cfg.MTLS.IAMProject.Enable)
-	return authzfilter.NewFGAFilter(authzfilter.NewIAMAuthorizeClient(iamConn), fcfg)
+	return f
 }

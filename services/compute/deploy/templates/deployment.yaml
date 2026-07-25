@@ -15,6 +15,18 @@ spec:
     metadata:
       labels:
         app: {{ .Values.name }}
+      {{- if .Values.opa.enabled }}
+      annotations:
+        # OPA-политика приезжает в sidecar примонтированным ConfigMap'ом и
+        # читается им на старте. Без привязки pod-template к её СОДЕРЖИМОМУ
+        # правка политики не перекатывает под, и sidecar продолжает применять
+        # ту, что загрузил при запуске, — при том что ConfigMap уже новый.
+        # Это класс инцидента kacho-storage (2026-07-25) на authz-политике:
+        # хранимое намерение разъезжается с исполняемым правилом, а всё выглядит
+        # здоровым. compute потребляет ТОЛЬКО этот ConfigMap (остальные настройки
+        # приходят инлайн в pod-template и потому перекатывают под сами).
+        kacho.cloud/opa-config-checksum: {{ include (print $.Template.BasePath "/opa-configmap.yaml") . | sha256sum }}
+      {{- end }}
     spec:
       # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
       securityContext:

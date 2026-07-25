@@ -75,7 +75,7 @@ data:
         authorize-endpoint: {{ default "" .Values.authz.listFilter.authorizeEndpoint | quote }}
         authorize-tls:
           enable: {{ default false .Values.authz.listFilter.authorizeTls.enable }}
-        timeout-ms: {{ default 500 .Values.authz.listFilter.timeoutMs }}
+        timeout-ms: {{ default 1000 .Values.authz.listFilter.timeoutMs }}
         cache-ttl: {{ default "5s" .Values.authz.listFilter.cacheTtl | quote }}
         max-entries: {{ default 10000 .Values.authz.listFilter.maxEntries }}
         model-id: {{ default "" .Values.authz.listFilter.modelId | quote }}

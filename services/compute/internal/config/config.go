@@ -128,9 +128,16 @@ type Config struct {
 	ListFilterEnabled bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_ENABLED" default:"true"`
 
 	// ListFilterTimeoutMs — per-call deadline ОДНОГО iam.BatchCheck (страница >100
-	// id режется на батчи, у каждого свой deadline).
-	// Default 500ms — exceeds nothing under SLA (p95 100ms target).
-	ListFilterTimeoutMs int `envconfig:"KACHO_COMPUTE_LIST_FILTER_TIMEOUT_MS" default:"500"`
+	// id режется на батчи ≤100, у каждого свой deadline), НЕ бюджет всей
+	// фильтрации: бюджет операции выводится в authzfilter.NewFGAFilter.
+	//
+	// Default 1000ms, а не прежние 500ms: батчи страницы идут ограниченным
+	// fan-out'ом (authzfilter.defaultParallelism = 5), поэтому worst-case глубина
+	// на предельной странице (page_size=1000) — 4 волны, а не 20 последовательных
+	// хопов, и 4×1s помещается в выведенный бюджет (6s) с запасом 33%. Прежние
+	// 500ms были подогнаны не под латентность здорового пира, а под число
+	// последовательных хопов — загруженный iam ронял позитивный List в 503.
+	ListFilterTimeoutMs int `envconfig:"KACHO_COMPUTE_LIST_FILTER_TIMEOUT_MS" default:"1000"`
 
 	// ListFilterCacheTTLMs — TTL ПОЛОЖИТЕЛЬНОГО per-object вердикта. Short (5s)
 	// so что access-binding revoke виден ≤5s; lower → больше RTT к iam.

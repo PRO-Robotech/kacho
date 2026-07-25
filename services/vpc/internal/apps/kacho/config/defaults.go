@@ -115,7 +115,14 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.enabled", true)
 	v.SetDefault("authz.list-filter.authorize-endpoint", "")
 	v.SetDefault("authz.list-filter.authorize-tls.enable", false)
-	v.SetDefault("authz.list-filter.timeout-ms", 500)
+	// timeout-ms — per-call дедлайн ОДНОГО BatchCheck, НЕ бюджет всей фильтрации.
+	// 1000, а не прежние 500: батчи страницы идут ограниченным fan-out'ом
+	// (authzfilter.defaultParallelism = 5), поэтому worst-case глубина на
+	// предельной странице (page_size=1000) — 4 волны, а не 20 последовательных
+	// хопов, и 4×1s помещается в выведенный бюджет операции (6s) с запасом 33%.
+	// Прежние 500ms были подогнаны не под латентность здорового пира, а под число
+	// последовательных хопов — загруженный iam ронял позитивный List в 503.
+	v.SetDefault("authz.list-filter.timeout-ms", 1000)
 	v.SetDefault("authz.list-filter.cache-ttl", 5*time.Second)
 	v.SetDefault("authz.list-filter.max-entries", 10000)
 	v.SetDefault("authz.list-filter.model-id", "")

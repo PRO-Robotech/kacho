@@ -67,7 +67,7 @@ authz:
     authorizeEndpoint: ""    # наследие старого ListObjects: код больше не читает; list-filter идет через iamEndpoint :9091.
     authorizeTls:
       enable: false
-    timeoutMs: 500           # Per-call FGA timeout
+    timeoutMs: 1000          # Per-call FGA timeout (ONE BatchCheck; the whole-filter budget is derived)
     cacheTtl: 5s             # LRU TTL
     maxEntries: 10000        # Cache hard cap (LRU eviction)
     modelId: ""              # Pinned authorization_model_id

@@ -97,6 +97,12 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 
+	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'а validateAuthMode (конфиг
+	// уже ПРИНЯТ процессом) и ДО подъёма листенеров. Production-posture гейт
+	// обязан утверждать на этом наблюдаемом факте, а не на хранимом конфиге
+	// (см. observability.BootPosture).
+	observability.LogBootPosture(logger, bootPosture(cfg))
+
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		return err
@@ -895,13 +901,21 @@ func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog
 		CacheMaxEntries: cacheMax,
 		FailOpen:        cfg.ListFilterFailOpen,
 	}
+	f := authzfilter.NewFGAFilter(cli, fcfg)
 	logger.Info("list filter enabled",
-		"timeout_ms", cfg.ListFilterTimeoutMs,
+		// per_call_timeout_ms gates ONE BatchCheck; operation_budget caps the whole
+		// page filter (derived from per-call and batch_parallelism). All three are
+		// logged: otherwise the config alone does not reveal which number actually
+		// bounds a request.
+		"per_call_timeout_ms", cfg.ListFilterTimeoutMs,
+		"batch_parallelism", f.Parallelism(),
+		"operation_budget", f.Budget(),
+		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl_ms", cfg.ListFilterCacheTTLMs,
 		"cache_max_entries", cacheMax,
 		"fail_open", cfg.ListFilterFailOpen,
 	)
-	return authzfilter.NewFGAFilter(cli, fcfg)
+	return f
 }
 
 // startRegisterDrainer dials the kacho-iam internal endpoint over the

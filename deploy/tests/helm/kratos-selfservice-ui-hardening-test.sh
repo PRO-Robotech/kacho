@@ -34,7 +34,17 @@ N=0
 fail() { echo "FAIL: $1"; exit 1; }
 ok() { N=$((N + 1)); }
 
+# yq MUST be mikefarah v4. On many machines /usr/bin/yq is the python jq-wrapper
+# of the SAME NAME: its filter syntax is incompatible, so it errors to stderr and
+# prints NOTHING on stdout. Assertions shaped like `[ -z "$(yq ... 2>/dev/null)" ]`
+# then pass VACUOUSLY — the check reports success having verified nothing at all.
+# That false-green is the exact class these hardening tests exist to prevent, so
+# detect the impostor explicitly instead of trusting `command -v`.
 command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
+yq --version 2>&1 | grep -qi mikefarah || fail \
+  "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
+mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
+filters, which would make the assertions below pass without checking anything."
 
 UI_TMPL="charts/kratos-selfservice-ui/templates/deployment.yaml"
 

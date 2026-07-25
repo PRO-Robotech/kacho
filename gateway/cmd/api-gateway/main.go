@@ -28,6 +28,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/observability"
 
 	// Обслуживается только нативный API kacho.cloud.*.
 
@@ -559,6 +560,13 @@ func main() {
 	if pgErr := validateProductionInternalListener(cfg.AppEnv, internalSec.mtlsEnabled); pgErr != nil {
 		log.Fatalf("internal grpc listener config: %v", pgErr)
 	}
+	// Boot security posture self-report: AFTER the boot guards
+	// (validateProductionAuthzConfig + validateProductionInternalListener, i.e. a
+	// configuration the process has accepted) and BEFORE any listener serves.
+	// internal_mtls comes from the RESOLVED listener security, not from the raw
+	// enable flag. The production-posture gate must assert on this observed fact
+	// rather than on stored configuration (see observability.BootPosture).
+	observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled))
 	if !internalSec.mtlsEnabled {
 		logger.Warn("SECURITY: internal gRPC listener running INSECURE (no mTLS)",
 			"addr", cfg.InternalGRPCAddr,

@@ -52,6 +52,11 @@ func runServe(cfg config.Config) error {
 	if err := validateSecurityConfig(cfg); err != nil {
 		return err
 	}
+	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'ов (validateAuthMode +
+	// validateSecurityConfig — конфиг уже ПРИНЯТ процессом) и ДО подъёма
+	// листенеров. Production-posture гейт обязан утверждать на этом наблюдаемом
+	// факте, а не на хранимом конфиге (см. observability.BootPosture).
+	observability.LogBootPosture(logger, bootPosture(cfg))
 
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {

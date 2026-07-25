@@ -139,9 +139,11 @@ autoscaling:
 # container. Disable by setting listFilter.enabled=false.
 listFilter:
   enabled: true
-  # Per-call deadline of ONE iam.AuthorizeService.BatchCheck (ms). A page wider
-  # than 100 ids is split into batches, each with its own deadline.
-  timeoutMs: 500
+  # Per-call deadline of ONE iam.AuthorizeService.BatchCheck (ms) — NOT the budget
+  # for the whole filter (authzfilter derives that). A page wider than 100 ids is
+  # split into ≤100-id batches that fan out bounded (5 in flight), so the max page
+  # (1000) is 4 waves deep, not 20 sequential hops.
+  timeoutMs: 1000
   # In-memory cache TTL (ms) of a POSITIVE per-object verdict. 5s — short enough
   # so access-binding revoke propagates in ≤5s. Denials are never cached.
   cacheTtlMs: 5000

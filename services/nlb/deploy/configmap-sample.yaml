@@ -102,7 +102,7 @@ authz:
   # fail-closed (security.md). ENV: KACHO_NLB_AUTHZ__LIST_FILTER__ENABLED etc.
   list-filter:
     enabled: true             # отдаёт ТОЛЬКО доступные объекты (read==enforce)
-    timeout: 500ms            # per-request deadline ОДНОГО iam.BatchCheck
+    timeout: 1s               # per-call дедлайн ОДНОГО iam.BatchCheck (не бюджет операции)
     cache-ttl: 5s             # visibility-cache TTL (NFR ≤ 10s)
     cache-max-entries: 10000  # cache bound (записей «(subject,type,id) видим»)
     fail-open: false          # iam down → List → UNAVAILABLE (НЕ нефильтрованный)

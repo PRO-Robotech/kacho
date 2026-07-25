@@ -63,11 +63,10 @@ func runServe(cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("insecure configuration refused: %w", err)
 	}
-	logger.Info("boot security posture", "auth_mode", cfg.AuthMode,
-		"db_sslmode", cfg.DBSSLMode,
-		"public_mtls", cfg.PublicServerMTLS.Enable,
-		"internal_mtls", cfg.InternalServerMTLS.Enable,
-		"authz_check", cfg.AuthZIAMGRPCAddr != "")
+	// Самоотчёт о security-posture (эталон контракта; добавлено поле `service`,
+	// чтобы все восемь сервисов были идентичны по форме — см.
+	// observability.BootPosture).
+	observability.LogBootPosture(logger, bootPosture(cfg))
 	if cfg.AuthMode == "dev" && (cfg.DBSSLMode == "" || cfg.DBSSLMode == "disable") {
 		logger.Warn("KACHO_STORAGE_DB_SSLMODE=disable — DB plaintext (dev only; never on a deployed stand)")
 	}

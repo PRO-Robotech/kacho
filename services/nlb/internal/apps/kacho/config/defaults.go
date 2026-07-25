@@ -77,7 +77,15 @@ func RegisterDefaults(v *viper.Viper) {
 	// iam.AuthorizeService (reuse iam conn; mTLS via mtls.iam-register).
 	// ENV: KACHO_NLB_AUTHZ__LIST_FILTER__ENABLED / __TIMEOUT / __CACHE_TTL / etc.
 	v.SetDefault("authz.list-filter.enabled", true)
-	v.SetDefault("authz.list-filter.timeout", "500ms")
+	// timeout — per-call дедлайн ОДНОГО BatchCheck, НЕ бюджет всей фильтрации
+	// (бюджет операции выводится в authzfilter.NewFGAFilter). 1s, а не прежние
+	// 500ms: батчи страницы идут ограниченным fan-out'ом
+	// (authzfilter.defaultParallelism = 5), поэтому worst-case глубина на
+	// предельной странице (page_size=1000) — 4 волны, а не 20 последовательных
+	// хопов, и 4×1s помещается в выведенный бюджет (6s) с запасом 33%. Прежние
+	// 500ms были подогнаны не под латентность здорового пира, а под число
+	// последовательных хопов — загруженный iam ронял позитивный List в 503.
+	v.SetDefault("authz.list-filter.timeout", "1s")
 	v.SetDefault("authz.list-filter.cache-ttl", "5s")
 	v.SetDefault("authz.list-filter.cache-max-entries", 10000)
 	v.SetDefault("authz.list-filter.fail-open", false)

@@ -263,31 +263,25 @@ assert-jobs-healthy:
 	fi; \
 	echo "all jobs/cronjobs healthy (ещё не запускавшиеся — не провал)"
 
-# assert-production-posture — стенд обязан быть поднят ИМЕННО в production-режиме.
+# assert-production-posture — стенд обязан РАБОТАТЬ в production-режиме.
 #
-# Защита от ложного зелёного: если бы профиль не применился (опечатка в values,
-# сабчарт не подхватил override), rollout всё равно прошёл бы — в dev-posture — и
-# гейт «доказал» бы ровно ничего. Поэтому читаем режим у ЖИВЫХ подов и валим цель на
-# любом `dev`. Источник — env-переменные контейнеров (KACHO_*_AUTH_MODE /
-# KACHO_API_GATEWAY_AUTHN_MODE); сервисы, отдающие режим через config-файл
-# (iam/vpc/nlb), проверяются по своим ConfigMap'ам.
-assert-production-posture:
-	@set -e; \
-	bad=$$(kubectl -n kacho get pods -o json \
-	  | jq -r '.items[].spec.containers[]?.env[]? | select(.name|test("AUTH_?N?_MODE$$")) | select(.value=="dev") | .name' \
-	  | sort -u); \
-	if [ -n "$$bad" ]; then \
-	  echo "!!! стенд поднят в DEV-posture, а гейт обязан проверять production:"; \
-	  echo "$$bad" | sed 's/^/    /'; exit 1; \
-	fi; \
-	bad_cm=$$(kubectl -n kacho get configmap -o json \
-	  | jq -r '.items[] | .metadata.name as $$n | (.data // {}) | to_entries[] | select(.value | split("\n") | any(test("^\\s*mode: *\"?dev\"?\\s*$$"))) | $$n' \
-	  | sort -u); \
-	if [ -n "$$bad_cm" ]; then \
-	  echo "!!! config-файл сервиса всё ещё несёт mode: dev:"; \
-	  echo "$$bad_cm" | sed 's/^/    /'; exit 1; \
-	fi; \
-	echo "production posture confirmed (нет ни одного mode=dev на стенде)"
+# Реализация вынесена в scripts/assert-production-posture.sh — там же подробный
+# разбор, почему прежняя inline-версия пропустила kacho-storage (2026-07-25).
+# Коротко: она читала СОХРАНЁННЫЕ НАСТРОЙКИ (env подов + ConfigMap'ы), то есть
+# проверяла НАМЕРЕНИЕ, а не ИСХОД, и вдобавок обходила только индивидуально
+# объявленные переменные — массовый импорт `envFrom` был ей не виден вовсе.
+# Сервис работал `dev`+plaintext-DB, его настройки читались `production`+`require`,
+# и гейт был зелёным.
+#
+# Новая версия проверяет ЖИВОЙ ПРОЦЕСС: (A) самоотчёт о посадке из лога текущего
+# контейнера, (B) независимое подтверждение шифрования от САМОЙ БАЗЫ
+# (pg_stat_ssl), (C) сохранённые настройки по ВСЕМ путям доставки как backstop.
+# Устойчива к тому, что под не перезапускался — «Ready» больше ничего не «доказывает».
+#
+# guard-kind-context: гейт читает логи и exec'ается в поды — на чужом (в т.ч.
+# прод) контексте это как минимум утечка диагностики.
+assert-production-posture: guard-kind-context
+	@bash scripts/assert-production-posture.sh
 
 helm-lint:
 	cd helm/umbrella && helm dep update >/dev/null && helm lint -f values.dev.yaml

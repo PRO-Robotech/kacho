@@ -39,10 +39,22 @@ type fakeAuthorizeClient struct {
 	checked   int
 	batchSize []int
 	gotReqs   []*iamv1.AuthorizeCheckRequest
+
+	// inFlight/maxInFlight — наблюдаемая конкурентность, чтобы тест мог
+	// доказать, что fan-out батчей действительно ОГРАНИЧЕН пулом.
+	inFlight    int
+	maxInFlight int
 }
 
 func newFakeAuthorizeClient() *fakeAuthorizeClient {
 	return &fakeAuthorizeClient{visible: map[string]map[string]bool{}}
+}
+
+// snapshot — согласованный слепок счётчиков (стаб зовётся конкурентно).
+func (f *fakeAuthorizeClient) snapshot() (calls, checked, maxInFlight int, batchSize []int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls, f.checked, f.maxInFlight, append([]int(nil), f.batchSize...)
 }
 
 func (f *fakeAuthorizeClient) allow(relation string, ids ...string) *fakeAuthorizeClient {
@@ -59,8 +71,18 @@ func (f *fakeAuthorizeClient) BatchCheck(ctx context.Context, in *iamv1.BatchAut
 	f.mu.Lock()
 	f.calls++
 	f.batchSize = append(f.batchSize, len(in.GetChecks()))
+	f.inFlight++
+	if f.inFlight > f.maxInFlight {
+		f.maxInFlight = f.inFlight
+	}
 	sleep, cerr := f.sleep, f.err
 	f.mu.Unlock()
+
+	defer func() {
+		f.mu.Lock()
+		f.inFlight--
+		f.mu.Unlock()
+	}()
 
 	if sleep > 0 {
 		select {

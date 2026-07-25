@@ -202,6 +202,12 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("config validate (peer transport): %w", err)
 	}
 
+	// Самоотчёт о security-posture: ПОСЛЕ всех boot-guard'ов (config/serverMTLS/
+	// peerTransport — т.е. конфиг уже ПРИНЯТ процессом) и ДО подъёма листенеров.
+	// Production-posture гейт обязан утверждать на этом наблюдаемом факте, а не
+	// на хранимом конфиге (см. observability.BootPosture).
+	observability.LogBootPosture(logger, bootPosture(cfg, mtlsCfg))
+
 	// Cross-service gRPC dial — через единый builder: retries=3 / dialTimeout=10s /
 	// keepalive=30s / TLS / опц. dns:///+round_robin.
 	//
@@ -729,7 +735,14 @@ func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) 
 		FailOpen:        cfg.AuthZ.ListFilter.FailOpen,
 	})
 	logger.Info("per-object list-filter enabled",
-		"timeout_ms", cfg.AuthZ.ListFilter.TimeoutMs,
+		// per_call_timeout_ms гейтит ОДИН BatchCheck; operation_budget — потолок
+		// всей фильтрации страницы (выводится из per-call и batch_parallelism).
+		// Логируем все три: иначе по конфигу не видно, какое число реально
+		// ограничивает запрос.
+		"per_call_timeout_ms", cfg.AuthZ.ListFilter.TimeoutMs,
+		"batch_parallelism", f.Parallelism(),
+		"operation_budget", f.Budget(),
+		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl", cfg.AuthZ.ListFilter.CacheTTL,
 		"max_entries", cfg.AuthZ.ListFilter.MaxEntries,
 		"fail_open", cfg.AuthZ.ListFilter.FailOpen,

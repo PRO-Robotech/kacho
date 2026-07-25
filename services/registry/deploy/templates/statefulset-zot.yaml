@@ -72,6 +72,16 @@ spec:
     metadata:
       labels:
         app: {{ .Values.zot.serviceName }}
+      annotations:
+        # zot читает config.json ОДИН РАЗ, на старте. ConfigMap примонтирован
+        # томом, поэтому его правка не меняет pod-template — под не
+        # перекатывается, и zot продолжает работать по СТАРОМУ конфигу (storage
+        # driver, s3-бэкенд, compat, extensions), пока ConfigMap уже несёт новый.
+        # Тот же класс, что инцидент kacho-storage (2026-07-25): хранимое
+        # намерение разъезжается с исполняемым, а всё выглядит здоровым.
+        # Хэшируем ИМЕННО $cfg — ровно то, что уходит в config.json выше,
+        # а не файл шаблона (он содержит и эту аннотацию → рекурсия).
+        kacho.cloud/zot-config-checksum: {{ $cfg | toJson | sha256sum }}
     spec:
       securityContext:
         {{- toYaml .Values.zot.podSecurityContext | nindent 8 }}

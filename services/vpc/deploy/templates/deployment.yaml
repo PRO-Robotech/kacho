@@ -18,6 +18,14 @@ spec:
       annotations:
         # ConfigMap-content hash → pod rolling-restart при изменении config.yaml.
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.opa.enabled }}
+        # То же самое для OPA-политики. Отдельная аннотация, а не «и так покрыто»:
+        # config-checksum выше хэширует ТОЛЬКО configmap.yaml, поэтому правка
+        # политики меняла бы vpc-opa-config, НЕ меняла бы pod-template — и
+        # sidecar продолжал бы применять политику, загруженную на старте.
+        # Ровно класс инцидента kacho-storage (2026-07-25), только на authz-политике.
+        kacho.cloud/opa-config-checksum: {{ include (print $.Template.BasePath "/opa-configmap.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
       securityContext:
