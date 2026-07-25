@@ -15,6 +15,25 @@ spec:
     metadata:
       labels:
         app: {{ include "storage.fullname" . }}
+      annotations:
+        # Roll pods when ConfigMap content changes (same pattern as kacho-nlb).
+        #
+        # WHY THIS IS SECURITY-CRITICAL, not cosmetic: every storage security knob
+        # (KACHO_STORAGE_AUTH_MODE, KACHO_STORAGE_DB_SSLMODE, AUTHZ_IAM_GRPC_ADDR)
+        # reaches the container through `envFrom: configMapRef` below — i.e. it is
+        # read ONCE, at process start. A ConfigMap-only change does NOT alter the
+        # pod template, so Kubernetes never rolls the pod and the running process
+        # keeps its BOOT-time env. Flipping the stand to production posture
+        # (values.dev-prod.yaml sets authMode dev→production, sslMode disable→
+        # require) therefore left kacho-storage running with auth_mode=dev +
+        # db_sslmode=disable while its ConfigMap read `production`/`require` —
+        # and `make dev-prod-up` reported success, because assert-production-
+        # posture inspects the ConfigMap, not the live process. The production
+        # boot-guard (Config.Validate, config/validate.go) never re-ran: it cannot
+        # refuse a start that never happened. Measured 2026-07-25: pod booted
+        # "auth_mode":"dev","db_sslmode":"disable" 36s BEFORE the phase-3 upgrade,
+        # and pg_stat_ssl showed its DB backends on plaintext.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
       securityContext:
