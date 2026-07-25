@@ -5,7 +5,7 @@ package middleware_test
 
 // permission_catalog_acr_invariant_test.go — SEC-acr-stepup-refinement (R3).
 //
-// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 42
+// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 36
 // named grant/credential/tenancy-root FQNs carry required_acr_min="2"; every
 // other non-exempt RPC carries "1" (routine, AAL1 floor); exempt RPCs carry ""
 // (no step-up requirement). Both embedded catalog copies (gateway + iam) are
@@ -13,12 +13,16 @@ package middleware_test
 // NOT changed by the acr addition (net-strengthening: exempt-permission + acr=2).
 //
 // This is the primary RED→GREEN lock: before the proto refinement 372 RPCs carry
-// "2" (blanket step-up); after it, exactly 42 do.
+// "2" (blanket step-up); after it, exactly 36 do.
 //
 // Set revision (hardening round): UserService/Invite JOINED category B — it
 // creates an AccessBinding atomically (project_id+role_id) and is therefore a
 // privilege-grant surface; leaving it at the AAL1 floor was a step-up bypass of
 // AccessBindingService/Create. 41 → 42.
+//
+// Set revision (storage-split, dead-surface removal): the stillborn
+// DiskPlacementGroup / Filesystem / SnapshotSchedule contracts were deleted —
+// their 6 Set/UpdateAccessBindings grant-surface FQNs left the set. 42 → 36.
 
 import (
 	"os"
@@ -32,7 +36,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 42 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 36 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -54,10 +58,6 @@ func sensitiveACR2Set() map[string]struct{} {
 		// C — compute per-resource grant (22; non-iam grant-surface)
 		"kacho.cloud.compute.v1.DiskService/SetAccessBindings",
 		"kacho.cloud.compute.v1.DiskService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.DiskPlacementGroupService/SetAccessBindings",
-		"kacho.cloud.compute.v1.DiskPlacementGroupService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.FilesystemService/SetAccessBindings",
-		"kacho.cloud.compute.v1.FilesystemService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.GpuClusterService/SetAccessBindings",
 		"kacho.cloud.compute.v1.GpuClusterService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.HostGroupService/SetAccessBindings",
@@ -68,8 +68,6 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.PlacementGroupService/SetAccessBindings",
 		"kacho.cloud.compute.v1.PlacementGroupService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.SnapshotScheduleService/SetAccessBindings",
-		"kacho.cloud.compute.v1.SnapshotScheduleService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.SnapshotService/SetAccessBindings",
 		"kacho.cloud.compute.v1.SnapshotService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.instancegroup.InstanceGroupService/SetAccessBindings",
@@ -98,14 +96,14 @@ func sensitiveACR2Set() map[string]struct{} {
 	return set
 }
 
-// TestPermissionCatalog_ACR_41SetInvariant — SEC-ACR-13 / I1: the set of FQNs
-// carrying required_acr_min="2" is EXACTLY the 41 named sensitive RPCs.
-func TestPermissionCatalog_ACR_41SetInvariant(t *testing.T) {
+// TestPermissionCatalog_ACR_SetInvariant — SEC-ACR-13 / I1: the set of FQNs
+// carrying required_acr_min="2" is EXACTLY the named sensitive RPCs.
+func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 42, "the acceptance-doc sensitive set must contain exactly 42 FQNs")
+	require.Len(t, sensitive, 36, "the acceptance-doc sensitive set must contain exactly 36 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -124,9 +122,9 @@ func TestPermissionCatalog_ACR_41SetInvariant(t *testing.T) {
 	}
 	for fqn := range got2 {
 		_, want := sensitive[fqn]
-		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive-41 allowlist (over-inclusion): %s", fqn)
+		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 42, "exactly 42 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 36, "exactly 36 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -163,7 +161,7 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 	}
 	for _, fqn := range routine {
 		if fqn == "kacho.cloud.iam.v1.GroupService/AddMember" {
-			continue // control — AddMember is sensitive; asserted in the 41-set test
+			continue // control — AddMember is sensitive; asserted in the set-invariant test
 		}
 		e, ok := c.Lookup(fqn)
 		require.True(t, ok, "routine FQN missing from catalog: %s", fqn)
@@ -207,10 +205,14 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 }
 
 // TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
-// catalog splits 42×"2" / 327×"1" / 65×"" = 434, and both embedded copies
+// catalog splits 36×"2" / 297×"1" / 65×"" = 398, and both embedded copies
 // (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
 // loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328;
-// the UserService/Invite grant-surface correction moved one more 1→2: 328→327.)
+// the UserService/Invite grant-surface correction moved one more 1→2: 328→327.
+// The storage-split dead-surface removal dropped the 36 RPCs of the stillborn
+// DiskPlacementGroup / Filesystem / SnapshotSchedule services plus
+// Instance.{Attach,Detach}Filesystem and Disk.ListSnapshotSchedules:
+// 42→36 sensitive, 327→297 routine, 434→398 total.)
 func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -229,10 +231,10 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 			t.Fatalf("unexpected required_acr_min %q on %s", e.RequiredACRMin, fqn)
 		}
 	}
-	assert.Equal(t, 42, n2, "sensitive count")
-	assert.Equal(t, 327, n1, "routine count")
+	assert.Equal(t, 36, n2, "sensitive count")
+	assert.Equal(t, 297, n1, "routine count")
 	assert.Equal(t, 65, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 434, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 398, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

@@ -23,8 +23,7 @@ const (
 
 // Disk — диск (zone-level ресурс). source = image|snapshot хранится в
 // SourceImageID / SourceSnapshotID (взаимоисключающие; не FK — семантика Kachō
-// допускает удаление source-ресурса). InstanceIDs — output-only, вычисляется
-// из attached_disks (см. repo).
+// допускает удаление source-ресурса).
 //
 // Сложные nested-поля (HardwareGeneration, KMSKey, DiskPlacementPolicy)
 // хранятся как proto-указатели; repo сериализует их в JSONB через protojson.
@@ -47,6 +46,10 @@ type Disk struct {
 	HardwareGeneration  *computev1.HardwareGeneration
 	KMSKey              *computev1.KMSKey
 
-	// InstanceIDs — output-only: instance-ы, к которым диск attached.
+	// InstanceIDs — output-only, ВСЕГДА пустой. Источником была таблица
+	// `attached_disks`, дропнутая миграцией 0013 (storage-split): том↔Instance-
+	// привязка теперь живёт в kacho-storage на Volume, а не на compute-Disk.
+	// Писателя у поля нет; protoconv отдаёт его как пустой массив, пока wire-поле
+	// Disk.instance_ids не будет снято вместе с самим ресурсом.
 	InstanceIDs []string
 }

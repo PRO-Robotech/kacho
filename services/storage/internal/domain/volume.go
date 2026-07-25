@@ -17,7 +17,6 @@ const (
 	PrefixVolume    = "vol"
 	PrefixSnapshot  = "snp"
 	PrefixImage     = "img"
-	PrefixDiskType  = "dtp"
 	PrefixOperation = "sop"
 )
 

@@ -13,8 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
@@ -23,7 +21,8 @@ import (
 
 // SnapshotRepo — реализация snapshot.Repo поверх pgxpool. Within-service инварианты
 // на DB (partial UNIQUE(name), FK SET NULL обе стороны, from-READY-CAS), не software
-// TOCTOU. Мутации пишут storage_outbox в той же writer-tx (атомарно, ban #16).
+// TOCTOU. Owner-tuple-intent пишется в fga_register_outbox в той же writer-tx
+// (атомарно, ban #16).
 type SnapshotRepo struct {
 	pool *pgxpool.Pool
 }
@@ -141,7 +140,7 @@ const snapshotInsertCAS = `
 	 WHERE v.id = $6 AND v.project_id = $2 AND v.state = 'READY'
 	RETURNING created_at, size_bytes`
 
-// Insert реализует snapshot.Repo: from-READY-volume CAS + storage_outbox CREATED в
+// Insert реализует snapshot.Repo: from-READY-volume CAS + fga_register-intent в
 // той же tx. Никакого Get→check→INSERT (том мог смениться) — только атомарный
 // INSERT…SELECT. Existence + state-инвариант — на DB (ban #10).
 func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, error) {
@@ -155,13 +154,6 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 			s.ID, s.ProjectID, s.Name, s.Description, labels, s.SourceVolumeID).
 			Scan(&created.CreatedAt, &created.SizeBytes)
 		if serr == nil {
-			if oerr := outbox.Emit(ctx, tx, outboxTable, "Snapshot", s.ID, "CREATED", map[string]any{
-				"id":               s.ID,
-				"project_id":       s.ProjectID,
-				"source_volume_id": s.SourceVolumeID,
-			}); oerr != nil {
-				return oerr
-			}
 			// owner-tuple register-intent в той же writer-TX (SEC-D): project#project@storage_snapshot.
 			return emitFGARegister(ctx, tx, fgaregister.EventRegister,
 				fgaregister.SnapshotItem(s.ProjectID, s.ID, s.Labels))
@@ -205,7 +197,7 @@ func disambiguateSnapshotSource(ctx context.Context, tx pgx.Tx, projectID, srcVo
 }
 
 // Update реализует snapshot.Repo: mutable name/description/labels (COALESCE, nil →
-// без изменения) + storage_outbox UPDATED в той же tx. 0 rows → NotFound. partial
+// без изменения). 0 rows → NotFound. partial
 // UNIQUE(name) collision → 23505 → AlreadyExists.
 func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.SnapshotUpdate) (*domain.Snapshot, error) {
 	var labelsArg any
@@ -226,7 +218,7 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 			WHERE id = $1
 			RETURNING id`, id, u.Name, u.Description, labelsArg).Scan(&rowID)
 		if serr == nil {
-			return outbox.Emit(ctx, tx, outboxTable, "Snapshot", id, "UPDATED", map[string]any{"id": id})
+			return nil
 		}
 		if errors.Is(serr, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Snapshot %s not found", ports.ErrNotFound, id)
@@ -239,7 +231,8 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 	return r.Get(ctx, id)
 }
 
-// Delete реализует snapshot.Repo: DELETE строки + storage_outbox DELETED в той же tx.
+// Delete реализует snapshot.Repo: DELETE строки + fga_register unregister-intent в
+// той же tx.
 // Ссылки volumes.source_snapshot_id → SET NULL (не RESTRICT) — delete НЕ блокируется
 // (§1.2, S1-09). 0 rows → NotFound.
 func (r *SnapshotRepo) Delete(ctx context.Context, id string) error {
@@ -252,9 +245,6 @@ func (r *SnapshotRepo) Delete(ctx context.Context, id string) error {
 				return fmt.Errorf("%w: Snapshot %s not found", ports.ErrNotFound, id)
 			}
 			return err
-		}
-		if oerr := outbox.Emit(ctx, tx, outboxTable, "Snapshot", id, "DELETED", map[string]any{"id": id}); oerr != nil {
-			return oerr
 		}
 		// owner-tuple unregister-intent в той же writer-TX (SEC-D).
 		return emitFGARegister(ctx, tx, fgaregister.EventUnregister,

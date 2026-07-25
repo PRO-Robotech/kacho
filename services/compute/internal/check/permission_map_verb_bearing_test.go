@@ -37,8 +37,6 @@ var verbUpdateRPCs = []string{
 	"/kacho.cloud.compute.v1.InstanceService/Restart",
 	"/kacho.cloud.compute.v1.InstanceService/AttachDisk",
 	"/kacho.cloud.compute.v1.InstanceService/DetachDisk",
-	"/kacho.cloud.compute.v1.InstanceService/AttachFilesystem",
-	"/kacho.cloud.compute.v1.InstanceService/DetachFilesystem",
 	"/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat",
 	"/kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat",
 	"/kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface",
@@ -57,7 +55,6 @@ var verbDeleteRPCs = []string{
 
 var verbListOnResourceRPCs = []string{
 	"/kacho.cloud.compute.v1.DiskService/ListOperations",
-	"/kacho.cloud.compute.v1.DiskService/ListSnapshotSchedules",
 	"/kacho.cloud.compute.v1.ImageService/ListOperations",
 	"/kacho.cloud.compute.v1.SnapshotService/ListOperations",
 	"/kacho.cloud.compute.v1.InstanceService/ListOperations",

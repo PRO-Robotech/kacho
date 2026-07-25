@@ -13,8 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
@@ -23,8 +21,8 @@ import (
 
 // ImageRepo — реализация image.Reader/Writer поверх pgxpool (handwritten pgx, БЕЗ
 // ORM). Within-service инварианты — на DB (source at-most-one mutual-exclusion CHECK,
-// source FK SET NULL — provenance, partial UNIQUE(name)); мутации пишут storage_outbox
-// + fga_register_outbox в той же writer-TX (атомарно, один commit).
+// source FK SET NULL — provenance, partial UNIQUE(name)); мутации пишут
+// fga_register_outbox в той же writer-TX (атомарно, один commit).
 type ImageRepo struct {
 	pool *pgxpool.Pool
 }
@@ -189,13 +187,6 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image) (*domain.Image,
 			}
 			return serr
 		}
-		if oerr := outbox.Emit(ctx, tx, outboxTable, "Image", i.ID, "CREATED", map[string]any{
-			"id":         i.ID,
-			"project_id": i.ProjectID,
-			"region_id":  i.RegionID,
-		}); oerr != nil {
-			return oerr
-		}
 		// owner-tuple register-intent в той же writer-TX (F13/STOR-1-27): анти-BOLA.
 		return emitFGARegister(ctx, tx, fgaregister.EventRegister,
 			fgaregister.ImageItem(i.ProjectID, i.ID, i.Labels))
@@ -230,7 +221,6 @@ func imageSourceUnavailable(snapshotID, volumeID string) error {
 
 // Update реализует image.Writer: mutable name/description/labels (COALESCE, nil →
 // без изменения). Один UPDATE, БЕЗ Get (нет TOCTOU). 0 rows → NotFound.
-// storage_outbox UPDATED в той же tx.
 func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error) {
 	var labelsArg any
 	if u.LabelsSet {
@@ -250,7 +240,7 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 			WHERE id = $1
 			RETURNING id`, id, u.Name, u.Description, labelsArg).Scan(&rowID)
 		if serr == nil {
-			return outbox.Emit(ctx, tx, outboxTable, "Image", id, "UPDATED", map[string]any{"id": id})
+			return nil
 		}
 		if errors.Is(serr, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Image %s not found", ports.ErrNotFound, id)
@@ -263,8 +253,8 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 	return r.Get(ctx, id)
 }
 
-// Delete реализует image.Writer: DELETE строки образа + storage_outbox DELETED +
-// fga unregister в той же tx. Образ, засевший в томе, удаляется — volumes.
+// Delete реализует image.Writer: DELETE строки образа + fga unregister-intent
+// в той же tx. Образ, засевший в томе, удаляется — volumes.
 // source_image_id FK ON DELETE SET NULL очищает lineage (STOR-1-28), не RESTRICT.
 // 0 rows → NotFound.
 func (r *ImageRepo) Delete(ctx context.Context, id string) error {
@@ -276,9 +266,6 @@ func (r *ImageRepo) Delete(ctx context.Context, id string) error {
 				return fmt.Errorf("%w: Image %s not found", ports.ErrNotFound, id)
 			}
 			return err
-		}
-		if oerr := outbox.Emit(ctx, tx, outboxTable, "Image", id, "DELETED", map[string]any{"id": id}); oerr != nil {
-			return oerr
 		}
 		return emitFGARegister(ctx, tx, fgaregister.EventUnregister,
 			fgaregister.Item{Tuple: fgaregister.StorageImage(projectID, id)})

@@ -22,7 +22,7 @@ import (
 // InstanceHandler реализует computev1.InstanceServiceServer (тонкий transport-слой).
 //
 // Unimplemented RPC (наследуются из UnimplementedInstanceServiceServer →
-// codes.Unimplemented): AttachFilesystem/DetachFilesystem (blocked:kacho-filesystem),
+// codes.Unimplemented):
 // UpdateNetworkInterface/AddOneToOneNat/RemoveOneToOneNat (NIC first-class в kacho-vpc —
 // адресация/NAT редактируются через vpc NetworkInterface, не через Instance),
 // Relocate (blocked: cross-zone disk move), ListAccessBindings/SetAccessBindings/

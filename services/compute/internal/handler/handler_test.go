@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	accessv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/access"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
@@ -71,8 +72,8 @@ func TestDiskHandler_CRUD(t *testing.T) {
 	_, err = h.Get(ctx, &computev1.GetDiskRequest{DiskId: disk.Id})
 	require.Equal(t, codes.NotFound, status.Code(err))
 
-	// ListSnapshotSchedules / access-bindings → Unimplemented (наследуется).
-	_, err = h.ListSnapshotSchedules(ctx, &computev1.ListDiskSnapshotSchedulesRequest{DiskId: "x"})
+	// access-bindings → Unimplemented (наследуется из UnimplementedDiskServiceServer).
+	_, err = h.ListAccessBindings(ctx, &accessv1.ListAccessBindingsRequest{ResourceId: "x"})
 	require.Equal(t, codes.Unimplemented, status.Code(err))
 }
 

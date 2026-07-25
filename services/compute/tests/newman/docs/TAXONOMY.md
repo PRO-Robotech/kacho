@@ -75,8 +75,6 @@
 | Internal RPC (`:9091`) — `InternalWatchService`, `InternalDiskType/ZoneService` | Не публичный API | unit/integration; отдельная suite (вне scope newman v1) |
 | `kms_key_id` в Disk/Image Create | Нет `kacho-kms` | `blocked:kacho-kms` issue; покрыть после реализации |
 | `os_product_ids` | Нет `kacho-marketplace` | `blocked:kacho-marketplace` |
-| `Disk.ListSnapshotSchedules` | Нет `SnapshotSchedule`-ресурса | `blocked:kacho-snapshot-schedule` |
-| `Instance.AttachFilesystem/DetachFilesystem` | Нет `Filesystem`-ресурса | `blocked:kacho-filesystem` |
 | `Instance.Relocate` | Нужен cross-zone disk move + cross-service оркестрация | `blocked` |
 | `Instance.AttachNetworkInterface/DetachNetworkInterface` happy path | Нужен 2-й subnet из kacho-vpc | `enhancement` (есть только NEG sync-NF) |
 | access-bindings RPC (`:setAccessBindings` и т.п.) | No-op skeleton под AAA | покрыть после AAA |

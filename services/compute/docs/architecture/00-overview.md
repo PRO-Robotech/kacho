@@ -43,8 +43,7 @@ texts, status codes, timestamp precision, regex'ы, behavioural semantics.
 ### В скоупе (public, verbatim-YC)
 
 **Disk** — Get / List / Create / Update / Delete / ListOperations /
-Relocate (частично — cross-zone disk move) / ListSnapshotSchedules
-(`blocked:kacho-snapshot-schedule`) + access-bindings RPC (no-op скелет под AAA).
+Relocate (частично — cross-zone disk move) + access-bindings RPC (no-op скелет под AAA).
 
 **Image** — Get / GetLatestByFamily / List / Create / Update / Delete /
 ListOperations + access-bindings. Create-источники (`oneof source`): `image_id`,
@@ -64,8 +63,7 @@ access-bindings. **Cross-service refs** валидируются через peer
 `ProjectService.Get`). ⚠️ **`Instance.Create` создаётся без авто-NIC** — auto-NIC
 материализация (`materializeNICs`) удалена в `KAC-266`: инстанс создаётся без
 сетевых интерфейсов, NIC больше не создаётся/привязывается на Create; правильная
-сетевая модель (явная привязка NIC) — будущая переделка. `AttachFilesystem` /
-`DetachFilesystem` → `blocked:kacho-filesystem` (нет ресурса Filesystem).
+сетевая модель (явная привязка NIC) — будущая переделка.
 `Relocate` → blocked (нужен cross-zone disk move + restart-семантика).
 `SimulateMaintenanceEvent` → no-op (operation сразу done, response Empty).
 
@@ -102,11 +100,10 @@ prefix `epd`).
   мгновенный. См. [`07-known-divergences.md`](07-known-divergences.md) §5.
 - **`InstanceGroupService`** (`kacho.cloud.compute.v1.instancegroup`) — отдельный
   крупный домен, отложен (метка `enhancement`, не `blocked`).
-- **`DiskPlacementGroupService` / `PlacementGroupService` / `HostGroupService` /
-  `HostTypeService` / `GpuClusterService` / `FilesystemService` /
-  `SnapshotScheduleService` / `ReservedInstancePoolService` /
-  `MaintenanceService`** — proto-файлы есть в `kacho-proto/proto/kacho/cloud/
-  compute/v1/`, но реализация отложена (`blocked:*` либо `enhancement`). Связанные
+- **`PlacementGroupService` / `HostGroupService` / `HostTypeService` /
+  `GpuClusterService` / `ReservedInstancePoolService` / `MaintenanceService`** —
+  proto-файлы есть в `proto/kacho/cloud/compute/v1/`, но реализация отложена
+  (`blocked:*` либо `enhancement`). Связанные
   поля в реализуемых ресурсах помечены `blocked:*` (например `kms_key_id` →
   `blocked:kacho-kms`, `os_product_ids` → `blocked:kacho-marketplace`,
   `snapshot_schedule_ids` → `blocked:kacho-snapshot-schedule`,
@@ -137,9 +134,7 @@ prefix `epd`).
 4. **Откладываем на потом ТОЛЬКО кейсы, которым нужен ещё не реализованный
    сервис.** `Disk.Create` со ссылкой на `kms_key_id` требует `kacho-kms`
    (нет → метка `blocked:kacho-kms`). `Image.Create` через `os_product_ids` →
-   `kacho-marketplace`. `AttachFilesystem` → `kacho-filesystem`.
-   `snapshot_schedule_ids` / `DiskService.ListSnapshotSchedules` →
-   `kacho-snapshot-schedule`. Всё остальное (полный Instance lifecycle,
+   `kacho-marketplace`. Всё остальное (полный Instance lifecycle,
    attach/detach, NAT) реализуем сразу.
 5. **Подробная прописанная архитектура** живёт в `docs/architecture/*.md`
    (этот каталог). By-design расхождения с verbatim YC — в
@@ -234,7 +229,6 @@ Instance, те же precondition-ошибки. Осознанные текущи
   `instance_network_interfaces.nic_id`.
 - KMS-ключи (`kms_key_id`) — `kacho-kms` (нет → blocked).
 - Marketplace-продукты (`os_product_ids`) — `kacho-marketplace` (нет → blocked).
-- Filesystem-ресурсы (`AttachFilesystem`) — `kacho-filesystem` (нет → blocked).
 - Snapshot-расписания (`snapshot_schedule_ids`) — `kacho-snapshot-schedule` (нет → blocked).
 - Operations worker-логика — `kacho-corelib/operations` (таблица `operations`
   копируется через `make sync-migrations`, но включена в `0001_initial.sql`).

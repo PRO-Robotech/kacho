@@ -222,49 +222,6 @@ service InstanceService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Attaches the filesystem to the instance.
-  //
-  // The instance and the filesystem must reside in the same availability zone.
-  //
-  // To use the instance with an attached filesystem, the latter must be mounted.
-  // For details, see [documentation](/docs/compute/operations/filesystem/attach-to-vm).
-  rpc AttachFilesystem(AttachInstanceFilesystemRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{instance_id}:attachFilesystem"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "AttachInstanceFilesystemMetadata"
-      response: "Instance"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_filesystems.attachFilesystem";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "compute_instance"
-      from_request_field: "instance_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Detaches the filesystem from the instance.
-  rpc DetachFilesystem(DetachInstanceFilesystemRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{instance_id}:detachFilesystem"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "DetachInstanceFilesystemMetadata"
-      response: "Instance"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_filesystems.detachFilesystem";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "compute_instance"
-      from_request_field: "instance_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
   // Attaches an existing kacho-vpc NetworkInterface (NIC) to the instance by id.
   //
   // The NIC is a first-class kacho-vpc resource; this RPC binds it to the instance
@@ -898,55 +855,6 @@ message DetachInstanceDiskMetadata {
 
   // ID of the storage Volume (prefix "vol").
   string volume_id = 2;
-}
-
-message AttachInstanceFilesystemRequest {
-  // ID of the instance to attach the filesystem to.
-  //
-  // To get the instance ID, make a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-
-  // Filesystem to attach to the instance.
-  AttachedFilesystemSpec attached_filesystem_spec = 2 [(required) = true];
-}
-
-message AttachInstanceFilesystemMetadata {
-  // ID of the instance that the filesystem is being attached to.
-  string instance_id = 1;
-
-  // ID of the filesystem that is being attached to the instance.
-  string filesystem_id = 2;
-}
-
-message DetachInstanceFilesystemRequest {
-  // ID of the instance to detach the filesystem from.
-  //
-  // To get the instance ID, make a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-
-  oneof filesystem {
-    option (exactly_one) = true;
-
-    // ID of the filesystem that should be detached.
-    string filesystem_id = 2 [(length) = "<=50"];
-
-    // Name of the device used for mounting the filesystem that should be detached.
-    string device_name = 3 [(pattern) = "[a-z][a-z0-9-_]{,19}"];
-  }
-}
-
-message DetachInstanceFilesystemMetadata {
-  // ID of the instance that the filesystem is being detached from.
-  string instance_id = 1;
-
-  // ID of the filesystem that is being detached from the instance.
-  string filesystem_id = 2;
 }
 
 // AttachedNicSpec — NIC-reference attach spec: attaches an *existing* kacho-vpc

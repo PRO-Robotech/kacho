@@ -19,8 +19,8 @@ import (
 
 // DiskHandler реализует computev1.DiskServiceServer (тонкий transport-слой).
 //
-// Unimplemented RPC (ListSnapshotSchedules — blocked:kacho-snapshot-schedule;
-// ListAccessBindings/SetAccessBindings/UpdateAccessBindings — AAA-скелет) не
+// Unimplemented RPC (ListAccessBindings/SetAccessBindings/UpdateAccessBindings —
+// AAA-скелет) не
 // переопределены и наследуются из UnimplementedDiskServiceServer (возвращают
 // codes.Unimplemented). См. docs/architecture/07-known-divergences.md.
 type DiskHandler struct {

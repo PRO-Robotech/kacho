@@ -44,8 +44,8 @@ const (
 	// — kacho-iam/internal/authzmap; тут — backend view-only.
 	//
 	//	v_get    — чтение содержимого самого ресурса (Get / GetSerialPortOutput);
-	//	v_list   — видимость операций/дочерних на самом ресурсе (ListOperations,
-	//	           ListSnapshotSchedules) — НЕ top-level project-List;
+	//	v_list   — видимость операций/дочерних на самом ресурсе (ListOperations)
+	//	           — НЕ top-level project-List;
 	//	v_update — мутация самого ресурса (Update + lifecycle/attach/detach verb'ы);
 	//	v_delete — удаление самого ресурса.
 	relationVGet    = "v_get"
@@ -151,12 +151,6 @@ func PermissionMap() authz.RPCMap {
 			Relation: relationVList,
 			Extract: authz.StaticExtractor(objectTypeDisk, func(req any) (string, error) {
 				return req.(*computev1.ListDiskOperationsRequest).GetDiskId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.DiskService/ListSnapshotSchedules": {
-			Relation: relationVList,
-			Extract: authz.StaticExtractor(objectTypeDisk, func(req any) (string, error) {
-				return req.(*computev1.ListDiskSnapshotSchedulesRequest).GetDiskId(), nil
 			}),
 		},
 		// access-bindings — AAA-скелет (handler не переопределён → Unimplemented).
@@ -369,18 +363,6 @@ func PermissionMap() authz.RPCMap {
 			Relation: relationVUpdate,
 			Extract: authz.StaticExtractor(objectTypeInstance, func(req any) (string, error) {
 				return req.(*computev1.DetachInstanceDiskRequest).GetInstanceId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.InstanceService/AttachFilesystem": {
-			Relation: relationVUpdate,
-			Extract: authz.StaticExtractor(objectTypeInstance, func(req any) (string, error) {
-				return req.(*computev1.AttachInstanceFilesystemRequest).GetInstanceId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.InstanceService/DetachFilesystem": {
-			Relation: relationVUpdate,
-			Extract: authz.StaticExtractor(objectTypeInstance, func(req any) (string, error) {
-				return req.(*computev1.DetachInstanceFilesystemRequest).GetInstanceId(), nil
 			}),
 		},
 		"/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat": {

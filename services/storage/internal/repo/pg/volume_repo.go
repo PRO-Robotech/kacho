@@ -5,8 +5,8 @@
 // (схема kacho_storage). Реализует порты use-case-слоя (volume.Reader/Writer,
 // snapshot.Repo, disktype.Repo). pgx живёт ЗДЕСЬ, не в use-case (dependency rule).
 // Within-service инварианты — на DB (size increase-only CAS, partial UNIQUE, FK
-// RESTRICT), НЕ software TOCTOU (data-integrity.md). Мутации пишут storage_outbox
-// в той же writer-tx (атомарно, ban #16).
+// RESTRICT), НЕ software TOCTOU (data-integrity.md). Owner-tuple-intent пишется в
+// fga_register_outbox в той же writer-tx (атомарно, ban #16).
 package pg
 
 import (
@@ -21,16 +21,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
-
-// outboxTable — транзакционный outbox мутаций storage (миграция 0005).
-const outboxTable = "storage_outbox"
 
 // defaultBlockSize — дефолтный block_size тома (§1.1), если не задан на Create.
 const defaultBlockSize = 4096
@@ -205,7 +200,7 @@ const volumeInsertCoherentSQL = `
 	               AND $12::text <> '' AND i.region_id = $12::text))
 	RETURNING created_at, updated_at`
 
-// Insert реализует volume.Writer: state=READY сразу (§1.4), storage_outbox CREATED
+// Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
 // в той же tx. source_snapshot_id/source_image_id=” → NULL (иначе FK ловит пустую
 // ссылку); заданный источник обязан лежать в ТОМ ЖЕ проекте (project-coherent CAS,
 // volumeInsertCoherentSQL) — иначе 0 rows → hide-existence "<Resource> <id> not found"
@@ -245,13 +240,6 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			}
 			return serr
 		}
-		if oerr := outbox.Emit(ctx, tx, outboxTable, "Volume", v.ID, "CREATED", map[string]any{
-			"id":         v.ID,
-			"project_id": v.ProjectID,
-			"zone_id":    v.ZoneID,
-		}); oerr != nil {
-			return oerr
-		}
 		// owner-tuple register-intent в той же writer-TX (SEC-D): project#project@storage_volume.
 		return emitFGARegister(ctx, tx, fgaregister.EventRegister,
 			fgaregister.VolumeItem(v.ProjectID, v.ID, v.Labels))
@@ -287,7 +275,7 @@ func volumeSourceUnavailable(snapshotID, imageID string) error {
 // mutable name/description/labels (COALESCE, nil-указатель → без изменения). Один
 // UPDATE-стейтмент, БЕЗ предварительного Get (нет TOCTOU). 0 rows →
 // disambiguation: строка есть → size-CAS не прошёл (InvalidArgument "Volume size
-// can only be increased"); строки нет → NotFound. storage_outbox UPDATED в той же tx.
+// can only be increased"); строки нет → NotFound.
 func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error) {
 	var labelsArg any
 	if u.LabelsSet {
@@ -310,7 +298,7 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 			WHERE id = $1 AND ($5::bigint IS NULL OR $5 > size_bytes)
 			RETURNING id`, id, u.Name, u.Description, labelsArg, u.SizeBytes).Scan(&rowID)
 		if serr == nil {
-			return outbox.Emit(ctx, tx, outboxTable, "Volume", id, "UPDATED", map[string]any{"id": id})
+			return nil
 		}
 		if !errors.Is(serr, pgx.ErrNoRows) {
 			return serr
@@ -331,7 +319,7 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 	return r.Get(ctx, id)
 }
 
-// Delete реализует volume.Writer: DELETE строки тома + storage_outbox DELETED в
+// Delete реализует volume.Writer: DELETE строки тома + fga_register unregister-intent в
 // той же tx. Привязанный том → FK volume_attachments.volume_id RESTRICT (23503) →
 // FailedPrecondition "Volume <id> is in use" (§3.6). 0 rows → NotFound.
 func (r *VolumeRepo) Delete(ctx context.Context, id string) error {
@@ -345,9 +333,6 @@ func (r *VolumeRepo) Delete(ctx context.Context, id string) error {
 				return fmt.Errorf("%w: Volume %s not found", ports.ErrNotFound, id)
 			}
 			return err
-		}
-		if oerr := outbox.Emit(ctx, tx, outboxTable, "Volume", id, "DELETED", map[string]any{"id": id}); oerr != nil {
-			return oerr
 		}
 		// owner-tuple unregister-intent в той же writer-TX (SEC-D).
 		return emitFGARegister(ctx, tx, fgaregister.EventUnregister,

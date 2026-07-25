@@ -4,7 +4,7 @@
 """Case-set для DiskService (kacho-compute).
 
 Covered RPCs: Get, List, Create, Update, Delete, Relocate, ListOperations.
-(ListSnapshotSchedules — blocked:kacho-snapshot-schedule; access-bindings — no-op skeleton, skip.)
+(access-bindings — no-op skeleton, skip.)
 
 Контракт изоляции: каждый case в своём runId, работает внутри pre-allocated
 existingProjectId/existingProjectCrossId (из env), Org/Cloud/Folder НЕ создаёт; имена
@@ -683,8 +683,6 @@ CASES.append(Case(
     ],
 ))
 
-# blocked: ListSnapshotSchedules — нет SnapshotSchedule-ресурса.
-# CASES.append(...)  # blocked:kacho-snapshot-schedule
 # blocked: kms_key_id в Create — нет kacho-kms.
 # CASES.append(...)  # blocked:kacho-kms
 # blocked: os_product_ids — marketplace.

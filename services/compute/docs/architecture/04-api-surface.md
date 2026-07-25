@@ -33,7 +33,6 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | `Delete` | `DELETE /compute/v1/disks/{disk_id}` | async | `DeleteDiskMetadata` / `google.protobuf.Empty` | ✅ |
 | `ListOperations` | `GET /compute/v1/disks/{disk_id}/operations` | sync | → `ListDiskOperationsResponse` | ✅ |
 | `Relocate` | `POST /compute/v1/disks/{disk_id}:relocate` body `*` | async | `RelocateDiskMetadata` / `Disk` | ⚠️ частично (cross-zone simplified) |
-| `ListSnapshotSchedules` | (нет `google.api.http`) | sync | → `ListDiskSnapshotSchedulesResponse` | 🚫 `blocked:kacho-snapshot-schedule` |
 | `ListAccessBindings` | `GET /compute/v1/disks/{resource_id}:listAccessBindings` | sync | → `access.ListAccessBindingsResponse` | ⏭️ no-op скелет |
 | `SetAccessBindings` | `POST /compute/v1/disks/{resource_id}:setAccessBindings` body `*` | async | `access.SetAccessBindingsMetadata` / `access.AccessBindingsOperationResult` | ⏭️ no-op скелет |
 | `UpdateAccessBindings` | `POST /compute/v1/disks/{resource_id}:updateAccessBindings` body `*` | async | `access.UpdateAccessBindingsMetadata` / `access.AccessBindingsOperationResult` | ⏭️ no-op скелет |
@@ -79,8 +78,6 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | `Restart` | `POST /compute/v1/instances/{instance_id}:restart` | async | `RestartInstanceMetadata` / `google.protobuf.Empty` | ✅ |
 | `AttachDisk` | `POST /compute/v1/instances/{instance_id}:attachDisk` body `*` | async | `AttachInstanceDiskMetadata{instance_id, disk_id}` / `Instance` | ✅ |
 | `DetachDisk` | `POST /compute/v1/instances/{instance_id}:detachDisk` body `*` | async | `DetachInstanceDiskMetadata` / `Instance` | ✅ |
-| `AttachFilesystem` | `POST /compute/v1/instances/{instance_id}:attachFilesystem` body `*` | async | `AttachInstanceFilesystemMetadata` / `Instance` | 🚫 `blocked:kacho-filesystem` |
-| `DetachFilesystem` | `POST /compute/v1/instances/{instance_id}:detachFilesystem` body `*` | async | `DetachInstanceFilesystemMetadata` / `Instance` | 🚫 `blocked:kacho-filesystem` |
 | `AttachNetworkInterface` | `POST /compute/v1/instances/{instance_id}:attachNetworkInterface` body `*` | async | `AttachInstanceNetworkInterfaceMetadata` / `Instance` | ✅ (требует STOPPED) |
 | `DetachNetworkInterface` | `POST /compute/v1/instances/{instance_id}:detachNetworkInterface` body `*` | async | `DetachInstanceNetworkInterfaceMetadata` / `Instance` | ✅ (требует STOPPED) |
 | `AddOneToOneNat` | `POST /compute/v1/instances/{instance_id}/addOneToOneNat` body `*` | async | `AddInstanceOneToOneNatMetadata` / `Instance` | ✅ |

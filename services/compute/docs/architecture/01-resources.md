@@ -120,7 +120,6 @@ async `NotFound`, а malformed/wrong-prefix id → sync `InvalidArgument "invali
 | `Delete` | async | ✅ | metadata `DeleteDiskMetadata`, response `google.protobuf.Empty`. Attached disk → `FailedPrecondition "The disk <id> is being used"` (FK `attached_disks.disk_id` RESTRICT) |
 | `ListOperations` | sync | ✅ | `GET /compute/v1/disks/{disk_id}/operations` |
 | `Relocate` | async | ⚠️ частично | metadata `RelocateDiskMetadata`, response `Disk`. Меняет `zone_id`; precondition: disk не attached (`FailedPrecondition "Disk is in use"`). Cross-zone semantics simplified — см. `07-known-divergences.md` §7 |
-| `ListSnapshotSchedules` | sync | 🚫 `blocked:kacho-snapshot-schedule` | возвращает пустой list / `Unimplemented` — нет ресурса SnapshotSchedule |
 | `ListAccessBindings` | sync | ⏭️ no-op скелет | пустой list (AAA не реализован) |
 | `SetAccessBindings` | async | ⏭️ no-op скелет | operation сразу done, response `access.AccessBindingsOperationResult{}` |
 | `UpdateAccessBindings` | async | ⏭️ no-op скелет | то же |

@@ -282,8 +282,8 @@ type VolumeAttachSpec struct {
 
 // VolumeAttachmentInfo — a single volume↔Instance attachment (source of truth =
 // kacho-storage Volume / volume_attachments row). Output-only on the compute side;
-// used to build the read-only Instance.attached_disks[] mirror on Get/List and as
-// the confirmed result of Attach. Carries its owning VolumeID (the wire
+// used to build the read-only Instance.boot_disk / Instance.secondary_disks mirror
+// on Get/List and as the confirmed result of Attach. Carries its owning VolumeID (the wire
 // VolumeAttachment sub-record is nested under a Volume; ListAttachments/Attach flatten
 // it with the id attached).
 type VolumeAttachmentInfo struct {

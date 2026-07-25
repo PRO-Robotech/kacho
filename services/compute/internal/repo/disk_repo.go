@@ -32,11 +32,8 @@ func NewDiskRepo(pool *pgxpool.Pool) *DiskRepo { return &DiskRepo{pool: pool} }
 const diskCols = `id, project_id, created_at, name, description, labels, type_id, zone_id, size, block_size, ` +
 	`product_ids, status, source_image_id, source_snapshot_id, disk_placement_policy, hardware_generation, kms_key`
 
-// Get возвращает диск по id.
-//
-// Storage-split cutover: `attached_disks` удалена — compute Disk больше НЕ несёт
-// instance_ids-зеркало (том↔Instance-привязка живёт в kacho-storage на
-// volume-ресурсах, не на compute-дисках). Disk.instance_ids остаётся пустым.
+// Get возвращает диск по id. Читает только колонки diskCols — instance_ids
+// не заполняется (см. domain.Disk.InstanceIDs).
 func (r *DiskRepo) Get(ctx context.Context, id string) (*domain.Disk, error) {
 	q := fmt.Sprintf(`SELECT %s FROM disks WHERE id = $1`, diskCols)
 	d, err := scanDisk(r.pool.QueryRow(ctx, q, id))
@@ -120,8 +117,6 @@ func (r *DiskRepo) List(ctx context.Context, f ports.DiskFilter, p ports.Paginat
 		nextToken = encodePageToken(last.CreatedAt, last.ID)
 		result = result[:pageSize]
 	}
-	// instance_ids-зеркало упразднено вместе с `attached_disks` (storage-split) —
-	// см. Get: compute Disk больше не отслеживает привязку к инстансам.
 	return result, nextToken, nil
 }
 
@@ -256,12 +251,10 @@ func (r *DiskRepo) Update(ctx context.Context, d *domain.Disk, emitLabelsRegiste
 
 // SetZoneIfDetached атомарно переносит диск в другую зону (Relocate).
 //
-// Storage-split cutover: `attached_disks` удалена — compute Disk больше НЕ несёт
-// локальной attach-строки (том↔Instance-привязка живёт в kacho-storage на
-// volume-ресурсах). Поэтому compute-Disk с точки зрения compute всегда detached, и
-// прежний attach-guard/сериализация с AttachDisk-INSERT неприменимы. Остаётся
-// одиночный атомарный UPDATE по id (row-lock на disks сериализует конкурентные
-// relocate). Нет диска → ErrNotFound.
+// compute не хранит локальной attach-строки (том↔Instance-привязка живёт в
+// kacho-storage на Volume), поэтому compute-Disk с точки зрения compute всегда
+// detached и прежний attach-guard неприменим. Остаётся одиночный атомарный UPDATE
+// по id (row-lock на disks сериализует конкурентные relocate). Нет диска → ErrNotFound.
 func (r *DiskRepo) SetZoneIfDetached(ctx context.Context, id, zoneID string) (*domain.Disk, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {

@@ -19,9 +19,8 @@
 | Move | — removed (KAC-266) | — | □ |
 | Relocate | CRUD-OK, NEG (dest-zone-unknown) | DISK-REL-* (2) | ■ |
 | ListOperations | CRUD-OK (≥1 op), NEG (parent-NF) | DISK-LOP-* (2) | ■ |
-| ListSnapshotSchedules | — | — `blocked:kacho-snapshot-schedule` | □ |
 
-**Coverage: 7/8 RPC (88%); Move removed (KAC-266); ListSnapshotSchedules — blocked.**
+**Coverage: 7/7 RPC (100%); Move removed (KAC-266); ListSnapshotSchedules — RPC снят вместе со stillborn SnapshotSchedule.**
 
 ## ImageService (7 публичных RPC — без access-bindings)
 
@@ -70,7 +69,6 @@
 | GetSerialPortOutput | CRUD-OK (contents string), NEG (NotFound) | INST-SPO-* (2) | ■ |
 | AttachNetworkInterface / DetachNetworkInterface / UpdateNetworkInterface | — NIC binding removed from Instance lifecycle (KAC-266, no auto-NIC); proto-level RPC cleanup tracked separately | — | □ |
 | AddOneToOneNat / RemoveOneToOneNat | — NIC binding removed from Instance lifecycle (KAC-266); Instance has no NIC to NAT | — | □ |
-| AttachFilesystem / DetachFilesystem | — | — `blocked:kacho-filesystem` | □ |
 | Relocate | — | — `blocked` (cross-zone disk move) | □ |
 | SimulateMaintenanceEvent | CRUD-OK (no-op) | INST-SME-CRUD-OK | ◐ |
 
@@ -112,12 +110,13 @@
 `Register*ServiceServer` в composition-root. **Newman НЕ пишется** для этого — RPC вернёт `Unimplemented`
 (impl-gap для `rpc-implementer`, НЕ test-gap):
 
-- **Unwired services** (не в `Register*ServiceServer` → gateway `unknown service`): `DiskPlacementGroupService`,
-  `FilesystemService`, `GpuClusterService`, `HostGroupService`, `HostTypeService`, `MaintenanceService`,
-  `PlacementGroupService`, `ReservedInstancePoolService`, `SnapshotScheduleService`, `InternalResourceLifecycleService`
-  (proto-only vendored stubs).
-- **Unimplemented RPC в wired-сервисах** (наследуются из `Unimplemented*ServiceServer`): `Instance.{AttachFilesystem,
-  DetachFilesystem, AddOneToOneNat, RemoveOneToOneNat, UpdateNetworkInterface, Relocate}`, `Disk.ListSnapshotSchedules`,
+- **Unwired services** (не в `Register*ServiceServer` → gateway `unknown service`): `GpuClusterService`,
+  `HostGroupService`, `HostTypeService`, `MaintenanceService`, `PlacementGroupService`,
+  `ReservedInstancePoolService`, `InternalResourceLifecycleService` (proto-only vendored stubs).
+  `DiskPlacementGroupService` / `FilesystemService` / `SnapshotScheduleService` **удалены** — mёртворождённые
+  контракты без реализации, регистрации и модели прав.
+- **Unimplemented RPC в wired-сервисах** (наследуются из `Unimplemented*ServiceServer`):
+  `Instance.{AddOneToOneNat, RemoveOneToOneNat, UpdateNetworkInterface, Relocate}`,
   все `*.{ListAccessBindings, SetAccessBindings, UpdateAccessBindings}` (AAA-скелет). `Disk.kms_key_id` →
   sync `Unimplemented` (`blocked:kacho-kms`). См. `docs/architecture/07-known-divergences.md`.
 - **`InternalDiskTypeService.{Create,Update,Delete}`** (:9091 admin, `system_admin`) — wired, но **cluster-internal**

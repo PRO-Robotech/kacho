@@ -278,8 +278,7 @@ Get/List/Create/Update/Delete/UpdateMetadata/GetSerialPortOutput/Stop/Start/
 Restart/AttachDisk/DetachDisk/AttachNetworkInterface/DetachNetworkInterface/
 AddOneToOneNat/RemoveOneToOneNat/UpdateNetworkInterface/ListOperations/
 Relocate(blocked)/SimulateMaintenanceEvent(no-op)/access-bindings(no-op);
-`DiskService` — CRUD/ListOperations/Relocate(частично)/ListSnapshotSchedules
-(blocked)/access-bindings; `ImageService` — CRUD/GetLatestByFamily/ListOperations/
+`DiskService` — CRUD/ListOperations/Relocate(частично)/access-bindings; `ImageService` — CRUD/GetLatestByFamily/ListOperations/
 access-bindings; `SnapshotService` — CRUD/ListOperations/access-bindings;
 `DiskTypeService`/`RegionService`/`ZoneService` — Get/List) + `OperationService`
 (Get/Cancel, `/operations/{id}` через opsproxy). Geography (Region/Zone) — owner

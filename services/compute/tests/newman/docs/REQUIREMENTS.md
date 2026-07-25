@@ -55,5 +55,4 @@ YC Compute API, чтобы заменить плейсхолдеры `# probe-ne
 | COV-06 | Pagination round-trip для Disk/Image/Snapshot/Instance (создать N+1 ресурс → page через token) | quota-heavy; ZONE-LST-PAGE-ROUNDTRIP покрывает паттерн на справочнике |
 | COV-07 | access-bindings RPC (no-op skeleton) — smoke-кейс | после реализации AAA |
 | COV-08 | `kms_key_id` / `os_product_ids` — `blocked:kacho-kms` / `blocked:kacho-marketplace` | нужны соответствующие сервисы |
-| COV-09 | `Disk.ListSnapshotSchedules` — `blocked:kacho-snapshot-schedule` | нужен SnapshotSchedule-ресурс |
-| COV-10 | `Instance.AttachFilesystem/DetachFilesystem` — `blocked:kacho-filesystem`; `Instance.Relocate` — `blocked` | нужны Filesystem-ресурс / cross-zone disk move |
+| COV-10 | `Instance.Relocate` — `blocked` | нужен cross-zone disk move |
