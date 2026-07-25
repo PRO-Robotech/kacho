@@ -209,6 +209,31 @@ jobs:
         working-directory: gateway
         run: make rest-route-table-check
 
+      # listauthz — гейт «публичный List обязан фильтровать результат по правам на
+      # ОБЪЕКТ». ТРЕТИЙ подряд случай того же класса в этом же job'е: скрипт и
+      # make-таргет существовали в 4 сервисах (compute, nlb, storage, vpc) и **не
+      # вызывались ни одним workflow** — то есть гейт не запускался ни разу.
+      #
+      # Цена бездействия измерена, а не предположена: в storage фильтрации по объектам
+      # не было ВООБЩЕ (любой член проекта видел каждый том/снимок/образ), при том что
+      # Get/Update/Delete тех же ресурсов требовали per-object грант. Локальный гейт
+      # storage при этом печатал OK — он проверял более слабый инвариант (project-scope),
+      # а его собственный фикстур-тест фиксировал именно слабое поведение, поэтому
+      # слепое пятно было самосогласованно зелёным.
+      #
+      # Гоняем ВСЕ четыре: гейт, не покрывающий сервис, — это ровно тот же дефект,
+      # который он призван ловить.
+      - name: listauthz — публичный List фильтрует по объекту (4 сервиса)
+        run: |
+          set -euo pipefail
+          fail=0
+          for svc in compute nlb storage vpc; do
+            echo "::group::audit-list-filter ${svc}"
+            make -C "services/${svc}" audit-list-filter || fail=1
+            echo "::endgroup::"
+          done
+          exit "$fail"
+
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
