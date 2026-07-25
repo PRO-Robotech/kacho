@@ -21,3 +21,7 @@ kubeconfig*
 # и любой `git add -A` закоммитил бы его в ПУБЛИЧНЫЙ репозиторий.
 **/values.*-ory.yaml
 **/values.*-secrets.yaml
+
+# Отчёты прогонов newman, отложенные в сторону при верификации (out-stale-<ts>/).
+# Артефакты запуска, не исходники — в репозиторий не попадают.
+services/*/tests/newman/out-stale-*/
