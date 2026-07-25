@@ -93,6 +93,17 @@ formatters:
   enable:
     - gofmt
     - goimports
+  # Форматтеры — ОТДЕЛЬНЫЙ блок со своими exclusions: исключения из `linters.exclusions`
+  # выше на них НЕ распространяются. Из-за этого генерённые стабы, явно исключённые из
+  # линтеров, всё равно проверялись на форматирование и давали 52 замечания (50 goimports
+  # + 2 misspell) — гейт линта был красным независимо от содержимого веток. Пути здесь
+  # обязаны повторять `linters.exclusions.paths` + правило на pkg/api.
+  exclusions:
+    paths:
+      - (^|/)node_modules($|/)
+      - ^ui-future/
+      # Сгенерённые стабы (buf generate → pkg/api) — их форматирует генератор.
+      - ^pkg/api/
 
 issues:
   max-same-issues: 50
