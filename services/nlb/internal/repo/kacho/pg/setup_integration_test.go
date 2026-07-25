@@ -118,19 +118,17 @@ func newLB(projectID, name string) *domain.LoadBalancer {
 // newListener строит свежий domain.Listener.
 func newListener(lbID domain.ResourceID, projectID, name string, port int32) *domain.Listener {
 	return &domain.Listener{
-		ID:               domain.ResourceID(ids.NewID(ids.PrefixListener)),
-		LoadBalancerID:   lbID,
-		ProjectID:        domain.ProjectID(projectID),
-		RegionID:         "ru-central1",
-		Name:             domain.LbName(name),
-		Description:      "",
-		Labels:           domain.LbLabels{},
-		Protocol:         domain.ProtoTCP,
-		Port:             domain.LbPort(port),
-		TargetPort:       domain.LbPort(8080),
-		IPVersion:        domain.IPVersionV4,
-		AllocatedAddress: "203.0.113.10",
-		Status:           domain.ListenerStatusActive,
+		ID:             domain.ResourceID(ids.NewID(ids.PrefixListener)),
+		LoadBalancerID: lbID,
+		ProjectID:      domain.ProjectID(projectID),
+		RegionID:       "ru-central1",
+		Name:           domain.LbName(name),
+		Description:    "",
+		Labels:         domain.LbLabels{},
+		Protocol:       domain.ProtoTCP,
+		Port:           domain.LbPort(port),
+		TargetPort:     domain.LbPort(8080),
+		Status:         domain.ListenerStatusActive,
 	}
 }
 

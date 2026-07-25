@@ -179,7 +179,7 @@ CASES.append(Case(
         # left the child-CREATE unwrapped, so a transient 403 reddened the whole chain).
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "edge-https-{{runId}}",
-                   "protocol": "TCP", "port": 443, "targetPort": 8443, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 443, "targetPort": 8443},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId"),
@@ -322,7 +322,7 @@ CASES.append(Case(
         *_create_external_lb("def-absent"),
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "def-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -354,8 +354,7 @@ CASES.append(Case(
         *_create_external_lb("v4-v6"),
         retry_until_authorized(Step(name="create-listener-family-mismatch", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "mm-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
-                   "ipVersion": "IPV4", "addressId": "{{existingAddressIPv6Id}}"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[
                  # Wrapped so a fresh-LB editor-tuple lag (403) is retried away and the real
                  # family-mismatch InvalidArgument is what the assertion observes.
@@ -453,8 +452,7 @@ CASES.append(Case(
              ])),
         retry_until_authorized(Step(name="create-internal-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "int-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
-                   "ipVersion": "IPV4", "subnetId": "{{existingSubnetId}}"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[
                  # Child-create under the fresh INTERNAL LB → editor@lb owner-tuple lag (403)
                  # is retried; the real accept/reject is what the assertion observes.
@@ -589,7 +587,7 @@ CASES.append(Case(
         *_create_external_lb("teardown"),
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "td-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -666,7 +664,7 @@ CASES.append(Case(
         *_create_external_lb("del-notempty"),
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "ne-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),

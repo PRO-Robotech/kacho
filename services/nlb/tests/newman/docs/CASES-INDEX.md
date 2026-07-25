@@ -138,13 +138,12 @@ Immutability + drain toggle + lean projection + delete-release:
 
 ### CRUD
 - `*-CR-CRUD-AUTO-VIP` — CRUD/P0 — Create EXTERNAL with auto VIP allocation (Verifies REQ-LST-CR-AUTO-VIP)
-- `*-CR-CRUD-BYO` — CRUD/P0 — Create with BYO address_id (Verifies REQ-LST-CR-BYO)
+- `*-CR-CRUD-BYO` — CRUD/P0 — Listener on a BYO-address parent LB: VIP binds on the LB, listener carries no address fields (Verifies REQ-LST-CR-BYO)
 - `*-CR-CRUD-INTERNAL` — CRUD/P1 — Create INTERNAL with subnet_id (Verifies REQ-LST-CR-INTERNAL)
 - `*-GET-CRUD-OK` — CRUD/P0 — Get existing listener
 - `*-LST-CRUD-OK` — CRUD,LSG/P1 — List by load_balancer_id
 - `*-UPD-CRUD-OK` — CRUD/P1 — Update mutable (name, proxy_protocol_v2, default_target_group_id)
-- `*-DEL-CRUD-AUTO-VIP-FREE` — CRUD,STATE/P1 — Delete auto-VIP listener frees IP back to pool (Verifies REQ-LST-DEL-AUTO-FREE)
-- `*-DEL-CRUD-BYO-CLEAR-REF` — CRUD,STATE/P1 — Delete BYO listener clears used_by, does NOT free
+- `*-DEL-CRUD-OK` — CRUD,STATE/P1 — Delete Listener → parent LB keeps its VIP (address release belongs to the LoadBalancer)
 - `*-LOPS-CRUD-OK` — CRUD,LSG/P2 — ListOperations
 
 ### Validation
@@ -158,17 +157,12 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-CR-BVA-PORT-MAX-65535` — BVA/P2 — port=65535 → OK
 
 ### Cross-service / NEG / STATE
-- `*-CR-STATE-BYO-USED` — STATE,NEG/P0 — BYO address already used by another listener → FailedPrecondition (Verifies REQ-LST-BYO-USED)
-- `*-CR-VAL-BYO-IP-VERSION-MISMATCH` — VAL,NEG/P1 — address ip_version mismatches listener (Verifies REQ-LST-BYO-IPV)
-- `*-CR-VAL-BYO-CROSS-PROJECT` — VAL,NEG/P1 — BYO address in different project → InvalidArgument
 - `*-CR-NEG-LB-UNKNOWN` — NEG/P0 — unknown load_balancer_id → NotFound
 - `*-CR-CONF-DUP-PORT-PROTO` — CONF,NEG/P0 — duplicate (lb_id, port, protocol) → ALREADY_EXISTS (Verifies REQ-LST-UNIQ-PORT-PROTO)
 - `*-CR-CONF-VIP-COMPENSATION` — CONF,NEG/P1 — VIP-alloc OK + INSERT fails → compensation FreeIP runs (Verifies REQ-LST-COMP-FREEIP)
 - `*-UPD-STATE-IMMUTABLE-LB-ID` — STATE,VAL/P0 — load_balancer_id immutable
 - `*-UPD-STATE-IMMUTABLE-PROTOCOL` — STATE,VAL/P0 — protocol immutable
 - `*-UPD-STATE-IMMUTABLE-PORT` — STATE,VAL/P0 — port immutable
-- `*-UPD-STATE-IMMUTABLE-IP-VERSION` — STATE,VAL/P1 — ip_version immutable
-- `*-UPD-STATE-IMMUTABLE-ADDRESS-ID` — STATE,VAL/P1 — address_id immutable
 - `*-UPD-STATE-DEFAULT-TG-REGION-MISMATCH` — STATE,NEG/P1 — default_target_group_id in different region → FailedPrecondition
 - `*-CR-SEC-TG-CROSS-PROJECT` — NEG,AZD/P0 — wiring a TargetGroup of another project on Create (new + legacy field) → refused as "no such target group", never wired (Verifies REQ-LST-TG-SAME-PROJECT)
 - `*-UPD-SEC-TG-CROSS-PROJECT` — NEG,AZD,STATE/P0 — repointing to a TargetGroup of another project → refused, reference unchanged (Verifies REQ-LST-TG-SAME-PROJECT)

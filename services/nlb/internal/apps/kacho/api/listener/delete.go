@@ -32,45 +32,33 @@ import (
 // Async worker:
 //  1. Listener.SetStatusCAS(<current> → DELETING) — атомарный transient marker;
 //     parallel UPDATE/DELETE losses race fast.
-//  2. Free VIP branch:
-//     - auto-alloc (BYO=false): vpc.InternalAddressService.FreeIP(address_id).
-//     - BYO       (BYO=true): vpc.InternalAddressService.ClearReference(address_id).
-//     Failure → outbox `nlb_listener:<id> FAILED` + ops.MarkDone(error UNAVAILABLE);
-//     listener row остаётся в `status='DELETING'`. Авто-реконсилятора для
-//     застрявших листенеров НЕТ (free_ip_runner сканирует ТОЛЬКО load_balancers,
-//     не listeners; viporigin_reconcile — one-shot boot-time backfill). Recovery
-//     — идемпотентно повторно вызванный DeleteListener RPC: step-1 (SetStatusCAS)
-//     пропускается, т.к. status уже DELETING, и worker перезапускает release+delete.
-//  3. repo.Writer.Listeners.Delete + 2× outbox emit (`nlb_listener:<id> DELETED`
+//  2. repo.Writer.Listeners.Delete + 2× outbox emit (`nlb_listener:<id> DELETED`
 //     + `nlb_load_balancer:<lb_id> UPDATED`).
-//  4. ops.MarkDone(response=Empty).
+//  3. ops.MarkDone(response=Empty).
 //
-// BYO vs auto-alloc detection:
-// release-ветка выбирается дискриминатором `listeners.vip_origin`, который
-// проставляется на Create (auto-alloc → 'auto', переданный tenant'ом address_id
-// → 'byo'). Имя Address для решения НЕ используется: tenant волен назвать свой
-// статический адрес как угодно (в т.ч. совпав с auto-паттерном), а ошибочный
-// выбор FreeIP по имени удалил бы чужой адрес (data-loss). Источник истины —
-// колонка, прочитанная вместе с листенером.
+// VIP листенер НЕ освобождает: адрес принадлежит родительскому LoadBalancer'у
+// (один anycast-VIP на семейство) и освобождается его собственным Delete /
+// create-compensation / free_ip_runner'ом (тот сканирует ТОЛЬКО load_balancers).
+// Прежняя release-ветка листенера читала `listeners.address_id`, который ни один
+// production-путь никогда не заполнял (единственные писатели `SetVIP`/
+// `SetAllocatedAddress` не имели вызывающих) — ветка была недостижима и снята
+// вместе с колонками (миграция 0028).
 type DeleteUseCase struct {
-	repo          RepoFactory
-	opsRepo       OperationsRepo
-	internalAddrs InternalAddressClient
-	logger        *slog.Logger
+	repo    RepoFactory
+	opsRepo OperationsRepo
+	logger  *slog.Logger
 }
 
 // NewDeleteUseCase — конструктор.
 func NewDeleteUseCase(
 	repo RepoFactory,
 	opsRepo OperationsRepo,
-	internalAddrs InternalAddressClient,
 	logger *slog.Logger,
 ) *DeleteUseCase {
 	return &DeleteUseCase{
-		repo:          repo,
-		opsRepo:       opsRepo,
-		internalAddrs: internalAddrs,
-		logger:        logger,
+		repo:    repo,
+		opsRepo: opsRepo,
+		logger:  logger,
 	}
 }
 
@@ -124,10 +112,6 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 	lbID := string(cur.LoadBalancerID)
 	projectID := string(cur.ProjectID)
 	regionID := string(cur.RegionID)
-	addressID := ""
-	if v, ok := cur.AddressID.Maybe(); ok {
-		addressID = string(v)
-	}
 
 	// Step 1: mark DELETING (atomic CAS — protects against parallel writers).
 	// We accept any non-DELETING current status. Mutex (CAS-style) writes
@@ -164,17 +148,7 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 		committed = true
 	}
 
-	// Step 2: release VIP. Release-ветка выбирается дискриминатором vip_origin
-	// (auto → FreeIP, byo → ClearReference), прочитанным вместе с листенером —
-	// без обращения к vpc за именем Address (anti data-loss).
-	if addressID != "" {
-		byo := cur.VipOrigin == domain.VipOriginBYO
-		if err := u.releaseVIP(ctx, addressID, byo); err != nil {
-			return nil, u.markFailedAndReturn(ctx, listenerID, projectID, err)
-		}
-	}
-
-	// Step 3: DELETE listener row + 2× outbox emit + Commit atomically.
+	// Step 2: DELETE listener row + 2× outbox emit + Commit atomically.
 	w, err := u.repo.Writer(ctx)
 	if err != nil {
 		return nil, mapDomainErr(err)
@@ -220,61 +194,4 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 		return nil, mapDomainErr(err)
 	}
 	return any, nil
-}
-
-// releaseVIP — branch:
-//
-//	byo == true  → ClearReference (Address остаётся у tenant'а).
-//	byo == false → FreeIP (kacho-vpc delete Address целиком).
-//
-// Failure мапится в gRPC через mapDomainErr. NotFound → idempotent ok.
-func (u *DeleteUseCase) releaseVIP(ctx context.Context, addressID string, byo bool) error {
-	if u.internalAddrs == nil {
-		return status.Error(codes.Unavailable, "vpc internal-address client not configured")
-	}
-	if byo {
-		return u.internalAddrs.ClearReference(ctx, addressID)
-	}
-	return u.internalAddrs.FreeIP(ctx, addressID)
-}
-
-// markFailedAndReturn — best-effort outbox emit `nlb_listener:<id> FAILED`
-// + return wrapped error для ops.MarkError. listener row остаётся в DELETING
-// state; авто-реконсилятора нет (free_ip_runner сканирует load_balancers, не
-// listeners) — recovery через идемпотентно повторно вызванный DeleteListener RPC.
-func (u *DeleteUseCase) markFailedAndReturn(ctx context.Context, listenerID, projectID string, original error) error {
-	w, err := u.repo.Writer(ctx)
-	if err == nil {
-		committed := false
-		defer func() {
-			if !committed {
-				w.Abort()
-			}
-		}()
-		if emitErr := w.Outbox().Emit(ctx,
-			outboxResourceTypeListener, listenerID, projectID,
-			outboxActionFailed, map[string]any{
-				"id":         listenerID,
-				"project_id": projectID,
-				"reason":     "release_vip_failed",
-				"error":      original.Error(),
-			},
-		); emitErr != nil {
-			// FAILED-marker не записан: аудит/outbox-trail неполон. Логируем
-			// отдельным сигналом (CWE-252) — не глотаем молча.
-			loggerOrDiscard(u.logger).Warn("listener.Delete FAILED-marker outbox emit failed; compensation trail incomplete",
-				"listener_id", listenerID, "emit_err", emitErr)
-		} else if commitErr := w.Commit(); commitErr != nil {
-			loggerOrDiscard(u.logger).Warn("listener.Delete FAILED-marker persist failed; compensation trail incomplete",
-				"listener_id", listenerID, "commit_err", commitErr)
-		} else {
-			committed = true
-		}
-	} else {
-		loggerOrDiscard(u.logger).Warn("listener.Delete FAILED-marker writer-open failed; compensation trail incomplete",
-			"listener_id", listenerID, "writer_err", err)
-	}
-	loggerOrDiscard(u.logger).Warn("listener.Delete release VIP failed; listener kept in DELETING",
-		"listener_id", listenerID, "err", original)
-	return mapDomainErr(original)
 }

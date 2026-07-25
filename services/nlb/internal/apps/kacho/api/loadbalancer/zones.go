@@ -13,8 +13,14 @@ import (
 )
 
 // checkDisabledAnnounceZones — общая валидация drain-набора (Create + Update):
-// REGIONAL-only; каждая зона ∈ регион; набор не покрывает все зоны региона. nil
-// zoneClient (dev-стенд без geo) → пропуск geo-проверок (REGIONAL-only остаётся).
+// REGIONAL-only; каждая зона ∈ регион; набор не покрывает все зоны региона.
+//
+// Пустой drain-набор проверять нечем — geo не нужен (ранний выход ниже). Но
+// если набор ЗАДАН, а geo-клиент не сконфигурирован, проверка «зона ∈ регион» и
+// «набор не покрывает все зоны» невыполнима → мутация fail-closed
+// `Unavailable`, а не «пропустить geo-проверки» (несконфигурированное ребро —
+// неверная конфигурация стенда, не режим работы; boot-guard config.Validate
+// ловит её на старте в production).
 func checkDisabledAnnounceZones(ctx context.Context, zc ZoneClient, placement domain.PlacementType, regionID string, zones []string) error {
 	if len(zones) == 0 {
 		return nil
@@ -24,7 +30,7 @@ func checkDisabledAnnounceZones(ctx context.Context, zc ZoneClient, placement do
 			"disabled_announce_zones is only valid for REGIONAL load balancer")
 	}
 	if zc == nil {
-		return nil
+		return status.Error(codes.Unavailable, "zone lookup unavailable")
 	}
 	regionZones, err := zc.ListZoneIDsInRegion(ctx, regionID)
 	if err != nil {

@@ -41,18 +41,16 @@ func TestHandler_RoutesEachRPC(t *testing.T) {
 	seedListener := func(name string, port domain.LbPort) *kachorepo.ListenerRecord {
 		rec := &kachorepo.ListenerRecord{
 			Listener: domain.Listener{
-				ID:               domain.ResourceID(ids.NewID(ids.PrefixListener)),
-				LoadBalancerID:   lb.ID,
-				ProjectID:        lb.ProjectID,
-				RegionID:         lb.RegionID,
-				Name:             domain.LbName(name),
-				Labels:           domain.LbLabels{},
-				Protocol:         domain.ProtoTCP,
-				Port:             port,
-				TargetPort:       80,
-				IPVersion:        domain.IPVersionV4,
-				AllocatedAddress: "203.0.113.99",
-				Status:           domain.ListenerStatusActive,
+				ID:             domain.ResourceID(ids.NewID(ids.PrefixListener)),
+				LoadBalancerID: lb.ID,
+				ProjectID:      lb.ProjectID,
+				RegionID:       lb.RegionID,
+				Name:           domain.LbName(name),
+				Labels:         domain.LbLabels{},
+				Protocol:       domain.ProtoTCP,
+				Port:           port,
+				TargetPort:     80,
+				Status:         domain.ListenerStatusActive,
 			},
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
@@ -68,8 +66,7 @@ func TestHandler_RoutesEachRPC(t *testing.T) {
 	opsListener := seedListener("handler-ops", 8084)
 
 	ops := newFakeOpsRepo()
-	internalAddrs := newFakeInternalAddressClient()
-	h := NewHandler(repo, ops, internalAddrs, nil, slog.Default())
+	h := NewHandler(repo, ops, nil, slog.Default())
 
 	t.Run("Get", func(t *testing.T) {
 		t.Parallel()

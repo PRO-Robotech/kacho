@@ -122,12 +122,13 @@ func (s ListenerStatus) Validate() error {
 }
 
 // ---- VipOrigin -------------------------------------------------------------
-// VipOrigin — дискриминатор источника VIP листенера. Определяет release-ветку
-// при Listener.Delete (и в boot-reconcile): `auto` — Address аллоцирован самим
-// NLB и должен быть освобождён целиком (FreeIP); `byo` — Address передан
-// tenant'ом, при удалении листенера снимается только ссылка (ClearReference),
-// сам Address не удаляется. Хранится отдельной колонкой `listeners.vip_origin`
-// (а не выводится эвристикой по имени Address) — имя tenant волен задать любым.
+// VipOrigin — дискриминатор источника VIP ЛОАД-БАЛАНСЕРА (per-family колонки
+// `load_balancers.vip_origin_v4/_v6`). Определяет release-ветку на
+// LoadBalancer.Delete / compensation / free_ip_runner: `auto` — Address
+// аллоцирован самим NLB и освобождается целиком (FreeIP); `linked` — Address
+// создан tenant'ом и залинкован, снимается только ссылка (ClearReference), сам
+// Address уцелевает. Хранится колонкой (а не выводится эвристикой по имени
+// Address) — имя tenant волен задать любым.
 
 type VipOrigin string
 
@@ -138,18 +139,15 @@ const (
 	// VipOriginLinked — Address создан tenant'ом заранее и залинкован
 	// (address_id); tenant-owned → release = ClearReference (адрес уцелевает).
 	VipOriginLinked VipOrigin = "linked"
-	// VipOriginBYO — legacy-дискриминатор listeners.vip_origin (BYO attach в
-	// Listener); сохранён для листенерной ветки release.
-	VipOriginBYO VipOrigin = "byo"
 )
 
 func (o VipOrigin) Validate() error {
 	switch o {
-	case VipOriginAuto, VipOriginLinked, VipOriginBYO:
+	case VipOriginAuto, VipOriginLinked:
 		return nil
 	}
 	return coreerrors.InvalidArgument().
-		AddFieldViolation("vip_origin", "vip_origin must be one of: auto, linked, byo").
+		AddFieldViolation("vip_origin", "vip_origin must be one of: auto, linked").
 		Err()
 }
 

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "34ee4685-b2f2-47e1-8331-35cc83389db9",
+    "_postman_id": "77bf1336-7194-44b7-9542-bc8513a83def",
     "name": "kacho-nlb / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -289,7 +289,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya324",
+          "name": "get-viewer-rya315",
           "request": {
             "method": "GET",
             "header": [
@@ -1144,7 +1144,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-vd-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-vd-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3605,7 +3605,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr325",
+          "name": "setup-cr-cr316",
           "request": {
             "method": "POST",
             "header": [
@@ -3741,7 +3741,7 @@
           ]
         },
         {
-          "name": "del-rya326",
+          "name": "del-rya317",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4157,7 +4157,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya327",
+          "name": "del-by-creator-rya318",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4882,7 +4882,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-strn-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-strn-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5014,7 +5014,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"anon-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"anon-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -140,7 +140,6 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	listenerHandler := listener.NewHandler(
 		w.repo,
 		w.opsRepo,
-		w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
 	).WithRegistrar(syncRegistrar).WithCheckClient(w.peers.Check)
@@ -213,7 +212,7 @@ type backgroundDeps struct {
 // runServe; функция лишь собирает slice + строит их ресурсы (drainer.New,
 // backstop, bootGate.SetConnected). Порядок и side-effect'ы идентичны прежнему
 // inline-блоку runServe.
-func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorker, *vipOriginReconcileGate, error) {
+func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorker, error) {
 	var background []bgWorker
 
 	// Durable LRO recovery: RecoverAll до трафика (в runServe), периодический Run —
@@ -314,7 +313,7 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 			}),
 		)
 		if derr != nil {
-			return nil, nil, fmt.Errorf("build fga register-drainer: %w", derr)
+			return nil, fmt.Errorf("build fga register-drainer: %w", derr)
 		}
 		background = append(background, bgWorker{"fga-register-drainer", dr.Run})
 		// Drainer wired with a real iam peer → IAM-register delivery path is up:
@@ -322,7 +321,7 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 		d.bootGate.SetConnected(true)
 		reconRun, colRun, berr := startBackstop(ctx, d.pool, d.outboxRec, d.logger)
 		if berr != nil {
-			return nil, nil, fmt.Errorf("start outbox backstop: %w", berr)
+			return nil, fmt.Errorf("start outbox backstop: %w", berr)
 		}
 		background = append(background,
 			bgWorker{"fga-register-reconciler", reconRun},
@@ -334,14 +333,5 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 			"enable", d.cfg.FGA.RegisterDrainer.Enable, "iam_peer", d.peers.Register != nil)
 	}
 
-	// Boot-once backfill listeners.vip_origin: держит readiness not-ready (fail-closed)
-	// до успешного завершения. Свежий стенд → no-op → readiness сразу ready.
-	vipOriginGate := &vipOriginReconcileGate{}
-	vipOriginReconciler := jobs.NewVIPOriginReconciler(
-		jobs.NewPgVIPOriginStore(d.pool), d.peers.Address, d.logger)
-	background = append(background, bgWorker{"vip-origin-reconcile", func(c context.Context) error {
-		return runVIPOriginReconcile(c, vipOriginReconciler, vipOriginGate, d.logger)
-	}})
-
-	return background, vipOriginGate, nil
+	return background, nil
 }

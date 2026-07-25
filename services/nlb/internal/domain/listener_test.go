@@ -22,7 +22,6 @@ func validListener() domain.Listener {
 		Protocol:       domain.ProtoTCP,
 		Port:           80,
 		TargetPort:     8080,
-		IPVersion:      domain.IPVersionV4,
 		Status:         domain.ListenerStatusCreating,
 	}
 }
@@ -68,51 +67,25 @@ func TestListener_Validate_ProtocolMustBeL4(t *testing.T) {
 	}
 }
 
-func TestListener_Validate_AllocatedAddressOnlyIfSet(t *testing.T) {
-	t.Parallel()
-	t.Run("empty allocated_address OK on Create", func(t *testing.T) {
-		t.Parallel()
-		l := validListener()
-		l.AllocatedAddress = ""
-		if err := l.Validate(); err != nil {
-			t.Fatalf("%v", err)
-		}
-	})
-	t.Run("set allocated_address validated", func(t *testing.T) {
-		t.Parallel()
-		l := validListener()
-		l.AllocatedAddress = "203.0.113.42"
-		if err := l.Validate(); err != nil {
-			t.Fatalf("%v", err)
-		}
-	})
-	t.Run("malformed allocated_address rejected", func(t *testing.T) {
-		t.Parallel()
-		l := validListener()
-		l.AllocatedAddress = "not-ip"
-		if err := l.Validate(); err == nil {
-			t.Fatal("expected error")
-		}
-	})
-}
-
+// Equal остаётся option-aware по единственному оставшемуся option-полю листенера
+// (DefaultTargetGroupID): some-vs-none и different-some должны различаться.
 func TestListener_Equal_OptionFieldsAware(t *testing.T) {
 	t.Parallel()
 	a := validListener()
 	b := validListener()
-	a.AddressID = option.MustNewOption[domain.AddressID]("e9b-addr1")
-	b.AddressID = option.MustNewOption[domain.AddressID]("e9b-addr1")
+	a.DefaultTargetGroupID = option.MustNewOption[domain.ResourceID]("tgr-1")
+	b.DefaultTargetGroupID = option.MustNewOption[domain.ResourceID]("tgr-1")
 	if !a.Equal(b) {
-		t.Fatal("equal AddressID should compare equal")
+		t.Fatal("equal DefaultTargetGroupID should compare equal")
 	}
-	b.AddressID = option.MustNewOption[domain.AddressID]("e9b-addr2")
+	b.DefaultTargetGroupID = option.MustNewOption[domain.ResourceID]("tgr-2")
 	if a.Equal(b) {
-		t.Fatal("differing AddressID must compare unequal")
+		t.Fatal("differing DefaultTargetGroupID must compare unequal")
 	}
 	c := validListener()
 	d := validListener()
-	c.SubnetID = option.MustNewOption[domain.SubnetID]("e9b-sub1")
-	// d has no SubnetID (some vs none)
+	c.DefaultTargetGroupID = option.MustNewOption[domain.ResourceID]("tgr-3")
+	// d has none (some vs none)
 	if c.Equal(d) {
 		t.Fatal("some-vs-none must compare unequal")
 	}

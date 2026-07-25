@@ -76,16 +76,6 @@ func listenerProtocolToPb(p domain.LbProto) (lbv1.Listener_Protocol, error) {
 	return lbv1.Listener_PROTOCOL_UNSPECIFIED, fmt.Errorf("unknown LbProto: %q", p)
 }
 
-func ipVersionToPb(v domain.IPVersion) (lbv1.IpVersion, error) {
-	switch v {
-	case domain.IPVersionV4:
-		return lbv1.IpVersion_IPV4, nil
-	case domain.IPVersionV6:
-		return lbv1.IpVersion_IPV6, nil
-	}
-	return lbv1.IpVersion_IP_VERSION_UNSPECIFIED, fmt.Errorf("unknown IPVersion: %q", v)
-}
-
 func listenerStatusToPb(s domain.ListenerStatus) (lbv1.Listener_Status, error) {
 	switch s {
 	case domain.ListenerStatusCreating:

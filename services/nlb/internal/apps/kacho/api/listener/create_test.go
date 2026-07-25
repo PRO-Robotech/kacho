@@ -98,11 +98,6 @@ func TestCreateListener_HappyPath_NoVIP(t *testing.T) {
 	require.Equal(t, domain.ListenerStatusActive, got[0].Status)
 	require.Equal(t, domain.LbPort(443), got[0].Port)
 	require.Equal(t, domain.LbPort(8080), got[0].TargetPort)
-	// Листенер не аллоцировал собственный VIP.
-	_, hasAddr := got[0].AddressID.Maybe()
-	require.False(t, hasAddr, "listener carries no own address binding")
-	require.Empty(t, string(got[0].AllocatedAddress))
-
 	// Outbox: listener CREATED + lb UPDATED(listener_created).
 	evts := repo.pendingOutbox()
 	var sawListenerCreated, sawLBUpdated bool
@@ -122,30 +117,6 @@ func TestCreateListener_HappyPath_NoVIP(t *testing.T) {
 	require.Len(t, fga, 1)
 	require.Equal(t, domain.FGAEventRegister, fga[0].EventType)
 	require.Equal(t, "Listener", fga[0].Intent.Kind)
-}
-
-// TestCreateListener_InheritsVestigialIPVersion — vestigial ip_version листенера
-// берётся из первого семейства родительского LB (колонка снята с proto, остаётся
-// в DB до поздней миграции).
-func TestCreateListener_InheritsVestigialIPVersion(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepo()
-	ops := newFakeOpsRepo()
-	lb := seedParentLB(t, repo, domain.IPVersionV6)
-	uc := newCreateUC(repo, ops)
-
-	op, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
-		LoadBalancerId: string(lb.ID),
-		Name:           "v6port",
-		Protocol:       lbv1.Listener_TCP,
-		Port:           80,
-		TargetPort:     8080,
-	})
-	require.NoError(t, err)
-	require.Nil(t, awaitOpDone(t, ops, op.ID, testTimeout).Error)
-	got := listenerByLB(repo, string(lb.ID))
-	require.Len(t, got, 1)
-	require.Equal(t, domain.IPVersionV6, got[0].IPVersion)
 }
 
 func TestCreateListener_LoadBalancerIDRequired(t *testing.T) {
@@ -204,8 +175,7 @@ func TestCreateListener_DuplicatePortProto(t *testing.T) {
 		Listener: domain.Listener{
 			ID: "lst01EXISTING0000001", LoadBalancerID: lb.ID, ProjectID: lb.ProjectID,
 			RegionID: lb.RegionID, Name: "existing", Protocol: domain.ProtoTCP,
-			Port: 443, TargetPort: 8080, IPVersion: domain.IPVersionV4,
-			Status: domain.ListenerStatusActive, VipOrigin: domain.VipOriginAuto,
+			Port: 443, TargetPort: 8080, Status: domain.ListenerStatusActive,
 		},
 	})
 	uc := newCreateUC(repo, ops)

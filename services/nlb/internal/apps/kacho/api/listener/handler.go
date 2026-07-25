@@ -41,7 +41,6 @@ type Handler struct {
 func NewHandler(
 	repo RepoFactory,
 	opsRepo OperationsRepo,
-	internalAddrs InternalAddressClient,
 	listFilter authzfilter.Filter,
 	logger *slog.Logger,
 ) *Handler {
@@ -50,7 +49,7 @@ func NewHandler(
 		list:           NewListUseCase(repo, listFilter),
 		create:         NewCreateUseCase(repo, opsRepo, logger),
 		update:         NewUpdateUseCase(repo, opsRepo, logger),
-		deleteUC:       NewDeleteUseCase(repo, opsRepo, internalAddrs, logger),
+		deleteUC:       NewDeleteUseCase(repo, opsRepo, logger),
 		listOperations: NewListOperationsUseCase(opsRepo),
 	}
 }

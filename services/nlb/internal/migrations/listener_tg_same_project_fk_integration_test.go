@@ -81,8 +81,8 @@ func TestMigration_ListenerTargetGroup_SameProjectFK(t *testing.T) {
 		_, e := db.Exec(`
 			INSERT INTO kacho_nlb.listeners
 				(id, load_balancer_id, project_id, region_id, name, protocol, port,
-				 target_port, ip_version, default_target_group_id, status)
-			VALUES ($1, 'nlb-own00000000000001', $2, $3, $4, 'TCP', $5, 8080, 'IPV4', $6, 'ACTIVE')`,
+				 target_port, default_target_group_id, status)
+			VALUES ($1, 'nlb-own00000000000001', $2, $3, $4, 'TCP', $5, 8080, $6, 'ACTIVE')`,
 			id, ownProject, region, "l"+id[4:12], portOf(id), tgID)
 		return e
 	}

@@ -247,7 +247,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-viewer", method="POST", path=_LST, auth="jwtProjectViewerA",
              body={"loadBalancerId": "{{garbageNlbId}}", "name": "azd-vd-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[
                  "pm.test('rejected (403/404)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
@@ -896,7 +896,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-stranger", method="POST", path=_LST, auth="jwtStranger",
              body={"loadBalancerId": "{{garbageNlbId}}", "name": "azd-strn-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
              ]),
@@ -925,7 +925,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-anon", method="POST", path=_LST, auth="anonymous",
              body={"loadBalancerId": "{{garbageNlbId}}", "name": "anon-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[
                  "pm.test('401 or 403', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([401, 403]));",

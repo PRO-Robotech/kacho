@@ -221,10 +221,10 @@ func runServe(configPath string) error {
 	}
 
 	// Supervised background loop'ы (errgroup): LRO-reconciler, target-drain, free-ip,
-	// authz-invalidator, fga-register-drainer + outbox-backstop, vip-origin. Собираются
-	// здесь (drainer/backstop-ресурсы + bootGate.SetConnected как side-effect), но
-	// запускаются errgroup'ом перед Serve. vipOriginGate нужен для readiness ниже.
-	background, vipOriginGate, err := assembleBackgroundWorkers(ctx, backgroundDeps{
+	// authz-invalidator, fga-register-drainer + outbox-backstop. Собираются здесь
+	// (drainer/backstop-ресурсы + bootGate.SetConnected как side-effect), но
+	// запускаются errgroup'ом перед Serve.
+	background, err := assembleBackgroundWorkers(ctx, backgroundDeps{
 		pool:            pool,
 		repo:            repo,
 		lroRec:          lroRec,
@@ -323,7 +323,7 @@ func runServe(configPath string) error {
 	// /healthz — только живость процесса (защита от restart-storm). Результат
 	// зеркалится в dependency_up Prometheus-gauge.
 	healthAgg := health.New(
-		buildReadinessCheckers(pool, bootGate, vipOriginGate),
+		buildReadinessCheckers(pool, bootGate),
 		health.WithResultObserver(metricsAdapter.SetDependencyUp),
 	)
 	// Diagnostic HTTP-listener (cluster-internal): /metrics + /healthz + /readyz.

@@ -116,11 +116,27 @@ func pollOpDone(t *testing.T, opsRepo operations.Repo, opID string) *operations.
 func makeHandler(t *testing.T, repo *kachopg.Repository, opsRepo operations.Repo) *loadbalancer.Handler {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	// vpc/geo недоступны в testcontainers-стенде — VIP-аллокация заглушается stub'ом,
-	// возвращающим уникальный адрес на вызов (DB-сторона саги — реальная). Subnet-
-	// client / address-reader / zone-client — nil (placement / link / drain precheck
-	// пропускаются без vpc/geo; эти сьюты гоняют subnet-auto семейства).
-	return loadbalancer.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil, nil, nil, &stubAddressClient{}, nil, logger)
+	// vpc/geo недоступны в testcontainers-стенде — заглушаем их ЯВНЫМИ двойниками
+	// (VIP-аллокация + subnet-резолв), а не nil-клиентами: nil означает
+	// «ребро не сконфигурировано» и теперь fail-close'ит мутацию (несконфигурированный
+	// peer — неверная конфигурация, а не режим работы). DB-сторона саги — реальная.
+	return loadbalancer.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil,
+		&stubSubnetClient{region: "ru-central1"}, nil, &stubAddressClient{}, nil, logger)
+}
+
+// stubSubnetClient — заглушка vpc SubnetClient для integration-стенда: REGIONAL
+// подсеть в заданном регионе, одна сеть на все семейства (dualstack same-network
+// инвариант выполняется). Заменяет прежний nil-клиент, который молча снимал
+// placement/region-precheck.
+type stubSubnetClient struct{ region string }
+
+func (s *stubSubnetClient) Get(_ context.Context, subnetID string) (*vpcclient.Subnet, error) {
+	return &vpcclient.Subnet{
+		ID:            subnetID,
+		NetworkID:     "net-integration",
+		PlacementType: vpcclient.SubnetPlacementRegional,
+		RegionID:      s.region,
+	}, nil
 }
 
 // stubAddressClient — заглушка vpc InternalAddressClient для integration-стенда
@@ -225,10 +241,9 @@ func TestIntegration_DeleteLoadBalancer_BlocksOnListener(t *testing.T) {
 	// TX is committed because the pool sees a different snapshot.
 	_, err = pool.Exec(context.Background(), `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
-			description, labels, protocol, port, target_port, ip_version,
-			address_id, allocated_address, subnet_id, proxy_protocol_v2, default_target_group_id, status)
-		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, 'IPV4',
-		        '', '203.0.113.1', '', false, '', 'ACTIVE')`,
+			description, labels, protocol, port, target_port,
+			proxy_protocol_v2, default_target_group_id, status)
+		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, false, '', 'ACTIVE')`,
 		ids.NewID(ids.PrefixListener), "prj-x", string(lb.ID), "ru-central1",
 	)
 	require.NoError(t, err)
@@ -278,10 +293,9 @@ func TestIntegration_Move_Blocked_ListenerWiredToTG(t *testing.T) {
 	// target_groups(id) is satisfied because the TG exists.
 	_, err = pool.Exec(context.Background(), `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
-			description, labels, protocol, port, target_port, ip_version,
-			address_id, allocated_address, subnet_id, proxy_protocol_v2, default_target_group_id, status)
-		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, 'IPV4',
-		        '', '203.0.113.5', '', false, $5, 'ACTIVE')`,
+			description, labels, protocol, port, target_port,
+			proxy_protocol_v2, default_target_group_id, status)
+		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, false, $5, 'ACTIVE')`,
 		ids.NewID(ids.PrefixListener), "prj-src", lbID, "ru-central1", tgID,
 	)
 	require.NoError(t, err)

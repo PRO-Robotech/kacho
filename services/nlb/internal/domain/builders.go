@@ -49,8 +49,9 @@ func NewLoadBalancer(
 }
 
 // NewListener строит новую Listener-сущность с минимальным набором tenant-полей.
-// Дополнительные поля (AddressID/SubnetID/DefaultTargetGroupID/Labels) caller
+// Дополнительные поля (DefaultTargetGroupID/Labels/Description) caller
 // устанавливает после builder'а — они не считаются "обязательными для конструкции".
+// Адреса листенер не несёт: VIP живёт на родительском LoadBalancer'е.
 //
 // Defaults:
 //   - ID: свежий `lst`-prefix;
@@ -63,7 +64,6 @@ func NewListener(
 	protocol LbProto,
 	port LbPort,
 	targetPort LbPort,
-	ipVersion IPVersion,
 ) Listener {
 	return Listener{
 		ID:              ResourceID(ids.NewID(ids.PrefixListener)),
@@ -74,12 +74,8 @@ func NewListener(
 		Protocol:        protocol,
 		Port:            port,
 		TargetPort:      targetPort,
-		IPVersion:       ipVersion,
 		ProxyProtocolV2: false,
 		Status:          ListenerStatusCreating,
-		// auto-alloc — дефолтный источник VIP; BYO-ветка Create переопределяет
-		// на VipOriginBYO, когда tenant передал address_id.
-		VipOrigin: VipOriginAuto,
 	}
 }
 
@@ -120,15 +116,6 @@ func TruncateID(id ResourceID) string {
 		return s[:ShortIDLen]
 	}
 	return s
-}
-
-// ListenerAutoAddressName — детерминированное имя Address, который NLB создаёт
-// при auto-alloc VIP под листенер: `nlb-listener-<short-id>`. Единый источник
-// формата: используется и генератором имени на Create, и boot-reconcile'ом
-// (распознавание auto-alloc Address по имени, привязанному к КОНКРЕТНОМУ
-// listener-id — устойчиво к чужому BYO-адресу с похожим именем).
-func ListenerAutoAddressName(id ResourceID) string {
-	return "nlb-listener-" + TruncateID(id)
 }
 
 // LBAnycastAddressName — детерминированное имя anycast-Address, который NLB

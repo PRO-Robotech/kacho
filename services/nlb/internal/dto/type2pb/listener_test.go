@@ -25,22 +25,18 @@ func TestListener_Transfer(t *testing.T) {
 	// в proto-проекцию они не выходят.
 	rec := kachorepo.ListenerRecord{
 		Listener: domain.Listener{
-			ID:               "lst01ABCDEF1234567xx",
-			ProjectID:        "prj01ABCDEF1234567ll",
-			LoadBalancerID:   "nlb01ABCDEF1234567xx",
-			RegionID:         "ru-central1",
-			Name:             "ext-lst",
-			Description:      "ext listener",
-			Labels:           domain.LabelsFromMap(map[string]string{"role": "edge"}),
-			Protocol:         domain.ProtoTCP,
-			Port:             443,
-			TargetPort:       8443,
-			IPVersion:        domain.IPVersionV4,
-			AddressID:        option.MustNewOption(domain.AddressID("e9b01ADDRESS")),
-			AllocatedAddress: "203.0.113.10",
-			SubnetID:         option.ValueOf[domain.SubnetID]{},
-			ProxyProtocolV2:  true,
-			Status:           domain.ListenerStatusActive,
+			ID:              "lst01ABCDEF1234567xx",
+			ProjectID:       "prj01ABCDEF1234567ll",
+			LoadBalancerID:  "nlb01ABCDEF1234567xx",
+			RegionID:        "ru-central1",
+			Name:            "ext-lst",
+			Description:     "ext listener",
+			Labels:          domain.LabelsFromMap(map[string]string{"role": "edge"}),
+			Protocol:        domain.ProtoTCP,
+			Port:            443,
+			TargetPort:      8443,
+			ProxyProtocolV2: true,
+			Status:          domain.ListenerStatusActive,
 		},
 		CreatedAt: time.Date(2026, 5, 24, 1, 2, 3, 0, time.UTC),
 	}
@@ -111,10 +107,10 @@ func TestListener_StatusMapping(t *testing.T) {
 	}
 }
 
-func TestListener_ProtocolAndIPVersionUnknownFail(t *testing.T) {
+// Листенер семейства адресов не несёт (VIP на LoadBalancer'е), поэтому
+// ip_version-конвертера у него больше нет — остаются protocol и status.
+func TestListener_ProtocolAndStatusUnknownFail(t *testing.T) {
 	_, err := listenerProtocolToPb(domain.LbProto("HTTP"))
-	require.Error(t, err)
-	_, err = ipVersionToPb(domain.IPVersion("V42"))
 	require.Error(t, err)
 	_, err = listenerStatusToPb(domain.ListenerStatus("UNKNOWN"))
 	require.Error(t, err)

@@ -11,12 +11,11 @@ import (
 // Listener — domain entity Listener. Принадлежит LoadBalancer'у;
 // `RegionID` денормализован from-LB (same-region constraint — DB-CHECK).
 //
-// Address-семантика:
-//   - AddressID пуст и AllocatedAddress пуст → auto-alloc на Create через
-//     vpc.InternalAddressService.AllocateExternalIP/InternalIP.
-//   - AddressID задан (BYO) → vpc.AddressService.Get + SetReference в worker'е.
-//   - SubnetID обязателен для type=INTERNAL; для EXTERNAL
-//     игнорируется.
+// Собственного адреса у листенера НЕТ: VIP консолидирован на LoadBalancer'е
+// (один anycast-VIP на семейство — `LoadBalancer.AddressIDV4/V6`), а листенер —
+// это (port, protocol) на этом VIP и ничего не аллоцирует. Address-поля
+// (ip_version/address_id/allocated_address/subnet_id/vip_origin) сняты и с
+// proto (reserved 12-15), и со схемы (миграция 0028).
 type Listener struct {
 	ID                   ResourceID
 	ProjectID            ProjectID
@@ -28,37 +27,14 @@ type Listener struct {
 	Protocol             LbProto
 	Port                 LbPort
 	TargetPort           LbPort
-	IPVersion            IPVersion
-	AddressID            option.ValueOf[AddressID]
-	AllocatedAddress     IPAddress
-	SubnetID             option.ValueOf[SubnetID]
 	ProxyProtocolV2      bool
 	DefaultTargetGroupID option.ValueOf[ResourceID]
 	Status               ListenerStatus
-	// VipOrigin — источник VIP (auto-alloc vs BYO). Управляет release-веткой на
-	// Delete: auto → FreeIP, byo → ClearReference. См. domain.VipOrigin.
-	VipOrigin VipOrigin
 }
 
-// Validate — все семантически-нагруженные поля. Bind-семантика
-// AddressID/SubnetID vs Type/IPVersion  проверяется в
-// use-case-слое (требует знание LB-родителя) — в Validate проверяем только
-// форму конкретных полей.
+// Validate — все семантически-нагруженные поля (форма; кросс-полевые
+// инварианты, требующие знания LB-родителя, живут в use-case-слое).
 func (l Listener) Validate() error {
-	// AllocatedAddress на Create обычно пуст (заполняется в worker'е после
-	// VIP-allocation). Валидируем только если задан — repo читает Listener
-	// уже с allocated_address.
-	allocErr := error(nil)
-	if l.AllocatedAddress != "" {
-		allocErr = l.AllocatedAddress.Validate()
-	}
-	// VipOrigin валидируется только если задан — repo всегда читает непустое
-	// значение (DB DEFAULT 'auto' + CHECK), а тонкие builder'ы (тесты) могут
-	// оставить zero-value. Жёсткий within-service инвариант держит DB-CHECK.
-	vipOriginErr := error(nil)
-	if l.VipOrigin != "" {
-		vipOriginErr = l.VipOrigin.Validate()
-	}
 	return multierr.Combine(
 		l.Name.Validate(),
 		l.Description.Validate(),
@@ -66,10 +42,7 @@ func (l Listener) Validate() error {
 		l.Protocol.Validate(),
 		l.Port.Validate(),
 		l.TargetPort.Validate(),
-		l.IPVersion.Validate(),
-		allocErr,
 		l.Status.Validate(),
-		vipOriginErr,
 	)
 }
 
@@ -85,14 +58,9 @@ func (l Listener) Equal(other Listener) bool {
 		l.Protocol == other.Protocol &&
 		l.Port == other.Port &&
 		l.TargetPort == other.TargetPort &&
-		l.IPVersion == other.IPVersion &&
-		optEqual(l.AddressID, other.AddressID) &&
-		l.AllocatedAddress == other.AllocatedAddress &&
-		optEqual(l.SubnetID, other.SubnetID) &&
 		l.ProxyProtocolV2 == other.ProxyProtocolV2 &&
 		optEqual(l.DefaultTargetGroupID, other.DefaultTargetGroupID) &&
-		l.Status == other.Status &&
-		l.VipOrigin == other.VipOrigin
+		l.Status == other.Status
 }
 
 // optEqual — equality двух option.ValueOf[T] по semantic-значению (some/none +

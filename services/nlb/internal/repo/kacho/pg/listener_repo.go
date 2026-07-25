@@ -23,9 +23,8 @@ import (
 // empty or dangling → substatus° MISCONFIGURED.
 const listenerCols = `
     id, load_balancer_id, project_id, region_id, created_at, updated_at,
-    name, description, labels, protocol, port, target_port, ip_version,
-    address_id, allocated_address, subnet_id, proxy_protocol_v2,
-    default_target_group_id, status, vip_origin,
+    name, description, labels, protocol, port, target_port, proxy_protocol_v2,
+    default_target_group_id, status,
     (SELECT tg.port FROM kacho_nlb.target_groups tg
       WHERE tg.id = listeners.default_target_group_id) AS resolved_backend_port,
     xmin::text`
@@ -47,20 +46,14 @@ func scanListener(row pgx.Row) (*kacho.ListenerRecord, error) {
 		protoStr   string
 		port       int32
 		tgtPort    int32
-		ipVerStr   string
-		addrIDStr  string
-		allocAddr  string
-		subnetIDs  string
 		dfltTGStr  string
 		statusStr  string
-		vipOrigin  string
 		resolvedBP *int32
 	)
 	if err := row.Scan(
 		&idStr, &lbIDStr, &projectIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
-		&nameStr, &descStr, &labelsRaw, &protoStr, &port, &tgtPort, &ipVerStr,
-		&addrIDStr, &allocAddr, &subnetIDs, &rec.ProxyProtocolV2,
-		&dfltTGStr, &statusStr, &vipOrigin, &resolvedBP, &rec.Xmin,
+		&nameStr, &descStr, &labelsRaw, &protoStr, &port, &tgtPort,
+		&rec.ProxyProtocolV2, &dfltTGStr, &statusStr, &resolvedBP, &rec.Xmin,
 	); err != nil {
 		return nil, err
 	}
@@ -74,13 +67,8 @@ func scanListener(row pgx.Row) (*kacho.ListenerRecord, error) {
 	rec.Protocol = domain.LbProto(protoStr)
 	rec.Port = domain.LbPort(port)
 	rec.TargetPort = domain.LbPort(tgtPort)
-	rec.IPVersion = domain.IPVersion(ipVerStr)
-	rec.AddressID = dto.OptFromStr[domain.AddressID](addrIDStr)
-	rec.AllocatedAddress = domain.IPAddress(allocAddr)
-	rec.SubnetID = dto.OptFromStr[domain.SubnetID](subnetIDs)
 	rec.DefaultTargetGroupID = dto.OptFromStr[domain.ResourceID](dfltTGStr)
 	rec.Status = domain.ListenerStatus(statusStr)
-	rec.VipOrigin = domain.VipOrigin(vipOrigin)
 	labels, err := dto.LabelsFromJSONB(labelsRaw)
 	if err != nil {
 		return nil, fmt.Errorf("scan listener labels: %w", err)
@@ -185,13 +173,6 @@ func (w *listenerWriter) Insert(ctx context.Context, l *domain.Listener) (*kacho
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", kacho.ErrInvalidArg, err)
 	}
-	// vip_origin: пустое значение от тонких builder'ов → DB DEFAULT 'auto'
-	// (зеркалит NOT NULL DEFAULT 'auto' колонки); Create-флоу всегда передаёт
-	// явное 'auto'/'byo'.
-	vipOrigin := string(l.VipOrigin)
-	if vipOrigin == "" {
-		vipOrigin = string(domain.VipOriginAuto)
-	}
 	// project_id/region_id — денормализованное зеркало родительского LB. Берём их
 	// НЕ из software-captured snapshot'а (`l.ProjectID`/`l.RegionID`, прочитанного
 	// в sync-фазе Create), а атомарно из строки load_balancers под locking-read
@@ -215,21 +196,19 @@ func (w *listenerWriter) Insert(ctx context.Context, l *domain.Listener) (*kacho
 	q := fmt.Sprintf(`
         INSERT INTO kacho_nlb.listeners
             (id, load_balancer_id, project_id, region_id, name, description, labels,
-             protocol, port, target_port, ip_version,
-             address_id, allocated_address, subnet_id, proxy_protocol_v2,
-             default_target_group_id, status, vip_origin)
+             protocol, port, target_port, proxy_protocol_v2,
+             default_target_group_id, status)
         SELECT $1, lb.id, lb.project_id, lb.region_id, $3, $4, $5::jsonb,
-               $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+               $6, $7, $8, $9, $10, $11
           FROM kacho_nlb.load_balancers lb
-         WHERE lb.id = $2 AND lb.status <> $17
+         WHERE lb.id = $2 AND lb.status <> $12
            FOR NO KEY UPDATE OF lb
         RETURNING %s`, listenerCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(l.ID), string(l.LoadBalancerID),
 		string(l.Name), string(l.Description), labelsJSON,
-		string(l.Protocol), int32(l.Port), int32(l.TargetPort), string(l.IPVersion),
-		dto.OptString(l.AddressID), string(l.AllocatedAddress), dto.OptString(l.SubnetID),
-		l.ProxyProtocolV2, dto.OptString(l.DefaultTargetGroupID), string(l.Status), vipOrigin,
+		string(l.Protocol), int32(l.Port), int32(l.TargetPort),
+		l.ProxyProtocolV2, dto.OptString(l.DefaultTargetGroupID), string(l.Status),
 		string(domain.LBStatusDeleting),
 	)
 	rec, err := scanListener(row)
@@ -289,34 +268,6 @@ func (w *listenerWriter) SetStatusCAS(ctx context.Context, id string, expected, 
 		if pgxIsNoRows(err) {
 			return nil, fmt.Errorf("%w: Listener %s status is not %s", kacho.ErrFailedPrecondition, id, expected)
 		}
-		return nil, mapPgErr(err, "Listener", id)
-	}
-	return rec, nil
-}
-
-func (w *listenerWriter) SetAllocatedAddress(ctx context.Context, id, address string) (*kacho.ListenerRecord, error) {
-	q := fmt.Sprintf(`
-        UPDATE kacho_nlb.listeners
-           SET allocated_address = $2, updated_at = now()
-         WHERE id = $1
-        RETURNING %s`, listenerCols)
-	row := w.tx.QueryRow(ctx, q, id, address)
-	rec, err := scanListener(row)
-	if err != nil {
-		return nil, mapPgErr(err, "Listener", id)
-	}
-	return rec, nil
-}
-
-func (w *listenerWriter) SetVIP(ctx context.Context, id, addressID, allocatedAddress string) (*kacho.ListenerRecord, error) {
-	q := fmt.Sprintf(`
-        UPDATE kacho_nlb.listeners
-           SET address_id = $2, allocated_address = $3, updated_at = now()
-         WHERE id = $1
-        RETURNING %s`, listenerCols)
-	row := w.tx.QueryRow(ctx, q, id, addressID, allocatedAddress)
-	rec, err := scanListener(row)
-	if err != nil {
 		return nil, mapPgErr(err, "Listener", id)
 	}
 	return rec, nil

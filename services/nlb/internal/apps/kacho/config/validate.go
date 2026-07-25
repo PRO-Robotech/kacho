@@ -156,15 +156,35 @@ func (c Config) Validate() error {
 				"production mode: nlb→iam authz edge must be mTLS — set mtls.iam-register.enable=true (insecure Check edge forbidden)"))
 		}
 		// Остальные cross-service рёбра (vpc / compute / geo / iam-project) обязаны
-		// иметь transport-security когда сконфигурированы: mTLS (mtls.<edge>.enable)
-		// ЛИБО one-way TLS (<edge>.tls). Без этого dialOne падает в insecure gRPC
-		// (buildCreds → insecure.NewCredentials), и on-path attacker читает/подменяет
+		// (а) БЫТЬ СКОНФИГУРИРОВАНЫ и (б) иметь transport-security: mTLS
+		// (mtls.<edge>.enable) ЛИБО one-way TLS (<edge>.tls).
+		//
+		// (а) Незаданный addr — НЕ «peer выключён», а неверная конфигурация:
+		// composition root оставляет клиент этого ребра nil, и use-case теряет
+		// способность выполнить свои peer-проверки на request-path
+		// (placement/region-когерентность подсети и связанного Address — vpc;
+		// членство зон drain-набора — geo; existence проекта — iam; резолв
+		// instance-таргетов — compute). Мутации обязаны быть fail-closed
+		// (security.md), поэтому в рантайме такой вызов теперь отдаёт `Unavailable`;
+		// guard превращает ту же ошибку в громкий refuse-to-start вместо 503 на
+		// первом же тенантском Create. Прежде проверялась только
+		// «secure-если-задано», из-за чего prod-конфиг без vpc/geo молча стартовал
+		// с невыполнимыми coherence-проверками.
+		//
+		// (б) Без transport-security dialOne падает в insecure gRPC (buildCreds →
+		// insecure.NewCredentials), и on-path attacker читает/подменяет
 		// IPAM-аллокацию (VIP), instance-resolve, region-валидацию — integrity/
-		// defense-in-depth (CWE-319). Прежде проверялись только server
-		// + iam-register. Проверяем только СКОНФИГУРИРОВАННЫЕ рёбра (addr задан),
-		// чтобы dev-подобные частичные prod-конфиги без некоторых peer'ов не ломались.
+		// defense-in-depth (CWE-319).
 		for _, e := range c.peerEdges() {
-			if e.addr != "" && !e.secure {
+			if e.addr == "" {
+				errs = multierr.Append(errs, fmt.Errorf(
+					"production mode: %s peer edge is not configured — set extapi.%s.addr "+
+						"(an unconfigured edge leaves its client nil, so the request-path checks it "+
+						"guards cannot run and mutations fail closed at runtime)",
+					e.name, e.tlsKey))
+				continue
+			}
+			if !e.secure {
 				errs = multierr.Append(errs, fmt.Errorf(
 					"production mode: insecure peer transport on %s edge — set mtls.%s.enable=true or %s.tls=true (plaintext peer dial forbidden)",
 					e.name, e.mtlsKey, e.tlsKey))

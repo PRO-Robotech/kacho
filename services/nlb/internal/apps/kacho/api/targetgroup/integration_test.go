@@ -192,10 +192,10 @@ func TestIntegration_DeleteTG_BlocksOnReferencingListener(t *testing.T) {
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
-			description, labels, protocol, port, target_port, ip_version,
-			address_id, allocated_address, subnet_id, proxy_protocol_v2, default_target_group_id, status)
-		VALUES ($1, 'prj-x', $2, 'ru-central1', 'lst-int', '', '{}', 'TCP', 8080, 80, 'IPV4',
-		        '', '203.0.113.7', '', false, $3, 'ACTIVE')`, lstID, lbID, tgID,
+			description, labels, protocol, port, target_port,
+			proxy_protocol_v2, default_target_group_id, status)
+		VALUES ($1, 'prj-x', $2, 'ru-central1', 'lst-int', '', '{}', 'TCP', 8080, 80,
+		        false, $3, 'ACTIVE')`, lstID, lbID, tgID,
 	)
 	require.NoError(t, err)
 

@@ -103,9 +103,12 @@ func TestIntegration_CreateLoadBalancer_FanoutCompensationOnV6Fail(t *testing.T)
 
 	stub := &fanoutCompensationStub{v4AddressID: "adr00000000000FANV4X"}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	// peer-clients project/region/zone/subnet/address — nil (sync-prechecks и
-	// worker peer-check пропускаются); единственный side-effect — VIP fan-out.
-	h := loadbalancer.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil, nil, nil, stub, nil, logger)
+	// vpc-subnet ребро заглушено ЯВНЫМ двойником (REGIONAL подсеть региона LB):
+	// nil-клиент теперь означает «ребро не сконфигурировано» и fail-close'ит
+	// мутацию, поэтому опираться на его пропуск нельзя. Остальные peer'ы этому
+	// сценарию не нужны; единственный side-effect — VIP fan-out.
+	h := loadbalancer.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil,
+		&stubSubnetClient{region: "region-1"}, nil, stub, nil, logger)
 
 	req := &lbv1.CreateNetworkLoadBalancerRequest{
 		ProjectId: "prj-fanout", RegionId: "region-1", Name: "edge-ds-fail",

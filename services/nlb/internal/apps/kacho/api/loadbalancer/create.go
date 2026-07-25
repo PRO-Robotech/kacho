@@ -286,8 +286,14 @@ func (u *CreateLoadBalancerUseCase) resolveSources(ctx context.Context, lb domai
 func (u *CreateLoadBalancerUseCase) resolveOneSource(ctx context.Context, lb domain.LoadBalancer, fs *familyVIPSpec) error {
 	switch fs.kind {
 	case srcSubnetAuto:
+		// Несконфигурированный vpc — неверная конфигурация стенда, НЕ режим
+		// работы: placement/region-когерентность подсети проверить нечем, а
+		// мутация обязана быть fail-closed (data-integrity.md
+		// §Placement-coherence + security.md). Прежний `return nil` молча
+		// снимал инвариант. Boot-guard (config.Validate, production) ловит эту
+		// же ошибку на старте.
 		if u.subnetClient == nil {
-			return nil
+			return status.Error(codes.Unavailable, "subnet lookup unavailable")
 		}
 		sn, err := u.subnetClient.Get(ctx, fs.subnetID)
 		if err != nil {
@@ -318,8 +324,11 @@ func (u *CreateLoadBalancerUseCase) resolveOneSource(ctx context.Context, lb dom
 // через public AddressService.Get под tenant-identity. Анти-oracle: любой
 // mismatch/no-access → generic InvalidArgument "Illegal argument addressId".
 func (u *CreateLoadBalancerUseCase) resolveLinkedAddress(ctx context.Context, lb domain.LoadBalancer, fs *familyVIPSpec) error {
+	// Несконфигурированный vpc → ownership/family/kind/placement связанного
+	// Address проверить нечем. Пропуск означал бы приём ЧУЖОГО address_id
+	// (cross-project VIP-hijack), поэтому fail-closed (см. resolveOneSource).
 	if u.addressReader == nil {
-		return nil
+		return status.Error(codes.Unavailable, "address lookup unavailable")
 	}
 	addr, err := u.addressReader.Get(ctx, fs.addressID)
 	if err != nil {
@@ -340,8 +349,9 @@ func (u *CreateLoadBalancerUseCase) resolveLinkedAddress(ctx context.Context, lb
 		return u.externalAddressRegionCoherent(ctx, lb, addr)
 	}
 	// INTERNAL: placement подсети адреса == placement LB (derived network).
+	// Несконфигурированный vpc → fail-closed (тот же инвариант, что выше).
 	if u.subnetClient == nil {
-		return nil
+		return status.Error(codes.Unavailable, "subnet lookup unavailable")
 	}
 	sn, err := u.subnetClient.Get(ctx, addr.SubnetID)
 	if err != nil {

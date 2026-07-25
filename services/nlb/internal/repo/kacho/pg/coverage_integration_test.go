@@ -87,9 +87,8 @@ func TestCoverage_HasWiredTargetGroup(t *testing.T) {
 	assert.True(t, has2)
 }
 
-// TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject — оставшиеся
-// Listener write-методы.
-func TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject(t *testing.T) {
+// TestCoverage_ListenerUpdate_MoveProject — оставшиеся Listener write-методы.
+func TestCoverage_ListenerUpdate_MoveProject(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
 	ctx := context.Background()
@@ -97,7 +96,6 @@ func TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject(t *testing.T) {
 	lb := newLB("prj01CVR31234567890ll", "cov3-lb")
 	tg := newTG(string(lb.ProjectID), "cov3-tg")
 	l := newListener(lb.ID, string(lb.ProjectID), "cov3-lst", 8888)
-	l.AllocatedAddress = "" // simulate fresh CREATING state
 	l.Status = domain.ListenerStatusCreating
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
@@ -107,13 +105,6 @@ func TestCoverage_ListenerUpdate_SetAllocatedAddress_MoveProject(t *testing.T) {
 		require.NoError(t, err)
 		_, err = w.Listeners().Insert(ctx, l)
 		require.NoError(t, err)
-	})
-
-	// SetAllocatedAddress — worker-side после VIP-alloc.
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		rec, err := w.Listeners().SetAllocatedAddress(ctx, string(l.ID), "203.0.113.99")
-		require.NoError(t, err)
-		assert.Equal(t, domain.IPAddress("203.0.113.99"), rec.AllocatedAddress)
 	})
 
 	// Update — name/labels/proxy_protocol_v2.

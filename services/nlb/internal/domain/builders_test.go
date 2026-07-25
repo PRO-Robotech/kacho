@@ -42,7 +42,7 @@ func TestNewListener_Defaults(t *testing.T) {
 	t.Parallel()
 	lb := domain.NewLoadBalancer("prj-x", "ru-central1", "edge-public",
 		"", domain.LbLabels{}, domain.LBTypeExternal)
-	l := domain.NewListener(lb, "http", domain.ProtoTCP, 80, 8080, domain.IPVersionV4)
+	l := domain.NewListener(lb, "http", domain.ProtoTCP, 80, 8080)
 	if !strings.HasPrefix(string(l.ID), ids.PrefixListener) {
 		t.Fatalf("expected `lst` id prefix, got %q", l.ID)
 	}

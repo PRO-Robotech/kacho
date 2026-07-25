@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "0869ae80-d99c-4cf0-9755-9ad929404570",
+    "_postman_id": "c2282c01-715b-4639-a420-f35680a28b2b",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -37,7 +37,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr328",
+          "name": "create-lb-cr319",
           "request": {
             "method": "POST",
             "header": [
@@ -178,7 +178,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr328');",
+                  "  pm.execution.setNextRequest('create-lb-cr319');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -190,7 +190,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya329",
+          "name": "materialize-lb-rya320",
           "request": {
             "method": "GET",
             "header": [
@@ -239,7 +239,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya330",
+          "name": "get-lb-inactive-rya321",
           "request": {
             "method": "GET",
             "header": [
@@ -293,7 +293,7 @@
           ]
         },
         {
-          "name": "create-listener-rya331",
+          "name": "create-listener-rya322",
           "request": {
             "method": "POST",
             "header": [
@@ -315,7 +315,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"edge-https-{{runId}}\", \"protocol\": \"TCP\", \"port\": 443, \"targetPort\": 8443, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"edge-https-{{runId}}\", \"protocol\": \"TCP\", \"port\": 443, \"targetPort\": 8443}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -416,7 +416,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya332",
+          "name": "get-listener-vip-rya323",
           "request": {
             "method": "GET",
             "header": [
@@ -578,7 +578,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya333",
+          "name": "materialize-tg-rya324",
           "request": {
             "method": "GET",
             "header": [
@@ -627,7 +627,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya334",
+          "name": "add-instance-target-rya325",
           "request": {
             "method": "POST",
             "header": [
@@ -845,7 +845,7 @@
           ]
         },
         {
-          "name": "verify-default-tg-set-st335",
+          "name": "verify-default-tg-set-st326",
           "request": {
             "method": "GET",
             "header": [
@@ -904,7 +904,7 @@
           ]
         },
         {
-          "name": "get-lb-after-attach-rya336",
+          "name": "get-lb-after-attach-rya327",
           "request": {
             "method": "GET",
             "header": [
@@ -956,7 +956,7 @@
           ]
         },
         {
-          "name": "get-target-states-rya337",
+          "name": "get-target-states-rya328",
           "request": {
             "method": "GET",
             "header": [
@@ -1480,7 +1480,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "create-lb-v6-cr338",
+          "name": "create-lb-v6-cr329",
           "request": {
             "method": "POST",
             "header": [
@@ -1621,7 +1621,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-v6-cr338');",
+                  "  pm.execution.setNextRequest('create-lb-v6-cr329');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1633,7 +1633,7 @@
           ]
         },
         {
-          "name": "get-lb-v6-vip-rya339",
+          "name": "get-lb-v6-vip-rya330",
           "request": {
             "method": "GET",
             "header": [
@@ -1781,7 +1781,7 @@
       "description": "class:NEG | class:STATE | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr340",
+          "name": "create-lb-cr331",
           "request": {
             "method": "POST",
             "header": [
@@ -1922,7 +1922,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr340');",
+                  "  pm.execution.setNextRequest('create-lb-cr331');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1934,7 +1934,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya341",
+          "name": "materialize-lb-rya332",
           "request": {
             "method": "GET",
             "header": [
@@ -1983,7 +1983,7 @@
           ]
         },
         {
-          "name": "create-listener-rya342",
+          "name": "create-listener-rya333",
           "request": {
             "method": "POST",
             "header": [
@@ -2005,7 +2005,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"def-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"def-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2145,7 +2145,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya343",
+          "name": "verify-listener-unchanged-rya334",
           "request": {
             "method": "GET",
             "header": [
@@ -2381,7 +2381,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr344",
+          "name": "create-lb-cr335",
           "request": {
             "method": "POST",
             "header": [
@@ -2522,7 +2522,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr344');",
+                  "  pm.execution.setNextRequest('create-lb-cr335');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -2534,7 +2534,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya345",
+          "name": "materialize-lb-rya336",
           "request": {
             "method": "GET",
             "header": [
@@ -2583,7 +2583,7 @@
           ]
         },
         {
-          "name": "create-listener-family-mismatch-rya346",
+          "name": "create-listener-family-mismatch-rya337",
           "request": {
             "method": "POST",
             "header": [
@@ -2605,7 +2605,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"mm-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\", \"addressId\": \"{{existingAddressIPv6Id}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"mm-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2939,7 +2939,7 @@
           ]
         },
         {
-          "name": "create-internal-lb-cr347",
+          "name": "create-internal-lb-cr338",
           "request": {
             "method": "POST",
             "header": [
@@ -3059,7 +3059,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya348",
+          "name": "get-internal-lb-rya339",
           "request": {
             "method": "GET",
             "header": [
@@ -3117,7 +3117,7 @@
           ]
         },
         {
-          "name": "create-internal-listener-rya349",
+          "name": "create-internal-listener-rya340",
           "request": {
             "method": "POST",
             "header": [
@@ -3139,7 +3139,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"int-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\", \"subnetId\": \"{{existingSubnetId}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"int-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3382,7 +3382,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya350",
+          "name": "materialize-tg-rya341",
           "request": {
             "method": "GET",
             "header": [
@@ -3993,7 +3993,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya351",
+          "name": "get-no-network-rya342",
           "request": {
             "method": "GET",
             "header": [
@@ -4195,7 +4195,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr352",
+          "name": "create-lb-cr343",
           "request": {
             "method": "POST",
             "header": [
@@ -4336,7 +4336,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr352');",
+                  "  pm.execution.setNextRequest('create-lb-cr343');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -4348,7 +4348,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya353",
+          "name": "materialize-lb-rya344",
           "request": {
             "method": "GET",
             "header": [
@@ -4397,7 +4397,7 @@
           ]
         },
         {
-          "name": "create-listener-rya354",
+          "name": "create-listener-rya345",
           "request": {
             "method": "POST",
             "header": [
@@ -4419,7 +4419,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"td-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"td-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4623,7 +4623,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya355",
+          "name": "materialize-tg-rya346",
           "request": {
             "method": "GET",
             "header": [
@@ -4672,7 +4672,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya356",
+          "name": "add-external-target-rya347",
           "request": {
             "method": "POST",
             "header": [
@@ -5596,7 +5596,7 @@
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr357",
+          "name": "create-lb-cr348",
           "request": {
             "method": "POST",
             "header": [
@@ -5737,7 +5737,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr357');",
+                  "  pm.execution.setNextRequest('create-lb-cr348');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -5749,7 +5749,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya358",
+          "name": "materialize-lb-rya349",
           "request": {
             "method": "GET",
             "header": [
@@ -5798,7 +5798,7 @@
           ]
         },
         {
-          "name": "create-listener-rya359",
+          "name": "create-listener-rya350",
           "request": {
             "method": "POST",
             "header": [
@@ -5820,7 +5820,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"ne-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"ne-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6225,7 +6225,7 @@
       "description": "class:STATE | class:CRUD | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr360",
+          "name": "create-lb-cr351",
           "request": {
             "method": "POST",
             "header": [
@@ -6366,7 +6366,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr360');",
+                  "  pm.execution.setNextRequest('create-lb-cr351');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6378,7 +6378,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya361",
+          "name": "materialize-lb-rya352",
           "request": {
             "method": "GET",
             "header": [
@@ -6535,7 +6535,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya362",
+          "name": "materialize-tg-rya353",
           "request": {
             "method": "GET",
             "header": [
@@ -6584,7 +6584,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya363",
+          "name": "add-instance-target-rya354",
           "request": {
             "method": "POST",
             "header": [
@@ -7068,7 +7068,7 @@
       "description": "class:NEG | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr364",
+          "name": "create-lb-cr355",
           "request": {
             "method": "POST",
             "header": [
@@ -7209,7 +7209,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr364');",
+                  "  pm.execution.setNextRequest('create-lb-cr355');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7221,7 +7221,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya365",
+          "name": "materialize-lb-rya356",
           "request": {
             "method": "GET",
             "header": [

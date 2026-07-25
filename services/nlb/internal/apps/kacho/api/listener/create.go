@@ -145,7 +145,6 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 		domain.LbProto(req.GetProtocol().String()),
 		port,
 		targetPort,
-		listenerIPVersion(lb.LoadBalancer),
 	)
 	listener.Description = domain.LbDescription(req.GetDescription())
 	listener.Labels = domain.LabelsFromMap(req.GetLabels())
@@ -265,19 +264,6 @@ func buildDomainName(raw string) (domain.LbName, error) {
 		return "", err
 	}
 	return n, nil
-}
-
-// listenerIPVersion — вестигиальное значение для NOT NULL колонки listeners.ip_version
-// (снята с proto-листенера; колонка удаляется поздней миграцией). Берётся первое
-// семейство родительского LB, иначе IPV4 — листенер обслуживает VIP LB всех его
-// семейств одновременно.
-func listenerIPVersion(lb domain.LoadBalancer) domain.IPVersion {
-	for _, f := range lb.IPFamilies {
-		if f == domain.IPVersionV4 || f == domain.IPVersionV6 {
-			return f
-		}
-	}
-	return domain.IPVersionV4
 }
 
 // createInput — snapshot входов для async worker.

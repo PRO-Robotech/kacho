@@ -7,7 +7,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
-	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -23,12 +22,6 @@ type RepoFactory = kachorepo.Repository
 // OperationsRepo — async LRO repo (shared `kacho-corelib/operations.Repo`).
 // Aliased to local name so use-cases don't reach into corelib by full path.
 type OperationsRepo = operations.Repo
-
-// InternalAddressClient — write-side vpc.InternalAddressService consumer.
-// VIP консолидирован на LoadBalancer, поэтому листенер сам адрес не аллоцирует;
-// клиент остаётся только для release legacy-VIP в Delete (FreeIP / ClearReference)
-// — pre-cut листенеры до hard-cut могли нести собственный address_id.
-type InternalAddressClient = vpcclient.InternalAddressClient
 
 // Registrar — sync-primary owner-tuple registrar (kacho-iam
 // InternalIAMService.RegisterResource). Create после durable commit листенера +
@@ -60,11 +53,13 @@ const (
 )
 
 // Outbox action strings (CHECK constraint в nlb_outbox; см. миграцию 0001).
+// `FAILED` листенером больше не эмитится: его единственным источником была
+// release-ветка VIP в Delete, снятая вместе с адресной моделью листенера
+// (миграция 0028) — адрес принадлежит родительскому LoadBalancer'у.
 const (
 	outboxActionCreated = "CREATED"
 	outboxActionUpdated = "UPDATED"
 	outboxActionDeleted = "DELETED"
-	outboxActionFailed  = "FAILED"
 )
 
 // FGA relation strings live in `internal/domain`:

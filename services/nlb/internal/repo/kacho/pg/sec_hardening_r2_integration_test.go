@@ -322,7 +322,6 @@ func TestUnique_PortProto_Message(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Abort()
 	dup := newListener(lb.ID, string(lb.ProjectID), "lst-2", 80) // same port+proto, different name
-	dup.AllocatedAddress = "203.0.113.55"
 	_, err = w.Listeners().Insert(ctx, dup)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, kacho.ErrAlreadyExists), "got %v", err)
