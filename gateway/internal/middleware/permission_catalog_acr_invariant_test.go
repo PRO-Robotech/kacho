@@ -5,7 +5,7 @@ package middleware_test
 
 // permission_catalog_acr_invariant_test.go — SEC-acr-stepup-refinement (R3).
 //
-// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 36
+// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 30
 // named grant/credential/tenancy-root FQNs carry required_acr_min="2"; every
 // other non-exempt RPC carries "1" (routine, AAL1 floor); exempt RPCs carry ""
 // (no step-up requirement). Both embedded catalog copies (gateway + iam) are
@@ -13,7 +13,7 @@ package middleware_test
 // NOT changed by the acr addition (net-strengthening: exempt-permission + acr=2).
 //
 // This is the primary RED→GREEN lock: before the proto refinement 372 RPCs carry
-// "2" (blanket step-up); after it, exactly 36 do.
+// "2" (blanket step-up); after it, exactly 30 do.
 //
 // Set revision (hardening round): UserService/Invite JOINED category B — it
 // creates an AccessBinding atomically (project_id+role_id) and is therefore a
@@ -23,6 +23,12 @@ package middleware_test
 // Set revision (storage-split, dead-surface removal): the stillborn
 // DiskPlacementGroup / Filesystem / SnapshotSchedule contracts were deleted —
 // their 6 Set/UpdateAccessBindings grant-surface FQNs left the set. 42 → 36.
+//
+// Set revision (fga-model drift-gate restoration): the born-dead GpuCluster /
+// HostGroup / PlacementGroup / ReservedInstancePool / HostType contracts were
+// deleted for the same reason — never served on any listener and absent from the
+// enforced authorization model. Six more Set/UpdateAccessBindings grant-surface
+// FQNs left the set. 36 → 30.
 
 import (
 	"os"
@@ -36,7 +42,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 36 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 30 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -55,19 +61,16 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.AccessBindingService/Delete",
 		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
 		"kacho.cloud.iam.v1.UserService/Invite",
-		// C — compute per-resource grant (22; non-iam grant-surface)
+		// C — compute per-resource grant (16; non-iam grant-surface).
+		// GpuCluster/HostGroup/PlacementGroup dropped with their born-dead
+		// services (never served on any listener, absent from the enforced
+		// authorization model) — their grant RPCs no longer exist to step up.
 		"kacho.cloud.compute.v1.DiskService/SetAccessBindings",
 		"kacho.cloud.compute.v1.DiskService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.GpuClusterService/SetAccessBindings",
-		"kacho.cloud.compute.v1.GpuClusterService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.HostGroupService/SetAccessBindings",
-		"kacho.cloud.compute.v1.HostGroupService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.ImageService/SetAccessBindings",
 		"kacho.cloud.compute.v1.ImageService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.InstanceService/SetAccessBindings",
 		"kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.PlacementGroupService/SetAccessBindings",
-		"kacho.cloud.compute.v1.PlacementGroupService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.SnapshotService/SetAccessBindings",
 		"kacho.cloud.compute.v1.SnapshotService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.instancegroup.InstanceGroupService/SetAccessBindings",
@@ -103,7 +106,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 36, "the acceptance-doc sensitive set must contain exactly 36 FQNs")
+	require.Len(t, sensitive, 30, "the acceptance-doc sensitive set must contain exactly 30 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -124,7 +127,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 36, "exactly 36 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 30, "exactly 30 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -205,14 +208,17 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 }
 
 // TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
-// catalog splits 36×"2" / 297×"1" / 65×"" = 398, and both embedded copies
+// catalog splits 30×"2" / 262×"1" / 65×"" = 357, and both embedded copies
 // (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
 // loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328;
 // the UserService/Invite grant-surface correction moved one more 1→2: 328→327.
 // The storage-split dead-surface removal dropped the 36 RPCs of the stillborn
 // DiskPlacementGroup / Filesystem / SnapshotSchedule services plus
 // Instance.{Attach,Detach}Filesystem and Disk.ListSnapshotSchedules:
-// 42→36 sensitive, 327→297 routine, 434→398 total.)
+// 42→36 sensitive, 327→297 routine, 434→398 total. The fga-model drift-gate
+// restoration then dropped the 41 RPCs of the born-dead GpuCluster / HostGroup /
+// PlacementGroup / ReservedInstancePool / HostType services:
+// 36→30 sensitive, 297→262 routine, 398→357 total.)
 func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -231,10 +237,10 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 			t.Fatalf("unexpected required_acr_min %q on %s", e.RequiredACRMin, fqn)
 		}
 	}
-	assert.Equal(t, 36, n2, "sensitive count")
-	assert.Equal(t, 297, n1, "routine count")
+	assert.Equal(t, 30, n2, "sensitive count")
+	assert.Equal(t, 262, n1, "routine count")
 	assert.Equal(t, 65, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 398, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 357, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

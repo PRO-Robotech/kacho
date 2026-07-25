@@ -400,11 +400,13 @@ fga-bootstrap:
 	 kubectl -n kacho wait --for=condition=failed job/openfga-bootstrap --timeout=10s
 	@kubectl -n kacho logs -l job-name=openfga-bootstrap --tail=-1
 
-# KAC-127 (deploy#38): regenerate the pre-transformed `model.json` ConfigMap key
-# from the `model.fga` DSL. Run after any edit of the DSL block in
-# helm/umbrella/templates/openfga-model-stub-configmap.yaml. The openfga/cli
-# image is distroless (no shell), so the transform is done here at commit-time
-# instead of in a runtime init-container — see openfga-bootstrap-job.yaml.
+# KAC-127 (deploy#38): regenerate the openfga-model-stub ConfigMap from the
+# CANONICAL model. Run after any edit of $(OPENFGA_CANONICAL_FGA) — never edit the
+# DSL or the JSON inside the ConfigMap, both blocks are generated output and the
+# gate services/iam/internal/authzmap/fga_model_configmap_identity_test.go fails
+# the build if they drift from the canonical file. The openfga/cli image is
+# distroless (no shell), so the transform is done here at commit-time instead of
+# in a runtime init-container — see openfga-bootstrap-job.yaml.
 OPENFGA_CLI_IMAGE ?= openfga/cli:v0.7.13
 # KAC-127 RC-2b: canonical FGA model source. The ConfigMap below is GENERATED —
 # both the `model.fga` block (byte-identical copy) and the `model.json` block

@@ -63,13 +63,8 @@ var servedInternalServiceDescs = []grpc.ServiceDesc{
 // «забыли зарегистрировать сервис в тесте» бесшумно вернуло бы ту самую дыру,
 // которую этот файл закрывает.
 var notServedServiceNames = map[string]struct{}{
-	"kacho.cloud.compute.v1.GpuClusterService":                {},
-	"kacho.cloud.compute.v1.HostGroupService":                 {},
-	"kacho.cloud.compute.v1.HostTypeService":                  {},
 	"kacho.cloud.compute.v1.InternalResourceLifecycleService": {},
 	"kacho.cloud.compute.v1.MaintenanceService":               {},
-	"kacho.cloud.compute.v1.PlacementGroupService":            {},
-	"kacho.cloud.compute.v1.ReservedInstancePoolService":      {},
 }
 
 func servedServiceDescs() []grpc.ServiceDesc {
