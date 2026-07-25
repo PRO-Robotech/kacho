@@ -1148,8 +1148,24 @@ ROLE_NLB_TM=$(ensure_custom_role "authz-nlb-targetmgr" "loadbalancer" '"targetGr
 NLB_SEEDED_IDS="$OUT_DIR/nlb-seeded-ids.env"
 if [ -f "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" ]; then
   log "    invoking seed-nlb-fixtures.sh (project=$NLB_PROJ)"
-  BASE_URL="$BASE_URL" JWT="$JWT_AAA" existingProjectId="$NLB_PROJ" OUT_FILE="$NLB_SEEDED_IDS" \
-    bash "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" >/dev/null 2>&1 || log "    WARN seed-nlb-fixtures.sh partial/failed (existing* ids may be blank)"
+  # INTERNAL_BASE_URL MUST be forwarded: the seeder provisions the external
+  # AddressPool through the cluster-internal REST mux (InternalAddressPoolService is
+  # :8081-only, ban #6). Without it the seeder falls back to its default
+  # http://localhost:28081, which nothing port-forwards here (the umbrella forwards
+  # :18081) → curl connection-refused → `set -euo pipefail` aborts the seeder at step
+  # 3.5 → OUT_FILE is never written → every existing* id below stays blank → patch_one's
+  # non-empty filter drops them → the nlb env keeps its COMMITTED PLACEHOLDER literals
+  # (enpnlbfixturenet0001 / e9bsub01nlbfixture01 …) → every nlb case that provisions a
+  # subnet inside {{existingNetworkId}} gets 404 "Network enpnlbfixturenet0001 not
+  # found", {{vpcSubnetId}} is never saved, and the literal {{…}} placeholders cascade
+  # into 400s across the whole suite (observed: 94 failed assertions).
+  seed_log="$OUT_DIR/nlb-seed.log"
+  # ADMIN_JWT: the internal AddressPool RPCs authorize on the CLUSTER SINGLETON, which
+  # the project-scoped grantor JWT_AAA cannot reach (403 → reuse-probe blind → FATAL).
+  BASE_URL="$BASE_URL" INTERNAL_BASE_URL="$INTERNAL_BASE_URL" JWT="$JWT_AAA" \
+  ADMIN_JWT="$JWT_BOOTSTRAP" existingProjectId="$NLB_PROJ" OUT_FILE="$NLB_SEEDED_IDS" \
+    bash "$WORKSPACE_DIR/deploy/scripts/seed-nlb-fixtures.sh" >"$seed_log" 2>&1 \
+    || log "    WARN seed-nlb-fixtures.sh partial/failed (existing* ids may be blank) — see $seed_log"
 fi
 NLB_NET=""; NLB_SUBNET=""; NLB_INSTANCE=""; NLB_NIC=""; NLB_ADDR=""
 if [ -f "$NLB_SEEDED_IDS" ]; then

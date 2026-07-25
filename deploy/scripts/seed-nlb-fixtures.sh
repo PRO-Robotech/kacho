@@ -69,6 +69,22 @@ if [ -n "$JWT" ]; then
   auth_args=(-H "Authorization: Bearer $JWT")
 fi
 
+# ADMIN_JWT — credential for the cluster-internal AddressPool RPCs ONLY.
+# InternalAddressPoolService is authorized on the CLUSTER SINGLETON
+# (`cluster:cluster_kacho_root`, action vpc.address_pools.{list,create,…}), not on the
+# caller's project/account: a project- or account-scoped grantor (e.g. the umbrella's
+# jwtAccountAdminA) gets a hard 403 "no authorization path to the resource" on both the
+# Create AND the reuse-probe List. When the probe 403s, the script cannot see the pool
+# that already exists, concludes "no EXTERNAL_PUBLIC pool in zone" and FATALs — so the
+# whole seed aborts and OUT_FILE is never written. Keep project-scoped resources
+# (network/subnet/instance) owned by $JWT and use $ADMIN_JWT only for the pool steps.
+# Defaults to $JWT so standalone/dev invocations behave exactly as before.
+ADMIN_JWT="${ADMIN_JWT:-$JWT}"
+admin_auth_args=()
+if [ -n "$ADMIN_JWT" ]; then
+  admin_auth_args=(-H "Authorization: Bearer $ADMIN_JWT")
+fi
+
 curl_json() {
   local method="$1"; shift
   local path="$1"; shift
@@ -92,10 +108,10 @@ curl_internal() {
   if [ -n "$body" ]; then
     vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" \
       -H 'Content-Type: application/json' \
-      "${auth_args[@]}" \
+      "${admin_auth_args[@]}" \
       --data "$body"
   else
-    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" "${auth_args[@]}"
+    vrun curl -sS -X "$method" "$INTERNAL_BASE_URL$path" "${admin_auth_args[@]}"
   fi
 }
 
