@@ -319,33 +319,6 @@ func local_request_DiskService_Relocate_0(ctx context.Context, marshaler runtime
 	return msg, metadata, err
 }
 
-func request_DiskService_ListSnapshotSchedules_0(ctx context.Context, marshaler runtime.Marshaler, client DiskServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ListDiskSnapshotSchedulesRequest
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	msg, err := client.ListSnapshotSchedules(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DiskService_ListSnapshotSchedules_0(ctx context.Context, marshaler runtime.Marshaler, server DiskServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ListDiskSnapshotSchedulesRequest
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := server.ListSnapshotSchedules(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 var filter_DiskService_ListAccessBindings_0 = &utilities.DoubleArray{Encoding: map[string]int{"resource_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 
 func request_DiskService_ListAccessBindings_0(ctx context.Context, marshaler runtime.Marshaler, client DiskServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -635,26 +608,6 @@ func RegisterDiskServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 		}
 		forward_DiskService_Relocate_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_DiskService_ListSnapshotSchedules_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.compute.v1.DiskService/ListSnapshotSchedules", runtime.WithHTTPPathPattern("/kacho.cloud.compute.v1.DiskService/ListSnapshotSchedules"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DiskService_ListSnapshotSchedules_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DiskService_ListSnapshotSchedules_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodGet, pattern_DiskService_ListAccessBindings_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -874,23 +827,6 @@ func RegisterDiskServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux
 		}
 		forward_DiskService_Relocate_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_DiskService_ListSnapshotSchedules_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.compute.v1.DiskService/ListSnapshotSchedules", runtime.WithHTTPPathPattern("/kacho.cloud.compute.v1.DiskService/ListSnapshotSchedules"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DiskService_ListSnapshotSchedules_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DiskService_ListSnapshotSchedules_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodGet, pattern_DiskService_ListAccessBindings_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -946,29 +882,27 @@ func RegisterDiskServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux
 }
 
 var (
-	pattern_DiskService_Get_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, ""))
-	pattern_DiskService_List_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"compute", "v1", "disks"}, ""))
-	pattern_DiskService_Create_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"compute", "v1", "disks"}, ""))
-	pattern_DiskService_Update_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, ""))
-	pattern_DiskService_Delete_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, ""))
-	pattern_DiskService_ListOperations_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"compute", "v1", "disks", "disk_id", "operations"}, ""))
-	pattern_DiskService_Relocate_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, "relocate"))
-	pattern_DiskService_ListSnapshotSchedules_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.compute.v1.DiskService", "ListSnapshotSchedules"}, ""))
-	pattern_DiskService_ListAccessBindings_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "resource_id"}, "listAccessBindings"))
-	pattern_DiskService_SetAccessBindings_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "resource_id"}, "setAccessBindings"))
-	pattern_DiskService_UpdateAccessBindings_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "resource_id"}, "updateAccessBindings"))
+	pattern_DiskService_Get_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, ""))
+	pattern_DiskService_List_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"compute", "v1", "disks"}, ""))
+	pattern_DiskService_Create_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"compute", "v1", "disks"}, ""))
+	pattern_DiskService_Update_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, ""))
+	pattern_DiskService_Delete_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, ""))
+	pattern_DiskService_ListOperations_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"compute", "v1", "disks", "disk_id", "operations"}, ""))
+	pattern_DiskService_Relocate_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "disk_id"}, "relocate"))
+	pattern_DiskService_ListAccessBindings_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "resource_id"}, "listAccessBindings"))
+	pattern_DiskService_SetAccessBindings_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "resource_id"}, "setAccessBindings"))
+	pattern_DiskService_UpdateAccessBindings_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"compute", "v1", "disks", "resource_id"}, "updateAccessBindings"))
 )
 
 var (
-	forward_DiskService_Get_0                   = runtime.ForwardResponseMessage
-	forward_DiskService_List_0                  = runtime.ForwardResponseMessage
-	forward_DiskService_Create_0                = runtime.ForwardResponseMessage
-	forward_DiskService_Update_0                = runtime.ForwardResponseMessage
-	forward_DiskService_Delete_0                = runtime.ForwardResponseMessage
-	forward_DiskService_ListOperations_0        = runtime.ForwardResponseMessage
-	forward_DiskService_Relocate_0              = runtime.ForwardResponseMessage
-	forward_DiskService_ListSnapshotSchedules_0 = runtime.ForwardResponseMessage
-	forward_DiskService_ListAccessBindings_0    = runtime.ForwardResponseMessage
-	forward_DiskService_SetAccessBindings_0     = runtime.ForwardResponseMessage
-	forward_DiskService_UpdateAccessBindings_0  = runtime.ForwardResponseMessage
+	forward_DiskService_Get_0                  = runtime.ForwardResponseMessage
+	forward_DiskService_List_0                 = runtime.ForwardResponseMessage
+	forward_DiskService_Create_0               = runtime.ForwardResponseMessage
+	forward_DiskService_Update_0               = runtime.ForwardResponseMessage
+	forward_DiskService_Delete_0               = runtime.ForwardResponseMessage
+	forward_DiskService_ListOperations_0       = runtime.ForwardResponseMessage
+	forward_DiskService_Relocate_0             = runtime.ForwardResponseMessage
+	forward_DiskService_ListAccessBindings_0   = runtime.ForwardResponseMessage
+	forward_DiskService_SetAccessBindings_0    = runtime.ForwardResponseMessage
+	forward_DiskService_UpdateAccessBindings_0 = runtime.ForwardResponseMessage
 )

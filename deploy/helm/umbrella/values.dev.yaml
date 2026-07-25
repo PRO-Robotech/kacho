@@ -969,12 +969,13 @@ hydra:
               in: header
               name: X-Kacho-Hook-Token
               value: ${KACHO_IAM_HOOK_TOKEN}
-      # JWKS — публикуются Hydra'ой; private keys управляются kacho-iam jwks-rotator
-      # (см. jwks-rotator-cronjob.yaml). Phase 2 — RS256 + ES256 + EdDSA одновременно.
+      # JWKS целиком принадлежат Hydra: она и генерирует keypair, и подписывает.
+      # iam ключи НЕ чеканит и НЕ ротирует — он лишь проксирует публичный JWKS
+      # Hydra байт-в-байт (:9097) для data-plane.
       webfinger:
         jwks:
           broadcast_keys:
-            - hydra.openid.id-token         # signing-key set, populated by rotator
+            - hydra.openid.id-token         # signing-key set, наполняется САМОЙ Hydra
       log:
         level: info
         format: json

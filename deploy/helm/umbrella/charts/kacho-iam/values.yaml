@@ -42,10 +42,15 @@ kacho:
     bootstrapToken:
       signingKeySecretName: ""
       signingKeySecretKey: private_key_pem
+    # NB: iam НЕ владеет ключом подписи токенов — издатель/подписант Hydra, а iam
+    # только проксирует её публичный JWKS байт-в-байт (:9097). Ротатора здесь нет.
+    # Оставшиеся ключи потребляются ещё живыми конзюмерами (см. комментарии).
     jwks:
-      enabled: true
-      schedule: "0 2 * * *"
+      # rotationDays — читается GetJWKSStatus (internal :9091) как «ожидаемый
+      # интервал» при отчёте о возрасте ключей.
       rotationDays: 90
+      # encKey* — требуется production boot-guard'ом (config.validateProduction
+      # AuthNSecrets); без него iam refuse-to-start в production-mode.
       encKeySecretName: kacho-iam-jwks-enc-key
       encKeySecretKey: enc_key
     sessionRevocations:
@@ -71,29 +76,20 @@ kratos:
       fromAddress: "noreply@kacho.cloud"
       fromName: "Kacho Cloud"
 
-# Phase 2 (KAC-127) — JWKS rotator CronJob. Image = тот же kacho-iam binary,
-# entrypoint = `kacho-iam jwks rotate`. Pulls private/public keypair generator
-# + Hydra-admin PUT /admin/keys из IAM service.
-jwksRotator:
-  # Если false — CronJob не создаётся (например, для integration-тестов с key-pinning).
-  # Управляется через umbrella values: `.Values.kacho.iam.jwks.enabled`.
-  # Дублируем сюда для standalone-deploy sub-chart'а.
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
-  # Activity history — сколько успешных / неудачных Job'ов держать.
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  # Block concurrent runs — advisory_lock на DB-стороне (acceptance §6.8.5)
-  # дополнительно защищает, но Forbid здесь — single source-of-truth для k8s scheduler.
-  concurrencyPolicy: Forbid
-  # 1h deadline на каждый run; rotation сам по себе ≤ 5s, но Hydra-admin PUT
-  # может ретраиться при transient errors.
-  activeDeadlineSeconds: 3600
+# JWKS rotator CronJob — УДАЛЁН (был вестигиальным).
+#
+# Он ротировал `kacho_iam.oidc_jwks_keys`, которым НИКТО не пользуется: iam не
+# чеканит токены (единственная подпись в iam — RFC 7523 client_assertion
+# ПРЕДЪЯВЛЕННЫМ SA-ключом / env-ключом OAuth-клиента, а сам access_token
+# выпускает Hydra) и не верифицирует ими (jwksproxyhttp отдаёт байт-в-байт
+# зеркало ПУБЛИЧНОГО JWKS Hydra и намеренно никогда не отдаёт `kacho-*` kid).
+# Приватная половина в таблице записывалась зашифрованной и НИ РАЗУ не
+# расшифровывалась ни в одном prod-пути. В Hydra публиковалась только ПУБЛИЧНАЯ
+# половина, которой подписать ничего нельзя.
+#
+# Плюс к тому CronJob звал `kacho-iam jwks rotate` — subcommand, которого в
+# binary нет (main.go принимает только `serve`), т.е. задание падало в 100%
+# запусков с самого начала и никто этого не замечал.
 
 name: kacho-iam
 replicas: 1

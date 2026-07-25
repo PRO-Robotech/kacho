@@ -45,15 +45,14 @@ kacho:
 
   # IAM AuthN core knobs.
   iam:
-    # JWKS rotation cron — daily при schedule. 90d rotation cycle.
-    # `enabled: false` отключает CronJob (например, integration-test кластеры
-    # с key-pinning).
+    # JWKS rotation cron — УДАЛЁН: iam не владеет ключом подписи (издатель и
+    # подписант — Hydra, iam лишь проксирует её публичный JWKS байт-в-байт),
+    # поэтому ротировать нечего. Подробности — charts/kacho-iam/values.yaml.
     jwks:
-      enabled: true
-      schedule: "0 2 * * *"
+      # Читается GetJWKSStatus как «ожидаемый интервал» при отчёте о возрасте.
       rotationDays: 90
-      # AES-GCM key для encrypt-at-rest private_key_pem (dev). В prod — KMS-CMK
-      # через external-secrets.
+      # AES-GCM key: требуется production boot-guard'ом iam (refuse-to-start без
+      # него). В prod — KMS-CMK через external-secrets.
       encKeySecretName: kacho-iam-jwks-enc-key
       encKeySecretKey: enc_key
 
@@ -89,9 +88,8 @@ kacho-iam:
       kratos: kratos
       api: ""
     iam:
+      # Ротатора нет (см. выше) — остаются только реально потребляемые ключи.
       jwks:
-        enabled: true
-        schedule: "0 2 * * *"
         rotationDays: 90
         encKeySecretName: kacho-iam-jwks-enc-key
         encKeySecretKey: enc_key
@@ -217,7 +215,7 @@ networkPolicy:
               matchLabels: { kacho.cloud/job: geo-data-migration }
       - name: pg-iam
         from:
-          # covers kacho-iam Deployment, `migrate` init-container, jwks-rotator CronJob.
+          # covers kacho-iam Deployment и `migrate` init-container.
           - podSelector:
               matchLabels: { app: kacho-iam }
       - name: pg-geo

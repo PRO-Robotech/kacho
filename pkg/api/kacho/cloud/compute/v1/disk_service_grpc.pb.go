@@ -24,17 +24,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DiskService_Get_FullMethodName                   = "/kacho.cloud.compute.v1.DiskService/Get"
-	DiskService_List_FullMethodName                  = "/kacho.cloud.compute.v1.DiskService/List"
-	DiskService_Create_FullMethodName                = "/kacho.cloud.compute.v1.DiskService/Create"
-	DiskService_Update_FullMethodName                = "/kacho.cloud.compute.v1.DiskService/Update"
-	DiskService_Delete_FullMethodName                = "/kacho.cloud.compute.v1.DiskService/Delete"
-	DiskService_ListOperations_FullMethodName        = "/kacho.cloud.compute.v1.DiskService/ListOperations"
-	DiskService_Relocate_FullMethodName              = "/kacho.cloud.compute.v1.DiskService/Relocate"
-	DiskService_ListSnapshotSchedules_FullMethodName = "/kacho.cloud.compute.v1.DiskService/ListSnapshotSchedules"
-	DiskService_ListAccessBindings_FullMethodName    = "/kacho.cloud.compute.v1.DiskService/ListAccessBindings"
-	DiskService_SetAccessBindings_FullMethodName     = "/kacho.cloud.compute.v1.DiskService/SetAccessBindings"
-	DiskService_UpdateAccessBindings_FullMethodName  = "/kacho.cloud.compute.v1.DiskService/UpdateAccessBindings"
+	DiskService_Get_FullMethodName                  = "/kacho.cloud.compute.v1.DiskService/Get"
+	DiskService_List_FullMethodName                 = "/kacho.cloud.compute.v1.DiskService/List"
+	DiskService_Create_FullMethodName               = "/kacho.cloud.compute.v1.DiskService/Create"
+	DiskService_Update_FullMethodName               = "/kacho.cloud.compute.v1.DiskService/Update"
+	DiskService_Delete_FullMethodName               = "/kacho.cloud.compute.v1.DiskService/Delete"
+	DiskService_ListOperations_FullMethodName       = "/kacho.cloud.compute.v1.DiskService/ListOperations"
+	DiskService_Relocate_FullMethodName             = "/kacho.cloud.compute.v1.DiskService/Relocate"
+	DiskService_ListAccessBindings_FullMethodName   = "/kacho.cloud.compute.v1.DiskService/ListAccessBindings"
+	DiskService_SetAccessBindings_FullMethodName    = "/kacho.cloud.compute.v1.DiskService/SetAccessBindings"
+	DiskService_UpdateAccessBindings_FullMethodName = "/kacho.cloud.compute.v1.DiskService/UpdateAccessBindings"
 )
 
 // DiskServiceClient is the client API for DiskService service.
@@ -70,8 +69,6 @@ type DiskServiceClient interface {
 	// Disk must be detached from instances. To move attached
 	// disk use [InstanceService.Relocate] request.
 	Relocate(ctx context.Context, in *RelocateDiskRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Retrieves the list of snapshot schedules the specified disk is attached to.
-	ListSnapshotSchedules(ctx context.Context, in *ListDiskSnapshotSchedulesRequest, opts ...grpc.CallOption) (*ListDiskSnapshotSchedulesResponse, error)
 	// Lists access bindings for the disk.
 	ListAccessBindings(ctx context.Context, in *access.ListAccessBindingsRequest, opts ...grpc.CallOption) (*access.ListAccessBindingsResponse, error)
 	// Sets access bindings for the disk.
@@ -158,16 +155,6 @@ func (c *diskServiceClient) Relocate(ctx context.Context, in *RelocateDiskReques
 	return out, nil
 }
 
-func (c *diskServiceClient) ListSnapshotSchedules(ctx context.Context, in *ListDiskSnapshotSchedulesRequest, opts ...grpc.CallOption) (*ListDiskSnapshotSchedulesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListDiskSnapshotSchedulesResponse)
-	err := c.cc.Invoke(ctx, DiskService_ListSnapshotSchedules_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *diskServiceClient) ListAccessBindings(ctx context.Context, in *access.ListAccessBindingsRequest, opts ...grpc.CallOption) (*access.ListAccessBindingsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(access.ListAccessBindingsResponse)
@@ -231,8 +218,6 @@ type DiskServiceServer interface {
 	// Disk must be detached from instances. To move attached
 	// disk use [InstanceService.Relocate] request.
 	Relocate(context.Context, *RelocateDiskRequest) (*operation.Operation, error)
-	// Retrieves the list of snapshot schedules the specified disk is attached to.
-	ListSnapshotSchedules(context.Context, *ListDiskSnapshotSchedulesRequest) (*ListDiskSnapshotSchedulesResponse, error)
 	// Lists access bindings for the disk.
 	ListAccessBindings(context.Context, *access.ListAccessBindingsRequest) (*access.ListAccessBindingsResponse, error)
 	// Sets access bindings for the disk.
@@ -269,9 +254,6 @@ func (UnimplementedDiskServiceServer) ListOperations(context.Context, *ListDiskO
 }
 func (UnimplementedDiskServiceServer) Relocate(context.Context, *RelocateDiskRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Relocate not implemented")
-}
-func (UnimplementedDiskServiceServer) ListSnapshotSchedules(context.Context, *ListDiskSnapshotSchedulesRequest) (*ListDiskSnapshotSchedulesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListSnapshotSchedules not implemented")
 }
 func (UnimplementedDiskServiceServer) ListAccessBindings(context.Context, *access.ListAccessBindingsRequest) (*access.ListAccessBindingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAccessBindings not implemented")
@@ -429,24 +411,6 @@ func _DiskService_Relocate_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DiskService_ListSnapshotSchedules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListDiskSnapshotSchedulesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DiskServiceServer).ListSnapshotSchedules(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DiskService_ListSnapshotSchedules_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DiskServiceServer).ListSnapshotSchedules(ctx, req.(*ListDiskSnapshotSchedulesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DiskService_ListAccessBindings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(access.ListAccessBindingsRequest)
 	if err := dec(in); err != nil {
@@ -535,10 +499,6 @@ var DiskService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Relocate",
 			Handler:    _DiskService_Relocate_Handler,
-		},
-		{
-			MethodName: "ListSnapshotSchedules",
-			Handler:    _DiskService_ListSnapshotSchedules_Handler,
 		},
 		{
 			MethodName: "ListAccessBindings",

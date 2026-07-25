@@ -11,7 +11,7 @@
 #
 #   1. openfga-bootstrap Job          — pod + container restricted floor.
 #   2. openfga-postgres-init Job      — pod + container restricted floor.
-#   3. kacho-iam jwks-rotator CronJob — pod + container restricted floor.
+#   3. (снято — jwks-rotator CronJob удалён как вестигиальный)
 #   4. kacho-geo data-migration Job   — pod + container restricted floor.
 #   5. api-gateway external ingress   — backend port `tls` + backend-protocol GRPCS
 #                                       (NOT the internal-origin `cmux`/GRPC path).
@@ -64,7 +64,6 @@ assert_ctr_sc() {
 }
 
 POD=".spec.template.spec"
-CRONPOD=".spec.jobTemplate.spec.template.spec"
 
 # ── 1. openfga-bootstrap Job ─────────────────────────────────────────────────
 # (values.dev.yaml already enables openfga-bootstrap.openfgaBootstrap.enabled)
@@ -80,10 +79,10 @@ PGINIT=$(render charts/openfga-bootstrap/templates/openfga-postgres-init-job.yam
 assert_pod_sc "$PGINIT" "$POD" "openfga-postgres-init-job"
 assert_ctr_sc "$PGINIT" "$POD" "postgres-init" "openfga-postgres-init-job"
 
-# ── 3. kacho-iam jwks-rotator CronJob ────────────────────────────────────────
-JWKS=$(render charts/kacho-iam/templates/jwks-rotator-cronjob.yaml)
-assert_pod_sc "$JWKS" "$CRONPOD" "jwks-rotator-cronjob"
-assert_ctr_sc "$JWKS" "$CRONPOD" "jwks-rotator" "jwks-rotator-cronjob"
+# ── 3. (снято) kacho-iam jwks-rotator CronJob ────────────────────────────────
+# CronJob удалён как вестигиальный: iam не владеет ключом подписи (издатель и
+# подписант — Hydra; iam лишь проксирует её публичный JWKS), поэтому ротировать
+# нечего. Проверять PSS-floor больше не на чем — секция снята вместе с шаблоном.
 
 # ── 4. kacho-geo data-migration Job ──────────────────────────────────────────
 GEODM=$(render charts/kacho-geo/templates/geo-data-migration-job.yaml \

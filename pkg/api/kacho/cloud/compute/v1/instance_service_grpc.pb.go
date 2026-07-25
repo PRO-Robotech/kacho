@@ -36,8 +36,6 @@ const (
 	InstanceService_Restart_FullMethodName                  = "/kacho.cloud.compute.v1.InstanceService/Restart"
 	InstanceService_AttachDisk_FullMethodName               = "/kacho.cloud.compute.v1.InstanceService/AttachDisk"
 	InstanceService_DetachDisk_FullMethodName               = "/kacho.cloud.compute.v1.InstanceService/DetachDisk"
-	InstanceService_AttachFilesystem_FullMethodName         = "/kacho.cloud.compute.v1.InstanceService/AttachFilesystem"
-	InstanceService_DetachFilesystem_FullMethodName         = "/kacho.cloud.compute.v1.InstanceService/DetachFilesystem"
 	InstanceService_AttachNetworkInterface_FullMethodName   = "/kacho.cloud.compute.v1.InstanceService/AttachNetworkInterface"
 	InstanceService_DetachNetworkInterface_FullMethodName   = "/kacho.cloud.compute.v1.InstanceService/DetachNetworkInterface"
 	InstanceService_AddOneToOneNat_FullMethodName           = "/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat"
@@ -86,15 +84,6 @@ type InstanceServiceClient interface {
 	AttachDisk(ctx context.Context, in *AttachInstanceDiskRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Detaches the disk from the instance.
 	DetachDisk(ctx context.Context, in *DetachInstanceDiskRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Attaches the filesystem to the instance.
-	//
-	// The instance and the filesystem must reside in the same availability zone.
-	//
-	// To use the instance with an attached filesystem, the latter must be mounted.
-	// For details, see [documentation](/docs/compute/operations/filesystem/attach-to-vm).
-	AttachFilesystem(ctx context.Context, in *AttachInstanceFilesystemRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Detaches the filesystem from the instance.
-	DetachFilesystem(ctx context.Context, in *DetachInstanceFilesystemRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Attaches an existing kacho-vpc NetworkInterface (NIC) to the instance by id.
 	//
 	// The NIC is a first-class kacho-vpc resource; this RPC binds it to the instance
@@ -256,26 +245,6 @@ func (c *instanceServiceClient) DetachDisk(ctx context.Context, in *DetachInstan
 	return out, nil
 }
 
-func (c *instanceServiceClient) AttachFilesystem(ctx context.Context, in *AttachInstanceFilesystemRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_AttachFilesystem_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) DetachFilesystem(ctx context.Context, in *DetachInstanceFilesystemRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_DetachFilesystem_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *instanceServiceClient) AttachNetworkInterface(ctx context.Context, in *AttachInstanceNetworkInterfaceRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
@@ -421,15 +390,6 @@ type InstanceServiceServer interface {
 	AttachDisk(context.Context, *AttachInstanceDiskRequest) (*operation.Operation, error)
 	// Detaches the disk from the instance.
 	DetachDisk(context.Context, *DetachInstanceDiskRequest) (*operation.Operation, error)
-	// Attaches the filesystem to the instance.
-	//
-	// The instance and the filesystem must reside in the same availability zone.
-	//
-	// To use the instance with an attached filesystem, the latter must be mounted.
-	// For details, see [documentation](/docs/compute/operations/filesystem/attach-to-vm).
-	AttachFilesystem(context.Context, *AttachInstanceFilesystemRequest) (*operation.Operation, error)
-	// Detaches the filesystem from the instance.
-	DetachFilesystem(context.Context, *DetachInstanceFilesystemRequest) (*operation.Operation, error)
 	// Attaches an existing kacho-vpc NetworkInterface (NIC) to the instance by id.
 	//
 	// The NIC is a first-class kacho-vpc resource; this RPC binds it to the instance
@@ -506,12 +466,6 @@ func (UnimplementedInstanceServiceServer) AttachDisk(context.Context, *AttachIns
 }
 func (UnimplementedInstanceServiceServer) DetachDisk(context.Context, *DetachInstanceDiskRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method DetachDisk not implemented")
-}
-func (UnimplementedInstanceServiceServer) AttachFilesystem(context.Context, *AttachInstanceFilesystemRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method AttachFilesystem not implemented")
-}
-func (UnimplementedInstanceServiceServer) DetachFilesystem(context.Context, *DetachInstanceFilesystemRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method DetachFilesystem not implemented")
 }
 func (UnimplementedInstanceServiceServer) AttachNetworkInterface(context.Context, *AttachInstanceNetworkInterfaceRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method AttachNetworkInterface not implemented")
@@ -783,42 +737,6 @@ func _InstanceService_DetachDisk_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InstanceService_AttachFilesystem_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AttachInstanceFilesystemRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).AttachFilesystem(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_AttachFilesystem_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).AttachFilesystem(ctx, req.(*AttachInstanceFilesystemRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_DetachFilesystem_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DetachInstanceFilesystemRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).DetachFilesystem(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_DetachFilesystem_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).DetachFilesystem(ctx, req.(*DetachInstanceFilesystemRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _InstanceService_AttachNetworkInterface_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AttachInstanceNetworkInterfaceRequest)
 	if err := dec(in); err != nil {
@@ -1071,14 +989,6 @@ var InstanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DetachDisk",
 			Handler:    _InstanceService_DetachDisk_Handler,
-		},
-		{
-			MethodName: "AttachFilesystem",
-			Handler:    _InstanceService_AttachFilesystem_Handler,
-		},
-		{
-			MethodName: "DetachFilesystem",
-			Handler:    _InstanceService_DetachFilesystem_Handler,
 		},
 		{
 			MethodName: "AttachNetworkInterface",

@@ -965,137 +965,11 @@ func (x *RelocateDiskMetadata) GetDestinationZoneId() string {
 	return ""
 }
 
-type ListDiskSnapshotSchedulesRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the disk to list snapshot schedules for.
-	DiskId string `protobuf:"bytes,1,opt,name=disk_id,json=diskId,proto3" json:"disk_id,omitempty"`
-	// The maximum number of results per page to return. If the number of available
-	// results is larger than `page_size`, the service returns a [ListDiskSnapshotSchedulesResponse.next_page_token]
-	// that can be used to get the next page of results in subsequent list requests.
-	//
-	// Default value: 100.
-	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Page token. To get the next page of results, set `page_token` to the
-	// [ListDiskSnapshotSchedulesResponse.next_page_token] returned by a previous list request.
-	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListDiskSnapshotSchedulesRequest) Reset() {
-	*x = ListDiskSnapshotSchedulesRequest{}
-	mi := &file_kacho_cloud_compute_v1_disk_service_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListDiskSnapshotSchedulesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListDiskSnapshotSchedulesRequest) ProtoMessage() {}
-
-func (x *ListDiskSnapshotSchedulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_disk_service_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListDiskSnapshotSchedulesRequest.ProtoReflect.Descriptor instead.
-func (*ListDiskSnapshotSchedulesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_disk_service_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *ListDiskSnapshotSchedulesRequest) GetDiskId() string {
-	if x != nil {
-		return x.DiskId
-	}
-	return ""
-}
-
-func (x *ListDiskSnapshotSchedulesRequest) GetPageSize() int64 {
-	if x != nil {
-		return x.PageSize
-	}
-	return 0
-}
-
-func (x *ListDiskSnapshotSchedulesRequest) GetPageToken() string {
-	if x != nil {
-		return x.PageToken
-	}
-	return ""
-}
-
-type ListDiskSnapshotSchedulesResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// List of snapshot schedules the specified disk is attached to.
-	SnapshotSchedules []*SnapshotSchedule `protobuf:"bytes,1,rep,name=snapshot_schedules,json=snapshotSchedules,proto3" json:"snapshot_schedules,omitempty"`
-	// Token for getting the next page of the list. If the number of results is greater than
-	// the specified [ListDiskSnapshotSchedulesRequest.page_size], use `next_page_token` as the value
-	// for the [ListDiskSnapshotSchedulesRequest.page_token] parameter in the next list request.
-	//
-	// Each subsequent page will have its own `next_page_token` to continue paging through the results.
-	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListDiskSnapshotSchedulesResponse) Reset() {
-	*x = ListDiskSnapshotSchedulesResponse{}
-	mi := &file_kacho_cloud_compute_v1_disk_service_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListDiskSnapshotSchedulesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListDiskSnapshotSchedulesResponse) ProtoMessage() {}
-
-func (x *ListDiskSnapshotSchedulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_disk_service_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListDiskSnapshotSchedulesResponse.ProtoReflect.Descriptor instead.
-func (*ListDiskSnapshotSchedulesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_disk_service_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *ListDiskSnapshotSchedulesResponse) GetSnapshotSchedules() []*SnapshotSchedule {
-	if x != nil {
-		return x.SnapshotSchedules
-	}
-	return nil
-}
-
-func (x *ListDiskSnapshotSchedulesResponse) GetNextPageToken() string {
-	if x != nil {
-		return x.NextPageToken
-	}
-	return ""
-}
-
 var File_kacho_cloud_compute_v1_disk_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_compute_v1_disk_service_proto_rawDesc = "" +
 	"\n" +
-	")kacho/cloud/compute/v1/disk_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/access/access.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a!kacho/cloud/compute/v1/disk.proto\x1a0kacho/cloud/compute/v1/hardware_generation.proto\x1a.kacho/cloud/compute/v1/snapshot_schedule.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"7\n" +
+	")kacho/cloud/compute/v1/disk_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/access/access.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a!kacho/cloud/compute/v1/disk.proto\x1a0kacho/cloud/compute/v1/hardware_generation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"7\n" +
 	"\x0eGetDiskRequest\x12%\n" +
 	"\adisk_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06diskId\"\xdc\x01\n" +
 	"\x10ListDisksRequest\x12+\n" +
@@ -1173,16 +1047,7 @@ const file_kacho_cloud_compute_v1_disk_service_proto_rawDesc = "" +
 	"\x14RelocateDiskMetadata\x12\x17\n" +
 	"\adisk_id\x18\x01 \x01(\tR\x06diskId\x12$\n" +
 	"\x0esource_zone_id\x18\x02 \x01(\tR\fsourceZoneId\x12.\n" +
-	"\x13destination_zone_id\x18\x03 \x01(\tR\x11destinationZoneId\"\x83\x01\n" +
-	" ListDiskSnapshotSchedulesRequest\x12\x17\n" +
-	"\adisk_id\x18\x01 \x01(\tR\x06diskId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x060-1000R\bpageSize\x12\x1d\n" +
-	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\xa4\x01\n" +
-	"!ListDiskSnapshotSchedulesResponse\x12W\n" +
-	"\x12snapshot_schedules\x18\x01 \x03(\v2(.kacho.cloud.compute.v1.SnapshotScheduleR\x11snapshotSchedules\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x99\x15\n" +
+	"\x13destination_zone_id\x18\x03 \x01(\tR\x11destinationZoneId2\xa3\x13\n" +
 	"\vDiskService\x12\xae\x01\n" +
 	"\x03Get\x12&.kacho.cloud.compute.v1.GetDiskRequest\x1a\x1c.kacho.cloud.compute.v1.Disk\"a\x8a\xb5\x18\x11compute.disks.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x17\n" +
 	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/disks/{disk_id}\x12\xb6\x01\n" +
@@ -1203,9 +1068,7 @@ const file_kacho_cloud_compute_v1_disk_service_proto_rawDesc = "" +
 	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/compute/v1/disks/{disk_id}/operations\x12\xf1\x01\n" +
 	"\bRelocate\x12+.kacho.cloud.compute.v1.RelocateDiskRequest\x1a .kacho.cloud.operation.Operation\"\x95\x01\x8a\xb5\x18\x16compute.disks.relocate\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
 	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\xb2\xd2*\x1c\n" +
-	"\x14RelocateDiskMetadata\x12\x04Disk\x82\xd3\xe4\x93\x02):\x01*\"$/compute/v1/disks/{disk_id}:relocate\x12\xf3\x01\n" +
-	"\x15ListSnapshotSchedules\x128.kacho.cloud.compute.v1.ListDiskSnapshotSchedulesRequest\x1a9.kacho.cloud.compute.v1.ListDiskSnapshotSchedulesResponse\"e\x8a\xb5\x187compute.disk_snapshot_scheduleses.listSnapshotSchedules\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
-	"\fcompute_disk\x12\adisk_id\xa2\xb5\x18\x011\x12\xff\x01\n" +
+	"\x14RelocateDiskMetadata\x12\x04Disk\x82\xd3\xe4\x93\x02):\x01*\"$/compute/v1/disks/{disk_id}:relocate\x12\xff\x01\n" +
 	"\x12ListAccessBindings\x12-.kacho.cloud.access.ListAccessBindingsRequest\x1a..kacho.cloud.access.ListAccessBindingsResponse\"\x89\x01\x8a\xb5\x18,compute.access_bindingses.listAccessBindings\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
 	"\aproject\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x024\x122/compute/v1/disks/{resource_id}:listAccessBindings\x12\xbc\x02\n" +
 	"\x11SetAccessBindings\x12,.kacho.cloud.access.SetAccessBindingsRequest\x1a .kacho.cloud.operation.Operation\"\xd6\x01\x8a\xb5\x18+compute.access_bindingses.setAccessBindings\x92\xb5\x18\x06editor\x9a\xb5\x18\f\n" +
@@ -1227,74 +1090,68 @@ func file_kacho_cloud_compute_v1_disk_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_compute_v1_disk_service_proto_rawDescData
 }
 
-var file_kacho_cloud_compute_v1_disk_service_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_kacho_cloud_compute_v1_disk_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_kacho_cloud_compute_v1_disk_service_proto_goTypes = []any{
-	(*GetDiskRequest)(nil),                    // 0: kacho.cloud.compute.v1.GetDiskRequest
-	(*ListDisksRequest)(nil),                  // 1: kacho.cloud.compute.v1.ListDisksRequest
-	(*ListDisksResponse)(nil),                 // 2: kacho.cloud.compute.v1.ListDisksResponse
-	(*CreateDiskRequest)(nil),                 // 3: kacho.cloud.compute.v1.CreateDiskRequest
-	(*CreateDiskMetadata)(nil),                // 4: kacho.cloud.compute.v1.CreateDiskMetadata
-	(*UpdateDiskRequest)(nil),                 // 5: kacho.cloud.compute.v1.UpdateDiskRequest
-	(*UpdateDiskMetadata)(nil),                // 6: kacho.cloud.compute.v1.UpdateDiskMetadata
-	(*DeleteDiskRequest)(nil),                 // 7: kacho.cloud.compute.v1.DeleteDiskRequest
-	(*DeleteDiskMetadata)(nil),                // 8: kacho.cloud.compute.v1.DeleteDiskMetadata
-	(*ListDiskOperationsRequest)(nil),         // 9: kacho.cloud.compute.v1.ListDiskOperationsRequest
-	(*ListDiskOperationsResponse)(nil),        // 10: kacho.cloud.compute.v1.ListDiskOperationsResponse
-	(*RelocateDiskRequest)(nil),               // 11: kacho.cloud.compute.v1.RelocateDiskRequest
-	(*RelocateDiskMetadata)(nil),              // 12: kacho.cloud.compute.v1.RelocateDiskMetadata
-	(*ListDiskSnapshotSchedulesRequest)(nil),  // 13: kacho.cloud.compute.v1.ListDiskSnapshotSchedulesRequest
-	(*ListDiskSnapshotSchedulesResponse)(nil), // 14: kacho.cloud.compute.v1.ListDiskSnapshotSchedulesResponse
-	nil,                                        // 15: kacho.cloud.compute.v1.CreateDiskRequest.LabelsEntry
-	nil,                                        // 16: kacho.cloud.compute.v1.UpdateDiskRequest.LabelsEntry
-	(*Disk)(nil),                               // 17: kacho.cloud.compute.v1.Disk
-	(*DiskPlacementPolicy)(nil),                // 18: kacho.cloud.compute.v1.DiskPlacementPolicy
-	(*HardwareGeneration)(nil),                 // 19: kacho.cloud.compute.v1.HardwareGeneration
-	(*fieldmaskpb.FieldMask)(nil),              // 20: google.protobuf.FieldMask
-	(*operation.Operation)(nil),                // 21: kacho.cloud.operation.Operation
-	(*SnapshotSchedule)(nil),                   // 22: kacho.cloud.compute.v1.SnapshotSchedule
-	(*access.ListAccessBindingsRequest)(nil),   // 23: kacho.cloud.access.ListAccessBindingsRequest
-	(*access.SetAccessBindingsRequest)(nil),    // 24: kacho.cloud.access.SetAccessBindingsRequest
-	(*access.UpdateAccessBindingsRequest)(nil), // 25: kacho.cloud.access.UpdateAccessBindingsRequest
-	(*access.ListAccessBindingsResponse)(nil),  // 26: kacho.cloud.access.ListAccessBindingsResponse
+	(*GetDiskRequest)(nil),                     // 0: kacho.cloud.compute.v1.GetDiskRequest
+	(*ListDisksRequest)(nil),                   // 1: kacho.cloud.compute.v1.ListDisksRequest
+	(*ListDisksResponse)(nil),                  // 2: kacho.cloud.compute.v1.ListDisksResponse
+	(*CreateDiskRequest)(nil),                  // 3: kacho.cloud.compute.v1.CreateDiskRequest
+	(*CreateDiskMetadata)(nil),                 // 4: kacho.cloud.compute.v1.CreateDiskMetadata
+	(*UpdateDiskRequest)(nil),                  // 5: kacho.cloud.compute.v1.UpdateDiskRequest
+	(*UpdateDiskMetadata)(nil),                 // 6: kacho.cloud.compute.v1.UpdateDiskMetadata
+	(*DeleteDiskRequest)(nil),                  // 7: kacho.cloud.compute.v1.DeleteDiskRequest
+	(*DeleteDiskMetadata)(nil),                 // 8: kacho.cloud.compute.v1.DeleteDiskMetadata
+	(*ListDiskOperationsRequest)(nil),          // 9: kacho.cloud.compute.v1.ListDiskOperationsRequest
+	(*ListDiskOperationsResponse)(nil),         // 10: kacho.cloud.compute.v1.ListDiskOperationsResponse
+	(*RelocateDiskRequest)(nil),                // 11: kacho.cloud.compute.v1.RelocateDiskRequest
+	(*RelocateDiskMetadata)(nil),               // 12: kacho.cloud.compute.v1.RelocateDiskMetadata
+	nil,                                        // 13: kacho.cloud.compute.v1.CreateDiskRequest.LabelsEntry
+	nil,                                        // 14: kacho.cloud.compute.v1.UpdateDiskRequest.LabelsEntry
+	(*Disk)(nil),                               // 15: kacho.cloud.compute.v1.Disk
+	(*DiskPlacementPolicy)(nil),                // 16: kacho.cloud.compute.v1.DiskPlacementPolicy
+	(*HardwareGeneration)(nil),                 // 17: kacho.cloud.compute.v1.HardwareGeneration
+	(*fieldmaskpb.FieldMask)(nil),              // 18: google.protobuf.FieldMask
+	(*operation.Operation)(nil),                // 19: kacho.cloud.operation.Operation
+	(*access.ListAccessBindingsRequest)(nil),   // 20: kacho.cloud.access.ListAccessBindingsRequest
+	(*access.SetAccessBindingsRequest)(nil),    // 21: kacho.cloud.access.SetAccessBindingsRequest
+	(*access.UpdateAccessBindingsRequest)(nil), // 22: kacho.cloud.access.UpdateAccessBindingsRequest
+	(*access.ListAccessBindingsResponse)(nil),  // 23: kacho.cloud.access.ListAccessBindingsResponse
 }
 var file_kacho_cloud_compute_v1_disk_service_proto_depIdxs = []int32{
-	17, // 0: kacho.cloud.compute.v1.ListDisksResponse.disks:type_name -> kacho.cloud.compute.v1.Disk
-	15, // 1: kacho.cloud.compute.v1.CreateDiskRequest.labels:type_name -> kacho.cloud.compute.v1.CreateDiskRequest.LabelsEntry
-	18, // 2: kacho.cloud.compute.v1.CreateDiskRequest.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
-	19, // 3: kacho.cloud.compute.v1.CreateDiskRequest.hardware_generation:type_name -> kacho.cloud.compute.v1.HardwareGeneration
-	20, // 4: kacho.cloud.compute.v1.UpdateDiskRequest.update_mask:type_name -> google.protobuf.FieldMask
-	16, // 5: kacho.cloud.compute.v1.UpdateDiskRequest.labels:type_name -> kacho.cloud.compute.v1.UpdateDiskRequest.LabelsEntry
-	18, // 6: kacho.cloud.compute.v1.UpdateDiskRequest.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
-	21, // 7: kacho.cloud.compute.v1.ListDiskOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	18, // 8: kacho.cloud.compute.v1.RelocateDiskRequest.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
-	22, // 9: kacho.cloud.compute.v1.ListDiskSnapshotSchedulesResponse.snapshot_schedules:type_name -> kacho.cloud.compute.v1.SnapshotSchedule
-	0,  // 10: kacho.cloud.compute.v1.DiskService.Get:input_type -> kacho.cloud.compute.v1.GetDiskRequest
-	1,  // 11: kacho.cloud.compute.v1.DiskService.List:input_type -> kacho.cloud.compute.v1.ListDisksRequest
-	3,  // 12: kacho.cloud.compute.v1.DiskService.Create:input_type -> kacho.cloud.compute.v1.CreateDiskRequest
-	5,  // 13: kacho.cloud.compute.v1.DiskService.Update:input_type -> kacho.cloud.compute.v1.UpdateDiskRequest
-	7,  // 14: kacho.cloud.compute.v1.DiskService.Delete:input_type -> kacho.cloud.compute.v1.DeleteDiskRequest
-	9,  // 15: kacho.cloud.compute.v1.DiskService.ListOperations:input_type -> kacho.cloud.compute.v1.ListDiskOperationsRequest
-	11, // 16: kacho.cloud.compute.v1.DiskService.Relocate:input_type -> kacho.cloud.compute.v1.RelocateDiskRequest
-	13, // 17: kacho.cloud.compute.v1.DiskService.ListSnapshotSchedules:input_type -> kacho.cloud.compute.v1.ListDiskSnapshotSchedulesRequest
-	23, // 18: kacho.cloud.compute.v1.DiskService.ListAccessBindings:input_type -> kacho.cloud.access.ListAccessBindingsRequest
-	24, // 19: kacho.cloud.compute.v1.DiskService.SetAccessBindings:input_type -> kacho.cloud.access.SetAccessBindingsRequest
-	25, // 20: kacho.cloud.compute.v1.DiskService.UpdateAccessBindings:input_type -> kacho.cloud.access.UpdateAccessBindingsRequest
-	17, // 21: kacho.cloud.compute.v1.DiskService.Get:output_type -> kacho.cloud.compute.v1.Disk
-	2,  // 22: kacho.cloud.compute.v1.DiskService.List:output_type -> kacho.cloud.compute.v1.ListDisksResponse
-	21, // 23: kacho.cloud.compute.v1.DiskService.Create:output_type -> kacho.cloud.operation.Operation
-	21, // 24: kacho.cloud.compute.v1.DiskService.Update:output_type -> kacho.cloud.operation.Operation
-	21, // 25: kacho.cloud.compute.v1.DiskService.Delete:output_type -> kacho.cloud.operation.Operation
-	10, // 26: kacho.cloud.compute.v1.DiskService.ListOperations:output_type -> kacho.cloud.compute.v1.ListDiskOperationsResponse
-	21, // 27: kacho.cloud.compute.v1.DiskService.Relocate:output_type -> kacho.cloud.operation.Operation
-	14, // 28: kacho.cloud.compute.v1.DiskService.ListSnapshotSchedules:output_type -> kacho.cloud.compute.v1.ListDiskSnapshotSchedulesResponse
-	26, // 29: kacho.cloud.compute.v1.DiskService.ListAccessBindings:output_type -> kacho.cloud.access.ListAccessBindingsResponse
-	21, // 30: kacho.cloud.compute.v1.DiskService.SetAccessBindings:output_type -> kacho.cloud.operation.Operation
-	21, // 31: kacho.cloud.compute.v1.DiskService.UpdateAccessBindings:output_type -> kacho.cloud.operation.Operation
-	21, // [21:32] is the sub-list for method output_type
-	10, // [10:21] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	15, // 0: kacho.cloud.compute.v1.ListDisksResponse.disks:type_name -> kacho.cloud.compute.v1.Disk
+	13, // 1: kacho.cloud.compute.v1.CreateDiskRequest.labels:type_name -> kacho.cloud.compute.v1.CreateDiskRequest.LabelsEntry
+	16, // 2: kacho.cloud.compute.v1.CreateDiskRequest.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
+	17, // 3: kacho.cloud.compute.v1.CreateDiskRequest.hardware_generation:type_name -> kacho.cloud.compute.v1.HardwareGeneration
+	18, // 4: kacho.cloud.compute.v1.UpdateDiskRequest.update_mask:type_name -> google.protobuf.FieldMask
+	14, // 5: kacho.cloud.compute.v1.UpdateDiskRequest.labels:type_name -> kacho.cloud.compute.v1.UpdateDiskRequest.LabelsEntry
+	16, // 6: kacho.cloud.compute.v1.UpdateDiskRequest.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
+	19, // 7: kacho.cloud.compute.v1.ListDiskOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	16, // 8: kacho.cloud.compute.v1.RelocateDiskRequest.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
+	0,  // 9: kacho.cloud.compute.v1.DiskService.Get:input_type -> kacho.cloud.compute.v1.GetDiskRequest
+	1,  // 10: kacho.cloud.compute.v1.DiskService.List:input_type -> kacho.cloud.compute.v1.ListDisksRequest
+	3,  // 11: kacho.cloud.compute.v1.DiskService.Create:input_type -> kacho.cloud.compute.v1.CreateDiskRequest
+	5,  // 12: kacho.cloud.compute.v1.DiskService.Update:input_type -> kacho.cloud.compute.v1.UpdateDiskRequest
+	7,  // 13: kacho.cloud.compute.v1.DiskService.Delete:input_type -> kacho.cloud.compute.v1.DeleteDiskRequest
+	9,  // 14: kacho.cloud.compute.v1.DiskService.ListOperations:input_type -> kacho.cloud.compute.v1.ListDiskOperationsRequest
+	11, // 15: kacho.cloud.compute.v1.DiskService.Relocate:input_type -> kacho.cloud.compute.v1.RelocateDiskRequest
+	20, // 16: kacho.cloud.compute.v1.DiskService.ListAccessBindings:input_type -> kacho.cloud.access.ListAccessBindingsRequest
+	21, // 17: kacho.cloud.compute.v1.DiskService.SetAccessBindings:input_type -> kacho.cloud.access.SetAccessBindingsRequest
+	22, // 18: kacho.cloud.compute.v1.DiskService.UpdateAccessBindings:input_type -> kacho.cloud.access.UpdateAccessBindingsRequest
+	15, // 19: kacho.cloud.compute.v1.DiskService.Get:output_type -> kacho.cloud.compute.v1.Disk
+	2,  // 20: kacho.cloud.compute.v1.DiskService.List:output_type -> kacho.cloud.compute.v1.ListDisksResponse
+	19, // 21: kacho.cloud.compute.v1.DiskService.Create:output_type -> kacho.cloud.operation.Operation
+	19, // 22: kacho.cloud.compute.v1.DiskService.Update:output_type -> kacho.cloud.operation.Operation
+	19, // 23: kacho.cloud.compute.v1.DiskService.Delete:output_type -> kacho.cloud.operation.Operation
+	10, // 24: kacho.cloud.compute.v1.DiskService.ListOperations:output_type -> kacho.cloud.compute.v1.ListDiskOperationsResponse
+	19, // 25: kacho.cloud.compute.v1.DiskService.Relocate:output_type -> kacho.cloud.operation.Operation
+	23, // 26: kacho.cloud.compute.v1.DiskService.ListAccessBindings:output_type -> kacho.cloud.access.ListAccessBindingsResponse
+	19, // 27: kacho.cloud.compute.v1.DiskService.SetAccessBindings:output_type -> kacho.cloud.operation.Operation
+	19, // 28: kacho.cloud.compute.v1.DiskService.UpdateAccessBindings:output_type -> kacho.cloud.operation.Operation
+	19, // [19:29] is the sub-list for method output_type
+	9,  // [9:19] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_compute_v1_disk_service_proto_init() }
@@ -1304,7 +1161,6 @@ func file_kacho_cloud_compute_v1_disk_service_proto_init() {
 	}
 	file_kacho_cloud_compute_v1_disk_proto_init()
 	file_kacho_cloud_compute_v1_hardware_generation_proto_init()
-	file_kacho_cloud_compute_v1_snapshot_schedule_proto_init()
 	file_kacho_cloud_compute_v1_disk_service_proto_msgTypes[3].OneofWrappers = []any{
 		(*CreateDiskRequest_ImageId)(nil),
 		(*CreateDiskRequest_SnapshotId)(nil),
@@ -1315,7 +1171,7 @@ func file_kacho_cloud_compute_v1_disk_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_compute_v1_disk_service_proto_rawDesc), len(file_kacho_cloud_compute_v1_disk_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

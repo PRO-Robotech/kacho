@@ -1,6 +1,6 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-.PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-production-posture \
+.PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-jobs-healthy assert-production-posture \
         reload-svc logs-svc psql preflight e2e-test helm-lint seed-ipam \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
@@ -218,7 +218,50 @@ assert-rollout-ready:
 	  done; \
 	  exit 1; \
 	fi; \
-	echo "all workloads rollout-complete"
+	echo "all workloads rollout-complete"; \
+	$(MAKE) --no-print-directory assert-jobs-healthy
+
+# assert-jobs-healthy — периодические/разовые задания тоже часть готовности стенда.
+#
+# Зачем (реальный случай: `kacho-iam-jwks-rotator` падал в 100% запусков —
+# CronJob звал несуществующий subcommand `kacho-iam jwks rotate`): гейт смотрел
+# ТОЛЬКО на Deployment/StatefulSet, поэтому сорванное задание не красило его
+# вообще никак — стенд считался готовым, а задание тихо копило по одному
+# упавшему Job в день. Ровно та невидимость, ради которой эта цель и заведена.
+#
+# Проверяем два НЕЗАВИСИМЫХ признака; второй ловит случай, когда история упавших
+# Job'ов уже вытеснена `failedJobsHistoryLimit` и по Job'ам улик не осталось:
+#   1. любой Job с condition Failed=True (BackoffLimitExceeded / DeadlineExceeded);
+#   2. CronJob, который УЖЕ запускался (есть lastScheduleTime), но НИ РАЗУ не
+#      отработал успешно (нет lastSuccessfulTime) и сейчас не выполняется.
+#
+# ВАЖНО — «ещё ни разу не выполнялся» это НЕ провал. Свежесозданный CronJob
+# (lastScheduleTime отсутствует) обязан быть зелёным, иначе гейт краснел бы на
+# каждом только что поднятом стенде до первого тика по расписанию. Ровно так же
+# `active`-джоб в полёте не считается провалом — у него нет condition Failed.
+assert-jobs-healthy:
+	@set -e; \
+	failed=$$(kubectl -n kacho get jobs -o json 2>/dev/null \
+	  | jq -r '.items[] | select((.status.conditions // []) | map(select(.type=="Failed" and .status=="True")) | length > 0) | .metadata.name'); \
+	stuck=$$(kubectl -n kacho get cronjobs -o json 2>/dev/null \
+	  | jq -r '.items[] | select(.status.lastScheduleTime != null and .status.lastSuccessfulTime == null and ((.status.active // []) | length) == 0) | .metadata.name'); \
+	if [ -n "$$failed" ] || [ -n "$$stuck" ]; then \
+	  echo; echo "!!! JOBS UNHEALTHY — периодические задания сорваны"; \
+	  for j in $$failed; do \
+	    echo "--- Job провалился: $$j"; \
+	    kubectl -n kacho get job "$$j" -o wide 2>&1 || true; \
+	    kubectl -n kacho get job "$$j" -o json 2>/dev/null \
+	      | jq -r '.status.conditions[]? | select(.type=="Failed") | "    reason: \(.reason)\n    message: \(.message // "-")"' || true; \
+	    echo "--- logs $$j (last 40; под мог быть уже вытеснен — тогда пусто)"; \
+	    kubectl -n kacho logs -l batch.kubernetes.io/job-name="$$j" --all-containers --tail=40 --prefix 2>&1 | tail -60 || true; \
+	  done; \
+	  for c in $$stuck; do \
+	    echo "--- CronJob запускался, но НИ РАЗУ не отработал успешно: $$c"; \
+	    kubectl -n kacho get cronjob "$$c" -o wide 2>&1 || true; \
+	  done; \
+	  exit 1; \
+	fi; \
+	echo "all jobs/cronjobs healthy (ещё не запускавшиеся — не провал)"
 
 # assert-production-posture — стенд обязан быть поднят ИМЕННО в production-режиме.
 #

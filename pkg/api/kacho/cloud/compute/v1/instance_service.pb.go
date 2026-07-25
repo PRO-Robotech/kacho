@@ -128,7 +128,7 @@ func (x AttachedDiskSpec_Mode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AttachedDiskSpec_Mode.Descriptor instead.
 func (AttachedDiskSpec_Mode) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{44, 0}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{40, 0}
 }
 
 type AttachedFilesystemSpec_Mode int32
@@ -179,7 +179,7 @@ func (x AttachedFilesystemSpec_Mode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AttachedFilesystemSpec_Mode.Descriptor instead.
 func (AttachedFilesystemSpec_Mode) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{47, 0}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{43, 0}
 }
 
 type GetInstanceRequest struct {
@@ -1895,265 +1895,6 @@ func (x *DetachInstanceDiskMetadata) GetVolumeId() string {
 	return ""
 }
 
-type AttachInstanceFilesystemRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the instance to attach the filesystem to.
-	//
-	// To get the instance ID, make a [InstanceService.List] request.
-	InstanceId string `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	// Filesystem to attach to the instance.
-	AttachedFilesystemSpec *AttachedFilesystemSpec `protobuf:"bytes,2,opt,name=attached_filesystem_spec,json=attachedFilesystemSpec,proto3" json:"attached_filesystem_spec,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
-}
-
-func (x *AttachInstanceFilesystemRequest) Reset() {
-	*x = AttachInstanceFilesystemRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[24]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AttachInstanceFilesystemRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AttachInstanceFilesystemRequest) ProtoMessage() {}
-
-func (x *AttachInstanceFilesystemRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[24]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AttachInstanceFilesystemRequest.ProtoReflect.Descriptor instead.
-func (*AttachInstanceFilesystemRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{24}
-}
-
-func (x *AttachInstanceFilesystemRequest) GetInstanceId() string {
-	if x != nil {
-		return x.InstanceId
-	}
-	return ""
-}
-
-func (x *AttachInstanceFilesystemRequest) GetAttachedFilesystemSpec() *AttachedFilesystemSpec {
-	if x != nil {
-		return x.AttachedFilesystemSpec
-	}
-	return nil
-}
-
-type AttachInstanceFilesystemMetadata struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the instance that the filesystem is being attached to.
-	InstanceId string `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	// ID of the filesystem that is being attached to the instance.
-	FilesystemId  string `protobuf:"bytes,2,opt,name=filesystem_id,json=filesystemId,proto3" json:"filesystem_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AttachInstanceFilesystemMetadata) Reset() {
-	*x = AttachInstanceFilesystemMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[25]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AttachInstanceFilesystemMetadata) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AttachInstanceFilesystemMetadata) ProtoMessage() {}
-
-func (x *AttachInstanceFilesystemMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[25]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AttachInstanceFilesystemMetadata.ProtoReflect.Descriptor instead.
-func (*AttachInstanceFilesystemMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{25}
-}
-
-func (x *AttachInstanceFilesystemMetadata) GetInstanceId() string {
-	if x != nil {
-		return x.InstanceId
-	}
-	return ""
-}
-
-func (x *AttachInstanceFilesystemMetadata) GetFilesystemId() string {
-	if x != nil {
-		return x.FilesystemId
-	}
-	return ""
-}
-
-type DetachInstanceFilesystemRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the instance to detach the filesystem from.
-	//
-	// To get the instance ID, make a [InstanceService.List] request.
-	InstanceId string `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	// Types that are valid to be assigned to Filesystem:
-	//
-	//	*DetachInstanceFilesystemRequest_FilesystemId
-	//	*DetachInstanceFilesystemRequest_DeviceName
-	Filesystem    isDetachInstanceFilesystemRequest_Filesystem `protobuf_oneof:"filesystem"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DetachInstanceFilesystemRequest) Reset() {
-	*x = DetachInstanceFilesystemRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[26]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DetachInstanceFilesystemRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DetachInstanceFilesystemRequest) ProtoMessage() {}
-
-func (x *DetachInstanceFilesystemRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[26]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DetachInstanceFilesystemRequest.ProtoReflect.Descriptor instead.
-func (*DetachInstanceFilesystemRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{26}
-}
-
-func (x *DetachInstanceFilesystemRequest) GetInstanceId() string {
-	if x != nil {
-		return x.InstanceId
-	}
-	return ""
-}
-
-func (x *DetachInstanceFilesystemRequest) GetFilesystem() isDetachInstanceFilesystemRequest_Filesystem {
-	if x != nil {
-		return x.Filesystem
-	}
-	return nil
-}
-
-func (x *DetachInstanceFilesystemRequest) GetFilesystemId() string {
-	if x != nil {
-		if x, ok := x.Filesystem.(*DetachInstanceFilesystemRequest_FilesystemId); ok {
-			return x.FilesystemId
-		}
-	}
-	return ""
-}
-
-func (x *DetachInstanceFilesystemRequest) GetDeviceName() string {
-	if x != nil {
-		if x, ok := x.Filesystem.(*DetachInstanceFilesystemRequest_DeviceName); ok {
-			return x.DeviceName
-		}
-	}
-	return ""
-}
-
-type isDetachInstanceFilesystemRequest_Filesystem interface {
-	isDetachInstanceFilesystemRequest_Filesystem()
-}
-
-type DetachInstanceFilesystemRequest_FilesystemId struct {
-	// ID of the filesystem that should be detached.
-	FilesystemId string `protobuf:"bytes,2,opt,name=filesystem_id,json=filesystemId,proto3,oneof"`
-}
-
-type DetachInstanceFilesystemRequest_DeviceName struct {
-	// Name of the device used for mounting the filesystem that should be detached.
-	DeviceName string `protobuf:"bytes,3,opt,name=device_name,json=deviceName,proto3,oneof"`
-}
-
-func (*DetachInstanceFilesystemRequest_FilesystemId) isDetachInstanceFilesystemRequest_Filesystem() {}
-
-func (*DetachInstanceFilesystemRequest_DeviceName) isDetachInstanceFilesystemRequest_Filesystem() {}
-
-type DetachInstanceFilesystemMetadata struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the instance that the filesystem is being detached from.
-	InstanceId string `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	// ID of the filesystem that is being detached from the instance.
-	FilesystemId  string `protobuf:"bytes,2,opt,name=filesystem_id,json=filesystemId,proto3" json:"filesystem_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DetachInstanceFilesystemMetadata) Reset() {
-	*x = DetachInstanceFilesystemMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[27]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DetachInstanceFilesystemMetadata) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DetachInstanceFilesystemMetadata) ProtoMessage() {}
-
-func (x *DetachInstanceFilesystemMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[27]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DetachInstanceFilesystemMetadata.ProtoReflect.Descriptor instead.
-func (*DetachInstanceFilesystemMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{27}
-}
-
-func (x *DetachInstanceFilesystemMetadata) GetInstanceId() string {
-	if x != nil {
-		return x.InstanceId
-	}
-	return ""
-}
-
-func (x *DetachInstanceFilesystemMetadata) GetFilesystemId() string {
-	if x != nil {
-		return x.FilesystemId
-	}
-	return ""
-}
-
 // AttachedNicSpec — NIC-reference attach spec: attaches an *existing* kacho-vpc
 // NetworkInterface (NIC) to the instance by id. The NIC is a first-class VPC
 // resource (source of truth = kacho-vpc); the instance only references and mirrors
@@ -2171,7 +1912,7 @@ type AttachedNicSpec struct {
 
 func (x *AttachedNicSpec) Reset() {
 	*x = AttachedNicSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[28]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2183,7 +1924,7 @@ func (x *AttachedNicSpec) String() string {
 func (*AttachedNicSpec) ProtoMessage() {}
 
 func (x *AttachedNicSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[28]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2196,7 +1937,7 @@ func (x *AttachedNicSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachedNicSpec.ProtoReflect.Descriptor instead.
 func (*AttachedNicSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{28}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *AttachedNicSpec) GetNicId() string {
@@ -2225,7 +1966,7 @@ type AttachInstanceNetworkInterfaceRequest struct {
 
 func (x *AttachInstanceNetworkInterfaceRequest) Reset() {
 	*x = AttachInstanceNetworkInterfaceRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[29]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2237,7 +1978,7 @@ func (x *AttachInstanceNetworkInterfaceRequest) String() string {
 func (*AttachInstanceNetworkInterfaceRequest) ProtoMessage() {}
 
 func (x *AttachInstanceNetworkInterfaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[29]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2250,7 +1991,7 @@ func (x *AttachInstanceNetworkInterfaceRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use AttachInstanceNetworkInterfaceRequest.ProtoReflect.Descriptor instead.
 func (*AttachInstanceNetworkInterfaceRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{29}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AttachInstanceNetworkInterfaceRequest) GetInstanceId() string {
@@ -2279,7 +2020,7 @@ type AttachInstanceNetworkInterfaceMetadata struct {
 
 func (x *AttachInstanceNetworkInterfaceMetadata) Reset() {
 	*x = AttachInstanceNetworkInterfaceMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[30]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2291,7 +2032,7 @@ func (x *AttachInstanceNetworkInterfaceMetadata) String() string {
 func (*AttachInstanceNetworkInterfaceMetadata) ProtoMessage() {}
 
 func (x *AttachInstanceNetworkInterfaceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[30]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2304,7 +2045,7 @@ func (x *AttachInstanceNetworkInterfaceMetadata) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use AttachInstanceNetworkInterfaceMetadata.ProtoReflect.Descriptor instead.
 func (*AttachInstanceNetworkInterfaceMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{30}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *AttachInstanceNetworkInterfaceMetadata) GetInstanceId() string {
@@ -2336,7 +2077,7 @@ type DetachInstanceNetworkInterfaceRequest struct {
 
 func (x *DetachInstanceNetworkInterfaceRequest) Reset() {
 	*x = DetachInstanceNetworkInterfaceRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[31]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2348,7 +2089,7 @@ func (x *DetachInstanceNetworkInterfaceRequest) String() string {
 func (*DetachInstanceNetworkInterfaceRequest) ProtoMessage() {}
 
 func (x *DetachInstanceNetworkInterfaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[31]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2361,7 +2102,7 @@ func (x *DetachInstanceNetworkInterfaceRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use DetachInstanceNetworkInterfaceRequest.ProtoReflect.Descriptor instead.
 func (*DetachInstanceNetworkInterfaceRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{31}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DetachInstanceNetworkInterfaceRequest) GetInstanceId() string {
@@ -2428,7 +2169,7 @@ type DetachInstanceNetworkInterfaceMetadata struct {
 
 func (x *DetachInstanceNetworkInterfaceMetadata) Reset() {
 	*x = DetachInstanceNetworkInterfaceMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[32]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2440,7 +2181,7 @@ func (x *DetachInstanceNetworkInterfaceMetadata) String() string {
 func (*DetachInstanceNetworkInterfaceMetadata) ProtoMessage() {}
 
 func (x *DetachInstanceNetworkInterfaceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[32]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2453,7 +2194,7 @@ func (x *DetachInstanceNetworkInterfaceMetadata) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use DetachInstanceNetworkInterfaceMetadata.ProtoReflect.Descriptor instead.
 func (*DetachInstanceNetworkInterfaceMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{32}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DetachInstanceNetworkInterfaceMetadata) GetInstanceId() string {
@@ -2488,7 +2229,7 @@ type AddInstanceOneToOneNatRequest struct {
 
 func (x *AddInstanceOneToOneNatRequest) Reset() {
 	*x = AddInstanceOneToOneNatRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[33]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2500,7 +2241,7 @@ func (x *AddInstanceOneToOneNatRequest) String() string {
 func (*AddInstanceOneToOneNatRequest) ProtoMessage() {}
 
 func (x *AddInstanceOneToOneNatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[33]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2513,7 +2254,7 @@ func (x *AddInstanceOneToOneNatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddInstanceOneToOneNatRequest.ProtoReflect.Descriptor instead.
 func (*AddInstanceOneToOneNatRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{33}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *AddInstanceOneToOneNatRequest) GetInstanceId() string {
@@ -2554,7 +2295,7 @@ type AddInstanceOneToOneNatMetadata struct {
 
 func (x *AddInstanceOneToOneNatMetadata) Reset() {
 	*x = AddInstanceOneToOneNatMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[34]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2566,7 +2307,7 @@ func (x *AddInstanceOneToOneNatMetadata) String() string {
 func (*AddInstanceOneToOneNatMetadata) ProtoMessage() {}
 
 func (x *AddInstanceOneToOneNatMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[34]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2579,7 +2320,7 @@ func (x *AddInstanceOneToOneNatMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddInstanceOneToOneNatMetadata.ProtoReflect.Descriptor instead.
 func (*AddInstanceOneToOneNatMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{34}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *AddInstanceOneToOneNatMetadata) GetInstanceId() string {
@@ -2603,7 +2344,7 @@ type RemoveInstanceOneToOneNatRequest struct {
 
 func (x *RemoveInstanceOneToOneNatRequest) Reset() {
 	*x = RemoveInstanceOneToOneNatRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[35]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2615,7 +2356,7 @@ func (x *RemoveInstanceOneToOneNatRequest) String() string {
 func (*RemoveInstanceOneToOneNatRequest) ProtoMessage() {}
 
 func (x *RemoveInstanceOneToOneNatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[35]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2628,7 +2369,7 @@ func (x *RemoveInstanceOneToOneNatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveInstanceOneToOneNatRequest.ProtoReflect.Descriptor instead.
 func (*RemoveInstanceOneToOneNatRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{35}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *RemoveInstanceOneToOneNatRequest) GetInstanceId() string {
@@ -2662,7 +2403,7 @@ type RemoveInstanceOneToOneNatMetadata struct {
 
 func (x *RemoveInstanceOneToOneNatMetadata) Reset() {
 	*x = RemoveInstanceOneToOneNatMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[36]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2674,7 +2415,7 @@ func (x *RemoveInstanceOneToOneNatMetadata) String() string {
 func (*RemoveInstanceOneToOneNatMetadata) ProtoMessage() {}
 
 func (x *RemoveInstanceOneToOneNatMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[36]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2687,7 +2428,7 @@ func (x *RemoveInstanceOneToOneNatMetadata) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use RemoveInstanceOneToOneNatMetadata.ProtoReflect.Descriptor instead.
 func (*RemoveInstanceOneToOneNatMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{36}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *RemoveInstanceOneToOneNatMetadata) GetInstanceId() string {
@@ -2719,7 +2460,7 @@ type UpdateInstanceNetworkInterfaceRequest struct {
 
 func (x *UpdateInstanceNetworkInterfaceRequest) Reset() {
 	*x = UpdateInstanceNetworkInterfaceRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[37]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2731,7 +2472,7 @@ func (x *UpdateInstanceNetworkInterfaceRequest) String() string {
 func (*UpdateInstanceNetworkInterfaceRequest) ProtoMessage() {}
 
 func (x *UpdateInstanceNetworkInterfaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[37]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2744,7 +2485,7 @@ func (x *UpdateInstanceNetworkInterfaceRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use UpdateInstanceNetworkInterfaceRequest.ProtoReflect.Descriptor instead.
 func (*UpdateInstanceNetworkInterfaceRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{37}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *UpdateInstanceNetworkInterfaceRequest) GetInstanceId() string {
@@ -2808,7 +2549,7 @@ type UpdateInstanceNetworkInterfaceMetadata struct {
 
 func (x *UpdateInstanceNetworkInterfaceMetadata) Reset() {
 	*x = UpdateInstanceNetworkInterfaceMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[38]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2820,7 +2561,7 @@ func (x *UpdateInstanceNetworkInterfaceMetadata) String() string {
 func (*UpdateInstanceNetworkInterfaceMetadata) ProtoMessage() {}
 
 func (x *UpdateInstanceNetworkInterfaceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[38]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2833,7 +2574,7 @@ func (x *UpdateInstanceNetworkInterfaceMetadata) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use UpdateInstanceNetworkInterfaceMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateInstanceNetworkInterfaceMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{38}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *UpdateInstanceNetworkInterfaceMetadata) GetInstanceId() string {
@@ -2859,7 +2600,7 @@ type SimulateInstanceMaintenanceEventRequest struct {
 
 func (x *SimulateInstanceMaintenanceEventRequest) Reset() {
 	*x = SimulateInstanceMaintenanceEventRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[39]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2871,7 +2612,7 @@ func (x *SimulateInstanceMaintenanceEventRequest) String() string {
 func (*SimulateInstanceMaintenanceEventRequest) ProtoMessage() {}
 
 func (x *SimulateInstanceMaintenanceEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[39]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2884,7 +2625,7 @@ func (x *SimulateInstanceMaintenanceEventRequest) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use SimulateInstanceMaintenanceEventRequest.ProtoReflect.Descriptor instead.
 func (*SimulateInstanceMaintenanceEventRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{39}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SimulateInstanceMaintenanceEventRequest) GetInstanceId() string {
@@ -2903,7 +2644,7 @@ type SimulateInstanceMaintenanceEventMetadata struct {
 
 func (x *SimulateInstanceMaintenanceEventMetadata) Reset() {
 	*x = SimulateInstanceMaintenanceEventMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[40]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2915,7 +2656,7 @@ func (x *SimulateInstanceMaintenanceEventMetadata) String() string {
 func (*SimulateInstanceMaintenanceEventMetadata) ProtoMessage() {}
 
 func (x *SimulateInstanceMaintenanceEventMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[40]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2928,7 +2669,7 @@ func (x *SimulateInstanceMaintenanceEventMetadata) ProtoReflect() protoreflect.M
 
 // Deprecated: Use SimulateInstanceMaintenanceEventMetadata.ProtoReflect.Descriptor instead.
 func (*SimulateInstanceMaintenanceEventMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{40}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SimulateInstanceMaintenanceEventMetadata) GetInstanceId() string {
@@ -2955,7 +2696,7 @@ type ListInstanceOperationsRequest struct {
 
 func (x *ListInstanceOperationsRequest) Reset() {
 	*x = ListInstanceOperationsRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[41]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2967,7 +2708,7 @@ func (x *ListInstanceOperationsRequest) String() string {
 func (*ListInstanceOperationsRequest) ProtoMessage() {}
 
 func (x *ListInstanceOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[41]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2980,7 +2721,7 @@ func (x *ListInstanceOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInstanceOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListInstanceOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{41}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ListInstanceOperationsRequest) GetInstanceId() string {
@@ -3019,7 +2760,7 @@ type ListInstanceOperationsResponse struct {
 
 func (x *ListInstanceOperationsResponse) Reset() {
 	*x = ListInstanceOperationsResponse{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[42]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3031,7 +2772,7 @@ func (x *ListInstanceOperationsResponse) String() string {
 func (*ListInstanceOperationsResponse) ProtoMessage() {}
 
 func (x *ListInstanceOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[42]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3044,7 +2785,7 @@ func (x *ListInstanceOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInstanceOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListInstanceOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{42}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListInstanceOperationsResponse) GetOperations() []*operation.Operation {
@@ -3089,7 +2830,7 @@ type ResourcesSpec struct {
 
 func (x *ResourcesSpec) Reset() {
 	*x = ResourcesSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[43]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3101,7 +2842,7 @@ func (x *ResourcesSpec) String() string {
 func (*ResourcesSpec) ProtoMessage() {}
 
 func (x *ResourcesSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[43]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3114,7 +2855,7 @@ func (x *ResourcesSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourcesSpec.ProtoReflect.Descriptor instead.
 func (*ResourcesSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{43}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ResourcesSpec) GetMemory() int64 {
@@ -3175,7 +2916,7 @@ type AttachedDiskSpec struct {
 
 func (x *AttachedDiskSpec) Reset() {
 	*x = AttachedDiskSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[44]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3187,7 +2928,7 @@ func (x *AttachedDiskSpec) String() string {
 func (*AttachedDiskSpec) ProtoMessage() {}
 
 func (x *AttachedDiskSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[44]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3200,7 +2941,7 @@ func (x *AttachedDiskSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachedDiskSpec.ProtoReflect.Descriptor instead.
 func (*AttachedDiskSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{44}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *AttachedDiskSpec) GetMode() AttachedDiskSpec_Mode {
@@ -3281,7 +3022,7 @@ type AttachedLocalDiskSpec struct {
 
 func (x *AttachedLocalDiskSpec) Reset() {
 	*x = AttachedLocalDiskSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[45]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3293,7 +3034,7 @@ func (x *AttachedLocalDiskSpec) String() string {
 func (*AttachedLocalDiskSpec) ProtoMessage() {}
 
 func (x *AttachedLocalDiskSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[45]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3306,7 +3047,7 @@ func (x *AttachedLocalDiskSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachedLocalDiskSpec.ProtoReflect.Descriptor instead.
 func (*AttachedLocalDiskSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{45}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *AttachedLocalDiskSpec) GetSize() int64 {
@@ -3353,7 +3094,7 @@ type PhysicalLocalDiskSpec struct {
 
 func (x *PhysicalLocalDiskSpec) Reset() {
 	*x = PhysicalLocalDiskSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[46]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3365,7 +3106,7 @@ func (x *PhysicalLocalDiskSpec) String() string {
 func (*PhysicalLocalDiskSpec) ProtoMessage() {}
 
 func (x *PhysicalLocalDiskSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[46]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3378,7 +3119,7 @@ func (x *PhysicalLocalDiskSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PhysicalLocalDiskSpec.ProtoReflect.Descriptor instead.
 func (*PhysicalLocalDiskSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{46}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *PhysicalLocalDiskSpec) GetKmsKeyId() string {
@@ -3407,7 +3148,7 @@ type AttachedFilesystemSpec struct {
 
 func (x *AttachedFilesystemSpec) Reset() {
 	*x = AttachedFilesystemSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[47]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3419,7 +3160,7 @@ func (x *AttachedFilesystemSpec) String() string {
 func (*AttachedFilesystemSpec) ProtoMessage() {}
 
 func (x *AttachedFilesystemSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[47]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3432,7 +3173,7 @@ func (x *AttachedFilesystemSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachedFilesystemSpec.ProtoReflect.Descriptor instead.
 func (*AttachedFilesystemSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{47}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *AttachedFilesystemSpec) GetMode() AttachedFilesystemSpec_Mode {
@@ -3480,7 +3221,7 @@ type NetworkInterfaceSpec struct {
 
 func (x *NetworkInterfaceSpec) Reset() {
 	*x = NetworkInterfaceSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[48]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3492,7 +3233,7 @@ func (x *NetworkInterfaceSpec) String() string {
 func (*NetworkInterfaceSpec) ProtoMessage() {}
 
 func (x *NetworkInterfaceSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[48]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3505,7 +3246,7 @@ func (x *NetworkInterfaceSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkInterfaceSpec.ProtoReflect.Descriptor instead.
 func (*NetworkInterfaceSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{48}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *NetworkInterfaceSpec) GetSubnetId() string {
@@ -3566,7 +3307,7 @@ type PrimaryAddressSpec struct {
 
 func (x *PrimaryAddressSpec) Reset() {
 	*x = PrimaryAddressSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[49]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3578,7 +3319,7 @@ func (x *PrimaryAddressSpec) String() string {
 func (*PrimaryAddressSpec) ProtoMessage() {}
 
 func (x *PrimaryAddressSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[49]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3591,7 +3332,7 @@ func (x *PrimaryAddressSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrimaryAddressSpec.ProtoReflect.Descriptor instead.
 func (*PrimaryAddressSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{49}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *PrimaryAddressSpec) GetAddress() string {
@@ -3628,7 +3369,7 @@ type OneToOneNatSpec struct {
 
 func (x *OneToOneNatSpec) Reset() {
 	*x = OneToOneNatSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[50]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3640,7 +3381,7 @@ func (x *OneToOneNatSpec) String() string {
 func (*OneToOneNatSpec) ProtoMessage() {}
 
 func (x *OneToOneNatSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[50]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3653,7 +3394,7 @@ func (x *OneToOneNatSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OneToOneNatSpec.ProtoReflect.Descriptor instead.
 func (*OneToOneNatSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{50}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *OneToOneNatSpec) GetIpVersion() IpVersion {
@@ -3693,7 +3434,7 @@ type DnsRecordSpec struct {
 
 func (x *DnsRecordSpec) Reset() {
 	*x = DnsRecordSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[51]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3705,7 +3446,7 @@ func (x *DnsRecordSpec) String() string {
 func (*DnsRecordSpec) ProtoMessage() {}
 
 func (x *DnsRecordSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[51]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3718,7 +3459,7 @@ func (x *DnsRecordSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DnsRecordSpec.ProtoReflect.Descriptor instead.
 func (*DnsRecordSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{51}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *DnsRecordSpec) GetFqdn() string {
@@ -3773,7 +3514,7 @@ type RelocateInstanceRequest struct {
 
 func (x *RelocateInstanceRequest) Reset() {
 	*x = RelocateInstanceRequest{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[52]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3785,7 +3526,7 @@ func (x *RelocateInstanceRequest) String() string {
 func (*RelocateInstanceRequest) ProtoMessage() {}
 
 func (x *RelocateInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[52]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3798,7 +3539,7 @@ func (x *RelocateInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelocateInstanceRequest.ProtoReflect.Descriptor instead.
 func (*RelocateInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{52}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *RelocateInstanceRequest) GetInstanceId() string {
@@ -3850,7 +3591,7 @@ type RelocateInstanceMetadata struct {
 
 func (x *RelocateInstanceMetadata) Reset() {
 	*x = RelocateInstanceMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[53]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3862,7 +3603,7 @@ func (x *RelocateInstanceMetadata) String() string {
 func (*RelocateInstanceMetadata) ProtoMessage() {}
 
 func (x *RelocateInstanceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[53]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3875,7 +3616,7 @@ func (x *RelocateInstanceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelocateInstanceMetadata.ProtoReflect.Descriptor instead.
 func (*RelocateInstanceMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{53}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *RelocateInstanceMetadata) GetInstanceId() string {
@@ -3909,7 +3650,7 @@ type GuestStopInstanceMetadata struct {
 
 func (x *GuestStopInstanceMetadata) Reset() {
 	*x = GuestStopInstanceMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[54]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3921,7 +3662,7 @@ func (x *GuestStopInstanceMetadata) String() string {
 func (*GuestStopInstanceMetadata) ProtoMessage() {}
 
 func (x *GuestStopInstanceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[54]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3934,7 +3675,7 @@ func (x *GuestStopInstanceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GuestStopInstanceMetadata.ProtoReflect.Descriptor instead.
 func (*GuestStopInstanceMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{54}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GuestStopInstanceMetadata) GetInstanceId() string {
@@ -3954,7 +3695,7 @@ type PreemptInstanceMetadata struct {
 
 func (x *PreemptInstanceMetadata) Reset() {
 	*x = PreemptInstanceMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[55]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3966,7 +3707,7 @@ func (x *PreemptInstanceMetadata) String() string {
 func (*PreemptInstanceMetadata) ProtoMessage() {}
 
 func (x *PreemptInstanceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[55]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3979,7 +3720,7 @@ func (x *PreemptInstanceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreemptInstanceMetadata.ProtoReflect.Descriptor instead.
 func (*PreemptInstanceMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{55}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *PreemptInstanceMetadata) GetInstanceId() string {
@@ -3999,7 +3740,7 @@ type CrashInstanceMetadata struct {
 
 func (x *CrashInstanceMetadata) Reset() {
 	*x = CrashInstanceMetadata{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[56]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4011,7 +3752,7 @@ func (x *CrashInstanceMetadata) String() string {
 func (*CrashInstanceMetadata) ProtoMessage() {}
 
 func (x *CrashInstanceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[56]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4024,7 +3765,7 @@ func (x *CrashInstanceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrashInstanceMetadata.ProtoReflect.Descriptor instead.
 func (*CrashInstanceMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{56}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *CrashInstanceMetadata) GetInstanceId() string {
@@ -4062,7 +3803,7 @@ type AttachedDiskSpec_DiskSpec struct {
 
 func (x *AttachedDiskSpec_DiskSpec) Reset() {
 	*x = AttachedDiskSpec_DiskSpec{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[62]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4074,7 +3815,7 @@ func (x *AttachedDiskSpec_DiskSpec) String() string {
 func (*AttachedDiskSpec_DiskSpec) ProtoMessage() {}
 
 func (x *AttachedDiskSpec_DiskSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[62]
+	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4087,7 +3828,7 @@ func (x *AttachedDiskSpec_DiskSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachedDiskSpec_DiskSpec.ProtoReflect.Descriptor instead.
 func (*AttachedDiskSpec_DiskSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{44, 0}
+	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{40, 0}
 }
 
 func (x *AttachedDiskSpec_DiskSpec) GetName() string {
@@ -4343,27 +4084,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\x1aDetachInstanceDiskMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12\x1b\n" +
-	"\tvolume_id\x18\x02 \x01(\tR\bvolumeId\"\xc0\x01\n" +
-	"\x1fAttachInstanceFilesystemRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12n\n" +
-	"\x18attached_filesystem_spec\x18\x02 \x01(\v2..kacho.cloud.compute.v1.AttachedFilesystemSpecB\x04\xe8\xc71\x01R\x16attachedFilesystemSpec\"h\n" +
-	" AttachInstanceFilesystemMetadata\x12\x1f\n" +
-	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\x12#\n" +
-	"\rfilesystem_id\x18\x02 \x01(\tR\ffilesystemId\"\xd2\x01\n" +
-	"\x1fDetachInstanceFilesystemRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12/\n" +
-	"\rfilesystem_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\ffilesystemId\x12;\n" +
-	"\vdevice_name\x18\x03 \x01(\tB\x18\xf2\xc71\x14[a-z][a-z0-9-_]{,19}H\x00R\n" +
-	"deviceNameB\x12\n" +
-	"\n" +
-	"filesystem\x12\x04\xc0\xc11\x01\"h\n" +
-	" DetachInstanceFilesystemMetadata\x12\x1f\n" +
-	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\x12#\n" +
-	"\rfilesystem_id\x18\x02 \x01(\tR\ffilesystemId\"L\n" +
+	"\tvolume_id\x18\x02 \x01(\tR\bvolumeId\"L\n" +
 	"\x0fAttachedNicSpec\x12#\n" +
 	"\x06nic_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x05nicId\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\x05R\x05index\"\xa0\x02\n" +
@@ -4529,7 +4250,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"instanceId*#\n" +
 	"\fInstanceView\x12\t\n" +
 	"\x05BASIC\x10\x00\x12\b\n" +
-	"\x04FULL\x10\x012\xb5:\n" +
+	"\x04FULL\x10\x012\xa75\n" +
 	"\x0fInstanceService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.compute.v1.GetInstanceRequest\x1a .kacho.cloud.compute.v1.Instance\"u\x8a\xb5\x18\x15compute.instances.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/compute/v1/instances/{instance_id}\x12\xc6\x01\n" +
@@ -4567,13 +4288,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\n" +
 	"DetachDisk\x121.kacho.cloud.compute.v1.DetachInstanceDiskRequest\x1a .kacho.cloud.operation.Operation\"\xbc\x01\x8a\xb5\x18!compute.instance_disks.detachDisk\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
-	"\x1aDetachInstanceDiskMetadata\x12\bInstance\x82\xd3\xe4\x93\x023:\x01*\"./compute/v1/instances/{instance_id}:detachDisk\x12\xc4\x02\n" +
-	"\x10AttachFilesystem\x127.kacho.cloud.compute.v1.AttachInstanceFilesystemRequest\x1a .kacho.cloud.operation.Operation\"\xd4\x01\x8a\xb5\x18-compute.instance_filesystems.attachFilesystem\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
-	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	" AttachInstanceFilesystemMetadata\x12\bInstance\x82\xd3\xe4\x93\x029:\x01*\"4/compute/v1/instances/{instance_id}:attachFilesystem\x12\xc4\x02\n" +
-	"\x10DetachFilesystem\x127.kacho.cloud.compute.v1.DetachInstanceFilesystemRequest\x1a .kacho.cloud.operation.Operation\"\xd4\x01\x8a\xb5\x18-compute.instance_filesystems.detachFilesystem\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
-	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	" DetachInstanceFilesystemMetadata\x12\bInstance\x82\xd3\xe4\x93\x029:\x01*\"4/compute/v1/instances/{instance_id}:detachFilesystem\x12\xe9\x02\n" +
+	"\x1aDetachInstanceDiskMetadata\x12\bInstance\x82\xd3\xe4\x93\x023:\x01*\"./compute/v1/instances/{instance_id}:detachDisk\x12\xe9\x02\n" +
 	"\x16AttachNetworkInterface\x12=.kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xed\x01\x8a\xb5\x18:compute.instance_network_interfaces.attachNetworkInterface\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*2\n" +
 	"&AttachInstanceNetworkInterfaceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02?:\x01*\":/compute/v1/instances/{instance_id}:attachNetworkInterface\x12\xe9\x02\n" +
@@ -4619,7 +4334,7 @@ func file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_compute_v1_instance_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_kacho_cloud_compute_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 63)
+var file_kacho_cloud_compute_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
 var file_kacho_cloud_compute_v1_instance_service_proto_goTypes = []any{
 	(InstanceView)(0),                                // 0: kacho.cloud.compute.v1.InstanceView
 	(AttachedDiskSpec_Mode)(0),                       // 1: kacho.cloud.compute.v1.AttachedDiskSpec.Mode
@@ -4648,167 +4363,158 @@ var file_kacho_cloud_compute_v1_instance_service_proto_goTypes = []any{
 	(*AttachInstanceDiskMetadata)(nil),               // 24: kacho.cloud.compute.v1.AttachInstanceDiskMetadata
 	(*DetachInstanceDiskRequest)(nil),                // 25: kacho.cloud.compute.v1.DetachInstanceDiskRequest
 	(*DetachInstanceDiskMetadata)(nil),               // 26: kacho.cloud.compute.v1.DetachInstanceDiskMetadata
-	(*AttachInstanceFilesystemRequest)(nil),          // 27: kacho.cloud.compute.v1.AttachInstanceFilesystemRequest
-	(*AttachInstanceFilesystemMetadata)(nil),         // 28: kacho.cloud.compute.v1.AttachInstanceFilesystemMetadata
-	(*DetachInstanceFilesystemRequest)(nil),          // 29: kacho.cloud.compute.v1.DetachInstanceFilesystemRequest
-	(*DetachInstanceFilesystemMetadata)(nil),         // 30: kacho.cloud.compute.v1.DetachInstanceFilesystemMetadata
-	(*AttachedNicSpec)(nil),                          // 31: kacho.cloud.compute.v1.AttachedNicSpec
-	(*AttachInstanceNetworkInterfaceRequest)(nil),    // 32: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest
-	(*AttachInstanceNetworkInterfaceMetadata)(nil),   // 33: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceMetadata
-	(*DetachInstanceNetworkInterfaceRequest)(nil),    // 34: kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest
-	(*DetachInstanceNetworkInterfaceMetadata)(nil),   // 35: kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceMetadata
-	(*AddInstanceOneToOneNatRequest)(nil),            // 36: kacho.cloud.compute.v1.AddInstanceOneToOneNatRequest
-	(*AddInstanceOneToOneNatMetadata)(nil),           // 37: kacho.cloud.compute.v1.AddInstanceOneToOneNatMetadata
-	(*RemoveInstanceOneToOneNatRequest)(nil),         // 38: kacho.cloud.compute.v1.RemoveInstanceOneToOneNatRequest
-	(*RemoveInstanceOneToOneNatMetadata)(nil),        // 39: kacho.cloud.compute.v1.RemoveInstanceOneToOneNatMetadata
-	(*UpdateInstanceNetworkInterfaceRequest)(nil),    // 40: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest
-	(*UpdateInstanceNetworkInterfaceMetadata)(nil),   // 41: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceMetadata
-	(*SimulateInstanceMaintenanceEventRequest)(nil),  // 42: kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest
-	(*SimulateInstanceMaintenanceEventMetadata)(nil), // 43: kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventMetadata
-	(*ListInstanceOperationsRequest)(nil),            // 44: kacho.cloud.compute.v1.ListInstanceOperationsRequest
-	(*ListInstanceOperationsResponse)(nil),           // 45: kacho.cloud.compute.v1.ListInstanceOperationsResponse
-	(*ResourcesSpec)(nil),                            // 46: kacho.cloud.compute.v1.ResourcesSpec
-	(*AttachedDiskSpec)(nil),                         // 47: kacho.cloud.compute.v1.AttachedDiskSpec
-	(*AttachedLocalDiskSpec)(nil),                    // 48: kacho.cloud.compute.v1.AttachedLocalDiskSpec
-	(*PhysicalLocalDiskSpec)(nil),                    // 49: kacho.cloud.compute.v1.PhysicalLocalDiskSpec
-	(*AttachedFilesystemSpec)(nil),                   // 50: kacho.cloud.compute.v1.AttachedFilesystemSpec
-	(*NetworkInterfaceSpec)(nil),                     // 51: kacho.cloud.compute.v1.NetworkInterfaceSpec
-	(*PrimaryAddressSpec)(nil),                       // 52: kacho.cloud.compute.v1.PrimaryAddressSpec
-	(*OneToOneNatSpec)(nil),                          // 53: kacho.cloud.compute.v1.OneToOneNatSpec
-	(*DnsRecordSpec)(nil),                            // 54: kacho.cloud.compute.v1.DnsRecordSpec
-	(*RelocateInstanceRequest)(nil),                  // 55: kacho.cloud.compute.v1.RelocateInstanceRequest
-	(*RelocateInstanceMetadata)(nil),                 // 56: kacho.cloud.compute.v1.RelocateInstanceMetadata
-	(*GuestStopInstanceMetadata)(nil),                // 57: kacho.cloud.compute.v1.GuestStopInstanceMetadata
-	(*PreemptInstanceMetadata)(nil),                  // 58: kacho.cloud.compute.v1.PreemptInstanceMetadata
-	(*CrashInstanceMetadata)(nil),                    // 59: kacho.cloud.compute.v1.CrashInstanceMetadata
-	nil,                                              // 60: kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
-	nil,                                              // 61: kacho.cloud.compute.v1.CreateInstanceRequest.MetadataEntry
-	nil,                                              // 62: kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
-	nil,                                              // 63: kacho.cloud.compute.v1.UpdateInstanceRequest.MetadataEntry
-	nil,                                              // 64: kacho.cloud.compute.v1.UpdateInstanceMetadataRequest.UpsertEntry
-	(*AttachedDiskSpec_DiskSpec)(nil),                // 65: kacho.cloud.compute.v1.AttachedDiskSpec.DiskSpec
-	(*Instance)(nil),                                 // 66: kacho.cloud.compute.v1.Instance
-	(*NetworkSettings)(nil),                          // 67: kacho.cloud.compute.v1.NetworkSettings
-	(MaintenancePolicy)(0),                           // 68: kacho.cloud.compute.v1.MaintenancePolicy
-	(*durationpb.Duration)(nil),                      // 69: google.protobuf.Duration
-	(*SerialPortSettings)(nil),                       // 70: kacho.cloud.compute.v1.SerialPortSettings
-	(InstanceKind)(0),                                // 71: kacho.cloud.compute.v1.InstanceKind
-	(*BootSource)(nil),                               // 72: kacho.cloud.compute.v1.BootSource
-	(*VmSpec)(nil),                                   // 73: kacho.cloud.compute.v1.VmSpec
-	(*ContainerSpec)(nil),                            // 74: kacho.cloud.compute.v1.ContainerSpec
-	(*fieldmaskpb.FieldMask)(nil),                    // 75: google.protobuf.FieldMask
-	(*operation.Operation)(nil),                      // 76: kacho.cloud.operation.Operation
-	(IpVersion)(0),                                   // 77: kacho.cloud.compute.v1.IpVersion
-	(*DiskPlacementPolicy)(nil),                      // 78: kacho.cloud.compute.v1.DiskPlacementPolicy
-	(*DiskPlacementPolicyChange)(nil),                // 79: kacho.cloud.compute.v1.DiskPlacementPolicyChange
-	(*access.ListAccessBindingsRequest)(nil),         // 80: kacho.cloud.access.ListAccessBindingsRequest
-	(*access.SetAccessBindingsRequest)(nil),          // 81: kacho.cloud.access.SetAccessBindingsRequest
-	(*access.UpdateAccessBindingsRequest)(nil),       // 82: kacho.cloud.access.UpdateAccessBindingsRequest
-	(*access.ListAccessBindingsResponse)(nil),        // 83: kacho.cloud.access.ListAccessBindingsResponse
+	(*AttachedNicSpec)(nil),                          // 27: kacho.cloud.compute.v1.AttachedNicSpec
+	(*AttachInstanceNetworkInterfaceRequest)(nil),    // 28: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest
+	(*AttachInstanceNetworkInterfaceMetadata)(nil),   // 29: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceMetadata
+	(*DetachInstanceNetworkInterfaceRequest)(nil),    // 30: kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest
+	(*DetachInstanceNetworkInterfaceMetadata)(nil),   // 31: kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceMetadata
+	(*AddInstanceOneToOneNatRequest)(nil),            // 32: kacho.cloud.compute.v1.AddInstanceOneToOneNatRequest
+	(*AddInstanceOneToOneNatMetadata)(nil),           // 33: kacho.cloud.compute.v1.AddInstanceOneToOneNatMetadata
+	(*RemoveInstanceOneToOneNatRequest)(nil),         // 34: kacho.cloud.compute.v1.RemoveInstanceOneToOneNatRequest
+	(*RemoveInstanceOneToOneNatMetadata)(nil),        // 35: kacho.cloud.compute.v1.RemoveInstanceOneToOneNatMetadata
+	(*UpdateInstanceNetworkInterfaceRequest)(nil),    // 36: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest
+	(*UpdateInstanceNetworkInterfaceMetadata)(nil),   // 37: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceMetadata
+	(*SimulateInstanceMaintenanceEventRequest)(nil),  // 38: kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest
+	(*SimulateInstanceMaintenanceEventMetadata)(nil), // 39: kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventMetadata
+	(*ListInstanceOperationsRequest)(nil),            // 40: kacho.cloud.compute.v1.ListInstanceOperationsRequest
+	(*ListInstanceOperationsResponse)(nil),           // 41: kacho.cloud.compute.v1.ListInstanceOperationsResponse
+	(*ResourcesSpec)(nil),                            // 42: kacho.cloud.compute.v1.ResourcesSpec
+	(*AttachedDiskSpec)(nil),                         // 43: kacho.cloud.compute.v1.AttachedDiskSpec
+	(*AttachedLocalDiskSpec)(nil),                    // 44: kacho.cloud.compute.v1.AttachedLocalDiskSpec
+	(*PhysicalLocalDiskSpec)(nil),                    // 45: kacho.cloud.compute.v1.PhysicalLocalDiskSpec
+	(*AttachedFilesystemSpec)(nil),                   // 46: kacho.cloud.compute.v1.AttachedFilesystemSpec
+	(*NetworkInterfaceSpec)(nil),                     // 47: kacho.cloud.compute.v1.NetworkInterfaceSpec
+	(*PrimaryAddressSpec)(nil),                       // 48: kacho.cloud.compute.v1.PrimaryAddressSpec
+	(*OneToOneNatSpec)(nil),                          // 49: kacho.cloud.compute.v1.OneToOneNatSpec
+	(*DnsRecordSpec)(nil),                            // 50: kacho.cloud.compute.v1.DnsRecordSpec
+	(*RelocateInstanceRequest)(nil),                  // 51: kacho.cloud.compute.v1.RelocateInstanceRequest
+	(*RelocateInstanceMetadata)(nil),                 // 52: kacho.cloud.compute.v1.RelocateInstanceMetadata
+	(*GuestStopInstanceMetadata)(nil),                // 53: kacho.cloud.compute.v1.GuestStopInstanceMetadata
+	(*PreemptInstanceMetadata)(nil),                  // 54: kacho.cloud.compute.v1.PreemptInstanceMetadata
+	(*CrashInstanceMetadata)(nil),                    // 55: kacho.cloud.compute.v1.CrashInstanceMetadata
+	nil,                                              // 56: kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
+	nil,                                              // 57: kacho.cloud.compute.v1.CreateInstanceRequest.MetadataEntry
+	nil,                                              // 58: kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
+	nil,                                              // 59: kacho.cloud.compute.v1.UpdateInstanceRequest.MetadataEntry
+	nil,                                              // 60: kacho.cloud.compute.v1.UpdateInstanceMetadataRequest.UpsertEntry
+	(*AttachedDiskSpec_DiskSpec)(nil),                // 61: kacho.cloud.compute.v1.AttachedDiskSpec.DiskSpec
+	(*Instance)(nil),                                 // 62: kacho.cloud.compute.v1.Instance
+	(*NetworkSettings)(nil),                          // 63: kacho.cloud.compute.v1.NetworkSettings
+	(MaintenancePolicy)(0),                           // 64: kacho.cloud.compute.v1.MaintenancePolicy
+	(*durationpb.Duration)(nil),                      // 65: google.protobuf.Duration
+	(*SerialPortSettings)(nil),                       // 66: kacho.cloud.compute.v1.SerialPortSettings
+	(InstanceKind)(0),                                // 67: kacho.cloud.compute.v1.InstanceKind
+	(*BootSource)(nil),                               // 68: kacho.cloud.compute.v1.BootSource
+	(*VmSpec)(nil),                                   // 69: kacho.cloud.compute.v1.VmSpec
+	(*ContainerSpec)(nil),                            // 70: kacho.cloud.compute.v1.ContainerSpec
+	(*fieldmaskpb.FieldMask)(nil),                    // 71: google.protobuf.FieldMask
+	(*operation.Operation)(nil),                      // 72: kacho.cloud.operation.Operation
+	(IpVersion)(0),                                   // 73: kacho.cloud.compute.v1.IpVersion
+	(*DiskPlacementPolicy)(nil),                      // 74: kacho.cloud.compute.v1.DiskPlacementPolicy
+	(*DiskPlacementPolicyChange)(nil),                // 75: kacho.cloud.compute.v1.DiskPlacementPolicyChange
+	(*access.ListAccessBindingsRequest)(nil),         // 76: kacho.cloud.access.ListAccessBindingsRequest
+	(*access.SetAccessBindingsRequest)(nil),          // 77: kacho.cloud.access.SetAccessBindingsRequest
+	(*access.UpdateAccessBindingsRequest)(nil),       // 78: kacho.cloud.access.UpdateAccessBindingsRequest
+	(*access.ListAccessBindingsResponse)(nil),        // 79: kacho.cloud.access.ListAccessBindingsResponse
 }
 var file_kacho_cloud_compute_v1_instance_service_proto_depIdxs = []int32{
 	0,  // 0: kacho.cloud.compute.v1.GetInstanceRequest.view:type_name -> kacho.cloud.compute.v1.InstanceView
-	66, // 1: kacho.cloud.compute.v1.ListInstancesResponse.instances:type_name -> kacho.cloud.compute.v1.Instance
-	60, // 2: kacho.cloud.compute.v1.CreateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
-	61, // 3: kacho.cloud.compute.v1.CreateInstanceRequest.metadata:type_name -> kacho.cloud.compute.v1.CreateInstanceRequest.MetadataEntry
-	51, // 4: kacho.cloud.compute.v1.CreateInstanceRequest.network_interface_specs:type_name -> kacho.cloud.compute.v1.NetworkInterfaceSpec
-	67, // 5: kacho.cloud.compute.v1.CreateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
-	50, // 6: kacho.cloud.compute.v1.CreateInstanceRequest.filesystem_specs:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec
-	48, // 7: kacho.cloud.compute.v1.CreateInstanceRequest.local_disk_specs:type_name -> kacho.cloud.compute.v1.AttachedLocalDiskSpec
-	68, // 8: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
-	69, // 9: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
-	70, // 10: kacho.cloud.compute.v1.CreateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
-	71, // 11: kacho.cloud.compute.v1.CreateInstanceRequest.instance_kind:type_name -> kacho.cloud.compute.v1.InstanceKind
-	72, // 12: kacho.cloud.compute.v1.CreateInstanceRequest.boot_source:type_name -> kacho.cloud.compute.v1.BootSource
-	73, // 13: kacho.cloud.compute.v1.CreateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
-	74, // 14: kacho.cloud.compute.v1.CreateInstanceRequest.container_spec:type_name -> kacho.cloud.compute.v1.ContainerSpec
+	62, // 1: kacho.cloud.compute.v1.ListInstancesResponse.instances:type_name -> kacho.cloud.compute.v1.Instance
+	56, // 2: kacho.cloud.compute.v1.CreateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
+	57, // 3: kacho.cloud.compute.v1.CreateInstanceRequest.metadata:type_name -> kacho.cloud.compute.v1.CreateInstanceRequest.MetadataEntry
+	47, // 4: kacho.cloud.compute.v1.CreateInstanceRequest.network_interface_specs:type_name -> kacho.cloud.compute.v1.NetworkInterfaceSpec
+	63, // 5: kacho.cloud.compute.v1.CreateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
+	46, // 6: kacho.cloud.compute.v1.CreateInstanceRequest.filesystem_specs:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec
+	44, // 7: kacho.cloud.compute.v1.CreateInstanceRequest.local_disk_specs:type_name -> kacho.cloud.compute.v1.AttachedLocalDiskSpec
+	64, // 8: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
+	65, // 9: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
+	66, // 10: kacho.cloud.compute.v1.CreateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
+	67, // 11: kacho.cloud.compute.v1.CreateInstanceRequest.instance_kind:type_name -> kacho.cloud.compute.v1.InstanceKind
+	68, // 12: kacho.cloud.compute.v1.CreateInstanceRequest.boot_source:type_name -> kacho.cloud.compute.v1.BootSource
+	69, // 13: kacho.cloud.compute.v1.CreateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
+	70, // 14: kacho.cloud.compute.v1.CreateInstanceRequest.container_spec:type_name -> kacho.cloud.compute.v1.ContainerSpec
 	7,  // 15: kacho.cloud.compute.v1.CreateInstanceRequest.secondary_volume_specs:type_name -> kacho.cloud.compute.v1.SecondaryVolumeSpec
-	75, // 16: kacho.cloud.compute.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
-	62, // 17: kacho.cloud.compute.v1.UpdateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
-	63, // 18: kacho.cloud.compute.v1.UpdateInstanceRequest.metadata:type_name -> kacho.cloud.compute.v1.UpdateInstanceRequest.MetadataEntry
-	67, // 19: kacho.cloud.compute.v1.UpdateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
-	68, // 20: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
-	69, // 21: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
-	70, // 22: kacho.cloud.compute.v1.UpdateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
-	73, // 23: kacho.cloud.compute.v1.UpdateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
-	64, // 24: kacho.cloud.compute.v1.UpdateInstanceMetadataRequest.upsert:type_name -> kacho.cloud.compute.v1.UpdateInstanceMetadataRequest.UpsertEntry
-	47, // 25: kacho.cloud.compute.v1.AttachInstanceDiskRequest.attached_disk_spec:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec
-	50, // 26: kacho.cloud.compute.v1.AttachInstanceFilesystemRequest.attached_filesystem_spec:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec
-	31, // 27: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest.attached_nic_spec:type_name -> kacho.cloud.compute.v1.AttachedNicSpec
-	53, // 28: kacho.cloud.compute.v1.AddInstanceOneToOneNatRequest.one_to_one_nat_spec:type_name -> kacho.cloud.compute.v1.OneToOneNatSpec
-	75, // 29: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest.update_mask:type_name -> google.protobuf.FieldMask
-	52, // 30: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest.primary_v4_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
-	52, // 31: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest.primary_v6_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
-	76, // 32: kacho.cloud.compute.v1.ListInstanceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	1,  // 33: kacho.cloud.compute.v1.AttachedDiskSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec.Mode
-	65, // 34: kacho.cloud.compute.v1.AttachedDiskSpec.disk_spec:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec.DiskSpec
-	49, // 35: kacho.cloud.compute.v1.AttachedLocalDiskSpec.physical_local_disk:type_name -> kacho.cloud.compute.v1.PhysicalLocalDiskSpec
-	2,  // 36: kacho.cloud.compute.v1.AttachedFilesystemSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec.Mode
-	52, // 37: kacho.cloud.compute.v1.NetworkInterfaceSpec.primary_v4_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
-	52, // 38: kacho.cloud.compute.v1.NetworkInterfaceSpec.primary_v6_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
-	53, // 39: kacho.cloud.compute.v1.PrimaryAddressSpec.one_to_one_nat_spec:type_name -> kacho.cloud.compute.v1.OneToOneNatSpec
-	54, // 40: kacho.cloud.compute.v1.PrimaryAddressSpec.dns_record_specs:type_name -> kacho.cloud.compute.v1.DnsRecordSpec
-	77, // 41: kacho.cloud.compute.v1.OneToOneNatSpec.ip_version:type_name -> kacho.cloud.compute.v1.IpVersion
-	54, // 42: kacho.cloud.compute.v1.OneToOneNatSpec.dns_record_specs:type_name -> kacho.cloud.compute.v1.DnsRecordSpec
-	51, // 43: kacho.cloud.compute.v1.RelocateInstanceRequest.network_interface_specs:type_name -> kacho.cloud.compute.v1.NetworkInterfaceSpec
-	78, // 44: kacho.cloud.compute.v1.RelocateInstanceRequest.boot_disk_placement:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
-	79, // 45: kacho.cloud.compute.v1.RelocateInstanceRequest.secondary_disk_placements:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicyChange
-	78, // 46: kacho.cloud.compute.v1.AttachedDiskSpec.DiskSpec.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
-	3,  // 47: kacho.cloud.compute.v1.InstanceService.Get:input_type -> kacho.cloud.compute.v1.GetInstanceRequest
-	4,  // 48: kacho.cloud.compute.v1.InstanceService.List:input_type -> kacho.cloud.compute.v1.ListInstancesRequest
-	6,  // 49: kacho.cloud.compute.v1.InstanceService.Create:input_type -> kacho.cloud.compute.v1.CreateInstanceRequest
-	9,  // 50: kacho.cloud.compute.v1.InstanceService.Update:input_type -> kacho.cloud.compute.v1.UpdateInstanceRequest
-	11, // 51: kacho.cloud.compute.v1.InstanceService.Delete:input_type -> kacho.cloud.compute.v1.DeleteInstanceRequest
-	13, // 52: kacho.cloud.compute.v1.InstanceService.UpdateMetadata:input_type -> kacho.cloud.compute.v1.UpdateInstanceMetadataRequest
-	15, // 53: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:input_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputRequest
-	17, // 54: kacho.cloud.compute.v1.InstanceService.Stop:input_type -> kacho.cloud.compute.v1.StopInstanceRequest
-	19, // 55: kacho.cloud.compute.v1.InstanceService.Start:input_type -> kacho.cloud.compute.v1.StartInstanceRequest
-	21, // 56: kacho.cloud.compute.v1.InstanceService.Restart:input_type -> kacho.cloud.compute.v1.RestartInstanceRequest
-	23, // 57: kacho.cloud.compute.v1.InstanceService.AttachDisk:input_type -> kacho.cloud.compute.v1.AttachInstanceDiskRequest
-	25, // 58: kacho.cloud.compute.v1.InstanceService.DetachDisk:input_type -> kacho.cloud.compute.v1.DetachInstanceDiskRequest
-	27, // 59: kacho.cloud.compute.v1.InstanceService.AttachFilesystem:input_type -> kacho.cloud.compute.v1.AttachInstanceFilesystemRequest
-	29, // 60: kacho.cloud.compute.v1.InstanceService.DetachFilesystem:input_type -> kacho.cloud.compute.v1.DetachInstanceFilesystemRequest
-	32, // 61: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:input_type -> kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest
-	34, // 62: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:input_type -> kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest
-	36, // 63: kacho.cloud.compute.v1.InstanceService.AddOneToOneNat:input_type -> kacho.cloud.compute.v1.AddInstanceOneToOneNatRequest
-	38, // 64: kacho.cloud.compute.v1.InstanceService.RemoveOneToOneNat:input_type -> kacho.cloud.compute.v1.RemoveInstanceOneToOneNatRequest
-	40, // 65: kacho.cloud.compute.v1.InstanceService.UpdateNetworkInterface:input_type -> kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest
-	44, // 66: kacho.cloud.compute.v1.InstanceService.ListOperations:input_type -> kacho.cloud.compute.v1.ListInstanceOperationsRequest
-	55, // 67: kacho.cloud.compute.v1.InstanceService.Relocate:input_type -> kacho.cloud.compute.v1.RelocateInstanceRequest
-	42, // 68: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:input_type -> kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest
-	80, // 69: kacho.cloud.compute.v1.InstanceService.ListAccessBindings:input_type -> kacho.cloud.access.ListAccessBindingsRequest
-	81, // 70: kacho.cloud.compute.v1.InstanceService.SetAccessBindings:input_type -> kacho.cloud.access.SetAccessBindingsRequest
-	82, // 71: kacho.cloud.compute.v1.InstanceService.UpdateAccessBindings:input_type -> kacho.cloud.access.UpdateAccessBindingsRequest
-	66, // 72: kacho.cloud.compute.v1.InstanceService.Get:output_type -> kacho.cloud.compute.v1.Instance
-	5,  // 73: kacho.cloud.compute.v1.InstanceService.List:output_type -> kacho.cloud.compute.v1.ListInstancesResponse
-	76, // 74: kacho.cloud.compute.v1.InstanceService.Create:output_type -> kacho.cloud.operation.Operation
-	76, // 75: kacho.cloud.compute.v1.InstanceService.Update:output_type -> kacho.cloud.operation.Operation
-	76, // 76: kacho.cloud.compute.v1.InstanceService.Delete:output_type -> kacho.cloud.operation.Operation
-	76, // 77: kacho.cloud.compute.v1.InstanceService.UpdateMetadata:output_type -> kacho.cloud.operation.Operation
-	16, // 78: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:output_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputResponse
-	76, // 79: kacho.cloud.compute.v1.InstanceService.Stop:output_type -> kacho.cloud.operation.Operation
-	76, // 80: kacho.cloud.compute.v1.InstanceService.Start:output_type -> kacho.cloud.operation.Operation
-	76, // 81: kacho.cloud.compute.v1.InstanceService.Restart:output_type -> kacho.cloud.operation.Operation
-	76, // 82: kacho.cloud.compute.v1.InstanceService.AttachDisk:output_type -> kacho.cloud.operation.Operation
-	76, // 83: kacho.cloud.compute.v1.InstanceService.DetachDisk:output_type -> kacho.cloud.operation.Operation
-	76, // 84: kacho.cloud.compute.v1.InstanceService.AttachFilesystem:output_type -> kacho.cloud.operation.Operation
-	76, // 85: kacho.cloud.compute.v1.InstanceService.DetachFilesystem:output_type -> kacho.cloud.operation.Operation
-	76, // 86: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:output_type -> kacho.cloud.operation.Operation
-	76, // 87: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:output_type -> kacho.cloud.operation.Operation
-	76, // 88: kacho.cloud.compute.v1.InstanceService.AddOneToOneNat:output_type -> kacho.cloud.operation.Operation
-	76, // 89: kacho.cloud.compute.v1.InstanceService.RemoveOneToOneNat:output_type -> kacho.cloud.operation.Operation
-	76, // 90: kacho.cloud.compute.v1.InstanceService.UpdateNetworkInterface:output_type -> kacho.cloud.operation.Operation
-	45, // 91: kacho.cloud.compute.v1.InstanceService.ListOperations:output_type -> kacho.cloud.compute.v1.ListInstanceOperationsResponse
-	76, // 92: kacho.cloud.compute.v1.InstanceService.Relocate:output_type -> kacho.cloud.operation.Operation
-	76, // 93: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:output_type -> kacho.cloud.operation.Operation
-	83, // 94: kacho.cloud.compute.v1.InstanceService.ListAccessBindings:output_type -> kacho.cloud.access.ListAccessBindingsResponse
-	76, // 95: kacho.cloud.compute.v1.InstanceService.SetAccessBindings:output_type -> kacho.cloud.operation.Operation
-	76, // 96: kacho.cloud.compute.v1.InstanceService.UpdateAccessBindings:output_type -> kacho.cloud.operation.Operation
-	72, // [72:97] is the sub-list for method output_type
-	47, // [47:72] is the sub-list for method input_type
-	47, // [47:47] is the sub-list for extension type_name
-	47, // [47:47] is the sub-list for extension extendee
-	0,  // [0:47] is the sub-list for field type_name
+	71, // 16: kacho.cloud.compute.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	58, // 17: kacho.cloud.compute.v1.UpdateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
+	59, // 18: kacho.cloud.compute.v1.UpdateInstanceRequest.metadata:type_name -> kacho.cloud.compute.v1.UpdateInstanceRequest.MetadataEntry
+	63, // 19: kacho.cloud.compute.v1.UpdateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
+	64, // 20: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
+	65, // 21: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
+	66, // 22: kacho.cloud.compute.v1.UpdateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
+	69, // 23: kacho.cloud.compute.v1.UpdateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
+	60, // 24: kacho.cloud.compute.v1.UpdateInstanceMetadataRequest.upsert:type_name -> kacho.cloud.compute.v1.UpdateInstanceMetadataRequest.UpsertEntry
+	43, // 25: kacho.cloud.compute.v1.AttachInstanceDiskRequest.attached_disk_spec:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec
+	27, // 26: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest.attached_nic_spec:type_name -> kacho.cloud.compute.v1.AttachedNicSpec
+	49, // 27: kacho.cloud.compute.v1.AddInstanceOneToOneNatRequest.one_to_one_nat_spec:type_name -> kacho.cloud.compute.v1.OneToOneNatSpec
+	71, // 28: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	48, // 29: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest.primary_v4_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
+	48, // 30: kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest.primary_v6_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
+	72, // 31: kacho.cloud.compute.v1.ListInstanceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	1,  // 32: kacho.cloud.compute.v1.AttachedDiskSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec.Mode
+	61, // 33: kacho.cloud.compute.v1.AttachedDiskSpec.disk_spec:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec.DiskSpec
+	45, // 34: kacho.cloud.compute.v1.AttachedLocalDiskSpec.physical_local_disk:type_name -> kacho.cloud.compute.v1.PhysicalLocalDiskSpec
+	2,  // 35: kacho.cloud.compute.v1.AttachedFilesystemSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec.Mode
+	48, // 36: kacho.cloud.compute.v1.NetworkInterfaceSpec.primary_v4_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
+	48, // 37: kacho.cloud.compute.v1.NetworkInterfaceSpec.primary_v6_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
+	49, // 38: kacho.cloud.compute.v1.PrimaryAddressSpec.one_to_one_nat_spec:type_name -> kacho.cloud.compute.v1.OneToOneNatSpec
+	50, // 39: kacho.cloud.compute.v1.PrimaryAddressSpec.dns_record_specs:type_name -> kacho.cloud.compute.v1.DnsRecordSpec
+	73, // 40: kacho.cloud.compute.v1.OneToOneNatSpec.ip_version:type_name -> kacho.cloud.compute.v1.IpVersion
+	50, // 41: kacho.cloud.compute.v1.OneToOneNatSpec.dns_record_specs:type_name -> kacho.cloud.compute.v1.DnsRecordSpec
+	47, // 42: kacho.cloud.compute.v1.RelocateInstanceRequest.network_interface_specs:type_name -> kacho.cloud.compute.v1.NetworkInterfaceSpec
+	74, // 43: kacho.cloud.compute.v1.RelocateInstanceRequest.boot_disk_placement:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
+	75, // 44: kacho.cloud.compute.v1.RelocateInstanceRequest.secondary_disk_placements:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicyChange
+	74, // 45: kacho.cloud.compute.v1.AttachedDiskSpec.DiskSpec.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
+	3,  // 46: kacho.cloud.compute.v1.InstanceService.Get:input_type -> kacho.cloud.compute.v1.GetInstanceRequest
+	4,  // 47: kacho.cloud.compute.v1.InstanceService.List:input_type -> kacho.cloud.compute.v1.ListInstancesRequest
+	6,  // 48: kacho.cloud.compute.v1.InstanceService.Create:input_type -> kacho.cloud.compute.v1.CreateInstanceRequest
+	9,  // 49: kacho.cloud.compute.v1.InstanceService.Update:input_type -> kacho.cloud.compute.v1.UpdateInstanceRequest
+	11, // 50: kacho.cloud.compute.v1.InstanceService.Delete:input_type -> kacho.cloud.compute.v1.DeleteInstanceRequest
+	13, // 51: kacho.cloud.compute.v1.InstanceService.UpdateMetadata:input_type -> kacho.cloud.compute.v1.UpdateInstanceMetadataRequest
+	15, // 52: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:input_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputRequest
+	17, // 53: kacho.cloud.compute.v1.InstanceService.Stop:input_type -> kacho.cloud.compute.v1.StopInstanceRequest
+	19, // 54: kacho.cloud.compute.v1.InstanceService.Start:input_type -> kacho.cloud.compute.v1.StartInstanceRequest
+	21, // 55: kacho.cloud.compute.v1.InstanceService.Restart:input_type -> kacho.cloud.compute.v1.RestartInstanceRequest
+	23, // 56: kacho.cloud.compute.v1.InstanceService.AttachDisk:input_type -> kacho.cloud.compute.v1.AttachInstanceDiskRequest
+	25, // 57: kacho.cloud.compute.v1.InstanceService.DetachDisk:input_type -> kacho.cloud.compute.v1.DetachInstanceDiskRequest
+	28, // 58: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:input_type -> kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest
+	30, // 59: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:input_type -> kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest
+	32, // 60: kacho.cloud.compute.v1.InstanceService.AddOneToOneNat:input_type -> kacho.cloud.compute.v1.AddInstanceOneToOneNatRequest
+	34, // 61: kacho.cloud.compute.v1.InstanceService.RemoveOneToOneNat:input_type -> kacho.cloud.compute.v1.RemoveInstanceOneToOneNatRequest
+	36, // 62: kacho.cloud.compute.v1.InstanceService.UpdateNetworkInterface:input_type -> kacho.cloud.compute.v1.UpdateInstanceNetworkInterfaceRequest
+	40, // 63: kacho.cloud.compute.v1.InstanceService.ListOperations:input_type -> kacho.cloud.compute.v1.ListInstanceOperationsRequest
+	51, // 64: kacho.cloud.compute.v1.InstanceService.Relocate:input_type -> kacho.cloud.compute.v1.RelocateInstanceRequest
+	38, // 65: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:input_type -> kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest
+	76, // 66: kacho.cloud.compute.v1.InstanceService.ListAccessBindings:input_type -> kacho.cloud.access.ListAccessBindingsRequest
+	77, // 67: kacho.cloud.compute.v1.InstanceService.SetAccessBindings:input_type -> kacho.cloud.access.SetAccessBindingsRequest
+	78, // 68: kacho.cloud.compute.v1.InstanceService.UpdateAccessBindings:input_type -> kacho.cloud.access.UpdateAccessBindingsRequest
+	62, // 69: kacho.cloud.compute.v1.InstanceService.Get:output_type -> kacho.cloud.compute.v1.Instance
+	5,  // 70: kacho.cloud.compute.v1.InstanceService.List:output_type -> kacho.cloud.compute.v1.ListInstancesResponse
+	72, // 71: kacho.cloud.compute.v1.InstanceService.Create:output_type -> kacho.cloud.operation.Operation
+	72, // 72: kacho.cloud.compute.v1.InstanceService.Update:output_type -> kacho.cloud.operation.Operation
+	72, // 73: kacho.cloud.compute.v1.InstanceService.Delete:output_type -> kacho.cloud.operation.Operation
+	72, // 74: kacho.cloud.compute.v1.InstanceService.UpdateMetadata:output_type -> kacho.cloud.operation.Operation
+	16, // 75: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:output_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputResponse
+	72, // 76: kacho.cloud.compute.v1.InstanceService.Stop:output_type -> kacho.cloud.operation.Operation
+	72, // 77: kacho.cloud.compute.v1.InstanceService.Start:output_type -> kacho.cloud.operation.Operation
+	72, // 78: kacho.cloud.compute.v1.InstanceService.Restart:output_type -> kacho.cloud.operation.Operation
+	72, // 79: kacho.cloud.compute.v1.InstanceService.AttachDisk:output_type -> kacho.cloud.operation.Operation
+	72, // 80: kacho.cloud.compute.v1.InstanceService.DetachDisk:output_type -> kacho.cloud.operation.Operation
+	72, // 81: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:output_type -> kacho.cloud.operation.Operation
+	72, // 82: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:output_type -> kacho.cloud.operation.Operation
+	72, // 83: kacho.cloud.compute.v1.InstanceService.AddOneToOneNat:output_type -> kacho.cloud.operation.Operation
+	72, // 84: kacho.cloud.compute.v1.InstanceService.RemoveOneToOneNat:output_type -> kacho.cloud.operation.Operation
+	72, // 85: kacho.cloud.compute.v1.InstanceService.UpdateNetworkInterface:output_type -> kacho.cloud.operation.Operation
+	41, // 86: kacho.cloud.compute.v1.InstanceService.ListOperations:output_type -> kacho.cloud.compute.v1.ListInstanceOperationsResponse
+	72, // 87: kacho.cloud.compute.v1.InstanceService.Relocate:output_type -> kacho.cloud.operation.Operation
+	72, // 88: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:output_type -> kacho.cloud.operation.Operation
+	79, // 89: kacho.cloud.compute.v1.InstanceService.ListAccessBindings:output_type -> kacho.cloud.access.ListAccessBindingsResponse
+	72, // 90: kacho.cloud.compute.v1.InstanceService.SetAccessBindings:output_type -> kacho.cloud.operation.Operation
+	72, // 91: kacho.cloud.compute.v1.InstanceService.UpdateAccessBindings:output_type -> kacho.cloud.operation.Operation
+	69, // [69:92] is the sub-list for method output_type
+	46, // [46:69] is the sub-list for method input_type
+	46, // [46:46] is the sub-list for extension type_name
+	46, // [46:46] is the sub-list for extension extendee
+	0,  // [0:46] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_compute_v1_instance_service_proto_init() }
@@ -4828,22 +4534,18 @@ func file_kacho_cloud_compute_v1_instance_service_proto_init() {
 		(*DetachInstanceDiskRequest_VolumeId)(nil),
 		(*DetachInstanceDiskRequest_DeviceName)(nil),
 	}
-	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[26].OneofWrappers = []any{
-		(*DetachInstanceFilesystemRequest_FilesystemId)(nil),
-		(*DetachInstanceFilesystemRequest_DeviceName)(nil),
-	}
-	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[31].OneofWrappers = []any{
+	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[27].OneofWrappers = []any{
 		(*DetachInstanceNetworkInterfaceRequest_NicId)(nil),
 		(*DetachInstanceNetworkInterfaceRequest_Index)(nil),
 	}
-	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[44].OneofWrappers = []any{
+	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[40].OneofWrappers = []any{
 		(*AttachedDiskSpec_DiskSpec_)(nil),
 		(*AttachedDiskSpec_VolumeId)(nil),
 	}
-	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[45].OneofWrappers = []any{
+	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[41].OneofWrappers = []any{
 		(*AttachedLocalDiskSpec_PhysicalLocalDisk)(nil),
 	}
-	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[62].OneofWrappers = []any{
+	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[58].OneofWrappers = []any{
 		(*AttachedDiskSpec_DiskSpec_ImageId)(nil),
 		(*AttachedDiskSpec_DiskSpec_SnapshotId)(nil),
 	}
@@ -4853,7 +4555,7 @@ func file_kacho_cloud_compute_v1_instance_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_compute_v1_instance_service_proto_rawDesc), len(file_kacho_cloud_compute_v1_instance_service_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   63,
+			NumMessages:   59,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

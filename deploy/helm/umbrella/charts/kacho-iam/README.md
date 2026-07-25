@@ -25,11 +25,21 @@ ConfigMap / RBAC / Service objects.
 
 ## Bundle signing key rotation (180d schedule)
 
-The OPA bundle is signed with JWS ES256 using a private key managed by the
-**Phase 2 JWKS rotator CronJob** (`templates/jwks-rotator-cronjob.yaml`). The
-public half lives in ConfigMap `kacho-iam-jwks` (umbrella-managed:
-`templates/kacho-iam-jwks-configmap.yaml`). OPA sidecars across the fleet load
-this PEM at startup and use it to verify each downloaded bundle.
+> [!warning] Этот раздел описывает НЕреализованный замысел — читать как план, не как факт.
+> **JWKS-ротатора больше нет** (`templates/jwks-rotator-cronjob.yaml` удалён как
+> вестигиальный): iam не владеет ключом подписи токенов — издатель и подписант
+> Hydra, а iam лишь проксирует её публичный JWKS байт-в-байт. Соответственно
+> **никто не наполняет** ConfigMap `kacho-iam-jwks` — в нём остаётся пустой
+> placeholder-PEM, а bundle-signing в коде iam вообще отсутствует (JWS-подписи
+> бандлов нет ни в одном пакете). Раздел оставлен как описание намерения; прежде
+> чем на него опираться — реализовать подпись бандлов и её собственный
+> key-lifecycle. Весь текст ниже про «rotator» относится к этому нереализованному
+> плану.
+
+The OPA bundle is (per the above plan) signed with JWS ES256; the public half
+would live in ConfigMap `kacho-iam-jwks` (umbrella-managed:
+`templates/kacho-iam-jwks-configmap.yaml`), which OPA sidecars across the fleet
+load at startup to verify each downloaded bundle.
 
 ### Rotation cadence
 
@@ -70,9 +80,10 @@ Day 0 + 180d (public-key audit cycle):
 
 If the **private** signing key leaks (e.g., dev-cluster Secret leak):
 
-1. Trigger immediate rotation: `kubectl create job --from=cronjob/kacho-iam-jwks-rotator
-   kacho-iam-jwks-emergency-rotate-$(date +%s) -n kacho-system`.
-2. After rotator completes (≤5s), force rolling restart of every kacho-*
+1. Trigger immediate rotation — **CronJob'а для этого больше нет** (снят как
+   вестигиальный, см. предупреждение выше); при реализации bundle-signing здесь
+   должен появиться его собственный механизм ротации.
+2. After rotation completes, force rolling restart of every kacho-*
    pod: `kubectl rollout restart deployment -n kacho-system -l app.kubernetes.io/part-of=kacho`.
 3. Set `bundle.keyRotationGraceSeconds=60` for the duration of incident
    response (compressed window — accept temporary fail-closed during sidecar
