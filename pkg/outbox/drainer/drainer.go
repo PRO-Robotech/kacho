@@ -149,8 +149,31 @@ type Config struct {
 	// для атрибуции застрявшей партиции — это id-based object-handle (напр.
 	// `vpc_network:<id>`), не PII/инфра-чувствительное. Rows с NULL-ключом партиции трактуются как
 	// независимые (NULL=NULL не true) — для iam невозможно (object всегда задан).
-	// Для перф NOT EXISTS ОБЯЗАТЕЛЕН partial-index
-	// `((<PartitionColumn>), id) WHERE sent_at IS NULL` (миграция сервиса).
+	//
+	// # Обязательные индексы — ОБА (один без другого даёт claim O(backlog))
+	//
+	// Миграция сервиса ОБЯЗАНА нести ДВА partial-индекса (оба `WHERE sent_at IS
+	// NULL`, чтобы размер тянулся за PENDING-backlog'ом, а не за append-mostly
+	// таблицей):
+	//
+	//	1. `((<PartitionColumn>), id) WHERE sent_at IS NULL` — коррелированный
+	//	   NOT EXISTS (поиск предшественника партиции);
+	//	2. `(attempt_count, id) WHERE sent_at IS NULL` — ВНЕШНИЙ упорядоченный
+	//	   скан `ORDER BY (attempt_count, id)`.
+	//
+	// (1) БЕЗ (2) — НЕДОСТАТОЧНО, и это не «чуть медленнее», а throughput-инверсия.
+	// Без упорядоченного access-path планировщик вообще не доходит до
+	// nested-loop anti-join, ради которого построен (1): он seq-скан'ит ВЕСЬ
+	// pending-backlog, сортирует его и hash-anti-join'ит со ВТОРЫМ полным
+	// seq-скан'ом того же backlog'а — (1) при этом не используется, claim
+	// становится O(backlog). Дальше включается положительная обратная связь: чем
+	// глубже очередь, тем медленнее claim → тем медленнее дренаж → тем глубже
+	// очередь; producer, обгоняющий consumer хотя бы на проценты, расходится
+	// неограниченно вместо небольшого постоянного лага. Замер на живом стенде
+	// (Postgres 16, kacho_iam.fga_outbox), один claim: backlog 5k — 11.7ms без (2)
+	// против 0.81ms с (2); 20k — 61.6ms против 0.72ms; 80k — 327ms против 0.82ms
+	// (с (2) время от глубины не зависит). Регрессию локает
+	// Test_ClaimPlan_DoesNotScaleWithBacklogDepth.
 	PartitionColumn string
 
 	// WedgeWarnAfter — если >0 И задан PartitionColumn И зарегистрирован

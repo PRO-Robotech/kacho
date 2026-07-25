@@ -54,6 +54,13 @@ CREATE INDEX fga_outbox_pending_idx
 CREATE INDEX fga_outbox_partition_head_idx
     ON kacho_iam.fga_outbox ((payload->>'object'), id) WHERE sent_at IS NULL;
 
+-- Mirrors kacho-iam migration 0063: the claim's OUTER ordered scan
+-- ORDER BY (attempt_count, id). Required TOGETHER with the partition-head index —
+-- without it the planner cannot use that index at all and the claim degrades to a
+-- double seq-scan of the whole pending backlog (see Config.PartitionColumn).
+CREATE INDEX fga_outbox_claim_order_idx
+    ON kacho_iam.fga_outbox (attempt_count, id) WHERE sent_at IS NULL;
+
 CREATE OR REPLACE FUNCTION kacho_iam.fga_outbox_notify() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
 BEGIN
