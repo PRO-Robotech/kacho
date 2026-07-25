@@ -13,7 +13,7 @@ erDiagram
     text id PK "apl..."
     text name
     text kind "EXTERNAL_PUBLIC|EXTERNAL_TEST|RESERVED_INTERNAL"
-    text zone_id "nullable = global fallback (TEXT-id домена geo, без FK)"
+    text zone_id "nullable = зоне-независимый (anycast) пул (TEXT-id домена geo, без FK)"
     text_array cidr_blocks
     bool is_default
   }
@@ -57,7 +57,10 @@ Account  ─ kacho-iam                   (no parent)
 - Глобальный admin-only ресурс. **Нет** `project_id` — pool глобальный.
 - `cidr_blocks TEXT[]` — массив IPv4 CIDR-блоков.
 - `kind` — `EXTERNAL_PUBLIC | EXTERNAL_TEST | RESERVED_INTERNAL`.
-- `zone_id` — `TEXT`-id домена geo, **nullable**. NULL = глобальный fallback (cascade Step 3 — global-default).
+- `zone_id` — `TEXT`-id домена geo, **nullable**. Объявляет, ГДЕ живут префиксы пула:
+  непустая зона = **ZONAL**-пул; NULL = **зоне-независимый (REGIONAL/anycast)** пул
+  (cascade Step 3). Это разные полосы, а не fallback-цепочка: зональный запрос из
+  anycast-пула не обслуживается (см. «Cascade resolve»).
 - `is_default` — partial UNIQUE: один `is_default=true` на `(COALESCE(zone_id,''), kind)`.
 - `selector_labels JSONB`, `selector_priority INT` — зарезервированы (в текущем cascade не участвуют).
 - `addresses_external_pool_ip_uniq` — partial UNIQUE на `(address_pool_id, address)` в `addresses` — гарантия что один IP не выделится дважды.
@@ -71,7 +74,19 @@ Account  ─ kacho-iam                   (no parent)
 ## Cascade resolve
 
 Используется в `AddressAllocator.AllocateExternalIP`.
-Вход: `address_id`. Выход: `pool` (или `FailedPrecondition`). 3 шага, family-aware:
+Вход: `address_id`. Выход: `pool` (или `FailedPrecondition`). Family-aware, и —
+**две взаимоисключающие полосы по placement запроса** (data-integrity.md
+§Placement-coherence): после общего Step 1 (network-binding) полоса выбирается по зоне
+адреса — задана → зональная (Step 2); пуста → anycast (Step 3). Зональный запрос **не** проваливается в зоне-независимый
+пул: выкроить «адрес зоны A» из anycast-префикса — placement-lie (адрес объявляет
+зону, которой у его префикса нет, и не защищён её failure-domain'ом). Симметрично,
+anycast-запрос зональные шаги пропускает by construction (зоны нет — сравнивать не с чем).
+
+Следствие для эксплуатации: зоне-независимый default — **cluster-wide singleton**
+(partial UNIQUE `(COALESCE(zone_id,''), kind) WHERE is_default`). Пока он подрабатывал
+catch-all fallback'ом, завести его было нельзя, не изменив молча ответ каждой зоны,
+которая намеренно не обслуживает какое-то семейство. Потребитель anycast-полосы —
+VIP REGIONAL-балансировщика (`nlb`, EXTERNAL всегда REGIONAL).
 
 ```mermaid
 flowchart TD
@@ -79,10 +94,13 @@ flowchart TD
   Fetch --> S1
 
   S1[Step 1<br/>network_default WHERE network_id=$nid] -->|hit| Return1[matched_via:<br/>network_default]
-  S1 -->|miss| S2
+  S1 -->|miss| Lane{zone_id задан?}
+
+  Lane -->|да — зональная полоса| S2
+  Lane -->|нет — anycast-полоса| S3
 
   S2[Step 2<br/>GetDefaultForZone WHERE zone_id=$zid<br/>AND kind=$kind AND is_default] -->|hit| Return2[matched_via:<br/>zone_default]
-  S2 -->|miss| S3
+  S2 -->|miss| Fail
 
   S3[Step 3<br/>GetDefaultForZone WHERE zone_id IS NULL<br/>AND kind=$kind AND is_default] -->|hit| Return3[matched_via:<br/>global_default]
   S3 -->|miss| Fail[FailedPrecondition<br/>'no address pool resolved']

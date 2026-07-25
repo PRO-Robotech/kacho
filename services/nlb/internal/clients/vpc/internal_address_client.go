@@ -54,12 +54,16 @@ const (
 // метод обязан применять один и тот же configured-timeout (architecture.md).
 const DefaultInternalAddressCallTimeout = 5 * time.Second
 
-// AllocateExternalIPRequest — параметры аллокации внешнего VIP под Listener.
+// AllocateExternalIPRequest — параметры аллокации внешнего VIP.
 type AllocateExternalIPRequest struct {
 	ProjectID string // folder owning the Address row
 	Name      string // resource name (unique within ProjectID; suffix runId in tests)
-	ZoneID    string // zone из которого аллоцировать IP
-	Owner     AddressOwner
+	// ZoneID — зона, из пула которой берётся IP. ПУСТО = anycast: адрес
+	// зоне-независим и резолвится из zone-independent пула. Для VIP
+	// REGIONAL-балансировщика (а EXTERNAL всегда REGIONAL) это ЕДИНСТВЕННАЯ
+	// допустимая форма.
+	ZoneID string
+	Owner  AddressOwner
 }
 
 // AllocateInternalIPRequest — параметры аллокации внутреннего VIP под Listener.
@@ -531,12 +535,17 @@ func ownResourceInvisible(rerr error) bool {
 }
 
 // validateExternalReq — общая sync-валидация аргументов external-alloc (v4/v6).
+//
+// ZoneID НЕ обязателен и намеренно: пустая зона — anycast-аллокация из
+// зоне-независимого пула (единственная форма для REGIONAL-балансировщика, а
+// EXTERNAL всегда REGIONAL). vpc принимает пустой `zone_id` на external-spec
+// ровно с этим смыслом (address/create.go validateExternalZone). Требование
+// непустой зоны здесь и заставляло use-case выдумывать зону, пиня anycast-VIP к
+// одной зоне.
 func validateExternalReq(req AllocateExternalIPRequest) error {
 	switch {
 	case req.ProjectID == "":
 		return fmt.Errorf("%w: project_id is empty", domain.ErrInvalidArg)
-	case req.ZoneID == "":
-		return fmt.Errorf("%w: zone_id is empty", domain.ErrInvalidArg)
 	case req.Owner.Kind == "" || req.Owner.ID == "":
 		return fmt.Errorf("%w: owner is empty", domain.ErrInvalidArg)
 	}

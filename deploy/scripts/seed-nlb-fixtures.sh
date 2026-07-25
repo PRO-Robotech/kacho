@@ -16,10 +16,17 @@
 #                         zone = NLB_ZONE_ID) — populates
 #                         `existingSubnetId` (Target.ip_ref tests + INTERNAL
 #                         listener subnet binding).
-#   - VPC AddressPool EXT (name: kac-nlb-seed-ext-pool; EXTERNAL_PUBLIC, zonal,
-#                         is_default=true — the IPAM source every EXTERNAL nlb
-#                         auto-VIP + zonal external Address resolves via
+#   - VPC AddressPool EXT (name: kac-nlb-seed-ext-pool; EXTERNAL_PUBLIC, ZONAL,
+#                         is_default=true — the IPAM source the suite's ZONE-PINNED
+#                         external Addresses (BYO-VIP fixtures) resolve via
 #                         GetDefaultForZone. Internal mux only, ban #6).
+#   - VPC AddressPool ANYCAST (name: kac-nlb-seed-anycast-pool; EXTERNAL_PUBLIC,
+#                         ZONE-INDEPENDENT, is_default=true) — the IPAM source every
+#                         EXTERNAL NetworkLoadBalancer auto-VIP resolves. EXTERNAL is
+#                         always EXTERNAL_REGIONAL, i.e. REGIONAL/anycast, i.e.
+#                         zone-independent by construction, so its VIP is allocated
+#                         with NO zone and lands in the zone-independent lane. See
+#                         step 3.6 for why a cluster-wide singleton is safe to own.
 #   - VPC Address  EXT   (name: kac-nlb-seed-ext-addr-<zone>; v4 allocated from the
 #                         pool above — populates `existingExternalAddressId` for
 #                         the BYO-VIP test)
@@ -696,6 +703,95 @@ else
   fi
 fi
 
+# ─── 3.6) Ensure the ZONE-INDEPENDENT (anycast) external AddressPool ---------
+#
+# This is where every EXTERNAL NetworkLoadBalancer VIP comes from. `placement=
+# EXTERNAL_REGIONAL` is the ONLY external placement, so an external LB is ALWAYS
+# REGIONAL/anycast, and a REGIONAL resource is zone-independent BY CONSTRUCTION
+# (data-integrity.md §Placement-coherence). nlb therefore allocates its public VIP
+# with NO zone, and vpc resolves the zone-independent pool (`zone_id IS NULL`).
+#
+# It used to derive a zone (`sort(zones)[0]`, i.e. always ru-central1-a) and consume
+# THAT zone's pool — an "anycast" VIP pinned to one zone's prefix and failure domain,
+# which additionally only worked by accident whenever zone a happened to own a pool of
+# the requested family. It never did for IPv6: zero v6 VIPs were ever allocated.
+#
+# BLOCK CONVENTION (per-suite, global `address_pool_cidrs EXCLUDE (kind, block &&)`):
+#   100.100/16 vpc internal-pool · 100.101/16 vpc address · 100.102/16 nlb ZONAL pool
+#   → 100.103/16 nlb ZONE-INDEPENDENT pool. The v6 block sits OUTSIDE the zonal band
+#   `2001:db8:e2e:{01..fe}::/64` (that band is indexed by the per-zone octet) so it can
+#   never collide with a zonal seed.
+#
+# NOT zone-derived, and deliberately so: `is_default for (zone_id IS NULL, kind)` is a
+# CLUSTER-WIDE singleton (partial UNIQUE on `(COALESCE(zone_id,''), kind)`), one per
+# cluster. It is safe to own precisely because the zonal and anycast lanes are disjoint:
+# a zone-pinned request is served from its OWN zone or not at all, so this pool cannot
+# leak into the zones whose (deliberate) absence of a family other suites assert on —
+# vpc ADR-CR-EXT-V6-FAMILY-FALLTHROUGH (zone a has no v6), ADR-CR-EXT-FALLTHROUGH-V4
+# and IPL-RESOLVE-NETWORK-DEFAULT-FAMILY-SKIP (zone b has no v4) all stay honest.
+ANY_POOL_NAME="kac-nlb-seed-anycast-pool"
+ANY_POOL_V4="100.103.0.0/22"
+ANY_POOL_V6="2001:db8:e2e:1ac::/64"
+
+ANY_LIST=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null || echo '{}')
+ANY_SEL=$(printf '%s' "$ANY_LIST" | probe_fixture pools "$ANY_POOL_NAME" "" "zoneId")
+ANY_STATUS=$(printf '%s' "$ANY_SEL" | cut -f1)
+ANY_POOL_ID=$(printf '%s' "$ANY_SEL" | cut -f2)
+ANY_FOUND_ZONE=$(printf '%s' "$ANY_SEL" | cut -f3)
+ANY_HAS_V6=""
+if [ "$ANY_STATUS" = "match" ]; then
+  ANY_HAS_V6=$(printf '%s' "$ANY_LIST" | POOL="$ANY_POOL_ID" python3 -c '
+import sys, json, os
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(0)
+for p in d.get("pools") or []:
+    if p.get("id") == os.environ["POOL"]:
+        print("v6" if (p.get("v6CidrBlocks") or []) else "")
+        break
+' 2>/dev/null || echo "")
+fi
+
+if [ "$ANY_STATUS" = "mismatch" ]; then
+  # Our name, but the pool carries a ZONE — it is a zonal pool masquerading as the
+  # anycast one (hand-edited, or an older revision of this script). Adopting it would
+  # re-pin every EXTERNAL VIP to one zone, i.e. reintroduce the exact defect. Refuse.
+  log "FATAL: $ANY_POOL_NAME ($ANY_POOL_ID) is pinned to zone '$ANY_FOUND_ZONE'; the anycast pool must be zone-independent."
+  log "       Delete or rename it, then re-seed. Do NOT adopt it: an EXTERNAL LB VIP taken from a zonal pool is"
+  log "       pinned to that zone's failure domain and silently fails for families that zone does not serve."
+  exit 1
+fi
+
+if [ -z "$ANY_POOL_ID" ]; then
+  log "3.6/6 creating zone-independent AddressPool $ANY_POOL_NAME (EXTERNAL_PUBLIC, no zone, v4=$ANY_POOL_V4 v6=$ANY_POOL_V6)"
+  anybody='{"name":"'"$ANY_POOL_NAME"'","description":"KAC-NLB seed anycast (zone-independent) external VIP pool","kind":"EXTERNAL_PUBLIC","v4CidrBlocks":["'"$ANY_POOL_V4"'"],"v6CidrBlocks":["'"$ANY_POOL_V6"'"]}'
+  ANY_CREATE=$(curl_internal POST "/vpc/v1/addressPools" "$anybody" 2>/dev/null || true)
+  ANY_POOL_ID=$(printf '%s' "$ANY_CREATE" | extract "id" || true)
+  if [ -z "$ANY_POOL_ID" ]; then
+    log "FATAL: could not create the zone-independent AddressPool ($(api_err "$ANY_CREATE"))."
+    log "       Without it EVERY external NetworkLoadBalancer VIP fails with the capacity-opaque"
+    log "       'could not allocate load balancer address' (the anycast lane has no pool to resolve)."
+    exit 1
+  fi
+else
+  log "3.6/6 reusing zone-independent AddressPool $ANY_POOL_ID (no zone — placement verified, not name-only)"
+  if [ "$ANY_HAS_V6" != "v6" ]; then
+    log "    pool has no v6 blocks — adding $ANY_POOL_V6 via :addCidrBlocks"
+    any_err=$(api_err "$(curl_internal POST "/vpc/v1/addressPools/$ANY_POOL_ID:addCidrBlocks" \
+        '{"v6CidrBlocks":["'"$ANY_POOL_V6"'"]}' 2>/dev/null || true)")
+    [ -z "$any_err" ] || \
+      log "    WARNING: could not add the v6 block to $ANY_POOL_ID ($any_err) — EXTERNAL v6 auto-VIP will fail."
+  fi
+fi
+
+# Resolution picks the pool ONLY when is_default=true; Create has no isDefault field.
+# Graded on the RESPONSE BODY (curl exits 0 on 4xx): a refused PATCH means another pool
+# already holds the cluster-wide (NULL-zone, EXTERNAL_PUBLIC) slot, and every EXTERNAL
+# VIP would then fail capacity-opaque. That must be visible now, not at case time.
+any_err=$(api_err "$(curl_internal PATCH "/vpc/v1/addressPools/$ANY_POOL_ID" \
+  '{"updateMask":"isDefault","isDefault":true}' 2>/dev/null || true)")
+[ -z "$any_err" ] || \
+  log "    WARNING: could not set is_default on $ANY_POOL_ID ($any_err) — another pool holds the cluster-wide (zone-independent, EXTERNAL_PUBLIC) slot; EXTERNAL LB VIP allocation will fail"
+
 # ─── 4) Ensure External Addresses (BYO VIP: v4 + v6) ------------------------
 # Both are placement-scoped (ExternalIpv{4,6}AddressSpec carries zoneId) and both are
 # probed by (name AND zone): an address adopted from another zone would be allocated out
@@ -922,6 +1018,7 @@ existingZoneId=$ZONE_ID
 existingNetworkId=$NET_ID
 existingSubnetId=$SUBNET_ID
 existingExternalPoolId=$POOL_ID
+existingAnycastPoolId=$ANY_POOL_ID
 existingExternalAddressId=$EXT_ADDR_ID
 existingAddressIPv6Id=$EXT_ADDR6_ID
 existingInstanceId=$INSTANCE_ID
@@ -936,6 +1033,7 @@ EOF
 log "placement self-check (all fixtures must be in $ZONE_ID):"
 log "    subnet=${SUBNET_ID:-<unseeded>} address=${EXT_ADDR_ID:-<unseeded>} address6=${EXT_ADDR6_ID:-<unseeded>}"
 log "    instance=${INSTANCE_ID:-<unseeded>} nic=${NIC_ID:-<unseeded>} pool=${POOL_ID:-<unseeded>}"
+log "    zone-independent (anycast) pool, source of every EXTERNAL LB VIP: ${ANY_POOL_ID:-<unseeded>}"
 
 log "done"
 cat "$OUT_FILE"

@@ -328,17 +328,10 @@ func TestInternalAddressClient_AllocateExternalIPv6_HappyPath(t *testing.T) {
 	assert.Equal(t, "e9b-ip6-1", intAddrSvc.setCalls[0].AddressId)
 }
 
-func TestInternalAddressClient_AllocateExternalIPv6_EmptyZoneRejected(t *testing.T) {
-	c := NewInternalAddressClient(
-		startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, &fakeInternalAddressService{}, &fakeOperationService{}),
-		startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, &fakeInternalAddressService{}, &fakeOperationService{}),
-	)
-	_, err := c.AllocateExternalIPv6(ctxBackground(), AllocateExternalIPRequest{
-		ProjectID: "p", Owner: AddressOwner{Kind: "k", ID: "i"},
-	})
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrInvalidArg), "empty zone must be rejected (parity with AllocateExternalIP)")
-}
+// NOTE: an empty ZoneID is NOT an error — it is the anycast (zone-independent)
+// allocation a REGIONAL load balancer VIP requires. Locked, with its v4/v6 parity
+// and the "a supplied zone is still forwarded" counterpart, in
+// alloc_zone_independent_test.go.
 
 func TestInternalAddressClient_AllocateInternalIPv6_HappyPath(t *testing.T) {
 	allocResp := &vpcpb.Address{
@@ -448,8 +441,9 @@ func TestInternalAddressClient_AllocateExternalIP_EmptyArgs(t *testing.T) {
 		name string
 		req  AllocateExternalIPRequest
 	}{
+		// An empty ZoneID is deliberately NOT here: zone-less = anycast, the only
+		// valid form for a REGIONAL load balancer VIP (alloc_zone_independent_test.go).
 		{"empty project", AllocateExternalIPRequest{ZoneID: "z", Owner: AddressOwner{Kind: "k", ID: "i"}}},
-		{"empty zone", AllocateExternalIPRequest{ProjectID: "p", Owner: AddressOwner{Kind: "k", ID: "i"}}},
 		{"empty owner", AllocateExternalIPRequest{ProjectID: "p", ZoneID: "z"}},
 	}
 	for _, tc := range cases {

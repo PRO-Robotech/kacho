@@ -177,7 +177,9 @@ func TestCreate_InternalRegional_Dualstack_Mixed(t *testing.T) {
 	require.Equal(t, "adr-6", string(rec.AddressIDV6))
 }
 
-// 8.1-06: EXTERNAL public → неявный public IP (underlying zone derived).
+// 8.1-06: EXTERNAL public → неявный public IP, аллоцированный ЗОНЕ-НЕЗАВИСИМО
+// (EXTERNAL всегда REGIONAL/anycast). Полная placement-фиксация —
+// create_external_anycast_test.go.
 func TestCreate_External_Public(t *testing.T) {
 	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
 	addr := &fakeAddressClient{}
@@ -193,7 +195,8 @@ func TestCreate_External_Public(t *testing.T) {
 	require.Equal(t, domain.PlacementUnspecified, rec.PlacementType)
 	require.Equal(t, domain.VipOriginAuto, rec.VipOriginV4)
 	require.Len(t, addr.extReqs, 1)
-	require.NotEmpty(t, addr.extReqs[0].ZoneID)
+	require.Empty(t, addr.extReqs[0].ZoneID,
+		"anycast VIP: no zone may be derived (would pin it to one zone's pool)")
 }
 
 // 8.1-07: EXTERNAL address-link (BYO external).

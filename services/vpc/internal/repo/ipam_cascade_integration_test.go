@@ -164,4 +164,79 @@ func TestIntegration_IPAM_Cascade(t *testing.T) {
 			assert.True(t, res2.AlreadyAllocated)
 		})
 	}
+
+	// --- placement lanes: a ZONE-PINNED request never consumes the
+	// zone-independent (anycast) pool -----------------------------------------
+	//
+	// `globalPool` above is v4-only and zone-less. A v6 request PINNED TO A ZONE
+	// must NOT be served from it: an anycast prefix cannot yield an address that
+	// claims to live in a zone (data-integrity.md §Placement-coherence — the
+	// placement anchor is a mutually exclusive discriminator). Only the anycast
+	// lane (empty zone) reaches it, which the `global_default` subtest above
+	// covers.
+	//
+	// Concretely this is what makes the cluster-wide zone-independent default
+	// (partial UNIQUE on `(COALESCE(zone_id, <empty>), kind) WHERE is_default`)
+	// provisionable at all: while it doubled as a catch-all fallback, seeding it
+	// silently changed the answer for every zone that deliberately does not serve
+	// a family.
+	t.Run("zonal_request_does_not_borrow_from_zone_independent_pool", func(t *testing.T) {
+		anycastV6 := mkPool("anycast-v6", "", false, "198.18.9.0/24")
+		anycastV6.V4CIDRBlocks = nil
+		anycastV6.V6CIDRBlocks = []string{"2001:db8:ac::/64"}
+		require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
+			_, e := w.AddressPools().Update(ctx, anycastV6)
+			return e
+		}))
+		// Promote it to the zone-independent default, replacing the v4-only one so
+		// the ONLY v6-capable pool in the cluster is zone-independent.
+		globalPool.IsDefault = false
+		require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
+			_, e := w.AddressPools().Update(ctx, globalPool)
+			return e
+		}))
+		anycastV6.IsDefault = true
+		require.NoError(t, withTx(t, func(w kacho.RepositoryWriter) error {
+			_, e := w.AddressPools().Update(ctx, anycastV6)
+			return e
+		}))
+
+		zonedV6 := &domain.Address{
+			ID: ids.NewID(ids.PrefixAddress), ProjectID: "project-lane",
+			Name: domain.RcNameVPC("a-lane-v6"), Type: domain.AddressTypeExternal,
+			IpVersion:    domain.IpVersionIPv6,
+			ExternalIpv6: &domain.ExternalIpv6Spec{ZoneID: zone},
+		}
+		insertAddr(zonedV6)
+
+		rd, err := r.Reader(ctx)
+		require.NoError(t, err)
+		rec, err := rd.Addresses().Get(ctx, zonedV6.ID)
+		_ = rd.Close()
+		require.NoError(t, err)
+
+		res, rerr := apResolver.ResolvePoolForAddressObjFamily(ctx, rec, addresspool.FamilyV6)
+		require.Error(t, rerr,
+			"a zone-pinned v6 request must not be served by the zone-independent pool")
+		assert.Nil(t, res)
+
+		anycastV6Addr := &domain.Address{
+			ID: ids.NewID(ids.PrefixAddress), ProjectID: "project-lane",
+			Name: domain.RcNameVPC("a-lane-v6-any"), Type: domain.AddressTypeExternal,
+			IpVersion:    domain.IpVersionIPv6,
+			ExternalIpv6: &domain.ExternalIpv6Spec{ZoneID: ""},
+		}
+		insertAddr(anycastV6Addr)
+		rd2, err := r.Reader(ctx)
+		require.NoError(t, err)
+		rec2, err := rd2.Addresses().Get(ctx, anycastV6Addr.ID)
+		_ = rd2.Close()
+		require.NoError(t, err)
+
+		resAny, rerr2 := apResolver.ResolvePoolForAddressObjFamily(ctx, rec2, addresspool.FamilyV6)
+		require.NoError(t, rerr2, "the anycast lane resolves the zone-independent pool")
+		require.NotNil(t, resAny)
+		assert.Equal(t, anycastV6.ID, resAny.Pool.ID)
+		assert.Equal(t, "global_default", resAny.MatchedVia)
+	})
 }

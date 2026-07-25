@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -307,7 +306,7 @@ func (u *CreateLoadBalancerUseCase) resolveOneSource(ctx context.Context, lb dom
 		fs.zoneID = sn.ZoneID
 		return nil
 	case srcPublicAuto:
-		return nil // EXTERNAL public — сети нет; underlying-зона деривится в worker'е
+		return nil // EXTERNAL public — ни сети, ни зоны: anycast-VIP зоне-независим
 	case srcAddressLink:
 		return u.resolveLinkedAddress(ctx, lb, fs)
 	}
@@ -467,14 +466,14 @@ func (u *CreateLoadBalancerUseCase) acquireFamilyVIP(
 		}
 		return vipAllocResult{addressID: resp.AddressID, address: resp.Value, origin: domain.VipOriginLinked}, nil
 	case srcPublicAuto:
-		zone, err := u.deriveUnderlayZone(ctx, string(lb.RegionID))
-		if err != nil {
-			return vipAllocResult{}, err
-		}
+		// EXTERNAL — единственное external-placement'о `EXTERNAL_REGIONAL`, т.е.
+		// ВСЕГДА REGIONAL/anycast, а REGIONAL зоне-независим by construction
+		// (data-integrity.md §Placement-coherence). Поэтому zone НЕ задаётся:
+		// vpc резолвит зоне-независимый (anycast) AddressPool. Указание зоны
+		// пинило бы «anycast»-VIP к префиксу и failure-domain'у одной зоны.
 		req := vpcclient.AllocateExternalIPRequest{
 			ProjectID: string(lb.ProjectID),
 			Name:      domain.LBAnycastAddressName(lb.ID, fs.family),
-			ZoneID:    zone,
 			Owner:     owner,
 		}
 		var (
@@ -536,23 +535,6 @@ func (u *CreateLoadBalancerUseCase) logVIPAcquireFailure(
 		"subnet_id", fs.subnetID,
 		"err", err.Error(),
 	)
-}
-
-// deriveUnderlayZone — детерминированная underlying-зона public-VIP из региона
-// (первая по сортировке). Скрыта от публичной поверхности (placement-leak).
-func (u *CreateLoadBalancerUseCase) deriveUnderlayZone(ctx context.Context, regionID string) (string, error) {
-	if u.zoneClient == nil {
-		return "", status.Error(codes.Unavailable, "zone lookup unavailable")
-	}
-	zones, err := u.zoneClient.ListZoneIDsInRegion(ctx, regionID)
-	if err != nil {
-		return "", zonePeerErr(err)
-	}
-	if len(zones) == 0 {
-		return "", status.Error(codes.FailedPrecondition, "could not allocate load balancer address")
-	}
-	sort.Strings(zones)
-	return zones[0], nil
 }
 
 // insertHandle — TX-1: INSERT durable-handle строки LB (status='CREATING').

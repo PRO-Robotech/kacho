@@ -634,12 +634,25 @@ fi
 #           НЕТ v4 default (там ставится v6-only pool) → чужой v4-несущий default ломает.
 #   c — vpc internal-pool: throwaway пулы кейсов (создаются/удаляются внутри кейса).
 #   d — vpc address: throwaway пулы кейсов.
-#   e — nlb: ВЫДЕЛЕННАЯ зона суиты nlb (её external-VIP пул kac-nlb-seed-ext-pool,
-#           v4+v6, is_default, плюс её seed-сеть/подсеть/инстанс/адрес). Заведена именно
-#           потому, что зоны a-d уже «заняты» утверждениями vpc: сеятель nlb раньше сажал
-#           default-пул с 2001:db8:e2e:100::/64 в зону a и детерминированно ронял
+#   e — nlb: ВЫДЕЛЕННАЯ зона суиты nlb (её ЗОНАЛЬНЫЙ пул kac-nlb-seed-ext-pool,
+#           v4+v6, is_default — источник её ЗОНЕ-ПРИВЯЗАННЫХ BYO-адресов, плюс её
+#           seed-сеть/подсеть/инстанс/адрес). Заведена именно потому, что зоны a-d уже
+#           «заняты» утверждениями vpc: сеятель nlb раньше сажал default-пул с
+#           2001:db8:e2e:100::/64 в зону a и детерминированно ронял
 #           ADR-CR-EXT-V6-FAMILY-FALLTHROUGH. Новый placement-scoped фикстур-пул любой
 #           суиты — заводит СВОЮ зону, а не занимает чужую.
+#   (без зоны) — nlb: ЗОНЕ-НЕЗАВИСИМЫЙ (anycast) пул kac-nlb-seed-anycast-pool
+#           (EXTERNAL_PUBLIC, v4 100.103.0.0/22 + v6 2001:db8:e2e:1ac::/64, is_default)
+#           — источник VIP КАЖДОГО external NetworkLoadBalancer'а. EXTERNAL — всегда
+#           EXTERNAL_REGIONAL, т.е. REGIONAL/anycast, т.е. зоне-независим by
+#           construction: nlb аллоцирует VIP БЕЗ зоны, vpc резолвит зоне-независимый
+#           пул. Слот `is_default для (zone IS NULL, kind)` — CLUSTER-WIDE singleton,
+#           но чужие зональные утверждения он НЕ ломает: зональная и anycast-полосы
+#           резолва не пересекаются (зональный запрос обслуживается СВОЕЙ зоной или
+#           никак), поэтому «в зоне a нет v6» / «в зоне b нет v4» остаются в силе.
+#           Раньше nlb деривил зону (`sort(zones)[0]` = всегда a) и брал VIP из
+#           ЗОНАЛЬНОГО пула — «anycast»-адрес в failure-domain одной зоны; для v6 это
+#           не работало вовсе (ни одной v6-аллокации за всё время).
 # Greenfield stands have an EMPTY geo catalog: geo goose-migrations create the schema
 # but seed no rows, and the compute→geo data-migration Job is disabled/no-op (compute
 # dropped its Region/Zone tables in the redesign). With no baseline EVERY zone/region-

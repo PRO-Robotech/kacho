@@ -709,7 +709,11 @@ func TestAddressPool_B13_BindNetworkDefault_FamilyAgnostic(t *testing.T) {
 
 func TestCascade_D1_V4OnlyPool_DoesNotResolveForV6(t *testing.T) {
 	f := newUseCases(t)
-	f.seedPool(t, "global-v4", true, "", []string{"203.0.113.0/24"}, nil, nil)
+	// The pool sits in the SAME zone as the request, so the family filter is what
+	// rejects it. (Seeding it zone-less would make the test pass for the wrong
+	// reason — a zone-pinned request no longer reaches the zone-independent lane
+	// at all; see resolve_placement_test.go.)
+	f.seedPool(t, "zone-c-v4", true, "zone-c", []string{"203.0.113.0/24"}, nil, nil)
 
 	a := f.seedAddressV6Req(t, "f-d1", "zone-c")
 
@@ -726,7 +730,8 @@ func TestCascade_D1_V4OnlyPool_DoesNotResolveForV6(t *testing.T) {
 
 func TestCascade_D2_V6OnlyPool_DoesNotResolveForV4(t *testing.T) {
 	f := newUseCases(t)
-	f.seedPool(t, "global-v6", true, "", nil, []string{"2001:db8::/64"}, nil)
+	// Same-zone pool — the family filter is the rejecting mechanism (see D1).
+	f.seedPool(t, "zone-c-v6", true, "zone-c", nil, []string{"2001:db8::/64"}, nil)
 
 	a := f.seedAddressV4Req(t, "f-d2", "zone-c")
 

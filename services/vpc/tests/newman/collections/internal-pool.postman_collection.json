@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1b86a79e-0dce-4c19-acbb-f32080e4484f",
+    "_postman_id": "03460a27-bfe0-4104-b768-f5c521658042",
     "name": "kacho-vpc / newman / internal-pool",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1890,7 +1890,7 @@
           ]
         },
         {
-          "name": "bind-rya607",
+          "name": "bind-rya610",
           "request": {
             "method": "POST",
             "header": [
@@ -4053,7 +4053,7 @@
           ]
         },
         {
-          "name": "bind-rya608",
+          "name": "bind-rya611",
           "request": {
             "method": "POST",
             "header": [
@@ -5121,7 +5121,7 @@
           ]
         },
         {
-          "name": "bind-rya609",
+          "name": "bind-rya612",
           "request": {
             "method": "POST",
             "header": [
@@ -5501,7 +5501,7 @@
           ]
         },
         {
-          "name": "bind-rya610",
+          "name": "bind-rya613",
           "request": {
             "method": "POST",
             "header": [

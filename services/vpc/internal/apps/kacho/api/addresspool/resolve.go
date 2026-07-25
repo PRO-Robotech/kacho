@@ -27,8 +27,10 @@ import (
 // snapshot (read-committed на slave) и не ловили inconsistent view при
 // concurrent admin write'ах.
 //
-// Cascade сведен к network_default → zone_default → global_default (шаги
-// override per-address и label-selector per-cloud удалены вместе с их RPC).
+// Cascade сведен к network_default → zone_default (зональная полоса) ЛИБО
+// zone-independent default (anycast-полоса) — см. godoc
+// ResolvePoolForAddressObjFamily. Шаги override per-address и label-selector
+// per-cloud удалены вместе с их RPC.
 type ResolverService struct {
 	repo       Repo
 	addrRepo   AddressRepo
@@ -50,11 +52,26 @@ func NewResolverService(
 // Каждый step отвергает pool без CIDR нужной family и проваливается на следующий
 // step, чтобы default v4-пул не «утаскивал» v6-аллокацию (и наоборот).
 //
-// Cascade:
+// Cascade — ДВЕ ВЗАИМОИСКЛЮЧАЮЩИЕ ПОЛОСЫ по placement запроса, не одна цепочка
+// fallback'ов (data-integrity.md §Placement-coherence). `AddressPool.zone_id`
+// объявляет, ГДЕ живут префиксы пула: непустая зона = ZONAL-пул, пустая =
+// зоне-независимый (REGIONAL/anycast) источник префиксов. Placement — взаимно
+// исключающий дискриминатор, поэтому:
 //
-//  1. address_pool_network_default  (explicit per-network; для internal IP)
-//  2. zone-default                  (is_default=true для zone+kind)
-//  3. global-default                (is_default=true для zone IS NULL и kind)
+//   - ЗОНАЛЬНЫЙ запрос (`external_ipv{4,6}.zone_id` задан):
+//     1. address_pool_network_default (explicit per-network; для internal IP)
+//     2. zone-default (is_default=true для zone+kind)
+//     Дальше НЕ проваливается: выкроить «адрес зоны A» из anycast-префикса —
+//     placement-lie (адрес объявляет зону, которой у его префикса нет, и не
+//     защищён её failure-domain'ом).
+//   - ANYCAST-запрос (зона пуста — VIP REGIONAL-балансировщика, anycast-адрес):
+//     3. zone-independent default (is_default=true для zone IS NULL и kind).
+//     Зоне-независим by construction — зональный шаг для него пуст by construction.
+//
+// Практическое следствие: zone-independent default — CLUSTER-WIDE singleton
+// (partial UNIQUE `(COALESCE(zone_id, <empty>), kind) WHERE is_default`). Пока он
+// подрабатывал catch-all fallback'ом, его нельзя было завести вообще, не изменив
+// молча ответ КАЖДОЙ зоны, которая намеренно не обслуживает какое-то семейство.
 //
 // Используется allocate-путями (external v4/v6) и Address.Create pre-resolve.
 // Если ни один шаг не дал результата — возвращает ErrPoolNotResolved (caller
@@ -129,9 +146,16 @@ func (s *ResolverService) doResolve(
 		if pool, gerr := rd.AddressPools().GetDefaultForZone(ctx, zoneID, kindHint); gerr == nil && poolHasFamilyRec(pool, family) {
 			return &ResolvedPool{Pool: &pool.AddressPool, MatchedVia: "zone_default"}, nil
 		}
+		// ЗОНАЛЬНЫЙ запрос дальше НЕ идёт: zone-independent пул — REGIONAL/anycast
+		// префикс, из него нельзя выкроить адрес, объявляющий себя жителем зоны
+		// (см. godoc выше — placement-lie). Нет пула нужной family в СВОЕЙ зоне →
+		// не резолвится.
+		return nil, fmt.Errorf("%w for address %s (zone-scoped, family=%d)", ErrPoolNotResolved, addressID, family)
 	}
 
-	// Step 3: global_default (zone_id IS NULL).
+	// Step 3: zone-independent default (zone_id IS NULL) — ТОЛЬКО для anycast-
+	// запроса (зона не задана). MatchedVia сохраняет историческое имя
+	// "global_default" — это wire-наблюдаемая метка шага, а не описание области.
 	if pool, gerr := rd.AddressPools().GetDefaultForZone(ctx, "", kindHint); gerr == nil && poolHasFamilyRec(pool, family) {
 		return &ResolvedPool{Pool: &pool.AddressPool, MatchedVia: "global_default"}, nil
 	}

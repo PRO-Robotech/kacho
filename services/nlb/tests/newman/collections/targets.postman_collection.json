@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "750f4ecf-d845-4023-b9f9-fd442999d40f",
+    "_postman_id": "07b5ff1b-8a18-4701-b9ab-faafd02f8ec6",
     "name": "kacho-nlb / newman / targets",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -5988,7 +5988,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"targets\": [{\"instanceId\": \"{{existingInstanceCrossRegionId}}\", \"weight\": 100}]}",
+              "raw": "{\"targets\": [{\"instanceId\": \"{{absentInstanceCrossRegionId}}\", \"weight\": 100}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6334,7 +6334,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"targets\": [{\"nicId\": \"{{existingNicCrossRegionId}}\", \"weight\": 100}]}",
+              "raw": "{\"targets\": [{\"nicId\": \"{{absentNicCrossRegionId}}\", \"weight\": 100}]}",
               "options": {
                 "raw": {
                   "language": "json"
