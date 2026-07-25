@@ -5,56 +5,44 @@ package routetable
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// enforceGetVisible применяет per-object no-leak: если filter != nil, subject не
-// пуст и route-table id вне accessible-set (того же FGA grant-set, что и List —
-// read==enforce) → NotFound с тем же текстом, что и несуществующий route table
-// (no existence leak). FGA-ошибка → fail-closed (Unavailable).
-func enforceGetVisible(ctx context.Context, filter ListFilter, subjectID, id, resourceName string) error {
-	var port authzfilter.UseCasePort
-	if filter != nil {
-		port = filter
-	}
-	visible, err := authzfilter.EnforceVisible(ctx, port, subjectID,
-		authzfilter.ResourceTypeRouteTable, authzfilter.ActionRouteTableList, id)
-	if err != nil {
-		return err
-	}
-	if !visible {
-		return serviceerr.MapRepoErr(fmt.Errorf("%w: %s %s not found", serviceerr.ErrNotFound, resourceName, id))
-	}
-	return nil
-}
-
-// GetRouteTableUseCase — простой read через CQRS Reader + per-object no-leak
-// enforce. Возвращает `*kacho.RouteTableRecord` (repo-leaf entity).
+// GetRouteTableUseCase — простой read через CQRS Reader. Возвращает
+// `*kacho.RouteTableRecord` (repo-leaf entity).
 //
-// Если filter != nil и subject не пуст — после repo.Get проверяем, что id входит
-// в accessible-set того же FGA grant-set, что и List (read==enforce).
-// filter == nil / subject == "" → enforce делает per-RPC interceptor
-// (dev / system-principal).
+// # AuthZ
+//
+// Видимость единичного чтения энфорсит per-RPC authz-interceptor ПРЯМЫМ
+// per-object Check'ом (`vpc_route_table:<id>` / relation `v_get`, permission_map),
+// ровно как для Update/Delete/AddRoutes. Deny на СУЩЕСТВУЮЩЕМ объекте
+// interceptor превращает в NotFound (existence-hiding, ErrHideExistence), deny на
+// отсутствующем — в passthrough, и handler отдаёт дословный NotFound из БД. Поэтому
+// use-case никакой собственной authz-проверки не делает и не знает про фильтр.
+//
+// Здесь ранее стоял второй гейт `enforceGetVisible`, который спрашивал
+// «перечисли ВСЕ route table'ы, которые subject'у можно» и искал id в ответе. Он
+// был (а) избыточен — тот же вопрос уже задан interceptor'ом точнее и дешевле, и
+// (б) НЕВЕРЕН: перечисление упирается в жёсткий предел OpenFGA ListObjects
+// (default 1000, без continuation-token'а), поэтому на долгоживущем сторе
+// собственный route table тенанта выпадал за префикс и Get отдавал 404 при
+// существующей строке и существующем гранте. Подробности — package-doc
+// `internal/authzfilter`.
 type GetRouteTableUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo Repo
 }
 
-// NewGetRouteTableUseCase создает GetRouteTableUseCase. filter может быть nil
-// (list-filter disabled / dev) → no-leak enforce пропускается.
-func NewGetRouteTableUseCase(r Repo, filter ListFilter) *GetRouteTableUseCase {
-	return &GetRouteTableUseCase{repo: r, filter: filter}
+// NewGetRouteTableUseCase создает GetRouteTableUseCase.
+func NewGetRouteTableUseCase(r Repo) *GetRouteTableUseCase {
+	return &GetRouteTableUseCase{repo: r}
 }
 
-// Execute возвращает repo-entity RouteTable. Per-object no-leak: subject без
-// гранта на route table → NotFound.
-func (u *GetRouteTableUseCase) Execute(ctx context.Context, subjectID, id string) (*kacho.RouteTableRecord, error) {
+// Execute возвращает repo-entity RouteTable.
+func (u *GetRouteTableUseCase) Execute(ctx context.Context, id string) (*kacho.RouteTableRecord, error) {
 	if err := corevalidate.ResourceID("route table", ids.PrefixRouteTable, id); err != nil {
 		return nil, err
 	}
@@ -66,9 +54,6 @@ func (u *GetRouteTableUseCase) Execute(ctx context.Context, subjectID, id string
 	rt, gerr := rd.RouteTables().Get(ctx, id)
 	if gerr != nil {
 		return nil, serviceerr.MapRepoErr(gerr)
-	}
-	if err := enforceGetVisible(ctx, u.filter, subjectID, id, "Route table"); err != nil {
-		return nil, err
 	}
 	return rt, nil
 }

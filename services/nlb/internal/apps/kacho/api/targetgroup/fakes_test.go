@@ -254,17 +254,6 @@ func (q *fakeTGReader) Get(_ context.Context, id string) (*kachorepo.TargetGroup
 func (q *fakeTGReader) List(_ context.Context, f kachorepo.TargetGroupFilter, _ kachorepo.Pagination) ([]*kachorepo.TargetGroupRecord, string, error) {
 	q.r.mu.Lock()
 	defer q.r.mu.Unlock()
-	// RBAC: per-object FGA allow-set push-down (parity с pg repo).
-	var allowed map[string]struct{}
-	if f.AllowedIDs != nil {
-		if len(f.AllowedIDs) == 0 {
-			return nil, "", nil
-		}
-		allowed = make(map[string]struct{}, len(f.AllowedIDs))
-		for _, id := range f.AllowedIDs {
-			allowed[id] = struct{}{}
-		}
-	}
 	var out []*kachorepo.TargetGroupRecord
 	for _, rec := range q.r.tgs {
 		if f.ProjectID != "" && string(rec.ProjectID) != f.ProjectID {
@@ -272,11 +261,6 @@ func (q *fakeTGReader) List(_ context.Context, f kachorepo.TargetGroupFilter, _ 
 		}
 		if f.Name != "" && string(rec.Name) != f.Name {
 			continue
-		}
-		if allowed != nil {
-			if _, ok := allowed[string(rec.ID)]; !ok {
-				continue
-			}
 		}
 		c := *rec
 		out = append(out, &c)

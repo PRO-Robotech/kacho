@@ -72,13 +72,13 @@ func NewHandler(
 	}
 }
 
-// Get — sync read + AuthZ + per-object no-leak.
+// Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
+// per-RPC authz-interceptor прямым Check'ом — см. GetNetworkUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetNetworkRequest) (*vpcv1.Network, error) {
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	subject := pbconv.SubjectFromContext(ctx)
-	n, err := h.get.Execute(ctx, subject, req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetNetworkRequest) (*vpcv1
 
 // List — project_id required + AuthZ + FGA list-filter.
 //
-// Subject из ctx (principal-extractor) → ListAllowedIDs → repo.ListByIDs.
+// Subject из ctx (principal-extractor) → страница из БД → per-object BatchCheck.
 // AssertProjectOwnership остается как defense-in-depth pre-check (FGA listing
 // scoped to project; пользователь не должен слать запрос на чужой project).
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListNetworksRequest) (*vpcv1.ListNetworksResponse, error) {
@@ -144,7 +144,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateNetworkRequest) (
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (h *Handler) AddCidrBlocks(ctx context.Context, req *vpcv1.AddNetworkCidrBl
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveNetwork
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +217,7 @@ func (h *Handler) ListSubnets(ctx context.Context, req *vpcv1.ListNetworkSubnets
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func (h *Handler) ListSecurityGroups(ctx context.Context, req *vpcv1.ListNetwork
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func (h *Handler) ListRouteTables(ctx context.Context, req *vpcv1.ListNetworkRou
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +309,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListNetworkOper
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	if n, gerr := h.get.Execute(ctx, "", req.NetworkId); gerr == nil {
+	if n, gerr := h.get.Execute(ctx, req.NetworkId); gerr == nil {
 		if err := tenant.AssertProjectOwnership(ctx, n.ProjectID); err != nil {
 			return nil, err
 		}
@@ -335,7 +335,7 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteNetworkRequest) (
 	if req.NetworkId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_id required")
 	}
-	n, err := h.get.Execute(ctx, "", req.NetworkId)
+	n, err := h.get.Execute(ctx, req.NetworkId)
 	if err != nil {
 		return nil, err
 	}

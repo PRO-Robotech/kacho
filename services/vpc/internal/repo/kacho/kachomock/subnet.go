@@ -90,32 +90,6 @@ func (r *subnetReader) List(_ context.Context, f kacho.SubnetFilter, _ kacho.Pag
 	return result, "", nil
 }
 
-// ListByIDs — фильтрация поверх ids set теми же in-memory предикатами, что List.
-// Пустой allowedIDs → (nil, "", nil).
-func (r *subnetReader) ListByIDs(_ context.Context, f kacho.SubnetFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.SubnetRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.SubnetRecord
-	for _, s := range r.snap {
-		if _, ok := allowed[s.ID]; !ok {
-			continue
-		}
-		if (f.ProjectID == "" || s.ProjectID == f.ProjectID) &&
-			(f.NetworkID == "" || s.NetworkID == f.NetworkID) &&
-			(f.Name == "" || string(s.Name) == f.Name) {
-			cp := *s
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
 // SupernetBlockCoveringSubnet — in-memory ∉-guard: перебирает ВСЕ подсети сети в
 // snapshot'е (mock не пагинирует — этим он не воспроизводит реальный первополосный
 // баг, но корректно моделирует контракт метода для unit-теста use-case'а).
@@ -181,35 +155,6 @@ func (sw *subnetWriter) List(_ context.Context, f kacho.SubnetFilter, _ kacho.Pa
 	var result []*kacho.SubnetRecord
 	for id, s := range sw.w.localSubs {
 		if _, deleted := sw.w.deletedSubIDs[id]; deleted {
-			continue
-		}
-		if (f.ProjectID == "" || s.ProjectID == f.ProjectID) &&
-			(f.NetworkID == "" || s.NetworkID == f.NetworkID) &&
-			(f.Name == "" || string(s.Name) == f.Name) {
-			cp := *s
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
-// ListByIDs — writer-side: фильтрация поверх ids set теми же in-memory
-// предикатами, что List. Пустой allowedIDs → (nil, "", nil).
-func (sw *subnetWriter) ListByIDs(_ context.Context, f kacho.SubnetFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.SubnetRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.SubnetRecord
-	for id, s := range sw.w.localSubs {
-		if _, deleted := sw.w.deletedSubIDs[id]; deleted {
-			continue
-		}
-		if _, ok := allowed[id]; !ok {
 			continue
 		}
 		if (f.ProjectID == "" || s.ProjectID == f.ProjectID) &&

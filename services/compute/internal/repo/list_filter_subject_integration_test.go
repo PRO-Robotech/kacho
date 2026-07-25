@@ -11,8 +11,8 @@
 //   - CLL-02: no-principal / system principal → fail-closed (0 rows) DESPITE
 //     seeded rows. Before the fix the handler short-circuited to bypass-all and
 //     leaked every row.
-//   - CLL-01: label-scoped principal → exactly the FGA-allowed subset hits the
-//     `WHERE id = ANY(...)` SQL path, not the whole project.
+//   - CLL-01: label-scoped principal → exactly the per-object-allowed subset of
+//     the page reaches the response, not the whole project.
 package repo_test
 
 import (
@@ -38,17 +38,31 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
-// listObjectsStub — minimal authzfilter.AuthorizeClient returning a fixed
-// allow-list keyed by subject (so subject-source mismatches are observable: a
-// "" subject never reaches here, and an unexpected subject yields empty).
-type listObjectsStub struct {
+// batchCheckStub — minimal authzfilter.AuthorizeClient answering each per-object
+// check from a fixed grant set keyed by subject (so subject-source mismatches stay
+// observable: a "" subject never reaches here, and an unexpected subject is denied
+// everything). Order-preserving, as the BatchCheck contract requires.
+type batchCheckStub struct {
 	allowBySubject map[string][]string
 	calls          int
 }
 
-func (s *listObjectsStub) ListObjects(_ context.Context, in *iamv1.ListObjectsRequest, _ ...grpc.CallOption) (*iamv1.ListObjectsResponse, error) {
+func (s *batchCheckStub) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest, _ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
 	s.calls++
-	return &iamv1.ListObjectsResponse{ResourceIds: s.allowBySubject[in.Subject]}, nil
+	out := &iamv1.BatchAuthorizeCheckResponse{
+		Responses: make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks())),
+	}
+	for _, c := range in.GetChecks() {
+		allowed := false
+		for _, id := range s.allowBySubject[c.GetSubject()] {
+			if id == c.GetResource().GetId() {
+				allowed = true
+				break
+			}
+		}
+		out.Responses = append(out.Responses, &iamv1.AuthorizeCheckResponse{Allowed: allowed})
+	}
+	return out, nil
 }
 
 // newDiskHandlerOnRealRepo — DiskService over a real (testcontainers) repo +
@@ -105,7 +119,7 @@ func TestIntegration_DiskHandler_NoPrincipal_FailClosed_NoLeak(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	stub := &listObjectsStub{allowBySubject: map[string][]string{}}
+	stub := &batchCheckStub{allowBySubject: map[string][]string{}}
 	h, r, pool := newDiskHandlerOnRealRepo(t, stub)
 	defer pool.Close()
 
@@ -125,13 +139,13 @@ func TestIntegration_DiskHandler_NoPrincipal_FailClosed_NoLeak(t *testing.T) {
 	require.Len(t, resp.Disks, 0, "LEAK: system principal List must NOT return any disk")
 }
 
-// CLL-01 (integration): label-scoped principal → exactly the FGA-allowed subset
-// flows through the real `WHERE id = ANY(...)` SQL path; not-granted → empty.
+// CLL-01 (integration): the real (unfiltered, project-scoped) SQL page is narrowed
+// per-object to exactly the FGA-allowed subset; not-granted → empty.
 func TestIntegration_DiskHandler_LabelScoped_SubsetOnly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	stub := &listObjectsStub{allowBySubject: map[string][]string{}}
+	stub := &batchCheckStub{allowBySubject: map[string][]string{}}
 	h, r, pool := newDiskHandlerOnRealRepo(t, stub)
 	defer pool.Close()
 
@@ -144,7 +158,7 @@ func TestIntegration_DiskHandler_LabelScoped_SubsetOnly(t *testing.T) {
 
 	resp, err := h.List(ctx, &computev1.ListDisksRequest{ProjectId: "proj-a"})
 	require.NoError(t, err)
-	require.Len(t, resp.Disks, 2, "label-scoped subject must see only the granted subset")
+	require.Len(t, resp.Disks, 2, "label-scoped subject must see only the granted subset of the page")
 	got := map[string]bool{}
 	for _, d := range resp.Disks {
 		got[d.Id] = true

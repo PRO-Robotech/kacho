@@ -573,7 +573,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.addressId", "rmInUseAddrId")]),
         poll_operation_until_done(),
         # Извлекаем выделенный IP из operation.response, а не публичным Address.Get:
-        # suite ходит cluster-admin JWT, для которого per-object list-authz над
+        # suite ходит cluster-admin JWT, для которого per-object owner-tuple над
         # project-scoped Address не материализуется → 404 (см. DUALSTACK get-v4).
         Step(name="get-addr", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
@@ -739,11 +739,11 @@ CASES.append(Case(
         # Проверяем аллокацию по operation.response (LRO-конверт несёт готовый
         # Address), а НЕ публичным GET /addresses/{id}: internal-pool suite ходит
         # форсированным cluster-admin JWT (jwtBootstrap, principalType=user), а
-        # публичный Address.Get гейтит per-object list-authz (enforceGetVisible →
-        # ListAllowedIDs grant-set), который для cluster-admin над project-scoped
-        # Address не материализуется в окне ретрая → устойчивый 404. op.response
-        # детерминирован (тот же приём, что EXHAUSTED verify-* / passing IPL-address
-        # кейсы) и проверяет ровно то же — IP из v4-блока пула.
+        # публичный Address.Get гейтит per-object authz-Check, owner-tuple которого
+        # для cluster-admin над project-scoped Address не материализуется в окне
+        # ретрая → устойчивый 404. op.response детерминирован (тот же приём, что
+        # EXHAUSTED verify-* / passing IPL-address кейсы) и проверяет ровно то же —
+        # IP из v4-блока пула.
         Step(name="get-v4", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
                           "const op = pm.response.json();",

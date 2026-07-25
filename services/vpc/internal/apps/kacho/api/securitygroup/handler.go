@@ -69,13 +69,13 @@ func NewHandler(
 	}
 }
 
-// Get — sync read + AuthZ + per-object no-leak.
+// Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
+// per-RPC authz-interceptor прямым Check'ом — см. GetSecurityGroupUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetSecurityGroupRequest) (*vpcv1.SecurityGroup, error) {
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	subject := pbconv.SubjectFromContext(ctx)
-	sg, err := h.get.Execute(ctx, subject, req.SecurityGroupId)
+	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSecurityGroupRequ
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, "", req.SecurityGroupId)
+	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (h *Handler) UpdateRules(ctx context.Context, req *vpcv1.UpdateSecurityGrou
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, "", req.SecurityGroupId)
+	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (h *Handler) UpdateRule(ctx context.Context, req *vpcv1.UpdateSecurityGroup
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, "", req.SecurityGroupId)
+	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +233,7 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteSecurityGroupRequ
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, "", req.SecurityGroupId)
+	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListSecurityGro
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, "", req.SecurityGroupId)
+	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
 	if err != nil {
 		return nil, err
 	}

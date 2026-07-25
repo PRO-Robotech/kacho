@@ -51,7 +51,7 @@ func newNetworkHandler(t *testing.T, pool *pgxpool.Pool) (*networkapp.Handler, *
 	create := networkapp.NewCreateNetworkUseCase(r, pc, or, false)
 	update := networkapp.NewUpdateNetworkUseCase(r, or)
 	// Read/list/delete use-cases здесь не задействованы, но нужны NewHandler.
-	get := networkapp.NewGetNetworkUseCase(r, nil)
+	get := networkapp.NewGetNetworkUseCase(r)
 	list := networkapp.NewListNetworksUseCase(r, nil)
 	listSub := networkapp.NewListSubnetsUseCase(r, nil)
 	listSG := networkapp.NewListSecurityGroupsUseCase(r, nil)

@@ -76,11 +76,12 @@ type ZoneRegistry interface {
 	Get(ctx context.Context, id string) (*domain.Zone, error)
 }
 
-// ListFilter — port per-object List-фильтра. Реализация —
+// ListFilter — port per-page фильтра видимости. Реализация —
 // `authzfilter.AsPort(*authzfilter.FGAFilter)`. nil → unfiltered passthrough.
-// bypass=false && len(allowedIDs)==0 → пустой List (no-leak).
+// Возвращает подмножество переданных id, видимое subject'у (порядок сохраняется);
+// err → fail-closed (use-case пробрасывает, страницу не отдает).
 type ListFilter interface {
-	ListAllowedIDs(ctx context.Context, subject, resourceType, action string) (allowedIDs []string, bypass bool, err error)
+	FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error)
 }
 
 // PoolService — узкий port AddressPool-resolver'а для cascade-резолва pool по

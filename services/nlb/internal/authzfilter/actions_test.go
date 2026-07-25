@@ -1,21 +1,23 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// actions_test.go — RBAC: the nlb list-filter must
-// call iam AuthorizeService.ListObjects with an `action` whose verb the iam
-// server resolves to the FGA `viewer` relation (read==enforce parity under the
-// scope_grant rules-model).
+// actions_test.go — RBAC: the nlb list-filter must call iam AuthorizeService with
+// an `action` whose verb the iam server resolves to the FGA `viewer` relation
+// (read==enforce parity under the scope_grant rules-model).
 //
-// Why this test exists (the bug it pins, mirror of kacho-compute actions_test.go):
+// Why this test still exists after the move to per-page BatchCheck:
 //
-//	kacho-iam internal/service/authorize_service.go::resolveActionToRelation maps
-//	ONLY the canonical RPC verbs get/list → "viewer". The verb "read" is UNMAPPED
-//	→ ListObjects answers `Illegal argument action` (InvalidArgument), which the
-//	nlb filter wraps as Unavailable for every List → with list-filter.enabled=true
-//	ALL public Lists break (fail-closed on a contract mismatch, not a real denial).
-//
-//	read==enforce requires List visibility to use the SAME relation the per-RPC
-//	Check gate uses for Get/List, which is "viewer" (internal/check/permission_map.go).
+//	The filter now pins the relation EXPLICITLY (`required_relation` = viewer, then
+//	v_list — see filter.go visibilityRelations), and iam honours that override
+//	verbatim. The `action` still travels on every check (iam rejects an empty one,
+//	and it is what audit/trace records), and it is the ONLY thing that decides the
+//	relation if the override is ever dropped: kacho-iam
+//	internal/service/authorize_service.go::resolveActionToRelation maps ONLY the
+//	canonical verbs get/list → "viewer"; an unmapped verb (e.g. "read") resolves to
+//	nothing → every List denies fail-closed on a contract mismatch, not a real
+//	denial. Keeping the action on the read tier keeps that fallback correct and
+//	keeps List visibility on the SAME relation the per-RPC Check gate uses for Get
+//	(internal/check/permission_map.go).
 //
 // This test embeds a faithful copy of the iam verb→relation contract (nlb cannot
 // import iam internals) and asserts each nlb List action resolves to "viewer".
@@ -46,7 +48,7 @@ func resolveActionToRelationIAM(action string) string {
 }
 
 // every nlb public-List action MUST resolve to the "viewer" relation on the iam
-// ListObjects server (read==enforce).
+// side (read==enforce).
 func TestListActions_ResolveToViewer(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -59,8 +61,8 @@ func TestListActions_ResolveToViewer(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if got := resolveActionToRelationIAM(c.action); got != "viewer" {
-				t.Fatalf("action %q must resolve to FGA relation %q on the iam ListObjects "+
-					"server (read==enforce, D-40..D-47), got %q. The verb must be one the "+
+				t.Fatalf("action %q must resolve to FGA relation %q on the iam side "+
+					"(read==enforce, D-40..D-47), got %q. The verb must be one the "+
 					"iam resolveActionToRelation maps to viewer (get/list), NOT \"read\".",
 					c.action, "viewer", got)
 			}
@@ -75,15 +77,15 @@ func TestListActions_VerbIsList(t *testing.T) {
 		last := strings.LastIndexByte(action, '.')
 		if verb := action[last+1:]; verb != "list" {
 			t.Fatalf("action %q: list-filter verb must be %q (iam maps it to viewer); got %q. "+
-				"The verb \"read\" is unmapped by iam → ListObjects returns InvalidArgument → "+
-				"every nlb List breaks fail-closed.", action, "list", verb)
+				"The verb \"read\" is unmapped by iam → the verb-derived fallback resolves to "+
+				"nothing → every nlb List denies fail-closed.", action, "list", verb)
 		}
 	}
 }
 
 // the FGA object-type constants must match the `nlb_*` authorization-model types
 // (single source of truth: internal/domain.FGAObjectType*). A drift here would
-// scope ListObjects to a non-existent type → empty grants → no-leak over-blocking.
+// scope the per-object checks to a non-existent type → nothing visible → over-blocking.
 func TestResourceTypes_MatchDomainFGAObjectTypes(t *testing.T) {
 	cases := []struct {
 		name      string

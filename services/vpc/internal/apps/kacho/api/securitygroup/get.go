@@ -5,60 +5,44 @@ package securitygroup
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// enforceGetVisible применяет per-object no-leak: если filter != nil, subject
-// не пуст и SG id вне accessible-set (того же FGA grant-set, что и List —
-// read==enforce) → NotFound с тем же текстом, что и несуществующий SG (без
-// existence-leak; см. helpers.WrapSGErr — "Security group SecurityGroup.Id(value=%s)
-// not found"). FGA-ошибка → fail-closed (Unavailable).
-func enforceGetVisible(ctx context.Context, filter ListFilter, subjectID, id string) error {
-	var port authzfilter.UseCasePort
-	if filter != nil {
-		port = filter
-	}
-	visible, err := authzfilter.EnforceVisible(ctx, port, subjectID,
-		authzfilter.ResourceTypeSecurityGroup, authzfilter.ActionSecurityGroupList, id)
-	if err != nil {
-		return err
-	}
-	if !visible {
-		return serviceerr.MapRepoErr(fmt.Errorf("%w: Security group SecurityGroup.Id(value=%s) not found", serviceerr.ErrNotFound, id))
-	}
-	return nil
-}
-
-// GetSecurityGroupUseCase — простой read; единственная «логика» — id-валидация,
-// перевод repo-sentinel в gRPC status и per-object no-leak enforce. Use-case
-// можно было бы опустить, но handler-у удобнее единый шов через use-case'ы.
-// Открывает CQRS Reader, читает, закрывает; read-only TX — параллельный writer
-// не блокируется.
+// GetSecurityGroupUseCase — простой read через CQRS Reader. Use-case можно было бы
+// опустить, но handler-у удобнее единый шов через use-case'ы. Открывает Reader,
+// читает, закрывает; read-only TX — параллельный writer не блокируется.
 //
-// Per-object no-leak: если filter != nil и subject не пуст — после repo.Get
-// проверяем, что id входит в accessible-set того же FGA grant-set, что и List
-// (read==enforce). filter == nil / subject == "" → enforce делает per-RPC
-// interceptor (dev / system-principal).
+// # AuthZ
+//
+// Видимость единичного чтения энфорсит per-RPC authz-interceptor ПРЯМЫМ
+// per-object Check'ом (`vpc_security_group:<id>` / relation `v_get`,
+// permission_map), ровно как для Update/UpdateRules/Delete. Deny на СУЩЕСТВУЮЩЕМ
+// объекте interceptor превращает в NotFound (existence-hiding, ErrHideExistence),
+// deny на отсутствующем — в passthrough, и handler отдаёт дословный NotFound из БД.
+// Поэтому use-case никакой собственной authz-проверки не делает и не знает про фильтр.
+//
+// Здесь ранее стоял второй гейт `enforceGetVisible`, который спрашивал
+// «перечисли ВСЕ security group'ы, которые subject'у можно» и искал id в ответе.
+// Он был (а) избыточен — тот же вопрос уже задан interceptor'ом точнее и дешевле,
+// и (б) НЕВЕРЕН: перечисление упирается в жёсткий предел OpenFGA ListObjects
+// (default 1000, без continuation-token'а), поэтому на долгоживущем сторе
+// собственная SG тенанта выпадала за префикс и Get отдавал 404 при существующей
+// строке и существующем гранте. Подробности — package-doc `internal/authzfilter`.
 type GetSecurityGroupUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo Repo
 }
 
-// NewGetSecurityGroupUseCase создает GetSecurityGroupUseCase. filter может быть
-// nil (list-filter disabled / dev) → no-leak enforce пропускается.
-func NewGetSecurityGroupUseCase(r Repo, filter ListFilter) *GetSecurityGroupUseCase {
-	return &GetSecurityGroupUseCase{repo: r, filter: filter}
+// NewGetSecurityGroupUseCase создает GetSecurityGroupUseCase.
+func NewGetSecurityGroupUseCase(r Repo) *GetSecurityGroupUseCase {
+	return &GetSecurityGroupUseCase{repo: r}
 }
 
 // Execute возвращает repo-entity SG. NotFound → mapRepoErr → gRPC NotFound.
-// Per-object no-leak: subject без гранта на SG → NotFound.
-func (u *GetSecurityGroupUseCase) Execute(ctx context.Context, subjectID, id string) (*kacho.SecurityGroupRecord, error) {
+func (u *GetSecurityGroupUseCase) Execute(ctx context.Context, id string) (*kacho.SecurityGroupRecord, error) {
 	if err := corevalidate.ResourceID("security group", ids.PrefixSecurityGroup, id); err != nil {
 		return nil, err
 	}
@@ -70,9 +54,6 @@ func (u *GetSecurityGroupUseCase) Execute(ctx context.Context, subjectID, id str
 	sg, err := rd.SecurityGroups().Get(ctx, id)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
-	}
-	if err := enforceGetVisible(ctx, u.filter, subjectID, id); err != nil {
-		return nil, err
 	}
 	return sg, nil
 }

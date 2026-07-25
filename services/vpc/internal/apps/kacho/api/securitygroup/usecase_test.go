@@ -57,7 +57,7 @@ func makeHandler(
 	updateRules := NewUpdateRulesUseCase(sgr, or, sgReader)
 	updateRule := NewUpdateRuleUseCase(sgr, or, sgReader)
 	deleteUC := NewDeleteSecurityGroupUseCase(sgr, or)
-	get := NewGetSecurityGroupUseCase(sgr, nil)
+	get := NewGetSecurityGroupUseCase(sgr)
 	list := NewListSecurityGroupsUseCase(sgr, nil)
 	listOps := NewListOperationsUseCase(sgr, or)
 	return NewHandler(create, update, updateRules, updateRule, deleteUC, get, list, listOps)
@@ -400,8 +400,8 @@ func TestUpdateRuleUseCase_InvalidArg(t *testing.T) {
 }
 
 func TestGetUseCase_InvalidArg(t *testing.T) {
-	uc := NewGetSecurityGroupUseCase(kachomock.NewRepository(), nil)
-	_, err := uc.Execute(context.Background(), "", "bad-id")
+	uc := NewGetSecurityGroupUseCase(kachomock.NewRepository())
+	_, err := uc.Execute(context.Background(), "bad-id")
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())

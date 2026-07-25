@@ -53,13 +53,13 @@ func NewHandler(
 	}
 }
 
-// Get — sync read + AuthZ + per-object no-leak.
+// Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
+// per-RPC authz-interceptor прямым Check'ом — см. GetRouteTableUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetRouteTableRequest) (*vpcv1.RouteTable, error) {
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	subject := pbconv.SubjectFromContext(ctx)
-	rt, err := h.get.Execute(ctx, subject, req.RouteTableId)
+	rt, err := h.get.Execute(ctx, req.RouteTableId)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateRouteTableRequest
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	rt, err := h.get.Execute(ctx, "", req.RouteTableId)
+	rt, err := h.get.Execute(ctx, req.RouteTableId)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteRouteTableRequest
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	rt, err := h.get.Execute(ctx, "", req.RouteTableId)
+	rt, err := h.get.Execute(ctx, req.RouteTableId)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListRouteTableO
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	if rt, gerr := h.get.Execute(ctx, "", req.RouteTableId); gerr == nil {
+	if rt, gerr := h.get.Execute(ctx, req.RouteTableId); gerr == nil {
 		if err := tenant.AssertProjectOwnership(ctx, rt.ProjectID); err != nil {
 			return nil, err
 		}

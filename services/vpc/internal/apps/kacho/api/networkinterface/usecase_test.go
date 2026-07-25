@@ -50,7 +50,7 @@ func makeHandler(t *testing.T,
 	create := NewCreateNetworkInterfaceUseCase(kr, fc, or)
 	update := NewUpdateNetworkInterfaceUseCase(kr, or)
 	deleteUC := NewDeleteNetworkInterfaceUseCase(kr, or)
-	get := NewGetNetworkInterfaceUseCase(kr, nil)
+	get := NewGetNetworkInterfaceUseCase(kr)
 	list := NewListNetworkInterfacesUseCase(kr, nil)
 	listOps := NewListOperationsUseCase(or)
 	return NewHandler(create, update, deleteUC, get, list, listOps)

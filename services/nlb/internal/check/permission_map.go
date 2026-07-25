@@ -58,9 +58,9 @@ const (
 const (
 	// relationViewer / relationEditor — tier-relations. Сохраняются для Create
 	// (parent-scoped, F-7: NLB/TG на project, Listener на parent LB) и top-level
-	// project-List (visibility per-object идёт через iam ListObjects `viewer ∪
-	// v_list`, не через per-RPC Check). Для object-self CRUD энфорс — verb-bearing
-	// relations ниже.
+	// project-List (visibility per-object идёт через iam BatchCheck на id страницы,
+	// `viewer ∪ v_list`, не через per-RPC Check). Для object-self CRUD энфорс —
+	// verb-bearing relations ниже.
 	relationViewer = "viewer"
 	relationEditor = "editor"
 
@@ -184,8 +184,8 @@ func Catalog() []string {
 //     в этом окне tuple ещё может не быть видим).
 //
 // **List RPCs** помечены `ScopeFiltered: true`:
-// handler сам делает ListObjects-based фильтрацию (200 + filtered/EMPTY если
-// caller не имеет grant'а в project'е). Single per-RPC Check здесь
+// handler сам делает per-object фильтрацию страницы (iam BatchCheck; 200 +
+// filtered/EMPTY если caller не имеет grant'а в project'е). Single per-RPC Check здесь
 // семантически неверен — он бы отверг весь вызов `no path` 403 ДО того, как
 // scope-filter успеет отработать. Extract сохраняется для catalog/tooling
 // parity, но Interceptor его не вызывает.
@@ -282,7 +282,7 @@ func PermissionMap() authz.RPCMap {
 		},
 		"/kacho.cloud.loadbalancer.v1.ListenerService/List": {
 			// project-scoped (parity with NLB/TG List). viewer on the
-			// project; data-level ListObjects still filters by accessible LBs.
+			// project; the handler still filters the page per-object (BatchCheck).
 			Relation:      relationViewer,
 			Permission:    permLstList,
 			ScopeFiltered: true,

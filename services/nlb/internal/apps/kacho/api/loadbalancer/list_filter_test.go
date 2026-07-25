@@ -21,21 +21,17 @@ import (
 
 // RBAC  per-object filtered List — kacho-nlb consumer.
 // Acceptance (docs/specs/rbac-rules-model-2026-acceptance.md):
-//   - byName / global: List отдаёт только доступные объекты (union
-//     армов) — пересечение repo-rows с FGA ListObjects(subject,"...","nlb_*").
+//   - byName / global: List отдаёт только доступные объекты — страница из БД,
+//     суженная per-object проверкой (iam BatchCheck по `nlb_*`, viewer ∪ v_list).
 //   - no-leak: объект вне грантов отсутствует в List И Get→NotFound.
 //   - read==enforce: List-видимость = Check-allow (одна tuple-база, relation viewer).
 //   - fail-closed: IAM недоступен → Unavailable (НЕ нефильтрованный список).
-//
-// Эти тесты ссылаются на ещё-не-существующий internal/authzfilter и на
-// расширенный конструктор NewListLoadBalancersUseCase(repo, filter) →
-// компилятор/прогон падают (RED) до GREEN-реализации под-фазы D.
 
 // fakeListFilter — in-memory authzfilter.Filter для unit-тестов.
 //
-//   - bypass=true → Decision{BypassAll:true} (admin / nil-filter / wildcard-grant).
+//   - bypass=true → страница отдаётся как есть (list-filter disabled / wildcard).
 //   - err!=nil    → возвращается как есть (fail-closed Unavailable у use-case).
-//   - allowed     → per (resourceType) explicit allow-list; nil-map → пусто.
+//   - allowed     → per (resourceType) explicit allow-list; nil-map → ничего не видно.
 type fakeListFilter struct {
 	bypass  bool
 	err     error
@@ -43,21 +39,32 @@ type fakeListFilter struct {
 	gotSubj string
 	gotType string
 	gotAct  string
+	gotIDs  []string
 }
 
-func (f *fakeListFilter) ListAllowedIDs(_ context.Context, subject, resourceType, action string) (authzfilter.Decision, error) {
-	f.gotSubj, f.gotType, f.gotAct = subject, resourceType, action
+// Compile-time guard: the fake must implement the real port — a drift in the
+// filter's signature must break here, not silently skip the authz layer.
+var _ authzfilter.Filter = (*fakeListFilter)(nil)
+
+func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
+	f.gotSubj, f.gotType, f.gotAct, f.gotIDs = subject, resourceType, action, ids
 	if f.err != nil {
-		return authzfilter.Decision{}, f.err
+		return nil, f.err
 	}
 	if f.bypass {
-		return authzfilter.Decision{BypassAll: true}, nil
+		return ids, nil
 	}
-	ids := f.allowed[resourceType]
-	if len(ids) == 0 {
-		return authzfilter.Decision{Empty: true}, nil
+	allowed := make(map[string]struct{}, len(f.allowed[resourceType]))
+	for _, id := range f.allowed[resourceType] {
+		allowed[id] = struct{}{}
 	}
-	return authzfilter.Decision{AllowedIDs: ids}, nil
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // ctxWithUser возвращает ctx с user-principal (FGA subject "user:<id>").
@@ -110,7 +117,7 @@ func TestListLoadBalancersFilter_EmptyGrantEmptyList(t *testing.T) {
 	assert.Empty(t, resp.GetNextPageToken())
 }
 
-// fail-closed: IAM ListObjects error → Unavailable (НЕ нефильтрованный список).
+// fail-closed: IAM BatchCheck error → Unavailable (НЕ нефильтрованный список).
 func TestListLoadBalancersFilter_FailClosed(t *testing.T) {
 	repo := newFakeRepo()
 	seedLB(t, repo, "prj-a", "lb-a1")
@@ -170,6 +177,8 @@ func TestListLoadBalancersFilter_SystemSubjectNoLeak(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, resp.GetNetworkLoadBalancers(),
 		"principal-less caller must not enumerate the project's load balancers")
+	assert.Empty(t, flt.gotSubj,
+		"the empty subject must reach the filter (which fails closed), not be swapped for a bypass")
 }
 
 // errFromFilter — guard: фильтр возвращает не-status ошибку → всё равно Unavailable.

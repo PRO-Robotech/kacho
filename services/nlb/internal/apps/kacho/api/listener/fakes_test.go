@@ -290,17 +290,6 @@ func (r *fakeListenerReader) Get(_ context.Context, id string) (*kachorepo.Liste
 func (r *fakeListenerReader) List(_ context.Context, f kachorepo.ListenerFilter, p kachorepo.Pagination) ([]*kachorepo.ListenerRecord, string, error) {
 	r.r.mu.Lock()
 	defer r.r.mu.Unlock()
-	// RBAC: per-object FGA allow-set push-down (parity с pg repo).
-	var allowed map[string]struct{}
-	if f.AllowedIDs != nil {
-		if len(f.AllowedIDs) == 0 {
-			return nil, "", nil
-		}
-		allowed = make(map[string]struct{}, len(f.AllowedIDs))
-		for _, id := range f.AllowedIDs {
-			allowed[id] = struct{}{}
-		}
-	}
 	var out []*kachorepo.ListenerRecord
 	for _, l := range r.r.listeners {
 		if f.LoadBalancerID != "" && string(l.LoadBalancerID) != f.LoadBalancerID {
@@ -311,11 +300,6 @@ func (r *fakeListenerReader) List(_ context.Context, f kachorepo.ListenerFilter,
 		}
 		if f.Name != "" && string(l.Name) != f.Name {
 			continue
-		}
-		if allowed != nil {
-			if _, ok := allowed[string(l.ID)]; !ok {
-				continue
-			}
 		}
 		c := *l
 		out = append(out, &c)

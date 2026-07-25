@@ -406,10 +406,10 @@ CASES.append(Case(
              ]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        # Read-your-writes: первый доступ через add-rule (PATCH) гейтится object-authz
-        # Check, а этот GET — list-authz (enforceGetVisible/ListAllowedIDs), у которого
-        # свой grant-set с независимой материализацией owner-tuple → без ретрая ловит
-        # устойчивый 404. Оборачиваем как первый list-authz-доступ свежего SG.
+        # Read-your-writes: и add-rule (PATCH), и этот GET гейтятся одним и тем же
+        # per-object authz-Check в interceptor'е, но owner-tuple свежего SG
+        # материализуется eventually-consistent → первый доступ может поймать 403/404.
+        # Оборачиваем ретраем как первый read-доступ к свежему SG.
         retry_until_authorized(Step(name="get-sg-rule-id", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
                           *save_from_response("(j.rules && j.rules[0] && j.rules[0].id) || ''", "ruleId")])),
@@ -1015,8 +1015,8 @@ CASES.append(Case(
         Step(name="assert-op-ok", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('same-network updateRules op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        # Read-your-writes: update-rules-same (первый доступ) гейтится object-authz;
-        # этот GET — первый list-authz-доступ свежего SG → оборачиваем ретраем.
+        # Read-your-writes: owner-tuple свежего SG материализуется
+        # eventually-consistent → оборачиваем первый read-доступ ретраем.
         retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
                           "const rules = pm.response.json().rules || [];",

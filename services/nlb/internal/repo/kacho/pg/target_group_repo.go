@@ -161,15 +161,6 @@ func (r *targetGroupReader) List(ctx context.Context, f kacho.TargetGroupFilter,
 		args = append(args, f.Name)
 		argIdx++
 	}
-	// RBAC: per-object FGA filter push-down (см. load_balancer_repo.go).
-	if f.AllowedIDs != nil {
-		if len(f.AllowedIDs) == 0 {
-			return nil, "", nil
-		}
-		conditions = append(conditions, fmt.Sprintf("id = ANY($%d::text[])", argIdx))
-		args = append(args, f.AllowedIDs)
-		argIdx++
-	}
 	if p.PageToken != "" {
 		cur, err := decodePageToken(p.PageToken)
 		if err != nil {

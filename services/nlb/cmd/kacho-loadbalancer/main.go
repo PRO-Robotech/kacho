@@ -85,7 +85,7 @@ type peerClients struct {
 	// SecurityGroup — NLB-1b MIGRATE peer-validate of LB security_group_ids.
 	SecurityGroup vpcclient.SecurityGroupClient
 	// ListFilter — per-object filtered List (RBAC; iam
-	// AuthorizeService.ListObjects). nil → use-case'ы делают unfiltered passthrough.
+	// AuthorizeService.BatchCheck). nil → use-case'ы делают unfiltered passthrough.
 	ListFilter authzfilter.Filter
 }
 
@@ -641,11 +641,14 @@ func dialPeers(
 		"authz_server_name", cfg.MTLS.IAMRegister.ServerName)
 
 	// RBAC (issue): per-object filtered List. Каждый публичный
-	// List<Resource> прогоняет id-set через iam.AuthorizeService.ListObjects(subject,
-	// action, "nlb_*") и отдаёт пересечение (только доступные объекты), read==enforce
-	// (relation viewer — та же, что per-RPC Check на Get), fail-closed. nil →
-	// use-case'ы получают unfiltered passthrough (disabled / нет iam conn).
-	// AuthorizeService.ListObjects теперь зарегистрирован и на iam INTERNAL listener
+	// List<Resource> читает СТРАНИЦУ из своей БД и спрашивает
+	// iam.AuthorizeService.BatchCheck (viewer ∪ v_list) про id ЭТОЙ страницы,
+	// оставляя только доступные объекты; read==enforce (та же relation, что per-RPC
+	// Check на Get), fail-closed. nil → use-case'ы получают unfiltered passthrough
+	// (disabled / нет iam conn). Перечисления «все разрешённые id» больше нет — оно
+	// упиралось в жёсткий предел OpenFGA ListObjects (1000 на тип в сторе) и молча
+	// прятало собственные ресурсы тенанта (см. internal/authzfilter package-doc).
+	// AuthorizeService зарегистрирован и на iam INTERNAL listener
 	// (9091) — service→service per-object list-filter ходит по тому же mTLS-edge, что
 	// InternalIAMService.Check (reuse iamInternalConn; mTLS — mtls.iam-register). :9091
 	// энфорсит CallerPolicy (verified module-cert), аноним fail-closed — authN+authZ на
@@ -719,7 +722,7 @@ func closeAll(conns []clients.Conn, logger *slog.Logger) {
 // buildListFilter собирает per-object List-filter (RBAC).
 // Возвращает nil (→ use-case'ы делают unfiltered project-scoped
 // passthrough), если list-filter выключен в конфиге ИЛИ iam conn недоступен
-// (graceful start без iam). Иначе — FGAFilter поверх iam.AuthorizeService.ListObjects
+// (graceful start без iam). Иначе — FGAFilter поверх iam.AuthorizeService.BatchCheck
 // (conn — iamPublicConn, тот же, которым nlb зовёт ProjectService.Get; mTLS — через
 // mtls.iam-project). read==enforce (relation viewer), fail-closed (FailOpen=false).
 func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logger) authzfilter.Filter {

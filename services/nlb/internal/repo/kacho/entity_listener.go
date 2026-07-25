@@ -27,12 +27,10 @@ type ListenerRecord struct {
 //
 // LoadBalancerID — partition по родительскому LB; используется в ListByLB.
 // ProjectID — FGA scoping. Name — точное совпадение.
+// Per-object RBAC-видимость решается на СТРАНИЦЕ (см. LoadBalancerFilter).
 type ListenerFilter struct {
 	ProjectID      string
 	LoadBalancerID string
 	Name           string
 	Filter         string
-	// AllowedIDs — per-object FGA allow-set (RBAC; iam ListObjects).
-	// nil → bypass; len==0 → пусто (no-leak); len>0 → `WHERE id = ANY` ДО LIMIT.
-	AllowedIDs []string
 }

@@ -7,7 +7,7 @@
 #
 # Refuses to ship a public `List<Resource>` use-case that returns rows without
 # consulting `authzfilter.Filter` (the canonical per-object RBAC list-filter port
-# wrapped around kacho-iam AuthorizeService.ListObjects). Per §11 / security.md,
+# wrapped around kacho-iam AuthorizeService.BatchCheck). Per §11 / security.md,
 # every public List<Resource> RPC must filter results per-object (read==enforce,
 # fail-closed, no-leak).
 #
@@ -16,7 +16,7 @@
 # use-case file (<res>/list.go), not a separate handler dir. Heuristic:
 #   1. Collect every internal/apps/kacho/api/<res>/list.go.
 #   2. For each, require BOTH `authzfilter.Filter` (field on the use-case) AND
-#      `authzfilter.Resolve(` (the per-object filter call).
+#      `authzfilter.FilterVisiblePage(` (the per-page per-object filter call).
 #   3. If either token is missing, print the candidate path and exit 1.
 #
 # Override:
@@ -48,7 +48,7 @@ for file in "$ROOT"/*/list.go; do
   [[ -e "$file" ]] || continue
   res=$(basename "$(dirname "$file")")
   is_whitelisted "$res" && continue
-  if grep -q 'authzfilter\.Filter' "$file" && grep -q 'authzfilter\.Resolve(' "$file"; then
+  if grep -q 'authzfilter\.Filter' "$file" && grep -q 'authzfilter\.FilterVisiblePage(' "$file"; then
     continue
   fi
   echo "audit-list-filter: $res — List use-case missing authzfilter wiring"
@@ -60,7 +60,7 @@ if [[ $FAIL -ne 0 ]]; then
   echo
   echo "RBAC sub-phase D §11 (issue #111) requires every public List<Resource>"
   echo "RPC to filter results per-object through authzfilter.Filter"
-  echo "(kacho-iam AuthorizeService.ListObjects backend, relation viewer)."
+  echo "(kacho-iam AuthorizeService.BatchCheck backend, relations viewer ∪ v_list)."
   echo "Whitelist the resource (admin-only / catalog) with --allow=<res>"
   echo "if the bypass is intentional."
   exit 1

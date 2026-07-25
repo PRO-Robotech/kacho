@@ -55,13 +55,13 @@ func NewHandler(
 	}
 }
 
-// Get — sync read + AuthZ + per-object no-leak.
+// Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
+// per-RPC authz-interceptor прямым Check'ом — см. GetGatewayUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetGatewayRequest) (*vpcv1.Gateway, error) {
 	if req.GatewayId == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
-	subject := pbconv.SubjectFromContext(ctx)
-	g, err := h.get.Execute(ctx, subject, req.GatewayId)
+	g, err := h.get.Execute(ctx, req.GatewayId)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateGatewayRequest) (
 	if req.GatewayId == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
-	g, err := h.get.Execute(ctx, "", req.GatewayId)
+	g, err := h.get.Execute(ctx, req.GatewayId)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +163,7 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteGatewayRequest) (
 	if req.GatewayId == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
-	g, err := h.get.Execute(ctx, "", req.GatewayId)
+	g, err := h.get.Execute(ctx, req.GatewayId)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListGatewayOper
 	if req.GatewayId == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
-	if g, gerr := h.get.Execute(ctx, "", req.GatewayId); gerr == nil {
+	if g, gerr := h.get.Execute(ctx, req.GatewayId); gerr == nil {
 		if err := tenant.AssertProjectOwnership(ctx, g.ProjectID); err != nil {
 			return nil, err
 		}

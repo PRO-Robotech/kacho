@@ -25,34 +25,36 @@ type Pagination struct {
 }
 
 // DiskFilter — фильтр для списка дисков.
+//
+// Здесь НЕТ authz-измерения (прежнего `AllowedIDs`): видимость решается
+// per-object ПОСЛЕ чтения страницы (`handler.filterVisible` →
+// iam.AuthorizeService.BatchCheck), а не сужением SQL до заранее перечисленного
+// allow-list'а. Перечисление упиралось в жёсткий предел OpenFGA ListObjects
+// (1000, без continuation-token'а) и делало собственные ресурсы тенанта
+// невидимыми — см. package-doc `internal/authzfilter`. Тот же комментарий
+// относится к Image/Snapshot/Instance-фильтрам ниже.
 type DiskFilter struct {
 	ProjectID string
 	// Filter — raw filter expression (синтаксис Kachō: `name="<value>"`).
 	Filter string
-	// AllowedIDs — если non-nil, ограничивает выборку этим id-множеством
-	// (FGA-фильтр). nil = без фильтра (bypass).
-	AllowedIDs []string
 }
 
 // ImageFilter — фильтр для списка образов.
 type ImageFilter struct {
-	ProjectID  string
-	Filter     string
-	AllowedIDs []string
+	ProjectID string
+	Filter    string
 }
 
 // SnapshotFilter — фильтр для списка снапшотов.
 type SnapshotFilter struct {
-	ProjectID  string
-	Filter     string
-	AllowedIDs []string
+	ProjectID string
+	Filter    string
 }
 
 // InstanceFilter — фильтр для списка ВМ.
 type InstanceFilter struct {
-	ProjectID  string
-	Filter     string
-	AllowedIDs []string
+	ProjectID string
+	Filter    string
 }
 
 // OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kacho-iam
@@ -158,8 +160,9 @@ type InstanceRepo interface {
 }
 
 // MachineTypeFilter — фильтр для списка machine-type (COMP-1 F7/F19). Ambient
-// cluster-scoped каталог: НЕТ AllowedIDs (listauthz row-filter не применяется —
-// read ambient, project-scope EXEMPT). Whitelist: name=/family=/minGpus=.
+// cluster-scoped каталог: per-object list-authz к нему не применяется вовсе
+// (read ambient, project-scope EXEMPT) — handler передаёт nil-фильтр, в отличие от
+// Disk/Image/Snapshot/Instance. Whitelist: name=/family=/minGpus=.
 type MachineTypeFilter struct {
 	// Name — точное имя (напр. "std-v3-2"). Пусто → без фильтра.
 	Name string
@@ -170,7 +173,7 @@ type MachineTypeFilter struct {
 }
 
 // MachineTypeRepo — port-интерфейс каталога machine-type (read + admin CRUD).
-// Ambient cluster-каталог: List без AllowedIDs. Insert/Update/Delete — admin-only
+// Ambient cluster-каталог: List не фильтруется per-object. Insert/Update/Delete — admin-only
 // (InternalMachineTypeService). Update принимает merged domain-объект (full-row
 // upsert, паритет с DiskType admin-каталогом — admin-only, low-concurrency).
 type MachineTypeRepo interface {

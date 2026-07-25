@@ -19,7 +19,7 @@ import (
 // ошибок ролевок, что вскрыл anycast pool.
 
 // nlbTopProjectListRPCs — top-level project-scoped List. Их handler фильтрует
-// результат через iam ListObjects (per-object viewer ∪ v_list), поэтому per-RPC
+// страницу через iam BatchCheck (per-object viewer ∪ v_list), поэтому per-RPC
 // Check ДОЛЖЕН пропускаться (ScopeFiltered) И на service-, И на gateway-стороне
 // (там — <exempt>). Несогласованность (ScopeFiltered, но gateway call-gate'ит)
 // отклоняет legit viewer'а без отдельного v_list-tuple 403.
@@ -31,7 +31,7 @@ var nlbTopProjectListRPCs = []string{
 
 // TestInvariant_TopProjectList_ScopeFiltered — каждый top-level project-List
 // помечен ScopeFiltered: interceptor пропускает per-RPC Check, handler фильтрует
-// через ListObjects. Это service-парный инвариант к gateway <exempt>: без него
+// страницу per-object. Это service-парный инвариант к gateway <exempt>: без него
 // (или с tier-Check'ом) viewer без v_list-tuple отклоняется до scope-filter'а.
 func TestInvariant_TopProjectList_ScopeFiltered(t *testing.T) {
 	m := check.PermissionMap()
@@ -39,9 +39,9 @@ func TestInvariant_TopProjectList_ScopeFiltered(t *testing.T) {
 		e, ok := m.Lookup(rpc)
 		require.Truef(t, ok, "%s must be mapped", rpc)
 		assert.Truef(t, e.ScopeFiltered,
-			"%s: top-level project List must be ScopeFiltered (handler filters via ListObjects); "+
+			"%s: top-level project List must be ScopeFiltered (handler filters the page per-object); "+
 				"otherwise a viewer without an explicit v_list tuple is rejected before the filter runs", rpc)
-		assert.Equalf(t, "viewer", e.Relation, "%s: top-List stays tier viewer (visibility via ListObjects union)", rpc)
+		assert.Equalf(t, "viewer", e.Relation, "%s: top-List stays tier viewer (visibility via the per-object viewer ∪ v_list union)", rpc)
 	}
 }
 

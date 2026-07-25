@@ -87,8 +87,8 @@ func TestNetwork_SupernetCap_Add_PostMergeOverflowRejected(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("too many CIDR blocks (max %d)", domain.MaxNetworkCidrBlocks), st.Message())
 
 	// Состояние сети не изменилось — отказ атомарен (writer-TX abort).
-	get := NewGetNetworkUseCase(kr, nil)
-	got, gerr := get.Execute(context.Background(), "", netID)
+	get := NewGetNetworkUseCase(kr)
+	got, gerr := get.Execute(context.Background(), netID)
 	require.NoError(t, gerr)
 	assert.Len(t, got.IPv4CidrBlocks, half, "отвергнутый merge не должен частично примениться")
 }

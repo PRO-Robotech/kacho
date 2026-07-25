@@ -18,34 +18,52 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
 
-// Тесты per-object фильтрации List + no-leak Get для GatewayService: List
-// возвращает ТОЛЬКО авторизованные subject'у gateway'и (relation viewer / FGA
-// type vpc_gateway), read==enforce, fail-closed при недоступности iam, wildcard
-// scope_grant → all-in-scope, пустой grant → пустой результат (no-leak).
+// Per-page фильтрованный List для GatewayService: возвращаем ТОЛЬКО
+// авторизованные subject'у gateway'и (viewer ∪ v_list, FGA-тип
+// vpc_gateway), read==enforce, fail-closed при недоступном iam, пустой grant
+// → пусто (no-leak).
+//
+// Единичный Get здесь НЕ тестируется: его видимость энфорсит per-RPC
+// authz-interceptor прямым per-object Check'ом (existence-hiding на deny), а не
+// use-case — см. GetGatewayUseCase и pkg/authz/interceptor_test.go.
 
-// fakeListFilter — in-memory ListFilter для unit-тестов: запоминает
-// (subject, resourceType, action), с которыми его вызвали, и возвращает
-// сконфигурированное решение.
+// fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает аргументы, с
+// которыми его позвали, и отвечает из заранее заданного видимого набора.
 type fakeListFilter struct {
-	allowed []string
-	bypass  bool
-	err     error
+	allowed  []string
+	allowAll bool
+	err      error
 
 	gotSubject      string
 	gotResourceType string
 	gotAction       string
+	gotIDs          []string
 	calls           int
 }
 
-func (f *fakeListFilter) ListAllowedIDs(_ context.Context, subject, resourceType, action string) ([]string, bool, error) {
+func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
 	f.calls++
 	f.gotSubject = subject
 	f.gotResourceType = resourceType
 	f.gotAction = action
+	f.gotIDs = append([]string(nil), ids...)
 	if f.err != nil {
-		return nil, false, f.err
+		return nil, f.err
 	}
-	return f.allowed, f.bypass, nil
+	if f.allowAll {
+		return ids, nil
+	}
+	set := make(map[string]bool, len(f.allowed))
+	for _, a := range f.allowed {
+		set[a] = true
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if set[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // seedGatewaysLabeled вставляет в проект gateway'и с указанными id.
@@ -71,9 +89,9 @@ func seedGatewaysLabeled(t *testing.T, kr *kachomock.Repository, projectID strin
 // List возвращает ровно per-object разрешенный набор.
 func TestGatewayListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_aaa", "gtw_bbb", "gtw_ccc")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_aaa", "gw_bbb", "gw_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"gtw_aaa", "gtw_bbb"}}
+	filter := &fakeListFilter{allowed: []string{"gw_aaa", "gw_bbb"}}
 	uc := NewListGatewaysUseCase(kr, filter)
 
 	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
@@ -83,35 +101,37 @@ func TestGatewayListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	for _, g := range gws {
 		got[g.ID] = true
 	}
-	assert.True(t, got["gtw_aaa"])
-	assert.True(t, got["gtw_bbb"])
-	assert.False(t, got["gtw_ccc"], "gtw_ccc not in the allowed set → must not appear")
+	assert.True(t, got["gw_aaa"])
+	assert.True(t, got["gw_bbb"])
+	assert.False(t, got["gw_ccc"], "gw_ccc not in the allowed set → must not appear")
 
-	// read==enforce: filter вызывается с read-verb, смапленным на viewer
-	// (action vpc.gateways.list, FGA type vpc_gateway).
+	// read==enforce: фильтр зовется с read-verb (action vpc.gateways.list,
+	// FGA-тип vpc_gateway) и получает РОВНО идентификаторы страницы.
 	assert.Equal(t, "user:usr_alice", filter.gotSubject)
 	assert.Equal(t, "vpc_gateway", filter.gotResourceType)
 	assert.Equal(t, "vpc.gateways.list", filter.gotAction)
+	assert.ElementsMatch(t, []string{"gw_aaa", "gw_bbb", "gw_ccc"}, filter.gotIDs,
+		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
 // no-leak: объект вне всех grant'ов отсутствует в List.
 func TestGatewayListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_visible", "gtw_secret")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_visible", "gw_secret")
 
-	filter := &fakeListFilter{allowed: []string{"gtw_visible"}}
+	filter := &fakeListFilter{allowed: []string{"gw_visible"}}
 	uc := NewListGatewaysUseCase(kr, filter)
 
 	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, gws, 1)
-	assert.Equal(t, "gtw_visible", gws[0].ID)
+	assert.Equal(t, "gw_visible", gws[0].ID)
 }
 
-// empty grant: subject без grant'а → пустой список (НЕ нефильтрованный).
+// Пустой grant: subject без grant'а → пустой список (НЕ нефильтрованный).
 func TestGatewayListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_a", "gtw_b")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b")
 
 	filter := &fakeListFilter{allowed: nil}
 	uc := NewListGatewaysUseCase(kr, filter)
@@ -122,13 +142,12 @@ func TestGatewayListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	assert.Empty(t, next)
 }
 
-// global / wildcard: scope_grant на весь scope → all-in-scope. Filter возвращает
-// bypass=true; use-case отдает все строки в пределах project-scope.
-func TestGatewayListPerObject_WildcardBypassReturnsAll(t *testing.T) {
+// Полный grant (subject видит всё в скоупе) → отдаются все строки страницы.
+func TestGatewayListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_a", "gtw_b", "gtw_c")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b", "gw_c")
 
-	filter := &fakeListFilter{bypass: true}
+	filter := &fakeListFilter{allowAll: true}
 	uc := NewListGatewaysUseCase(kr, filter)
 
 	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
@@ -136,11 +155,10 @@ func TestGatewayListPerObject_WildcardBypassReturnsAll(t *testing.T) {
 	assert.Len(t, gws, 3)
 }
 
-// fail-closed: iam недоступен → Unavailable (НЕ нефильтрованный список и НЕ молча
-// пустой).
+// fail-closed: iam недоступен → Unavailable (НЕ нефильтрованный, НЕ молча пустой).
 func TestGatewayListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_a")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_a")
 
 	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
 	uc := NewListGatewaysUseCase(kr, filter)
@@ -152,10 +170,10 @@ func TestGatewayListPerObject_FailClosedUnavailable(t *testing.T) {
 }
 
 // fail-closed (plain error): не-status ошибка тоже маппится в non-OK код, никогда
-// не проходит молча нефильтрованной.
+// не проходит молча как нефильтрованная.
 func TestGatewayListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_a")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_a")
 
 	filter := &fakeListFilter{err: errors.New("boom")}
 	uc := NewListGatewaysUseCase(kr, filter)
@@ -166,10 +184,10 @@ func TestGatewayListPerObject_FailClosedPlainError(t *testing.T) {
 	assert.NotEqual(t, codes.OK, st.Code())
 }
 
-// nil filter → нефильтрованный passthrough (list-filter выключен).
+// nil-фильтр → нефильтрованный passthrough (list-filter выключен).
 func TestGatewayListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_a", "gtw_b")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b")
 
 	uc := NewListGatewaysUseCase(kr, nil)
 	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
@@ -177,24 +195,24 @@ func TestGatewayListPerObject_NilFilterPassthrough(t *testing.T) {
 	assert.Len(t, gws, 2)
 }
 
-// empty subject (system principal) → нефильтрованный passthrough (без FGA-вызова).
+// явный system principal → нефильтрованный passthrough (без вызова FGA).
 func TestGatewayListPerObject_SystemSubjectPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_a", "gtw_b")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b")
 
-	filter := &fakeListFilter{allowed: []string{"gtw_a"}}
+	filter := &fakeListFilter{allowed: []string{"gw_a"}}
 	uc := NewListGatewaysUseCase(kr, filter)
 
 	gws, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, gws, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no FGA ListObjects call")
+	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
-// project_id по-прежнему обязателен (контракт неизменен).
+// project_id по-прежнему обязателен (контракт не меняется).
 func TestGatewayListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListGatewaysUseCase(kr, &fakeListFilter{bypass: true})
+	uc := NewListGatewaysUseCase(kr, &fakeListFilter{allowAll: true})
 
 	_, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{}, Pagination{})
 	require.Error(t, err)
@@ -202,81 +220,14 @@ func TestGatewayListPerObject_ProjectIDRequired(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 }
 
-// no-leak Get: subject без grant'а на существующий gateway → NotFound (НЕ
-// PermissionDenied), с тем же текстом, что и для несуществующего gateway.
-func TestGatewayGetPerObject_NoLeakNotFound(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_hidden")
-
-	// subject'у выдан grant на другой gateway, НЕ на gtw_hidden.
-	filter := &fakeListFilter{allowed: []string{"gtw_other"}}
-	uc := NewGetGatewayUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "gtw_hidden")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.NotFound, st.Code(), "ungranted existing gateway → NotFound, not PermissionDenied")
-	assert.Contains(t, st.Message(), "not found")
-}
-
-// read==enforce: subject'у выдан gateway → Get его возвращает.
-func TestGatewayGetPerObject_GrantedReturnsResource(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_visible")
-
-	filter := &fakeListFilter{allowed: []string{"gtw_visible"}}
-	uc := NewGetGatewayUseCase(kr, filter)
-
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "gtw_visible")
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, "gtw_visible", got.ID)
-}
-
-// wildcard bypass → Get возвращает ресурс даже без явного per-id grant'а.
-func TestGatewayGetPerObject_WildcardBypass(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_any")
-
-	uc := NewGetGatewayUseCase(kr, &fakeListFilter{bypass: true})
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "gtw_any")
-	require.NoError(t, err)
-	assert.Equal(t, "gtw_any", got.ID)
-}
-
-// fail-closed: ошибка iam при enforce в Get → Unavailable, а не ресурс.
-func TestGatewayGetPerObject_FailClosed(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_x")
-
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
-	uc := NewGetGatewayUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "gtw_x")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.Unavailable, st.Code())
-}
-
-// nil filter / empty subject → без enforce (authz делает interceptor).
-func TestGatewayGetPerObject_NilFilterPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_y")
-
-	uc := NewGetGatewayUseCase(kr, nil)
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "gtw_y")
-	require.NoError(t, err)
-	assert.Equal(t, "gtw_y", got.ID)
-}
-
 // No-leak (defense-in-depth): пустой subject (principal не извлечен — anon /
 // gateway не проставил identity) при ВКЛЮЧЕННОМ фильтре → fail-closed (пустой
 // список), НЕ unfiltered passthrough. «Не знаю, кто ты» != «доверенный system».
 func TestGatewayListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedGatewaysLabeled(t, kr, "prj_1", "gtw_a", "gtw_b")
+	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b")
 
-	filter := &fakeListFilter{allowed: []string{"gws_unused"}}
+	filter := &fakeListFilter{allowed: []string{"unused_id"}}
 	uc := NewListGatewaysUseCase(kr, filter)
 
 	gws, _, err := uc.Execute(context.Background(), "", GatewayFilter{ProjectID: "prj_1"}, Pagination{})

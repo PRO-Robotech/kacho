@@ -18,44 +18,52 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
 
-// Per-object filtered List.
+// Per-page фильтрованный List для SubnetService: возвращаем ТОЛЬКО
+// авторизованные subject'у подсети (viewer ∪ v_list, FGA-тип
+// vpc_subnet), read==enforce, fail-closed при недоступном iam, пустой grant
+// → пусто (no-leak).
 //
-// SubnetService.List обязан вернуть ТОЛЬКО те подсети, которые caller-subject
-// вправе видеть (per-object FGA ListObjects поверх материализованных tuples +
-// scope_grant), а не project-level решение «все или ничего». read==enforce parity:
-// видимый набор == Check-allow набор; fail-closed, если iam недоступен; pagination
-// применяется ПОСЛЕ фильтра.
-//
-// Тесты гоняют per-object port `ListFilter`. Use-case зовет ListAllowedIDs с FGA
-// resource_type (vpc_subnet) и action-verb (vpc.subnets.list → viewer), затем
-// сужает SQL через repo.ListByIDs (WHERE id = ANY).
+// Единичный Get здесь НЕ тестируется: его видимость энфорсит per-RPC
+// authz-interceptor прямым per-object Check'ом (existence-hiding на deny), а не
+// use-case — см. GetSubnetUseCase и pkg/authz/interceptor_test.go.
 
-// fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает, с какими
-// (subject, resourceType, action) его вызвали, и возвращает настраиваемое решение.
+// fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает аргументы, с
+// которыми его позвали, и отвечает из заранее заданного видимого набора.
 type fakeListFilter struct {
-	allowed []string
-	bypass  bool
-	err     error
+	allowed  []string
+	allowAll bool
+	err      error
 
 	gotSubject      string
 	gotResourceType string
 	gotAction       string
+	gotIDs          []string
 	calls           int
 }
 
-func (f *fakeListFilter) ListAllowedIDs(_ context.Context, subject, resourceType, action string) ([]string, bool, error) {
+func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
 	f.calls++
 	f.gotSubject = subject
 	f.gotResourceType = resourceType
 	f.gotAction = action
+	f.gotIDs = append([]string(nil), ids...)
 	if f.err != nil {
-		return nil, false, f.err
+		return nil, f.err
 	}
-	return f.allowed, f.bypass, nil
-}
-
-func makeSubnetPerObjectUC(kr *kachomock.Repository, filter ListFilter) *ListSubnetsUseCase {
-	return NewListSubnetsUseCase(kr, filter)
+	if f.allowAll {
+		return ids, nil
+	}
+	set := make(map[string]bool, len(f.allowed))
+	for _, a := range f.allowed {
+		set[a] = true
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if set[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // seedSubnetsLabeled вставляет подсети с заданными id в project/network.
@@ -73,14 +81,13 @@ func seedSubnetsLabeled(t *testing.T, kr *kachomock.Repository, projectID, netwo
 	require.NoError(t, w.Commit())
 }
 
-// List возвращает ровно per-object allowed-набор (объединение веток разрешается
-// внутри FGA ListObjects; use-case лишь пересекает его со строками проекта).
+// List возвращает ровно per-object разрешенный набор.
 func TestSubnetListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_aaa", "e9b_bbb", "e9b_ccc")
 
 	filter := &fakeListFilter{allowed: []string{"e9b_aaa", "e9b_bbb"}}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	subs, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
@@ -93,20 +100,22 @@ func TestSubnetListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	assert.True(t, got["e9b_bbb"])
 	assert.False(t, got["e9b_ccc"], "e9b_ccc not in the allowed set → must not appear")
 
-	// read==enforce: фильтр вызывается с read-verb, смапленным на viewer
-	// (action vpc.subnets.list, FGA-тип vpc_subnet).
+	// read==enforce: фильтр зовется с read-verb (action vpc.subnets.list,
+	// FGA-тип vpc_subnet) и получает РОВНО идентификаторы страницы.
 	assert.Equal(t, "user:usr_alice", filter.gotSubject)
 	assert.Equal(t, "vpc_subnet", filter.gotResourceType)
 	assert.Equal(t, "vpc.subnets.list", filter.gotAction)
+	assert.ElementsMatch(t, []string{"e9b_aaa", "e9b_bbb", "e9b_ccc"}, filter.gotIDs,
+		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
-// no-leak: объект вне всех грантов отсутствует в List.
+// no-leak: объект вне всех grant'ов отсутствует в List.
 func TestSubnetListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_visible", "e9b_secret")
 
 	filter := &fakeListFilter{allowed: []string{"e9b_visible"}}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	subs, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
@@ -114,13 +123,13 @@ func TestSubnetListPerObject_NoLeak(t *testing.T) {
 	assert.Equal(t, "e9b_visible", subs[0].ID)
 }
 
-// empty grant: subject без гранта → пустой list (НЕ unfiltered).
+// Пустой grant: subject без grant'а → пустой список (НЕ нефильтрованный).
 func TestSubnetListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b")
 
 	filter := &fakeListFilter{allowed: nil}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	subs, next, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
@@ -128,27 +137,26 @@ func TestSubnetListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	assert.Empty(t, next)
 }
 
-// wildcard scope_grant → all-in-scope: фильтр возвращает bypass=true, use-case
-// отдает все project-scoped строки.
-func TestSubnetListPerObject_WildcardBypassReturnsAll(t *testing.T) {
+// Полный grant (subject видит всё в скоупе) → отдаются все строки страницы.
+func TestSubnetListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b", "e9b_c")
 
-	filter := &fakeListFilter{bypass: true}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	filter := &fakeListFilter{allowAll: true}
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	subs, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, subs, 3)
 }
 
-// fail-closed: iam недоступен → Unavailable (НЕ unfiltered, НЕ молча пусто).
+// fail-closed: iam недоступен → Unavailable (НЕ нефильтрованный, НЕ молча пустой).
 func TestSubnetListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a")
 
 	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
@@ -157,13 +165,13 @@ func TestSubnetListPerObject_FailClosedUnavailable(t *testing.T) {
 }
 
 // fail-closed (plain error): не-status ошибка тоже маппится в non-OK код, никогда
-// не проходит молча как unfiltered.
+// не проходит молча как нефильтрованная.
 func TestSubnetListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a")
 
 	filter := &fakeListFilter{err: errors.New("boom")}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
@@ -171,7 +179,7 @@ func TestSubnetListPerObject_FailClosedPlainError(t *testing.T) {
 	assert.NotEqual(t, codes.OK, st.Code())
 }
 
-// nil filter → unfiltered passthrough (dev / list-filter отключен).
+// nil-фильтр → нефильтрованный passthrough (list-filter выключен).
 func TestSubnetListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b")
@@ -182,91 +190,24 @@ func TestSubnetListPerObject_NilFilterPassthrough(t *testing.T) {
 	assert.Len(t, subs, 2)
 }
 
-// empty subject (system principal) → unfiltered passthrough (без вызова FGA).
+// явный system principal → нефильтрованный passthrough (без вызова FGA).
 func TestSubnetListPerObject_SystemSubjectPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b")
 
 	filter := &fakeListFilter{allowed: []string{"e9b_a"}}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	subs, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, subs, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no FGA ListObjects call")
-}
-
-// no-leak Get: subject без гранта на существующую подсеть → NotFound (НЕ
-// PermissionDenied), тот же текст, что и для несуществующей подсети.
-func TestSubnetGetPerObject_NoLeakNotFound(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_hidden")
-
-	// subject'у выдан грант на другую подсеть, НЕ на e9b_hidden.
-	filter := &fakeListFilter{allowed: []string{"e9b_other"}}
-	uc := NewGetSubnetUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "e9b_hidden")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.NotFound, st.Code(), "ungranted existing subnet → NotFound, not PermissionDenied")
-	assert.Contains(t, st.Message(), "not found")
-}
-
-// read==enforce: subject'у выдан грант на подсеть → Get ее возвращает.
-func TestSubnetGetPerObject_GrantedReturnsResource(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_visible")
-
-	filter := &fakeListFilter{allowed: []string{"e9b_visible"}}
-	uc := NewGetSubnetUseCase(kr, filter)
-
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "e9b_visible")
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, "e9b_visible", got.ID)
-}
-
-// wildcard bypass → Get возвращает ресурс даже без явного per-id гранта.
-func TestSubnetGetPerObject_WildcardBypass(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_any")
-
-	uc := NewGetSubnetUseCase(kr, &fakeListFilter{bypass: true})
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "e9b_any")
-	require.NoError(t, err)
-	assert.Equal(t, "e9b_any", got.ID)
-}
-
-// fail-closed: ошибка iam при Get-enforce → Unavailable, а не сам ресурс.
-func TestSubnetGetPerObject_FailClosed(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_x")
-
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
-	uc := NewGetSubnetUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "e9b_x")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.Unavailable, st.Code())
-}
-
-// nil filter / empty subject → enforce пропускается (authz делает interceptor).
-func TestSubnetGetPerObject_NilFilterPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_y")
-
-	uc := NewGetSubnetUseCase(kr, nil)
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "e9b_y")
-	require.NoError(t, err)
-	assert.Equal(t, "e9b_y", got.ID)
+	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestSubnetListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := makeSubnetPerObjectUC(kr, &fakeListFilter{bypass: true})
+	uc := NewListSubnetsUseCase(kr, &fakeListFilter{allowAll: true})
 
 	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{}, Pagination{})
 	require.Error(t, err)
@@ -281,8 +222,8 @@ func TestSubnetListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b")
 
-	filter := &fakeListFilter{allowed: []string{"subs_unused"}}
-	uc := makeSubnetPerObjectUC(kr, filter)
+	filter := &fakeListFilter{allowed: []string{"unused_id"}}
+	uc := NewListSubnetsUseCase(kr, filter)
 
 	subs, _, err := uc.Execute(context.Background(), "", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)

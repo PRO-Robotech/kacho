@@ -107,7 +107,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.deny-rate-limit-per-sec", 100.0)
 	v.SetDefault("authz.cache-ttl", 5*time.Second)
 
-	// per-object list-filter (FGA ListObjects-filtered List).
+	// per-object list-filter (per-page BatchCheck-filtered List).
 	// Default enabled=true: List<Resource> возвращает только доступные объекты
 	// (read==enforce, no-leak). endpoint/mTLS — через values.yaml (deploy);
 	// пустой authorize-endpoint → fallback на iam-endpoint. Anonymous/no-subject
@@ -118,7 +118,6 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.timeout-ms", 500)
 	v.SetDefault("authz.list-filter.cache-ttl", 5*time.Second)
 	v.SetDefault("authz.list-filter.max-entries", 10000)
-	v.SetDefault("authz.list-filter.max-results", 10000)
 	v.SetDefault("authz.list-filter.model-id", "")
 	v.SetDefault("authz.list-filter.fail-open", false)
 

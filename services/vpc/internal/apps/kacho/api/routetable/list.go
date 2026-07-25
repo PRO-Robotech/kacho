@@ -18,9 +18,18 @@ import (
 )
 
 // ListRouteTablesUseCase — list route-table'ов с пагинацией; project_id обязателен.
-// Читает через CQRS Reader и фильтрует результат per-object через FGA ListObjects
-// (relation viewer; read==enforce). При filter==nil или пустом subject — passthrough
+// Читает СТРАНИЦУ через CQRS Reader (курсор, project-scoped) и оставляет из неё
+// только видимые subject'у строки — per-object, через `AuthorizeService.BatchCheck`
+// (viewer ∪ v_list; read==enforce). При filter==nil или пустом subject — passthrough
 // без обращения к FGA.
+//
+// Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её
+// идентификаторах. Обратный порядок («перечисли все разрешённые id → сузь ими SQL»)
+// упирался в жёсткий предел OpenFGA ListObjects (1000) и делал собственные ресурсы
+// тенанта невидимыми — см. package-doc `internal/authzfilter`. Побочный эффект
+// нового порядка: страница может вернуться НЕПОЛНОЙ (часть строк отфильтрована) —
+// это нормально для cursor-пагинации, next_page_token берётся от последней
+// ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListRouteTablesUseCase struct {
 	repo   Repo
 	filter ListFilter
@@ -31,9 +40,8 @@ func NewListRouteTablesUseCase(r Repo, filter ListFilter) *ListRouteTablesUseCas
 	return &ListRouteTablesUseCase{repo: r, filter: filter}
 }
 
-// Execute — проверяет project_id, затем фильтрует выдачу per-object через FGA.
-// Пагинация применяется ПОСЛЕ фильтра; bypass (wildcard-grant) → repo.List целиком;
-// пустой grant → пустой результат (no-leak); iam недоступен → fail-closed Unavailable.
+// Execute — проверяет project_id, читает страницу и фильтрует её per-object.
+// iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
 func (u *ListRouteTablesUseCase) Execute(ctx context.Context, subjectID string, f RouteTableFilter, p Pagination) ([]*kacho.RouteTableRecord, string, error) {
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
@@ -48,21 +56,46 @@ func (u *ListRouteTablesUseCase) Execute(ctx context.Context, subjectID string, 
 		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
 		return nil, "", nil
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject {
-		return rd.RouteTables().List(ctx, f, p)
+	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
+	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
+	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	rts, next, lerr := rd.RouteTables().List(ctx, f, p)
+	if lerr != nil {
+		return nil, "", lerr
 	}
-	allowedIDs, bypass, ferr := u.filter.ListAllowedIDs(ctx, subjectID,
-		authzfilter.ResourceTypeRouteTable, authzfilter.ActionRouteTableList)
+	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(rts) == 0 {
+		return rts, next, nil
+	}
+	visible, ferr := filterVisibleRouteTables(ctx, u.filter, subjectID, rts)
 	if ferr != nil {
 		return nil, "", ferr
 	}
-	if bypass {
-		return rd.RouteTables().List(ctx, f, p)
+	return visible, next, nil
+}
+
+// filterVisibleRouteTables оставляет из страницы только видимые subject'у строки,
+// сохраняя порядок курсора.
+func filterVisibleRouteTables(ctx context.Context, filter ListFilter, subjectID string, rts []*kacho.RouteTableRecord) ([]*kacho.RouteTableRecord, error) {
+	pageIDs := make([]string, 0, len(rts))
+	for _, rt := range rts {
+		pageIDs = append(pageIDs, rt.ID)
 	}
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
+	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
+		authzfilter.ResourceTypeRouteTable, authzfilter.ActionRouteTableList, pageIDs)
+	if err != nil {
+		return nil, err
 	}
-	return rd.RouteTables().ListByIDs(ctx, f, allowedIDs, p)
+	visible := make(map[string]struct{}, len(visibleIDs))
+	for _, id := range visibleIDs {
+		visible[id] = struct{}{}
+	}
+	out := make([]*kacho.RouteTableRecord, 0, len(visibleIDs))
+	for _, rt := range rts {
+		if _, ok := visible[rt.ID]; ok {
+			out = append(out, rt)
+		}
+	}
+	return out, nil
 }
 
 // ListOperationsUseCase — операции, относящиеся к конкретному route-table id.

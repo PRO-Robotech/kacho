@@ -17,13 +17,19 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// ListNetworksUseCase — list networks с пагинацией. project_id обязателен.
+// ListNetworksUseCase — list networks с пагинацией; project_id обязателен.
+// Читает СТРАНИЦУ через CQRS Reader (курсор, project-scoped) и оставляет из неё
+// только видимые subject'у строки — per-object, через `AuthorizeService.BatchCheck`
+// (viewer ∪ v_list; read==enforce). При filter==nil или пустом subject — passthrough
+// без обращения к FGA.
 //
-// Per-object filtered List через FGA ListObjects (relation viewer; read==enforce).
-// filter != nil и subject не пуст → ListAllowedIDs → repo.ListByIDs (WHERE id=ANY),
-// pagination ПОСЛЕ фильтра; bypass (wildcard scope_grant) → обычный repo.List;
-// empty grant → пустой List (no-leak); iam недоступен → fail-closed Unavailable.
-// filter == nil / subject == "" (system principal) → unfiltered passthrough.
+// Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её
+// идентификаторах. Обратный порядок («перечисли все разрешённые id → сузь ими SQL»)
+// упирался в жёсткий предел OpenFGA ListObjects (1000) и делал собственные ресурсы
+// тенанта невидимыми — см. package-doc `internal/authzfilter`. Побочный эффект
+// нового порядка: страница может вернуться НЕПОЛНОЙ (часть строк отфильтрована) —
+// это нормально для cursor-пагинации, next_page_token берётся от последней
+// ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListNetworksUseCase struct {
 	repo   Repo
 	filter ListFilter
@@ -35,12 +41,12 @@ func NewListNetworksUseCase(r Repo, filter ListFilter) *ListNetworksUseCase {
 	return &ListNetworksUseCase{repo: r, filter: filter}
 }
 
-// Execute — project_id required (закрывает cross-project enumeration).
+// Execute — проверяет project_id, читает страницу и фильтрует её per-object.
+// iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
 //
 // Параметры:
-//   - subjectID: FGA-subject ("user:usr_xxx"). Empty → unfiltered passthrough
-//     (system principal); ожидается в production-mode что caller всегда выставит
-//     principal (api-gateway interceptor).
+//   - subjectID: FGA-subject ("user:usr_xxx"). Пустой при включенном фильтре →
+//     fail-closed (no-leak); `authzfilter.SystemSubject` → доверенный passthrough.
 func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f NetworkFilter, p Pagination) ([]*kachorepo.NetworkRecord, string, error) {
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
@@ -57,22 +63,46 @@ func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f N
 		// passthrough: «не знаю, кто ты» ≠ «доверенный system-вызов» (no-leak).
 		return nil, "", nil
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject {
-		return r.Networks().List(ctx, f, p)
+	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
+	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
+	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	nets, next, lerr := r.Networks().List(ctx, f, p)
+	if lerr != nil {
+		return nil, "", lerr
 	}
-
-	allowedIDs, bypass, ferr := u.filter.ListAllowedIDs(ctx, subjectID,
-		authzfilter.ResourceTypeNetwork, authzfilter.ActionNetworkList)
+	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(nets) == 0 {
+		return nets, next, nil
+	}
+	visible, ferr := filterVisibleNetworks(ctx, u.filter, subjectID, nets)
 	if ferr != nil {
 		return nil, "", ferr
 	}
-	if bypass {
-		return r.Networks().List(ctx, f, p)
+	return visible, next, nil
+}
+
+// filterVisibleNetworks оставляет из страницы только видимые subject'у строки,
+// сохраняя порядок курсора.
+func filterVisibleNetworks(ctx context.Context, filter ListFilter, subjectID string, nets []*kachorepo.NetworkRecord) ([]*kachorepo.NetworkRecord, error) {
+	pageIDs := make([]string, 0, len(nets))
+	for _, n := range nets {
+		pageIDs = append(pageIDs, n.ID)
 	}
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
+	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
+		authzfilter.ResourceTypeNetwork, authzfilter.ActionNetworkList, pageIDs)
+	if err != nil {
+		return nil, err
 	}
-	return r.Networks().ListByIDs(ctx, f, allowedIDs, p)
+	visible := make(map[string]struct{}, len(visibleIDs))
+	for _, id := range visibleIDs {
+		visible[id] = struct{}{}
+	}
+	out := make([]*kachorepo.NetworkRecord, 0, len(visibleIDs))
+	for _, n := range nets {
+		if _, ok := visible[n.ID]; ok {
+			out = append(out, n)
+		}
+	}
+	return out, nil
 }
 
 // ListSubnetsUseCase — список Subnets конкретной Network. Network-existence-check

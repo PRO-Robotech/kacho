@@ -60,21 +60,9 @@ func (u *ListUseCase) Run(ctx context.Context, req *lbv1.ListListenersRequest) (
 		Name:           name,
 	}
 
-	// RBAC: per-object FGA filter (см. loadbalancer/list.go).
-	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see loadbalancer/list.go).
+	// Validate pagination BEFORE reading the page (see loadbalancer/list.go).
 	if err := shared.ValidatePagination(req.GetPageToken(), req.GetPageSize()); err != nil {
 		return nil, err
-	}
-	dec, err := authzfilter.Resolve(ctx, u.authz,
-		authzfilter.ResourceTypeListener, authzfilter.ActionListenerList)
-	if err != nil {
-		return nil, err
-	}
-	if !dec.IsBypass() {
-		if dec.IsEmpty() {
-			return &lbv1.ListListenersResponse{}, nil
-		}
-		filter.AllowedIDs = dec.IDs()
 	}
 
 	rd, err := u.repo.Reader(ctx)
@@ -92,6 +80,15 @@ func (u *ListUseCase) Run(ctx context.Context, req *lbv1.ListListenersRequest) (
 	)
 	if err != nil {
 		return nil, mapDomainErr(err)
+	}
+
+	// RBAC: per-object FGA filter — страница из БД ПЕРВОЙ, права на её id
+	// (см. loadbalancer/list.go и package-doc internal/authzfilter).
+	page, err = authzfilter.FilterVisiblePage(ctx, u.authz,
+		authzfilter.ResourceTypeListener, authzfilter.ActionListenerList,
+		page, func(rec *kachorepo.ListenerRecord) string { return string(rec.ID) })
+	if err != nil {
+		return nil, err
 	}
 
 	resp := &lbv1.ListListenersResponse{NextPageToken: nextToken}

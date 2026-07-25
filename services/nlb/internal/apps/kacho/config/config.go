@@ -184,9 +184,9 @@ type AuthzConfig struct {
 }
 
 // AuthzListFilterConfig — per-object filtered List (RBAC).
-// Каждый публичный List<Resource> прогоняет id-set через
-// iam.AuthorizeService.ListObjects(subject, action, "nlb_*") и отдаёт пересечение
-// (только доступные объекты), read==enforce, fail-closed (security.md). Endpoint
+// Каждый публичный List<Resource> читает СТРАНИЦУ из своей БД и спрашивает
+// iam.AuthorizeService.BatchCheck (viewer ∪ v_list) про id этой страницы, отдавая
+// только доступные объекты; read==enforce, fail-closed (security.md). Endpoint
 // iam (там AuthorizeService); по умолчанию переиспользуется conn, которым nlb
 // уже зовёт iam (см. main.go buildListFilter), mTLS — через mtls.iam-register.
 type AuthzListFilterConfig struct {
@@ -194,11 +194,14 @@ type AuthzListFilterConfig struct {
 	// false → use-case'ы получают nil-Filter → нефильтрованный project-scoped
 	// passthrough (dev / graceful start без iam).
 	Enabled bool `mapstructure:"enabled"`
-	// Timeout — per-request deadline к iam.ListObjects (default 500ms).
+	// Timeout — per-request deadline ОДНОГО iam.BatchCheck (default 500ms).
 	Timeout time.Duration `mapstructure:"timeout"`
-	// CacheTTL — TTL decision-cache (default 5s; ≤10s).
+	// CacheTTL — TTL visibility-cache (default 5s; ≤10s).
 	CacheTTL time.Duration `mapstructure:"cache-ttl"`
-	// CacheMaxEntries — bound cache + MaxResults cap (default 10000).
+	// CacheMaxEntries — bound размера cache, в записях «(subject,type,id) видим»
+	// (default 10000). ТОЛЬКО размер кеша: прежде та же величина уезжала ещё и в
+	// ListObjects.max_results («cap видимых объектов»), связывая два несвязанных
+	// смысла; per-object BatchCheck никакого cap'а не имеет.
 	CacheMaxEntries int `mapstructure:"cache-max-entries"`
 	// FailOpen — на FGA error: false (default) → Unavailable (fail-closed,
 	// security.md); true → bypass + audit-warn (dev escape-hatch).

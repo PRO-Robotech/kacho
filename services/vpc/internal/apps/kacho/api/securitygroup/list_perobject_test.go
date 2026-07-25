@@ -18,33 +18,52 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
 
-// Per-object filtered List + no-leak Get для SecurityGroupService: возвращаем
-// ТОЛЬКО авторизованные subject'ом SG (relation viewer / FGA type
-// vpc_security_group), read==enforce, fail-closed при недоступном iam,
-// wildcard scope_grant → all-in-scope, empty grant → пусто (no-leak).
+// Per-page фильтрованный List для SecurityGroupService: возвращаем ТОЛЬКО
+// авторизованные subject'у security group (viewer ∪ v_list, FGA-тип
+// vpc_security_group), read==enforce, fail-closed при недоступном iam, пустой grant
+// → пусто (no-leak).
+//
+// Единичный Get здесь НЕ тестируется: его видимость энфорсит per-RPC
+// authz-interceptor прямым per-object Check'ом (existence-hiding на deny), а не
+// use-case — см. GetSecurityGroupUseCase и pkg/authz/interceptor_test.go.
 
-// fakeListFilter — in-memory ListFilter для unit-тестов: запоминает аргументы
-// вызова (subject, resourceType, action) и отдает сконфигурированное решение.
+// fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает аргументы, с
+// которыми его позвали, и отвечает из заранее заданного видимого набора.
 type fakeListFilter struct {
-	allowed []string
-	bypass  bool
-	err     error
+	allowed  []string
+	allowAll bool
+	err      error
 
 	gotSubject      string
 	gotResourceType string
 	gotAction       string
+	gotIDs          []string
 	calls           int
 }
 
-func (f *fakeListFilter) ListAllowedIDs(_ context.Context, subject, resourceType, action string) ([]string, bool, error) {
+func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
 	f.calls++
 	f.gotSubject = subject
 	f.gotResourceType = resourceType
 	f.gotAction = action
+	f.gotIDs = append([]string(nil), ids...)
 	if f.err != nil {
-		return nil, false, f.err
+		return nil, f.err
 	}
-	return f.allowed, f.bypass, nil
+	if f.allowAll {
+		return ids, nil
+	}
+	set := make(map[string]bool, len(f.allowed))
+	for _, a := range f.allowed {
+		set[a] = true
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if set[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // seedSecurityGroupsLabeled вставляет non-default SG с заданными id в
@@ -69,12 +88,12 @@ func seedSecurityGroupsLabeled(t *testing.T, kr *kachomock.Repository, projectID
 	require.NoError(t, w.Commit())
 }
 
-// List возвращает ровно per-object allowed-набор.
+// List возвращает ровно per-object разрешенный набор.
 func TestSecurityGroupListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_aaa", "sgr_bbb", "sgr_ccc")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_aaa", "sg_bbb", "sg_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"sgr_aaa", "sgr_bbb"}}
+	filter := &fakeListFilter{allowed: []string{"sg_aaa", "sg_bbb"}}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
 	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
@@ -84,35 +103,37 @@ func TestSecurityGroupListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	for _, sg := range sgs {
 		got[sg.ID] = true
 	}
-	assert.True(t, got["sgr_aaa"])
-	assert.True(t, got["sgr_bbb"])
-	assert.False(t, got["sgr_ccc"], "sgr_ccc not in the allowed set → must not appear")
+	assert.True(t, got["sg_aaa"])
+	assert.True(t, got["sg_bbb"])
+	assert.False(t, got["sg_ccc"], "sg_ccc not in the allowed set → must not appear")
 
-	// read==enforce: фильтр зовется с read-verb, отображенным на viewer
-	// (action vpc.securityGroups.list, FGA type vpc_security_group).
+	// read==enforce: фильтр зовется с read-verb (action vpc.securityGroups.list,
+	// FGA-тип vpc_security_group) и получает РОВНО идентификаторы страницы.
 	assert.Equal(t, "user:usr_alice", filter.gotSubject)
 	assert.Equal(t, "vpc_security_group", filter.gotResourceType)
 	assert.Equal(t, "vpc.securityGroups.list", filter.gotAction)
+	assert.ElementsMatch(t, []string{"sg_aaa", "sg_bbb", "sg_ccc"}, filter.gotIDs,
+		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
 // no-leak: объект вне всех grant'ов отсутствует в List.
 func TestSecurityGroupListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_visible", "sgr_secret")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_visible", "sg_secret")
 
-	filter := &fakeListFilter{allowed: []string{"sgr_visible"}}
+	filter := &fakeListFilter{allowed: []string{"sg_visible"}}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
 	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, sgs, 1)
-	assert.Equal(t, "sgr_visible", sgs[0].ID)
+	assert.Equal(t, "sg_visible", sgs[0].ID)
 }
 
-// empty grant: subject без grant'ов → пустой список (НЕ unfiltered).
+// Пустой grant: subject без grant'а → пустой список (НЕ нефильтрованный).
 func TestSecurityGroupListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_a", "sgr_b")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
 
 	filter := &fakeListFilter{allowed: nil}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
@@ -123,13 +144,12 @@ func TestSecurityGroupListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	assert.Empty(t, next)
 }
 
-// global / wildcard: scope_grant → all-in-scope. Фильтр возвращает bypass=true,
-// use-case отдает все строки в project-scope.
-func TestSecurityGroupListPerObject_WildcardBypassReturnsAll(t *testing.T) {
+// Полный grant (subject видит всё в скоупе) → отдаются все строки страницы.
+func TestSecurityGroupListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_a", "sgr_b", "sgr_c")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b", "sg_c")
 
-	filter := &fakeListFilter{bypass: true}
+	filter := &fakeListFilter{allowAll: true}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
 	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
@@ -137,10 +157,10 @@ func TestSecurityGroupListPerObject_WildcardBypassReturnsAll(t *testing.T) {
 	assert.Len(t, sgs, 3)
 }
 
-// fail-closed: iam недоступен → Unavailable (НЕ unfiltered, НЕ молча пусто).
+// fail-closed: iam недоступен → Unavailable (НЕ нефильтрованный, НЕ молча пустой).
 func TestSecurityGroupListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_a")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a")
 
 	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
@@ -151,11 +171,11 @@ func TestSecurityGroupListPerObject_FailClosedUnavailable(t *testing.T) {
 	assert.Equal(t, codes.Unavailable, st.Code())
 }
 
-// fail-closed (plain error): не-status ошибка тоже маппится в non-OK код, не
-// проскакивает молча как unfiltered.
+// fail-closed (plain error): не-status ошибка тоже маппится в non-OK код, никогда
+// не проходит молча как нефильтрованная.
 func TestSecurityGroupListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_a")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a")
 
 	filter := &fakeListFilter{err: errors.New("boom")}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
@@ -166,10 +186,10 @@ func TestSecurityGroupListPerObject_FailClosedPlainError(t *testing.T) {
 	assert.NotEqual(t, codes.OK, st.Code())
 }
 
-// nil filter → unfiltered passthrough (list-filter отключен).
+// nil-фильтр → нефильтрованный passthrough (list-filter выключен).
 func TestSecurityGroupListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_a", "sgr_b")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
 
 	uc := NewListSecurityGroupsUseCase(kr, nil)
 	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
@@ -177,24 +197,24 @@ func TestSecurityGroupListPerObject_NilFilterPassthrough(t *testing.T) {
 	assert.Len(t, sgs, 2)
 }
 
-// empty subject (system principal) → unfiltered passthrough (без FGA-вызова).
+// явный system principal → нефильтрованный passthrough (без вызова FGA).
 func TestSecurityGroupListPerObject_SystemSubjectPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_a", "sgr_b")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
 
-	filter := &fakeListFilter{allowed: []string{"sgr_a"}}
+	filter := &fakeListFilter{allowed: []string{"sg_a"}}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
 	sgs, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, sgs, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no FGA ListObjects call")
+	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestSecurityGroupListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListSecurityGroupsUseCase(kr, &fakeListFilter{bypass: true})
+	uc := NewListSecurityGroupsUseCase(kr, &fakeListFilter{allowAll: true})
 
 	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{}, Pagination{})
 	require.Error(t, err)
@@ -202,81 +222,14 @@ func TestSecurityGroupListPerObject_ProjectIDRequired(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 }
 
-// no-leak Get: subject без grant'а на существующую SG → NotFound (НЕ
-// PermissionDenied), тот же текст, что и для несуществующей SG.
-func TestSecurityGroupGetPerObject_NoLeakNotFound(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_hidden")
-
-	// subject'у выдана другая SG, НЕ sgr_hidden.
-	filter := &fakeListFilter{allowed: []string{"sgr_other"}}
-	uc := NewGetSecurityGroupUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "sgr_hidden")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.NotFound, st.Code(), "ungranted existing SG → NotFound, not PermissionDenied")
-	assert.Contains(t, st.Message(), "not found")
-}
-
-// read==enforce: subject'у выдана SG → Get ее возвращает.
-func TestSecurityGroupGetPerObject_GrantedReturnsResource(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_visible")
-
-	filter := &fakeListFilter{allowed: []string{"sgr_visible"}}
-	uc := NewGetSecurityGroupUseCase(kr, filter)
-
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "sgr_visible")
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, "sgr_visible", got.ID)
-}
-
-// wildcard bypass → Get возвращает ресурс даже без явного per-id grant'а.
-func TestSecurityGroupGetPerObject_WildcardBypass(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_any")
-
-	uc := NewGetSecurityGroupUseCase(kr, &fakeListFilter{bypass: true})
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "sgr_any")
-	require.NoError(t, err)
-	assert.Equal(t, "sgr_any", got.ID)
-}
-
-// fail-closed: ошибка iam на Get-enforce → Unavailable, а не ресурс.
-func TestSecurityGroupGetPerObject_FailClosed(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_x")
-
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
-	uc := NewGetSecurityGroupUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "sgr_x")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.Unavailable, st.Code())
-}
-
-// nil filter / empty subject → без enforce (authz делает interceptor).
-func TestSecurityGroupGetPerObject_NilFilterPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_y")
-
-	uc := NewGetSecurityGroupUseCase(kr, nil)
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "sgr_y")
-	require.NoError(t, err)
-	assert.Equal(t, "sgr_y", got.ID)
-}
-
 // No-leak (defense-in-depth): пустой subject (principal не извлечен — anon /
 // gateway не проставил identity) при ВКЛЮЧЕННОМ фильтре → fail-closed (пустой
 // список), НЕ unfiltered passthrough. «Не знаю, кто ты» != «доверенный system».
 func TestSecurityGroupListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sgr_a", "sgr_b")
+	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
 
-	filter := &fakeListFilter{allowed: []string{"sgs_unused"}}
+	filter := &fakeListFilter{allowed: []string{"unused_id"}}
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
 	sgs, _, err := uc.Execute(context.Background(), "", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})

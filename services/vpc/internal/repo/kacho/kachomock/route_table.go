@@ -49,32 +49,6 @@ func (r *routeTableReader) ListByNetwork(ctx context.Context, networkID string, 
 	return r.List(ctx, kacho.RouteTableFilter{NetworkID: networkID}, p)
 }
 
-// ListByIDs — фильтрация поверх ids set теми же in-memory предикатами, что List.
-// Пустой allowedIDs → (nil, "", nil).
-func (r *routeTableReader) ListByIDs(_ context.Context, f kacho.RouteTableFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.RouteTableRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.RouteTableRecord
-	for _, rt := range r.snap {
-		if _, ok := allowed[rt.ID]; !ok {
-			continue
-		}
-		if (f.ProjectID == "" || rt.ProjectID == f.ProjectID) &&
-			(f.NetworkID == "" || rt.NetworkID == f.NetworkID) &&
-			(f.Name == "" || string(rt.Name) == f.Name) {
-			cp := *rt
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
 // routeTableWriter — write-«TX» RT. Writer видит свои writes — Get/List поверх
 // localRTs.
 type routeTableWriter struct {
@@ -117,35 +91,6 @@ func (rw *routeTableWriter) List(_ context.Context, f kacho.RouteTableFilter, _ 
 
 func (rw *routeTableWriter) ListByNetwork(ctx context.Context, networkID string, p kacho.Pagination) ([]*kacho.RouteTableRecord, string, error) {
 	return rw.List(ctx, kacho.RouteTableFilter{NetworkID: networkID}, p)
-}
-
-// ListByIDs — writer-side: фильтрация поверх ids set теми же in-memory
-// предикатами, что List. Пустой allowedIDs → (nil, "", nil).
-func (rw *routeTableWriter) ListByIDs(_ context.Context, f kacho.RouteTableFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.RouteTableRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.RouteTableRecord
-	for id, rt := range rw.w.localRTs {
-		if _, deleted := rw.w.deletedRTIDs[id]; deleted {
-			continue
-		}
-		if _, ok := allowed[id]; !ok {
-			continue
-		}
-		if (f.ProjectID == "" || rt.ProjectID == f.ProjectID) &&
-			(f.NetworkID == "" || rt.NetworkID == f.NetworkID) &&
-			(f.Name == "" || string(rt.Name) == f.Name) {
-			cp := *rt
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
 }
 
 func (rw *routeTableWriter) Insert(_ context.Context, rt *domain.RouteTable) (*kacho.RouteTableRecord, error) {

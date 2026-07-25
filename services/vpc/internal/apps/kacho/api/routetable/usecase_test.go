@@ -48,7 +48,7 @@ func makeHandler(t *testing.T,
 	create := NewCreateRouteTableUseCase(kr, fc, or)
 	update := NewUpdateRouteTableUseCase(kr, or)
 	deleteUC := NewDeleteRouteTableUseCase(kr, or)
-	get := NewGetRouteTableUseCase(kr, nil)
+	get := NewGetRouteTableUseCase(kr)
 	list := NewListRouteTablesUseCase(kr, nil)
 	listOps := NewListOperationsUseCase(or)
 	return NewHandler(create, update, deleteUC, get, list, listOps)
@@ -228,7 +228,7 @@ func TestUpdateUseCase_StaticRoutes(t *testing.T) {
 	net := makeNetwork(t, kr)
 	createUC := NewCreateRouteTableUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 	updateUC := NewUpdateRouteTableUseCase(kr, or)
-	getUC := NewGetRouteTableUseCase(kr, nil)
+	getUC := NewGetRouteTableUseCase(kr)
 	listUC := NewListRouteTablesUseCase(kr, nil)
 
 	createOp, _ := createUC.Execute(context.Background(), domain.RouteTable{
@@ -254,7 +254,7 @@ func TestUpdateUseCase_StaticRoutes(t *testing.T) {
 	saved := repomock.AwaitOpDone(t, or, updOp.ID)
 	assert.True(t, saved.Done)
 
-	rt, _ := getUC.Execute(context.Background(), "", rtID)
+	rt, _ := getUC.Execute(context.Background(), rtID)
 	require.Len(t, rt.StaticRoutes, 1)
 	assert.Equal(t, "10.0.0.0/8", rt.StaticRoutes[0].DestinationPrefix)
 }

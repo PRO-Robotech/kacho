@@ -126,11 +126,15 @@ type TupleWriteConfig struct {
 
 // ListFilterConfig — конфигурация FGA-filtered List.
 //
-// Source: yaml `authz.list-filter.{enabled,timeout-ms,cache-ttl,max-results,model-id,fail-open}`.
+// Source: yaml `authz.list-filter.{enabled,timeout-ms,cache-ttl,max-entries,model-id,fail-open}`.
 // ENV-override: `KACHO_VPC_AUTHZ__LIST_FILTER__ENABLED=true`, etc.
 //
-// Когда Enabled=true И authz.iam-endpoint выставлен → каждая List-RPC
-// ходит к kacho-iam AuthorizeService.ListObjects на разрешенные ids.
+// Когда Enabled=true И authz.iam-endpoint выставлен → каждая List-RPC спрашивает
+// kacho-iam `AuthorizeService.BatchCheck` о видимости id прочитанной СТРАНИЦЫ
+// (батчи ≤100). Прежний вопрос «перечисли все разрешенные ids»
+// (`AuthorizeService.ListObjects`) снят — у него жесткий server-side предел без
+// continuation-token'а, см. package-doc `internal/authzfilter`. Вместе с ним ушел
+// и knob `max-results` (client-side trim уже усеченного ответа — cap не поднимал).
 type ListFilterConfig struct {
 	// Enabled — главный toggle. Default false (unfiltered behaviour).
 	// В production: true.
@@ -145,7 +149,7 @@ type ListFilterConfig struct {
 	// AuthorizeTLS — TLS на peer-вызов в kacho-iam AuthorizeService.
 	AuthorizeTLS TLSClient `mapstructure:"authorize-tls"`
 
-	// TimeoutMs — таймаут одного ListObjects-вызова (default 500ms):
+	// TimeoutMs — таймаут одного BatchCheck-вызова (default 500ms):
 	// per-call budget ≤100ms p95 + 5x safety margin.
 	TimeoutMs int `mapstructure:"timeout-ms"`
 
@@ -154,9 +158,6 @@ type ListFilterConfig struct {
 
 	// MaxEntries — hard cap кэша (default 10000). LRU eviction.
 	MaxEntries int `mapstructure:"max-entries"`
-
-	// MaxResults — hard cap для ListObjects results (default 10000).
-	MaxResults int `mapstructure:"max-results"`
 
 	// ModelID — pinned authorization_model_id.
 	// Empty → kacho-iam использует свой default. В production:

@@ -17,11 +17,20 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// ListSecurityGroupsUseCase — список SG с пагинацией. project_id обязателен
-// (закрывает cross-project enumeration). Читает через CQRS Reader (read-only TX).
+// ListSecurityGroupsUseCase — список SG с пагинацией; project_id обязателен
+// (закрывает cross-project enumeration). Читает СТРАНИЦУ через CQRS Reader
+// (read-only TX, курсор, project-scoped) и оставляет из неё только видимые
+// subject'у строки — per-object, через `AuthorizeService.BatchCheck`
+// (viewer ∪ v_list; read==enforce). При filter==nil или пустом subject —
+// passthrough без обращения к FGA.
 //
-// Per-object filtered List через FGA ListObjects (relation viewer; read==enforce).
-// filter==nil / subject=="" → passthrough.
+// Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её
+// идентификаторах. Обратный порядок («перечисли все разрешённые id → сузь ими SQL»)
+// упирался в жёсткий предел OpenFGA ListObjects (1000) и делал собственные ресурсы
+// тенанта невидимыми — см. package-doc `internal/authzfilter`. Побочный эффект
+// нового порядка: страница может вернуться НЕПОЛНОЙ (часть строк отфильтрована) —
+// это нормально для cursor-пагинации, next_page_token берётся от последней
+// ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListSecurityGroupsUseCase struct {
 	repo   Repo
 	filter ListFilter
@@ -33,9 +42,8 @@ func NewListSecurityGroupsUseCase(r Repo, filter ListFilter) *ListSecurityGroups
 	return &ListSecurityGroupsUseCase{repo: r, filter: filter}
 }
 
-// Execute — project_id required + per-object FGA-filter. Пагинация ПОСЛЕ фильтра
-// (repo.ListByIDs); bypass → repo.List; empty grant → пустой (no-leak);
-// iam недоступен → fail-closed Unavailable.
+// Execute — проверяет project_id, читает страницу и фильтрует её per-object.
+// iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
 func (u *ListSecurityGroupsUseCase) Execute(ctx context.Context, subjectID string, f SecurityGroupFilter, p Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
@@ -50,21 +58,46 @@ func (u *ListSecurityGroupsUseCase) Execute(ctx context.Context, subjectID strin
 		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
 		return nil, "", nil
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject {
-		return rd.SecurityGroups().List(ctx, f, p)
+	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
+	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
+	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	sgs, next, lerr := rd.SecurityGroups().List(ctx, f, p)
+	if lerr != nil {
+		return nil, "", lerr
 	}
-	allowedIDs, bypass, ferr := u.filter.ListAllowedIDs(ctx, subjectID,
-		authzfilter.ResourceTypeSecurityGroup, authzfilter.ActionSecurityGroupList)
+	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(sgs) == 0 {
+		return sgs, next, nil
+	}
+	visible, ferr := filterVisibleSecurityGroups(ctx, u.filter, subjectID, sgs)
 	if ferr != nil {
 		return nil, "", ferr
 	}
-	if bypass {
-		return rd.SecurityGroups().List(ctx, f, p)
+	return visible, next, nil
+}
+
+// filterVisibleSecurityGroups оставляет из страницы только видимые subject'у
+// строки, сохраняя порядок курсора.
+func filterVisibleSecurityGroups(ctx context.Context, filter ListFilter, subjectID string, sgs []*kacho.SecurityGroupRecord) ([]*kacho.SecurityGroupRecord, error) {
+	pageIDs := make([]string, 0, len(sgs))
+	for _, sg := range sgs {
+		pageIDs = append(pageIDs, sg.ID)
 	}
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
+	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
+		authzfilter.ResourceTypeSecurityGroup, authzfilter.ActionSecurityGroupList, pageIDs)
+	if err != nil {
+		return nil, err
 	}
-	return rd.SecurityGroups().ListByIDs(ctx, f, allowedIDs, p)
+	visible := make(map[string]struct{}, len(visibleIDs))
+	for _, id := range visibleIDs {
+		visible[id] = struct{}{}
+	}
+	out := make([]*kacho.SecurityGroupRecord, 0, len(visibleIDs))
+	for _, sg := range sgs {
+		if _, ok := visible[sg.ID]; ok {
+			out = append(out, sg)
+		}
+	}
+	return out, nil
 }
 
 // ListOperationsUseCase — операции, относящиеся к конкретному SG.

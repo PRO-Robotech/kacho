@@ -18,34 +18,52 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
 
-// Тесты per-object фильтрации List и no-leak Get для NetworkInterfaceService:
-// возвращаем ТОЛЬКО разрешенные subject'у NIC'и (relation viewer, FGA type
-// vpc_network_interface), read==enforce, fail-closed при недоступном iam,
-// wildcard scope_grant → весь scope, пустой grant → пусто (no-leak).
+// Per-page фильтрованный List для NetworkInterfaceService: возвращаем ТОЛЬКО
+// авторизованные subject'у NIC'и (viewer ∪ v_list, FGA-тип
+// vpc_network_interface), read==enforce, fail-closed при недоступном iam, пустой grant
+// → пусто (no-leak).
+//
+// Единичный Get здесь НЕ тестируется: его видимость энфорсит per-RPC
+// authz-interceptor прямым per-object Check'ом (existence-hiding на deny), а не
+// use-case — см. GetNetworkInterfaceUseCase и pkg/authz/interceptor_test.go.
 
-// fakeListFilter — in-memory ListFilter для unit-тестов: запоминает аргументы
-// (subject, resourceType, action), с которыми его позвали, и возвращает заданное
-// решение.
+// fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает аргументы, с
+// которыми его позвали, и отвечает из заранее заданного видимого набора.
 type fakeListFilter struct {
-	allowed []string
-	bypass  bool
-	err     error
+	allowed  []string
+	allowAll bool
+	err      error
 
 	gotSubject      string
 	gotResourceType string
 	gotAction       string
+	gotIDs          []string
 	calls           int
 }
 
-func (f *fakeListFilter) ListAllowedIDs(_ context.Context, subject, resourceType, action string) ([]string, bool, error) {
+func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
 	f.calls++
 	f.gotSubject = subject
 	f.gotResourceType = resourceType
 	f.gotAction = action
+	f.gotIDs = append([]string(nil), ids...)
 	if f.err != nil {
-		return nil, false, f.err
+		return nil, f.err
 	}
-	return f.allowed, f.bypass, nil
+	if f.allowAll {
+		return ids, nil
+	}
+	set := make(map[string]bool, len(f.allowed))
+	for _, a := range f.allowed {
+		set[a] = true
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if set[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // seedNICsLabeled — вставляет NIC'и с заданными id в project/subnet.
@@ -72,7 +90,7 @@ func seedNICsLabeled(t *testing.T, kr *kachomock.Repository, projectID, subnetID
 // List возвращает ровно per-object разрешенный набор.
 func TestNetworkInterfaceListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_aaa", "nic_bbb", "nic_ccc")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_aaa", "nic_bbb", "nic_ccc")
 
 	filter := &fakeListFilter{allowed: []string{"nic_aaa", "nic_bbb"}}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
@@ -88,17 +106,19 @@ func TestNetworkInterfaceListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	assert.True(t, got["nic_bbb"])
 	assert.False(t, got["nic_ccc"], "nic_ccc not in the allowed set → must not appear")
 
-	// read==enforce: фильтр зовется с read-verb, смапленным на viewer
-	// (action vpc.networkInterfaces.list, FGA type vpc_network_interface).
+	// read==enforce: фильтр зовется с read-verb (action vpc.networkInterfaces.list,
+	// FGA-тип vpc_network_interface) и получает РОВНО идентификаторы страницы.
 	assert.Equal(t, "user:usr_alice", filter.gotSubject)
 	assert.Equal(t, "vpc_network_interface", filter.gotResourceType)
 	assert.Equal(t, "vpc.networkInterfaces.list", filter.gotAction)
+	assert.ElementsMatch(t, []string{"nic_aaa", "nic_bbb", "nic_ccc"}, filter.gotIDs,
+		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
 // no-leak: объект вне всех grant'ов отсутствует в List.
 func TestNetworkInterfaceListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_visible", "nic_secret")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_visible", "nic_secret")
 
 	filter := &fakeListFilter{allowed: []string{"nic_visible"}}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
@@ -109,10 +129,10 @@ func TestNetworkInterfaceListPerObject_NoLeak(t *testing.T) {
 	assert.Equal(t, "nic_visible", nics[0].ID)
 }
 
-// empty grant: subject без grant'а → пустой список (НЕ нефильтрованный).
+// Пустой grant: subject без grant'а → пустой список (НЕ нефильтрованный).
 func TestNetworkInterfaceListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_a", "nic_b")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a", "nic_b")
 
 	filter := &fakeListFilter{allowed: nil}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
@@ -123,13 +143,12 @@ func TestNetworkInterfaceListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	assert.Empty(t, next)
 }
 
-// wildcard scope_grant → весь scope. Фильтр возвращает bypass=true, use-case
-// отдает все строки в пределах project.
-func TestNetworkInterfaceListPerObject_WildcardBypassReturnsAll(t *testing.T) {
+// Полный grant (subject видит всё в скоупе) → отдаются все строки страницы.
+func TestNetworkInterfaceListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_a", "nic_b", "nic_c")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a", "nic_b", "nic_c")
 
-	filter := &fakeListFilter{bypass: true}
+	filter := &fakeListFilter{allowAll: true}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
 
 	nics, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkInterfaceFilter{ProjectID: "prj_1"}, Pagination{})
@@ -137,10 +156,10 @@ func TestNetworkInterfaceListPerObject_WildcardBypassReturnsAll(t *testing.T) {
 	assert.Len(t, nics, 3)
 }
 
-// fail-closed: iam недоступен → Unavailable (НЕ нефильтрованный, не молча пустой).
+// fail-closed: iam недоступен → Unavailable (НЕ нефильтрованный, НЕ молча пустой).
 func TestNetworkInterfaceListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_a")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a")
 
 	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
@@ -152,10 +171,10 @@ func TestNetworkInterfaceListPerObject_FailClosedUnavailable(t *testing.T) {
 }
 
 // fail-closed (plain error): не-status ошибка тоже маппится в non-OK код, никогда
-// не проходит молча нефильтрованной.
+// не проходит молча как нефильтрованная.
 func TestNetworkInterfaceListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_a")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a")
 
 	filter := &fakeListFilter{err: errors.New("boom")}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
@@ -166,10 +185,10 @@ func TestNetworkInterfaceListPerObject_FailClosedPlainError(t *testing.T) {
 	assert.NotEqual(t, codes.OK, st.Code())
 }
 
-// nil filter → нефильтрованный passthrough (list-filter отключен).
+// nil-фильтр → нефильтрованный passthrough (list-filter выключен).
 func TestNetworkInterfaceListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_a", "nic_b")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a", "nic_b")
 
 	uc := NewListNetworkInterfacesUseCase(kr, nil)
 	nics, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkInterfaceFilter{ProjectID: "prj_1"}, Pagination{})
@@ -177,10 +196,10 @@ func TestNetworkInterfaceListPerObject_NilFilterPassthrough(t *testing.T) {
 	assert.Len(t, nics, 2)
 }
 
-// пустой subject (system principal) → нефильтрованный passthrough, без FGA-вызова.
+// явный system principal → нефильтрованный passthrough (без вызова FGA).
 func TestNetworkInterfaceListPerObject_SystemSubjectPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_a", "nic_b")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a", "nic_b")
 
 	filter := &fakeListFilter{allowed: []string{"nic_a"}}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
@@ -188,13 +207,13 @@ func TestNetworkInterfaceListPerObject_SystemSubjectPassthrough(t *testing.T) {
 	nics, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, NetworkInterfaceFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, nics, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no FGA ListObjects call")
+	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestNetworkInterfaceListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListNetworkInterfacesUseCase(kr, &fakeListFilter{bypass: true})
+	uc := NewListNetworkInterfacesUseCase(kr, &fakeListFilter{allowAll: true})
 
 	_, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkInterfaceFilter{}, Pagination{})
 	require.Error(t, err)
@@ -202,81 +221,14 @@ func TestNetworkInterfaceListPerObject_ProjectIDRequired(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 }
 
-// no-leak Get: subject без grant'а на существующий NIC → NotFound (не
-// PermissionDenied), с тем же текстом, что и для несуществующего NIC.
-func TestNetworkInterfaceGetPerObject_NoLeakNotFound(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_hidden")
-
-	// subject'у выдан grant на другой NIC, НЕ на nic_hidden.
-	filter := &fakeListFilter{allowed: []string{"nic_other"}}
-	uc := NewGetNetworkInterfaceUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "nic_hidden")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.NotFound, st.Code(), "ungranted existing NIC → NotFound, not PermissionDenied")
-	assert.Contains(t, st.Message(), "not found")
-}
-
-// read==enforce: subject'у выдан grant на NIC → Get его возвращает.
-func TestNetworkInterfaceGetPerObject_GrantedReturnsResource(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_visible")
-
-	filter := &fakeListFilter{allowed: []string{"nic_visible"}}
-	uc := NewGetNetworkInterfaceUseCase(kr, filter)
-
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "nic_visible")
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, "nic_visible", got.ID)
-}
-
-// wildcard bypass → Get возвращает NIC даже без явного per-id grant'а.
-func TestNetworkInterfaceGetPerObject_WildcardBypass(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_any")
-
-	uc := NewGetNetworkInterfaceUseCase(kr, &fakeListFilter{bypass: true})
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "nic_any")
-	require.NoError(t, err)
-	assert.Equal(t, "nic_any", got.ID)
-}
-
-// fail-closed: ошибка iam при enforce на Get → Unavailable, а не ресурс.
-func TestNetworkInterfaceGetPerObject_FailClosed(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_x")
-
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
-	uc := NewGetNetworkInterfaceUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "nic_x")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.Unavailable, st.Code())
-}
-
-// nil filter / пустой subject → enforce не выполняется (authz делает interceptor).
-func TestNetworkInterfaceGetPerObject_NilFilterPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_y")
-
-	uc := NewGetNetworkInterfaceUseCase(kr, nil)
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "nic_y")
-	require.NoError(t, err)
-	assert.Equal(t, "nic_y", got.ID)
-}
-
 // No-leak (defense-in-depth): пустой subject (principal не извлечен — anon /
 // gateway не проставил identity) при ВКЛЮЧЕННОМ фильтре → fail-closed (пустой
 // список), НЕ unfiltered passthrough. «Не знаю, кто ты» != «доверенный system».
 func TestNetworkInterfaceListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "sub_net1", "nic_a", "nic_b")
+	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a", "nic_b")
 
-	filter := &fakeListFilter{allowed: []string{"nics_unused"}}
+	filter := &fakeListFilter{allowed: []string{"unused_id"}}
 	uc := NewListNetworkInterfacesUseCase(kr, filter)
 
 	nics, _, err := uc.Execute(context.Background(), "", NetworkInterfaceFilter{ProjectID: "prj_1"}, Pagination{})

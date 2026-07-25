@@ -18,13 +18,18 @@ import (
 )
 
 // ListSubnetsUseCase — list subnets с пагинацией; project_id обязателен (закрывает
-// cross-project enumeration).
+// cross-project enumeration). Читает СТРАНИЦУ через CQRS Reader (курсор,
+// project-scoped) и оставляет из неё только видимые subject'у строки — per-object,
+// через `AuthorizeService.BatchCheck` (viewer ∪ v_list; read==enforce). При
+// filter==nil или пустом subject — passthrough без обращения к FGA.
 //
-// Per-object filtered List: filter != nil и subject не пуст → ListAllowedIDs(viewer)
-// → repo.ListByIDs (WHERE id=ANY), pagination ПОСЛЕ фильтра; bypass (wildcard
-// scope_grant) → обычный repo.List; empty grant → пустой List (no-leak); iam
-// недоступен → fail-closed Unavailable. filter == nil / subject == "" (system
-// principal) → unfiltered passthrough.
+// Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её
+// идентификаторах. Обратный порядок («перечисли все разрешённые id → сузь ими SQL»)
+// упирался в жёсткий предел OpenFGA ListObjects (1000) и делал собственные ресурсы
+// тенанта невидимыми — см. package-doc `internal/authzfilter`. Побочный эффект
+// нового порядка: страница может вернуться НЕПОЛНОЙ (часть строк отфильтрована) —
+// это нормально для cursor-пагинации, next_page_token берётся от последней
+// ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListSubnetsUseCase struct {
 	repo   Repo
 	filter ListFilter
@@ -36,10 +41,8 @@ func NewListSubnetsUseCase(r Repo, filter ListFilter) *ListSubnetsUseCase {
 	return &ListSubnetsUseCase{repo: r, filter: filter}
 }
 
-// Execute — project_id required (закрывает cross-project enumeration).
-//
-// Поток: per-object FGA ListObjects → repo.ListByIDs (WHERE id=ANY) → pagination
-// применяется к ОТФИЛЬТРОВАННОМУ набору (плотные страницы).
+// Execute — проверяет project_id, читает страницу и фильтрует её per-object.
+// iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
 func (u *ListSubnetsUseCase) Execute(ctx context.Context, subjectID string, f SubnetFilter, p Pagination) ([]*kachorepo.SubnetRecord, string, error) {
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
@@ -54,27 +57,46 @@ func (u *ListSubnetsUseCase) Execute(ctx context.Context, subjectID string, f Su
 		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
 		return nil, "", nil
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject {
-		// list-filter disabled (dev) либо доверенный system-вызов → unfiltered passthrough.
-		return r.Subnets().List(ctx, f, p)
+	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
+	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
+	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	subs, next, lerr := r.Subnets().List(ctx, f, p)
+	if lerr != nil {
+		return nil, "", lerr
 	}
-
-	allowedIDs, bypass, ferr := u.filter.ListAllowedIDs(ctx, subjectID,
-		authzfilter.ResourceTypeSubnet, authzfilter.ActionSubnetList)
+	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(subs) == 0 {
+		return subs, next, nil
+	}
+	visible, ferr := filterVisibleSubnets(ctx, u.filter, subjectID, subs)
 	if ferr != nil {
-		// iam недоступен / ошибка → fail-closed (Unavailable), НЕ unfiltered.
 		return nil, "", ferr
 	}
-	if bypass {
-		// wildcard scope_grant → все project-scoped строки.
-		return r.Subnets().List(ctx, f, p)
+	return visible, next, nil
+}
+
+// filterVisibleSubnets оставляет из страницы только видимые subject'у строки,
+// сохраняя порядок курсора.
+func filterVisibleSubnets(ctx context.Context, filter ListFilter, subjectID string, subs []*kachorepo.SubnetRecord) ([]*kachorepo.SubnetRecord, error) {
+	pageIDs := make([]string, 0, len(subs))
+	for _, s := range subs {
+		pageIDs = append(pageIDs, s.ID)
 	}
-	if len(allowedIDs) == 0 {
-		// нет гранта → пустой List (no-leak).
-		return nil, "", nil
+	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
+		authzfilter.ResourceTypeSubnet, authzfilter.ActionSubnetList, pageIDs)
+	if err != nil {
+		return nil, err
 	}
-	// pagination ПОСЛЕ фильтра (WHERE id = ANY).
-	return r.Subnets().ListByIDs(ctx, f, allowedIDs, p)
+	visible := make(map[string]struct{}, len(visibleIDs))
+	for _, id := range visibleIDs {
+		visible[id] = struct{}{}
+	}
+	out := make([]*kachorepo.SubnetRecord, 0, len(visibleIDs))
+	for _, s := range subs {
+		if _, ok := visible[s.ID]; ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 
 // ListOperationsUseCase — операции, относящиеся к конкретному subnet-id.

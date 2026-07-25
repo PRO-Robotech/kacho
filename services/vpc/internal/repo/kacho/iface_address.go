@@ -38,9 +38,6 @@ type AddressReaderIface interface {
 	// ReferencesForAddresses — batch lookup referrer'ов для набора address-id
 	// (map id→ref; отсутствующие ключи = нет referrer'а). Пустой вход → пустой map.
 	ReferencesForAddresses(ctx context.Context, addressIDs []string) (map[string]*domain.AddressReference, error)
-	// ListByIDs — per-object filtered List (WHERE id = ANY), pagination после
-	// фильтра. Пустой allowedIDs → (nil, "", nil).
-	ListByIDs(ctx context.Context, f AddressFilter, allowedIDs []string, p Pagination) ([]*AddressRecord, string, error)
 }
 
 // AddressWriterIface — write-операции + read (writer видит свои writes).

@@ -4,7 +4,7 @@
 // k6 load test for FGA-filtered ListNetworks throughput / SLA.
 //
 // SLA targets:
-//   - p95 ≤ 100ms total (includes iam.AuthorizeService.ListObjects roundtrip
+//   - p95 ≤ 100ms total (includes iam.AuthorizeService.BatchCheck roundtrip
 //     + cache lookup + repo.List + filter).
 //   - p99 ≤ 250ms.
 //   - Cache hit ratio ≥ 80% steady state.

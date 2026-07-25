@@ -70,7 +70,6 @@ authz:
     timeoutMs: 500           # Per-call FGA timeout
     cacheTtl: 5s             # LRU TTL
     maxEntries: 10000        # Cache hard cap (LRU eviction)
-    maxResults: 10000        # FGA ListObjects result cap
     modelId: ""              # Pinned authorization_model_id
     failOpen: false          # Default fail-closed
   # write-side FGA: each resource Create publishes

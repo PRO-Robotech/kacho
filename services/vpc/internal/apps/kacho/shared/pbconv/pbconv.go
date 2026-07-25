@@ -43,7 +43,7 @@ func OperationToProto(op *operations.Operation) *operationpb.Operation {
 // из Principal запроса. Различает ТРИ случая (раньше все три коллапсировали в "",
 // из-за чего List-фильтр трактовал «identity не извлечен» как «доверенный system»
 // и отдавал нефильтрованный список — leak):
-//   - реальный user/service_account → "<type>:<id>" (идет в ListObjects-фильтр);
+//   - реальный user/service_account → "<type>:<id>" (идет в per-page BatchCheck-фильтр);
 //   - доверенный system-principal → authzfilter.SystemSubject (явный passthrough);
 //   - identity не извлечен (anon / gateway не проставил principal) → "" — это
 //     «не знаю, кто ты», List-use-case обязан fail-closed (пустой список), НЕ passthrough.

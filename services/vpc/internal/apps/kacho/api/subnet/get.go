@@ -5,60 +5,47 @@ package subnet
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// enforceGetVisible применяет per-object no-leak: если filter != nil, subject не
-// пуст и subnet id вне accessible-set (того же FGA grant-set, что и List —
-// read==enforce) → NotFound с тем же текстом, что и несуществующий subnet (нет
-// existence-leak). FGA-ошибка → fail-closed (Unavailable).
-func enforceGetVisible(ctx context.Context, filter ListFilter, subjectID, id, resourceName string) error {
-	var port authzfilter.UseCasePort
-	if filter != nil {
-		port = filter
-	}
-	visible, err := authzfilter.EnforceVisible(ctx, port, subjectID,
-		authzfilter.ResourceTypeSubnet, authzfilter.ActionSubnetList, id)
-	if err != nil {
-		return err
-	}
-	if !visible {
-		return serviceerr.MapRepoErr(fmt.Errorf("%w: %s %s not found", serviceerr.ErrNotFound, resourceName, id))
-	}
-	return nil
-}
-
-// GetSubnetUseCase — простой read; единственная «логика» — id-валидация,
-// перевод repo-sentinel в gRPC status и per-object no-leak enforce.
+// GetSubnetUseCase — простой read через CQRS Reader. Возвращает
+// `*kacho.SubnetRecord` (repo-leaf entity).
 //
 // Открывает Reader-TX явно через `repo.Reader(ctx)` — routing на slave-реплику
 // станет автоматическим, когда та появится; пока на той же мастер-pool.
 //
-// Per-object no-leak: если filter != nil и subject не пуст — после repo.Get
-// проверяем, что id входит в accessible-set того же FGA grant-set, что и List
-// (read==enforce). id вне set → NotFound с тем же текстом, что и несуществующий
-// subnet (caller не различает «нет доступа» и «не существует»). filter == nil /
-// subject == "" → enforce делает per-RPC interceptor (dev / system-principal).
+// # AuthZ
+//
+// Видимость единичного чтения энфорсит per-RPC authz-interceptor ПРЯМЫМ
+// per-object Check'ом (`vpc_subnet:<id>` / relation `v_get`, permission_map),
+// ровно как для Update/Delete/AddCidrBlocks. Deny на СУЩЕСТВУЮЩЕМ объекте
+// interceptor превращает в NotFound (existence-hiding, ErrHideExistence), deny на
+// отсутствующем — в passthrough, и handler отдаёт дословный NotFound из БД. Поэтому
+// use-case никакой собственной authz-проверки не делает и не знает про фильтр.
+//
+// Здесь ранее стоял второй гейт `enforceGetVisible`, который спрашивал
+// «перечисли ВСЕ subnet'ы, которые subject'у можно» и искал id в ответе. Он был
+// (а) избыточен — тот же вопрос уже задан interceptor'ом точнее и дешевле, и
+// (б) НЕВЕРЕН: перечисление упирается в жёсткий предел OpenFGA ListObjects
+// (default 1000, без continuation-token'а), поэтому на долгоживущем сторе
+// собственная подсеть тенанта выпадала за префикс и Get отдавал 404 при
+// существующей строке и существующем гранте. Подробности — package-doc
+// `internal/authzfilter`.
 type GetSubnetUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo Repo
 }
 
-// NewGetSubnetUseCase создает GetSubnetUseCase. filter может быть nil
-// (list-filter disabled / dev) → no-leak enforce пропускается.
-func NewGetSubnetUseCase(r Repo, filter ListFilter) *GetSubnetUseCase {
-	return &GetSubnetUseCase{repo: r, filter: filter}
+// NewGetSubnetUseCase создает GetSubnetUseCase.
+func NewGetSubnetUseCase(r Repo) *GetSubnetUseCase {
+	return &GetSubnetUseCase{repo: r}
 }
 
 // Execute возвращает repo-entity Subnet. NotFound → mapRepoErr → gRPC NotFound.
-// Per-object no-leak: subject без гранта на subnet → NotFound.
-func (u *GetSubnetUseCase) Execute(ctx context.Context, subjectID, id string) (*kachorepo.SubnetRecord, error) {
+func (u *GetSubnetUseCase) Execute(ctx context.Context, id string) (*kachorepo.SubnetRecord, error) {
 	if err := corevalidate.ResourceID("subnet", ids.PrefixSubnet, id); err != nil {
 		return nil, err
 	}
@@ -70,9 +57,6 @@ func (u *GetSubnetUseCase) Execute(ctx context.Context, subjectID, id string) (*
 	s, err := r.Subnets().Get(ctx, id)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
-	}
-	if err := enforceGetVisible(ctx, u.filter, subjectID, id, "Subnet"); err != nil {
-		return nil, err
 	}
 	return s, nil
 }

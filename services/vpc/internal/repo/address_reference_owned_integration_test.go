@@ -234,7 +234,7 @@ func TestIntegration_Address_Get_UsedByReferrerNameAndOwned(t *testing.T) {
 		return e
 	}))
 
-	rec, err := addrapp.NewGetAddressUseCase(r, nil).Execute(ctx, "", addr.ID)
+	rec, err := addrapp.NewGetAddressUseCase(r).Execute(ctx, addr.ID)
 	require.NoError(t, err)
 	require.Len(t, rec.UsedBy, 1)
 	assert.Equal(t, "network_load_balancer", rec.UsedBy[0].ReferrerType)

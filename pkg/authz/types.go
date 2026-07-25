@@ -76,11 +76,17 @@ type RPCEntry struct {
 
 	// ScopeFiltered — если true, interceptor НЕ делает
 	// single-object Check для этого RPC: RPC сам авторизует на data-уровне
-	// (scope-filter List — handler через ListObjects резолвит allowed-set и
-	// возвращает 200 + filtered, EMPTY если доступа нет; см.
-	// authz.ListObjectsService). Единичный per-RPC Check здесь семантически
-	// неверен — он отверг бы весь вызов `no path` 403 ДО того, как
+	// (scope-filter List — handler читает страницу и проверяет права на её
+	// идентификаторах через `AuthorizeService.BatchCheck`, возвращая 200 +
+	// filtered, EMPTY если доступа нет). Единичный per-RPC Check здесь
+	// семантически неверен — он отверг бы весь вызов `no path` 403 ДО того, как
 	// scope-filter отработает.
+	//
+	// NB: спрашивать «перечисли ВСЕ объекты, которые subject'у можно»
+	// (`AuthorizeService.ListObjects`) для этого ЗАПРЕЩЕНО: у OpenFGA
+	// ListObjects жёсткий server-side предел (default 1000) и нет
+	// continuation-token'а, поэтому на долгоживущем сторе собственные ресурсы
+	// тенанта молча выпадают из выдачи. Только per-object проверка страницы.
 	//
 	// Отличие от Public: ScopeFiltered RPC — публичный, требует
 	// аутентификации (валидный JWT на api-gateway); пропускается ТОЛЬКО

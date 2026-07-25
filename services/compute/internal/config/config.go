@@ -113,33 +113,40 @@ type Config struct {
 	// (или вне allow-list) forwarded principal снимается.
 	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS"`
 
-	// ===== FGA-filtered List =====
+	// ===== per-object filtered List =====
 	//
 	// Все ListFilter* — production-edition: configurable, no hardcoded.
 	// Reuses AuthZIAMGRPCAddr (+ per-edge IAMAuthzMTLS creds) as the iam-authorize
-	// endpoint (kacho-iam internal :9091 — AuthorizeService.ListObjects).
+	// endpoint (kacho-iam internal :9091 — AuthorizeService.BatchCheck).
+	//
+	// NB: результирующего «размера allow-list» здесь БОЛЬШЕ НЕТ (прежний
+	// MaxResults): видимость спрашивается per-object по прочитанной СТРАНИЦЕ, так
+	// что усечь её нечем — стоимость и полнота задаются page_size, а не knob'ом.
 
-	// ListFilterEnabled — master-switch. true → handler вызывает iam.ListObjects
-	// и фильтрует List по allow-list id. false → no filter (handler bypass).
+	// ListFilterEnabled — master-switch. true → handler спрашивает iam.BatchCheck
+	// про id прочитанной страницы. false → no filter (handler bypass).
 	ListFilterEnabled bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_ENABLED" default:"true"`
 
-	// ListFilterTimeoutMs — per-request deadline для iam.ListObjects.
+	// ListFilterTimeoutMs — per-call deadline ОДНОГО iam.BatchCheck (страница >100
+	// id режется на батчи, у каждого свой deadline).
 	// Default 500ms — exceeds nothing under SLA (p95 100ms target).
 	ListFilterTimeoutMs int `envconfig:"KACHO_COMPUTE_LIST_FILTER_TIMEOUT_MS" default:"500"`
 
-	// ListFilterCacheTTLMs — TTL in-memory decision cache. Short (5s) so что
-	// access-binding revoke виден ≤5s; lower → больше RTT к iam.
+	// ListFilterCacheTTLMs — TTL ПОЛОЖИТЕЛЬНОГО per-object вердикта. Short (5s)
+	// so что access-binding revoke виден ≤5s; lower → больше RTT к iam.
+	// Отрицательные вердикты не кешируются вовсе (иначе свежий грант / только что
+	// созданный свой ресурс были бы невидимы весь TTL).
 	ListFilterCacheTTLMs int `envconfig:"KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS" default:"5000"`
 
-	// ListFilterCacheMaxEntries — bound для cache. TTL-primary eviction; при
-	// превышении bound сбрасывается одна произвольная запись (не LRU — см.
-	// authzfilter.putCache).
-	// 10000 enough для ~1000 concurrent users × 10 unique (subject, type, action) keys.
+	// ListFilterCacheMaxEntries — bound для cache, вытеснение LRU (см.
+	// authzfilter.putCache). Кеш НИКАК не ограничивает видимость: страница
+	// проверяется целиком независимо от его размера.
+	// 10000 enough для ~1000 concurrent users × 10 hot (subject, type, id) verdicts.
 	ListFilterCacheMaxEntries int `envconfig:"KACHO_COMPUTE_LIST_FILTER_CACHE_MAX_ENTRIES" default:"10000"`
 
-	// ListFilterFailOpen — degraded mode. true → на FGA error: handler возвращает
-	// все ресурсы caller'у (без фильтра); false → Unavailable. **Default false**
-	// (fail-closed = secure). Set to true только в break-glass.
+	// ListFilterFailOpen — degraded mode. true → на ошибке iam: handler возвращает
+	// страницу НЕотфильтрованной (+ audit-WARN); false → Unavailable. **Default
+	// false** (fail-closed = secure). Set to true только в break-glass.
 	ListFilterFailOpen bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN" default:"false"`
 
 	// ===== register-drainer (FGA owner-tuple через kacho-iam) =====

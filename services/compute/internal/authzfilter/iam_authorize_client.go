@@ -23,14 +23,14 @@ type grpcAuthorizeClient struct {
 	cli iamv1.AuthorizeServiceClient
 }
 
-// ListObjects пробрасывает request в kacho-iam AuthorizeService.
+// BatchCheck пробрасывает request в kacho-iam AuthorizeService.
 //
 // outgoing ctx обёрнут `auth.PropagateOutgoing`, чтобы iam-side
 // `grpcsrv.UnaryPrincipalExtract` увидел реального caller'а, а не
 // SystemPrincipal() = user:bootstrap. Без wrap'а IAM authzguard'ы видели
-// "system:bootstrap" и отбивали ListObjects как
+// "system:bootstrap" и отбивали вызов как
 // "authz_anonymous_mutation_denied" → compute list-filter возвращал 403
 // для всех user'ов независимо от их FGA-tuple'ов.
-func (g *grpcAuthorizeClient) ListObjects(ctx context.Context, req *iamv1.ListObjectsRequest, opts ...grpc.CallOption) (*iamv1.ListObjectsResponse, error) {
-	return g.cli.ListObjects(auth.PropagateOutgoing(ctx), req, opts...)
+func (g *grpcAuthorizeClient) BatchCheck(ctx context.Context, req *iamv1.BatchAuthorizeCheckRequest, opts ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+	return g.cli.BatchCheck(auth.PropagateOutgoing(ctx), req, opts...)
 }

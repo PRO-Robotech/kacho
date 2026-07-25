@@ -30,11 +30,6 @@ type SubnetReaderIface interface {
 	// (через internal_ipv4.subnet_id ИЛИ internal_ipv6.subnet_id).
 	// Используется ListUsedAddresses и SubnetService.Delete (sync precheck).
 	AddressesBySubnet(ctx context.Context, subnetID string, p Pagination) ([]*AddressRecord, string, error)
-	// ListByIDs возвращает только subnets с id из allowedIDs
-	// (`WHERE id = ANY($allowed)`); pagination применяется к отфильтрованному
-	// набору. Пустой allowedIDs → (nil, "", nil) short-circuit. Используется в
-	// per-object filtered List.
-	ListByIDs(ctx context.Context, f SubnetFilter, allowedIDs []string, p Pagination) ([]*SubnetRecord, string, error)
 	// SupernetBlockCoveringSubnet — ∉-guard для Network.RemoveCidrBlocks: возвращает
 	// первый блок из candidateBlocks, который всё ещё полностью покрывает CIDR живой
 	// подсети сети networkID, НЕ покрытый ни одним из retainedBlocks (удаление

@@ -741,17 +741,20 @@ sentinel→code в отдельный слой (если когда-либо) �
   (`TestValidateAuthMode_Dev_BreakglassAllowed`). Тесты: `authmode_gate_test.go`
   (`*_Production_BreakglassRefusesBoot` prod+strict — assert'ит СООБЩЕНИЕ, не только факт
   ошибки; `*_ProductionStrict_BreakglassRefusesBoot`; `*_Dev_BreakglassAllowed`).
-- **`internal/authzfilter.FGAFilter` — per-service hand-rolled TTL-cache, не
-  `kacho-corelib/authz.ListObjectsService`.** Тот же класс, что «corelib-копии
+- **`internal/authzfilter.FGAFilter` — per-service hand-rolled per-object фильтр,
+  не `kacho-corelib/authz.ListObjectsService`.** Тот же класс, что «corelib-копии
   helper'ов» (findings7 #1 / r7b): подъём в corelib — координированная workspace-wide
-  правка (vpc несёт идентичный двойник, corelib-примитив пока не используется ни одним
-  сервисом), не compute-only. Заявленный в finding выигрыш corelib-версии (пагинация
-  >10000) **иллюзорен против фактического сервера**: `kacho-iam AuthorizeService.ListObjects`
-  single-shot — капит на `max_results` (default 1000, max 10000), ставит `Truncated`,
-  но **никогда не возвращает `next_page_token`**, поэтому pagination-loop corelib'а
-  тоже прерывается после первой страницы; обе реализации одинаково игнорируют
-  `Truncated`. Оставляем per-service копию как accepted mirror; консолидация в
-  corelib + surface `Truncated` — cross-repo тикет. (finding r9b#7)
+  правка (vpc несёт идентичный двойник), не compute-only. **Corelib-примитив здесь
+  вообще неприменим**: он строит видимость перечислением
+  (`AuthorizeService.ListObjects`), а перечисление — сам источник дефекта. OpenFGA
+  капит ListObjects server-side (`OPENFGA_LIST_OBJECTS_MAX_RESULTS`, default 1000) и
+  **не отдаёт continuation-token**, поэтому pagination-loop corelib'а обрывается на
+  первой странице, а `max_results=10000` — лишь client-side trim уже усечённого
+  ответа: на сторе с >1000 объектов типа собственный ресурс тенанта выпадал из выдачи
+  (List пуст, `Image.GetLatestByFamily` → NotFound) при живой строке и живом гранте.
+  compute перешёл на ПРЯМОЙ per-object вопрос по прочитанной странице
+  (`AuthorizeService.BatchCheck`, ≤100/батч, `viewer ∪ v_list` — тот же предикат).
+  Консолидация per-object фильтра в corelib — cross-repo тикет. (finding r9b#7)
 - **envconfig-config (#3), non-CQRS repo-порты (#4), anemic domain (#5)** — уже
   задокументированы как workspace-wide решения в секциях **r7b** (findings7 #9/#8/#7)
   и **r8b**. Здесь — только указатель. (findings r9b #3/#4/#5)

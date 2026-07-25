@@ -13,8 +13,8 @@ import (
 )
 
 // NewIAMAuthorizeClient оборачивает gRPC conn в AuthorizeClient. conn указывает на
-// kacho-iam, где живёт AuthorizeService (RegisterAuthorizeServiceServer на public
-// listener; ListObjects — публичный read-RPC). См. cmd composition root.
+// kacho-iam, где живёт AuthorizeService (BatchCheck — публичный read-RPC,
+// зарегистрирован и на internal listener). См. cmd composition root.
 func NewIAMAuthorizeClient(conn grpc.ClientConnInterface) AuthorizeClient {
 	return &grpcAuthorizeClient{cli: iamv1.NewAuthorizeServiceClient(conn)}
 }
@@ -23,13 +23,14 @@ type grpcAuthorizeClient struct {
 	cli iamv1.AuthorizeServiceClient
 }
 
-// ListObjects пробрасывает request в kacho-iam AuthorizeService.
+// BatchCheck пробрасывает request в kacho-iam AuthorizeService.
 //
-// (follow-up, зеркало compute/iam_authorize_client + nlb
-// check_client): outgoing ctx обёрнут auth.PropagateOutgoing, чтобы iam-side
-// grpcsrv.UnaryPrincipalExtract увидел РЕАЛЬНОГО caller'а (а не SystemPrincipal
-// = user:bootstrap). Без wrap'а iam authzguard видит "system:bootstrap" и отбивает
-// ListObjects → nlb list-filter возвращал бы 403/Unavailable для всех user'ов.
-func (g *grpcAuthorizeClient) ListObjects(ctx context.Context, req *iamv1.ListObjectsRequest, opts ...grpc.CallOption) (*iamv1.ListObjectsResponse, error) {
-	return g.cli.ListObjects(auth.PropagateOutgoing(ctx), req, opts...)
+// outgoing ctx обёрнут auth.PropagateOutgoing, чтобы iam-side
+// grpcsrv.UnaryPrincipalExtract увидел РЕАЛЬНОГО caller'а (а не SystemPrincipal =
+// user:bootstrap). Без wrap'а iam authzguard видит "system:bootstrap" и отбивает
+// запрос → nlb list-filter возвращал бы 403/Unavailable для всех user'ов
+// (inner-гейт пропускает self-query — caller спрашивает про СЕБЯ, поэтому реальный
+// principal обязателен).
+func (g *grpcAuthorizeClient) BatchCheck(ctx context.Context, req *iamv1.BatchAuthorizeCheckRequest, opts ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+	return g.cli.BatchCheck(auth.PropagateOutgoing(ctx), req, opts...)
 }

@@ -17,7 +17,7 @@ import (
 // object-self vs parent-scoped: object-self RPC (Extract возвращает id самого
 // ресурса) флипается на v_*; parent-scoped Create (Extract возвращает project)
 // остается tier `editor`. Top-level List остается `viewer` (visibility-фильтр —
-// через iam ListObjects `viewer ∪ v_list`, см. authzfilter).
+// через iam BatchCheck `viewer ∪ v_list`, см. authzfilter).
 //
 // Источник истины для cross-plane согласованности — per-RPC `required_relation`
 // в permission_catalog (gateway форвардит его в Check); consumer-карта обязана
@@ -97,7 +97,7 @@ var createChildRPCs = []string{
 }
 
 // projectListRPCs — top-level project-scoped List (Extract → project): остается
-// `viewer`. Visibility per-object идет через iam ListObjects `viewer ∪ v_list`
+// `viewer`. Visibility per-object идет через iam BatchCheck `viewer ∪ v_list`
 // (authzfilter), не через per-RPC Check relation.
 var projectListRPCs = []string{
 	"/kacho.cloud.vpc.v1.NetworkService/List",
@@ -160,7 +160,7 @@ func TestPermissionMap_VerbBearing_ProjectList_StaysViewer(t *testing.T) {
 	for _, rpc := range projectListRPCs {
 		e, ok := m.Lookup(rpc)
 		require.Truef(t, ok, "%s must be mapped", rpc)
-		require.Equalf(t, "viewer", e.Relation, "%s: top-level project List stays viewer (visibility via iam ListObjects union)", rpc)
+		require.Equalf(t, "viewer", e.Relation, "%s: top-level project List stays viewer (visibility via iam BatchCheck union)", rpc)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 	svc "github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
@@ -52,37 +53,33 @@ func (h *DiskHandler) Get(ctx context.Context, req *computev1.GetDiskRequest) (*
 
 // List возвращает список дисков в folder.
 //
-// Вызов фильтруется через iam.AuthorizeService.ListObjects
-// (caller subject → allowed disk_ids). admin / dev-bypass → no filtering.
+// Страница читается из БД ПЕРВОЙ (курсор, project-scoped), затем per-object
+// фильтруется через iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см.
+// list_filter.go. Нет доступа ни к одной строке страницы → пустая страница (NOT
+// error). filter == nil (dev-bypass) → без фильтрации.
 func (h *DiskHandler) List(ctx context.Context, req *computev1.ListDisksRequest) (*computev1.ListDisksResponse, error) {
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
-	// Validate pagination BEFORE the listauthz empty-grant short-circuit below, so a
-	// malformed page_token / out-of-range page_size is 400 InvalidArgument regardless
-	// of grant state (api-convention parity; the repo re-validates as backstop).
+	// Validate pagination BEFORE anything authz-related, so a malformed page_token /
+	// out-of-range page_size is 400 InvalidArgument regardless of grant state
+	// (api-convention parity; the repo re-validates as backstop).
 	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
 	}
-	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeDisk, authzfilter.ActionDiskRead)
-	if err != nil {
-		return nil, err
-	}
-	filter := svc.DiskFilter{ProjectID: req.ProjectId, Filter: req.Filter}
-	if !dec.IsBypass() {
-		if len(dec.IDs()) == 0 {
-			// Empty grant → return empty list (NOT error).
-			return &computev1.ListDisksResponse{}, nil
-		}
-		filter.AllowedIDs = dec.IDs()
-	}
-	disks, nextToken, err := h.svc.List(ctx, filter,
+	disks, nextToken, err := h.svc.List(ctx, svc.DiskFilter{ProjectID: req.ProjectId, Filter: req.Filter},
 		svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}
+	visible, err := filterVisible(ctx, h.listFilter,
+		authzfilter.ResourceTypeDisk, authzfilter.ActionDiskRead, disks,
+		func(d *domain.Disk) string { return d.ID })
+	if err != nil {
+		return nil, err
+	}
 	resp := &computev1.ListDisksResponse{NextPageToken: nextToken}
-	for _, d := range disks {
+	for _, d := range visible {
 		resp.Disks = append(resp.Disks, protoconv.Disk(d))
 	}
 	return resp, nil

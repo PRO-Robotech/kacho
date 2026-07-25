@@ -98,7 +98,7 @@ data:
         channel: {{ .Values.config.authz.listenInvalidator.channel | quote }}
         iam-dsn: {{ .Values.config.authz.listenInvalidator.iamDsn | quote }}
       # RBAC sub-phase D §11 (issue #111): per-object filtered List via
-      # kacho-iam AuthorizeService.ListObjects (public :9090 reuse). default on.
+      # kacho-iam AuthorizeService.BatchCheck (iam conn reuse). default on.
       list-filter:
         enabled: {{ .Values.config.authz.listFilter.enabled }}
         timeout: {{ .Values.config.authz.listFilter.timeout }}

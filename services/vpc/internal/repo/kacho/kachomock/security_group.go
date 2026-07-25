@@ -52,32 +52,6 @@ func (r *securityGroupReader) List(_ context.Context, f kacho.SecurityGroupFilte
 	return result, "", nil
 }
 
-// ListByIDs — фильтрация поверх ids set теми же in-memory предикатами, что List.
-// Пустой allowedIDs → (nil, "", nil).
-func (r *securityGroupReader) ListByIDs(_ context.Context, f kacho.SecurityGroupFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.SecurityGroupRecord
-	for _, sg := range r.snap {
-		if _, ok := allowed[sg.ID]; !ok {
-			continue
-		}
-		if (f.ProjectID == "" || sg.ProjectID == f.ProjectID) &&
-			(f.NetworkID == "" || sg.NetworkID == f.NetworkID) &&
-			(f.Name == "" || string(sg.Name) == f.Name) {
-			cp := *sg
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
 // ---- SecurityGroup writer ----
 
 // securityGroupWriter — write-«TX» SG. Writer видит свои writes — Get/List
@@ -107,35 +81,6 @@ func (sw *securityGroupWriter) List(_ context.Context, f kacho.SecurityGroupFilt
 	var result []*kacho.SecurityGroupRecord
 	for id, sg := range sw.w.localSGs {
 		if _, deleted := sw.w.deletedSGIDs[id]; deleted {
-			continue
-		}
-		if (f.ProjectID == "" || sg.ProjectID == f.ProjectID) &&
-			(f.NetworkID == "" || sg.NetworkID == f.NetworkID) &&
-			(f.Name == "" || string(sg.Name) == f.Name) {
-			cp := *sg
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
-// ListByIDs — writer-side: фильтрация поверх ids set теми же in-memory
-// предикатами, что List. Пустой allowedIDs → (nil, "", nil).
-func (sw *securityGroupWriter) ListByIDs(_ context.Context, f kacho.SecurityGroupFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.SecurityGroupRecord
-	for id, sg := range sw.w.localSGs {
-		if _, deleted := sw.w.deletedSGIDs[id]; deleted {
-			continue
-		}
-		if _, ok := allowed[id]; !ok {
 			continue
 		}
 		if (f.ProjectID == "" || sg.ProjectID == f.ProjectID) &&

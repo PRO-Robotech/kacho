@@ -17,6 +17,15 @@ import (
 // optional `name="<value>"` (от proto request.Filter, через общий
 // shared.ParseNameFilter — kacho-corelib/filter.Parse, whitelist {"name"}) +
 // cursor-based pagination.
+//
+// Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её
+// идентификаторах (per-object BatchCheck). Обратный порядок («перечисли все
+// разрешённые id → сузь ими SQL») упирался в жёсткий предел OpenFGA ListObjects
+// (1000) и делал собственные ресурсы тенанта невидимыми — см. package-doc
+// `internal/authzfilter`. Побочный эффект нового порядка: страница может вернуться
+// НЕПОЛНОЙ (часть строк отфильтрована) — это нормально для cursor-пагинации,
+// next_page_token берётся от последней ПРОСМОТРЕННОЙ строки, поэтому обхода без
+// пропусков это не ломает.
 type ListLoadBalancersUseCase struct {
 	repo  Repo
 	authz authzfilter.Filter
@@ -28,12 +37,11 @@ func NewListLoadBalancersUseCase(repo Repo, authz authzfilter.Filter) *ListLoadB
 	return &ListLoadBalancersUseCase{repo: repo, authz: authz}
 }
 
-// Execute — open reader, repo.List, DTO transfer per row.
+// Execute — open reader, repo.List, per-object visibility filter, DTO transfer.
 //
-// RBAC: per-object FGA filter. subject из ctx → iam ListObjects
-// (relation viewer) → пересечение в SQL (filter.AllowedIDs), pagination ПОСЛЕ
-// фильтра. Пустой грант → пустой ответ (no-leak). iam недоступен →
-// Unavailable (fail-closed).
+// RBAC: per-object FGA filter. subject из ctx → страница из БД → iam BatchCheck
+// (viewer ∪ v_list) на id этой страницы. Ничего не видно → пустой ответ (no-leak).
+// iam недоступен → Unavailable (fail-closed, НЕ нефильтрованная страница).
 func (u *ListLoadBalancersUseCase) Execute(
 	ctx context.Context, req *lbv1.ListNetworkLoadBalancersRequest,
 ) (*lbv1.ListNetworkLoadBalancersResponse, error) {
@@ -52,23 +60,12 @@ func (u *ListLoadBalancersUseCase) Execute(
 		Name:      name,
 	}
 
-	// Validate pagination BEFORE the listauthz empty-grant short-circuit below (and the
-	// repo's own len(AllowedIDs)==0 short-circuit), so a malformed page_token / out-of-
-	// range page_size is 400 InvalidArgument regardless of grant state (api-convention
-	// parity with compute + vpc; repo decodePageToken/pageSizeOrDefault remain backstop).
+	// Validate pagination BEFORE reading the page, so a malformed page_token /
+	// out-of-range page_size is 400 InvalidArgument regardless of grant state
+	// (api-convention parity with compute + vpc; repo decodePageToken/
+	// pageSizeOrDefault remain backstop).
 	if err := shared.ValidatePagination(req.GetPageToken(), req.GetPageSize()); err != nil {
 		return nil, err
-	}
-	dec, err := authzfilter.Resolve(ctx, u.authz,
-		authzfilter.ResourceTypeLoadBalancer, authzfilter.ActionLoadBalancerList)
-	if err != nil {
-		return nil, err
-	}
-	if !dec.IsBypass() {
-		if dec.IsEmpty() {
-			return &lbv1.ListNetworkLoadBalancersResponse{}, nil
-		}
-		filter.AllowedIDs = dec.IDs()
 	}
 
 	rd, err := u.repo.Reader(ctx)
@@ -83,6 +80,14 @@ func (u *ListLoadBalancersUseCase) Execute(
 	})
 	if err != nil {
 		return nil, mapDomainErr(err)
+	}
+
+	// RBAC: оставить из страницы только видимые subject'у строки (per-object).
+	recs, err = authzfilter.FilterVisiblePage(ctx, u.authz,
+		authzfilter.ResourceTypeLoadBalancer, authzfilter.ActionLoadBalancerList,
+		recs, func(rec *kachorepo.LoadBalancerRecord) string { return string(rec.ID) })
+	if err != nil {
+		return nil, err
 	}
 
 	resp := &lbv1.ListNetworkLoadBalancersResponse{NextPageToken: next}

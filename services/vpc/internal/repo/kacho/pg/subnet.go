@@ -121,92 +121,6 @@ func (r *subnetReader) List(ctx context.Context, f kacho.SubnetFilter, p kacho.P
 	return result, nextToken, nil
 }
 
-// ListByIDs — List с safety-net `WHERE id = ANY($allowedIDs)` (фильтрация выдачи
-// по разрешенному набору id). Та же list-семантика (project_id/network_id/name/
-// filter/cursor); разрешенные id передаются типизированным text[]-параметром
-// (SQL-injection-safe). Pagination применяется к отфильтрованному набору. Пустой
-// allowedIDs → (nil, "", nil) short-circuit первым стейтментом.
-func (r *subnetReader) ListByIDs(ctx context.Context, f kacho.SubnetFilter, allowedIDs []string, p kacho.Pagination) ([]*kacho.SubnetRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	pageSize, err := validate.PageSize("page_size", p.PageSize)
-	if err != nil {
-		return nil, "", err
-	}
-
-	args := []any{allowedIDs}
-	conditions := []string{"id = ANY($1::text[])"}
-	argIdx := 2
-
-	if f.ProjectID != "" {
-		conditions = append(conditions, fmt.Sprintf("project_id = $%d", argIdx))
-		args = append(args, f.ProjectID)
-		argIdx++
-	}
-	if f.NetworkID != "" {
-		conditions = append(conditions, fmt.Sprintf("network_id = $%d", argIdx))
-		args = append(args, f.NetworkID)
-		argIdx++
-	}
-	if f.Name != "" {
-		conditions = append(conditions, fmt.Sprintf("name = $%d", argIdx))
-		args = append(args, f.Name)
-		argIdx++
-	}
-	if f.Filter != "" {
-		ast, perr := filter.Parse(f.Filter, []string{"name", "placement_type", "zone_id", "network_id"})
-		if perr != nil {
-			return nil, "", helpers.InvalidFilterErr(perr)
-		}
-		if ast != nil {
-			frag, fargs := ast.ToSQL(argIdx)
-			conditions = append(conditions, frag)
-			args = append(args, fargs...)
-			argIdx += len(fargs)
-		}
-	}
-	if p.PageToken != "" {
-		ts, id, derr := helpers.DecodePageToken(p.PageToken)
-		if derr != nil {
-			return nil, "", helpers.InvalidPageTokenErr(derr)
-		}
-		conditions = append(conditions, fmt.Sprintf("(created_at, id) > ($%d, $%d)", argIdx, argIdx+1))
-		args = append(args, ts, id)
-		argIdx += 2
-	}
-
-	where := "WHERE " + strings.Join(conditions, " AND ")
-	q := fmt.Sprintf(`SELECT %s FROM subnets %s ORDER BY created_at ASC, id ASC LIMIT $%d`, helpers.SubnetCols, where, argIdx)
-	args = append(args, pageSize+1)
-
-	rows, err := r.tx.Query(ctx, q, args...)
-	if err != nil {
-		return nil, "", helpers.WrapPgErr(err, "Subnet", "")
-	}
-	defer rows.Close()
-
-	var result []*kacho.SubnetRecord
-	for rows.Next() {
-		s, err := helpers.ScanSubnet(rows)
-		if err != nil {
-			return nil, "", helpers.WrapPgErr(err, "Subnet", "")
-		}
-		result = append(result, s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, "", helpers.WrapPgErr(err, "Subnet", "")
-	}
-
-	var nextToken string
-	if int64(len(result)) > pageSize {
-		last := result[pageSize-1]
-		nextToken = helpers.EncodePageToken(last.CreatedAt, last.ID)
-		result = result[:pageSize]
-	}
-	return result, nextToken, nil
-}
-
 // SupernetBlockCoveringSubnet — ∉-guard для Network.RemoveCidrBlocks одним
 // indexed-запросом по нормализованной child-таблице subnet_cidr_blocks (в ней ВСЕ
 // CIDR-блоки всех подсетей сети, поддерживаются syncCidrBlocks в той же writer-TX).
@@ -216,10 +130,9 @@ func (r *subnetReader) ListByIDs(ctx context.Context, f kacho.SubnetFilter, allo
 // одной колонке не дают ложных пересечений), поэтому candidate/retained смешивают
 // оба семейства. Корректно при любом числе подсетей — без окна пагинации (в отличие
 // от прежнего List первой страницы, который пропускал подсети со 2-й страницы).
-// []string передаётся как text[] с per-элементным ::cidr cast (тот же приём, что
-// `id = ANY($1::text[])` в ListByIDs) — избегаем неоднозначности вывода cidr[]-типа
-// параметра. COALESCE отдаёт пустую строку, когда таких блоков нет (всегда одна
-// строка результата, без ErrNoRows).
+// []string передаётся как text[] с per-элементным ::cidr cast — избегаем
+// неоднозначности вывода cidr[]-типа параметра. COALESCE отдаёт пустую строку,
+// когда таких блоков нет (всегда одна строка результата, без ErrNoRows).
 func (r *subnetReader) SupernetBlockCoveringSubnet(ctx context.Context, networkID string, candidateBlocks, retainedBlocks []string) (string, error) {
 	const q = `
 SELECT COALESCE((

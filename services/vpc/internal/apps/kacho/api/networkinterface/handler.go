@@ -59,13 +59,13 @@ func NewHandler(
 	}
 }
 
-// Get — sync read + AuthZ + per-object no-leak.
+// Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
+// per-RPC authz-interceptor прямым Check'ом — см. GetNetworkInterfaceUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetNetworkInterfaceRequest) (*vpcv1.NetworkInterface, error) {
 	if req.NetworkInterfaceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_interface_id required")
 	}
-	subject := pbconv.SubjectFromContext(ctx)
-	n, err := h.get.Execute(ctx, subject, req.NetworkInterfaceId)
+	n, err := h.get.Execute(ctx, req.NetworkInterfaceId)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateNetworkInterfaceR
 	if req.NetworkInterfaceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_interface_id required")
 	}
-	cur, err := h.get.Execute(ctx, "", req.NetworkInterfaceId)
+	cur, err := h.get.Execute(ctx, req.NetworkInterfaceId)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteNetworkInterfaceR
 	if req.NetworkInterfaceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_interface_id required")
 	}
-	cur, err := h.get.Execute(ctx, "", req.NetworkInterfaceId)
+	cur, err := h.get.Execute(ctx, req.NetworkInterfaceId)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListNetworkInte
 	if req.NetworkInterfaceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "network_interface_id required")
 	}
-	if cur, gerr := h.get.Execute(ctx, "", req.NetworkInterfaceId); gerr == nil {
+	if cur, gerr := h.get.Execute(ctx, req.NetworkInterfaceId); gerr == nil {
 		if err := tenant.AssertProjectOwnership(ctx, cur.ProjectID); err != nil {
 			return nil, err
 		}

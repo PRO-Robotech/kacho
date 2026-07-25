@@ -36,7 +36,7 @@ func makeHandler(t *testing.T,
 	create := NewCreateGatewayUseCase(kr, fc, or)
 	update := NewUpdateGatewayUseCase(kr, or)
 	deleteUC := NewDeleteGatewayUseCase(kr, or)
-	get := NewGetGatewayUseCase(kr, nil)
+	get := NewGetGatewayUseCase(kr)
 	list := NewListGatewaysUseCase(kr, nil)
 	listOps := NewListOperationsUseCase(or)
 	return NewHandler(create, update, deleteUC, get, list, listOps)

@@ -5,58 +5,47 @@ package gateway
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// enforceGetVisible применяет per-object no-leak: если filter != nil, subject не
-// пуст и gateway id вне accessible-set (того же FGA grant-set, что и List) →
-// NotFound с тем же текстом, что и для несуществующего gateway (без утечки факта
-// существования). FGA-ошибка → fail-closed (Unavailable).
-func enforceGetVisible(ctx context.Context, filter ListFilter, subjectID, id, resourceName string) error {
-	var port authzfilter.UseCasePort
-	if filter != nil {
-		port = filter
-	}
-	visible, err := authzfilter.EnforceVisible(ctx, port, subjectID,
-		authzfilter.ResourceTypeGateway, authzfilter.ActionGatewayList, id)
-	if err != nil {
-		return err
-	}
-	if !visible {
-		return serviceerr.MapRepoErr(fmt.Errorf("%w: %s %s not found", serviceerr.ErrNotFound, resourceName, id))
-	}
-	return nil
-}
-
-// GetGatewayUseCase — простой read; единственная «логика» — id-валидация, перевод
-// repo-sentinel в gRPC status и per-object no-leak enforce.
+// GetGatewayUseCase — простой read через CQRS Reader. Возвращает
+// `*kacho.GatewayRecord` (repo-leaf entity).
 //
 // Открывает read-only TX через `repo.Reader(ctx)`; закрытие читателя — defer
 // `rd.Close()` (no-op rollback на read-only TX, освобождает соединение).
 //
-// Per-object no-leak: если filter != nil и subject не пуст — после repo.Get
-// проверяем, что id входит в тот же FGA grant-set, что и List. filter == nil /
-// subject == "" → enforce делает per-RPC interceptor (dev / system-principal).
+// # AuthZ
+//
+// Видимость единичного чтения энфорсит per-RPC authz-interceptor ПРЯМЫМ
+// per-object Check'ом (`vpc_gateway:<id>` / relation `v_get`, permission_map),
+// ровно как для Update/Delete. Deny на СУЩЕСТВУЮЩЕМ объекте interceptor
+// превращает в NotFound (existence-hiding, ErrHideExistence), deny на
+// отсутствующем — в passthrough, и handler отдаёт дословный NotFound из БД. Поэтому
+// use-case никакой собственной authz-проверки не делает и не знает про фильтр.
+//
+// Здесь ранее стоял второй гейт `enforceGetVisible`, который спрашивал
+// «перечисли ВСЕ gateway'и, которые subject'у можно» и искал id в ответе. Он был
+// (а) избыточен — тот же вопрос уже задан interceptor'ом точнее и дешевле, и
+// (б) НЕВЕРЕН: перечисление упирается в жёсткий предел OpenFGA ListObjects
+// (default 1000, без continuation-token'а), поэтому на долгоживущем сторе
+// собственный gateway тенанта выпадал за префикс и Get отдавал 404 при
+// существующей строке и существующем гранте. Подробности — package-doc
+// `internal/authzfilter`.
 type GetGatewayUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo Repo
 }
 
-// NewGetGatewayUseCase создает GetGatewayUseCase. filter может быть nil
-// (list-filter disabled / dev) → no-leak enforce пропускается.
-func NewGetGatewayUseCase(r Repo, filter ListFilter) *GetGatewayUseCase {
-	return &GetGatewayUseCase{repo: r, filter: filter}
+// NewGetGatewayUseCase создает GetGatewayUseCase.
+func NewGetGatewayUseCase(r Repo) *GetGatewayUseCase {
+	return &GetGatewayUseCase{repo: r}
 }
 
 // Execute возвращает repo-entity Gateway. NotFound → mapRepoErr → gRPC NotFound.
-// Per-object no-leak: subject без гранта на gateway → NotFound.
-func (u *GetGatewayUseCase) Execute(ctx context.Context, subjectID, id string) (*kacho.GatewayRecord, error) {
+func (u *GetGatewayUseCase) Execute(ctx context.Context, id string) (*kacho.GatewayRecord, error) {
 	if err := corevalidate.ResourceID("gateway", ids.PrefixGateway, id); err != nil {
 		return nil, err
 	}
@@ -69,9 +58,6 @@ func (u *GetGatewayUseCase) Execute(ctx context.Context, subjectID, id string) (
 	g, err := rd.Gateways().Get(ctx, id)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
-	}
-	if err := enforceGetVisible(ctx, u.filter, subjectID, id, "Gateway"); err != nil {
-		return nil, err
 	}
 	return g, nil
 }

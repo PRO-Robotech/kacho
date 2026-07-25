@@ -55,7 +55,7 @@ const clusterRootID = "cluster_kacho_root"
 const (
 	// relationViewer / relationEditor — tier-relations. Сохраняются для
 	// create-child (на parent project, F-7) и top-level project-List (visibility
-	// per-object идет через iam ListObjects `viewer ∪ v_list`, не через per-RPC
+	// per-object идет через iam BatchCheck `viewer ∪ v_list`, не через per-RPC
 	// Check). Для object-self CRUD энфорс — verb-bearing relations ниже.
 	relationViewer = "viewer"
 	relationEditor = "editor"
@@ -102,7 +102,7 @@ func clusterScoped(relation string) authz.RPCEntry {
 //   - Create                          — parent scope `project:<project_id>`, tier `editor` (F-7:
 //     create-authority = write-authz на parent, не v_create)
 //   - top-level List                  — parent scope `project:<project_id>`, tier `viewer`;
-//     visibility per-object — через iam ListObjects `viewer ∪ v_list`
+//     visibility per-object — через iam BatchCheck `viewer ∪ v_list`
 //   - Get / GetByValue                — на самом ресурсе, `v_get`
 //   - ListSubnets/ListOps/… (on res)  — на самом ресурсе, `v_list`
 //   - Update + domain-mutate verb'ы   — на самом ресурсе, `v_update`
@@ -128,13 +128,13 @@ func PermissionMap() authz.RPCMap {
 		},
 		// NetworkService/List — top-level project List: server-side FGA-Check
 		// `viewer` на `project:<project_id>` (parity с остальными 6 top-level
-		// List RPC). data-level list-filter (ListNetworksUseCase → ListObjects)
+		// List RPC). data-level list-filter (ListNetworksUseCase → BatchCheck)
 		// сужает результат per-object ПОВЕРХ Check'а, но НЕ заменяет его: при
 		// выключенном фильтре (helm-default) единственным гейтом остался бы
 		// header-trusted handler-side AssertProjectOwnership → cross-project
 		// enumeration. Поэтому Check обязателен (НЕ ScopeFiltered) — object-scope
 		// авторизация не деградирует до client-заголовка (SEC audit 2026-07-05,
-		// CWE-862/CWE-639). visibility per-object — через iam ListObjects
+		// CWE-862/CWE-639). visibility per-object — через iam BatchCheck
 		// `viewer ∪ v_list`, см. authzfilter.
 		"/kacho.cloud.vpc.v1.NetworkService/List": {
 			Relation: relationViewer,

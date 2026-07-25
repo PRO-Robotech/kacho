@@ -18,10 +18,9 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 )
 
-// RBAC  per-object filtered List — TargetGroup.
-// Acceptance (byName) / (no-leak) / (fail-closed).
-// Ссылается на ещё-не-существующий internal/authzfilter + расширенный
-// NewListTargetGroupsUseCase(repo, filter) → RED до GREEN.
+// RBAC  per-object filtered List — TargetGroup (byName / no-leak / fail-closed).
+// Страница из БД сужается per-object проверкой (iam BatchCheck, viewer ∪ v_list);
+// см. loadbalancer/list_filter_test.go.
 
 type fakeListFilter struct {
 	bypass  bool
@@ -30,21 +29,32 @@ type fakeListFilter struct {
 	gotSubj string
 	gotType string
 	gotAct  string
+	gotIDs  []string
 }
 
-func (f *fakeListFilter) ListAllowedIDs(_ context.Context, subject, resourceType, action string) (authzfilter.Decision, error) {
-	f.gotSubj, f.gotType, f.gotAct = subject, resourceType, action
+// Compile-time guard: the fake must implement the real port — a drift in the
+// filter's signature must break here, not silently skip the authz layer.
+var _ authzfilter.Filter = (*fakeListFilter)(nil)
+
+func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
+	f.gotSubj, f.gotType, f.gotAct, f.gotIDs = subject, resourceType, action, ids
 	if f.err != nil {
-		return authzfilter.Decision{}, f.err
+		return nil, f.err
 	}
 	if f.bypass {
-		return authzfilter.Decision{BypassAll: true}, nil
+		return ids, nil
 	}
-	ids := f.allowed[resourceType]
-	if len(ids) == 0 {
-		return authzfilter.Decision{Empty: true}, nil
+	allowed := make(map[string]struct{}, len(f.allowed[resourceType]))
+	for _, id := range f.allowed[resourceType] {
+		allowed[id] = struct{}{}
 	}
-	return authzfilter.Decision{AllowedIDs: ids}, nil
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 func ctxWithUser(id string) context.Context {

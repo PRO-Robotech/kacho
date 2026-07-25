@@ -38,13 +38,13 @@ type LoadBalancerRecord struct {
 //
 // ProjectID — обязателен для production-запросов (FGA scoping). Name — точное
 // совпадение; Filter — синтаксис `name="<value>"` (через corelib/filter.Parse).
+// Per-object RBAC-видимость здесь НЕ выражается: видимость решается на СТРАНИЦЕ
+// (use-case → iam BatchCheck, см. internal/authzfilter). Прежнее поле AllowedIDs
+// («перечисли всё разрешённое → WHERE id = ANY») удалено вместе с ListObjects-
+// перечислением: оно упиралось в жёсткий предел OpenFGA (1000 объектов на тип в
+// сторе) и молча прятало собственные ресурсы тенанта.
 type LoadBalancerFilter struct {
 	ProjectID string
 	Name      string
 	Filter    string
-	// AllowedIDs — per-object FGA allow-set (RBAC; iam ListObjects).
-	// nil → фильтр не применяется (bypass / authz disabled). len==0 → пустой
-	// результат (no-leak). len>0 → `WHERE id = ANY($allowed)` ВНУТРИ SQL ДО LIMIT,
-	// чтобы keyset-пагинация была плотной по отфильтрованному набору.
-	AllowedIDs []string
 }

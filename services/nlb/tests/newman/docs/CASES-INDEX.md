@@ -396,7 +396,8 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 ### D-consumer per-object filtered List (§11, D-40..D-47; `list-filter.py`)
 
 RBAC sub-phase D — `List<Resource>` отдаёт ТОЛЬКО доступные объекты (per-object
-FGA `ListObjects(subject, action, "nlb_*")`), read==enforce, fail-closed, no-leak.
+FGA `BatchCheck` по id страницы, `viewer ∪ v_list` на `nlb_*`), read==enforce,
+fail-closed, no-leak.
 Источник: `docs/specs/rbac-rules-model-2026-acceptance.md` (LST-1..6); issue #111.
 
 - `*-NLB-LST-READ-ENFORCE-OWNER-SEES-OWN` — AZD,LSG/P0 — editor sees own NLB in filtered List (D-40/D-45 read==enforce)

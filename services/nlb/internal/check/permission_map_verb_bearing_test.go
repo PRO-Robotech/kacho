@@ -15,7 +15,7 @@ import (
 // резолвит action на verb-bearing relation (`v_get`/`v_update`/`v_delete`/`v_list`),
 // а не на tier. object-self RPC (Extract → id ресурса) флипается на v_*; Create
 // (parent-scoped) остаётся tier `editor`; top-level project-List остаётся `viewer`
-// (visibility — через iam ListObjects union). Инертный `Permission`-string не
+// (visibility — через per-object iam-union viewer ∪ v_list). Инертный `Permission`-string не
 // меняется (fine-grained энфорс — отдельная под-фаза, deferred).
 
 var verbGetRPCs = []string{
@@ -111,7 +111,7 @@ func TestPermissionMap_VerbBearing_ProjectList_StaysViewer(t *testing.T) {
 	for _, rpc := range projectListRPCs {
 		e, ok := m[rpc]
 		require.Truef(t, ok, "%s must be mapped", rpc)
-		require.Equalf(t, "viewer", e.Relation, "%s: top-level project List stays viewer (visibility via iam ListObjects union)", rpc)
+		require.Equalf(t, "viewer", e.Relation, "%s: top-level project List stays viewer (visibility via the per-object iam union)", rpc)
 	}
 }
 

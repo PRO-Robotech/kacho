@@ -31,8 +31,8 @@ const (
 const (
 	// relationViewer / relationEditor — tier-relations. Сохраняются для
 	// create-child (на parent project, F-7), top-level project-List (visibility
-	// per-object идёт через iam ListObjects `viewer ∪ v_list`, не через per-RPC
-	// Check) и DiskType read-only catalog (cluster — не verb-bearing). Для
+	// per-object идёт per-page через iam BatchCheck `viewer ∪ v_list`, не через
+	// per-RPC Check) и DiskType read-only catalog (cluster — не verb-bearing). Для
 	// object-self CRUD энфорс — verb-bearing relations ниже.
 	relationViewer = "viewer"
 	relationEditor = "editor"
@@ -94,7 +94,7 @@ func unscopedProject() authz.ObjectExtractor {
 // Семантика per-RPC (enforcement по verb, развязан с tier):
 //   - Create                          — parent scope `project:<project_id>`, tier `editor` (F-7)
 //   - top-level List                  — parent scope `project:<project_id>`, tier `viewer`;
-//     visibility per-object — через iam ListObjects `viewer ∪ v_list`
+//     visibility per-object — через iam BatchCheck `viewer ∪ v_list` по СТРАНИЦЕ
 //   - Get / GetSerialPortOutput       — на самом ресурсе, `v_get`
 //   - ListOperations/Snapshot… (on res) — на самом ресурсе, `v_list`
 //   - Update + lifecycle/attach verb'ы — на самом ресурсе, `v_update`

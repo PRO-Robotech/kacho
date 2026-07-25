@@ -6,10 +6,10 @@ package authzfilter
 import "testing"
 
 // nlb1a_fga_rename_test.go — regression-lock for sub-phase NLB-1a: the listauthz
-// ListObjects resource_type tokens sent to iam must be the renamed `nlb_*` object
-// types, so per-object List filtering resolves against the same FGA type the
-// interceptor and catalog key on. A drift here silently returns an empty (or
-// unfiltered) page. Traceability: NLB-1a-03/05.
+// resource_type tokens sent to iam (as `AuthorizeCheckRequest.resource.type` in
+// the per-page BatchCheck) must be the renamed `nlb_*` object types, so per-object
+// List filtering resolves against the same FGA type the interceptor and catalog
+// key on. A drift here silently returns an empty page. Traceability: NLB-1a-03/05.
 func TestNLB1a05_ListObjectsResourceTypesRenamed(t *testing.T) {
 	cases := []struct {
 		name string

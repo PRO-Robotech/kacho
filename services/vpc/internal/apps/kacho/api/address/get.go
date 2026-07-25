@@ -5,63 +5,51 @@ package address
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// enforceGetVisible применяет per-object no-leak: если filter != nil, subject
-// не пуст и address id вне accessible-set (того же FGA grant-set, что и List —
-// read==enforce) → NotFound с тем же текстом, что и для несуществующего address
-// (no existence leak). FGA-ошибка → fail-closed (Unavailable).
-func enforceGetVisible(ctx context.Context, filter ListFilter, subjectID, id, resourceName string) error {
-	var port authzfilter.UseCasePort
-	if filter != nil {
-		port = filter
-	}
-	visible, err := authzfilter.EnforceVisible(ctx, port, subjectID,
-		authzfilter.ResourceTypeAddress, authzfilter.ActionAddressList, id)
-	if err != nil {
-		return err
-	}
-	if !visible {
-		return serviceerr.MapRepoErr(fmt.Errorf("%w: %s %s not found", serviceerr.ErrNotFound, resourceName, id))
-	}
-	return nil
-}
-
 // GetAddressUseCase — простой read: id-валидация + перевод repo-sentinel в gRPC
-// status + обогащение UsedBy (referrer-tracking) + per-object no-leak enforce.
-// Use-case можно было бы и опустить, но handler-у удобнее единый шов.
+// status + обогащение UsedBy (referrer-tracking). Use-case можно было бы и
+// опустить, но handler-у удобнее единый шов.
 //
 // Открывает Reader-TX явно через `repo.Reader(ctx)` — routing на slave-реплику
 // станет automatic, когда та появится; пока на той же мастер-pool.
 //
-// Per-object no-leak: если filter != nil и subject не пуст — после repo.Get
-// проверяем, что id входит в accessible-set того же FGA grant-set, что и List
-// (read==enforce). filter == nil / subject == "" → enforce делает per-RPC
-// interceptor (dev / system-principal).
+// # AuthZ
+//
+// Видимость единичного чтения энфорсит per-RPC authz-interceptor ПРЯМЫМ
+// per-object Check'ом (`vpc_address:<id>` / relation `v_get`, permission_map),
+// ровно как для Update/Delete. Deny на СУЩЕСТВУЮЩЕМ объекте interceptor
+// превращает в NotFound (existence-hiding, ErrHideExistence), deny на
+// отсутствующем — в passthrough, и handler отдаёт дословный NotFound из БД. Поэтому
+// use-case никакой собственной authz-проверки не делает и не знает про фильтр.
+//
+// Здесь ранее стоял второй гейт `enforceGetVisible`, который спрашивал
+// «перечисли ВСЕ адреса, которые subject'у можно» и искал id в ответе. Он был
+// (а) избыточен — тот же вопрос уже задан interceptor'ом точнее и дешевле, и
+// (б) НЕВЕРЕН: перечисление упирается в жёсткий предел OpenFGA ListObjects
+// (default 1000, без continuation-token'а), поэтому на долгоживущем сторе
+// собственный адрес тенанта выпадал за префикс и Get отдавал 404 при
+// существующей строке и существующем гранте. Подробности — package-doc
+// `internal/authzfilter`.
 type GetAddressUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo Repo
 }
 
-// NewGetAddressUseCase создает GetAddressUseCase. filter может быть nil
-// (list-filter disabled / dev) → no-leak enforce пропускается.
-func NewGetAddressUseCase(r Repo, filter ListFilter) *GetAddressUseCase {
-	return &GetAddressUseCase{repo: r, filter: filter}
+// NewGetAddressUseCase создает GetAddressUseCase.
+func NewGetAddressUseCase(r Repo) *GetAddressUseCase {
+	return &GetAddressUseCase{repo: r}
 }
 
 // Execute возвращает repo-entity Address. NotFound → mapRepoErr → gRPC NotFound.
 // UsedBy обогащается best-effort (failure → лог + адрес без UsedBy).
-// Per-object no-leak: subject без гранта на address → NotFound.
-func (u *GetAddressUseCase) Execute(ctx context.Context, subjectID, id string) (*kachorepo.AddressRecord, error) {
+func (u *GetAddressUseCase) Execute(ctx context.Context, id string) (*kachorepo.AddressRecord, error) {
 	if err := corevalidate.ResourceID("address", ids.PrefixAddress, id); err != nil {
 		return nil, err
 	}
@@ -74,9 +62,6 @@ func (u *GetAddressUseCase) Execute(ctx context.Context, subjectID, id string) (
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := enforceGetVisible(ctx, u.filter, subjectID, id, "Address"); err != nil {
-		return nil, err
-	}
 	loadUsedBy(ctx, r.Addresses(), []*kachorepo.AddressRecord{a})
 	return a, nil
 }
@@ -84,29 +69,26 @@ func (u *GetAddressUseCase) Execute(ctx context.Context, subjectID, id string) (
 // GetByValueUseCase возвращает Address по его IP-значению (external или
 // internal). oneof external_ipv4_address / internal_ipv4_address; optional
 // subnet_id scope.
-type GetByValueUseCase struct {
-	repo   Repo
-	filter ListFilter
-}
-
-// NewGetByValueUseCase создает GetByValueUseCase. filter может быть nil
-// (list-filter disabled / dev) → per-object no-leak enforce пропускается,
-// как и в GetAddressUseCase.
-func NewGetByValueUseCase(r Repo, filter ListFilter) *GetByValueUseCase {
-	return &GetByValueUseCase{repo: r, filter: filter}
-}
-
-// Execute — sync-валидация + lookup по IP + per-object no-leak enforce +
-// загрузка UsedBy.
 //
-// Per-object no-leak: после lookup'а по значению проверяем, что найденный
-// address id входит в тот же FGA grant-set, что и List (read==enforce) —
-// идентично GetAddressUseCase. Это защита-в-глубину поверх per-RPC
-// interceptor'а (v_get на subnet_id) и SQL subnet-scope: оба read-пути одного
-// ресурса применяют одинаковую object-level авторизацию независимо от
-// конфигурации interceptor'а / list-filter. filter == nil / subject == "" →
-// enforce делает per-RPC interceptor (dev / system-principal).
-func (u *GetByValueUseCase) Execute(ctx context.Context, subjectID, externalIP, internalIP, subnetID string) (*kachorepo.AddressRecord, error) {
+// # AuthZ
+//
+// Как и GetAddressUseCase, собственного authz-гейта не несёт: RPC гейтит per-RPC
+// interceptor (scope на `subnet_id`), а handler дополнительно проверяет
+// `AssertProjectOwnership` найденной строки и маскирует чужой адрес под NotFound
+// — существование IP в чужом project'е не раскрывается. Прежний
+// `enforceGetVisible` здесь страдал ровно тем же дефектом ListObjects-предела,
+// что и на GetAddressUseCase (собственный адрес за 1000-префиксом → ложный 404).
+type GetByValueUseCase struct {
+	repo Repo
+}
+
+// NewGetByValueUseCase создает GetByValueUseCase.
+func NewGetByValueUseCase(r Repo) *GetByValueUseCase {
+	return &GetByValueUseCase{repo: r}
+}
+
+// Execute — sync-валидация + lookup по IP + загрузка UsedBy.
+func (u *GetByValueUseCase) Execute(ctx context.Context, externalIP, internalIP, subnetID string) (*kachorepo.AddressRecord, error) {
 	if externalIP == "" && internalIP == "" {
 		return nil, serviceerr.InvalidArg("address", "address (external_ipv4_address or internal_ipv4_address) is required")
 	}
@@ -118,9 +100,6 @@ func (u *GetByValueUseCase) Execute(ctx context.Context, subjectID, externalIP, 
 	a, err := r.Addresses().GetByValue(ctx, externalIP, internalIP, subnetID)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
-	}
-	if err := enforceGetVisible(ctx, u.filter, subjectID, a.ID, "Address"); err != nil {
-		return nil, err
 	}
 	loadUsedBy(ctx, r.Addresses(), []*kachorepo.AddressRecord{a})
 	return a, nil

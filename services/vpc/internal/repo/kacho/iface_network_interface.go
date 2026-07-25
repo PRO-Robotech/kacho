@@ -31,9 +31,6 @@ type NetworkInterfaceReaderIface interface {
 	Get(ctx context.Context, id string) (*NetworkInterfaceRecord, error)
 	List(ctx context.Context, f NetworkInterfaceFilter, p Pagination) ([]*NetworkInterfaceRecord, string, error)
 	ListBySubnet(ctx context.Context, subnetID string) ([]*NetworkInterfaceRecord, error)
-	// ListByIDs — per-object filtered List (`WHERE id = ANY`), pagination после
-	// фильтра. Пустой allowedIDs → (nil, "", nil).
-	ListByIDs(ctx context.Context, f NetworkInterfaceFilter, allowedIDs []string, p Pagination) ([]*NetworkInterfaceRecord, string, error)
 	// ListByInstanceIDs — batched read NIC-привязок по набору instance_id
 	// (used_by_type='compute_instance' AND used_by_id = ANY). Один запрос на всё
 	// множество (не N+1) для compute-side зеркала Instance.Get/List. Каждая запись

@@ -5,55 +5,43 @@ package networkinterface
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// enforceGetVisible применяет per-object no-leak: если filter != nil, subject не
-// пуст и NIC id вне accessible-set (того же FGA grant-set, что и List — read
-// enforce-ится так же, как List) → NotFound с тем же текстом, что и для
-// несуществующего NIC (без existence-leak). FGA-ошибка → fail-closed (Unavailable).
-func enforceGetVisible(ctx context.Context, filter ListFilter, subjectID, id, resourceName string) error {
-	var port authzfilter.UseCasePort
-	if filter != nil {
-		port = filter
-	}
-	visible, err := authzfilter.EnforceVisible(ctx, port, subjectID,
-		authzfilter.ResourceTypeNetworkInterface, authzfilter.ActionNetworkInterfaceList, id)
-	if err != nil {
-		return err
-	}
-	if !visible {
-		return serviceerr.MapRepoErr(fmt.Errorf("%w: %s %s not found", serviceerr.ErrNotFound, resourceName, id))
-	}
-	return nil
-}
-
-// GetNetworkInterfaceUseCase — простой read + per-object no-leak enforce.
+// GetNetworkInterfaceUseCase — простой read через CQRS Reader.
 //
 // Открывает reader-TX через CQRS-iface; Reader идет на master-pool, а при наличии
 // slave-реплики kacho.Repository.Reader будет роутить туда.
 //
-// Per-object no-leak: если filter != nil и subject не пуст — после repo.Get
-// проверяем, что id входит в accessible-set того же FGA grant-set, что и List.
-// filter == nil / subject == "" → enforce делает per-RPC interceptor.
+// # AuthZ
+//
+// Видимость единичного чтения энфорсит per-RPC authz-interceptor ПРЯМЫМ
+// per-object Check'ом (`vpc_network_interface:<id>` / relation `v_get`,
+// permission_map), ровно как для Update/Delete. Deny на СУЩЕСТВУЮЩЕМ объекте
+// interceptor превращает в NotFound (existence-hiding, ErrHideExistence), deny на
+// отсутствующем — в passthrough, и handler отдаёт дословный NotFound из БД. Поэтому
+// use-case никакой собственной authz-проверки не делает и не знает про фильтр.
+//
+// Здесь ранее стоял второй гейт `enforceGetVisible`, который спрашивал
+// «перечисли ВСЕ NIC'и, которые subject'у можно» и искал id в ответе. Он был
+// (а) избыточен — тот же вопрос уже задан interceptor'ом точнее и дешевле, и
+// (б) НЕВЕРЕН: перечисление упирается в жёсткий предел OpenFGA ListObjects
+// (default 1000, без continuation-token'а), поэтому на долгоживущем сторе
+// собственный NIC тенанта выпадал за префикс и Get отдавал 404 при существующей
+// строке и существующем гранте. Подробности — package-doc `internal/authzfilter`.
 type GetNetworkInterfaceUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo Repo
 }
 
-// NewGetNetworkInterfaceUseCase создает GetNetworkInterfaceUseCase. filter может
-// быть nil (list-filter disabled / dev) → no-leak enforce пропускается.
-func NewGetNetworkInterfaceUseCase(r Repo, filter ListFilter) *GetNetworkInterfaceUseCase {
-	return &GetNetworkInterfaceUseCase{repo: r, filter: filter}
+// NewGetNetworkInterfaceUseCase создает GetNetworkInterfaceUseCase.
+func NewGetNetworkInterfaceUseCase(r Repo) *GetNetworkInterfaceUseCase {
+	return &GetNetworkInterfaceUseCase{repo: r}
 }
 
-// Execute возвращает repo-entity NIC. Per-object no-leak: subject без гранта на
-// NIC → NotFound.
-func (u *GetNetworkInterfaceUseCase) Execute(ctx context.Context, subjectID, id string) (*kachorepo.NetworkInterfaceRecord, error) {
+// Execute возвращает repo-entity NIC. NotFound → mapRepoErr → gRPC NotFound.
+func (u *GetNetworkInterfaceUseCase) Execute(ctx context.Context, id string) (*kachorepo.NetworkInterfaceRecord, error) {
 	if err := niResourceID(id); err != nil {
 		return nil, err
 	}
@@ -65,9 +53,6 @@ func (u *GetNetworkInterfaceUseCase) Execute(ctx context.Context, subjectID, id 
 	got, err := rd.NetworkInterfaces().Get(ctx, id)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
-	}
-	if err := enforceGetVisible(ctx, u.filter, subjectID, id, "Network interface"); err != nil {
-		return nil, err
 	}
 	return got, nil
 }

@@ -68,13 +68,13 @@ func NewHandler(
 	}
 }
 
-// Get — sync read + AuthZ + per-object no-leak (ungranted ресурс → NotFound).
+// Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
+// per-RPC authz-interceptor прямым Check'ом — см. GetSubnetUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetSubnetRequest) (*vpcv1.Subnet, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	subject := pbconv.SubjectFromContext(ctx)
-	s, err := h.get.Execute(ctx, subject, req.SubnetId)
+	s, err := h.get.Execute(ctx, req.SubnetId)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSubnetRequest) (*
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, "", req.SubnetId)
+	s, err := h.get.Execute(ctx, req.SubnetId)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteSubnetRequest) (*
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, "", req.SubnetId)
+	s, err := h.get.Execute(ctx, req.SubnetId)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +223,7 @@ func (h *Handler) AddCidrBlocks(ctx context.Context, req *vpcv1.AddSubnetCidrBlo
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, "", req.SubnetId)
+	s, err := h.get.Execute(ctx, req.SubnetId)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveSubnetC
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, "", req.SubnetId)
+	s, err := h.get.Execute(ctx, req.SubnetId)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func (h *Handler) ListUsedAddresses(ctx context.Context, req *vpcv1.ListUsedAddr
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, "", req.SubnetId)
+	s, err := h.get.Execute(ctx, req.SubnetId)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +304,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListSubnetOpera
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	if s, gerr := h.get.Execute(ctx, "", req.SubnetId); gerr == nil {
+	if s, gerr := h.get.Execute(ctx, req.SubnetId); gerr == nil {
 		if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
 			return nil, err
 		}

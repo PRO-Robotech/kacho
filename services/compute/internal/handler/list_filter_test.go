@@ -97,27 +97,45 @@ func TestImageHandler_GetLatestByFamily_GLBF03_FilterNil_Bypass(t *testing.T) {
 	require.Equal(t, "epdimgz", resp.Id)
 }
 
-// mockAuthCli — handler-test mirror of authzfilter.mockAuthClient (private there).
+// mockAuthCli — handler-test stub of kacho-iam AuthorizeService.BatchCheck.
+//
+// The grant set stays keyed by "<subject>|<resourceType>|<action>" (as it was
+// under the old enumeration API) so a per-object verdict is looked up in the same
+// authoritative table: allowed ⇔ the id is listed for the caller's key. The
+// verdict is relation-independent — the filter asks `viewer` first and `v_list`
+// only for the ids `viewer` denied, and the union of the two is exactly this set.
 type mockAuthCli struct {
 	allowedByKey map[string][]string
 	err          error
 	calls        int
 	lastAction   string // captured so read==enforce tests can assert the verb
 	lastResType  string
+	lastRelation string
 }
 
-func (m *mockAuthCli) ListObjects(_ context.Context, in *iamv1.ListObjectsRequest, _ ...grpc.CallOption) (*iamv1.ListObjectsResponse, error) {
+func (m *mockAuthCli) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest, _ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
 	m.calls++
-	m.lastAction = in.Action
-	m.lastResType = in.ResourceType
 	if m.err != nil {
 		return nil, m.err
 	}
-	key := in.Subject + "|" + in.ResourceType + "|" + in.Action
-	if ids, ok := m.allowedByKey[key]; ok {
-		return &iamv1.ListObjectsResponse{ResourceIds: ids}, nil
+	out := &iamv1.BatchAuthorizeCheckResponse{
+		Responses: make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks())),
 	}
-	return &iamv1.ListObjectsResponse{}, nil
+	for _, c := range in.GetChecks() {
+		m.lastAction = c.GetAction()
+		m.lastResType = c.GetResource().GetType()
+		m.lastRelation = c.GetRequiredRelation()
+		key := c.GetSubject() + "|" + c.GetResource().GetType() + "|" + c.GetAction()
+		allowed := false
+		for _, id := range m.allowedByKey[key] {
+			if id == c.GetResource().GetId() {
+				allowed = true
+				break
+			}
+		}
+		out.Responses = append(out.Responses, &iamv1.AuthorizeCheckResponse{Allowed: allowed})
+	}
+	return out, nil
 }
 
 func newFilter(t *testing.T, cli authzfilter.AuthorizeClient) authzfilter.Filter {
@@ -338,7 +356,8 @@ func TestImageHandler_List_CLL02_NoPrincipal_FailClosed(t *testing.T) {
 	require.Len(t, resp.Images, 0, "LEAK: no-principal must NOT bypass to all images")
 }
 
-// SCENARIO: cache hit — second call within TTL uses cached decision.
+// SCENARIO: cache hit — a positive per-object verdict within TTL is reused, so
+// repeat Lists of the same page cost no further authz round-trips.
 func TestDiskHandler_List_CacheReuse(t *testing.T) {
 	cli := &mockAuthCli{allowedByKey: map[string][]string{}}
 	h, ops := setupDiskHandler(t, newFilter(t, cli))
@@ -350,7 +369,7 @@ func TestDiskHandler_List_CacheReuse(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, resp.Disks, 1)
 	}
-	require.Equal(t, 1, cli.calls, "5 List calls but only 1 iam.ListObjects (cache)")
+	require.Equal(t, 1, cli.calls, "5 List calls but only 1 iam.BatchCheck (positive verdict cached)")
 }
 
 // CLL-05 (snapshot): label-scoped subject → exactly the allowed subset + no-principal fail-closed.
@@ -412,6 +431,49 @@ func TestInstanceHandler_List_CLL05(t *testing.T) {
 	require.Len(t, resp.Instances, 0, "LEAK: no-principal must NOT bypass to all instances")
 }
 
+// Pagination format is validated BEFORE any authz decision, so a garbage
+// page_token / out-of-range page_size is 400 InvalidArgument regardless of grant
+// state. Locked at the HANDLER level with a zero-grant caller (the state that used
+// to short-circuit to 200 {[]} and swallow the malformed input) — the portmock
+// repos ignore pagination entirely, so only the handler guard can produce the 400.
+func TestListHandlers_PaginationValidatedBeforeAuthz(t *testing.T) {
+	cli := &mockAuthCli{} // zero grant for every subject
+	ctx := ctxWithSubject("user:usr_nobody")
+
+	t.Run("disk garbage token", func(t *testing.T) {
+		h, _ := setupDiskHandler(t, newFilter(t, cli))
+		_, err := h.List(ctx, &computev1.ListDisksRequest{ProjectId: "proj", PageToken: "not-a-real-token!!"})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	})
+	t.Run("disk page_size over max", func(t *testing.T) {
+		h, _ := setupDiskHandler(t, newFilter(t, cli))
+		_, err := h.List(ctx, &computev1.ListDisksRequest{ProjectId: "proj", PageSize: 100000})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	})
+	t.Run("image garbage token", func(t *testing.T) {
+		h, _ := newImageHandlerWithFilter(t, newFilter(t, cli))
+		_, err := h.List(ctx, &computev1.ListImagesRequest{ProjectId: "proj", PageToken: "not-a-real-token!!"})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	})
+	t.Run("snapshot garbage token", func(t *testing.T) {
+		snapSvc := service.NewSnapshotService(portmock.NewSnapshotRepo(), portmock.NewDiskRepo(),
+			&portmock.ProjectClient{OK: true}, portmock.NewOpsRepo())
+		h := NewSnapshotHandler(snapSvc, newFilter(t, cli))
+		_, err := h.List(ctx, &computev1.ListSnapshotsRequest{ProjectId: "proj", PageToken: "not-a-real-token!!"})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	})
+	t.Run("instance garbage token", func(t *testing.T) {
+		insSvc := service.NewInstanceService(
+			portmock.NewInstanceRepo(), portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
+			portmock.NewSubnetRegistry(), &portmock.ProjectClient{OK: true},
+			portmock.NewNicClient(), portmock.NewStorageClient(), portmock.NewOpsRepo(),
+		)
+		h := NewInstanceHandler(insSvc, newFilter(t, cli))
+		_, err := h.List(ctx, &computev1.ListInstancesRequest{ProjectId: "proj", PageToken: "not-a-real-token!!"})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	})
+}
+
 // verbOf returns the last dot-segment of a "<domain>.<resource>.<verb>" action.
 func verbOf(action string) string {
 	last := -1
@@ -426,32 +488,42 @@ func verbOf(action string) string {
 	return action[last+1:]
 }
 
-// read==enforce: the action each public List handler sends to iam ListObjects
-// MUST carry the "list" verb (which the iam server resolves to the "viewer"
-// relation — the SAME relation the per-RPC Check gate uses for Get).
+// read==enforce: the action each public List handler sends to iam MUST carry the
+// "list" verb (which kacho-iam validates and records), and the DECISION relation
+// pinned on the check must be "viewer" first — the SAME relation the per-RPC Check
+// gate uses for Get. `v_list` is only ever asked for ids `viewer` denied, so the
+// first relation observed on a fully-granted page is "viewer".
 func TestListHandlers_SendViewerResolvingAction(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		cli := &mockAuthCli{allowedByKey: map[string][]string{}}
 		h, ops := setupDiskHandler(t, newFilter(t, cli))
-		createDisks(t, h, ops, "proj", "a")
+		ids := createDisks(t, h, ops, "proj", "a")
+		cli.allowedByKey["user:usr_alice|compute_disk|compute.disks.list"] = ids
 		_, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListDisksRequest{ProjectId: "proj"})
 		require.NoError(t, err)
 		require.Equal(t, "compute_disk", cli.lastResType)
 		require.Equal(t, "list", verbOf(cli.lastAction),
 			"disk List must send a viewer-resolving verb (read==enforce); got action %q", cli.lastAction)
+		require.Equal(t, "viewer", cli.lastRelation,
+			"the per-object check must pin the read-tier relation explicitly")
 	})
 	t.Run("instance", func(t *testing.T) {
 		cli := &mockAuthCli{allowedByKey: map[string][]string{}}
 		ops := portmock.NewOpsRepo()
+		insRepo := portmock.NewInstanceRepo()
+		insRepo.Seed(&domain.Instance{ID: "epd-ins-1", ProjectID: "proj", Name: "vm", ZoneID: "ru-central1-a"})
 		svc := service.NewInstanceService(
-			portmock.NewInstanceRepo(), portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(), portmock.NewSubnetRegistry(),
+			insRepo, portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(), portmock.NewSubnetRegistry(),
 			&portmock.ProjectClient{OK: true}, portmock.NewNicClient(), portmock.NewStorageClient(), ops,
 		)
 		h := NewInstanceHandler(svc, newFilter(t, cli))
+		cli.allowedByKey["user:usr_alice|compute_instance|compute.instances.list"] = []string{"epd-ins-1"}
 		_, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListInstancesRequest{ProjectId: "proj"})
 		require.NoError(t, err)
 		require.Equal(t, "compute_instance", cli.lastResType)
 		require.Equal(t, "list", verbOf(cli.lastAction),
 			"instance List must send a viewer-resolving verb (read==enforce); got action %q", cli.lastAction)
+		require.Equal(t, "viewer", cli.lastRelation,
+			"the per-object check must pin the read-tier relation explicitly")
 	})
 }

@@ -63,35 +63,30 @@ func (h *InstanceHandler) Get(ctx context.Context, req *computev1.GetInstanceReq
 
 // List возвращает список ВМ в folder.
 //
-// Вызов фильтруется через iam.AuthorizeService.ListObjects
-// (caller subject → allowed instance_ids). admin / dev-bypass → no filtering.
-// Empty grant → empty list (NOT 403 — конвенция Kachō для list-empty).
+// Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
+// iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.
+// Ничего не видно → пустая страница (NOT 403 — конвенция Kachō для list-empty).
 func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstancesRequest) (*computev1.ListInstancesResponse, error) {
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
-	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see disk_handler).
+	// Validate pagination BEFORE anything authz-related (see disk_handler).
 	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
 	}
-	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeInstance, authzfilter.ActionInstanceRead)
-	if err != nil {
-		return nil, err
-	}
-	filter := svc.InstanceFilter{ProjectID: req.ProjectId, Filter: req.Filter}
-	if !dec.IsBypass() {
-		if len(dec.IDs()) == 0 {
-			return &computev1.ListInstancesResponse{}, nil
-		}
-		filter.AllowedIDs = dec.IDs()
-	}
-	ins, nextToken, err := h.svc.List(ctx, filter,
+	ins, nextToken, err := h.svc.List(ctx, svc.InstanceFilter{ProjectID: req.ProjectId, Filter: req.Filter},
 		svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}
+	visible, err := filterVisible(ctx, h.listFilter,
+		authzfilter.ResourceTypeInstance, authzfilter.ActionInstanceRead, ins,
+		func(in *domain.Instance) string { return in.ID })
+	if err != nil {
+		return nil, err
+	}
 	resp := &computev1.ListInstancesResponse{NextPageToken: nextToken}
-	for _, in := range ins {
+	for _, in := range visible {
 		p := protoconv.Instance(in)
 		// metadata всегда опускается в List response (в ListInstancesRequest
 		// нет view-параметра — это документировано в instance.proto комментарии к Instance.metadata).

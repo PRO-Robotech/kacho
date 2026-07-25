@@ -78,7 +78,6 @@ data:
         timeout-ms: {{ default 500 .Values.authz.listFilter.timeoutMs }}
         cache-ttl: {{ default "5s" .Values.authz.listFilter.cacheTtl | quote }}
         max-entries: {{ default 10000 .Values.authz.listFilter.maxEntries }}
-        max-results: {{ default 10000 .Values.authz.listFilter.maxResults }}
         model-id: {{ default "" .Values.authz.listFilter.modelId | quote }}
         fail-open: {{ default false .Values.authz.listFilter.failOpen }}
       # write-side FGA: publish per-resource hierarchy tuples on Create.

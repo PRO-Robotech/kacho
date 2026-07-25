@@ -14,16 +14,15 @@ import (
 const maxPageSize = 1000
 
 // ValidatePagination validates List pagination inputs (page_size + page_token) as a
-// SYNC guard the List use-case runs BEFORE its listauthz empty-grant short-circuit.
+// SYNC guard every nlb List use-case runs BEFORE it reads the page.
 //
-// Same systemic bug as compute (fixed there via service.ValidateListPagination): every
-// nlb List use-case returns an empty page early when the caller's grant resolves to
-// zero ids — and the repo ALSO short-circuits on len(AllowedIDs)==0 BEFORE decoding the
-// page_token — so a malformed page_token / out-of-range page_size on an empty-grant List
-// fell through to `200 {[]}` instead of `400 InvalidArgument`, diverging from the
-// api-convention ("garbage token → InvalidArgument", page_size max 1000). Validating in
-// the use-case makes the 400 deterministic regardless of grant state; the repo keeps its
-// decodePageToken/pageSizeOrDefault as the authoritative backstop.
+// Same systemic bug as compute (fixed there via service.ValidateListPagination): a List
+// that short-circuits on the caller's grant before decoding the page_token answers
+// `200 {[]}` for a malformed page_token / out-of-range page_size instead of
+// `400 InvalidArgument`, diverging from the api-convention ("garbage token →
+// InvalidArgument", page_size max 1000). Validating in the use-case makes the 400
+// deterministic regardless of grant state; the repo keeps its decodePageToken/
+// pageSizeOrDefault as the authoritative backstop.
 //
 // Token shape mirrors repo pg.decodePageToken: base64 RawURLEncoding of
 // "<RFC3339Nano>\x00<id>". We assert only well-formedness (decodable + contains the

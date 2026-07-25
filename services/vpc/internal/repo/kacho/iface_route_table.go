@@ -26,9 +26,6 @@ type RouteTableReaderIface interface {
 	// ListByNetwork — узкий read для checkNetworkEmpty (Network.Delete) и
 	// ListRouteTables(byNetwork). Реализован поверх List с filter NetworkID.
 	ListByNetwork(ctx context.Context, networkID string, p Pagination) ([]*RouteTableRecord, string, error)
-	// ListByIDs — per-object filtered List (`WHERE id = ANY`), pagination после
-	// фильтра. Пустой allowedIDs → (nil, "", nil).
-	ListByIDs(ctx context.Context, f RouteTableFilter, allowedIDs []string, p Pagination) ([]*RouteTableRecord, string, error)
 }
 
 // RouteTableWriterIface — write-операции плюс read (writer расширяет reader).

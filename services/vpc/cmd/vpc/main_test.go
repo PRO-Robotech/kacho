@@ -4,7 +4,7 @@
 package main
 
 // Тесты wiring composition-root: проверяют enable/disable/no-conn контракт
-// per-object FGA-фильтра (`buildListFilter` поверх AuthorizeService.ListObjects), а
+// per-object FGA-фильтра (`buildListFilter` поверх AuthorizeService.BatchCheck), а
 // статический guard ниже держит каждый vpc→iam dial протянутым через client-cert mTLS.
 
 import (

@@ -139,19 +139,21 @@ autoscaling:
 # container. Disable by setting listFilter.enabled=false.
 listFilter:
   enabled: true
-  # Per-request deadline to iam.AuthorizeService.ListObjects (ms).
+  # Per-call deadline of ONE iam.AuthorizeService.BatchCheck (ms). A page wider
+  # than 100 ids is split into batches, each with its own deadline.
   timeoutMs: 500
-  # In-memory decision cache TTL (ms). 5s — short enough so access-binding
-  # revoke propagates in ≤5s.
+  # In-memory cache TTL (ms) of a POSITIVE per-object verdict. 5s — short enough
+  # so access-binding revoke propagates in ≤5s. Denials are never cached.
   cacheTtlMs: 5000
+  # Cache bound (LRU). Does NOT bound visibility — the whole page is always checked.
   cacheMaxEntries: 10000
-  # Degraded mode: on iam error → bypass filter (insecure; default false).
+  # Degraded mode: on iam error → return the page unfiltered (insecure; default false).
   failOpen: false
 
-# authzIam — KAC-127 Phase 4 ListObjects + KAC-108 per-RPC Check both target
-# the same kacho-iam internal listener.
+# authzIam — per-object List filtering + per-RPC Check both target the same
+# kacho-iam internal listener.
 authzIam:
-  # gRPC address of kacho-iam internal port (AuthorizeService.{Check,ListObjects}).
+  # gRPC address of kacho-iam internal port (AuthorizeService.{Check,BatchCheck}).
   # Empty string ⇒ filter + per-RPC authz disabled (dev / breakglass).
   grpcAddr: "kacho-iam.kacho.svc.cluster.local:9091"
   tls: false

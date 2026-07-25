@@ -4,7 +4,7 @@
 """Case-set list-filter-d для kacho-vpc — per-object filtered List.
 
 Black-box проверка: `List<Resource>` отдает ТОЛЬКО доступные объекты (per-object FGA
-ListObjects поверх materialized tuples + scope_grant), НЕ all-or-nothing; read==enforce
+BatchCheck на id прочитанной страницы, viewer ∪ v_list), НЕ all-or-nothing; read==enforce
 (List-видимость == Get-allow); no-leak (объект вне гранта отсутствует в List И Get→404,
 НЕ 403).
 

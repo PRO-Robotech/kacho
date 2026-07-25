@@ -17,11 +17,19 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
-// ListAddressesUseCase — список адресов с пагинацией. project_id обязателен —
-// чтобы закрыть cross-project enumeration. Использует CQRS Reader.
+// ListAddressesUseCase — список адресов с пагинацией; project_id обязателен —
+// чтобы закрыть cross-project enumeration. Читает СТРАНИЦУ через CQRS Reader
+// (курсор, project-scoped) и оставляет из неё только видимые subject'у строки —
+// per-object, через `AuthorizeService.BatchCheck` (viewer ∪ v_list; read==enforce).
+// При filter==nil или пустом subject — passthrough без обращения к FGA.
 //
-// Per-object filtered List через FGA ListObjects (relation viewer; read==enforce).
-// filter==nil / subject=="" → passthrough.
+// Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её
+// идентификаторах. Обратный порядок («перечисли все разрешённые id → сузь ими SQL»)
+// упирался в жёсткий предел OpenFGA ListObjects (1000) и делал собственные ресурсы
+// тенанта невидимыми — см. package-doc `internal/authzfilter`. Побочный эффект
+// нового порядка: страница может вернуться НЕПОЛНОЙ (часть строк отфильтрована) —
+// это нормально для cursor-пагинации, next_page_token берётся от последней
+// ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListAddressesUseCase struct {
 	repo   Repo
 	filter ListFilter
@@ -32,9 +40,8 @@ func NewListAddressesUseCase(r Repo, filter ListFilter) *ListAddressesUseCase {
 	return &ListAddressesUseCase{repo: r, filter: filter}
 }
 
-// Execute — project_id required + per-object FGA-filter + load UsedBy.
-// pagination ПОСЛЕ фильтра; bypass → repo.List; empty grant → пустой (no-leak);
-// iam недоступен → fail-closed Unavailable.
+// Execute — project_id required + per-object фильтр видимости + load UsedBy.
+// iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
 func (u *ListAddressesUseCase) Execute(ctx context.Context, subjectID string, f AddressFilter, p Pagination) ([]*kachorepo.AddressRecord, string, error) {
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
@@ -53,30 +60,52 @@ func (u *ListAddressesUseCase) Execute(ctx context.Context, subjectID string, f 
 	return addrs, nextToken, nil
 }
 
-// listFiltered применяет per-object фильтр и делает соответствующий repo-вызов.
+// listFiltered читает страницу и оставляет из неё только видимые subject'у строки.
 func (u *ListAddressesUseCase) listFiltered(ctx context.Context, r Reader, subjectID string, f AddressFilter, p Pagination) ([]*kachorepo.AddressRecord, string, error) {
 	if subjectID == "" && u.filter != nil {
 		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
 		return nil, "", nil
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject {
-		addrs, next, lerr := r.Addresses().List(ctx, f, p)
-		return addrs, next, serviceerr.MapRepoErr(lerr)
+	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
+	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
+	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	addrs, next, lerr := r.Addresses().List(ctx, f, p)
+	if lerr != nil {
+		return nil, "", serviceerr.MapRepoErr(lerr)
 	}
-	allowedIDs, bypass, ferr := u.filter.ListAllowedIDs(ctx, subjectID,
-		authzfilter.ResourceTypeAddress, authzfilter.ActionAddressList)
+	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(addrs) == 0 {
+		return addrs, next, nil
+	}
+	visible, ferr := filterVisibleAddresses(ctx, u.filter, subjectID, addrs)
 	if ferr != nil {
 		return nil, "", ferr
 	}
-	if bypass {
-		addrs, next, lerr := r.Addresses().List(ctx, f, p)
-		return addrs, next, serviceerr.MapRepoErr(lerr)
+	return visible, next, nil
+}
+
+// filterVisibleAddresses оставляет из страницы только видимые subject'у строки,
+// сохраняя порядок курсора.
+func filterVisibleAddresses(ctx context.Context, filter ListFilter, subjectID string, addrs []*kachorepo.AddressRecord) ([]*kachorepo.AddressRecord, error) {
+	pageIDs := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		pageIDs = append(pageIDs, a.ID)
 	}
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
+	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
+		authzfilter.ResourceTypeAddress, authzfilter.ActionAddressList, pageIDs)
+	if err != nil {
+		return nil, err
 	}
-	addrs, next, lerr := r.Addresses().ListByIDs(ctx, f, allowedIDs, p)
-	return addrs, next, serviceerr.MapRepoErr(lerr)
+	visible := make(map[string]struct{}, len(visibleIDs))
+	for _, id := range visibleIDs {
+		visible[id] = struct{}{}
+	}
+	out := make([]*kachorepo.AddressRecord, 0, len(visibleIDs))
+	for _, a := range addrs {
+		if _, ok := visible[a.ID]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
 }
 
 // ListBySubnetUseCase — child-list адресов конкретной подсети. Использует

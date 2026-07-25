@@ -50,31 +50,6 @@ func (r *gatewayReader) List(_ context.Context, f kacho.GatewayFilter, _ kacho.P
 	return result, "", nil
 }
 
-// ListByIDs — фильтрация поверх множества разрешенных ids + те же in-memory
-// предикаты, что и в List. Пустой allowedIDs → (nil, "", nil).
-func (r *gatewayReader) ListByIDs(_ context.Context, f kacho.GatewayFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.GatewayRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.GatewayRecord
-	for _, g := range r.snap {
-		if _, ok := allowed[g.ID]; !ok {
-			continue
-		}
-		if (f.ProjectID == "" || g.ProjectID == f.ProjectID) &&
-			(f.Name == "" || string(g.Name) == f.Name) {
-			cp := *g
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
 // ---- Gateway writer ----
 
 // gatewayWriter — write-«TX» Gateway. Writer видит свои writes —
@@ -104,34 +79,6 @@ func (gw *gatewayWriter) List(_ context.Context, f kacho.GatewayFilter, _ kacho.
 	var result []*kacho.GatewayRecord
 	for id, g := range gw.w.localGWs {
 		if _, deleted := gw.w.deletedGWIDs[id]; deleted {
-			continue
-		}
-		if (f.ProjectID == "" || g.ProjectID == f.ProjectID) &&
-			(f.Name == "" || string(g.Name) == f.Name) {
-			cp := *g
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
-// ListByIDs — writer-side: фильтрация поверх множества разрешенных ids + те же
-// in-memory предикаты, что и в List. Пустой allowedIDs → (nil, "", nil).
-func (gw *gatewayWriter) ListByIDs(_ context.Context, f kacho.GatewayFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.GatewayRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.GatewayRecord
-	for id, g := range gw.w.localGWs {
-		if _, deleted := gw.w.deletedGWIDs[id]; deleted {
-			continue
-		}
-		if _, ok := allowed[id]; !ok {
 			continue
 		}
 		if (f.ProjectID == "" || g.ProjectID == f.ProjectID) &&

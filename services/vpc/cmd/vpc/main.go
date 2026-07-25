@@ -279,14 +279,15 @@ func runServe(cfg config.Config) error {
 			"endpoint", cfg.AuthZ.IAMEndpoint, "mtls", mtlsCfg.IAMAuthzMTLS.Enable)
 	}
 
-	// Per-object FGA List/Get filter. Каждый List RPC резолвит доступный caller'у
-	// object-set через kacho-iam AuthorizeService.ListObjects, а каждый Get RPC
-	// энфорсит per-object no-leak против того же grant-set (read == enforce). Фильтр
-	// дилит endpoint AuthorizeService (PUBLIC-проекция, :9090) — НЕ conn
+	// Per-page фильтр видимости для List. Каждый List RPC читает СТРАНИЦУ из своей
+	// БД и спрашивает kacho-iam AuthorizeService.BatchCheck, какие её id видимы
+	// caller'у (viewer ∪ v_list; read == enforce). Единичный Get фильтр НЕ
+	// использует — его авторизует прямой per-object Check в authz-interceptor'е.
+	// Фильтр дилит endpoint AuthorizeService (PUBLIC-проекция, :9090) — НЕ conn
 	// InternalIAMService.Check (authzConn → :9091), который AuthorizeService не
 	// обслуживает. Endpoint = authz.list-filter.authorize-endpoint или, если не задан,
 	// authz.iam-endpoint. nil-фильтр (выключен / нет endpoint) → use-case'ы делают
-	// нефильтрованный list, а no-leak Get-enforce пропускается.
+	// нефильтрованный list.
 	var authorizeConn clients.Conn
 	if cfg.AuthZ.ListFilter.Enabled {
 		authorizeConn, err = buildAuthorizeConn(ctx, cfg, mtlsCfg, logger)
@@ -705,10 +706,11 @@ func dialPeer(
 	return clients.Build(ctx, opts)
 }
 
-// buildListFilter — возвращает per-object фильтр, готовый питать И фильтрованный
-// List, И no-leak Get use-case'ы. Выключен (или нет conn) → nil, который use-case'ы
-// трактуют как passthrough (нефильтрованный list + Get no-leak-enforce пропускается;
-// per-RPC interceptor все равно гейтит).
+// buildListFilter — возвращает per-page фильтр видимости для List use-case'ов
+// (`AuthorizeService.BatchCheck` на id прочитанной страницы). Выключен (или нет
+// conn) → nil, который use-case'ы трактуют как passthrough (нефильтрованный list;
+// per-RPC interceptor все равно гейтит). Get use-case'ы фильтр НЕ получают —
+// единичное чтение авторизует прямой per-object Check в interceptor'е.
 func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) authzfilter.Filter {
 	if !cfg.AuthZ.ListFilter.Enabled {
 		logger.Info("per-object list-filter disabled (authz.list-filter.enabled=false)")
@@ -724,14 +726,12 @@ func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) 
 		Timeout:         time.Duration(cfg.AuthZ.ListFilter.TimeoutMs) * time.Millisecond,
 		CacheTTL:        cfg.AuthZ.ListFilter.CacheTTL,
 		CacheMaxEntries: cfg.AuthZ.ListFilter.MaxEntries,
-		MaxResults:      cfg.AuthZ.ListFilter.MaxResults,
 		FailOpen:        cfg.AuthZ.ListFilter.FailOpen,
 	})
 	logger.Info("per-object list-filter enabled",
 		"timeout_ms", cfg.AuthZ.ListFilter.TimeoutMs,
 		"cache_ttl", cfg.AuthZ.ListFilter.CacheTTL,
 		"max_entries", cfg.AuthZ.ListFilter.MaxEntries,
-		"max_results", cfg.AuthZ.ListFilter.MaxResults,
 		"fail_open", cfg.AuthZ.ListFilter.FailOpen,
 	)
 	return f
@@ -900,9 +900,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		WithLogger(logger).WithRegistrar(registrar)
 	netUpdateUC := networkapp.NewUpdateNetworkUseCase(kachoRepo, opsRepo)
 	netDeleteUC := networkapp.NewDeleteNetworkUseCase(kachoRepo, subnetAdapter, routeTableAdapter, sgAdapter, opsRepo)
-	// Per-object FGA-фильтр (listFilter) питает И no-leak Get, И фильтрованный List.
-	// listFilter == nil → passthrough (выключен / dev).
-	netGetUC := networkapp.NewGetNetworkUseCase(kachoRepo, listFilter)
+	// Per-page FGA-фильтр (listFilter) питает ТОЛЬКО List; Get авторизуется
+	// прямым per-object Check'ом в interceptor'е. listFilter == nil → passthrough.
+	netGetUC := networkapp.NewGetNetworkUseCase(kachoRepo)
 	netListUC := networkapp.NewListNetworksUseCase(kachoRepo, listFilter)
 	netAddCidrUC := networkapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo)
 	netRemoveCidrUC := networkapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo)
@@ -923,7 +923,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		gwCreateUC,
 		gatewayapp.NewUpdateGatewayUseCase(kachoRepo, opsRepo),
 		gatewayapp.NewDeleteGatewayUseCase(kachoRepo, opsRepo),
-		gatewayapp.NewGetGatewayUseCase(kachoRepo, listFilter),
+		gatewayapp.NewGetGatewayUseCase(kachoRepo),
 		gatewayapp.NewListGatewaysUseCase(kachoRepo, listFilter),
 		gatewayapp.NewListOperationsUseCase(opsRepo),
 	)
@@ -935,7 +935,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		rtCreateUC,
 		routetableapp.NewUpdateRouteTableUseCase(kachoRepo, opsRepo),
 		routetableapp.NewDeleteRouteTableUseCase(kachoRepo, opsRepo),
-		routetableapp.NewGetRouteTableUseCase(kachoRepo, listFilter),
+		routetableapp.NewGetRouteTableUseCase(kachoRepo),
 		routetableapp.NewListRouteTablesUseCase(kachoRepo, listFilter),
 		routetableapp.NewListOperationsUseCase(opsRepo),
 	)
@@ -947,7 +947,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		subnetCreateUC,
 		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo),
 		subnetapp.NewDeleteSubnetUseCase(kachoRepo, niAdapter, opsRepo),
-		subnetapp.NewGetSubnetUseCase(kachoRepo, listFilter),
+		subnetapp.NewGetSubnetUseCase(kachoRepo),
 		subnetapp.NewListSubnetsUseCase(kachoRepo, listFilter),
 		subnetapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo),
 		subnetapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo),
@@ -969,8 +969,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		WithZoneRegistry(geoClient)
 	addressUpdateUC := addressapp.NewUpdateAddressUseCase(kachoRepo, opsRepo)
 	addressDeleteUC := addressapp.NewDeleteAddressUseCase(kachoRepo, opsRepo)
-	addressGetUC := addressapp.NewGetAddressUseCase(kachoRepo, listFilter)
-	addressGetByValueUC := addressapp.NewGetByValueUseCase(kachoRepo, listFilter)
+	addressGetUC := addressapp.NewGetAddressUseCase(kachoRepo)
+	addressGetByValueUC := addressapp.NewGetByValueUseCase(kachoRepo)
 	addressListUC := addressapp.NewListAddressesUseCase(kachoRepo, listFilter)
 	addressListBySubnetUC := addressapp.NewListBySubnetUseCase(kachoRepo, subnetAdapter)
 	addressListOpsUC := addressapp.NewListOperationsUseCase(opsRepo)
@@ -998,7 +998,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		sgapp.NewUpdateRulesUseCase(kachoRepo, opsRepo, sgAdapter),
 		sgapp.NewUpdateRuleUseCase(kachoRepo, opsRepo, sgAdapter),
 		sgapp.NewDeleteSecurityGroupUseCase(kachoRepo, opsRepo),
-		sgapp.NewGetSecurityGroupUseCase(kachoRepo, listFilter),
+		sgapp.NewGetSecurityGroupUseCase(kachoRepo),
 		sgapp.NewListSecurityGroupsUseCase(kachoRepo, listFilter),
 		sgapp.NewListOperationsUseCase(kachoRepo, opsRepo),
 	)
@@ -1012,7 +1012,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		niCreateUC,
 		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewDeleteNetworkInterfaceUseCase(kachoRepo, opsRepo),
-		niapp.NewGetNetworkInterfaceUseCase(kachoRepo, listFilter),
+		niapp.NewGetNetworkInterfaceUseCase(kachoRepo),
 		niapp.NewListNetworkInterfacesUseCase(kachoRepo, listFilter),
 		niapp.NewListOperationsUseCase(opsRepo),
 	)

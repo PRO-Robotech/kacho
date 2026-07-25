@@ -16,7 +16,7 @@ import (
 
 // NewIAMAuthorizeClient оборачивает gRPC conn в authzfilter.AuthorizeClient.
 // conn указывает на listener kacho-iam AuthorizeService (публичная проекция authz-слоя).
-// Используется per-object List-фильтром.
+// Используется per-page фильтром видимости List.
 func NewIAMAuthorizeClient(conn grpc.ClientConnInterface) authzfilter.AuthorizeClient {
 	return &grpcAuthorizeClient{cli: iamv1.NewAuthorizeServiceClient(conn)}
 }
@@ -25,12 +25,13 @@ type grpcAuthorizeClient struct {
 	cli iamv1.AuthorizeServiceClient
 }
 
-// ListObjects пробрасывает request в kacho-iam AuthorizeService.
+// BatchCheck пробрасывает request в kacho-iam AuthorizeService.
 //
 // outgoing ctx обернут `auth.PropagateOutgoing`, чтобы principal-extract на стороне
 // iam увидел реального caller'а, а не SystemPrincipal. Без wrap'а IAM-authzguard'ы
-// видят "system:bootstrap" и отбивают ListObjects как anonymous-mutation → vpc
-// list-filter вернул бы 403/Unavailable для всех subject'ов.
-func (g *grpcAuthorizeClient) ListObjects(ctx context.Context, req *iamv1.ListObjectsRequest, opts ...grpc.CallOption) (*iamv1.ListObjectsResponse, error) {
-	return g.cli.ListObjects(auth.PropagateOutgoing(ctx), req, opts...)
+// видят "system:bootstrap"; inner-гейт `authorizeCaller` пропускает self-query
+// (caller спрашивает про СЕБЯ), поэтому реальный principal обязателен — иначе
+// фильтр вернул бы 403/Unavailable для всех subject'ов.
+func (g *grpcAuthorizeClient) BatchCheck(ctx context.Context, req *iamv1.BatchAuthorizeCheckRequest, opts ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+	return g.cli.BatchCheck(auth.PropagateOutgoing(ctx), req, opts...)
 }

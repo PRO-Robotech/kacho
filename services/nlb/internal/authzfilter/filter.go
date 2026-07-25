@@ -1,24 +1,52 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package authzfilter — per-object filtered List для kacho-nlb (RBAC).
+// Package authzfilter реализует per-object фильтрацию видимости для kacho-nlb.
 //
-// Каждый публичный List<Resource> handler/use-case прогоняет id-set ресурса
-// через iam.AuthorizeService.ListObjects(subject, action, "nlb_*") и отдаёт
-// ПЕРЕСЕЧЕНИЕ (только доступные объекты). read==enforce: та же FGA relation
-// (viewer), что и per-RPC Check для Get; fail-closed: iam недоступен → Unavailable
-// (НЕ нефильтрованный список — no-leak, security.md).
+// Каждый публичный List use-case (NetworkLoadBalancer / Listener / TargetGroup)
+// читает СТРАНИЦУ строк из своей БД курсором и затем спрашивает kacho-iam, какие
+// id этой страницы видимы вызывающему subject'у (`AuthorizeService.BatchCheck`,
+// батчи ≤100). Это даёт настоящую per-object видимость: видимый набор равен
+// Check-allow набору (read==enforce), а стоимость пропорциональна СТРАНИЦЕ, а не
+// популяции типа в сторе.
 //
-// Зеркало kacho-compute `internal/authzfilter` (живой reference consumer-паттерна);
-// subject извлекается из ctx через operations.PrincipalFromContext (nlb-конвенция),
-// не из raw-metadata.
+// # Почему не ListObjects (важно — это был баг)
+//
+// Раньше фильтр спрашивал `AuthorizeService.ListObjects` — «перечисли ВСЕ объекты
+// этого типа, которые subject'у можно» — и сужал SQL до полученного набора
+// (`WHERE id = ANY`). У OpenFGA ListObjects есть ЖЁСТКИЙ server-side предел
+// (`OPENFGA_LIST_OBJECTS_MAX_RESULTS`, default 1000) и НЕТ continuation-token'а:
+// перечисление молча возвращает произвольный 1000-id префикс. Предел действует на
+// ТИП В СТОРЕ (cluster-wide), а не на тенанта, поэтому на долгоживущем сторе
+// (>1000 объектов типа) собственный ресурс тенанта выпадал за префикс и исчезал из
+// List навсегда: строка есть, грант есть, Get/Update/Delete (они задают ПРЯМОЙ
+// per-object вопрос через per-RPC interceptor) работают — а List пуст. Замер на
+// стенде: `nlb_network_load_balancer` = 20739 tuples, `nlb_target_group` = 10447,
+// `nlb_listener` = 5208 — все далеко за пределом. Просьба `max_results=10000`
+// предел не поднимает — это лишь client-side trim уже усечённого ответа.
+//
+// Лечится не поднятием предела (он внешний и всё равно конечен), а формой вопроса:
+// вместо «перечисли вселенную и найди в ней» — «можно ли этому subject'у ЭТОТ
+// объект», батчем на страницу.
+//
+// # Предикат видимости не изменился
+//
+// `ListObjects` по определению возвращает объекты, на которых `Check` сказал бы
+// «да», а kacho-iam объединял два отношения: `viewer ∪ v_list` (см.
+// AuthorizeService.ListObjects). Здесь вычисляется РОВНО тот же предикат, только
+// per-object: сначала батч на `viewer`, затем батч на `v_list` для тех, кому
+// `viewer` отказал. Никакого ослабления авторизации — тот же вопрос, другая форма
+// запроса.
+//
+// subject извлекается из ctx через operations.PrincipalFromContext (nlb-конвенция,
+// см. subject.go), не из raw-metadata.
 package authzfilter
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -29,72 +57,62 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 )
 
-// Decision — результат фильтра для одного ListObjects-вызова.
+// maxBatchCheckSize — контрактный предел AuthorizeService.BatchCheck
+// (>100 → InvalidArgument). Батчи режутся по нему.
+const maxBatchCheckSize = 100
+
+// visibilityRelations — отношения, объединение которых и есть «видимость» в
+// List/Get: `viewer` (read-tier: direct usersets ∪ editor ∪ admin) и `v_list`
+// (object-only selector-грант «видеть в списке без содержимого»). Тот же союз,
+// что делал AuthorizeService.ListObjects — порядок значим только для стоимости
+// (`viewer` покрывает подавляющее большинство, `v_list` добирает остаток).
+var visibilityRelations = [...]string{"viewer", "v_list"}
+
+// Filter — port фильтра видимости. Реализация — *FGAFilter (через
+// AuthorizeService.BatchCheck) либо nil (list-filter disabled / dev).
 //
-//   - BypassAll=true: фильтр не применяется (admin / wildcard-grant / fail-open /
-//     disabled). repo.List возвращает project-scoped строки как есть. Пустой
-//     (system) subject НЕ даёт BypassAll — enabled-фильтр fail-close'ит его
-//     (Unauthenticated), см. Resolve.
-//   - Empty=true: subject ничего не разрешено в этом resource_type — use-case
-//     возвращает пустой response без обращения к repo (no-leak).
-//   - AllowedIDs: explicit-список id, к которым subject имеет access; use-case
-//     прокидывает в repo как `WHERE id = ANY($allowed)` ДО LIMIT (pagination-after-filter).
-type Decision struct {
-	BypassAll  bool
-	Empty      bool
-	AllowedIDs []string
-	// FromCache — true если ответ из cache (observability/tests).
-	FromCache bool
-	// FailOpen — true если решение принято в degraded-mode (FGA error + fail-open).
-	FailOpen bool
-}
-
-// IsBypass — true если фильтрация не применяется.
-func (d Decision) IsBypass() bool { return d.BypassAll }
-
-// IsEmpty — true если allow-list пуст.
-func (d Decision) IsEmpty() bool { return d.Empty }
-
-// IDs — отсортированный allow-list (детерминированный порядок для стабильной пагинации).
-func (d Decision) IDs() []string { return d.AllowedIDs }
-
-// Filter — port интерфейс. Реализация — FGAFilter (через iam.ListObjects) либо
-// BypassFilter (public-catalog / FGA disabled). nil-Filter трактуется caller'ом
-// как bypass (use-case проверяет filter == nil).
+// Порт НЕ умеет «перечислить всё, что subject'у можно»: такого вопроса больше нет
+// ни на одном пути (он был источником усечения на пределе OpenFGA ListObjects —
+// см. package-doc). Единичное чтение по id (`Get`) авторизуется ПРЯМЫМ per-object
+// Check в per-RPC interceptor'е — так же, как Update/Delete, — и в этот порт не
+// заходит вовсе.
 type Filter interface {
-	// ListAllowedIDs возвращает Decision для (subject, resourceType, action).
-	// resourceType — FGA object type ("nlb_network_load_balancer",...).
-	// action — semantic permission ("loadbalancer.networkLoadBalancers.list",...) —
-	// iam-сервер мапит на FGA relation (viewer). subject — FGA subject
-	// ("user:usr_..." / "service_account:sa_...").
-	ListAllowedIDs(ctx context.Context, subject, resourceType, action string) (Decision, error)
-}
-
-// BypassFilter — заглушка, всегда BypassAll=true (для тестов / явного отключения).
-type BypassFilter struct{}
-
-// ListAllowedIDs возвращает BypassAll=true.
-func (BypassFilter) ListAllowedIDs(_ context.Context, _, _, _ string) (Decision, error) {
-	return Decision{BypassAll: true}, nil
+	// FilterVisibleIDs возвращает подмножество ids, видимое subject'у, СОХРАНЯЯ
+	// порядок входа (страница уже отсортирована курсором — переупорядочивание
+	// сломало бы пагинацию).
+	//
+	//   resourceType — FGA object type ("nlb_network_load_balancer", …).
+	//   action       — semantic permission ("loadbalancer.networkLoadBalancers.list");
+	//                  передаётся в kacho-iam для аудита/трассировки, решение
+	//                  принимает явный required_relation (см. visibilityRelations).
+	//   subject      — FGA subject ("user:usr_alice" / "service_account:sa_x").
+	//
+	// err != nil → fail-closed: caller ОБЯЗАН пробросить ошибку, а не отдать
+	// нефильтрованную страницу.
+	FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error)
 }
 
 // Config — параметры FGAFilter.
 type Config struct {
-	// Enabled — master-switch. false → ListAllowedIDs возвращает BypassAll=true
-	// (no-op). Для dev-кластера / graceful start без iam.
+	// Enabled — master-switch. false → FilterVisibleIDs возвращает ids как есть
+	// (нефильтрованный passthrough; для dev / graceful start без iam).
 	Enabled bool
-	// Timeout — per-request deadline к iam.ListObjects.
+	// Timeout — per-request deadline ОДНОГО BatchCheck-вызова.
 	Timeout time.Duration
-	// CacheTTL — TTL одной записи в in-process decision cache.
+	// CacheTTL — TTL одной положительной записи visibility-cache.
 	CacheTTL time.Duration
-	// CacheMaxEntries — bound для cache + MaxResults cap к iam.ListObjects.
+	// CacheMaxEntries — bound размера cache (в записях «(subject,type,id) видим»).
+	// Это ИСКЛЮЧИТЕЛЬНО размер кеша: раньше та же величина уезжала ещё и в
+	// `ListObjects.max_results` («cap видимых объектов»), связывая два
+	// несвязанных смысла; per-object BatchCheck никакого cap'а не имеет.
 	CacheMaxEntries int
-	// FailOpen — на FGA error: true → BypassAll=true + audit-warn; false → Unavailable
-	// (default, fail-closed per security.md).
+	// FailOpen — на iam-ошибке: true → страница отдаётся нефильтрованной + warn;
+	// false → Unavailable (fail-closed, default — security.md).
 	FailOpen bool
 }
 
-// DefaultConfig — sane defaults: filter включён, 500ms timeout, 5s TTL, 10000 entries, fail-closed.
+// DefaultConfig — sane defaults: фильтр включён, 500ms timeout, 5s TTL, 10000
+// entries, fail-closed.
 func DefaultConfig() Config {
 	return Config{
 		Enabled:         true,
@@ -105,15 +123,22 @@ func DefaultConfig() Config {
 	}
 }
 
-// AuthorizeClient — узкий интерфейс к iam.AuthorizeService (тестируемость).
-// Реализуется *grpcAuthorizeClient (production) либо mock (unit-tests). Сигнатура
-// совпадает с generated AuthorizeServiceClient.ListObjects → тонкий pass-through.
+// AuthorizeClient — узкий интерфейс к kacho-iam AuthorizeService (тестируемость).
+// Сигнатура совпадает со сгенерированным AuthorizeServiceClient.BatchCheck —
+// NewIAMAuthorizeClient это thin pass-through.
 type AuthorizeClient interface {
-	ListObjects(ctx context.Context, in *iamv1.ListObjectsRequest, opts ...grpc.CallOption) (*iamv1.ListObjectsResponse, error)
+	BatchCheck(ctx context.Context, in *iamv1.BatchAuthorizeCheckRequest, opts ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error)
 }
 
-// FGAFilter — продакшен-реализация Filter поверх iam.AuthorizeService.ListObjects
-// с in-memory TTL-кешем.
+// FGAFilter — продакшен-реализация Filter поверх AuthorizeService.BatchCheck с
+// in-memory TTL+LRU-кешем ПОЛОЖИТЕЛЬНЫХ вердиктов.
+//
+// Кешируются только «видим»: отрицательный вердикт никогда не кешируется, иначе
+// свежий грант не был бы виден до истечения TTL. Промах по кешу стоит один элемент
+// батча, а не отдельный round-trip.
+//
+// Eviction — LRU: при переполнении CacheMaxEntries вытесняется least-recently-used
+// запись, а не произвольная (Go-map-randomized, возможно горячая).
 type FGAFilter struct {
 	cli AuthorizeClient
 	cfg Config
@@ -123,16 +148,17 @@ type FGAFilter struct {
 	// wall-clock/time.Sleep (flaky под -race/GC/CPU-throttle).
 	now func() time.Time
 
-	mu    sync.Mutex
-	cache map[string]cacheEntry
+	mu     sync.Mutex
+	cache  map[string]*list.Element
+	lruLst *list.List
 }
 
 type cacheEntry struct {
-	decision Decision
-	expires  time.Time
+	key     string
+	expires time.Time
 }
 
-// NewFGAFilter создаёт фильтр. cli == nil → всегда BypassAll (graceful start без iam).
+// NewFGAFilter создаёт фильтр. cli == nil → passthrough (graceful start без iam).
 func NewFGAFilter(cli AuthorizeClient, cfg Config) *FGAFilter {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 500 * time.Millisecond
@@ -144,10 +170,11 @@ func NewFGAFilter(cli AuthorizeClient, cfg Config) *FGAFilter {
 		cfg.CacheMaxEntries = 10000
 	}
 	return &FGAFilter{
-		cli:   cli,
-		cfg:   cfg,
-		now:   time.Now,
-		cache: make(map[string]cacheEntry, cfg.CacheMaxEntries),
+		cli:    cli,
+		cfg:    cfg,
+		now:    time.Now,
+		cache:  make(map[string]*list.Element, cfg.CacheMaxEntries),
+		lruLst: list.New(),
 	}
 }
 
@@ -160,113 +187,191 @@ func (f *FGAFilter) nowFn() time.Time {
 	return time.Now()
 }
 
-// ListAllowedIDs — основной entry-point.
-func (f *FGAFilter) ListAllowedIDs(ctx context.Context, subject, resourceType, action string) (Decision, error) {
-	if !f.cfg.Enabled || f.cli == nil {
-		return Decision{BypassAll: true}, nil
+// FilterVisibleIDs — основной entry-point. См. Filter.
+func (f *FGAFilter) FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
+	if f == nil || !f.cfg.Enabled || f.cli == nil {
+		return ids, nil
 	}
 	if subject == "" {
-		// Без identity — caller (use-case) трактует "" как system/bypass ДО вызова;
-		// сюда subject="" попасть не должен, но fail-closed на всякий случай.
-		return Decision{}, status.Error(codes.Unauthenticated, "list filter: subject required")
+		// Principal не извлечён (anonymous / потерянный forwarded-principal) —
+		// fail-closed. Пустой subject НЕ означает «system, можно всё»: это была бы
+		// cross-tenant enumeration дыра (CWE-862).
+		return nil, status.Error(codes.Unauthenticated, "list filter: subject required")
 	}
 	if resourceType == "" || action == "" {
-		return Decision{}, fmt.Errorf("authzfilter: resourceType and action required")
+		return nil, fmt.Errorf("authzfilter: resourceType and action required")
+	}
+	if len(ids) == 0 {
+		return nil, nil
 	}
 
-	key := cacheKey(subject, resourceType, action)
-	if d, ok := f.getCache(key); ok {
-		d.FromCache = true
-		return d, nil
+	visible := make(map[string]struct{}, len(ids))
+	// pending — ещё не признанные видимыми (дедуплицированы: одна страница не
+	// должна платить дважды за повторяющийся id).
+	pending := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		if f.getCache(subject, resourceType, id) {
+			visible[id] = struct{}{}
+			continue
+		}
+		pending = append(pending, id)
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, f.cfg.Timeout)
-	defer cancel()
-
-	resp, err := f.cli.ListObjects(callCtx, &iamv1.ListObjectsRequest{
-		Subject:      subject,
-		ResourceType: resourceType,
-		Action:       action,
-		MaxResults:   int64(f.cfg.CacheMaxEntries),
-	})
-	if err != nil {
-		return f.handleErr(err)
-	}
-
-	// wildcard_grant → subject имеет unbounded reach над типом → bypass
-	// (resource_ids пуст на сервере при wildcard, поэтому НЕ трактуем как Empty).
-	if resp.GetWildcardGrant() {
-		d := Decision{BypassAll: true}
-		f.putCache(key, d)
-		return d, nil
-	}
-
-	ids := append([]string(nil), resp.GetResourceIds()...)
-	sort.Strings(ids) // детерминированный порядок для стабильной пагинации
-
-	d := Decision{
-		AllowedIDs: ids,
-		Empty:      len(ids) == 0,
-	}
-	f.putCache(key, d)
-	return d, nil
-}
-
-// handleErr — reaction по fail-open / fail-closed.
-func (f *FGAFilter) handleErr(err error) (Decision, error) {
-	if f.cfg.FailOpen {
-		return Decision{BypassAll: true, FailOpen: true}, nil
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return Decision{}, status.Errorf(codes.Unavailable, "list filter: iam.ListObjects deadline exceeded after %s", f.cfg.Timeout)
-	}
-	if s, ok := status.FromError(err); ok && s.Code() != codes.OK && s.Code() != codes.Unknown {
-		return Decision{}, status.Errorf(codes.Unavailable, "list filter: iam.ListObjects %s: %s", s.Code(), s.Message())
-	}
-	return Decision{}, status.Errorf(codes.Unavailable, "list filter: iam.ListObjects: %v", err)
-}
-
-func cacheKey(subject, resourceType, action string) string {
-	return subject + "|" + resourceType + "|" + action
-}
-
-func (f *FGAFilter) getCache(key string) (Decision, bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	e, ok := f.cache[key]
-	if !ok {
-		return Decision{}, false
-	}
-	if f.nowFn().After(e.expires) {
-		delete(f.cache, key)
-		return Decision{}, false
-	}
-	d := e.decision
-	if len(d.AllowedIDs) > 0 {
-		idsCopy := make([]string, len(d.AllowedIDs))
-		copy(idsCopy, d.AllowedIDs)
-		d.AllowedIDs = idsCopy
-	}
-	return d, true
-}
-
-func (f *FGAFilter) putCache(key string, d Decision) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if len(f.cache) >= f.cfg.CacheMaxEntries {
-		for k := range f.cache {
-			delete(f.cache, k)
+	for _, relation := range visibilityRelations {
+		if len(pending) == 0 {
 			break
 		}
+		allowed, denied, err := f.checkRelation(ctx, subject, resourceType, action, relation, pending)
+		if err != nil {
+			return f.handleErr(ids, err)
+		}
+		for _, id := range allowed {
+			visible[id] = struct{}{}
+			f.putCache(subject, resourceType, id)
+		}
+		pending = denied
 	}
-	f.cache[key] = cacheEntry{decision: d, expires: f.nowFn().Add(f.cfg.CacheTTL)}
+
+	// Порядок входа сохраняется — страница уже упорядочена курсором.
+	out := make([]string, 0, len(visible))
+	for _, id := range ids {
+		if _, ok := visible[id]; ok {
+			delete(visible, id) // защита от дублей во входе
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// checkRelation спрашивает kacho-iam об ОДНОМ отношении для набора ids батчами
+// ≤ maxBatchCheckSize. Возвращает разрешённые и отказанные (для следующего
+// отношения). Каждый батч идёт под собственным per-call deadline
+// (architecture.md: per-call deadline на КАЖДОМ внешнем вызове) — единый таймаут
+// на всю серию батчей спуриозно резал бы здоровый multi-batch peer.
+func (f *FGAFilter) checkRelation(
+	ctx context.Context,
+	subject, resourceType, action, relation string,
+	ids []string,
+) (allowed, denied []string, err error) {
+	allowed = make([]string, 0, len(ids))
+	denied = make([]string, 0)
+	for start := 0; start < len(ids); start += maxBatchCheckSize {
+		end := start + maxBatchCheckSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+
+		checks := make([]*iamv1.AuthorizeCheckRequest, 0, len(batch))
+		for _, id := range batch {
+			checks = append(checks, &iamv1.AuthorizeCheckRequest{
+				Subject:          subject,
+				Resource:         &iamv1.ResourceRef{Type: resourceType, Id: id},
+				Action:           action,
+				RequiredRelation: relation,
+			})
+		}
+
+		resp, cerr := f.batchCheckOnce(ctx, &iamv1.BatchAuthorizeCheckRequest{Checks: checks})
+		if cerr != nil {
+			return nil, nil, cerr
+		}
+		// Контракт BatchCheck: responses в порядке checks и той же длины.
+		// Расхождение — не «считаем отказом», а fail-closed ошибка: молчаливое
+		// смещение индексов выдало бы вердикт одного объекта за другой.
+		if len(resp.GetResponses()) != len(batch) {
+			return nil, nil, fmt.Errorf("authzfilter: BatchCheck returned %d responses for %d checks",
+				len(resp.GetResponses()), len(batch))
+		}
+		for i, r := range resp.GetResponses() {
+			if r.GetAllowed() {
+				allowed = append(allowed, batch[i])
+			} else {
+				denied = append(denied, batch[i])
+			}
+		}
+	}
+	return allowed, denied, nil
+}
+
+// batchCheckOnce делает ровно один BatchCheck под собственным per-call deadline.
+func (f *FGAFilter) batchCheckOnce(ctx context.Context, req *iamv1.BatchAuthorizeCheckRequest) (*iamv1.BatchAuthorizeCheckResponse, error) {
+	callCtx, cancel := context.WithTimeout(ctx, f.cfg.Timeout)
+	defer cancel()
+	return f.cli.BatchCheck(callCtx, req)
+}
+
+// handleErr — реакция по fail-open / fail-closed.
+func (f *FGAFilter) handleErr(ids []string, err error) ([]string, error) {
+	if f.cfg.FailOpen {
+		return ids, nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil, status.Errorf(codes.Unavailable, "list filter: AuthorizeService.BatchCheck deadline exceeded after %s", f.cfg.Timeout)
+	}
+	if s, ok := status.FromError(err); ok && s.Code() != codes.OK && s.Code() != codes.Unknown {
+		return nil, status.Errorf(codes.Unavailable, "list filter: AuthorizeService.BatchCheck %s: %s", s.Code(), s.Message())
+	}
+	return nil, status.Errorf(codes.Unavailable, "list filter: AuthorizeService.BatchCheck: %v", err)
+}
+
+// cacheKey — ключ положительного вердикта видимости. Отношение в ключ НЕ входит:
+// кешируется итоговое «видим» (viewer ∪ v_list), а не отдельная ветка союза.
+func cacheKey(subject, resourceType, id string) string {
+	return subject + "|" + resourceType + "|" + id
+}
+
+func (f *FGAFilter) getCache(subject, resourceType, id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	el, ok := f.cache[cacheKey(subject, resourceType, id)]
+	if !ok {
+		return false
+	}
+	e := el.Value.(*cacheEntry)
+	if f.nowFn().After(e.expires) {
+		f.lruLst.Remove(el)
+		delete(f.cache, e.key)
+		return false
+	}
+	f.lruLst.MoveToFront(el) // LRU touch
+	return true
+}
+
+func (f *FGAFilter) putCache(subject, resourceType, id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := cacheKey(subject, resourceType, id)
+	exp := f.nowFn().Add(f.cfg.CacheTTL)
+	if el, ok := f.cache[key]; ok {
+		el.Value.(*cacheEntry).expires = exp
+		f.lruLst.MoveToFront(el)
+		return
+	}
+	el := f.lruLst.PushFront(&cacheEntry{key: key, expires: exp})
+	f.cache[key] = el
+	// Вытеснить LRU-tail пока перешагиваем bound.
+	for f.lruLst.Len() > f.cfg.CacheMaxEntries {
+		tail := f.lruLst.Back()
+		if tail == nil {
+			break
+		}
+		te := tail.Value.(*cacheEntry)
+		f.lruLst.Remove(tail)
+		delete(f.cache, te.key)
+	}
 }
 
 // Size — текущий размер cache (observability/tests).
 func (f *FGAFilter) Size() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return len(f.cache)
+	return f.lruLst.Len()
 }
 
 // Invalidate — удаляет записи subject'а из cache (LISTEN/NOTIFY-driven inval).
@@ -274,8 +379,9 @@ func (f *FGAFilter) Invalidate(subject string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	prefix := subject + "|"
-	for k := range f.cache {
+	for k, el := range f.cache {
 		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			f.lruLst.Remove(el)
 			delete(f.cache, k)
 		}
 	}

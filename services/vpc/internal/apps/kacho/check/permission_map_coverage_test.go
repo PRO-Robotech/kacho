@@ -130,7 +130,7 @@ func TestPermissionMap_VPCServedEntriesWellFormed(t *testing.T) {
 				continue
 			}
 			if entry.ScopeFiltered {
-				continue // авторизуется на data-уровне (ListObjects), single-object Check не делается
+				continue // авторизуется на data-уровне (per-page BatchCheck), single-object Check не делается
 			}
 			require.NotEmptyf(t, entry.Relation, "%s: required relation must be set", fm)
 			require.NotNilf(t, entry.Extract, "%s: must carry an ObjectExtractor", fm)

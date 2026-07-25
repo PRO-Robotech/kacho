@@ -64,7 +64,7 @@ func (r *MachineTypeRepo) Get(ctx context.Context, id string) (*domain.MachineTy
 
 // List возвращает machine-type с cursor-пагинацией (created_at, id) ASC и
 // whitelist-фильтрами name=/family=/minGpus= (COMP-1 F7/F19). Ambient каталог —
-// без AllowedIDs (listauthz row-filter не применяется).
+// per-object list-authz к нему не применяется.
 func (r *MachineTypeRepo) List(ctx context.Context, f ports.MachineTypeFilter, p ports.Pagination) ([]*domain.MachineType, string, error) {
 	pageSize, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {

@@ -5,7 +5,6 @@ package handler
 
 import (
 	"context"
-	"slices"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -14,6 +13,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 	svc "github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
@@ -51,13 +51,18 @@ func (h *ImageHandler) Get(ctx context.Context, req *computev1.GetImageRequest) 
 //
 // Per-object authz: interceptor гейтит этот RPC лишь на project-tier `viewer`
 // (target image-id неизвестен до резолва family, поэтому per-object gate на
-// interceptor'е невозможен). Как public List, после резолва образа сужаем до
-// per-object `v_get` allow-list на РАЗРЕШЁННОМ образе — иначе project-member с
-// одним `viewer on project` (но без `v_get` на образе X) прочитал бы содержимое X
-// (name/description/labels/min_disk_size/product_ids/os), когда X — новейший в
-// своей family (BOLA-lite / over-show, CWE-863). Зеркалит per-object v_get gate у
-// Get. Отказ прячет существование (NotFound "Image <family> not found",
-// неотличимо от пустой family), а не 403-oracle.
+// interceptor'е невозможен). После резолва образа задаём ПРЯМОЙ per-object вопрос
+// о РАЗРЕШЁННОСТИ именно этого id (viewer ∪ v_list, один BatchCheck) — иначе
+// project-member с одним `viewer on project` (но без per-object гранта на образе
+// X) прочитал бы содержимое X (name/description/labels/min_disk_size/product_ids/
+// os), когда X — новейший в своей family (BOLA-lite / over-show, CWE-863).
+// Зеркалит per-object gate у Get. Отказ прячет существование (NotFound
+// "Image <family> not found", неотличимо от пустой family), а не 403-oracle.
+//
+// Прежняя форма — членство id в перечислении всех разрешённых образов
+// (iam.ListObjects) — упиралась в жёсткий предел OpenFGA (1000 без
+// continuation-token'а) и на большом сторе отдавала NotFound для СВОЕГО
+// разрешённого образа; см. package-doc `internal/authzfilter`.
 func (h *ImageHandler) GetLatestByFamily(ctx context.Context, req *computev1.GetImageLatestByFamilyRequest) (*computev1.Image, error) {
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
@@ -66,11 +71,12 @@ func (h *ImageHandler) GetLatestByFamily(ctx context.Context, req *computev1.Get
 	if err != nil {
 		return nil, err
 	}
-	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeImage, authzfilter.ActionImageRead)
+	visible, err := isVisible(ctx, h.listFilter,
+		authzfilter.ResourceTypeImage, authzfilter.ActionImageRead, i.ID)
 	if err != nil {
 		return nil, err
 	}
-	if !dec.IsBypass() && !slices.Contains(dec.IDs(), i.ID) {
+	if !visible {
 		return nil, status.Errorf(codes.NotFound, "Image %s not found", req.Family)
 	}
 	return protoconv.Image(i), nil
@@ -78,34 +84,29 @@ func (h *ImageHandler) GetLatestByFamily(ctx context.Context, req *computev1.Get
 
 // List возвращает список образов в folder.
 //
-// Вызов фильтруется через iam.AuthorizeService.ListObjects
-// (caller subject → allowed image_ids).
+// Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
+// iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.
 func (h *ImageHandler) List(ctx context.Context, req *computev1.ListImagesRequest) (*computev1.ListImagesResponse, error) {
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
-	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see disk_handler).
+	// Validate pagination BEFORE anything authz-related (see disk_handler).
 	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
 	}
-	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeImage, authzfilter.ActionImageRead)
-	if err != nil {
-		return nil, err
-	}
-	filter := svc.ImageFilter{ProjectID: req.ProjectId, Filter: req.Filter}
-	if !dec.IsBypass() {
-		if len(dec.IDs()) == 0 {
-			return &computev1.ListImagesResponse{}, nil
-		}
-		filter.AllowedIDs = dec.IDs()
-	}
-	imgs, nextToken, err := h.svc.List(ctx, filter,
+	imgs, nextToken, err := h.svc.List(ctx, svc.ImageFilter{ProjectID: req.ProjectId, Filter: req.Filter},
 		svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}
+	visible, err := filterVisible(ctx, h.listFilter,
+		authzfilter.ResourceTypeImage, authzfilter.ActionImageRead, imgs,
+		func(i *domain.Image) string { return i.ID })
+	if err != nil {
+		return nil, err
+	}
 	resp := &computev1.ListImagesResponse{NextPageToken: nextToken}
-	for _, i := range imgs {
+	for _, i := range visible {
 		resp.Images = append(resp.Images, protoconv.Image(i))
 	}
 	return resp, nil

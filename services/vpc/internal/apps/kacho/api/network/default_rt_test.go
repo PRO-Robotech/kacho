@@ -44,8 +44,8 @@ func TestNetwork_VPC_1_11_CreateProvisionsDefaultRouteTable(t *testing.T) {
 	assert.NotEmpty(t, n.DefaultSecurityGroupId, "default-SG остаётся на месте (F4)")
 
 	// Get эхает то же значение (durable, а не только в op-response).
-	get := NewGetNetworkUseCase(kr, nil)
-	got, gerr := get.Execute(context.Background(), "", n.Id)
+	get := NewGetNetworkUseCase(kr)
+	got, gerr := get.Execute(context.Background(), n.Id)
 	require.NoError(t, gerr)
 	assert.Equal(t, n.DefaultRouteTableId, got.DefaultRouteTableID)
 

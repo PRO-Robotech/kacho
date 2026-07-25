@@ -17,9 +17,18 @@ import (
 )
 
 // ListNetworkInterfacesUseCase — список NIC'ов; project_id обязателен. Читает
-// через reader-TX CQRS-интерфейса. Результат фильтруется per-object через FGA
-// ListObjects (relation viewer, read==enforce): возвращаем только разрешенные
-// subject'у NIC'и. filter==nil / subject=="" → passthrough без фильтра.
+// СТРАНИЦУ через reader-TX CQRS-интерфейса (курсор, project-scoped) и оставляет
+// из неё только видимые subject'у строки — per-object, через
+// `AuthorizeService.BatchCheck` (viewer ∪ v_list; read==enforce). При filter==nil
+// или пустом subject — passthrough без обращения к FGA.
+//
+// Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её
+// идентификаторах. Обратный порядок («перечисли все разрешённые id → сузь ими SQL»)
+// упирался в жёсткий предел OpenFGA ListObjects (1000) и делал собственные ресурсы
+// тенанта невидимыми — см. package-doc `internal/authzfilter`. Побочный эффект
+// нового порядка: страница может вернуться НЕПОЛНОЙ (часть строк отфильтрована) —
+// это нормально для cursor-пагинации, next_page_token берётся от последней
+// ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListNetworkInterfacesUseCase struct {
 	repo   Repo
 	filter ListFilter
@@ -30,9 +39,8 @@ func NewListNetworkInterfacesUseCase(r Repo, filter ListFilter) *ListNetworkInte
 	return &ListNetworkInterfacesUseCase{repo: r, filter: filter}
 }
 
-// Execute — требует project_id и применяет per-object FGA-фильтр. Пагинация идет
-// ПОСЛЕ фильтра; bypass → repo.List; пустой grant → пустой результат (no-leak);
-// iam недоступен → fail-closed Unavailable.
+// Execute — проверяет project_id, читает страницу и фильтрует её per-object.
+// iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
 func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, subjectID string, f NetworkInterfaceFilter, p Pagination) ([]*kachorepo.NetworkInterfaceRecord, string, error) {
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
@@ -47,33 +55,46 @@ func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, subjectID st
 		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
 		return nil, "", nil
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject {
-		out, next, lerr := rd.NetworkInterfaces().List(ctx, f, p)
-		if lerr != nil {
-			return nil, "", serviceerr.MapRepoErr(lerr)
-		}
-		return out, next, nil
-	}
-	allowedIDs, bypass, ferr := u.filter.ListAllowedIDs(ctx, subjectID,
-		authzfilter.ResourceTypeNetworkInterface, authzfilter.ActionNetworkInterfaceList)
-	if ferr != nil {
-		return nil, "", ferr
-	}
-	if bypass {
-		out, next, lerr := rd.NetworkInterfaces().List(ctx, f, p)
-		if lerr != nil {
-			return nil, "", serviceerr.MapRepoErr(lerr)
-		}
-		return out, next, nil
-	}
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	out, next, lerr := rd.NetworkInterfaces().ListByIDs(ctx, f, allowedIDs, p)
+	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
+	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
+	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	out, next, lerr := rd.NetworkInterfaces().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", serviceerr.MapRepoErr(lerr)
 	}
-	return out, next, nil
+	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(out) == 0 {
+		return out, next, nil
+	}
+	visible, ferr := filterVisibleNetworkInterfaces(ctx, u.filter, subjectID, out)
+	if ferr != nil {
+		return nil, "", ferr
+	}
+	return visible, next, nil
+}
+
+// filterVisibleNetworkInterfaces оставляет из страницы только видимые subject'у
+// строки, сохраняя порядок курсора.
+func filterVisibleNetworkInterfaces(ctx context.Context, filter ListFilter, subjectID string, nics []*kachorepo.NetworkInterfaceRecord) ([]*kachorepo.NetworkInterfaceRecord, error) {
+	pageIDs := make([]string, 0, len(nics))
+	for _, n := range nics {
+		pageIDs = append(pageIDs, n.ID)
+	}
+	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
+		authzfilter.ResourceTypeNetworkInterface, authzfilter.ActionNetworkInterfaceList, pageIDs)
+	if err != nil {
+		return nil, err
+	}
+	visible := make(map[string]struct{}, len(visibleIDs))
+	for _, id := range visibleIDs {
+		visible[id] = struct{}{}
+	}
+	out := make([]*kachorepo.NetworkInterfaceRecord, 0, len(visibleIDs))
+	for _, n := range nics {
+		if _, ok := visible[n.ID]; ok {
+			out = append(out, n)
+		}
+	}
+	return out, nil
 }
 
 // ListOperationsUseCase — операции, относящиеся к конкретному NIC.

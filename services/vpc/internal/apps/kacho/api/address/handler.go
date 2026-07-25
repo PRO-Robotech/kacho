@@ -74,13 +74,13 @@ func NewHandler(
 	}
 }
 
-// Get — sync read + AuthZ + per-object no-leak.
+// Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
+// per-RPC authz-interceptor прямым Check'ом — см. GetAddressUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetAddressRequest) (*vpcv1.Address, error) {
 	if req.AddressId == "" {
 		return nil, status.Error(codes.InvalidArgument, "address_id required")
 	}
-	subject := pbconv.SubjectFromContext(ctx)
-	a, err := h.get.Execute(ctx, subject, req.AddressId)
+	a, err := h.get.Execute(ctx, req.AddressId)
 	if err != nil {
 		return nil, err
 	}
@@ -97,8 +97,7 @@ func (h *Handler) GetByValue(ctx context.Context, req *vpcv1.GetAddressByValueRe
 	externalIP := req.GetExternalIpv4Address()
 	internalIP := req.GetInternalIpv4Address()
 	subnetID := req.GetSubnetId()
-	subject := pbconv.SubjectFromContext(ctx)
-	a, err := h.getByValue.Execute(ctx, subject, externalIP, internalIP, subnetID)
+	a, err := h.getByValue.Execute(ctx, externalIP, internalIP, subnetID)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +228,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateAddressRequest) (
 	if req.AddressId == "" {
 		return nil, status.Error(codes.InvalidArgument, "address_id required")
 	}
-	a, err := h.get.Execute(ctx, "", req.AddressId)
+	a, err := h.get.Execute(ctx, req.AddressId)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +261,7 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListAddressOper
 	if req.AddressId == "" {
 		return nil, status.Error(codes.InvalidArgument, "address_id required")
 	}
-	if a, gerr := h.get.Execute(ctx, "", req.AddressId); gerr == nil {
+	if a, gerr := h.get.Execute(ctx, req.AddressId); gerr == nil {
 		if err := tenant.AssertProjectOwnership(ctx, a.ProjectID); err != nil {
 			return nil, err
 		}
@@ -288,7 +287,7 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteAddressRequest) (
 	if req.AddressId == "" {
 		return nil, status.Error(codes.InvalidArgument, "address_id required")
 	}
-	a, err := h.get.Execute(ctx, "", req.AddressId)
+	a, err := h.get.Execute(ctx, req.AddressId)
 	if err != nil {
 		return nil, err
 	}

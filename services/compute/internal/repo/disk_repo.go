@@ -57,16 +57,6 @@ func (r *DiskRepo) List(ctx context.Context, f ports.DiskFilter, p ports.Paginat
 		args = append(args, f.ProjectID)
 		argIdx++
 	}
-	if f.AllowedIDs != nil {
-		// FGA filter. Empty allow-list must be short-circuited
-		// in the service-layer (no DB query); we defend here too.
-		if len(f.AllowedIDs) == 0 {
-			return nil, "", nil
-		}
-		conditions = append(conditions, fmt.Sprintf("id = ANY($%d::text[])", argIdx))
-		args = append(args, f.AllowedIDs)
-		argIdx++
-	}
 	if f.Filter != "" {
 		ast, perr := filter.Parse(f.Filter, []string{"name"})
 		if perr != nil {

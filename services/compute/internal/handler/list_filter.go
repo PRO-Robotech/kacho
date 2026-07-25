@@ -1,27 +1,36 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// list_filter.go — FGA-filtered List helpers.
+// list_filter.go — per-object visibility filtering for read handlers.
 //
-// Each public List handler (Disk / Image / Snapshot / Instance) calls
-// resolveListFilter() to compute the allow-list of resource ids the calling
-// subject can read, then passes that allow-list into svc.List via the
-// AllowedIDs field of the appropriate filter struct.
+// Each public List handler (Disk / Image / Snapshot / Instance) reads a PAGE from
+// its own DB first (cursor, project-scoped) and only then asks kacho-iam which of
+// the page's ids the calling subject may see — `AuthorizeService.BatchCheck`,
+// batches ≤100, relation `viewer ∪ v_list`. `Image.GetLatestByFamily` runs the
+// same direct question on the single resolved image id.
 //
-// resolveListFilter encapsulates the per-RPC contract:
-//   - filter == nil (FGA disabled config-gate / dev) → bypass (no FGA call)
-//   - subject == "" (system principal / no identity) → FAIL-CLOSED (empty list).
+// The order is deliberate: the page comes from the DB FIRST, rights are checked on
+// its ids. The reverse order ("enumerate every allowed id → narrow the SQL to it")
+// hit the hard OpenFGA ListObjects cap (1000, no continuation token) and made a
+// tenant's own resources invisible — see the `internal/authzfilter` package doc.
+// Side effect of the new order: a page may come back PARTIAL (some rows filtered
+// out) — normal for cursor pagination, `next_page_token` is derived from the last
+// SCANNED row, so a full traversal still skips nothing.
+//
+// filterVisible encapsulates the per-RPC contract:
+//   - filter == nil (FGA disabled config-gate / dev) → passthrough (no FGA call)
+//   - subject == "" (system principal / no identity) → FAIL-CLOSED (empty).
 //     This is NOT a bypass: a missing identity must never widen visibility to the
-//     whole project. Cluster-admin / owner получают весь список через IAM
-//     ListObjects (owner→viewer FGA-каскад), не через handler-side bypass.
-//   - normal caller → iam.ListObjects → allowedIDs / empty
+//     whole project. Cluster-admin / owner are allowed per-object by kacho-iam
+//     (cluster-admin super-gate inside Check), not by a handler-side bypass.
+//   - normal caller → BatchCheck → visible subset
 //   - iam unreachable and fail-closed → Unavailable (returned to caller)
-//   - iam unreachable and fail-open → bypass + audit warn (filter handles)
+//   - iam unreachable and fail-open → unfiltered page + audit warn (filter handles)
 //
-// Caller-identity (subject) берётся из request Principal — ЕДИНЫЙ источник и для
-// per-RPC Check, и для list-filter. Прежний источник из `x-kacho-subject*`
-// gRPC-метадаты упразднён: api-gateway такие заголовки не шлёт, что давало
-// subject="" → bypass → утечку всего списка мимо list-authz (over-show leak).
+// Caller-identity (subject) comes from the request Principal — the SAME source
+// per-RPC Check uses. The former `x-kacho-subject*` gRPC-metadata source is gone:
+// api-gateway never sends those headers, which yielded subject="" → bypass → the
+// whole list leaking past list-authz (over-show leak).
 package handler
 
 import (
@@ -30,25 +39,63 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 )
 
-// resolveListFilter — извлекает subject из request Principal, вызывает FGA filter,
-// возвращает authzfilter.Decision (handler ветвится по IsBypass/len(IDs)).
+// filterVisible returns the subset of items visible to the calling subject,
+// preserving the repo's (cursor) order — re-ordering would break pagination.
 //
-// Decision rules:
-//   - filter nil → BypassAll (FGA disabled in dev / breakglass).
-//   - subject == "" (system principal / no identity) → fail-closed: Empty
-//     allow-list (handler возвращает []), НЕ bypass-all.
-//   - normal flow → возвращаем Decision фильтра как есть (bypass / empty / ids).
-func resolveListFilter(ctx context.Context, f authzfilter.Filter, resourceType, action string) (authzfilter.Decision, error) {
-	if f == nil {
-		return authzfilter.Decision{BypassAll: true}, nil
+// idOf extracts the FGA object id of an item. err != nil → the caller MUST
+// propagate it, never fall back to the unfiltered page (fail-closed).
+func filterVisible[T any](
+	ctx context.Context,
+	f authzfilter.Filter,
+	resourceType, action string,
+	items []T,
+	idOf func(T) string,
+) ([]T, error) {
+	if f == nil || len(items) == 0 {
+		return items, nil
 	}
 	subject := authzfilter.SubjectFromPrincipal(ctx)
 	if subject == "" {
-		// No caller-identity (system principal / anonymous): fail-closed. A
-		// missing subject must never bypass the filter — that is exactly the
-		// over-show leak. Return an empty allow-list so the handler responds
-		// with an empty page (existence of other resources stays unknowable).
-		return authzfilter.Decision{Empty: true}, nil
+		// No caller-identity (system principal / anonymous): fail-closed. A missing
+		// subject must never bypass the filter — that is exactly the over-show leak.
+		// Nothing is visible, so the handler responds with an empty page (the
+		// existence of other resources stays unknowable).
+		return nil, nil
 	}
-	return f.ListAllowedIDs(ctx, subject, resourceType, action)
+
+	ids := make([]string, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, idOf(it))
+	}
+	visibleIDs, err := f.FilterVisibleIDs(ctx, subject, resourceType, action, ids)
+	if err != nil {
+		return nil, err
+	}
+	visible := make(map[string]struct{}, len(visibleIDs))
+	for _, id := range visibleIDs {
+		visible[id] = struct{}{}
+	}
+	out := make([]T, 0, len(visibleIDs))
+	for _, it := range items {
+		if _, ok := visible[idOf(it)]; ok {
+			out = append(out, it)
+		}
+	}
+	return out, nil
+}
+
+// isVisible answers the DIRECT per-object question for a single resolved id —
+// the read-by-id-equivalent path (Image.GetLatestByFamily, whose target id is
+// unknown until the family is resolved, so the per-RPC interceptor cannot gate it
+// per-object). Same union semantics as the List path, no enumeration.
+//
+// filter == nil → visible (FGA disabled config-gate / dev). subject == "" →
+// NOT visible (fail-closed). err → caller propagates.
+func isVisible(ctx context.Context, f authzfilter.Filter, resourceType, action, id string) (bool, error) {
+	visible, err := filterVisible(ctx, f, resourceType, action, []string{id},
+		func(s string) string { return s })
+	if err != nil {
+		return false, err
+	}
+	return len(visible) == 1, nil
 }

@@ -57,34 +57,6 @@ func (r *networkInterfaceReader) List(_ context.Context, f kacho.NetworkInterfac
 	return result, "", nil
 }
 
-// ListByIDs — фильтрация поверх множества разрешенных ids + те же in-memory
-// предикаты, что и в List (project_id/subnet_id/instance_id по used_by).
-// Пустой allowedIDs → (nil, "", nil).
-func (r *networkInterfaceReader) ListByIDs(_ context.Context, f kacho.NetworkInterfaceFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.NetworkInterfaceRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.NetworkInterfaceRecord
-	for _, n := range r.snap {
-		if _, ok := allowed[n.ID]; !ok {
-			continue
-		}
-		if (f.ProjectID != "" && n.ProjectID != f.ProjectID) ||
-			(f.SubnetID != "" && n.SubnetID != f.SubnetID) ||
-			(f.InstanceID != "" && (n.UsedByType != "compute_instance" || n.UsedByID != f.InstanceID)) {
-			continue
-		}
-		cp := *n
-		result = append(result, &cp)
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
 func (r *networkInterfaceReader) ListBySubnet(_ context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
 	var result []*kacho.NetworkInterfaceRecord
 	for _, n := range r.snap {
@@ -155,36 +127,6 @@ func (nw *networkInterfaceWriter) List(_ context.Context, f kacho.NetworkInterfa
 	var result []*kacho.NetworkInterfaceRecord
 	for id, n := range nw.w.localNIs {
 		if _, deleted := nw.w.deletedNIIDs[id]; deleted {
-			continue
-		}
-		if (f.ProjectID != "" && n.ProjectID != f.ProjectID) ||
-			(f.SubnetID != "" && n.SubnetID != f.SubnetID) ||
-			(f.InstanceID != "" && (n.UsedByType != "compute_instance" || n.UsedByID != f.InstanceID)) {
-			continue
-		}
-		cp := *n
-		result = append(result, &cp)
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
-// ListByIDs — writer-side: фильтрация поверх множества разрешенных ids + те же
-// in-memory предикаты, что и в List. Пустой allowedIDs → (nil, "", nil).
-func (nw *networkInterfaceWriter) ListByIDs(_ context.Context, f kacho.NetworkInterfaceFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.NetworkInterfaceRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.NetworkInterfaceRecord
-	for id, n := range nw.w.localNIs {
-		if _, deleted := nw.w.deletedNIIDs[id]; deleted {
-			continue
-		}
-		if _, ok := allowed[id]; !ok {
 			continue
 		}
 		if (f.ProjectID != "" && n.ProjectID != f.ProjectID) ||

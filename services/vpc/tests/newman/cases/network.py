@@ -950,8 +950,8 @@ CASES.append(Case(
                           "pm.test('defaultSecurityGroupId populated', () => pm.expect(j.defaultSecurityGroupId, JSON.stringify(j)).to.be.a('string').and.not.empty);",
                           *save_from_response("j.defaultSecurityGroupId", "defSgId")])),
         # Read-your-writes: default SG создаётся сервером вместе с Network; её
-        # list-authz owner-tuple (enforceGetVisible grant-set) материализуется
-        # eventually → первый GET свежей default SG без ретрая ловит устойчивый 404.
+        # owner-tuple материализуется eventually-consistent → первый GET свежей
+        # default SG без ретрая ловит устойчивый 403/404.
         retry_until_authorized(Step(name="get-default-sg-alive", method="GET", path="/vpc/v1/securityGroups/{{defSgId}}",
              test_script=[*assert_status(200),
                           "pm.test('default SG exists before network.delete', () => pm.expect(pm.response.json().defaultForNetwork).to.eql(true));"])),

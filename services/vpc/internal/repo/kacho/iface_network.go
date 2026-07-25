@@ -32,12 +32,6 @@ type NetworkFilter struct {
 type NetworkReaderIface interface {
 	Get(ctx context.Context, id string) (*NetworkRecord, error)
 	List(ctx context.Context, f NetworkFilter, p Pagination) ([]*NetworkRecord, string, error)
-	// ListByIDs возвращает только networks с id из allowedIDs
-	// (`WHERE id = ANY($allowed_ids)`); project_id-фильтр уже применен выше
-	// (handler проверил ownership). Пустой allowedIDs → (nil, "", nil)
-	// (short-circuit вместо SQL с пустым массивом). Используется в
-	// FGA-filtered List handlers.
-	ListByIDs(ctx context.Context, f NetworkFilter, allowedIDs []string, p Pagination) ([]*NetworkRecord, string, error)
 }
 
 // NetworkWriterIface — write-операции плюс read (writer видит свои writes).

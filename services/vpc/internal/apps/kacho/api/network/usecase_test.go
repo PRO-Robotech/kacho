@@ -57,7 +57,7 @@ func makeHandler(t *testing.T,
 	create := NewCreateNetworkUseCase(kr, fc, or, defaultSGInline)
 	update := NewUpdateNetworkUseCase(kr, or)
 	deleteUC := NewDeleteNetworkUseCase(kr, sReader, rtReader, sgRepoIface, or)
-	get := NewGetNetworkUseCase(kr, nil)
+	get := NewGetNetworkUseCase(kr)
 	list := NewListNetworksUseCase(kr, nil) // authz nil → unfiltered list path
 	addCidr := NewAddCidrBlocksUseCase(kr, or)
 	removeCidr := NewRemoveCidrBlocksUseCase(kr, or)

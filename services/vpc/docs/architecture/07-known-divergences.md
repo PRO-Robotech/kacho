@@ -226,27 +226,24 @@ domain, а не друг от друга. Вынос `AddressFamily`/`ResolvedPo
 их тесты); выигрыш — компайл-когезия, риск в security-hardening-проходе
 неоправдан. Делается отдельным clean-refactor тикетом, не здесь.
 
-## 17. `List`/`ListByIDs` в pg-ридерах — рукописные, не сведены в общий builder
+## 17. ~~`List`/`ListByIDs` в pg-ридерах — рукописные~~ — СНЯТО (`ListByIDs` удалён)
 
-Каждый pg-ридер (`internal/repo/kacho/pg/{network,subnet,address,security_group,
-route_table,gateway,network_interface}.go`) держит `List` и `ListByIDs` как две
-почти идентичные рукописные сборки запроса (условия, `filter.Parse`-whitelist,
-decode page-token, scan-loop, next-token). Пара расходится только предикатом
-allowed-ID (authz-scoped `ListByIDs` vs unscoped `List`).
+Раньше каждый pg-ридер держал `List` и `ListByIDs` как две почти идентичные
+рукописные сборки запроса, расходящиеся только authz-предикатом
+`WHERE id = ANY($allowed_ids)`, — и это несло риск дрейфа filter-whitelist'ов
+между парой.
 
-Это **следствие** ban #3 (no-ORM: только sqlc + handwritten pgx) — часть
-hand-rolling'а неизбежна. Активного бага нет: filter-whitelist'ы пары
-согласованы по всем ресурсам (напр. `subnet.go` `List`/`ListByIDs` оба
-`["name","placement_type"]`); инвариант держится copy-paste-дисциплиной.
+Дивергенция **снята**: `ListByIDs` больше не существует ни на одном ресурсе.
+Per-object видимость перестала быть SQL-сужением по «списку всего, что subject'у
+можно» (`AuthorizeService.ListObjects` — жёсткий server-side предел без
+continuation-token'а, из-за которого собственный ресурс тенанта мог стать
+невидимым) и стала per-page вопросом «видны ли ЭТИ id»
+(`AuthorizeService.BatchCheck`) уже ПОСЛЕ чтения страницы. Подробности —
+package-doc `internal/authzfilter`.
 
-Trade-off: сведение обоих тел в один параметризованный helper (allowed-ID
-предикат + per-resource колонки/whitelist как входы) убрало бы дрейф-риск
-(правку whitelist в `List` без парной правки `ListByIDs`), но это
-поведенчески-нейтральный рефактор ~16 тел во всех ресурсах — крупный blast
-radius на list-пути в security-hardening-проходе. Как и #15, делается отдельным
-clean-refactor тикетом с полным newman-прогоном, не здесь. До того парность
-whitelist'ов держит регрессионный newman-слой (`*-LST-*` кейсы) и list-authz
-CI-гейт (`make audit-list-filter`).
+Следствие: у каждого ресурса остался ровно ОДИН list-запрос (`List`), пара
+whitelist'ов исчезла вместе с риском их расхождения. CI-гейт
+`make audit-list-filter` теперь требует в List-пути `FilterVisibleIDs`.
 
 ## 18. `Writer.Commit()`/`Abort()` финализируют TX на `context.Background()` — намеренно
 
@@ -284,8 +281,8 @@ TTL + prefix-`Invalidate` + slice-deep-copy) держат по своей mutex+
   числом зон/регионов в деплое, не unbounded на практике);
 - `CachedProjectClient`: true-LRU c раздельными positive/negative TTL + clock-injection
   под unit-тесты;
-- `FGAFilter`-cache: prefix-based `Invalidate(subject)` (LISTEN/NOTIFY-driven) + защитная
-  deep-copy `AllowedIDs` на выдаче.
+- `FGAFilter`-cache: positive-only per-object вердикты видимости (`subject|type|id`) с
+  LRU-bound + prefix-based `Invalidate(subject)` (LISTEN/NOTIFY-driven).
 
 Единый `ttlcache[V]`, покрывающий LRU + clock + prefix-invalidation + copy-hook, нёс бы
 больше policy-knob-сложности, чем убирает дублирования — net-negative для LEAN-цели.

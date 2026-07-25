@@ -18,33 +18,52 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
 
-// Per-object filtered List + no-leak Get для AddressService: возвращаем ТОЛЬКО
-// авторизованные субъекту адреса (relation viewer / FGA type vpc_address),
-// read==enforce, fail-closed при недоступном iam, wildcard scope_grant →
-// all-in-scope, пустой grant → пусто (no-leak).
+// Per-page фильтрованный List для AddressService: возвращаем ТОЛЬКО
+// авторизованные subject'у адреса (viewer ∪ v_list, FGA-тип
+// vpc_address), read==enforce, fail-closed при недоступном iam, пустой grant
+// → пусто (no-leak).
+//
+// Единичный Get здесь НЕ тестируется: его видимость энфорсит per-RPC
+// authz-interceptor прямым per-object Check'ом (existence-hiding на deny), а не
+// use-case — см. GetAddressUseCase и pkg/authz/interceptor_test.go.
 
-// fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает аргументы
-// вызова (subject, resourceType, action) и возвращает настраиваемое решение.
+// fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает аргументы, с
+// которыми его позвали, и отвечает из заранее заданного видимого набора.
 type fakeListFilter struct {
-	allowed []string
-	bypass  bool
-	err     error
+	allowed  []string
+	allowAll bool
+	err      error
 
 	gotSubject      string
 	gotResourceType string
 	gotAction       string
+	gotIDs          []string
 	calls           int
 }
 
-func (f *fakeListFilter) ListAllowedIDs(_ context.Context, subject, resourceType, action string) ([]string, bool, error) {
+func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
 	f.calls++
 	f.gotSubject = subject
 	f.gotResourceType = resourceType
 	f.gotAction = action
+	f.gotIDs = append([]string(nil), ids...)
 	if f.err != nil {
-		return nil, false, f.err
+		return nil, f.err
 	}
-	return f.allowed, f.bypass, nil
+	if f.allowAll {
+		return ids, nil
+	}
+	set := make(map[string]bool, len(f.allowed))
+	for _, a := range f.allowed {
+		set[a] = true
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if set[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // seedAddressesLabeled вставляет external-адреса с заданными id в проект.
@@ -68,7 +87,7 @@ func seedAddressesLabeled(t *testing.T, kr *kachomock.Repository, projectID stri
 	require.NoError(t, w.Commit())
 }
 
-// List возвращает ровно per-object allowed-набор.
+// List возвращает ровно per-object разрешенный набор.
 func TestAddressListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_aaa", "adr_bbb", "adr_ccc")
@@ -87,11 +106,13 @@ func TestAddressListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	assert.True(t, got["adr_bbb"])
 	assert.False(t, got["adr_ccc"], "adr_ccc not in the allowed set → must not appear")
 
-	// read==enforce: фильтр вызван с read-verb, смапленным в viewer
-	// (action vpc.addresses.list, FGA type vpc_address).
+	// read==enforce: фильтр зовется с read-verb (action vpc.addresses.list,
+	// FGA-тип vpc_address) и получает РОВНО идентификаторы страницы.
 	assert.Equal(t, "user:usr_alice", filter.gotSubject)
 	assert.Equal(t, "vpc_address", filter.gotResourceType)
 	assert.Equal(t, "vpc.addresses.list", filter.gotAction)
+	assert.ElementsMatch(t, []string{"adr_aaa", "adr_bbb", "adr_ccc"}, filter.gotIDs,
+		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
 // no-leak: объект вне всех grant'ов отсутствует в List.
@@ -108,7 +129,7 @@ func TestAddressListPerObject_NoLeak(t *testing.T) {
 	assert.Equal(t, "adr_visible", addrs[0].ID)
 }
 
-// empty grant: субъект без grant'ов → пустой список (НЕ unfiltered).
+// Пустой grant: subject без grant'а → пустой список (НЕ нефильтрованный).
 func TestAddressListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
@@ -122,13 +143,12 @@ func TestAddressListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	assert.Empty(t, next)
 }
 
-// global / wildcard: wildcard scope_grant → all-in-scope. Фильтр возвращает
-// bypass=true; use-case отдает все project-scoped строки.
-func TestAddressListPerObject_WildcardBypassReturnsAll(t *testing.T) {
+// Полный grant (subject видит всё в скоупе) → отдаются все строки страницы.
+func TestAddressListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b", "adr_c")
 
-	filter := &fakeListFilter{bypass: true}
+	filter := &fakeListFilter{allowAll: true}
 	uc := NewListAddressesUseCase(kr, filter)
 
 	addrs, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
@@ -136,7 +156,7 @@ func TestAddressListPerObject_WildcardBypassReturnsAll(t *testing.T) {
 	assert.Len(t, addrs, 3)
 }
 
-// fail-closed: iam unavailable → Unavailable (НЕ unfiltered, НЕ молча пусто).
+// fail-closed: iam недоступен → Unavailable (НЕ нефильтрованный, НЕ молча пустой).
 func TestAddressListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a")
@@ -150,8 +170,8 @@ func TestAddressListPerObject_FailClosedUnavailable(t *testing.T) {
 	assert.Equal(t, codes.Unavailable, st.Code())
 }
 
-// fail-closed (plain error): non-status ошибка тоже маппится в non-OK код,
-// никогда не проходит молча unfiltered.
+// fail-closed (plain error): не-status ошибка тоже маппится в non-OK код, никогда
+// не проходит молча как нефильтрованная.
 func TestAddressListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a")
@@ -165,7 +185,7 @@ func TestAddressListPerObject_FailClosedPlainError(t *testing.T) {
 	assert.NotEqual(t, codes.OK, st.Code())
 }
 
-// nil filter → unfiltered passthrough (list-filter отключен).
+// nil-фильтр → нефильтрованный passthrough (list-filter выключен).
 func TestAddressListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
@@ -176,7 +196,7 @@ func TestAddressListPerObject_NilFilterPassthrough(t *testing.T) {
 	assert.Len(t, addrs, 2)
 }
 
-// empty subject (system principal) → unfiltered passthrough (без FGA-вызова).
+// явный system principal → нефильтрованный passthrough (без вызова FGA).
 func TestAddressListPerObject_SystemSubjectPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
@@ -187,85 +207,18 @@ func TestAddressListPerObject_SystemSubjectPassthrough(t *testing.T) {
 	addrs, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, addrs, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no FGA ListObjects call")
+	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
-// project_id остается обязательным.
+// project_id по-прежнему обязателен (контракт не меняется).
 func TestAddressListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListAddressesUseCase(kr, &fakeListFilter{bypass: true})
+	uc := NewListAddressesUseCase(kr, &fakeListFilter{allowAll: true})
 
 	_, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-}
-
-// no-leak Get: субъект без grant'а на существующий адрес → NotFound
-// (НЕ PermissionDenied), тот же текст, что и для несуществующего адреса.
-func TestAddressGetPerObject_NoLeakNotFound(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAddressesLabeled(t, kr, "prj_1", "adr_hidden")
-
-	// субъекту выдан какой-то другой адрес, НЕ adr_hidden.
-	filter := &fakeListFilter{allowed: []string{"adr_other"}}
-	uc := NewGetAddressUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "adr_hidden")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.NotFound, st.Code(), "ungranted existing address → NotFound, not PermissionDenied")
-	assert.Contains(t, st.Message(), "not found")
-}
-
-// read==enforce: субъекту выдан адрес → Get его возвращает.
-func TestAddressGetPerObject_GrantedReturnsResource(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAddressesLabeled(t, kr, "prj_1", "adr_visible")
-
-	filter := &fakeListFilter{allowed: []string{"adr_visible"}}
-	uc := NewGetAddressUseCase(kr, filter)
-
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "adr_visible")
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, "adr_visible", got.ID)
-}
-
-// wildcard bypass → Get возвращает адрес даже без явного per-id grant'а.
-func TestAddressGetPerObject_WildcardBypass(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAddressesLabeled(t, kr, "prj_1", "adr_any")
-
-	uc := NewGetAddressUseCase(kr, &fakeListFilter{bypass: true})
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "adr_any")
-	require.NoError(t, err)
-	assert.Equal(t, "adr_any", got.ID)
-}
-
-// fail-closed: iam-ошибка при Get enforce → Unavailable, а не ресурс.
-func TestAddressGetPerObject_FailClosed(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAddressesLabeled(t, kr, "prj_1", "adr_x")
-
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
-	uc := NewGetAddressUseCase(kr, filter)
-
-	_, err := uc.Execute(context.Background(), "user:usr_alice", "adr_x")
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.Unavailable, st.Code())
-}
-
-// nil filter / empty subject → без enforce (authz делает interceptor).
-func TestAddressGetPerObject_NilFilterPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAddressesLabeled(t, kr, "prj_1", "adr_y")
-
-	uc := NewGetAddressUseCase(kr, nil)
-	got, err := uc.Execute(context.Background(), "user:usr_alice", "adr_y")
-	require.NoError(t, err)
-	assert.Equal(t, "adr_y", got.ID)
 }
 
 // No-leak (defense-in-depth): пустой subject (principal не извлечен — anon /
@@ -275,7 +228,7 @@ func TestAddressListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
 
-	filter := &fakeListFilter{allowed: []string{"addrs_unused"}}
+	filter := &fakeListFilter{allowed: []string{"unused_id"}}
 	uc := NewListAddressesUseCase(kr, filter)
 
 	addrs, _, err := uc.Execute(context.Background(), "", AddressFilter{ProjectID: "prj_1"}, Pagination{})

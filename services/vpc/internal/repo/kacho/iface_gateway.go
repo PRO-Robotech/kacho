@@ -24,9 +24,6 @@ type GatewayFilter struct {
 type GatewayReaderIface interface {
 	Get(ctx context.Context, id string) (*GatewayRecord, error)
 	List(ctx context.Context, f GatewayFilter, p Pagination) ([]*GatewayRecord, string, error)
-	// ListByIDs — per-object filtered List (`WHERE id = ANY`), pagination после
-	// фильтра. Пустой allowedIDs → (nil, "", nil).
-	ListByIDs(ctx context.Context, f GatewayFilter, allowedIDs []string, p Pagination) ([]*GatewayRecord, string, error)
 }
 
 // GatewayWriterIface — write-операции плюс read (writer видит свои writes).

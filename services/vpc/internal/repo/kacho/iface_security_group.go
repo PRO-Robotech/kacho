@@ -24,9 +24,6 @@ type SecurityGroupFilter struct {
 type SecurityGroupReaderIface interface {
 	Get(ctx context.Context, id string) (*SecurityGroupRecord, error)
 	List(ctx context.Context, f SecurityGroupFilter, p Pagination) ([]*SecurityGroupRecord, string, error)
-	// ListByIDs — per-object filtered List (`WHERE id = ANY`), pagination после
-	// фильтра. Пустой allowedIDs → (nil, "", nil).
-	ListByIDs(ctx context.Context, f SecurityGroupFilter, allowedIDs []string, p Pagination) ([]*SecurityGroupRecord, string, error)
 }
 
 // SecurityGroupWriterIface — write-операции плюс read (writer видит свои writes).

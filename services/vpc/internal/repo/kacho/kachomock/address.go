@@ -51,31 +51,6 @@ func (r *addressReader) List(_ context.Context, f kacho.AddressFilter, _ kacho.P
 	return result, "", nil
 }
 
-// ListByIDs — фильтрация поверх множества разрешенных ids + те же in-memory
-// предикаты, что и в List. Пустой allowedIDs → (nil, "", nil).
-func (r *addressReader) ListByIDs(_ context.Context, f kacho.AddressFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.AddressRecord
-	for _, a := range r.snap {
-		if _, ok := allowed[a.ID]; !ok {
-			continue
-		}
-		if (f.ProjectID == "" || a.ProjectID == f.ProjectID) &&
-			(f.Name == "" || string(a.Name) == f.Name) {
-			cp := *a
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
 func (r *addressReader) GetByValue(_ context.Context, ext, intl, _ string) (*kacho.AddressRecord, error) {
 	for _, a := range r.snap {
 		if ext != "" && a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ext {
@@ -153,34 +128,6 @@ func (aw *addressWriter) List(_ context.Context, f kacho.AddressFilter, _ kacho.
 	var result []*kacho.AddressRecord
 	for id, a := range aw.w.localAddrs {
 		if _, deleted := aw.w.deletedAddrIDs[id]; deleted {
-			continue
-		}
-		if (f.ProjectID == "" || a.ProjectID == f.ProjectID) &&
-			(f.Name == "" || string(a.Name) == f.Name) {
-			cp := *a
-			result = append(result, &cp)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	return result, "", nil
-}
-
-// ListByIDs — writer-side: фильтрация поверх множества разрешенных ids + те же
-// in-memory предикаты, что и в List. Пустой allowedIDs → (nil, "", nil).
-func (aw *addressWriter) ListByIDs(_ context.Context, f kacho.AddressFilter, allowedIDs []string, _ kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
-	if len(allowedIDs) == 0 {
-		return nil, "", nil
-	}
-	allowed := make(map[string]struct{}, len(allowedIDs))
-	for _, id := range allowedIDs {
-		allowed[id] = struct{}{}
-	}
-	var result []*kacho.AddressRecord
-	for id, a := range aw.w.localAddrs {
-		if _, deleted := aw.w.deletedAddrIDs[id]; deleted {
-			continue
-		}
-		if _, ok := allowed[id]; !ok {
 			continue
 		}
 		if (f.ProjectID == "" || a.ProjectID == f.ProjectID) &&

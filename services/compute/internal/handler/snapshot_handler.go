@@ -13,6 +13,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 	svc "github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
@@ -48,34 +49,29 @@ func (h *SnapshotHandler) Get(ctx context.Context, req *computev1.GetSnapshotReq
 
 // List возвращает список снапшотов в folder.
 //
-// Вызов фильтруется через iam.AuthorizeService.ListObjects
-// (caller subject → allowed snapshot_ids).
+// Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
+// iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.
 func (h *SnapshotHandler) List(ctx context.Context, req *computev1.ListSnapshotsRequest) (*computev1.ListSnapshotsResponse, error) {
 	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
-	// Validate pagination BEFORE the listauthz empty-grant short-circuit (see disk_handler).
+	// Validate pagination BEFORE anything authz-related (see disk_handler).
 	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
 	}
-	dec, err := resolveListFilter(ctx, h.listFilter, authzfilter.ResourceTypeSnapshot, authzfilter.ActionSnapshotRead)
-	if err != nil {
-		return nil, err
-	}
-	filter := svc.SnapshotFilter{ProjectID: req.ProjectId, Filter: req.Filter}
-	if !dec.IsBypass() {
-		if len(dec.IDs()) == 0 {
-			return &computev1.ListSnapshotsResponse{}, nil
-		}
-		filter.AllowedIDs = dec.IDs()
-	}
-	snaps, nextToken, err := h.svc.List(ctx, filter,
+	snaps, nextToken, err := h.svc.List(ctx, svc.SnapshotFilter{ProjectID: req.ProjectId, Filter: req.Filter},
 		svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}
+	visible, err := filterVisible(ctx, h.listFilter,
+		authzfilter.ResourceTypeSnapshot, authzfilter.ActionSnapshotRead, snaps,
+		func(s *domain.Snapshot) string { return s.ID })
+	if err != nil {
+		return nil, err
+	}
 	resp := &computev1.ListSnapshotsResponse{NextPageToken: nextToken}
-	for _, s := range snaps {
+	for _, s := range visible {
 		resp.Snapshots = append(resp.Snapshots, protoconv.Snapshot(s))
 	}
 	return resp, nil

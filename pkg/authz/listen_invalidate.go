@@ -14,8 +14,7 @@ import (
 
 // ListenInvalidator подключается к kacho_iam Postgres через dedicated pgx-conn
 // (НЕ из пула — dedicated conn required для LISTEN) и слушает channel
-// `kacho_iam_subjects`. На каждый NOTIFY → `cache.InvalidateBySubject(payload)`
-// + `ListObjects.InvalidateBySubject(payload)` (если service выставлен).
+// `kacho_iam_subjects`. На каждый NOTIFY → `cache.InvalidateBySubject(payload)`.
 //
 // Lifecycle:
 //   - Run(ctx) — блокирующий loop, до cancel ctx.
@@ -33,10 +32,6 @@ type ListenInvalidator struct {
 	// Cache — Check-cache, на котором будем invalidate (опционально).
 	Cache *Cache
 
-	// ListObjects — ListObjects-cache для list-filtering
-	// (опционально). На NOTIFY вызывается InvalidateBySubject(payload).
-	ListObjects *ListObjectsService
-
 	// Logger.
 	Logger *slog.Logger
 
@@ -50,8 +45,8 @@ func (li *ListenInvalidator) Run(ctx context.Context) error {
 	if li.Channel == "" {
 		li.Channel = "kacho_iam_subjects"
 	}
-	if li.Cache == nil && li.ListObjects == nil {
-		return errors.New("authz.ListenInvalidator: Cache and ListObjects are both nil")
+	if li.Cache == nil {
+		return errors.New("authz.ListenInvalidator: Cache is nil")
 	}
 	logger := li.Logger
 	if logger == nil {
@@ -176,22 +171,16 @@ func (li *ListenInvalidator) runOnce(ctx context.Context, logger *slog.Logger) (
 	}
 }
 
-// invalidateBySubject вызывает InvalidateBySubject у обоих кэшей (если они заданы).
+// invalidateBySubject вызывает InvalidateBySubject у Check-кэша (если задан).
 func (li *ListenInvalidator) invalidateBySubject(subjectID string) {
 	if li.Cache != nil {
 		li.Cache.InvalidateBySubject(subjectID)
 	}
-	if li.ListObjects != nil {
-		li.ListObjects.InvalidateBySubject(subjectID)
-	}
 }
 
-// invalidateAll вызывает InvalidateAll у обоих кэшей (если они заданы).
+// invalidateAll вызывает InvalidateAll у Check-кэша (если задан).
 func (li *ListenInvalidator) invalidateAll() {
 	if li.Cache != nil {
 		li.Cache.InvalidateAll()
-	}
-	if li.ListObjects != nil {
-		li.ListObjects.InvalidateAll()
 	}
 }

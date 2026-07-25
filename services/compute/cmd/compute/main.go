@@ -571,10 +571,10 @@ func requireTrustedForwarders(cfg config.Config) error {
 // List обязан быть активен: master-switch включён (ListFilterEnabled=true) И задан
 // authz-endpoint (AuthZIAMGRPCAddr непуст — иначе authzConn=nil → buildListFilter
 // вернёт nil → handler'ы делают bypass фильтра). Per-RPC FGA Check гейтит List
-// лишь на project-tier `viewer`; сужение до per-object `v_get` делает ТОЛЬКО этот
-// фильтр. С выключенным фильтром любой principal с project-tier viewer видит ВСЕ
-// Disk/Image/Snapshot/Instance проекта, включая объекты без v_get (over-show /
-// BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
+// лишь на project-tier `viewer`; сужение страницы до per-object `viewer ∪ v_list`
+// делает ТОЛЬКО этот фильтр. С выключенным фильтром любой principal с project-tier
+// viewer видит ВСЕ Disk/Image/Snapshot/Instance проекта, включая объекты без
+// per-object гранта (over-show / BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
 // requireTrustedForwarders (project-rule security.md → make audit-list-filter).
 func requireListFilter(cfg config.Config) error {
 	if !cfg.ListFilterEnabled {
@@ -868,7 +868,8 @@ func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 
-// buildListFilter возвращает authzfilter.Filter, готовый к подвешиванию в public
+// buildListFilter возвращает authzfilter.Filter (per-object видимость страницы
+// через iam AuthorizeService.BatchCheck), готовый к подвешиванию в public
 // List handlers. Если KACHO_COMPUTE_LIST_FILTER_ENABLED=false
 // либо authzConn=nil (dev без iam) — возвращает nil, что означает «handler
 // делает bypass FGA filter и возвращает всё подряд». Production-strict

@@ -43,7 +43,7 @@ func makeHandler(t *testing.T,
 	create := NewCreateSubnetUseCase(kr, fc, zr, rr, or)
 	update := NewUpdateSubnetUseCase(kr, or)
 	deleteUC := NewDeleteSubnetUseCase(kr, nil, or)
-	get := NewGetSubnetUseCase(kr, nil)
+	get := NewGetSubnetUseCase(kr)
 	list := NewListSubnetsUseCase(kr, nil)
 	addCidr := NewAddCidrBlocksUseCase(kr, or)
 	removeCidr := NewRemoveCidrBlocksUseCase(kr, or)
