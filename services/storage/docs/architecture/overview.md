@@ -55,19 +55,34 @@ software TOCTOU — data-integrity.md ban #10):
   (в отличие от явного `deviceName` — там коллизия = контрактный
   `device <n> is already in use on Instance <id>`). Пространство исчерпано →
   `FAILED_PRECONDITION` `no free device name on Instance <id>`.
-- **Public List — project-scoped Check (listauthz posture, INV-10).** `Volume.List`/
-  `Snapshot.List` требуют `projectId`, gateway гейтит scope_extractor'ом
-  `{project, project_id}`, а repo-запрос сужает строки по `project_id` → caller,
-  авторизованный на `prj-1`, **никогда** не видит ресурсы `prj-2` by construction.
-  Это **project-scoped Check** (AddressPool-style), а НЕ per-object `ListAllowedIDs`
-  (как vpc/compute). **In-service backstop:** use-case `List` отвергает пустой
-  `projectId` синхронно (`INVALID_ARGUMENT` `projectId is required`) первым
-  стейтментом — иначе пустой scope вернул бы строки ВСЕХ проектов (repo сужает лишь
-  при `ProjectID != ""`), поэтому «by construction» держится и без gateway-скоупинга.
-  CI-гейт `make audit-list-filter` (`tools/audit-list-filter.sh`) роняет PR, если
-  **тело** `repo.List` перестаёт сужать по `project_id` **или** use-case `List`
-  перестаёт требовать непустой `projectId`; `DiskType` (cluster-каталог `{cluster,*}`)
-  whitelisted.
+- **Public List — project-scope И per-object видимость (два слоя, INV-10).**
+  `Volume.List`/`Snapshot.List`/`Image.List` требуют `projectId`; gateway гейтит его
+  scope_extractor'ом `{project, project_id}`, repo-запрос сужает строки по
+  `project_id`, а use-case отвергает пустой `projectId` синхронно
+  (`INVALID_ARGUMENT` `projectId is required`) — иначе пустой scope вернул бы строки
+  ВСЕХ проектов (repo сужает лишь при `ProjectID != ""`). Этот слой закрывает
+  **кросс-проектную** утечку by construction.
+  **Но project-scope отвечает лишь «чей это проект», не «какие объекты этому caller'у
+  можно».** Поэтому use-case, прочитав СТРАНИЦУ курсором, прогоняет её id через
+  per-object фильтр `internal/authzfilter` (kacho-iam `AuthorizeService.BatchCheck`,
+  `viewer ∪ v_list`, батчи ≤100 ограниченным fan-out'ом) и отдаёт только видимые
+  строки в порядке курсора. Без этого слоя ЛЮБОЙ член проекта видел каждый том,
+  снимок и образ проекта независимо от per-object грантов (over-show / BOLA-lite),
+  хотя `Get`/`Update`/`Delete` тех же ресурсов грант требовали — списки противоречили
+  остальным путям. Видимость = Check-allow (read==enforce).
+  Форма вопроса принципиальна: спрашивается «можно ли этому subject'у ЭТИ объекты»
+  по прочитанной странице, а НЕ `ListAllowedIDs` («перечисли всё разрешённое» —
+  у OpenFGA `ListObjects` жёсткий предел без continuation-token'а, из-за которого
+  собственный ресурс тенанта молча выпадал за префикс; приём снят у всех сервисов).
+  Ошибка iam → **fail-closed** `UNAVAILABLE` (нефильтрованная страница не отдаётся
+  никогда); запрос без caller-identity → пустая страница, не bypass. Фильтр
+  конфигурируется `KACHO_STORAGE_LIST_FILTER_*`; production boot-guard
+  (`config.Validate`) не пускает старт с `LIST_FILTER_ENABLED=false`.
+  CI-гейт `make audit-list-filter` (`tools/audit-list-filter.sh`, продублирован в
+  `go test ./tools/...`) роняет PR, если **тело** `repo.List` перестаёт сужать по
+  `project_id`, use-case `List` перестаёт требовать непустой `projectId` **или**
+  перестаёт фильтровать страницу per-object; `DiskType` (cluster-каталог
+  `{cluster,*}`, per-object грантов не несёт) whitelisted.
 - **`InternalVolumeService.GetInternal` — UNIMPLEMENTED анкер (§0.4).** infra-проекция
   (`VolumeInternal`: backend-LUN/pool/node/числовой инфра-id) — будущий data-plane
   инкремент; в CS-1 repo возвращает `ErrUnimplemented` → `codes.Unimplemented`. Это

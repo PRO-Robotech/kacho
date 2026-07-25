@@ -27,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
@@ -121,6 +122,10 @@ type UseCase struct {
 	// (immediate анти-BOLA-резолв; nil → sync-путь пропускается, остаётся async
 	// register-drainer как at-least-once backstop). Инжектится WithRegistrar.
 	registrar fgaregister.Registrar
+	// listFilter — per-object фильтр видимости страницы List (kacho-iam
+	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
+	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
+	listFilter authzfilter.Filter
 }
 
 // New собирает UseCase для Volume. reader/writer — CQRS-разделённые порты;
@@ -141,6 +146,12 @@ func New(reader Reader, writer Writer, geo GeoClient, iam IAMClient, ops operati
 // nil registrar → sync-путь пропускается (dev/no-iam).
 func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 	u.registrar = r
+	return u
+}
+
+// WithListFilter подключает per-object фильтр видимости публичного List.
+func (u *UseCase) WithListFilter(f authzfilter.Filter) *UseCase {
+	u.listFilter = f
 	return u
 }
 
@@ -208,7 +219,25 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Volume, str
 	if err != nil {
 		return nil, "", u.errStatus(err)
 	}
-	return vols, next, nil
+	// Per-object видимость: страница уже прочитана курсором — спрашиваем kacho-iam
+	// БАТЧЕМ про её id (`viewer ∪ v_list`, read==enforce). Обратный порядок
+	// («перечисли все разрешённые id → сузь ими SQL») запрещён: у OpenFGA
+	// ListObjects жёсткий предел без continuation-token'а, и собственный ресурс
+	// тенанта молча выпадал бы за префикс. Побочный эффект: страница может вернуться
+	// НЕПОЛНОЙ — это нормально для cursor-пагинации, next_page_token берётся от
+	// последней ПРОСМОТРЕННОЙ строки, поэтому обход без пропусков не ломается.
+	//
+	// Вызывается ПОСЛЕ валидации page_size (выше) и page_token (repo) — мусорный
+	// маркер страницы даёт InvalidArgument независимо от grant-state, а не пустую
+	// страницу (api-conventions.md, security.md §7).
+	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+		authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList, vols,
+		func(v *domain.Volume) string { return v.ID })
+	if ferr != nil {
+		// Fail-closed: ошибка iam НИКОГДА не отдаёт нефильтрованную страницу.
+		return nil, "", u.errStatus(ferr)
+	}
+	return visible, next, nil
 }
 
 // Create создаёт Volume (async Operation). Малформ/невалидный вход отвергается

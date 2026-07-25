@@ -20,6 +20,7 @@ func secureProd() config.Config {
 		AuthMode:           "production",
 		DBSSLMode:          "require",
 		AuthZIAMGRPCAddr:   "kacho-iam-internal:9091",
+		ListFilterEnabled:  true,
 		GeoClientMTLS:      grpcclient.TLSClient{Enable: true},
 		IAMClientMTLS:      grpcclient.TLSClient{Enable: true},
 		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
@@ -153,5 +154,53 @@ func TestValidate_unknownMode(t *testing.T) {
 	c.AuthMode = "prod" // typo
 	if err := c.Validate(); err == nil {
 		t.Fatal("unknown auth mode must refuse to start")
+	}
+}
+
+// TestValidate_productionRequiresListFilter — production ОБЯЗАН нести включённый
+// per-object list-filter публичного List. Per-RPC Check гейтит List лишь на
+// project-tier `viewer`; сужение страницы до per-object `viewer ∪ v_list` делает
+// ТОЛЬКО фильтр. С выключенным фильтром любой член проекта видит КАЖДЫЙ том/снимок/
+// образ проекта, включая объекты без per-object гранта (over-show / BOLA-lite,
+// CWE-862). Fail-closed зеркалит требование mTLS и authz-адреса.
+func TestValidate_productionRequiresListFilter(t *testing.T) {
+	c := secureProd()
+	c.ListFilterEnabled = false
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("production mode with LIST_FILTER_ENABLED=false must refuse to start " +
+			"(public List would bypass the per-object filter)")
+	}
+	if !strings.Contains(err.Error(), "LIST_FILTER_ENABLED") {
+		t.Fatalf("refusal must name the knob, got %v", err)
+	}
+
+	// production-strict — то же требование (не слабее).
+	c = secureProd()
+	c.AuthMode = "production-strict"
+	c.ListFilterEnabled = false
+	if err := c.Validate(); err == nil {
+		t.Fatal("production-strict with LIST_FILTER_ENABLED=false must refuse to start")
+	}
+}
+
+// TestLoad_listFilterDefaults — knob'ы фильтра дефолтятся в secure/production-форму:
+// включён, fail-closed, реалистичный per-call дедлайн (см. authzfilter.DefaultConfig).
+func TestLoad_listFilterDefaults(t *testing.T) {
+	var c config.Config
+	if err := config.LoadInto(&c, map[string]string{
+		"KACHO_STORAGE_DB_PASSWORD": "secret",
+	}); err != nil {
+		t.Fatalf("LoadInto err = %v", err)
+	}
+	if !c.ListFilterEnabled {
+		t.Fatal("list filter must default to enabled (secure-by-default)")
+	}
+	if c.ListFilterFailOpen {
+		t.Fatal("list filter must default to fail-closed")
+	}
+	if c.ListFilterTimeoutMs != 1000 || c.ListFilterCacheTTLMs != 5000 || c.ListFilterCacheMaxEntries != 10000 {
+		t.Fatalf("unexpected defaults: timeout=%d ttl=%d maxEntries=%d",
+			c.ListFilterTimeoutMs, c.ListFilterCacheTTLMs, c.ListFilterCacheMaxEntries)
 	}
 }

@@ -13,6 +13,15 @@ public-RPC проходит per-RPC InternalIAMService.Check с proto-scope_extr
     project_id}. Caller без viewer на запрошенный projectId → PERMISSION_DENIED;
     при наличии — результат отфильтрован listauthz (нет кросс-проектной утечки).
 
+ГРАНИЦА ПОКРЫТИЯ (не читать зелёный прогон как «видимость закрыта целиком»):
+кейсы ниже проверяют ТОЛЬКО кросс-ПРОЕКТНОЕ измерение. Per-object видимость внутри
+проекта (страница сужается до объектов, на которые есть грант — `viewer ∪ v_list`
+через iam BatchCheck, internal/authzfilter) здесь ЧЁРНЫМ ЯЩИКОМ НЕ ПОКРЫТА: сейчас
+её лочат Go-тесты use-case-слоя (internal/service/*/list_filter_test.go) и CI-гейт
+tools/audit-list-filter.sh. Недостающий кейс — over-show leak-guard по образцу
+compute `LF-INST-LST-OVERSHOW-LEAK-GUARD` (jwtPureNoBindings листит проект, где
+владелец только что создал том → том не должен появиться).
+
 Storage-контракт (отличие от compute hide-existence): denied → 403 / code 7 /
 `permission denied` (НЕ 404 — §0.2, storage раскрывает PERMISSION_DENIED, но не
 существование цели). Assert — behaviour-level (код + фикс. текст).

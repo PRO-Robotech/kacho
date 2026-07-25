@@ -24,6 +24,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
@@ -85,6 +86,10 @@ type UseCase struct {
 	// registrar — синхронная регистрация owner-tuple после commit (immediate
 	// анти-BOLA; nil → только async register-drainer). Инжектится WithRegistrar.
 	registrar fgaregister.Registrar
+	// listFilter — per-object фильтр видимости страницы List (kacho-iam
+	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
+	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
+	listFilter authzfilter.Filter
 }
 
 // New собирает UseCase для Snapshot.
@@ -101,6 +106,12 @@ func New(repo Repo, iam IAMClient, ops operations.Repo, errStatus ErrToStatus) *
 // backstop); nil → sync-путь пропускается (dev/no-iam).
 func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 	u.registrar = r
+	return u
+}
+
+// WithListFilter подключает per-object фильтр видимости публичного List.
+func (u *UseCase) WithListFilter(f authzfilter.Filter) *UseCase {
+	u.listFilter = f
 	return u
 }
 
@@ -164,7 +175,19 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Snapshot, s
 	if err != nil {
 		return nil, "", u.errStatus(err)
 	}
-	return snaps, next, nil
+	// Per-object видимость страницы (batched Check по её id, `viewer ∪ v_list`) —
+	// см. authzfilter package-doc: вопрос задаётся про ПРОЧИТАННУЮ страницу, а не
+	// «перечисли всё разрешённое» (тот приём усекается пределом ListObjects).
+	// Вызывается ПОСЛЕ валидации page_size (выше) и page_token (repo), поэтому
+	// мусорный маркер даёт InvalidArgument независимо от grant-state.
+	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+		authzfilter.ResourceTypeSnapshot, authzfilter.ActionSnapshotList, snaps,
+		func(s *domain.Snapshot) string { return s.ID })
+	if ferr != nil {
+		// Fail-closed: ошибка iam НИКОГДА не отдаёт нефильтрованную страницу.
+		return nil, "", u.errStatus(ferr)
+	}
+	return visible, next, nil
 }
 
 // Create создаёт Snapshot тома (async Operation). Sync-фаза: domain-validate

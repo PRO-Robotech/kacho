@@ -71,6 +71,45 @@ type Config struct {
 	// неприменёнными (dev/degraded). Требует непустой AuthZIAMGRPCAddr.
 	FGARegisterDrainerEnabled bool `envconfig:"KACHO_STORAGE_FGA_REGISTER_DRAINER_ENABLED" default:"true"`
 
+	// ===== per-object filtered List =====
+	//
+	// Все ListFilter* — production-edition: configurable, без хардкода. Адрес
+	// authorize-эндпоинта переиспользует AuthZIAMGRPCAddr (kacho-iam internal :9091,
+	// AuthorizeService.BatchCheck) и те же per-edge creds IAMClientMTLS.
+	//
+	// NB: knob'а «размер allow-list» здесь НЕТ и быть не может: видимость
+	// спрашивается per-object по УЖЕ прочитанной странице, поэтому усечь её нечем —
+	// полнота и стоимость задаются page_size, а не ручкой (перечисление всех
+	// разрешённых объектов даёт усечение сверх жёсткого предела ListObjects).
+
+	// ListFilterEnabled — master-switch. true → List спрашивает iam.BatchCheck про
+	// id прочитанной страницы. false → фильтра нет (passthrough); production
+	// boot-guard такую посадку ЗАПРЕЩАЕТ (см. Validate).
+	ListFilterEnabled bool `envconfig:"KACHO_STORAGE_LIST_FILTER_ENABLED" default:"true"`
+
+	// ListFilterTimeoutMs — per-call deadline ОДНОГО iam.BatchCheck (страница >100 id
+	// режется на батчи ≤100, у каждого свой deadline), НЕ бюджет всей фильтрации:
+	// бюджет операции выводится в authzfilter.NewFGAFilter из контракта (максимум
+	// страницы ÷ предел батча ÷ параллелизм). 1000ms — реалистичный допуск на ОДИН
+	// хоп: батчи идут ограниченным fan-out'ом, поэтому worst-case глубина на
+	// предельной странице (page_size=1000) — 4 волны, а не 20 последовательных хопов.
+	ListFilterTimeoutMs int `envconfig:"KACHO_STORAGE_LIST_FILTER_TIMEOUT_MS" default:"1000"`
+
+	// ListFilterCacheTTLMs — TTL ПОЛОЖИТЕЛЬНОГО per-object вердикта. Короткий (5s),
+	// чтобы revoke access-binding был виден ≤5s. Отрицательные вердикты не кешируются
+	// вовсе (иначе свежий грант / только что созданный свой ресурс были бы невидимы
+	// весь TTL).
+	ListFilterCacheTTLMs int `envconfig:"KACHO_STORAGE_LIST_FILTER_CACHE_TTL_MS" default:"5000"`
+
+	// ListFilterCacheMaxEntries — bound кеша, вытеснение LRU. Кеш НИКАК не
+	// ограничивает видимость: страница проверяется целиком независимо от его размера.
+	ListFilterCacheMaxEntries int `envconfig:"KACHO_STORAGE_LIST_FILTER_CACHE_MAX_ENTRIES" default:"10000"`
+
+	// ListFilterFailOpen — degraded mode. true → на ошибке iam страница отдаётся
+	// НЕотфильтрованной (+ audit-WARN); false → Unavailable. Default false
+	// (fail-closed = secure); true — только break-glass.
+	ListFilterFailOpen bool `envconfig:"KACHO_STORAGE_LIST_FILTER_FAIL_OPEN" default:"false"`
+
 	// ===== per-edge mTLS =====
 
 	// GeoClientMTLS — client-creds ребра storage→geo (:9090).

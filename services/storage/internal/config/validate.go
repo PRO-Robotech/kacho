@@ -67,6 +67,21 @@ func (c Config) Validate() error {
 			"per-RPC authz Check required on both listeners: set KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR")
 	}
 
+	// ── per-object list-filter обязателен на публичном List ─────────────────
+	// Per-RPC Check гейтит List лишь на project-tier `viewer`: он отвечает «этот
+	// caller вправе листать ЭТОТ проект», но НЕ сужает страницу до объектов, на
+	// которые есть грант. Сужение делает ТОЛЬКО list-filter (per-object
+	// `viewer ∪ v_list` батчем по прочитанной странице). Выключенный фильтр = любой
+	// член проекта видит КАЖДЫЙ том/снимок/образ проекта (over-show / BOLA-lite,
+	// CWE-862 / OWASP A01) — ровно та дыра, ради которой фильтр и появился.
+	// Адрес authorize-эндпоинта отдельно не проверяем: он и есть AuthZIAMGRPCAddr,
+	// уже потребованный выше.
+	if !c.ListFilterEnabled {
+		problems = append(problems,
+			"per-object List filter required: set KACHO_STORAGE_LIST_FILTER_ENABLED=true "+
+				"(false → public List bypasses the per-object FGA filter; a project-tier viewer sees every volume/snapshot/image)")
+	}
+
 	if len(problems) > 0 {
 		return fmt.Errorf("%s mode refuses insecure config: %s", mode, strings.Join(problems, "; "))
 	}

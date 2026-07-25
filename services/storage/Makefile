@@ -34,9 +34,15 @@ vet:
 lint:
 	golangci-lint run ./...
 
-# audit-list-filter — CI gate: публичный project-scoped List<Resource> сужает строки
-# по project_id (listauthz posture, INV-10; кросс-проектной утечки нет by construction).
-# DiskType (cluster-catalog) whitelisted. См. tools/audit-list-filter.sh.
+# audit-list-filter — CI gate публичного List<Resource>. Проверяет ДВА измерения:
+#   (1) project-scope: repo.List сужает строки по project_id + use-case требует
+#       непустой projectId (listauthz posture, INV-10 — кросс-проектной утечки нет);
+#   (2) per-object видимость: use-case List прогоняет ПРОЧИТАННУЮ страницу через
+#       authzfilter.FilterVisiblePage (kacho-iam BatchCheck, viewer ∪ v_list).
+# (1) без (2) — ровно то слепое пятно, с которым storage отгрузил List, показывавший
+# любому члену проекта каждый том/снимок/образ. DiskType (cluster-catalog) whitelisted.
+# Гейт дублируется в go test (tools/audit_list_filter_test.go), т.к. CI-workflow этот
+# make-таргет не вызывает. См. tools/audit-list-filter.sh.
 audit-list-filter:
 	./tools/audit-list-filter.sh
 

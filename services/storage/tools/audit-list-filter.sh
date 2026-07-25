@@ -2,14 +2,20 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-# audit-list-filter.sh — CI gate для public List<Resource> listauthz-posture (INV-10).
+# audit-list-filter.sh — CI gate для public List<Resource>: per-object видимость
+# (RBAC v2, парити с vpc/compute/nlb) + project-scoped listauthz-posture (INV-10).
 #
-# kacho-storage использует **project-scoped Check** (AddressPool-style), а НЕ per-object
-# `ListAllowedIDs` (как vpc/compute): публичный `Volume.List`/`Snapshot.List` требует
-# `projectId`, gateway гейтит его scope_extractor'ом `{project, project_id}` (viewer),
-# а repo-запрос сужает строки по `project_id`. Комбинация → caller, авторизованный на
-# `prj-1`, **никогда** не видит ресурсы `prj-2` by construction (кросс-проектной утечки
-# нет). Решение зафиксировано в acceptance CS-1 §GAP-C и docs/architecture/overview.md.
+# # Почему гейт пришлось расширить (он был слепым пятном)
+#
+# Прежняя редакция гейта проверяла ТОЛЬКО project-scope: `projectId` обязателен,
+# gateway гейтит его scope_extractor'ом `{project, project_id}` (viewer), repo сужает
+# строки по `project_id`. Это закрывает кросс-ПРОЕКТНУЮ утечку и ничего больше. Но
+# требование звучит иначе — «публичный List обязан фильтровать результат» — и в
+# storage фильтрации ПО ОБЪЕКТАМ не было вовсе: любой член проекта видел КАЖДЫЙ том,
+# снимок и образ проекта, независимо от per-object грантов (over-show / BOLA-lite,
+# CWE-862), при том что Get/Update/Delete тех же ресурсов per-object грант требовали.
+# Гейт с таким именем при этом печатал OK — форма проверки была, содержания не было.
+# Поэтому здесь проверяются ОБА измерения; ни одно не заменяет другое.
 #
 # Гейт роняет PR, если для публичного project-scoped `List`:
 #   1. тело `func (r *<R>Repo) List(` в `internal/repo/pg/<r>_repo.go` НЕ сужает
@@ -20,10 +26,20 @@
 #   2. use-case `func (u *UseCase) List(` в `internal/service/<r>/<r>.go` НЕ требует
 #      непустой `projectId` (in-service backstop: пустой projectId → строки ВСЕХ
 #      проектов, т.к. repo сужает лишь при ProjectID!=""). Отсутствие файла use-case
-#      трактуется fail-closed (нельзя доказать backstop → падаем).
+#      трактуется fail-closed (нельзя доказать backstop → падаем);
+#   3. тело того же use-case `List` НЕ прогоняет прочитанную страницу через
+#      per-object фильтр видимости (`authzfilter.FilterVisiblePage` /
+#      `FilterVisibleIDs` → kacho-iam AuthorizeService.BatchCheck, `viewer ∪ v_list`).
 #
-# Whitelist (cluster-catalog, project-scope неприменим by design):
-#   - disk_type — публичный каталог `{cluster,*}` viewer, cluster-wide (не project-scoped).
+# Форма (3) обязана быть именно «прочитал страницу курсором → батч-Check по её id».
+# Обратный приём — `ListAllowedIDs` («перечисли ВСЁ, что subject'у можно») + сужение
+# SQL до полученного набора — НЕ принимается: у OpenFGA ListObjects жёсткий
+# server-side предел без continuation-token'а, поэтому собственный ресурс тенанта
+# молча выпадает за префикс и становится невидимым навсегда. Этот приём снят у всех
+# соседей; гейт отвергает его явно, чтобы он не вернулся «как эквивалент».
+#
+# Whitelist (cluster-catalog, project-scope и per-object гранты неприменимы by design):
+#   - disk_type — публичный каталог `{cluster,*}` viewer, cluster-wide reference data.
 #
 # Override: tools/audit-list-filter.sh --allow="<resource>" расширяет whitelist.
 
@@ -59,7 +75,16 @@ func_body() {
     index($0, m) { inb = 1 }
     inb          { print }
     inb && /^}/  { exit }
-  ' "$1"
+  ' "$1" | strip_comments
+}
+
+# strip_comments срезает `//`-комментарии (до конца строки). Гейт обязан судить по
+# КОДУ, а не по прозе: иначе (а) комментарий, объясняющий, почему `ListObjects`
+# запрещён, ронял бы сборку, и (б) — что хуже — комментарий, упоминающий
+# `FilterVisibleIDs`, «удовлетворял» бы проверку в use-case, который на деле ничего
+# не фильтрует. Оба направления залочены фикстурами в audit_list_filter_test.go.
+strip_comments() {
+  sed -E 's://.*::'
 }
 
 FAIL=0
@@ -93,15 +118,40 @@ for repofile in "$ROOT"/*_repo.go; do
     echo "audit-list-filter: $RES — use-case List does not reject empty projectId"
     echo "  service: $svc"
     FAIL=1
+    continue
+  fi
+
+  # (3) тело use-case List обязано сузить ПРОЧИТАННУЮ страницу до объектов, видимых
+  #     вызывающему (per-object `viewer ∪ v_list` батчем в kacho-iam). Project-scope
+  #     из (1)+(2) отвечает лишь «чей это проект», но НЕ «какие объекты этому
+  #     caller'у можно» — без (3) любой член проекта видит все строки проекта.
+  if ! grep -qE 'FilterVisiblePage|FilterVisibleIDs' <<<"$uc_body"; then
+    echo "audit-list-filter: $RES — use-case List does not filter the page per-object (FilterVisiblePage/FilterVisibleIDs)"
+    echo "  service: $svc"
+    FAIL=1
+    continue
+  fi
+
+  # (3a) enumerate-then-narrow НЕ считается per-object фильтром: ListObjects усекает
+  #      перечисление server-side без continuation-token'а → собственный ресурс
+  #      тенанта выпадает за префикс и становится невидимым.
+  if grep -qE 'ListAllowedIDs|ListObjects' <<<"$uc_body"; then
+    echo "audit-list-filter: $RES — use-case List enumerates allowed ids (ListAllowedIDs/ListObjects) instead of batch-checking the page"
+    echo "  service: $svc"
+    FAIL=1
   fi
 done
 
 if [[ $FAIL -ne 0 ]]; then
   echo
-  echo "Every public project-scoped List<Resource> must (1) narrow rows by project_id"
-  echo "in the repo.List body AND (2) reject empty projectId in the use-case List"
-  echo "(listauthz posture: gateway {project,project_id} Check + repo project scope +"
-  echo "in-service required-projectId backstop, INV-10)."
+  echo "Every public project-scoped List<Resource> must:"
+  echo "  (1) narrow rows by project_id in the repo.List body;"
+  echo "  (2) reject an empty projectId in the use-case List (in-service backstop);"
+  echo "  (3) filter the page it just read per-object via FilterVisiblePage/"
+  echo "      FilterVisibleIDs (kacho-iam BatchCheck, viewer ∪ v_list)."
+  echo "(1)+(2) are project scope — they do NOT answer 'may this caller see THESE"
+  echo "objects'; without (3) every project member sees every row of the project."
+  echo "Enumerating all allowed ids (ListAllowedIDs/ListObjects) is not a substitute."
   echo "Whitelist a cluster-catalog resource with --allow=<resource> if the"
   echo "cluster-wide surface is intentional."
   exit 1

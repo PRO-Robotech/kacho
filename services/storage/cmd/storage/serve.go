@@ -27,6 +27,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
@@ -148,6 +149,19 @@ func runServe(cfg config.Config) error {
 	} else {
 		logger.Warn("authz Check NOT configured (KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR empty) — dev only; production MUST enable per-RPC Check")
 	}
+
+	// ── per-object list-filter публичного List (анти-over-show) ───────────────
+	// Per-RPC Check выше гейтит List на project-tier `viewer` — «вправе ли листать
+	// ЭТОТ проект». Сужение страницы до объектов, на которые есть грант
+	// (`viewer ∪ v_list` батчем по прочитанной странице), делает ТОЛЬКО этот фильтр.
+	// Без него любой член проекта видел КАЖДЫЙ том/снимок/образ проекта. Тот же
+	// authzConn (kacho-iam internal :9091, mTLS) — там живёт AuthorizeService.
+	// Production boot-guard (config.Validate) не пускает старт с выключенным
+	// фильтром, поэтому nil здесь возможен только в dev.
+	listFilter := buildListFilter(cfg, authzConn, logger)
+	volumeUC.WithListFilter(listFilter)
+	snapshotUC.WithListFilter(listFilter)
+	imageUC.WithListFilter(listFilter)
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
 	// Volume/Snapshot Create/Delete эмитят register/unregister-intent в
@@ -359,4 +373,47 @@ func serveResult(publicErr, internalErr error) error {
 		return publicErr
 	}
 	return internalErr
+}
+
+// buildListFilter собирает per-object фильтр видимости публичного List
+// (kacho-iam AuthorizeService.BatchCheck по id ПРОЧИТАННОЙ страницы).
+//
+// nil (⇒ use-case делает passthrough) возможен только в dev: production boot-guard
+// (config.Validate) требует и ListFilterEnabled=true, и непустой AuthZIAMGRPCAddr,
+// поэтому «тихо выключить фильтр на развёрнутом стенде» нельзя.
+//
+// Логируются ВСЕ три числа таймингов: per-call дедлайн гейтит ОДИН BatchCheck,
+// operation_budget — фильтрацию всей страницы (выводится из per-call и
+// параллелизма), worst_case_depth — сколько волн он покрывает. По одному конфигу не
+// видно, какое из них реально ограничивает запрос.
+func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) authzfilter.Filter {
+	if !cfg.ListFilterEnabled {
+		logger.Warn("list filter DISABLED (KACHO_STORAGE_LIST_FILTER_ENABLED=false) — " +
+			"public List returns every row of the project regardless of per-object grants; dev only")
+		return nil
+	}
+	if authzConn == nil {
+		logger.Warn("list filter requested but KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR is unset — disabled")
+		return nil
+	}
+	f := authzfilter.NewFGAFilter(
+		authzfilter.NewIAMAuthorizeClient(authzConn),
+		authzfilter.Config{
+			Enabled:         true,
+			Timeout:         time.Duration(cfg.ListFilterTimeoutMs) * time.Millisecond,
+			CacheTTL:        time.Duration(cfg.ListFilterCacheTTLMs) * time.Millisecond,
+			CacheMaxEntries: cfg.ListFilterCacheMaxEntries,
+			FailOpen:        cfg.ListFilterFailOpen,
+		},
+	).WithLogger(logger)
+	logger.Info("list filter enabled",
+		"iam_authorize_endpoint", cfg.AuthZIAMGRPCAddr,
+		"per_call_timeout_ms", cfg.ListFilterTimeoutMs,
+		"batch_parallelism", f.Parallelism(),
+		"operation_budget", f.Budget(),
+		"worst_case_depth_waves", f.WorstCaseDepth(),
+		"cache_ttl_ms", cfg.ListFilterCacheTTLMs,
+		"cache_max_entries", cfg.ListFilterCacheMaxEntries,
+		"fail_open", cfg.ListFilterFailOpen)
+	return f
 }

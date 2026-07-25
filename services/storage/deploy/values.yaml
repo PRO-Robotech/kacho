@@ -64,6 +64,25 @@ config:
   # {storage_volume,volume_id}/{storage_snapshot,snapshot_id} не резолвит target→
   # project (анти-BOLA). Требует непустой authzIamGrpcAddr (иначе intents durable).
   fgaRegisterDrainerEnabled: true
+  # listFilter — per-object фильтр видимости публичного List (Volume/Snapshot/Image):
+  # прочитанная страница прогоняется через kacho-iam AuthorizeService.BatchCheck
+  # (`viewer ∪ v_list`) по тому же authzIamGrpcAddr. Без него per-RPC Check гейтит
+  # List лишь на project-tier viewer → ЛЮБОЙ член проекта видит каждый том/снимок/
+  # образ проекта, включая объекты без per-object гранта (over-show / BOLA-lite).
+  # production boot-guard (Config.Validate) отказывает старту при enabled=false.
+  listFilter:
+    enabled: true
+    # timeoutMs — per-call deadline ОДНОГО BatchCheck (батч ≤100 id), НЕ бюджет всей
+    # фильтрации: бюджет операции выводится из него и параллелизма (страница максимума
+    # = 4 волны). Занижать не нужно — это делает хрупким один хоп, не ускоряет запрос.
+    timeoutMs: 1000
+    # cacheTtlMs — TTL ПОЛОЖИТЕЛЬНОГО вердикта (revoke виден ≤ TTL). Отрицательные
+    # вердикты не кешируются вовсе.
+    cacheTtlMs: 5000
+    cacheMaxEntries: 10000
+    # failOpen — break-glass: на ошибке iam отдать страницу НЕотфильтрованной
+    # (+ audit-WARN). Default false = fail-closed (Unavailable).
+    failOpen: false
 
 # Init-контейнер миграций (kacho-migrator up) до старта основного pod.
 migrator:
