@@ -15,17 +15,21 @@ import (
 // success, poisons it (no further retry) or retries it unbounded with backoff.
 //
 // Transient-class no-poison rule: a long-but-transient IAM outage (gRPC
-// Unavailable / DeadlineExceeded / connection-refused / timeout) must NEVER
-// poison a row — it retries forever (with backoff) so the owner-tuple is never
-// lost to a temporary peer outage. Only permanent errors (4xx-non-409,
+// Unavailable / DeadlineExceeded / connection-refused / timeout) — and a
+// concurrency conflict (409) — must NEVER poison a row: it retries forever (with
+// backoff) so the owner-tuple is never lost to a temporary peer outage or a
+// racing writer. Only permanent errors (4xx other than the conflict class,
 // decode-failure, malformed) poison.
 type Class int
 
 const (
 	// ClassSuccess — nil error; the row is delivered.
 	ClassSuccess Class = iota
-	// ClassAlreadyApplied — the target reports already-applied (FGA-409 on write,
-	// 404 on delete); idempotent success, the row is marked sent.
+	// ClassAlreadyApplied — the target reports already-applied (for OpenFGA: a 400
+	// `already_exists` on write / `cannot_delete` on delete); idempotent success,
+	// the row is marked sent. NOT the OpenFGA 409 — that is a transactional abort
+	// that applied NOTHING, so marking it sent would silently drop the tuple; it
+	// belongs to ClassTransient.
 	ClassAlreadyApplied
 	// ClassPermanent — retry is pointless (ErrPermanent, gRPC InvalidArgument /
 	// 4xx-non-409, decode-failure). The row is poisoned (attempt_count forced to
@@ -59,7 +63,7 @@ func (c Class) String() string {
 //  1. nil                                   → ClassSuccess
 //  2. errors.Is(err, ErrAlreadyApplied)     → ClassAlreadyApplied
 //  3. errors.Is(err, ErrPermanent)          → ClassPermanent
-//  4. gRPC InvalidArgument (4xx-non-409)    → ClassPermanent
+//  4. gRPC InvalidArgument (4xx, non-conflict) → ClassPermanent
 //  5. everything else (Unavailable,
 //     DeadlineExceeded, PermissionDenied,
 //     connection-refused/timeout, raw)      → ClassTransient

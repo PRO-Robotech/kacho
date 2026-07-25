@@ -210,13 +210,18 @@ type Decoder[T any] func(payload []byte) (T, error)
 type Applier[T any] func(ctx context.Context, eventType string, payload T) error
 
 // ErrAlreadyApplied — applier возвращает, когда target-система сообщила «уже есть»
-// (для OpenFGA: HTTP 409 на write existing tuple; HTTP 404 на delete missing tuple).
-// Drainer трактует как success.
+// (для OpenFGA: HTTP 400 `already_exists` на write существующего tuple; HTTP 400
+// `cannot_delete` на delete отсутствующего). Drainer трактует как success.
+//
+// ВНИМАНИЕ: HTTP 409 сюда НЕ относится — у OpenFGA это transactional abort
+// (`{"code":"Aborted"}`), при котором НЕ ЗАПИСАНО НИЧЕГО. Классификация 409 как
+// already-applied пометила бы row sent_at и молча потеряла tuple (перманентная
+// authz-дыра); 409 — transient, его лечит именно retry.
 var ErrAlreadyApplied = errors.New("drainer: target reports already-applied (idempotent)")
 
-// ErrPermanent — applier wrap'ит в это, если retry бессмыслен (HTTP 4xx не-409,
-// malformed payload, etc). Drainer mark'ит last_error и пропускает row через
-// force attempt_count = MaxAttempts.
+// ErrPermanent — applier wrap'ит в это, если retry бессмыслен (HTTP 4xx кроме
+// conflict-класса, malformed payload, etc). Drainer mark'ит last_error и пропускает
+// row через force attempt_count = MaxAttempts.
 var ErrPermanent = errors.New("drainer: permanent error, no retry")
 
 // Drainer[T] — экземпляр drainer-а для одного outbox-table + один applier.

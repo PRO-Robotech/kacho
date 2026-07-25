@@ -12,7 +12,9 @@
 //   - **Идемпотентность**: Applier возвращает [ErrAlreadyApplied] → drainer
 //     трактует как success и mark'ит sent_at. Это позволяет at-least-once
 //     дренаж быть exactly-once на бизнес-уровне (caller возвращает
-//     ErrAlreadyApplied на повторный write existing tuple / HTTP 409).
+//     ErrAlreadyApplied на повторный write уже существующего tuple — у OpenFGA
+//     это HTTP 400 `already_exists`, НЕ 409: 409 = transactional abort, при
+//     котором ничего не записано, и он обязан остаться transient).
 //   - **Exactly-once across HA replicas**: claim открывает транзакцию с
 //     `SELECT … FOR UPDATE SKIP LOCKED` и держит row-lock на время Apply.
 //     Другие реплики drainer-а SKIP'нут lock'нутый row до commit'а текущей.
