@@ -65,7 +65,7 @@ def _create_registry(name_expr, id_var, region="{{existingRegionId}}"):
              test_script=[
                  *assert_status(200),
                  *assert_operation_envelope(OP_ENVELOPE),
-                 *save_from_response("j.id", "opId"),
+                 *save_operation_id(),
              ]),
         poll_operation_until_done(),
         Step(name="capture-" + id_var, method="GET", path="/operations/{{opId}}",
@@ -134,7 +134,10 @@ def _create_repo(reg_var, repo_expr, capture_tests, body_extra=None):
             Step(name="repo-create", method="POST", path=REG + "/{{" + reg_var + "}}/repositories",
                  body=body,
                  test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                              *save_from_response("j.id", "opId")])),
+                              # save_operation_id() (not save_from_response) — a create that
+                              # 404s must NOT leave the previous step's opId behind for the
+                              # poll+capture to chase. See gen.py::save_operation_id.
+                              *save_operation_id()])),
         poll_operation_until_done(),
         Step(name="repo-capture", method="GET", path="/operations/{{opId}}",
              test_script=[
@@ -304,7 +307,7 @@ CASES.append(Case(
         Step(name="rename", method="PATCH", path=REG + "/{{rnRegId}}",
              body={"updateMask": "name", "name": "rename-new-{{runId}}"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="get-after-rename", method="GET", path=REG + "/{{rnRegId}}",
              test_script=[
@@ -470,7 +473,7 @@ CASES.append(Case(
                    "name": "emptymask-new-{{runId}}",
                    "regionId": "{{garbageRegionId}}", "id": "reg00000000hacked00"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="get-emptymask", method="GET", path=REG + "/{{emRegId}}",
              test_script=[

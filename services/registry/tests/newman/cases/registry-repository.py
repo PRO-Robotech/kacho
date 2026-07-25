@@ -49,7 +49,7 @@ def _create_registry(name_expr, id_var):
     return [
         Step(name="reg-create", method="POST", path=REG, body=body,
              test_script=[*assert_status(200), *assert_operation_envelope("^(rop|reo)[a-z0-9]+$"),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="reg-capture", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
@@ -96,7 +96,7 @@ def _create_repo(repo_expr, extra_asserts=None, body_extra=None):
         retry_until_authorized(
             Step(name="repo-create", method="POST", path=_reg_base(), body=body,
                  test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                              *save_from_response("j.id", "opId")])),
+                              *save_operation_id()])),
         poll_operation_until_done(),
         Step(name="repo-capture", method="GET", path="/operations/{{opId}}", test_script=[*assert_status(200), *cap]),
         # Read-your-writes warm-up: force the per-repo owner-tuple
@@ -176,7 +176,7 @@ CASES.append(Case(
              body={"description": "api images v2", "labels": {"team": "core", "tier": "gold"},
                    "updateMask": "description,labels"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="update-verify", method="GET", path=_reg_base() + "/upd/svc-{{runId}}",
              test_script=[*assert_status(200),
@@ -204,7 +204,7 @@ CASES.append(Case(
         *_create_repo("del/svc-{{runId}}"),
         Step(name="delete-repo", method="DELETE", path=_reg_base() + "/del/svc-{{runId}}",
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="delete-verify", method="GET", path=_reg_base() + "/del/svc-{{runId}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
@@ -228,7 +228,7 @@ CASES.append(Case(
         Step(name="rename-repo", method="POST", path=_reg_base() + "/ren/old-{{runId}}:rename",
              body={"newName": "ren/new-{{runId}}"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="rename-verify-new", method="GET", path=_reg_base() + "/ren/new-{{runId}}",
              test_script=[*assert_status(200),
@@ -473,7 +473,7 @@ CASES.append(Case(
              body={"newName": "xreg/dst-{{runId}}",
                    "registryId": "reg00000000smuggled0", "targetRegistryId": "reg00000000smuggled0"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="rename-smuggle-verify", method="GET", path=_reg_base() + "/xreg/dst-{{runId}}",
              test_script=[

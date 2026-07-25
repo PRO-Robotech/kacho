@@ -54,7 +54,7 @@ def _create_registry(name_expr, id_var, project="{{existingProjectId}}",
              test_script=[
                  *assert_status(200),
                  *assert_operation_envelope(OP_ENVELOPE),
-                 *save_from_response("j.id", "opId"),
+                 *save_operation_id(),
              ]),
         poll_operation_until_done(),
         Step(name="capture-" + id_var, method="GET", path="/operations/{{opId}}",
@@ -91,7 +91,7 @@ def _delete_registry(id_var, tolerant=False):
         Step(name="delete-" + id_var, method="DELETE", path=REG + "/{{" + id_var + "}}",
              test_script=[
                  "pm.test('delete accepted', () => pm.expect(pm.response.code).to.be.oneOf(" + codes + "));",
-                 *save_from_response("j.id", "opId"),
+                 *save_operation_id(),
              ]),
         poll_operation_until_done(),
     ]
@@ -372,7 +372,7 @@ CASES.append(Case(
                    "labels": {"env": "staging", "team": "core"},
                    "description": "staging CI images"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="get-updated", method="GET", path=REG + "/{{regId}}",
              test_script=[
@@ -407,7 +407,7 @@ CASES.append(Case(
         Step(name="update-name", method="PATCH", path=REG + "/{{regId}}",
              body={"updateMask": "name", "name": "team-images-r-{{runId}}"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="get-renamed", method="GET", path=REG + "/{{regId}}",
              test_script=[
@@ -440,7 +440,7 @@ CASES.append(Case(
         Step(name="update-empty", method="PATCH", path=REG + "/{{regId}}",
              body={"description": "full-patch-{{runId}}", "labels": {"tier": "gold"}},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="get-empty-mask", method="GET", path=REG + "/{{regId}}",
              test_script=[
@@ -728,7 +728,7 @@ CASES.append(Case(
         *_create_registry("del-me-{{runId}}", "delRegId"),
         Step(name="delete-del", method="DELETE", path=REG + "/{{delRegId}}",
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="get-del-deleted", method="GET", path=REG + "/{{delRegId}}",
              test_script=[
@@ -767,7 +767,7 @@ CASES.append(Case(
         *_create_registry("dd-{{runId}}", "ddRegId"),
         Step(name="delete-dd-1", method="DELETE", path=REG + "/{{ddRegId}}",
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
-                          *save_from_response("j.id", "opId")]),
+                          *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="delete-dd-2", method="DELETE", path=REG + "/{{ddRegId}}",
              test_script=[

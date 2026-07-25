@@ -245,38 +245,98 @@ try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
 for p in d.get("pools", []):
     if p.get("name") == "kac-nlb-seed-ext-pool":
-        print(p.get("id","")); sys.exit(0)
+        # trailing marker: does the pool already carry v6 blocks?
+        print("%s %s" % (p.get("id",""), "v6" if p.get("v6CidrBlocks") else "nov6")); sys.exit(0)
 print("")
 ')
+POOL_HAS_V6=$(printf '%s' "$POOL_ID" | awk '{print $2}')
+POOL_ID=$(printf '%s' "$POOL_ID" | awk '{print $1}')
 if [ -z "$POOL_ID" ]; then
   log "3.5/5 creating external AddressPool kac-nlb-seed-ext-pool (EXTERNAL_PUBLIC, zone=$ZONE_ID)"
   # 198.51.100.0/24 = TEST-NET-2 (RFC 5737) — the documented production external
-  # CIDR (see `make seed-ipam`). On a truly fresh stand (CI wipes the vpc DB) no
-  # EXTERNAL_PUBLIC pool exists, so the address_pool_cidrs EXCLUDE (kind, block &&)
-  # does not conflict. On a re-run / shared vpc DB it CAN conflict (see fallback below).
-  pbody='{"name":"kac-nlb-seed-ext-pool","description":"KAC-NLB seed external VIP pool","kind":"EXTERNAL_PUBLIC","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["198.51.100.0/24"],"v6CidrBlocks":[]}'
+  # CIDR (see `make seed-ipam`). 2001:db8::/32 = RFC 3849 documentation prefix; the
+  # /64 below is the v6 half of the SAME pool, because an EXTERNAL LB with
+  # `v6Source:{public:{}}` resolves the very same GetDefaultForZone(zone,
+  # EXTERNAL_PUBLIC) pool and then asks it for a v6 block. A v4-only pool answers
+  # `address pool %s has no v6_cidr_blocks`, which the nlb use-case collapses into
+  # the capacity-opaque "could not allocate load balancer address" — so
+  # XRES-E2E-EXTERNAL-IPV6-VIP could never allocate and its positive assertion was
+  # skipped by the `lastOpError` guard, i.e. VACUOUSLY green (CI 30135586348: 0/1 v6
+  # allocations succeeded vs 36/39 v4).
+  # On a truly fresh stand (CI wipes the vpc DB) no EXTERNAL_PUBLIC pool exists, so the
+  # address_pool_cidrs EXCLUDE (kind, block &&) does not conflict. On a re-run /
+  # shared vpc DB it CAN conflict (see fallback below).
+  pbody='{"name":"kac-nlb-seed-ext-pool","description":"KAC-NLB seed external VIP pool","kind":"EXTERNAL_PUBLIC","zoneId":"'"$ZONE_ID"'","v4CidrBlocks":["198.51.100.0/24"],"v6CidrBlocks":["2001:db8:e2e:100::/64"]}'
   POOL_ID=$(curl_internal POST "/vpc/v1/addressPools" "$pbody" | extract "id" || true)
   if [ -z "$POOL_ID" ]; then
     # Create returned no id. The most common cause on a re-run / shared vpc DB is the
     # address_pool_cidrs EXCLUDE (kind, block &&) — keyed on (kind, block) GLOBALLY,
-    # ignoring name and zone — already holding 198.51.100.0/24 for EXTERNAL_PUBLIC from
-    # a prior seed run or the vpc newman suite (which seeds the same CIDR). Idempotency-
-    # by-name (above) can't detect that pool. Fall back to REUSING an existing
-    # EXTERNAL_PUBLIC pool in $ZONE_ID so GetDefaultForZone($ZONE_ID, EXTERNAL_PUBLIC)
-    # still resolves for allocation. Re-list fresh in case one appeared since.
-    POOL_ID=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null | ZONE="$ZONE_ID" python3 -c '
+    # ignoring name and zone — already holding one of our blocks for EXTERNAL_PUBLIC
+    # from a prior seed run or the vpc newman suite (which seeds the same CIDR).
+    # Idempotency-by-name (above) can't detect that pool, so fall back to REUSING one.
+    #
+    # Reuse is FAMILY- AND PURPOSE-CHECKED, never "any pool in the zone": a pool that
+    # is EXTERNAL_PUBLIC and in $ZONE_ID can still be v4-only (or v6-only — the vpc
+    # suite seeds such pools). Silently adopting it makes GetDefaultForZone resolve to
+    # a pool that cannot serve the requested family, and the allocation fails with the
+    # same capacity-opaque text as a genuinely exhausted pool — the failure then looks
+    # like a product bug instead of a seeding gap. So: require BOTH families, prefer
+    # the richer candidate, and if none qualifies say so loudly.
+    POOL_SELECTION=$(curl_internal GET "/vpc/v1/addressPools?pageSize=200" 2>/dev/null | ZONE="$ZONE_ID" python3 -c '
 import os, sys, json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-zone=os.environ.get("ZONE","")
-for p in d.get("pools", []):
-    if p.get("kind")=="EXTERNAL_PUBLIC" and p.get("zoneId")==zone:
-        print(p.get("id","")); sys.exit(0)
-print("")
-' || true)
-    if [ -n "$POOL_ID" ]; then
-      log "3.5/5 AddressPool.Create conflicted (CIDR overlap?); reusing existing EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID"
-    fi
+# stdout: "<status>\t<pool-id>\t<detail>"; status ∈ {ok, partial, none, unreadable}
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("unreadable\t\t"); sys.exit(0)
+zone = os.environ.get("ZONE", "")
+cands = [p for p in d.get("pools", [])
+         if p.get("kind") == "EXTERNAL_PUBLIC" and p.get("zoneId") == zone]
+if not cands:
+    print("none\t\tno EXTERNAL_PUBLIC pool in zone " + zone); sys.exit(0)
+def fams(p):
+    return (bool(p.get("v4CidrBlocks")), bool(p.get("v6CidrBlocks")))
+both = [p for p in cands if all(fams(p))]
+if both:
+    print("ok\t%s\tv4+v6" % both[0].get("id", "")); sys.exit(0)
+# Nothing carries both families — report what IS there so the operator can see the gap.
+desc = ", ".join("%s(%s)" % (p.get("id", "?"),
+                             "v4" if fams(p)[0] else ("v6" if fams(p)[1] else "empty"))
+                 for p in cands)
+v4 = [p for p in cands if fams(p)[0]]
+if v4:
+    print("partial\t%s\t%s" % (v4[0].get("id", ""), desc)); sys.exit(0)
+print("none\t\t%s" % desc)
+' || printf 'unreadable\t\t')
+    POOL_STATUS=$(printf '%s' "$POOL_SELECTION" | cut -f1)
+    POOL_ID=$(printf '%s' "$POOL_SELECTION" | cut -f2)
+    POOL_DETAIL=$(printf '%s' "$POOL_SELECTION" | cut -f3)
+    case "$POOL_STATUS" in
+      ok)
+        log "3.5/5 AddressPool.Create conflicted (CIDR overlap?); reusing EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID ($POOL_DETAIL)"
+        ;;
+      partial)
+        # v4 works, v6 does not. Do NOT pretend the seed is complete: the external-v6
+        # lane will fail, and it must be attributable to this line, not to nlb.
+        log "3.5/5 AddressPool.Create conflicted; reusing v4-only EXTERNAL_PUBLIC pool $POOL_ID in zone $ZONE_ID"
+        log "    WARNING: no EXTERNAL_PUBLIC pool in zone $ZONE_ID carries v6 blocks (candidates: $POOL_DETAIL)"
+        log "    → EXTERNAL LoadBalancers with v6Source:{public:{}} CANNOT allocate; the v6 e2e lane will fail."
+        log "    Fix the stand (drop the conflicting pool or add a v6 block to $POOL_ID), do not whitelist the case."
+        ;;
+      unreadable)
+        log "    AddressPool list unreadable at $INTERNAL_BASE_URL (internal mux unreachable, or insufficient admin tier) — external VIP allocation may fail"
+        POOL_ID=""
+        ;;
+      *)
+        # Reachable, listed, and nothing usable: this is a seeding failure, not a
+        # degraded stand. Fail loudly rather than leaving every EXTERNAL suite to red
+        # with an opaque allocation error 20 minutes later.
+        log "FATAL: AddressPool.Create failed and no usable EXTERNAL_PUBLIC pool exists in zone $ZONE_ID ($POOL_DETAIL)."
+        log "       Every EXTERNAL nlb auto-VIP resolves GetDefaultForZone($ZONE_ID, EXTERNAL_PUBLIC); without it the whole external lane fails"
+        log "       with the capacity-opaque 'could not allocate load balancer address'. Clean the conflicting pool and re-seed."
+        exit 1
+        ;;
+    esac
   fi
   if [ -n "$POOL_ID" ]; then
     # Allocation picks the pool ONLY when is_default=true for (zone, kind); the
@@ -290,6 +350,16 @@ print("")
   fi
 else
   log "3.5/5 reusing existing external AddressPool $POOL_ID"
+  if [ "$POOL_HAS_V6" != "v6" ]; then
+    # A pool seeded by an older revision of this script is v4-only, so
+    # `v6Source:{public:{}}` cannot allocate from it. Blocks are immutable via
+    # Update by design — top up through the dedicated :addCidrBlocks action.
+    log "    pool has no v6 blocks (pre-v6 seed) — adding 2001:db8:e2e:100::/64 via :addCidrBlocks"
+    if ! curl_internal POST "/vpc/v1/addressPools/$POOL_ID:addCidrBlocks" \
+        '{"v6CidrBlocks":["2001:db8:e2e:100::/64"]}' >/dev/null 2>&1; then
+      log "    WARNING: could not add the v6 block to $POOL_ID — EXTERNAL v6 auto-VIP will fail (v6 e2e lane)."
+    fi
+  fi
 fi
 
 # ─── 4) Ensure External Address (BYO VIP) ----------------------------------

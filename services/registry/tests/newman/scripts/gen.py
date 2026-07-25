@@ -145,6 +145,29 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     ]
 
 
+def save_operation_id() -> List[str]:
+    """Capture THIS response's Operation id into `opId`, clearing any previous one first.
+
+    STALE-opId GUARD. `save_from_response` writes only when the field is present, so a
+    step that fails (404/403/400 — no `id` in the body) silently leaves the PREVIOUS
+    step's `opId` in the environment. The `poll_operation_until_done()` that follows then
+    polls an unrelated, already-done Operation and the capture step asserts against
+    ANOTHER resource's payload — reporting a second, misleading failure that buries the
+    real one.
+
+    Observed in CI run 30135586348, REG-RD-F5-INHERIT-PRIVATE: `repo-create` 404'd for
+    its whole retry budget, after which `poll-op-5` cheerfully polled the Operation left
+    over from `delete-rnRegId` and `repo-capture` reported
+    "new repo inherits visibility PRIVATE: expected undefined to deeply equal 'PRIVATE'"
+    — a symptom with nothing to do with the cause.
+
+    Every call site that captures an operation id means "the operation THIS response
+    minted", so clearing first is strictly correct: no case legitimately wants to poll a
+    previous step's operation.
+    """
+    return ["pm.environment.unset('opId');", *save_from_response("j.id", "opId")]
+
+
 def assert_operation_envelope(prefix_regex: str = "^(nlb|tgr|lst)[a-z0-9]+$") -> List[str]:
     return [
         "pm.test('Operation envelope returned', () => {",
@@ -441,6 +464,7 @@ def load_cases_module(path: Path):
     mod.assert_field_violation = assert_field_violation
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response
+    mod.save_operation_id = save_operation_id
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present

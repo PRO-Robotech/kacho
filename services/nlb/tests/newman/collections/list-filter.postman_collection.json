@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "53dcddd0-6aea-4fa4-9663-f4ba78067dba",
+    "_postman_id": "3a18e75e-510d-4686-a328-02d49c9e1550",
     "name": "kacho-nlb / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -159,7 +159,7 @@
           ]
         },
         {
-          "name": "list-own-lst350",
+          "name": "list-own-lst366",
           "request": {
             "method": "GET",
             "header": [
@@ -229,7 +229,7 @@
           ]
         },
         {
-          "name": "del-own-rya351",
+          "name": "del-own-rya367",
           "request": {
             "method": "DELETE",
             "header": [
@@ -473,7 +473,7 @@
           ]
         },
         {
-          "name": "list-tg-lst352",
+          "name": "list-tg-lst368",
           "request": {
             "method": "GET",
             "header": [
@@ -543,7 +543,7 @@
           ]
         },
         {
-          "name": "del-tg-rya353",
+          "name": "del-tg-rya369",
           "request": {
             "method": "DELETE",
             "header": [
@@ -908,7 +908,7 @@
           ]
         },
         {
-          "name": "del-a-rya354",
+          "name": "del-a-rya370",
           "request": {
             "method": "DELETE",
             "header": [

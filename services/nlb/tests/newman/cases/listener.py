@@ -107,7 +107,16 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                  ]),
             poll_operation_until_done(fixture_ids=["lstSubnetId"]),
             setup_lb,
-            poll_operation_until_done(fixture_ids=["nlbId"], retry_from=setup_lb.name),
+            # `allocation unavailable` is the OTHER transient async-lane text: nlb now
+            # bounded-retries a hide-existence deny on its OWN freshly-allocated vpc
+            # Address (the per-object owner-tuple is eventually consistent) and, if that
+            # window still has not closed, answers UNAVAILABLE "load balancer address
+            # allocation unavailable" instead of the old, factually WRONG capacity text.
+            # Both retried texts are peer-transient; the capacity refusal
+            # ("could not allocate load balancer address") reads differently and is
+            # still NEVER re-driven.
+            poll_operation_until_done(fixture_ids=["nlbId"], retry_from=setup_lb.name,
+                                      retry_when="not found|allocation unavailable"),
             # read-your-writes: materialize the PARENT LB owner-tuple before the child
             # Listener.Create (which is authorized against editor@nlb_network_load_balancer)
             # -> avoids a spurious 403 on the fresh LB whose tuple is eventually-consistent.

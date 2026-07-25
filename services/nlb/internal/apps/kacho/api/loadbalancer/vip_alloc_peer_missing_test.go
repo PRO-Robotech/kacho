@@ -113,3 +113,51 @@ func TestCreate_Worker_AllocFailure_LogsSwallowedCause(t *testing.T) {
 	assert.NotContains(t, final.Error.GetMessage(), domain.ErrFailedPrecondition.Error(),
 		"the CLIENT answer must stay the fixed opaque text (no leak)")
 }
+
+// THIRD lane, added after CI run 30135586348: nlb's OWN freshly-allocated vpc
+// Address is not yet visible to vpc's per-object authz.
+//
+// `allocFromCreate` commits the Address and then links it; between those two calls
+// vpc answered `authz_hide_existence` (NOT_FOUND) on
+// InternalAddressService/SetAddressReference because the address's owner-tuple had
+// not materialised yet — four times in that run, each one killing an otherwise
+// healthy LoadBalancer.Create:
+//
+//	{"msg":"authz_hide_existence","rpc":".../SetAddressReference",
+//	 "relation":"v_update","object":"vpc_address:adrj251yyhebawpehh6h"}
+//
+// The client now bounded-retries that window; when it still does not close, the
+// answer must be the TRANSIENT one, never the capacity text. Reporting capacity here
+// was factually wrong (the address had just been allocated) and actively harmful: it
+// is the one message the e2e async re-drive refuses to retry, so a transient peer
+// condition presented itself as a permanent platform refusal.
+func TestCreate_Worker_OwnAddressNeverVisible_IsTransientNotCapacity(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
+	addr := &fakeAddressClient{allocFunc: func(_ context.Context, _ vpcclient.AllocateInternalIPRequest, _ string) (*vpcclient.AllocateResponse, error) {
+		// What the client returns once its own-lane visibility budget is spent.
+		return nil, domain.ErrUnavailable
+	}}
+	uc := newCreateUC(repo, opsRepo, createDeps{addr: addr, logger: logger})
+	req := baseCreateReq()
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
+	req.V4Source = vipSubnet(lbTestSubnetRegional)
+
+	op, err := uc.Execute(context.Background(), req)
+	require.NoError(t, err)
+	final := awaitOpDone(t, opsRepo, op.ID)
+	require.NotNil(t, final.Error)
+
+	assert.Equal(t, int32(codes.Unavailable), final.Error.GetCode(),
+		"a non-converging owner-tuple window is transient and retryable, not FAILED_PRECONDITION")
+	assert.Equal(t, "load balancer address allocation unavailable", final.Error.GetMessage())
+	assert.NotEqual(t, "could not allocate load balancer address", final.Error.GetMessage(),
+		"must never claim capacity for a visibility lag — that text is the one the e2e "+
+			"async re-drive deliberately does NOT retry")
+
+	assert.Contains(t, buf.String(), "load_balancer_vip_acquire_failed",
+		"the swallowed cause stays observable on this lane too")
+	assert.Empty(t, repo.lbs, "the durable handle is compensated away")
+}

@@ -62,6 +62,11 @@ type fakeAddressForAlloc struct {
 	deleteErr      error
 	deleteNotFound bool // если true — Delete возвращает NotFound
 
+	// deleteErrTimes>0 → deleteErr отдаётся только на первых N вызовах Delete,
+	// дальше вызов проходит (модель закрывающегося окна материализации).
+	// 0 (по умолчанию) — прежнее поведение: deleteErr на КАЖДОМ вызове.
+	deleteErrTimes int
+
 	createCalls int
 	deleteCalls int
 	lastCreate  *vpcpb.CreateAddressRequest
@@ -90,7 +95,7 @@ func (f *fakeAddressForAlloc) Delete(_ context.Context, _ *vpcpb.DeleteAddressRe
 	if f.deleteNotFound {
 		return nil, status.Error(codes.NotFound, "no such address")
 	}
-	if f.deleteErr != nil {
+	if f.deleteErr != nil && (f.deleteErrTimes == 0 || f.deleteCalls <= f.deleteErrTimes) {
 		return nil, f.deleteErr
 	}
 	emptyAny, _ := anypb.New(&vpcpb.Address{}) // payload не важен для Delete
@@ -110,6 +115,12 @@ type fakeInternalAddressService struct {
 	setErr   error
 	clearErr error
 
+	// setErrTimes>0 → setErr is returned only for the first N SetAddressReference
+	// calls, then the call succeeds. Models a per-object authz materialisation
+	// window that closes on its own. 0 (default) keeps the original behaviour:
+	// setErr is returned for EVERY call.
+	setErrTimes int
+
 	setCalls   []*vpcpb.SetAddressReferenceRequest
 	clearCalls []*vpcpb.ClearAddressReferenceRequest
 
@@ -123,7 +134,7 @@ func (f *fakeInternalAddressService) SetAddressReference(
 	defer f.mu.Unlock()
 	f.lastSetMD, _ = metadata.FromIncomingContext(ctx)
 	f.setCalls = append(f.setCalls, req)
-	if f.setErr != nil {
+	if f.setErr != nil && (f.setErrTimes == 0 || len(f.setCalls) <= f.setErrTimes) {
 		return nil, f.setErr
 	}
 	return &vpcpb.AddressReference{

@@ -75,13 +75,32 @@ def _create_external_lb(suffix: str, body_extra: dict = None):
     body = {"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
             "placement": "EXTERNAL_REGIONAL", "name": f"xres-{suffix}-{{{{runId}}}}",
             "v4Source": {"public": {}}, **(body_extra or {})}
-    return [
+    # retry_create_until_present ALSO makes the step name unique (`-cr<N>`), which the
+    # `retry_from` re-drive below depends on: `setNextRequest` resolves a duplicate name
+    # to the FIRST step carrying it, so a shared literal "create-lb" would jump into an
+    # earlier case's folder.
+    create_lb = retry_create_until_present(
         Step(name="create-lb", method="POST", path=_LB_BASE, body=body,
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]))
+    return [
+        create_lb,
+        # PHANTOM-ID GUARD + async-lane re-drive (parity with listener.py::_setup_lb).
+        #
+        # A Kachō Operation carries the pre-allocated resource id in `metadata` even when
+        # it finishes done:true WITH an error, so an unguarded capture publishes the id of
+        # a LoadBalancer that does not exist. Every downstream step then addresses a
+        # phantom and the gateway scope_extractor answers 403 — a cascade whose symptom
+        # (authz denial on Listener.Create) has nothing to do with its cause (the VIP
+        # allocation failed). Exactly what CI run 30135586348 produced:
+        # XRES-E2E-DEFAULT-TG-ABSENT-REJ and XRES-E2E-DELETE-LB-NOT-EMPTY both red on
+        # `create-listener -> 403` / `delete-blocked -> 403` while the REAL failure was
+        # the parent op erroring with "could not allocate load balancer address".
+        # Naming `nlbId` makes the poll unset it and fail HERE, attributably.
+        poll_operation_until_done(fixture_ids=["nlbId"], retry_from=create_lb.name,
+                                  retry_when="not found|allocation unavailable"),
         # read-your-writes: materialize the LB owner-tuple before cross-resource children
         # (Listener.Create / attach-TG) that authorize against editor@nlb_network_load_balancer.
         retry_until_authorized(Step(name="materialize-lb", method="GET",
@@ -245,6 +264,16 @@ CASES.append(Case(
     ],
 ))
 
+create_lb_v6 = retry_create_until_present(
+    Step(name="create-lb-v6", method="POST", path=_LB_BASE,
+         body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+               "placement": "EXTERNAL_REGIONAL", "name": "xres-ext-v6-{{runId}}",
+               "v6Source": {"public": {}}},
+         test_script=[*assert_status(200),
+                      *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
+                      *save_from_response("j.id", "opId"),
+                      *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]))
+
 CASES.append(Case(
     id="XRES-E2E-EXTERNAL-IPV6-VIP",
     title="UC-1 variant: EXTERNAL LB with auto IPv6 VIP — per-family VIP on LoadBalancer "
@@ -253,28 +282,26 @@ CASES.append(Case(
     steps=[
         # sub-phase 8.1: the per-family VIP moved Listener→LoadBalancer. An IPv6 VIP is now
         # sourced on the LB via v6Source (the Listener no longer carries an address/family;
-        # ip_version/allocated_address were reserved out of listener.proto). The external-v6
-        # pool may be unseeded on a lane → the Create Operation errors (RESOURCE_EXHAUSTED /
-        # "could not allocate load balancer address") and the LB is a phantom; that lane is
-        # tolerated (fixture-absent) and the positive v6AddressId assertion runs only when
-        # the LB actually materialised (200 GET, no lastOpError).
-        Step(name="create-lb-v6", method="POST", path=_LB_BASE,
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "placement": "EXTERNAL_REGIONAL", "name": "xres-ext-v6-{{runId}}",
-                   "v6Source": {"public": {}}},
-             test_script=[*assert_status(200),
-                          *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
-                          *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        # ip_version/allocated_address were reserved out of listener.proto).
+        #
+        # This case used to gate its only positive assertion on `!lastOpError`, tolerating
+        # "the external-v6 pool may be unseeded on a lane". That tolerance made it
+        # VACUOUSLY green: seed-nlb-fixtures.sh created kac-nlb-seed-ext-pool with
+        # `v6CidrBlocks: []`, so `v6Source:{public:{}}` could NEVER allocate and the
+        # assertion never ran (CI 30135586348: 0/1 v6 allocations vs 36/39 v4). The seed
+        # now provisions a v6 block in the same EXTERNAL_PUBLIC pool, so the IPv6 VIP is a
+        # real, assertable contract — no gate, and a phantom-id guard on the poll so an
+        # allocation failure fails HERE instead of leaking a non-existent nlbId downstream.
+        create_lb_v6,
+        poll_operation_until_done(fixture_ids=["nlbId"], retry_from=create_lb_v6.name,
+                                  retry_when="not found|allocation unavailable"),
         retry_until_authorized(Step(name="get-lb-v6-vip", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
-                 "  pm.test('auto IPv6 VIP: v6AddressId resolved to bound vpc Address', () => "
-                 "    pm.expect(j.v6AddressId).to.match(/^adr[a-z0-9]+$/));",
-                 "}",
+                 *assert_status(200),
+                 "const j = pm.response.json();",
+                 "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
+                 "pm.test('auto IPv6 VIP: v6AddressId resolved to bound vpc Address', () => "
+                 "  pm.expect(j.v6AddressId).to.match(/^adr[a-z0-9]+$/));",
              ])),
         *_cleanup_lb(),
     ],

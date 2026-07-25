@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "deae8615-4cca-40a8-99de-747875b2840f",
+    "_postman_id": "b577a88e-96d5-49fa-b78d-17191021f10a",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -37,7 +37,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb",
+          "name": "create-lb-cr328",
           "request": {
             "method": "POST",
             "header": [
@@ -73,6 +73,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -138,14 +156,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-cr328');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "materialize-lb-rya320",
+          "name": "materialize-lb-rya329",
           "request": {
             "method": "GET",
             "header": [
@@ -194,7 +239,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya321",
+          "name": "get-lb-inactive-rya330",
           "request": {
             "method": "GET",
             "header": [
@@ -248,7 +293,7 @@
           ]
         },
         {
-          "name": "create-listener-rya322",
+          "name": "create-listener-rya331",
           "request": {
             "method": "POST",
             "header": [
@@ -371,7 +416,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya323",
+          "name": "get-listener-vip-rya332",
           "request": {
             "method": "GET",
             "header": [
@@ -533,7 +578,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya324",
+          "name": "materialize-tg-rya333",
           "request": {
             "method": "GET",
             "header": [
@@ -582,7 +627,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya325",
+          "name": "add-instance-target-rya334",
           "request": {
             "method": "POST",
             "header": [
@@ -800,7 +845,7 @@
           ]
         },
         {
-          "name": "verify-default-tg-set-st326",
+          "name": "verify-default-tg-set-st335",
           "request": {
             "method": "GET",
             "header": [
@@ -859,7 +904,7 @@
           ]
         },
         {
-          "name": "get-lb-after-attach-rya327",
+          "name": "get-lb-after-attach-rya336",
           "request": {
             "method": "GET",
             "header": [
@@ -911,7 +956,7 @@
           ]
         },
         {
-          "name": "get-target-states-rya328",
+          "name": "get-target-states-rya337",
           "request": {
             "method": "GET",
             "header": [
@@ -1435,7 +1480,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "create-lb-v6",
+          "name": "create-lb-v6-cr338",
           "request": {
             "method": "POST",
             "header": [
@@ -1471,6 +1516,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -1536,14 +1599,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-v6-cr338');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-lb-v6-vip-rya329",
+          "name": "get-lb-v6-vip-rya339",
           "request": {
             "method": "GET",
             "header": [
@@ -1586,11 +1676,10 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
-                  "  pm.test('auto IPv6 VIP: v6AddressId resolved to bound vpc Address', () =>     pm.expect(j.v6AddressId).to.match(/^adr[a-z0-9]+$/));",
-                  "}"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
+                  "pm.test('auto IPv6 VIP: v6AddressId resolved to bound vpc Address', () =>   pm.expect(j.v6AddressId).to.match(/^adr[a-z0-9]+$/));"
                 ]
               }
             }
@@ -1692,7 +1781,7 @@
       "description": "class:NEG | class:STATE | priority:P1",
       "item": [
         {
-          "name": "create-lb",
+          "name": "create-lb-cr340",
           "request": {
             "method": "POST",
             "header": [
@@ -1728,6 +1817,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -1793,14 +1900,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-cr340');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "materialize-lb-rya330",
+          "name": "materialize-lb-rya341",
           "request": {
             "method": "GET",
             "header": [
@@ -1849,7 +1983,7 @@
           ]
         },
         {
-          "name": "create-listener-rya331",
+          "name": "create-listener-rya342",
           "request": {
             "method": "POST",
             "header": [
@@ -2011,7 +2145,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya332",
+          "name": "verify-listener-unchanged-rya343",
           "request": {
             "method": "GET",
             "header": [
@@ -2247,7 +2381,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "create-lb",
+          "name": "create-lb-cr344",
           "request": {
             "method": "POST",
             "header": [
@@ -2283,6 +2417,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -2348,14 +2500,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-cr344');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "materialize-lb-rya333",
+          "name": "materialize-lb-rya345",
           "request": {
             "method": "GET",
             "header": [
@@ -2404,7 +2583,7 @@
           ]
         },
         {
-          "name": "create-listener-family-mismatch-rya334",
+          "name": "create-listener-family-mismatch-rya346",
           "request": {
             "method": "POST",
             "header": [
@@ -2760,7 +2939,7 @@
           ]
         },
         {
-          "name": "create-internal-lb-cr335",
+          "name": "create-internal-lb-cr347",
           "request": {
             "method": "POST",
             "header": [
@@ -2880,7 +3059,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya336",
+          "name": "get-internal-lb-rya348",
           "request": {
             "method": "GET",
             "header": [
@@ -2938,7 +3117,7 @@
           ]
         },
         {
-          "name": "create-internal-listener-rya337",
+          "name": "create-internal-listener-rya349",
           "request": {
             "method": "POST",
             "header": [
@@ -3203,7 +3382,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya338",
+          "name": "materialize-tg-rya350",
           "request": {
             "method": "GET",
             "header": [
@@ -3814,7 +3993,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya339",
+          "name": "get-no-network-rya351",
           "request": {
             "method": "GET",
             "header": [
@@ -4016,7 +4195,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb",
+          "name": "create-lb-cr352",
           "request": {
             "method": "POST",
             "header": [
@@ -4052,6 +4231,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -4117,14 +4314,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-cr352');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "materialize-lb-rya340",
+          "name": "materialize-lb-rya353",
           "request": {
             "method": "GET",
             "header": [
@@ -4173,7 +4397,7 @@
           ]
         },
         {
-          "name": "create-listener-rya341",
+          "name": "create-listener-rya354",
           "request": {
             "method": "POST",
             "header": [
@@ -4399,7 +4623,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya342",
+          "name": "materialize-tg-rya355",
           "request": {
             "method": "GET",
             "header": [
@@ -4448,7 +4672,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya343",
+          "name": "add-external-target-rya356",
           "request": {
             "method": "POST",
             "header": [
@@ -5372,7 +5596,7 @@
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb",
+          "name": "create-lb-cr357",
           "request": {
             "method": "POST",
             "header": [
@@ -5408,6 +5632,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -5473,14 +5715,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-cr357');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "materialize-lb-rya344",
+          "name": "materialize-lb-rya358",
           "request": {
             "method": "GET",
             "header": [
@@ -5529,7 +5798,7 @@
           ]
         },
         {
-          "name": "create-listener-rya345",
+          "name": "create-listener-rya359",
           "request": {
             "method": "POST",
             "header": [
@@ -5956,7 +6225,7 @@
       "description": "class:STATE | class:CRUD | priority:P0",
       "item": [
         {
-          "name": "create-lb",
+          "name": "create-lb-cr360",
           "request": {
             "method": "POST",
             "header": [
@@ -5992,6 +6261,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -6057,14 +6344,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-cr360');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "materialize-lb-rya346",
+          "name": "materialize-lb-rya361",
           "request": {
             "method": "GET",
             "header": [
@@ -6221,7 +6535,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya347",
+          "name": "materialize-tg-rya362",
           "request": {
             "method": "GET",
             "header": [
@@ -6270,7 +6584,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya348",
+          "name": "add-instance-target-rya363",
           "request": {
             "method": "POST",
             "header": [
@@ -6754,7 +7068,7 @@
       "description": "class:NEG | priority:P1",
       "item": [
         {
-          "name": "create-lb",
+          "name": "create-lb-cr364",
           "request": {
             "method": "POST",
             "header": [
@@ -6790,6 +7104,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -6855,14 +7187,41 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('create-lb-cr364');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "materialize-lb-rya349",
+          "name": "materialize-lb-rya365",
           "request": {
             "method": "GET",
             "header": [
