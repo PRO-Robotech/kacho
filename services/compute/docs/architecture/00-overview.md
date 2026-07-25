@@ -100,10 +100,14 @@ prefix `epd`).
   мгновенный. См. [`07-known-divergences.md`](07-known-divergences.md) §5.
 - **`InstanceGroupService`** (`kacho.cloud.compute.v1.instancegroup`) — отдельный
   крупный домен, отложен (метка `enhancement`, не `blocked`).
-- **`PlacementGroupService` / `HostGroupService` / `HostTypeService` /
-  `GpuClusterService` / `ReservedInstancePoolService` / `MaintenanceService`** —
-  proto-файлы есть в `proto/kacho/cloud/compute/v1/`, но реализация отложена
-  (`blocked:*` либо `enhancement`). Связанные
+- **`MaintenanceService`** — proto-файл есть в `proto/kacho/cloud/compute/v1/`,
+  но реализация отложена (`blocked:*` либо `enhancement`).
+  `PlacementGroupService` / `HostGroupService` / `HostTypeService` /
+  `GpuClusterService` / `ReservedInstancePoolService` **удалены** —
+  мертворождённые контракты: ни регистрации в composition-root, ни handler'а, ни
+  кейса, ни типа в применённой модели прав (снято вместе с восстановлением
+  gate'а дрейфа модели прав, той же процедурой, что и `DiskPlacementGroupService`
+  / `FilesystemService` / `SnapshotScheduleService`). Связанные
   поля в реализуемых ресурсах помечены `blocked:*` (например `kms_key_id` →
   `blocked:kacho-kms`, `os_product_ids` → `blocked:kacho-marketplace`,
   `snapshot_schedule_ids` → `blocked:kacho-snapshot-schedule`,

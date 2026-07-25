@@ -186,8 +186,10 @@ func TestResolve_NilMetadata_Skip(t *testing.T) {
 
 func TestResolve_UnknownMetadata_Skip(t *testing.T) {
 	r := New(Readers{Image: absentImage{}, Snapshot: absentSnapshot{}})
-	// A blocked/unwired metadata type (no compute resource of its own) → Skip.
-	op := newOp(t, &computev1.CreateHostGroupMetadata{})
+	// A blocked/unwired metadata type (the resolver's switch has no case for it,
+	// so it is not a resource this resolver reconciles) → Skip. MachineType is an
+	// Internal*-only admin catalog, deliberately outside the orphan-resolver.
+	op := newOp(t, &computev1.CreateMachineTypeMetadata{})
 
 	res, err := r.Resolve(context.Background(), op)
 	if err != nil {

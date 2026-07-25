@@ -110,11 +110,12 @@
 `Register*ServiceServer` в composition-root. **Newman НЕ пишется** для этого — RPC вернёт `Unimplemented`
 (impl-gap для `rpc-implementer`, НЕ test-gap):
 
-- **Unwired services** (не в `Register*ServiceServer` → gateway `unknown service`): `GpuClusterService`,
-  `HostGroupService`, `HostTypeService`, `MaintenanceService`, `PlacementGroupService`,
-  `ReservedInstancePoolService`, `InternalResourceLifecycleService` (proto-only vendored stubs).
+- **Unwired services** (не в `Register*ServiceServer` → gateway `unknown service`): `MaintenanceService`,
+  `InternalResourceLifecycleService` (proto-only vendored stubs).
   `DiskPlacementGroupService` / `FilesystemService` / `SnapshotScheduleService` **удалены** — mёртворождённые
-  контракты без реализации, регистрации и модели прав.
+  контракты без реализации, регистрации и модели прав. Тем же критерием и той же процедурой удалены
+  `GpuClusterService` / `HostGroupService` / `HostTypeService` / `PlacementGroupService` /
+  `ReservedInstancePoolService` (восстановление gate'а дрейфа модели прав).
 - **Unimplemented RPC в wired-сервисах** (наследуются из `Unimplemented*ServiceServer`):
   `Instance.{AddOneToOneNat, RemoveOneToOneNat, UpdateNetworkInterface, Relocate}`,
   все `*.{ListAccessBindings, SetAccessBindings, UpdateAccessBindings}` (AAA-скелет). `Disk.kms_key_id` →
