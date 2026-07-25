@@ -173,6 +173,36 @@ message AccessBinding {
   // `target.allInScope{}` opt-in; there is no default sentinel. NEW tag — the
   // earlier target/target_ref (tags 16/18) stay tombstoned.
   AccessTarget target = 22;
+
+  // OUTPUT-ONLY. When this binding's per-object access last became live —
+  // `MAX(updated_at)` over the binding's ACTIVE materialized members. Ignored on
+  // input.
+  //
+  // WHY it exists. Kachō is eventually-consistent by design: `Operation.done`
+  // means the binding row is DURABLE, never that the FGA tuples carrying the
+  // access are visible (gating `done` on downstream visibility is forbidden —
+  // it re-defines the Operation contract and mints phantom resources). In the
+  // materialization window the grantee therefore gets a `403` that is
+  // BYTE-IDENTICAL to a genuine denial, and the administrator who just granted
+  // has no way to tell "still propagating" from "granted the wrong thing" — and
+  // nothing to poll. This field is that signal, WITHOUT a server-side barrier:
+  //
+  //   unset → nothing has materialized yet (still propagating, OR the binding
+  //           materializes nothing per-object — see below);
+  //   set   → per-object access was live as of this instant.
+  //
+  // Reading it is a plain `Get`/`List`, so a client can poll it in exactly the
+  // same bounded-retry loop it already runs against the transient 403 — the
+  // retry stops being blind.
+  //
+  // Legitimately unset forever for a binding that materializes no per-object
+  // membership: a CLUSTER-scoped grant (served by the flat cluster short-circuit,
+  // never per-object) and a legacy permissions-only role (no authored rules[]).
+  // Unset therefore means "no ACTIVE per-object member", NOT "the grant does not
+  // work".
+  //
+  // Truncated to seconds (api-conventions).
+  google.protobuf.Timestamp materialized_at = 23;
 }
 
 // AccessTarget selects which objects, under the binding's scope-anchor, the grant

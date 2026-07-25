@@ -76,11 +76,17 @@ type AccessBindingServiceClient interface {
 	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
 	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
 	List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
+	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
+	// `filter=scopeId="<id>"`. Retained for back-compat.
+	//
 	// Lists access bindings attached to the specified scope (renamed from the
-	// legacy `ListByResource`, whose wire-name is removed). The
-	// `resource_type`/`resource_id` request pair names the scope anchor
-	// (project|account|cluster).
+	// legacy `ListByResource`, whose wire-name is removed). The scope anchor
+	// (project|account|cluster) is named by `scope_type`/`scope_id`; the legacy
+	// `resource_type`/`resource_id` pair remains accepted as the fallback.
 	ListByScope(ctx context.Context, in *ListAccessBindingsByScopeRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
+	// DEPRECATED — use `List` with `filter=subject="<id>"`. Retained for
+	// back-compat.
+	//
 	// Lists access bindings assigned to the specified subject. Cluster-scoped
 	// gate: any authenticated user can call (handler then filters returned
 	// bindings — typical pattern is self-list, so subject=principal yields the
@@ -138,6 +144,9 @@ type AccessBindingServiceClient interface {
 	// `resource_type`/`resource_id`/`scope`. Scope-filtered like the other List
 	// RPCs — a caller sees only bindings on scope objects they may read.
 	//
+	// DEPRECATED — use `List` with `filter=role="<roleId>"`
+	// (+ `include_revoked` for the audit-retention read). Retained for back-compat.
+	//
 	// Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
 	// `ListBySubject`); the precise grant-authority/admin policy is enforced
 	// authoritatively in the kacho-iam handler (only a grant-authority holder /
@@ -166,6 +175,11 @@ type AccessBindingServiceClient interface {
 	//
 	// Filter by subject_type (optional) and include_revoked (default false).
 	// Ordered by (created_at DESC, id ASC); keyset paginated.
+	//
+	// DEPRECATED — use `List` (`filter=scope="iam.account"` + `scopeId`, or the
+	// caller's whole visible set) with `include_revoked`. Retained for back-compat:
+	// `List` does not reproduce this RPC's account⇒child-project fan-out in one
+	// call. Ordering also differs (`List` is created_at ASC).
 	ListByAccount(ctx context.Context, in *ListAccessBindingsByAccountRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(ctx context.Context, in *ListAccessBindingOperationsRequest, opts ...grpc.CallOption) (*ListAccessBindingOperationsResponse, error)
@@ -374,11 +388,17 @@ type AccessBindingServiceServer interface {
 	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
 	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
 	List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error)
+	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
+	// `filter=scopeId="<id>"`. Retained for back-compat.
+	//
 	// Lists access bindings attached to the specified scope (renamed from the
-	// legacy `ListByResource`, whose wire-name is removed). The
-	// `resource_type`/`resource_id` request pair names the scope anchor
-	// (project|account|cluster).
+	// legacy `ListByResource`, whose wire-name is removed). The scope anchor
+	// (project|account|cluster) is named by `scope_type`/`scope_id`; the legacy
+	// `resource_type`/`resource_id` pair remains accepted as the fallback.
 	ListByScope(context.Context, *ListAccessBindingsByScopeRequest) (*ListAccessBindingsResponse, error)
+	// DEPRECATED — use `List` with `filter=subject="<id>"`. Retained for
+	// back-compat.
+	//
 	// Lists access bindings assigned to the specified subject. Cluster-scoped
 	// gate: any authenticated user can call (handler then filters returned
 	// bindings — typical pattern is self-list, so subject=principal yields the
@@ -436,6 +456,9 @@ type AccessBindingServiceServer interface {
 	// `resource_type`/`resource_id`/`scope`. Scope-filtered like the other List
 	// RPCs — a caller sees only bindings on scope objects they may read.
 	//
+	// DEPRECATED — use `List` with `filter=role="<roleId>"`
+	// (+ `include_revoked` for the audit-retention read). Retained for back-compat.
+	//
 	// Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
 	// `ListBySubject`); the precise grant-authority/admin policy is enforced
 	// authoritatively in the kacho-iam handler (only a grant-authority holder /
@@ -464,6 +487,11 @@ type AccessBindingServiceServer interface {
 	//
 	// Filter by subject_type (optional) and include_revoked (default false).
 	// Ordered by (created_at DESC, id ASC); keyset paginated.
+	//
+	// DEPRECATED — use `List` (`filter=scope="iam.account"` + `scopeId`, or the
+	// caller's whole visible set) with `include_revoked`. Retained for back-compat:
+	// `List` does not reproduce this RPC's account⇒child-project fan-out in one
+	// call. Ordering also differs (`List` is created_at ASC).
 	ListByAccount(context.Context, *ListAccessBindingsByAccountRequest) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(context.Context, *ListAccessBindingOperationsRequest) (*ListAccessBindingOperationsResponse, error)

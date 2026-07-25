@@ -305,9 +305,38 @@ type AccessBinding struct {
 	// under the anchor, including future) is reachable ONLY via explicit
 	// `target.allInScope{}` opt-in; there is no default sentinel. NEW tag — the
 	// earlier target/target_ref (tags 16/18) stay tombstoned.
-	Target        *AccessTarget `protobuf:"bytes,22,opt,name=target,proto3" json:"target,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Target *AccessTarget `protobuf:"bytes,22,opt,name=target,proto3" json:"target,omitempty"`
+	// OUTPUT-ONLY. When this binding's per-object access last became live —
+	// `MAX(updated_at)` over the binding's ACTIVE materialized members. Ignored on
+	// input.
+	//
+	// WHY it exists. Kachō is eventually-consistent by design: `Operation.done`
+	// means the binding row is DURABLE, never that the FGA tuples carrying the
+	// access are visible (gating `done` on downstream visibility is forbidden —
+	// it re-defines the Operation contract and mints phantom resources). In the
+	// materialization window the grantee therefore gets a `403` that is
+	// BYTE-IDENTICAL to a genuine denial, and the administrator who just granted
+	// has no way to tell "still propagating" from "granted the wrong thing" — and
+	// nothing to poll. This field is that signal, WITHOUT a server-side barrier:
+	//
+	//	unset → nothing has materialized yet (still propagating, OR the binding
+	//	        materializes nothing per-object — see below);
+	//	set   → per-object access was live as of this instant.
+	//
+	// Reading it is a plain `Get`/`List`, so a client can poll it in exactly the
+	// same bounded-retry loop it already runs against the transient 403 — the
+	// retry stops being blind.
+	//
+	// Legitimately unset forever for a binding that materializes no per-object
+	// membership: a CLUSTER-scoped grant (served by the flat cluster short-circuit,
+	// never per-object) and a legacy permissions-only role (no authored rules[]).
+	// Unset therefore means "no ACTIVE per-object member", NOT "the grant does not
+	// work".
+	//
+	// Truncated to seconds (api-conventions).
+	MaterializedAt *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=materialized_at,json=materializedAt,proto3" json:"materialized_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AccessBinding) Reset() {
@@ -462,6 +491,13 @@ func (x *AccessBinding) GetLabels() map[string]string {
 func (x *AccessBinding) GetTarget() *AccessTarget {
 	if x != nil {
 		return x.Target
+	}
+	return nil
+}
+
+func (x *AccessBinding) GetMaterializedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.MaterializedAt
 	}
 	return nil
 }
@@ -927,7 +963,7 @@ var File_kacho_cloud_iam_v1_access_binding_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/authorize_service.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\"\xec\b\n" +
+	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/authorize_service.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\"\xb1\t\n" +
 	"\rAccessBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fsubject_type\x18\x02 \x01(\tR\vsubjectType\x12\x1d\n" +
@@ -952,7 +988,8 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\bsubjects\x18\x13 \x03(\v2\x1b.kacho.cloud.iam.v1.SubjectR\bsubjects\x12/\n" +
 	"\x13deletion_protection\x18\x14 \x01(\bR\x12deletionProtection\x12E\n" +
 	"\x06labels\x18\x15 \x03(\v2-.kacho.cloud.iam.v1.AccessBinding.LabelsEntryR\x06labels\x128\n" +
-	"\x06target\x18\x16 \x01(\v2 .kacho.cloud.iam.v1.AccessTargetR\x06target\x1a9\n" +
+	"\x06target\x18\x16 \x01(\v2 .kacho.cloud.iam.v1.AccessTargetR\x06target\x12C\n" +
+	"\x0fmaterialized_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\x0ematerializedAt\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"F\n" +
@@ -1042,15 +1079,16 @@ var file_kacho_cloud_iam_v1_access_binding_proto_depIdxs = []int32{
 	7,  // 5: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
 	12, // 6: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
 	4,  // 7: kacho.cloud.iam.v1.AccessBinding.target:type_name -> kacho.cloud.iam.v1.AccessTarget
-	5,  // 8: kacho.cloud.iam.v1.AccessTarget.resources:type_name -> kacho.cloud.iam.v1.AccessTargetResources
-	6,  // 9: kacho.cloud.iam.v1.AccessTarget.all_in_scope:type_name -> kacho.cloud.iam.v1.AccessTargetAllInScope
-	15, // 10: kacho.cloud.iam.v1.AccessTargetResources.resources:type_name -> kacho.cloud.iam.v1.ResourceRef
-	0,  // 11: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	13, // 8: kacho.cloud.iam.v1.AccessBinding.materialized_at:type_name -> google.protobuf.Timestamp
+	5,  // 9: kacho.cloud.iam.v1.AccessTarget.resources:type_name -> kacho.cloud.iam.v1.AccessTargetResources
+	6,  // 10: kacho.cloud.iam.v1.AccessTarget.all_in_scope:type_name -> kacho.cloud.iam.v1.AccessTargetAllInScope
+	15, // 11: kacho.cloud.iam.v1.AccessTargetResources.resources:type_name -> kacho.cloud.iam.v1.ResourceRef
+	0,  // 12: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_access_binding_proto_init() }

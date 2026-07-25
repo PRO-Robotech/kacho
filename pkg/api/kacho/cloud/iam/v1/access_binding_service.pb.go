@@ -38,9 +38,14 @@ const (
 	Derivation_DERIVATION_UNSPECIFIED Derivation = 0
 	// The binding's subject_id is literally the requested subject (direct grant).
 	Derivation_DIRECT Derivation = 1
-	// Reserved forward-compat: the privilege is derived from
-	// the subject's membership in a group that carries the binding. v1 never
-	// emits this value.
+	// The privilege is derived from the subject's membership in a GROUP that
+	// carries the binding. `SubjectPrivilege.via_group_id` names that group.
+	//
+	// This value IS emitted. Previously it was reserved and the read resolved
+	// DIRECT bindings only, which made the answer to "what can this user do"
+	// WRONG rather than merely incomplete: an administrator who put a user in a
+	// group and granted the group saw an EMPTY privilege list while the user
+	// demonstrably held the access.
 	Derivation_GROUP Derivation = 2
 )
 
@@ -549,9 +554,26 @@ type ListAccessBindingsRequest struct {
 	// predicate of the form `<key>="<value>"`, key ∈ {subject, role, scope, scopeId}
 	// (`scope` is the dotted scope-type `iam.account|iam.project|iam.cluster`). An
 	// unknown key → INVALID_ARGUMENT. Empty → no filter (all visible bindings).
-	Filter        string `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	//
+	// Lifecycle status is NOT a filter key — it is the dedicated
+	// `include_revoked` flag below, so it composes with any predicate (the filter
+	// expression carries exactly ONE predicate).
+	Filter string `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
+	// Optional: include soft-revoked bindings (`status='REVOKED'`). Default false
+	// (only PENDING/ACTIVE are returned).
+	//
+	// `List` is the canonical read that supersedes the legacy
+	// `ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount` family, so it must
+	// be able to answer everything they answer. Soft-revoke (F10) DELIBERATELY
+	// retains the row for audit — without this flag the retained row was reachable
+	// only through the legacy `ListByAccount`/`ListByRole`, i.e. the recommended
+	// path could not show what the deprecated paths could. Semantics and default
+	// are identical to those two (isomorphic), and it composes with `filter`
+	// (e.g. `filter=subject="usr-…"` + `include_revoked=true` audits one subject's
+	// revoked grants).
+	IncludeRevoked bool `protobuf:"varint,4,opt,name=include_revoked,json=includeRevoked,proto3" json:"include_revoked,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListAccessBindingsRequest) Reset() {
@@ -605,16 +627,47 @@ func (x *ListAccessBindingsRequest) GetFilter() string {
 	return ""
 }
 
+func (x *ListAccessBindingsRequest) GetIncludeRevoked() bool {
+	if x != nil {
+		return x.IncludeRevoked
+	}
+	return false
+}
+
 type ListAccessBindingsByScopeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Тип resource'а ("account" | "project" | т.п.).
+	// DEPRECATED — use `scope_type` (field 5). Bare scope-anchor kind
+	// ("account" | "project" | "cluster"). The name is legacy and MISLEADING:
+	// `AccessBinding` (access_binding.proto) reserves the word "resource" for the
+	// `target` (which objects UNDER the anchor a grant applies to), while this
+	// pair names the ANCHOR — the exact opposite. Still accepted and still the
+	// fallback when `scope_type` is empty.
 	ResourceType string `protobuf:"bytes,1,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
-	// ID resource'а.
+	// DEPRECATED — use `scope_id` (field 6). Scope-anchor id.
 	ResourceId string `protobuf:"bytes,2,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	// The maximum number of results per page to return. Default value: 100.
 	PageSize int64 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Page token.
-	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	PageToken string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Scope-anchor TYPE in the canonical DOTTED form — `iam.cluster` |
+	// `iam.account` | `iam.project` — identical in name, form and meaning to
+	// `CreateAccessBindingRequest.scope_type` and `AccessBinding.scope_type`, so
+	// one coordinate has ONE name across write and read. When set it WINS over the
+	// legacy bare `resource_type`; when empty the legacy pair is used. An unknown
+	// dotted value → INVALID_ARGUMENT.
+	//
+	// MIGRATION CAVEAT (honest, do not remove until it is false): this RPC's
+	// api-gateway `scope_extractor` below still keys the per-request FGA scope on
+	// the LEGACY `resource_id`/`resource_type`. A REST caller that sends ONLY the
+	// new pair therefore resolves no scope at the edge and is denied BEFORE
+	// reaching kacho-iam. Until the gateway extractor learns these field names,
+	// send BOTH pairs over REST. The kacho-iam handler itself is already
+	// new-pair-first (it prefers scope_type/scope_id and falls back to the legacy
+	// pair), so the backend needs no further change.
+	ScopeType string `protobuf:"bytes,5,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	// Scope-anchor ID (`cluster_kacho_root` | `acc…` | `prj…`). Paired with
+	// `scope_type`; supersedes the legacy `resource_id`. Same migration caveat.
+	ScopeId       string `protobuf:"bytes,6,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -673,6 +726,20 @@ func (x *ListAccessBindingsByScopeRequest) GetPageSize() int64 {
 func (x *ListAccessBindingsByScopeRequest) GetPageToken() string {
 	if x != nil {
 		return x.PageToken
+	}
+	return ""
+}
+
+func (x *ListAccessBindingsByScopeRequest) GetScopeType() string {
+	if x != nil {
+		return x.ScopeType
+	}
+	return ""
+}
+
+func (x *ListAccessBindingsByScopeRequest) GetScopeId() string {
+	if x != nil {
+		return x.ScopeId
 	}
 	return ""
 }
@@ -1007,9 +1074,16 @@ func (x *ListAccessBindingOperationsResponse) GetNextPageToken() string {
 
 type ListSubjectPrivilegesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Тип subject'а. v1 принимает только "user" | "service_account" (group —
-	// вне scope, см. ListBySubject). Несоответствие prefix(subject_id)↔type →
-	// InvalidArgument.
+	// Тип subject'а: "user" | "service_account" | "group" — всё остальное
+	// InvalidArgument. Несоответствие prefix(subject_id)↔type → InvalidArgument.
+	//
+	// (Раньше комментарий утверждал, что group вне scope; код принимал group с
+	// самого начала — комментарий описывал намерение, а не поведение.)
+	//
+	// Для "user" | "service_account" ответ включает И прямые гранты
+	// (`derivation=DIRECT`), И гранты, полученные через членство в группе
+	// (`derivation=GROUP`, `via_group_id` называет группу). Для "group" ответ —
+	// гранты самой группы (DIRECT); группы не вкладываются друг в друга.
 	SubjectType string `protobuf:"bytes,1,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
 	// ID subject'а (User id `usr-…` / ServiceAccount id `sva-…`).
 	SubjectId string `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
@@ -1150,9 +1224,13 @@ type SubjectPrivilege struct {
 	// Human-readable Role name, resolved server-side (output-only; empty for a
 	// dangling/deleted role).
 	RoleName string `protobuf:"bytes,3,opt,name=role_name,json=roleName,proto3" json:"role_name,omitempty"`
-	// Тип resource'а на который выдан binding ("account" | "project" | т.п.).
+	// DEPRECATED — use `scope_type` (field 12). Bare scope-anchor kind
+	// ("account" | "project" | "cluster") the binding is anchored at. Legacy name
+	// (the word "resource" belongs to `AccessBinding.target`); still populated on
+	// every read for back-compat.
 	ResourceType string `protobuf:"bytes,4,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
-	// ID resource'а на который выдан binding.
+	// DEPRECATED — use `scope_id` (field 13). Scope-anchor id. Still populated on
+	// every read for back-compat.
 	ResourceId string `protobuf:"bytes,5,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	// Scope tier of the binding (CLUSTER / ACCOUNT / PROJECT). Reuses the
 	// AccessBinding.Scope enum.
@@ -1166,8 +1244,24 @@ type SubjectPrivilege struct {
 	GrantedByUserId string `protobuf:"bytes,9,opt,name=granted_by_user_id,json=grantedByUserId,proto3" json:"granted_by_user_id,omitempty"`
 	// Optional hard-expiry timestamp. Unset = no TTL.
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	// How the subject obtained this privilege. v1 always DIRECT.
-	Derivation    Derivation `protobuf:"varint,11,opt,name=derivation,proto3,enum=kacho.cloud.iam.v1.Derivation" json:"derivation,omitempty"`
+	// How the subject obtained this privilege — DIRECT (the binding names the
+	// subject itself) or GROUP (the binding names a group the subject belongs to).
+	Derivation Derivation `protobuf:"varint,11,opt,name=derivation,proto3,enum=kacho.cloud.iam.v1.Derivation" json:"derivation,omitempty"`
+	// Scope-anchor TYPE in the canonical DOTTED form (`iam.cluster` |
+	// `iam.account` | `iam.project`) — identical in name, form and meaning to
+	// `AccessBinding.scope_type`, so the coordinate reads the same here as on the
+	// resource it projects. Always populated; the legacy bare
+	// `resource_type` (field 4) is populated alongside it.
+	ScopeType string `protobuf:"bytes,12,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	// Scope-anchor ID (`cluster_kacho_root` | `acc…` | `prj…`). Always populated
+	// alongside the legacy `resource_id` (field 5).
+	ScopeId string `protobuf:"bytes,13,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
+	// The GROUP through which the subject holds this privilege (`grp…`), when
+	// `derivation == GROUP`. Empty for a DIRECT grant. Without it a GROUP-derived
+	// row would be un-actionable: an administrator revoking the access has to know
+	// WHICH group carries it (the binding's own subject is the group, not the
+	// user, so the row alone does not say which membership to remove).
+	ViaGroupId    string `protobuf:"bytes,14,opt,name=via_group_id,json=viaGroupId,proto3" json:"via_group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1279,19 +1373,60 @@ func (x *SubjectPrivilege) GetDerivation() Derivation {
 	return Derivation_DERIVATION_UNSPECIFIED
 }
 
+func (x *SubjectPrivilege) GetScopeType() string {
+	if x != nil {
+		return x.ScopeType
+	}
+	return ""
+}
+
+func (x *SubjectPrivilege) GetScopeId() string {
+	if x != nil {
+		return x.ScopeId
+	}
+	return ""
+}
+
+func (x *SubjectPrivilege) GetViaGroupId() string {
+	if x != nil {
+		return x.ViaGroupId
+	}
+	return ""
+}
+
 type ListAssignableRolesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Тип resource'а на который подбираются assignable-роли. v1 принимает
-	// только "account" | "project" | "cluster" — иначе InvalidArgument.
+	// DEPRECATED — use `scope_type` (field 5). Bare scope-anchor kind on which
+	// assignable roles are picked: "account" | "project" | "cluster" — anything
+	// else → INVALID_ARGUMENT. Legacy name (see
+	// ListAccessBindingsByScopeRequest.resource_type); still accepted as the
+	// fallback when `scope_type` is empty.
 	ResourceType string `protobuf:"bytes,1,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
-	// ID resource'а. Должен соответствовать prefix'у типа (account⇒acc,
-	// project⇒prj; cluster⇒ровно cluster_kacho_root) — иначе InvalidArgument.
+	// DEPRECATED — use `scope_id` (field 6). Scope-anchor id; must match the
+	// type's prefix (account⇒acc, project⇒prj; cluster⇒exactly
+	// cluster_kacho_root) — otherwise INVALID_ARGUMENT.
 	ResourceId string `protobuf:"bytes,2,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	// The maximum number of results per page to return. Default value: 50,
 	// max 1000.
 	PageSize int64 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Opaque base64 cursor (created_at, id) для следующей страницы.
-	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	PageToken string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Scope-anchor TYPE in the canonical DOTTED form (`iam.cluster` |
+	// `iam.account` | `iam.project`) — same name/form/meaning as
+	// `CreateAccessBindingRequest.scope_type`, so the role picker and the grant it
+	// feeds speak ONE vocabulary. Wins over the legacy bare `resource_type`; an
+	// unknown dotted value → INVALID_ARGUMENT.
+	//
+	// MIGRATION CAVEAT — identical to ListAccessBindingsByScopeRequest.scope_type:
+	// this RPC's api-gateway `scope_extractor` still keys the per-request FGA scope
+	// on the LEGACY `resource_id`/`resource_type`, so a REST caller sending ONLY
+	// the new pair is denied at the edge. Send BOTH pairs over REST until the
+	// gateway extractor learns these names; the kacho-iam handler is already
+	// new-pair-first.
+	ScopeType string `protobuf:"bytes,5,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	// Scope-anchor ID; paired with `scope_type`, supersedes `resource_id`. Same
+	// migration caveat.
+	ScopeId       string `protobuf:"bytes,6,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1350,6 +1485,20 @@ func (x *ListAssignableRolesRequest) GetPageSize() int64 {
 func (x *ListAssignableRolesRequest) GetPageToken() string {
 	if x != nil {
 		return x.PageToken
+	}
+	return ""
+}
+
+func (x *ListAssignableRolesRequest) GetScopeType() string {
+	if x != nil {
+		return x.ScopeType
+	}
+	return ""
+}
+
+func (x *ListAssignableRolesRequest) GetScopeId() string {
+	if x != nil {
+		return x.ScopeId
 	}
 	return ""
 }
@@ -1818,22 +1967,26 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\x06labels\x18\x04 \x03(\v2:.kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x92\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbb\x01\n" +
 	"\x19ListAccessBindingsRequest\x12'\n" +
 	"\tpage_size\x18\x01 \x01(\x03B\n" +
 	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
 	"\n" +
 	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
 	"\x06filter\x18\x03 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"\xd7\x01\n" +
-	" ListAccessBindingsByScopeRequest\x121\n" +
-	"\rresource_type\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\fresourceType\x12-\n" +
-	"\vresource_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\n" +
+	"\x8a\xc81\x06<=1000R\x06filter\x12'\n" +
+	"\x0finclude_revoked\x18\x04 \x01(\bR\x0eincludeRevoked\"\x9d\x02\n" +
+	" ListAccessBindingsByScopeRequest\x12-\n" +
+	"\rresource_type\x18\x01 \x01(\tB\b\x8a\xc81\x04<=32R\fresourceType\x12)\n" +
+	"\vresource_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=64R\n" +
 	"resourceId\x12'\n" +
 	"\tpage_size\x18\x03 \x01(\x03B\n" +
 	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\xd5\x01\n" +
+	"page_token\x18\x04 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12'\n" +
+	"\n" +
+	"scope_type\x18\x05 \x01(\tB\b\x8a\xc81\x04<=32R\tscopeType\x12#\n" +
+	"\bscope_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=64R\ascopeId\"\xd5\x01\n" +
 	"\"ListAccessBindingsBySubjectRequest\x12/\n" +
 	"\fsubject_type\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\vsubjectType\x12+\n" +
 	"\n" +
@@ -1877,7 +2030,7 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\n" +
 	"privileges\x18\x01 \x03(\v2$.kacho.cloud.iam.v1.SubjectPrivilegeR\n" +
 	"privileges\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x91\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xed\x04\n" +
 	"\x10SubjectPrivilege\x12\x1d\n" +
 	"\n" +
 	"binding_id\x18\x01 \x01(\tR\tbindingId\x12\x17\n" +
@@ -1896,15 +2049,23 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12>\n" +
 	"\n" +
 	"derivation\x18\v \x01(\x0e2\x1e.kacho.cloud.iam.v1.DerivationR\n" +
-	"derivation\"\xd1\x01\n" +
-	"\x1aListAssignableRolesRequest\x121\n" +
-	"\rresource_type\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\fresourceType\x12-\n" +
-	"\vresource_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\n" +
+	"derivation\x12\x1d\n" +
+	"\n" +
+	"scope_type\x18\f \x01(\tR\tscopeType\x12\x19\n" +
+	"\bscope_id\x18\r \x01(\tR\ascopeId\x12 \n" +
+	"\fvia_group_id\x18\x0e \x01(\tR\n" +
+	"viaGroupId\"\x97\x02\n" +
+	"\x1aListAssignableRolesRequest\x12-\n" +
+	"\rresource_type\x18\x01 \x01(\tB\b\x8a\xc81\x04<=32R\fresourceType\x12)\n" +
+	"\vresource_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=64R\n" +
 	"resourceId\x12'\n" +
 	"\tpage_size\x18\x03 \x01(\x03B\n" +
 	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x7f\n" +
+	"page_token\x18\x04 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12'\n" +
+	"\n" +
+	"scope_type\x18\x05 \x01(\tB\b\x8a\xc81\x04<=32R\tscopeType\x12#\n" +
+	"\bscope_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=64R\ascopeId\"\x7f\n" +
 	"\x1bListAssignableRolesResponse\x128\n" +
 	"\x05roles\x18\x01 \x03(\v2\".kacho.cloud.iam.v1.AssignableRoleR\x05roles\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xf8\x01\n" +

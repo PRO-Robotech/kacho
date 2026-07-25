@@ -120,10 +120,13 @@ service AccessBindingService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
+  // DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
+  // `filter=scopeId="<id>"`. Retained for back-compat.
+  //
   // Lists access bindings attached to the specified scope (renamed from the
-  // legacy `ListByResource`, whose wire-name is removed). The
-  // `resource_type`/`resource_id` request pair names the scope anchor
-  // (project|account|cluster).
+  // legacy `ListByResource`, whose wire-name is removed). The scope anchor
+  // (project|account|cluster) is named by `scope_type`/`scope_id`; the legacy
+  // `resource_type`/`resource_id` pair remains accepted as the fallback.
   rpc ListByScope (ListAccessBindingsByScopeRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listByScope" };
     option (kacho.iam.authz.v1.permission)        = "iam.access_bindings_by_resources.listByScope";
@@ -141,6 +144,9 @@ service AccessBindingService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
+  // DEPRECATED — use `List` with `filter=subject="<id>"`. Retained for
+  // back-compat.
+  //
   // Lists access bindings assigned to the specified subject. Cluster-scoped
   // gate: any authenticated user can call (handler then filters returned
   // bindings — typical pattern is self-list, so subject=principal yields the
@@ -235,6 +241,9 @@ service AccessBindingService {
   // `resource_type`/`resource_id`/`scope`. Scope-filtered like the other List
   // RPCs — a caller sees only bindings on scope objects they may read.
   //
+  // DEPRECATED — use `List` with `filter=role="<roleId>"`
+  // (+ `include_revoked` for the audit-retention read). Retained for back-compat.
+  //
   // Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
   // `ListBySubject`); the precise grant-authority/admin policy is enforced
   // authoritatively in the kacho-iam handler (only a grant-authority holder /
@@ -283,6 +292,11 @@ service AccessBindingService {
   //
   // Filter by subject_type (optional) and include_revoked (default false).
   // Ordered by (created_at DESC, id ASC); keyset paginated.
+  //
+  // DEPRECATED — use `List` (`filter=scope="iam.account"` + `scopeId`, or the
+  // caller's whole visible set) with `include_revoked`. Retained for back-compat:
+  // `List` does not reproduce this RPC's account⇒child-project fan-out in one
+  // call. Ordering also differs (`List` is created_at ASC).
   rpc ListByAccount (ListAccessBindingsByAccountRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accounts/{account_id}/accessBindings" };
     option (kacho.iam.authz.v1.permission)        = "iam.access_bindings_by_account.list";
@@ -470,21 +484,65 @@ message ListAccessBindingsRequest {
   // predicate of the form `<key>="<value>"`, key ∈ {subject, role, scope, scopeId}
   // (`scope` is the dotted scope-type `iam.account|iam.project|iam.cluster`). An
   // unknown key → INVALID_ARGUMENT. Empty → no filter (all visible bindings).
+  //
+  // Lifecycle status is NOT a filter key — it is the dedicated
+  // `include_revoked` flag below, so it composes with any predicate (the filter
+  // expression carries exactly ONE predicate).
   string filter = 3 [(length) = "<=1000"];
+
+  // Optional: include soft-revoked bindings (`status='REVOKED'`). Default false
+  // (only PENDING/ACTIVE are returned).
+  //
+  // `List` is the canonical read that supersedes the legacy
+  // `ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount` family, so it must
+  // be able to answer everything they answer. Soft-revoke (F10) DELIBERATELY
+  // retains the row for audit — without this flag the retained row was reachable
+  // only through the legacy `ListByAccount`/`ListByRole`, i.e. the recommended
+  // path could not show what the deprecated paths could. Semantics and default
+  // are identical to those two (isomorphic), and it composes with `filter`
+  // (e.g. `filter=subject="usr-…"` + `include_revoked=true` audits one subject's
+  // revoked grants).
+  bool include_revoked = 4;
 }
 
 message ListAccessBindingsByScopeRequest {
-  // Тип resource'а ("account" | "project" | т.п.).
-  string resource_type = 1 [(required) = true, (length) = "<=32"];
+  // DEPRECATED — use `scope_type` (field 5). Bare scope-anchor kind
+  // ("account" | "project" | "cluster"). The name is legacy and MISLEADING:
+  // `AccessBinding` (access_binding.proto) reserves the word "resource" for the
+  // `target` (which objects UNDER the anchor a grant applies to), while this
+  // pair names the ANCHOR — the exact opposite. Still accepted and still the
+  // fallback when `scope_type` is empty.
+  string resource_type = 1 [(length) = "<=32"];
 
-  // ID resource'а.
-  string resource_id = 2 [(required) = true, (length) = "<=64"];
+  // DEPRECATED — use `scope_id` (field 6). Scope-anchor id.
+  string resource_id = 2 [(length) = "<=64"];
 
   // The maximum number of results per page to return. Default value: 100.
   int64 page_size = 3 [(value) = "<=1000"];
 
   // Page token.
   string page_token = 4 [(length) = "<=100"];
+
+  // Scope-anchor TYPE in the canonical DOTTED form — `iam.cluster` |
+  // `iam.account` | `iam.project` — identical in name, form and meaning to
+  // `CreateAccessBindingRequest.scope_type` and `AccessBinding.scope_type`, so
+  // one coordinate has ONE name across write and read. When set it WINS over the
+  // legacy bare `resource_type`; when empty the legacy pair is used. An unknown
+  // dotted value → INVALID_ARGUMENT.
+  //
+  // MIGRATION CAVEAT (honest, do not remove until it is false): this RPC's
+  // api-gateway `scope_extractor` below still keys the per-request FGA scope on
+  // the LEGACY `resource_id`/`resource_type`. A REST caller that sends ONLY the
+  // new pair therefore resolves no scope at the edge and is denied BEFORE
+  // reaching kacho-iam. Until the gateway extractor learns these field names,
+  // send BOTH pairs over REST. The kacho-iam handler itself is already
+  // new-pair-first (it prefers scope_type/scope_id and falls back to the legacy
+  // pair), so the backend needs no further change.
+  string scope_type = 5 [(length) = "<=32"];
+
+  // Scope-anchor ID (`cluster_kacho_root` | `acc…` | `prj…`). Paired with
+  // `scope_type`; supersedes the legacy `resource_id`. Same migration caveat.
+  string scope_id = 6 [(length) = "<=64"];
 }
 
 message ListAccessBindingsBySubjectRequest {
@@ -550,9 +608,16 @@ message ListAccessBindingOperationsResponse {
 }
 
 message ListSubjectPrivilegesRequest {
-  // Тип subject'а. v1 принимает только "user" | "service_account" (group —
-  // вне scope, см. ListBySubject). Несоответствие prefix(subject_id)↔type →
-  // InvalidArgument.
+  // Тип subject'а: "user" | "service_account" | "group" — всё остальное
+  // InvalidArgument. Несоответствие prefix(subject_id)↔type → InvalidArgument.
+  //
+  // (Раньше комментарий утверждал, что group вне scope; код принимал group с
+  // самого начала — комментарий описывал намерение, а не поведение.)
+  //
+  // Для "user" | "service_account" ответ включает И прямые гранты
+  // (`derivation=DIRECT`), И гранты, полученные через членство в группе
+  // (`derivation=GROUP`, `via_group_id` называет группу). Для "group" ответ —
+  // гранты самой группы (DIRECT); группы не вкладываются друг в друга.
   string subject_type = 1 [(required) = true, (length) = "<=32"];
 
   // ID subject'а (User id `usr-…` / ServiceAccount id `sva-…`).
@@ -580,9 +645,14 @@ enum Derivation {
   DERIVATION_UNSPECIFIED = 0;
   // The binding's subject_id is literally the requested subject (direct grant).
   DIRECT = 1;
-  // Reserved forward-compat: the privilege is derived from
-  // the subject's membership in a group that carries the binding. v1 never
-  // emits this value.
+  // The privilege is derived from the subject's membership in a GROUP that
+  // carries the binding. `SubjectPrivilege.via_group_id` names that group.
+  //
+  // This value IS emitted. Previously it was reserved and the read resolved
+  // DIRECT bindings only, which made the answer to "what can this user do"
+  // WRONG rather than merely incomplete: an administrator who put a user in a
+  // group and granted the group saw an EMPTY privilege list while the user
+  // demonstrably held the access.
   GROUP = 2;
 }
 
@@ -603,10 +673,14 @@ message SubjectPrivilege {
   // dangling/deleted role).
   string role_name = 3;
 
-  // Тип resource'а на который выдан binding ("account" | "project" | т.п.).
+  // DEPRECATED — use `scope_type` (field 12). Bare scope-anchor kind
+  // ("account" | "project" | "cluster") the binding is anchored at. Legacy name
+  // (the word "resource" belongs to `AccessBinding.target`); still populated on
+  // every read for back-compat.
   string resource_type = 4;
 
-  // ID resource'а на который выдан binding.
+  // DEPRECATED — use `scope_id` (field 13). Scope-anchor id. Still populated on
+  // every read for back-compat.
   string resource_id = 5;
 
   // Scope tier of the binding (CLUSTER / ACCOUNT / PROJECT). Reuses the
@@ -626,18 +700,41 @@ message SubjectPrivilege {
   // Optional hard-expiry timestamp. Unset = no TTL.
   google.protobuf.Timestamp expires_at = 10;
 
-  // How the subject obtained this privilege. v1 always DIRECT.
+  // How the subject obtained this privilege — DIRECT (the binding names the
+  // subject itself) or GROUP (the binding names a group the subject belongs to).
   Derivation derivation = 11;
+
+  // Scope-anchor TYPE in the canonical DOTTED form (`iam.cluster` |
+  // `iam.account` | `iam.project`) — identical in name, form and meaning to
+  // `AccessBinding.scope_type`, so the coordinate reads the same here as on the
+  // resource it projects. Always populated; the legacy bare
+  // `resource_type` (field 4) is populated alongside it.
+  string scope_type = 12;
+
+  // Scope-anchor ID (`cluster_kacho_root` | `acc…` | `prj…`). Always populated
+  // alongside the legacy `resource_id` (field 5).
+  string scope_id = 13;
+
+  // The GROUP through which the subject holds this privilege (`grp…`), when
+  // `derivation == GROUP`. Empty for a DIRECT grant. Without it a GROUP-derived
+  // row would be un-actionable: an administrator revoking the access has to know
+  // WHICH group carries it (the binding's own subject is the group, not the
+  // user, so the row alone does not say which membership to remove).
+  string via_group_id = 14;
 }
 
 message ListAssignableRolesRequest {
-  // Тип resource'а на который подбираются assignable-роли. v1 принимает
-  // только "account" | "project" | "cluster" — иначе InvalidArgument.
-  string resource_type = 1 [(required) = true, (length) = "<=32"];
+  // DEPRECATED — use `scope_type` (field 5). Bare scope-anchor kind on which
+  // assignable roles are picked: "account" | "project" | "cluster" — anything
+  // else → INVALID_ARGUMENT. Legacy name (see
+  // ListAccessBindingsByScopeRequest.resource_type); still accepted as the
+  // fallback when `scope_type` is empty.
+  string resource_type = 1 [(length) = "<=32"];
 
-  // ID resource'а. Должен соответствовать prefix'у типа (account⇒acc,
-  // project⇒prj; cluster⇒ровно cluster_kacho_root) — иначе InvalidArgument.
-  string resource_id = 2 [(required) = true, (length) = "<=64"];
+  // DEPRECATED — use `scope_id` (field 6). Scope-anchor id; must match the
+  // type's prefix (account⇒acc, project⇒prj; cluster⇒exactly
+  // cluster_kacho_root) — otherwise INVALID_ARGUMENT.
+  string resource_id = 2 [(length) = "<=64"];
 
   // The maximum number of results per page to return. Default value: 50,
   // max 1000.
@@ -645,6 +742,24 @@ message ListAssignableRolesRequest {
 
   // Opaque base64 cursor (created_at, id) для следующей страницы.
   string page_token = 4 [(length) = "<=100"];
+
+  // Scope-anchor TYPE in the canonical DOTTED form (`iam.cluster` |
+  // `iam.account` | `iam.project`) — same name/form/meaning as
+  // `CreateAccessBindingRequest.scope_type`, so the role picker and the grant it
+  // feeds speak ONE vocabulary. Wins over the legacy bare `resource_type`; an
+  // unknown dotted value → INVALID_ARGUMENT.
+  //
+  // MIGRATION CAVEAT — identical to ListAccessBindingsByScopeRequest.scope_type:
+  // this RPC's api-gateway `scope_extractor` still keys the per-request FGA scope
+  // on the LEGACY `resource_id`/`resource_type`, so a REST caller sending ONLY
+  // the new pair is denied at the edge. Send BOTH pairs over REST until the
+  // gateway extractor learns these names; the kacho-iam handler is already
+  // new-pair-first.
+  string scope_type = 5 [(length) = "<=32"];
+
+  // Scope-anchor ID; paired with `scope_type`, supersedes `resource_id`. Same
+  // migration caveat.
+  string scope_id = 6 [(length) = "<=64"];
 }
 
 message ListAssignableRolesResponse {
