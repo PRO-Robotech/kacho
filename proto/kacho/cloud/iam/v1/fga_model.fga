@@ -47,8 +47,24 @@ model
 # below stay flat, which keeps the anti-over-grant boundary of data-integrity.md
 # intact. Behavioural lock: authzmap/super_admin_cascade_test.go.
 #
+# THE ACCOUNT OWNER IS A STRUCTURAL SOURCE ON HIS OWN ACCOUNT OBJECT (owner
+# refinement 2026-07-27, same rules section). An account is created by
+# self-service, so tearing it down must be as reliable as creating it — and it was
+# not: the right to delete arrived with the owner ROLE BINDING, materialized per
+# object by the reconciler, so a just-created account could not be deleted until
+# the queue caught up, while the cloud administrator's equivalent right cascaded
+# and always worked. `account`'s five verbs therefore read `or owner` directly.
+# NOT via the `admin` tier: `account.admin` also accepts DIRECT subjects, so
+# reading it would hand the DELEGATED account administrator the account object
+# itself — and the recorded picture puts him inside the account, not over it
+# (levels: cloud → everything; owner → structurally his own account; account
+# administrator → cascade WITHIN the account, never onto it; below → flat, by
+# grant). Locks: authzmap/account_owner_structural_test.go.
+#
 # Deliberately NOT cascaded (they are not CRUD authority): `owner` and `subject`
-# (identity facts), `member` (membership), `announce_writer` (data plane only),
+# (identity facts — no tier ever CONFERS ownership; the refinement above reads
+# `owner` as a source of verbs, it never grants the relation itself),
+# `member` (membership), `announce_writer` (data plane only),
 # `fga_writer` (proxy), `use` / `token_creator` / `ssh` / `console` (these derive
 # from `admin`/`editor` on their own types and so follow the tier, by their
 # pre-existing definition — not by anything added here).
@@ -170,18 +186,27 @@ type account
     # parent-pointer are REMOVED — B2B Organization is fully gone (D-12).
     define viewer: [user, service_account, group#member] or editor
     define billing_admin: [user, service_account] or admin
-    # rbac-2026 P2 (D-6): account becomes a verb-bearing resource. These v_*
-    # relations are object-level read/write on the account OBJECT ITSELF — DIRECT
-    # subjects only, NO `or … from …` cascade, and NOT implied by viewer/editor/
-    # admin tiers (independent). A grant of e.g. `iam.account.get` materializes
-    # `account:<id> # v_get @ subj` → "see the account in a selector without any
-    # access to its contents" (D-2: no implicit hierarchy cascade into content).
-    # Full verb-set for symmetry with leaf resource types.
-    define v_get: [user, service_account, group#member] or super_admin
-    define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
-    define v_update: [user, service_account, group#member] or super_admin
-    define v_delete: [user, service_account, group#member] or super_admin
+    # rbac-2026 P2 (D-6): account is a verb-bearing resource. These v_* relations
+    # are object-level read/write on the account OBJECT ITSELF; a grant of e.g.
+    # `iam.account.get` materializes `account:<id> # v_get @ subj` → "see the
+    # account in a selector without any access to its contents" (D-2: no implicit
+    # hierarchy cascade into content). Full verb-set for symmetry with leaf types.
+    #
+    # Exactly two derivations, and no others:
+    #   `owner`       — the account is created by SELF-SERVICE, so deleting it must
+    #                   be as reliable as creating it. Structural, so it holds the
+    #                   instant the account exists and never waits for the
+    #                   reconciler to materialize the owner binding (2026-07-27).
+    #   `super_admin` — levels 1-2 (cloud administrator / bootstrap identity).
+    # NOT the `admin` tier: it accepts DIRECT subjects, so reading it would give the
+    # DELEGATED account administrator the account object itself — he governs what is
+    # INSIDE the account, and the account is the boundary of that scope, not a thing
+    # within it. Structural lock: authzmap/account_owner_structural_test.go.
+    define v_get: [user, service_account, group#member] or owner or super_admin
+    define v_list: [user, service_account, group#member] or owner or super_admin
+    define v_create: [user, service_account, group#member] or owner or super_admin
+    define v_update: [user, service_account, group#member] or owner or super_admin
+    define v_delete: [user, service_account, group#member] or owner or super_admin
 
 type project
   relations
