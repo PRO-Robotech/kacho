@@ -380,6 +380,21 @@ def _auth_pre_script(auth: str) -> List[str]:
         "if (__t) {",
         "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
         "} else {",
+        # HARNESS-CONFIG GUARD. An `auth="<envVar>"` step names a SUBJECT the case
+        # is about ("a never-granted user must see nothing", "a foreign editor must
+        # be denied"). If the fixture seed never wrote that variable, silently
+        # dropping the header does not skip the check — it runs it as ANONYMOUS,
+        # against a different subject entirely. The typical expectation (401/403)
+        # then still holds, so the case passes FOR THE WRONG REASON and the subject
+        # under test is never exercised. Missing subject = misconfigured harness:
+        # FAIL naming the variable. The header is still removed afterwards so the
+        # request stays deterministic. (`auth="anonymous"` is the DELIBERATE
+        # anonymous case and takes the branch above — it is never affected.)
+        f"  pm.test('harness config: {auth} is set (subject under test)', () => {{",
+        f"    pm.expect.fail('{auth} is not set — the authz-fixture seed "
+        "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
+        "anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+        "  });",
         "  pm.request.headers.remove('Authorization');",
         "}",
     ]

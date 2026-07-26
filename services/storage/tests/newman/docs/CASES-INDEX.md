@@ -174,6 +174,20 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | AUTHZ-SNP-GET-CROSS-DENY | CS1-S3-08 | negative (анти-BOLA) |
 | AUTHZ-SNP-UPDATE-CROSS-DENY | CS1-S3-08 | negative (анти-BOLA) |
 | AUTHZ-SNP-DELETE-CROSS-DENY | CS1-S3-08 | negative (анти-BOLA) |
+| AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD | CS1-S1-13 | leak-guard (per-object listauthz **внутри** проекта) |
+| AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD | CS1-S3-07 | leak-guard (per-object listauthz **внутри** проекта) |
+| AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD | CS1-S2-* | leak-guard (per-object listauthz **внутри** проекта) |
+
+Три `*-LST-OVERSHOW-LEAK-GUARD` закрывают измерение, которое до них было ЯВНОЙ дырой
+(шапка `cases/authz.py`): набор проверял только кросс-**проектную** изоляцию, поэтому
+зелёный прогон storage не был доказательством per-object фильтра страницы List
+(`internal/authzfilter`, `viewer ∪ v_list` через iam BatchCheck). Форма — образец
+compute `LF-INST-LST-OVERSHOW-LEAK-GUARD`: владелец создаёт объект в проекте сюиты,
+**никогда**-не-гранченый аутентифицированный субъект (`jwtPureNoBindings`, НЕ
+`jwtNoBindings` — того реально гранят iam-сюиты, kacho-iam#276) листит тот же проект,
+объекта в выдаче быть не должно. Строго single-shot (retry маскировал бы утечку),
+`pageSize=1000` (чтобы «не видно» не было артефактом первой страницы). Что именно
+сторож доказывает и чего НЕ доказывает — буквально расписано в шапке `cases/authz.py`.
 
 ## InternalVolumeService (`cases/internal-volume.py`) — stage S4 (заметка)
 
