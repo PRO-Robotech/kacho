@@ -23,10 +23,13 @@
 #
 # ─── What this profile flips (vs the dev/insecure default) ──────────────────
 #   1. AuthN mode → production / production-strict on every service that has a
-#      mode knob (api-gateway, kacho-iam, kacho-vpc, kacho-nlb). kacho-compute
-#      has no `mode` knob: it is a pure cluster-internal backend whose posture
-#      is per-RPC IAM Check (authzIam) + fail-closed list-filter + mTLS, all set
-#      below.
+#      mode knob (api-gateway, kacho-iam, kacho-vpc, kacho-nlb, kacho-geo,
+#      kacho-storage). kacho-compute has no `mode` knob: it is a pure
+#      cluster-internal backend whose posture is per-RPC IAM Check (authzIam) +
+#      fail-closed list-filter + mTLS, all set below. kacho-storage additionally
+#      REFUSES TO START (Config.Validate) on any of: plaintext DB, mTLS off on
+#      either listener, empty authz IAM address, list-filter off — so its block
+#      below is a boot requirement, not a preference.
 #   2. Postgres ssl-mode → `require` (encrypted transport; the production floor).
 #      `require` — not `verify-full` — because the in-cluster Postgres TLS server
 #      cert + CA trust bundle are an infra concern provisioned per-cluster, not a
@@ -97,6 +100,12 @@ api-gateway:
       compute: true
       iam: true
       nlb: true
+      # gateway→storage (public :9090 Volume/Snapshot/Image/DiskType read + the
+      # internal :9091 admin surface). storage runs server-mTLS on BOTH listeners
+      # (RequireAndVerifyClientCert), so without this edge every /storage/v1/* call
+      # fails the handshake. SERVER_NAME is derived from the dial-host
+      # (kacho-storage.kacho.svc.cluster.local ∈ the storage server-cert SAN).
+      storage: true
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
 vpc:
@@ -159,7 +168,8 @@ compute:
       modelIdSecretName: openfga-model-id
       modelIdSecretKey: current
       timeoutMs: 2000
-  # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc).
+  # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc,
+  # compute→storage).
   mtls:
     enable: true
     edges:
@@ -167,6 +177,13 @@ compute:
       iamProject: true
       iamAuthz: true
       vpc: true
+      # compute→storage InternalVolumeService (:9091 attach/detach + the Volume
+      # mirror on Instance). storage owns volume_attachments, so this edge IS the
+      # attach path — with storage enabled below and running server-mTLS, leaving
+      # it off makes every attach fail the handshake (fail-closed Unavailable).
+      # serverName.storage chart default kacho-storage.kacho.svc.cluster.local ∈
+      # the storage server-cert SAN.
+      storage: true
 
 # ─── kacho-geo (Geography Region/Zone leaf-service) ─────────────────────────
 # Production posture: AUTH_MODE=production (anonymous fail-closed) + DB ssl-mode
@@ -260,6 +277,62 @@ kacho-nlb:
     authz:
       breakglass: false
 
+# ─── kacho-storage (block-storage control-plane) ────────────────────────────
+# Volume / VolumeAttachment / Snapshot / Image / DiskType. Enabled in production:
+# storage owns block storage (data-integrity.md ownership map) and owns
+# `volume_attachments`, so compute's attach path terminates here. The sub-chart and
+# its Postgres are condition-gated and OFF in base values — this profile is the one
+# that must turn them on, otherwise the canonical production install has no block
+# storage at all and the compute-side duplicate cannot be retired.
+#
+# storage carries a real production boot-guard (Config.Validate, refuse-to-start),
+# so every knob below is load-bearing, not decorative — the pod CrashLoopBackOffs if
+# any of them is missing:
+#   authMode=production           → arms the guard itself
+#   db.sslMode ∈ require|verify-* → plaintext DB refused
+#   mtls.enable                   → mTLS demanded on BOTH listeners (:9090 + :9091)
+#   config.authzIamGrpcAddr       → per-RPC IAM Check interceptor attached
+#   config.listFilter.enabled     → per-object List filter (without it a project-tier
+#                                   viewer sees every volume/snapshot/image)
+storage:
+  enabled: true
+  config:
+    authMode: production
+    # Runtime peer edges. storage→geo (ZoneService.Get for zone_id + the zone's
+    # region, which is never derived from the zone name) and storage→iam PUBLIC
+    # :9090 (ProjectService.Get) — both fail-closed when unset.
+    geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090
+    iamGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
+    # iam INTERNAL :9091 — carries BOTH the per-RPC Check and the fga-register
+    # RegisterResource/UnregisterResource owner-tuple edge.
+    authzIamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    # Owner-tuple register-drainer (SEC-D / CS-1 GAP-D). Chart default is already
+    # true; restated because without it the gateway scope_extractors
+    # {storage_volume,volume_id} / {storage_snapshot,snapshot_id} cannot resolve
+    # target→project and own-resource access breaks (anti-BOLA).
+    listFilter:
+      enabled: true
+      failOpen: false
+    fgaRegisterDrainerEnabled: true
+  db:
+    # bitnami pg-storage below. The chart default host (kacho-storage-postgres)
+    # does not exist in the umbrella — the migrator init-container would fail DNS.
+    host: kacho-umbrella-pg-storage
+    sslMode: require
+    # No plaintext password in this profile — the chart references the Secret the
+    # pg-storage instance is configured with (key `password`) via secretKeyRef.
+    passwordSecretName: kacho-umbrella-pg-storage
+    passwordSecretKey: password
+  # server-mTLS on both listeners (gateway + compute dial here) + client-mTLS
+  # storage→{geo,iam}. One client leaf (kacho-storage-client-tls) serves every
+  # storage→iam dial: serverName kacho-iam.kacho.svc.cluster.local is in the iam
+  # server-cert SAN, valid for :9090 and internal :9091 alike.
+  mtls:
+    enable: true
+    edges:
+      geo: true
+      iam: true
+
 # ─── Per-service Postgres (database-per-service) — credentials via existingSecret ─
 # NO plaintext passwords in this profile. Each bitnami pg instance reads its
 # password from an existing Secret the operator provisions out-of-band (keys
@@ -297,6 +370,15 @@ pg-nlb:
     username: kacho_nlb
     database: kacho_nlb
     existingSecret: kacho-umbrella-pg-nlb
+# Backing Postgres for kacho-storage (schema kacho_storage). Condition-gated and
+# OFF in base values — enabled here together with `storage` above; the service's
+# db.host/passwordSecretName point at this instance.
+pg-storage:
+  enabled: true
+  auth:
+    username: storage
+    database: kacho_storage
+    existingSecret: kacho-umbrella-pg-storage
 pg-kratos:
   enabled: true
   auth:

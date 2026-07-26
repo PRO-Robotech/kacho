@@ -187,18 +187,40 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // Регион зоны разрешает владелец Geography и передаёт сюда параметром $12 —
 // из имени зоны он не выводится. Пустой $12 = регион не разрешён → образ-полоса
 // не матчится (fail-closed); source-less вставка им не затронута.
+//
+// ТРЕТЬЯ полоса — приёмная ёмкость: том обязан быть не меньше min_disk_bytes
+// образа (compute энфорсит ровно это над СВОЕЙ парой Disk/Image; над storage-томом
+// не энфорсил никто, хотя image.proto заявлял обратное). Сравнение идёт с той же
+// уже РАЗРЕШЁННОЙ строкой образа (CTE src), поэтому TOCTOU-окна нет.
+//
+// Три полосы дают три разных исхода, и их обязательно различать: «образ не
+// разрешился» — это ответ про образ, который вызывающему может быть вообще не
+// виден (чужой проект/регион), и его минимум в ответе появляться не должен.
+// Поэтому стейтмент ВСЕГДА возвращает ровно одну строку-дискриминатор: успешную
+// вставку ЛИБО (NULL, NULL, min_disk_bytes разрешённого образа). min_disk IS NULL
+// в отказе ⟺ образ не разрешился ⟹ hide-existence; min_disk NOT NULL ⟺ образ свой
+// и виден, отказ по размеру называется вслух. Модифицирующий CTE выполняется ровно
+// один раз, поэтому обе ветки UNION видят один и тот же его результат.
 const volumeInsertCoherentSQL = `
-	INSERT INTO volumes
-		(id, project_id, name, description, labels, zone_id, disk_type_id,
-		 size_bytes, block_size, source_snapshot_id, source_image_id, state)
-	SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
-	       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
-	 WHERE ($10::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$10 AND s.project_id=$2))
-	   AND ($11::text IS NULL OR EXISTS (
-	            SELECT 1 FROM images i
-	             WHERE i.id=$11 AND i.project_id=$2
-	               AND $12::text <> '' AND i.region_id = $12::text))
-	RETURNING created_at, updated_at`
+	WITH src AS (
+		SELECT i.min_disk_bytes
+		  FROM images i
+		 WHERE i.id = $11::text AND i.project_id = $2::text
+		   AND $12::text <> '' AND i.region_id = $12::text
+	), ins AS (
+		INSERT INTO volumes
+			(id, project_id, name, description, labels, zone_id, disk_type_id,
+			 size_bytes, block_size, source_snapshot_id, source_image_id, state)
+		SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
+		       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
+		 WHERE ($10::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$10 AND s.project_id=$2))
+		   AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
+		RETURNING created_at, updated_at
+	)
+	SELECT created_at, updated_at, NULL::bigint FROM ins
+	UNION ALL
+	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src)
+	 WHERE NOT EXISTS (SELECT 1 FROM ins)`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
 // в той же tx. source_snapshot_id/source_image_id=” → NULL (иначе FK ловит пустую
@@ -207,7 +229,10 @@ const volumeInsertCoherentSQL = `
 // (byte-identical настоящему miss'у, security.md §6). disk_type_id RESTRICT /
 // source FK / partial UNIQUE(name) → контрактные sentinel'ы через mapVolumeErr.
 // zoneRegionID — регион ЗОНЫ тома, разрешённый владельцем Geography (use-case);
-// участвует в image-полосе CAS (Volume ZONAL ∈ регион REGIONAL-образа).
+// участвует в image-полосе CAS (Volume ZONAL ∈ регион REGIONAL-образа). Разрешённый
+// образ дополнительно требует ёмкости: size_bytes ≥ min_disk_bytes образа, иначе
+// InvalidArgument "Volume size %d is less than image min_disk_bytes %d" — отказ, у
+// которого образ УЖЕ виден вызывающему, поэтому он не путается с hide-existence.
 func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, error) {
 	blockSize := v.BlockSize
 	if blockSize == 0 {
@@ -230,16 +255,30 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 	created := *v
 	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого образа).
+		var createdAt, updatedAt *time.Time
+		var srcMinDisk *int64
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
 			v.SizeBytes, blockSize, srcSnap, srcImg, zoneRegionID).
-			Scan(&created.CreatedAt, &created.UpdatedAt)
+			Scan(&createdAt, &updatedAt, &srcMinDisk)
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
-				return volumeSourceUnavailable(v.SourceSnapshot, v.SourceImage)
+				// Стейтмент обязан вернуть строку всегда; пусто = неучтённый исход.
+				return ports.ErrInternal
 			}
 			return serr
 		}
+		if createdAt == nil {
+			// Образ разрешился (свой проект + свой регион), не прошёл только размер —
+			// его минимум вызывающему уже виден, называем причину прямо.
+			if srcMinDisk != nil {
+				return fmt.Errorf("%w: Volume size %d is less than image min_disk_bytes %d",
+					ports.ErrInvalidArg, v.SizeBytes, *srcMinDisk)
+			}
+			return volumeSourceUnavailable(v.SourceSnapshot, v.SourceImage)
+		}
+		created.CreatedAt, created.UpdatedAt = *createdAt, *updatedAt
 		// owner-tuple register-intent в той же writer-TX (SEC-D): project#project@storage_volume.
 		return emitFGARegister(ctx, tx, fgaregister.EventRegister,
 			fgaregister.VolumeItem(v.ProjectID, v.ID, v.Labels))
