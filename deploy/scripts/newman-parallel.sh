@@ -40,12 +40,20 @@ set -uo pipefail
 # + placement) — owner directive "every module has its own complete tests". geo:dev
 # verified locally to boot clean (authMode=dev, mTLS creds mounted) + serve; back in the
 # active run.
-SERVICES="${SERVICES:-iam vpc compute nlb storage registry geo}"
+# api-gateway added 2026-07-26: gateway/tests/newman existed but had never been
+# executed — no run.sh, no environment file, and it was absent from this list, while
+# suite_dir() below already carried a branch for it. It owns the cluster-RBAC admin
+# surface (InternalClusterService on the cluster-internal REST listener), which no
+# per-service suite covers; services/iam/tests/newman even cites it as the covering
+# location for a case it removed. A suite that exists but never runs is the state
+# that let it rot, so it is either wired or deleted — this is the wiring.
+SERVICES="${SERVICES:-iam vpc compute nlb storage registry geo api-gateway}"
 NS="${SETUP_NS:-kacho}"
 DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
+HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-posture seed)
 DELAY="${DELAY:-3}"          # per-request delay (ms) inside each collection
 JOBS="${JOBS:-2}"            # per-suite collection concurrency (× len(SERVICES) total)
 SEED="${SEED:-true}"         # set false to reuse an already-seeded stand
@@ -69,13 +77,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT + iam-internal :$IAM_INTERNAL_PORT"
+echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT + iam-internal :$IAM_INTERNAL_PORT + hydra :$HYDRA_PORT"
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.log 2>&1 &            PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!)
+# Hydra public — the POST target of the OAuth2 client_credentials exchange that turns an
+# iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
+# with no ingress route here, so the exchange needs this forward. Harmless in dev (the
+# seed never dials it); required in production, and setting it HERE means the seed does
+# not have to open one per invocation.
+kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444" >/tmp/e2e-pp-hydra.log 2>&1 & PF_PIDS+=($!)
 sleep 4
 
-# mTLS client-cert for grpcurl → iam-internal (dev stand ships mtls.enabled=true).
+# Client certificates for the cluster-internal listeners. iam :9091 demands a verified
+# client cert in EVERY posture (security.md — internal is not exempt), and the two
+# identities are NOT interchangeable:
+#   api-gateway-client-tls  → the ordinary internal RPCs (UpsertFromIdentity, LookupSubject)
+#   kacho-bootstrap-operator-client-tls → the ONLY SAN iam allow-lists for
+#     MintBootstrapToken, the production seed's entry point. Pointing the mint at the
+#     gateway identity is precisely the "fix" the #58 hardening exists to prevent, so the
+#     two are exported separately and never aliased.
 MTLS_ENV=()
 if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
   CERT_DIR="$(mktemp -d)"; TMP_DIRS+=("$CERT_DIR")
@@ -84,6 +105,13 @@ if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
   chmod 600 "$CERT_DIR"/*
   MTLS_ENV=(IAM_INTERNAL_GRPC_MTLS_CERT="$CERT_DIR/client.crt" IAM_INTERNAL_GRPC_MTLS_KEY="$CERT_DIR/client.key")
 fi
+if kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls >/dev/null 2>&1; then
+  OP_DIR="$(mktemp -d)"; TMP_DIRS+=("$OP_DIR")
+  kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > "$OP_DIR/client.crt"
+  kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls -o jsonpath='{.data.tls\.key}' | base64 -d > "$OP_DIR/client.key"
+  chmod 600 "$OP_DIR"/*
+  MTLS_ENV+=(BOOTSTRAP_MINT_MTLS_CERT="$OP_DIR/client.crt" BOOTSTRAP_MINT_MTLS_KEY="$OP_DIR/client.key")
+fi
 
 if [ "$SEED" = "true" ]; then
   echo "[parallel] seeding auth fixtures (per-service isolated) + patching envs"
@@ -91,14 +119,24 @@ if [ "$SEED" = "true" ]; then
   # seed the geo baseline (region/zones) + any Internal admin catalog via the :18081 mux.
   # Without it the greenfield geo catalog stays empty → every zone/region create fails.
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
-      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
+      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
       DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
 
-  if [[ " $SERVICES " == *" nlb "* ]]; then
+  # Posture the seed actually ran in (written by setup.sh — ONE detector, no re-derivation).
+  SEED_POSTURE_RAN="$(cat "$REPO_ROOT/tests/authz-fixtures/out/seed-posture" 2>/dev/null || echo dev)"
+
+  # In PRODUCTION posture setup.sh delegates to prodseed_all.py, which already drives
+  # seed-nlb-fixtures.sh with the RS256 admin Bearer. Re-running it here would make a
+  # second author for the same cluster-wide default-pool slot.
+  if [[ " $SERVICES " == *" nlb "* ]] && [ "$SEED_POSTURE_RAN" != "production" ]; then
     echo "[parallel] seeding nlb external-VIP AddressPool (best-effort)"
-    SEED_JWT=$(python3 "$REPO_ROOT/tests/authz-fixtures/setup-jwt.py" --secret "$DEV_SECRET" --exp-hours 24 --bulk 2>/dev/null \
-      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("jwtBootstrap",""))' 2>/dev/null || true)
+    # Take the admin Bearer the seed ACTUALLY produced instead of re-forging an HS256 one:
+    # on a production-posture stand a locally-minted HS256 token is rejected (empty
+    # devSecret) and this step silently seeded nothing. authz-fixtures.json carries
+    # whichever admin credential the posture called for.
+    SEED_JWT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("jwtBootstrap",""))' \
+      "$REPO_ROOT/tests/authz-fixtures/out/authz-fixtures.json" 2>/dev/null || true)
     # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/setup.sh block 5d owns the
     # zone table and seeds it). setup.sh already ran the seeder for the isolated nlb project
     # above; this second, project-agnostic pass must target the SAME zone. Unpinned it falls

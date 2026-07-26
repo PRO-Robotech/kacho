@@ -1,53 +1,95 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set для InternalClusterService (KAC-196).
+"""Case-set for `kacho.cloud.iam.v1.InternalClusterService` — cluster-RBAC admin.
 
-Covered RPCs:  Get, GrantAdmin, RevokeAdmin, ListAdmins.
+Covered RPCs: Get, GrantAdmin, RevokeAdmin, ListAdmins.
 
-Source-of-truth — acceptance doc:
-  kacho-workspace/docs/specs/sub-phase-KAC-196-cluster-rbac-admin-acceptance.md
-  §5.5 (case list) + §6.00–§6.12 (GWT scenarios) + §0.3 D-2/D-4/D-5/D-6/D-9/D-11/D-12.
+WHY THIS SUITE LIVES IN THE api-gateway REPO AND NOT IN services/iam
+--------------------------------------------------------------------
+These four RPCs are served ONLY on the api-gateway CLUSTER-INTERNAL REST listener
+(`/iam/v1/internal/cluster/...`, :8081). Their gate is a gateway concern — the
+permission-catalog entry `required_relation=system_admin` with
+`scope_extractor{object_type: cluster, from_request_field: "*"}` — and the whole
+point of `Get`/`ListAdmins` being gated is that a non-admin must not be able to
+observe the cluster-admin roster. That is an api-gateway contract, so it is tested
+from the api-gateway suite.
 
-Service contract:
-  * REST exposed ONLY on cluster-internal listener under `/iam/v1/internal/cluster/...`.
-  * Gate (D-11) = computed FGA relation `admin` (cascade `system_admin OR emergency_admin`)
-    on `cluster:cluster_kacho_root` for ALL 4 RPCs — including the read `Get` and `ListAdmins`.
-  * Mutations return `operation.Operation` envelope with id prefix `iop` (IAM ops).
-  * Sync RPCs (`Get`, `ListAdmins`) — direct response, no Operation envelope.
+COVERAGE THIS SUITE UNIQUELY OWNS (verified against the Go tests, 2026-07-26)
+----------------------------------------------------------------------------
+The repo/handler layer has strong Go integration coverage of the DB invariants
+(idempotency row-counts, advisory-lock write-skew, ordering, JOIN enrichment).
+What NOTHING else covers, at any level, and therefore only lives here:
 
-Error-text discipline (acceptance §4.5 Newman note):
-  All gRPC error messages assert via `pm.expect(j.message).to.eql(<exact-text>)`.
-  No substring / case-insensitive matching — exact verbatim text only.
+  * the REST/HTTP status mapping for the iam error codes on these RPCs —
+    InvalidArgument→400 and NotFound→404;
+  * the `iop` Operation-id prefix on cluster mutations (asserted elsewhere only
+    for a DIFFERENT service, account/create_test.go);
+  * `done=true` terminality of a polled cluster Operation;
+  * the runtime authz 403 on `/iam/v1/internal/cluster/admins` (the Go middleware
+    test drives only `/iam/v1/internal/cluster`);
+  * the exact error text of "User <id> is not an active cluster admin" and
+    "User <id> not found" (the Go tests assert the CODE only).
 
-Required environment variables (set by the umbrella stack or local stand):
-  baseUrl              — api-gateway REST endpoint (e.g. http://localhost:18080)
-  tokenAdmin           — Bearer token for the seeded system_admin user (S)
-  tokenOrdinary        — Bearer token for an ordinary user without cluster-admin (U3)
-  userOrdinaryId       — `usr_<17>` id of the ordinary user (subject for Grant cases)
-  externalBaseUrl      — advertised public TLS endpoint (e.g. https://api.kacho.local)
-                         When absent, the internal-not-on-external-tls case becomes
-                         a no-op skip (DNS unreachable also accepted as PASS).
+Additionally: services/iam/tests/newman/cases/iam-authz-grant-check-propagation.py
+removed a tautological Break-Glass case and justified the removal by naming THIS
+file as the place where the `cluster_admin_grants` INSERT contract is covered. That
+justification is only true if this suite actually runs.
 
-These cases assert the cluster-admin RBAC routes are reachable on the internal
-mux and gated by the permission catalog. Do NOT weaken assertions to make them
-pass — fix the implementation.
+FIXTURES — canonical keys only, no bespoke seeding
+--------------------------------------------------
+This suite deliberately consumes only fixture keys that BOTH seeding paths already
+emit — tests/authz-fixtures/setup.sh (dev posture) and prodseed_matrix.py /
+prodseed_all.py (production posture):
+
+  jwtBootstrap           — holds `system_admin` on `cluster:cluster_kacho_root`.
+  jwtPureNoBindings      — the dedicated NEVER-granted subject (read-only negatives).
+  baseUrl / internalBaseUrl / externalBaseUrl — injected by the newman runner.
+
+The grant/revoke TARGET is NOT a shared fixture. It is a fresh, `{{runId}}`-scoped
+user this suite seeds for itself via `InternalUserService.UpsertFromIdentity`.
+Granting cluster-admin to a shared subject would be cross-suite contamination:
+`jwtPureNoBindings` is precisely the "sees nothing" leak-guard other suites rely on,
+and making it a cluster admin would silently invalidate them.
+
+TWO SCENARIOS DELIBERATELY NOT REPRESENTED HERE (see the block at the bottom of this
+file for the full argument and the exact Go tests that own them). Both were present
+in the never-executed version of this file and both were unreachable as written.
+
+Error-text discipline: messages assert with `.to.eql` (exact). Error text is part of
+the Kachō contract. Do NOT weaken an assertion to make a run green — fix the code, or
+report the finding.
 """
 
 CASES = []
+
+# A syntactically VALID but non-existent user id. The format is
+# `^usr[0-9a-hjkmnp-tv-z]{17}$` (services/iam/.../cluster/helpers.go::subjectIDRe) —
+# a 3-char `usr` prefix with NO underscore, 20 chars total, Crockford base32 body.
+#
+# This matters: the previous version of this file used `usr_nonexistent00000`, which
+# has an underscore and therefore fails the FORMAT branch in grant_admin.go long
+# before the user-existence lookup. It asserted the existence message
+# ("User ... not found") against a response that could only ever carry the format
+# message — an assertion that could never pass. The Go integration test
+# TestCluster_6_12_GrantAdmin_UserNotInDB has the same defect
+# (`usr_aaaaaaaaaaaaaaaaa`, 21 chars) and asserts the code only, so it passes while
+# testing the wrong branch. UserExistenceChecker.ExistsUser therefore had NO
+# coverage at any level; this id is what actually reaches it.
+#
+# NB the proto annotation on subject_id says `(pattern) = "usr_[0-9a-hjkmnp-tv-z]+"`
+# with `(length) = "<=20"` — self-contradictory (`usr_` + 17 = 21 > 20) and at odds
+# with the implementation. The implementation matches the real id format
+# (`usrn3948g8m19j2mn8wr`); the annotation is wrong. Reported, not worked around.
+ABSENT_USER_ID = "usr00000000000000zzz"
 
 
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GET-OK
 # ---------------------------------------------------------------------------
-# Setup: S is the seeded system_admin user. tokenAdmin is its Bearer JWT.
-# Path: GET /iam/v1/internal/cluster → 200, singleton Cluster body
-# (`{id: "cluster_kacho_root", name, description, createdAt}`).
-# Authz gate: tokenAdmin carries `system_admin` → `admin` computed → PASS.
-
 CASES.append(Case(
     id="CLUSTER-ADMIN-GET-OK",
-    title="GET /iam/v1/internal/cluster as system_admin S → 200 with singleton Cluster id",
+    title="GET /iam/v1/internal/cluster as cluster system_admin → 200, singleton id",
     classes=["CRUD", "AUTHZ"],
     priority="P0",
     steps=[
@@ -55,16 +97,18 @@ CASES.append(Case(
             name="get-cluster-as-admin",
             method="GET",
             path="/iam/v1/internal/cluster",
-            auth="tokenAdmin",
+            mux="internal",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
                 "pm.test('cluster id is the singleton cluster_kacho_root', () => {",
                 "  const j = pm.response.json();",
                 "  pm.expect(j.id, JSON.stringify(j)).to.eql('cluster_kacho_root');",
                 "});",
-                "pm.test('cluster has createdAt timestamp', () => {",
+                "pm.test('cluster carries a createdAt timestamp (string, RFC3339)', () => {",
                 "  const j = pm.response.json();",
-                "  pm.expect(j.createdAt, 'createdAt present').to.be.a('string');",
+                "  pm.expect(j.createdAt, JSON.stringify(j)).to.be.a('string');",
+                "  pm.expect(j.createdAt, JSON.stringify(j)).to.match(/^\\d{4}-\\d{2}-\\d{2}T/);",
                 "});",
             ],
         ),
@@ -75,14 +119,12 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GET-403-ORDINARY
 # ---------------------------------------------------------------------------
-# Setup: U3 is an ordinary user (no cluster-admin grant). tokenOrdinary is its JWT.
-# Expected: api-gateway authz middleware refuses with 403 PermissionDenied (grpc code 7)
-# BEFORE the request reaches kacho-iam — catalog entry `required_relation=admin`
-# fails OpenFGA Check `(user:U3, admin, cluster:cluster_kacho_root)`.
-
+# The gateway authz middleware refuses BEFORE the request reaches kacho-iam: the
+# catalog entry `required_relation=system_admin` fails the OpenFGA Check against
+# `cluster:cluster_kacho_root`. Non-admins must not observe the cluster resource.
 CASES.append(Case(
     id="CLUSTER-ADMIN-GET-403-ORDINARY",
-    title="GET /iam/v1/internal/cluster as ordinary user U3 → 403 PermissionDenied",
+    title="GET /iam/v1/internal/cluster as a never-granted user → 403 PermissionDenied",
     classes=["NEG", "AUTHZ"],
     priority="P0",
     steps=[
@@ -90,7 +132,8 @@ CASES.append(Case(
             name="get-cluster-as-ordinary",
             method="GET",
             path="/iam/v1/internal/cluster",
-            auth="tokenOrdinary",
+            mux="internal",
+            auth="jwtPureNoBindings",
             test_script=[
                 *assert_status(403),
                 *assert_grpc_code(7, "PERMISSION_DENIED"),
@@ -101,44 +144,71 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-GRANT-OK
+# CLUSTER-ADMIN-LIST-OK
 # ---------------------------------------------------------------------------
-# Setup: S is system_admin, U3 is an existing kacho_iam.users row without cluster-admin.
-# Expected: POST /iam/v1/internal/cluster/admins → 200 with iop-prefixed Operation,
-# poll until done=true, then ListAdmins shows U3 in the admins[] array.
-
+# Shape contract of the denormalized ListAdmins projection. Every entry is checked
+# (not just the first three): subjectId / subjectType / grantedAt are the fields the
+# admin UI renders, and `grantedAt` being a STRING is the wire-level proof of the
+# proto Timestamp→JSON mapping, which the Go tests (Go structs) cannot observe.
+#
+# Non-emptiness is deliberately NOT asserted here — it is a property of the seed,
+# not of the RPC. CLUSTER-ADMIN-GRANT-OK below proves the list is populated
+# dynamically, by putting a known subject into it and reading it back.
 CASES.append(Case(
-    id="CLUSTER-ADMIN-GRANT-OK",
-    title="GrantAdmin U3 by system_admin S → Operation(iop) done=true, U3 appears in ListAdmins",
+    id="CLUSTER-ADMIN-LIST-OK",
+    title="ListAdmins as cluster system_admin → 200, every entry well-formed",
     classes=["CRUD", "AUTHZ"],
     priority="P0",
     steps=[
         Step(
-            name="grant-u3",
-            method="POST",
-            path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
-            body={"subjectType": "USER", "subjectId": "{{userOrdinaryId}}"},
-            test_script=[
-                *assert_status(200),
-                *assert_iam_operation_envelope(),
-                *save_from_response("j.id", "opId"),
-            ],
-        ),
-        poll_iam_op(auth="tokenAdmin"),
-        Step(
-            name="list-admins-includes-u3",
+            name="list-admins-as-admin",
             method="GET",
             path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
+            mux="internal",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
-                "pm.test('ListAdmins includes newly-granted U3', () => {",
+                "pm.test('admins is an array', () => {",
                 "  const j = pm.response.json();",
-                "  const u3 = pm.environment.get('userOrdinaryId');",
-                "  const found = (j.admins || []).some(a => a.subjectId === u3);",
-                "  pm.expect(found, JSON.stringify(j)).to.eql(true);",
+                "  pm.expect(j.admins || [], JSON.stringify(j)).to.be.an('array');",
                 "});",
+                "pm.test('EVERY admin entry carries subjectId / subjectType / grantedAt', () => {",
+                "  const j = pm.response.json();",
+                "  (j.admins || []).forEach(a => {",
+                "    pm.expect(a.subjectId, JSON.stringify(a)).to.be.a('string');",
+                "    pm.expect(a.subjectId, JSON.stringify(a)).to.not.eql('');",
+                "    pm.expect(a.subjectType, JSON.stringify(a)).to.be.a('string');",
+                "    pm.expect(a.grantedAt, 'grantedAt must be a JSON string timestamp: ' + JSON.stringify(a)).to.be.a('string');",
+                "  });",
+                "});",
+            ],
+        ),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# CLUSTER-ADMIN-LIST-403-ORDINARY
+# ---------------------------------------------------------------------------
+# The roster itself is sensitive: knowing WHO is a cluster admin is targeting
+# information. The gateway catalog is the ONLY gate on ListAdmins (list_admins.go
+# carries no in-service requireClusterSystemAdmin, unlike grant/revoke), so this is
+# the sole end-to-end proof that the gate fires on this path.
+CASES.append(Case(
+    id="CLUSTER-ADMIN-LIST-403-ORDINARY",
+    title="ListAdmins as a never-granted user → 403 PermissionDenied (roster not observable)",
+    classes=["NEG", "AUTHZ"],
+    priority="P0",
+    steps=[
+        Step(
+            name="list-admins-as-ordinary",
+            method="GET",
+            path="/iam/v1/internal/cluster/admins",
+            mux="internal",
+            auth="jwtPureNoBindings",
+            test_script=[
+                *assert_status(403),
+                *assert_grpc_code(7, "PERMISSION_DENIED"),
             ],
         ),
     ],
@@ -148,20 +218,21 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GRANT-403-ORDINARY
 # ---------------------------------------------------------------------------
-# Setup: U3 (ordinary) tries to Grant himself admin → 403 PermissionDenied via authz gate.
-
+# Privilege escalation guard: a non-admin must not be able to grant cluster-admin,
+# least of all to itself.
 CASES.append(Case(
     id="CLUSTER-ADMIN-GRANT-403-ORDINARY",
-    title="GrantAdmin as ordinary user U3 → 403 PermissionDenied (D-11 gate)",
-    classes=["NEG", "AUTHZ"],
+    title="GrantAdmin as a never-granted user → 403 PermissionDenied (no self-escalation)",
+    classes=["NEG", "AUTHZ", "SEC"],
     priority="P0",
     steps=[
         Step(
             name="grant-as-ordinary",
             method="POST",
             path="/iam/v1/internal/cluster/admins",
-            auth="tokenOrdinary",
-            body={"subjectType": "USER", "subjectId": "{{userOrdinaryId}}"},
+            mux="internal",
+            auth="jwtPureNoBindings",
+            body={"subjectType": "USER", "subjectId": ABSENT_USER_ID},
             test_script=[
                 *assert_status(403),
                 *assert_grpc_code(7, "PERMISSION_DENIED"),
@@ -174,13 +245,13 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GRANT-400-INVALID-USER
 # ---------------------------------------------------------------------------
-# Setup: S grants a `usr_<...>` id that does not exist in kacho_iam.users.
-# User existence check inside the handler TX → InvalidArgument with
-# verbatim message `"User usr_nonexistent00000000 not found"`.
-
+# Well-formed id that exists in no `kacho_iam.users` row → the existence check in
+# GrantAdmin.Execute returns ErrInvalidArg, mapped to InvalidArgument (grpc 3 →
+# HTTP 400) with the canonical text. Synchronous: the check runs BEFORE the
+# Operation row is persisted, so this is an HTTP-level 400, not an op.error.
 CASES.append(Case(
     id="CLUSTER-ADMIN-GRANT-400-INVALID-USER",
-    title="GrantAdmin with nonexistent user id → 400 InvalidArgument (D-9)",
+    title="GrantAdmin with a well-formed but non-existent user id → 400 InvalidArgument",
     classes=["VAL", "NEG"],
     priority="P0",
     steps=[
@@ -188,12 +259,153 @@ CASES.append(Case(
             name="grant-nonexistent-user",
             method="POST",
             path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
-            body={"subjectType": "USER", "subjectId": "usr_nonexistent00000"},
+            mux="internal",
+            auth="jwtBootstrap",
+            body={"subjectType": "USER", "subjectId": ABSENT_USER_ID},
             test_script=[
                 *assert_status(400),
                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                *assert_error_message_eql("User usr_nonexistent00000 not found"),
+                *assert_error_message_eql(f"User {ABSENT_USER_ID} not found"),
+            ],
+        ),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# CLUSTER-ADMIN-SEED-TARGET-USER  (fixture, self-seeded)
+# ---------------------------------------------------------------------------
+# Provision this run's OWN grant/revoke target. `UpsertFromIdentity` is `<exempt>`
+# at the gateway and lives on the same cluster-internal listener, so no extra
+# fixture plumbing is needed. `{{runId}}`-scoped ⇒ the suite is re-runnable without
+# UNIQUE collisions, and no shared subject's grant-state is ever mutated.
+CASES.append(Case(
+    id="CLUSTER-ADMIN-SEED-TARGET-USER",
+    title="Seed a fresh, run-scoped User as the grant/revoke target (no shared-subject mutation)",
+    classes=["SETUP"],
+    priority="P0",
+    steps=[
+        Step(
+            name="upsert-target-user",
+            method="POST",
+            path="/iam/v1/internal/users:upsertFromIdentity",
+            mux="internal",
+            auth="jwtBootstrap",
+            body={
+                "externalId": "cluster-admin-target-{{runId}}",
+                "email": "cluster-admin-target-{{runId}}@kacho.local",
+                "displayName": "Cluster Admin Target {{runId}}",
+            },
+            test_script=[
+                *assert_status(200),
+                "pm.test('target user id has the usr prefix', () => {",
+                "  const j = pm.response.json();",
+                "  const uid = (j.metadata && j.metadata.userId) || (j.user && j.user.id) || '';",
+                "  pm.expect(uid, 'user id must match ^usr<17>: ' + JSON.stringify(j)).to.match(/^usr[0-9a-hjkmnp-tv-z]{17}$/);",
+                "});",
+                *save_from_response("j.id", "opId"),
+                *save_from_response(
+                    "(j.metadata && j.metadata.userId) || (j.user && j.user.id)",
+                    "clusterTargetUserId"),
+            ],
+        ),
+        # Poll to done: the user row must be COMMITTED before GrantAdmin looks it up,
+        # otherwise the existence check races the LRO worker.
+        poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-upsert-target-user"),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# CLUSTER-ADMIN-REVOKE-404-NOT-ADMIN
+# ---------------------------------------------------------------------------
+# Asymmetry with Grant idempotency: revoking a subject that is not an active admin
+# is NOT a no-op, it is NotFound. Runs BEFORE the grant below, so the target is
+# guaranteed never to have been an admin.
+#
+# The exact text is capital-U "User ..." (cluster_admin_grant_writer.go
+# ::diagnoseRevokeMiss). The never-executed version of this file asserted lowercase
+# "user ..." with `.to.eql` — it could not have passed. No Go test pins the text
+# (they assert the code only), so nothing else would have caught the drift either.
+CASES.append(Case(
+    id="CLUSTER-ADMIN-REVOKE-404-NOT-ADMIN",
+    title="RevokeAdmin a user who has never been an admin → 404 NotFound, exact text",
+    classes=["NEG", "VAL"],
+    priority="P0",
+    steps=[
+        Step(
+            name="revoke-non-admin",
+            method="DELETE",
+            path="/iam/v1/internal/cluster/admins/{{clusterTargetUserId}}",
+            mux="internal",
+            auth="jwtBootstrap",
+            test_script=[
+                *assert_status(404),
+                *assert_grpc_code(5, "NOT_FOUND"),
+                "pm.test('error message names the non-admin user verbatim', () => {",
+                "  const j = pm.response.json();",
+                "  const u = pm.environment.get('clusterTargetUserId');",
+                "  pm.expect(j.message, JSON.stringify(j)).to.eql('User ' + u + ' is not an active cluster admin');",
+                "});",
+            ],
+        ),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# CLUSTER-ADMIN-GRANT-OK
+# ---------------------------------------------------------------------------
+CASES.append(Case(
+    id="CLUSTER-ADMIN-GRANT-OK",
+    title="GrantAdmin → 200 Operation(iop) done=true, target appears in ListAdmins",
+    classes=["CRUD", "AUTHZ"],
+    priority="P0",
+    steps=[
+        Step(
+            name="grant-target",
+            method="POST",
+            path="/iam/v1/internal/cluster/admins",
+            mux="internal",
+            auth="jwtBootstrap",
+            body={"subjectType": "USER", "subjectId": "{{clusterTargetUserId}}"},
+            test_script=[
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                "pm.test('Operation metadata echoes the grant id and subject', () => {",
+                "  const j = pm.response.json();",
+                "  const md = j.metadata || {};",
+                "  pm.expect(md.clusterAdminGrantId, JSON.stringify(j)).to.be.a('string');",
+                "  pm.expect(md.subjectId, JSON.stringify(j)).to.eql(pm.environment.get('clusterTargetUserId'));",
+                "});",
+                *save_from_response("j.id", "opId"),
+                *save_from_response("j.metadata && j.metadata.clusterAdminGrantId", "clusterGrantId"),
+            ],
+        ),
+        poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-grant"),
+        Step(
+            name="list-admins-includes-target",
+            method="GET",
+            path="/iam/v1/internal/cluster/admins",
+            mux="internal",
+            auth="jwtBootstrap",
+            test_script=[
+                *assert_status(200),
+                "pm.test('ListAdmins includes the newly-granted target', () => {",
+                "  const j = pm.response.json();",
+                "  const u = pm.environment.get('clusterTargetUserId');",
+                "  const hit = (j.admins || []).filter(a => a.subjectId === u);",
+                "  pm.expect(hit.length, 'target not in roster: ' + JSON.stringify(j)).to.eql(1);",
+                "});",
+                "pm.test('the granted entry is enriched and typed USER', () => {",
+                "  const j = pm.response.json();",
+                "  const u = pm.environment.get('clusterTargetUserId');",
+                "  const a = (j.admins || []).find(x => x.subjectId === u) || {};",
+                "  pm.expect(a.subjectType, JSON.stringify(a)).to.eql('USER');",
+                "  pm.expect(a.subjectEmail, 'subject email JOINed from users: ' + JSON.stringify(a))",
+                "    .to.eql('cluster-admin-target-' + pm.environment.get('runId') + '@kacho.local');",
+                "  pm.expect(a.grantedAt, JSON.stringify(a)).to.be.a('string');",
+                "});",
             ],
         ),
     ],
@@ -203,41 +415,48 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GRANT-OK-IDEMPOTENT
 # ---------------------------------------------------------------------------
-# Setup: U3 is already an active cluster-admin (from CLUSTER-ADMIN-GRANT-OK).
-# Expected: second Grant of the same subject → Operation(iop) done=true, no error;
-# ListAdmins still shows ONE entry for U3 (idempotent — no duplicate row).
-
+# Re-granting an already-active subject succeeds and does NOT create a second row.
+# The returned grant id must be the id of the EXISTING row — that is what makes it
+# idempotent rather than merely tolerant.
 CASES.append(Case(
     id="CLUSTER-ADMIN-GRANT-OK-IDEMPOTENT",
-    title="GrantAdmin U3 twice → second call returns success Operation, no duplicate row (D-4)",
+    title="GrantAdmin twice → success, SAME grant id, exactly one roster entry",
     classes=["CRUD", "AUTHZ"],
     priority="P0",
     steps=[
         Step(
-            name="grant-u3-second-time",
+            name="grant-target-again",
             method="POST",
             path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
-            body={"subjectType": "USER", "subjectId": "{{userOrdinaryId}}"},
+            mux="internal",
+            auth="jwtBootstrap",
+            body={"subjectType": "USER", "subjectId": "{{clusterTargetUserId}}"},
             test_script=[
                 *assert_status(200),
                 *assert_iam_operation_envelope(),
+                "pm.test('idempotent re-grant returns the EXISTING grant id', () => {",
+                "  const j = pm.response.json();",
+                "  const md = j.metadata || {};",
+                "  pm.expect(md.clusterAdminGrantId, JSON.stringify(j))",
+                "    .to.eql(pm.environment.get('clusterGrantId'));",
+                "});",
                 *save_from_response("j.id", "opId"),
             ],
         ),
-        poll_iam_op(auth="tokenAdmin"),
+        poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-grant-idem"),
         Step(
             name="list-admins-no-duplicate",
             method="GET",
             path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
+            mux="internal",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
-                "pm.test('ListAdmins has exactly one entry for U3 (idempotent)', () => {",
+                "pm.test('roster still has exactly ONE entry for the target', () => {",
                 "  const j = pm.response.json();",
-                "  const u3 = pm.environment.get('userOrdinaryId');",
-                "  const count = (j.admins || []).filter(a => a.subjectId === u3).length;",
-                "  pm.expect(count, JSON.stringify(j)).to.eql(1);",
+                "  const u = pm.environment.get('clusterTargetUserId');",
+                "  const n = (j.admins || []).filter(a => a.subjectId === u).length;",
+                "  pm.expect(n, JSON.stringify(j)).to.eql(1);",
                 "});",
             ],
         ),
@@ -248,39 +467,45 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-REVOKE-OK
 # ---------------------------------------------------------------------------
-# Setup: U3 is currently an active admin (granted above). S revokes U3.
-# Expected: DELETE /iam/v1/internal/cluster/admins/{userOrdinaryId} → 200
-# Operation(iop) done=true → ListAdmins no longer contains U3.
-
+# Also this suite's cleanup: the run-scoped target leaves no active grant behind.
 CASES.append(Case(
     id="CLUSTER-ADMIN-REVOKE-OK",
-    title="RevokeAdmin U3 by S → Operation(iop) done=true, U3 not in ListAdmins",
+    title="RevokeAdmin → 200 Operation(iop) done=true, target no longer in ListAdmins",
     classes=["CRUD", "AUTHZ"],
     priority="P0",
     steps=[
         Step(
-            name="revoke-u3",
+            name="revoke-target",
             method="DELETE",
-            path="/iam/v1/internal/cluster/admins/{{userOrdinaryId}}",
-            auth="tokenAdmin",
+            path="/iam/v1/internal/cluster/admins/{{clusterTargetUserId}}",
+            mux="internal",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
                 *assert_iam_operation_envelope(),
+                "pm.test('Operation metadata echoes the revoked grant id and subject', () => {",
+                "  const j = pm.response.json();",
+                "  const md = j.metadata || {};",
+                "  pm.expect(md.clusterAdminGrantId, JSON.stringify(j))",
+                "    .to.eql(pm.environment.get('clusterGrantId'));",
+                "  pm.expect(md.subjectId, JSON.stringify(j)).to.eql(pm.environment.get('clusterTargetUserId'));",
+                "});",
                 *save_from_response("j.id", "opId"),
             ],
         ),
-        poll_iam_op(auth="tokenAdmin"),
+        poll_operation(op_var="opId", auth="jwtBootstrap", name="poll-revoke"),
         Step(
-            name="list-admins-excludes-u3",
+            name="list-admins-excludes-target",
             method="GET",
             path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
+            mux="internal",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
-                "pm.test('ListAdmins no longer contains U3', () => {",
+                "pm.test('revoked target is excluded from the active roster', () => {",
                 "  const j = pm.response.json();",
-                "  const u3 = pm.environment.get('userOrdinaryId');",
-                "  const found = (j.admins || []).some(a => a.subjectId === u3);",
+                "  const u = pm.environment.get('clusterTargetUserId');",
+                "  const found = (j.admins || []).some(a => a.subjectId === u);",
                 "  pm.expect(found, JSON.stringify(j)).to.eql(false);",
                 "});",
             ],
@@ -290,182 +515,19 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-REVOKE-403-SELF
-# ---------------------------------------------------------------------------
-# Setup: S (system_admin) revokes herself.
-# Self-revoke is rejected at the SQL CAS level → FailedPrecondition with
-# verbatim message `"cannot revoke own cluster admin grant"`.
-#
-# NB: REST status for FailedPrecondition is 400 in grpc-gateway default mapping
-# (grpc code 9 → HTTP 400). The case id keeps `403` for consistency with the
-# case naming, but the on-wire status code is 400 + grpc=9.
-
-CASES.append(Case(
-    id="CLUSTER-ADMIN-REVOKE-403-SELF",
-    title="RevokeAdmin self → FailedPrecondition 'cannot revoke own cluster admin grant' (D-5)",
-    classes=["NEG", "VAL"],
-    priority="P0",
-    steps=[
-        Step(
-            name="revoke-self",
-            method="DELETE",
-            path="/iam/v1/internal/cluster/admins/{{userAdminId}}",
-            auth="tokenAdmin",
-            test_script=[
-                *assert_status(400),
-                *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                *assert_error_message_eql("cannot revoke own cluster admin grant"),
-            ],
-        ),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-REVOKE-403-LAST
-# ---------------------------------------------------------------------------
-# Setup: stand has been narrowed to a single active cluster-admin (the seeded S).
-# S attempts to revoke another admin who happens to be the only one. The atomic
-# CAS-UPDATE with subquery `count(*) > 1` returns 0 rows → FailedPrecondition
-# with verbatim message `"cannot revoke last active cluster admin"`.
-#
-# In a multi-admin stand this case must arrange the last-admin state via fixture
-# (revoke all admins except one BEFORE running this case). The case below uses
-# {{userLastAdminId}} for the targeted admin — fixture decides whether it equals
-# S (then it overlaps with REVOKE-403-SELF) or another seeded last-admin.
-
-CASES.append(Case(
-    id="CLUSTER-ADMIN-REVOKE-403-LAST",
-    title="RevokeAdmin last active admin → FailedPrecondition 'cannot revoke last active cluster admin' (D-6)",
-    classes=["NEG", "VAL"],
-    priority="P0",
-    steps=[
-        Step(
-            name="revoke-last-admin",
-            method="DELETE",
-            path="/iam/v1/internal/cluster/admins/{{userLastAdminId}}",
-            auth="tokenAdmin",
-            test_script=[
-                *assert_status(400),
-                *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                *assert_error_message_eql("cannot revoke last active cluster admin"),
-            ],
-        ),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-REVOKE-404-NOT-ADMIN
-# ---------------------------------------------------------------------------
-# Setup: U3 has NEVER been a cluster-admin (no active row in cluster_admin_grants).
-# Asymmetric with Grant idempotency: Revoke of a non-admin returns NotFound
-# verbatim `"user usr_<...> is not an active cluster admin"`. (The {{userOrdinaryId}}
-# placeholder is substituted at test time; assertion matches by code+regex below
-# since the id value is dynamic.)
-
-CASES.append(Case(
-    id="CLUSTER-ADMIN-REVOKE-404-NOT-ADMIN",
-    title="RevokeAdmin a user who has never been admin → NotFound (D-12)",
-    classes=["NEG", "VAL"],
-    priority="P0",
-    steps=[
-        Step(
-            name="revoke-non-admin",
-            method="DELETE",
-            path="/iam/v1/internal/cluster/admins/{{userOrdinaryId}}",
-            auth="tokenAdmin",
-            test_script=[
-                *assert_status(404),
-                *assert_grpc_code(5, "NOT_FOUND"),
-                "pm.test('error message identifies non-admin user', () => {",
-                "  const j = pm.response.json();",
-                "  const u3 = pm.environment.get('userOrdinaryId');",
-                "  const expected = 'user ' + u3 + ' is not an active cluster admin';",
-                "  pm.expect(j.message, JSON.stringify(j)).to.eql(expected);",
-                "});",
-            ],
-        ),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-LIST-OK
-# ---------------------------------------------------------------------------
-# Setup: S is system_admin (default seed). ListAdmins returns the seeded
-# admin(s) ordered by granted_at ASC.
-
-CASES.append(Case(
-    id="CLUSTER-ADMIN-LIST-OK",
-    title="ListAdmins as system_admin S → 200 with admins[] non-empty",
-    classes=["CRUD", "AUTHZ"],
-    priority="P0",
-    steps=[
-        Step(
-            name="list-admins-as-admin",
-            method="GET",
-            path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
-            test_script=[
-                *assert_status(200),
-                "pm.test('admins is an array (may be empty per fixture state)', () => {",
-                "  const j = pm.response.json();",
-                "  pm.expect(j.admins || [], 'admins array').to.be.an('array');",
-                "});",
-                "pm.test('each admin entry has subjectId / subjectType / grantedAt', () => {",
-                "  const j = pm.response.json();",
-                "  (j.admins || []).slice(0, 3).forEach(a => {",
-                "    pm.expect(a.subjectId, JSON.stringify(a)).to.be.a('string');",
-                "    pm.expect(a.subjectType, JSON.stringify(a)).to.be.a('string');",
-                "    pm.expect(a.grantedAt, JSON.stringify(a)).to.be.a('string');",
-                "  });",
-                "});",
-            ],
-        ),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-LIST-403-ORDINARY
-# ---------------------------------------------------------------------------
-# Setup: U3 (ordinary) tries to ListAdmins → 403 via authz gate.
-
-CASES.append(Case(
-    id="CLUSTER-ADMIN-LIST-403-ORDINARY",
-    title="ListAdmins as ordinary user U3 → 403 PermissionDenied",
-    classes=["NEG", "AUTHZ"],
-    priority="P0",
-    steps=[
-        Step(
-            name="list-admins-as-ordinary",
-            method="GET",
-            path="/iam/v1/internal/cluster/admins",
-            auth="tokenOrdinary",
-            test_script=[
-                *assert_status(403),
-                *assert_grpc_code(7, "PERMISSION_DENIED"),
-            ],
-        ),
-    ],
-))
-
-
-# ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-INTERNAL-NOT-ON-EXTERNAL-TLS
 # ---------------------------------------------------------------------------
-# Setup: requires `externalBaseUrl` env (e.g. https://api.kacho.local) — the
-# advertised public TLS endpoint. The internal path `/iam/v1/internal/cluster/admins`
-# MUST return 404 there (ingress / split-mux filters it out).
+# ban #6: Internal* is never published on the advertised external TLS endpoint. A
+# 200/401/403 here would be a critical leak — 401 in particular would prove the
+# route EXISTS externally and is merely unauthenticated.
 #
-# DNS unreachable / connection refused are also accepted as PASS (endpoint
-# simply not reachable from CI). Authoritative 200 / 401 / 403 on this path
-# would be a CRITICAL leak.
-
+# `externalBaseUrl` is harness configuration: the step FAILS naming the variable if
+# it is unset (require_env_url, injected by the "external" mux) rather than silently
+# skipping. A DNS/connection error IS accepted as PASS — an endpoint that does not
+# resolve is not exposing anything.
 CASES.append(Case(
     id="CLUSTER-ADMIN-INTERNAL-NOT-ON-EXTERNAL-TLS",
-    title="POST /iam/v1/internal/cluster/admins on external TLS endpoint → 404 (workspace §Запрет 6)",
+    title="POST /iam/v1/internal/cluster/admins on the external TLS endpoint → 404 (ban #6)",
     classes=["NEG", "SEC"],
     priority="P0",
     steps=[
@@ -473,25 +535,72 @@ CASES.append(Case(
             name="grant-on-external-tls",
             method="POST",
             path="/iam/v1/internal/cluster/admins",
-            auth="tokenAdmin",
-            body={"subjectType": "USER", "subjectId": "{{userOrdinaryId}}"},
-            pre_script=[
-                "// internal-only check: redirect to externalBaseUrl if set.",
-                "const extBase = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
-                "if (!extBase) {",
-                "  console.warn('externalBaseUrl not set — skipping internal-not-on-external-tls check.');",
-                "  pm.execution.skipRequest();",
-                "} else {",
-                "  pm.request.url = extBase + '/iam/v1/internal/cluster/admins';",
-                "}",
-            ],
+            mux="external",
+            auth="jwtBootstrap",
+            body={"subjectType": "USER", "subjectId": ABSENT_USER_ID},
             test_script=[
-                "pm.test('EXT-TLS: status 404 (path not on external mux)', () => {",
+                "pm.test('EXT-TLS: cluster-admin mutation is NOT routable on the external endpoint', () => {",
                 "  const code = pm.response.code;",
-                "  if (code === undefined) { return; }  // DNS / connection error = endpoint unreachable = PASS",
-                "  pm.expect(code, 'CRITICAL: InternalClusterService exposed on external TLS endpoint!').to.eql(404);",
+                "  // Unreachable endpoint (DNS / connection refused) = not exposed = PASS.",
+                "  if (code === undefined) { return; }",
+                "  pm.expect(code, 'CRITICAL: InternalClusterService reachable on the external TLS endpoint!')",
+                "    .to.eql(404);",
                 "});",
             ],
         ),
     ],
 ))
+
+
+# ===========================================================================
+# NOT REPRESENTED HERE — two scenarios, with the proof of where they ARE covered
+# ===========================================================================
+#
+# Both existed in the never-executed version of this file. Neither is dropped to
+# make a run green: each is unreachable BY CONSTRUCTION from a machine-driven
+# black-box harness, and each is covered at a strictly stronger level in Go.
+#
+# 1. RevokeAdmin SELF → FailedPrecondition "cannot revoke own cluster admin grant".
+#
+#    Unreachable: the guard is `subject_id == principal_id`
+#    (cluster_admin_grant_writer.go::diagnoseRevokeMiss). RevokeAdmin only accepts a
+#    subject matching `^usr[0-9a-hjkmnp-tv-z]{17}$`, so the caller must itself be a
+#    USER principal holding cluster system_admin. Under the production posture this
+#    suite targets, every harness principal is a ServiceAccount: prodseed_all.py
+#    states it outright — "A human User principal with an `acr` requires the
+#    interactive Kratos→Hydra login, which a machine harness cannot drive" — and
+#    `jwtBootstrap` is minted for the bootstrap SA (bootstrap_token/mint.go). An SA
+#    principal id can never equal a `usr…` subject, so the self-revoke branch cannot
+#    be entered. A case that cannot enter its branch would either be permanently red
+#    or pass on some OTHER error — the precise failure mode this cleanup exists to
+#    remove.
+#
+#    Covered by: services/iam/internal/apps/kacho/api/cluster/handler_integration_test.go
+#    ::TestCluster_6_07_RevokeAdmin_SelfRevoke (codes.FailedPrecondition + message)
+#    and services/iam/internal/repo/kacho/pg/cluster_admin_grant_integration_test.go
+#    ::TestRevoke_Self (ErrSelfRevoke sentinel + proof no row was mutated — stricter
+#    than any black-box check could be).
+#
+# 2. RevokeAdmin LAST active admin → FailedPrecondition "cannot revoke last active
+#    cluster admin".
+#
+#    Unreachable AND unsafe: migration 0058 seeds a bootstrap-SA grant, so a stock
+#    stand always has count(*) > 1 and the guard never fires. The Go tests must call
+#    `decommissionBootstrapSeedGrant` to reach it, and
+#    cluster_admin_grant_integration_test.go::TestRevoke_LastUserAdmin_
+#    BootstrapSAKeepsClusterAdministrable pins that behaviour deliberately. Driving a
+#    SHARED dev stand into the last-admin state would mean revoking every other
+#    cluster admin — i.e. deliberately making the cluster un-administrable underneath
+#    every other suite. Not something an e2e run may do.
+#
+#    Covered by: cluster_admin_grant_integration_test.go::TestRevoke_LastAdmin_
+#    Sequential, ::TestRevoke_ConcurrentLastAdmin and ::TestRevoke_ConcurrentLastAdmin_
+#    WriteSkew (advisory-lock write-skew under concurrency — exactly one success, one
+#    ErrLastAdmin, never zero admins), plus handler_integration_test.go
+#    ::TestCluster_6_08a for the code+message.
+#
+# What the two of them jointly take with them is the FailedPrecondition→HTTP 400
+# mapping on THIS service. That mapping is generic grpc-gateway behaviour, not a
+# cluster-admin contract, and it is exercised by FAILED_PRECONDITION negatives across
+# the vpc / compute / nlb suites. The cluster-specific REST mappings that ARE unique
+# to this file — InvalidArgument→400 and NotFound→404 — are both kept above.
