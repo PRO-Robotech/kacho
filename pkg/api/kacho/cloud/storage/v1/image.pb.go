@@ -228,8 +228,12 @@ type Image struct {
 	SourceVolumeId string `protobuf:"bytes,11,opt,name=source_volume_id,json=sourceVolumeId,proto3" json:"source_volume_id,omitempty"`
 	// Virtual disk size of the image, in bytes. Output-only (derived from the source).
 	SizeBytes int64 `protobuf:"varint,12,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	// Minimum size (in bytes) of a receiving boot Volume. Output-only (derived).
-	// compute derives GiB and enforces boot_volume >= min_disk (output-echo contract).
+	// Minimum size (in bytes) of a receiving boot Volume. Output-only (derived from
+	// the source). Enforced by kacho-storage itself, inside the Volume insert: a
+	// Volume with source_image_id set and size_bytes < min_disk_bytes is refused with
+	// INVALID_ARGUMENT "Volume size %d is less than image min_disk_bytes %d". The
+	// bound is inclusive. An image the caller cannot reach never reports its minimum —
+	// it answers with the same "Image <id> not found" a real miss produces.
 	MinDiskBytes int64 `protobuf:"varint,13,opt,name=min_disk_bytes,json=minDiskBytes,proto3" json:"min_disk_bytes,omitempty"`
 	// Image disk format. Output-only native Kachō enum.
 	Format Image_Format `protobuf:"varint,14,opt,name=format,proto3,enum=kacho.cloud.storage.v1.Image_Format" json:"format,omitempty"`
