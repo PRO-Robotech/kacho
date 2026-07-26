@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "77283aab-eaf2-4a0f-a590-f729653adf59",
+    "_postman_id": "b95ee741-faf4-4187-a800-cef0cfe0644f",
     "name": "kacho-api-gateway / newman / sec_e_gateway_mtls",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -249,7 +249,7 @@
                   "}",
                   "// Skip the GET when the op did not surface a resource id (stand-dependent).",
                   "const rid = pm.environment.get('netId') || '';",
-                  "if (!rid) { console.warn('netId unresolved — skipping GET-back step.'); postman.setNextRequest(null); }"
+                  "if (!rid) { console.warn('netId unresolved — skipping GET-back step.'); pm.execution.skipRequest(); }"
                 ]
               }
             },
@@ -374,7 +374,7 @@
                   "const extBase = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                   "if (!extBase) {",
                   "  console.warn('externalBaseUrl not set — skipping ban#6 external-AddressPool check.');",
-                  "  postman.setNextRequest(null);",
+                  "  pm.execution.skipRequest();",
                   "} else {",
                   "  pm.request.url = extBase + '/vpc/v1/addressPools';",
                   "}"

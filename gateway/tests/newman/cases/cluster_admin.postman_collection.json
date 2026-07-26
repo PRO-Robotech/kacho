@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "574b529f-c680-4754-8f61-8c09357d3a4a",
+    "_postman_id": "b2054b9d-535c-4332-a1ee-563010dea7df",
     "name": "kacho-api-gateway / newman / cluster_admin",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1243,7 +1243,7 @@
                   "const extBase = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                   "if (!extBase) {",
                   "  console.warn('externalBaseUrl not set — skipping internal-not-on-external-tls check.');",
-                  "  postman.setNextRequest(null);",
+                  "  pm.execution.skipRequest();",
                   "} else {",
                   "  pm.request.url = extBase + '/iam/v1/internal/cluster/admins';",
                   "}"

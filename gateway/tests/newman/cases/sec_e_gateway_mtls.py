@@ -119,7 +119,7 @@ CASES.append(Case(
             pre_script=[
                 "// Skip the GET when the op did not surface a resource id (stand-dependent).",
                 "const rid = pm.environment.get('netId') || '';",
-                "if (!rid) { console.warn('netId unresolved — skipping GET-back step.'); postman.setNextRequest(null); }",
+                "if (!rid) { console.warn('netId unresolved — skipping GET-back step.'); pm.execution.skipRequest(); }",
             ],
             test_script=[
                 *assert_status(200),
@@ -186,7 +186,7 @@ CASES.append(Case(
                 "const extBase = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                 "if (!extBase) {",
                 "  console.warn('externalBaseUrl not set — skipping ban#6 external-AddressPool check.');",
-                "  postman.setNextRequest(null);",
+                "  pm.execution.skipRequest();",
                 "} else {",
                 "  pm.request.url = extBase + '/vpc/v1/addressPools';",
                 "}",

@@ -480,7 +480,7 @@ CASES.append(Case(
                 "const extBase = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                 "if (!extBase) {",
                 "  console.warn('externalBaseUrl not set — skipping internal-not-on-external-tls check.');",
-                "  postman.setNextRequest(null);",
+                "  pm.execution.skipRequest();",
                 "} else {",
                 "  pm.request.url = extBase + '/iam/v1/internal/cluster/admins';",
                 "}",
