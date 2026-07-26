@@ -41,18 +41,34 @@ CREATE TABLE kacho_iam.fga_outbox (
     sent_at       timestamptz,
     last_error    text,
     attempt_count integer      NOT NULL DEFAULT 0,
+    tuple_key     text,
     CONSTRAINT fga_outbox_event_type_check
         CHECK (event_type IN ('fga.tuple.write', 'fga.tuple.delete'))
 );
 
-CREATE INDEX fga_outbox_pending_idx
-    ON kacho_iam.fga_outbox (created_at) WHERE sent_at IS NULL;
+-- Mirrors kacho-iam migration 0067: the ordering partition key is the FULL tuple
+-- identity (user, relation, object) — the narrowest key over which the target's
+-- events fail to commute — materialised on INSERT by a trigger.
+CREATE OR REPLACE FUNCTION kacho_iam.fga_outbox_tuple_key() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+BEGIN
+    NEW.tuple_key :=
+        (NEW.payload->>'user')     || ' ' ||
+        (NEW.payload->>'relation') || ' ' ||
+        (NEW.payload->>'object');
+    RETURN NEW;
+END;
+$fn$;
 
--- Mirrors kacho-iam migration 0061: partition-head-only claim NOT EXISTS support
--- (PartitionColumn = payload->>'object'). Partial (sent_at IS NULL) so it stays
--- as small as the pending backlog.
-CREATE INDEX fga_outbox_partition_head_idx
-    ON kacho_iam.fga_outbox ((payload->>'object'), id) WHERE sent_at IS NULL;
+CREATE TRIGGER fga_outbox_tuple_key_trigger
+    BEFORE INSERT ON kacho_iam.fga_outbox
+    FOR EACH ROW EXECUTE FUNCTION kacho_iam.fga_outbox_tuple_key();
+
+-- Mirrors kacho-iam migration 0067: partition-head-only claim NOT EXISTS support
+-- (PartitionColumn = tuple_key). Partial (sent_at IS NULL) so it stays as small as
+-- the pending backlog.
+CREATE INDEX fga_outbox_tuple_head_idx
+    ON kacho_iam.fga_outbox (tuple_key, id) WHERE sent_at IS NULL;
 
 -- Mirrors kacho-iam migration 0063: the claim's OUTER ordered scan
 -- ORDER BY (attempt_count, id). Required TOGETHER with the partition-head index —
@@ -60,6 +76,14 @@ CREATE INDEX fga_outbox_partition_head_idx
 -- double seq-scan of the whole pending backlog (see Config.PartitionColumn).
 CREATE INDEX fga_outbox_claim_order_idx
     ON kacho_iam.fga_outbox (attempt_count, id) WHERE sent_at IS NULL;
+
+-- NOTE (mirrors kacho-iam migration 0067): there is deliberately NO further
+-- partial index over sent_at IS NULL in any other order. A (created_at) one used
+-- to exist; under the empty-queue statistics a queue table carries into a burst it
+-- offered the planner an unordered pending scan + Sort, which discards the LIMIT's
+-- early stop and turns the claim into an O(backlog) anti-join. See
+-- Config.PartitionColumn (section "Обязательные индексы") and
+-- Test_ClaimPlan_StaleStatistics_DoesNotCollapse.
 
 CREATE OR REPLACE FUNCTION kacho_iam.fga_outbox_notify() RETURNS trigger
 LANGUAGE plpgsql AS $fn$

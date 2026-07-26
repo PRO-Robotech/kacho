@@ -498,12 +498,28 @@ func (d *Drainer[T]) drainBatch(ctx context.Context) {
 	}
 }
 
+// wedgeReportLimit caps how many wedged partitions ONE scan reports.
+//
+// The observer's job is ATTRIBUTION — "which partition is stuck" — and the answer
+// is the oldest few heads; "how much is stuck" is already answered, without
+// cardinality, by the table-wide backlog-depth and oldest-pending-age gauges. The
+// cap matters because the partition key is deliberately the NARROWEST
+// non-commutative key (see Config.PartitionColumn), so partition count scales with
+// distinct in-flight keys, not with resources: on a live stand 8 643 pending rows
+// spanned 8 641 distinct tuples. During a peer outage every one of them is past the
+// threshold, and an uncapped report would emit thousands of WARN lines per scan —
+// burying the very attribution it exists to provide. Ten oldest is enough to name
+// the head that is blocking, and it bounds the scan's output as the key narrows
+// further.
+const wedgeReportLimit = 10
+
 // maybeReportWedge surfaces partitions whose oldest unsent row is older than
-// Config.WedgeWarnAfter (head-of-line wedge attribution). No-op unless an
-// onWedge observer is registered AND PartitionColumn + WedgeWarnAfter>0 are set.
-// Rate-limited to at most once per WedgeWarnAfter (called from the single
-// drainBatch goroutine, so lastWedgeCheck needs no synchronisation). Best-effort:
-// a failed scan is logged at Debug and never disturbs the drain.
+// Config.WedgeWarnAfter (head-of-line wedge attribution), oldest first and at most
+// wedgeReportLimit of them. No-op unless an onWedge observer is registered AND
+// PartitionColumn + WedgeWarnAfter>0 are set. Rate-limited to at most once per
+// WedgeWarnAfter (called from the single drainBatch goroutine, so lastWedgeCheck
+// needs no synchronisation). Best-effort: a failed scan is logged at Debug and
+// never disturbs the drain.
 func (d *Drainer[T]) maybeReportWedge(ctx context.Context) {
 	if d.onWedge == nil || d.cfg.PartitionColumn == "" || d.cfg.WedgeWarnAfter <= 0 {
 		return
@@ -513,17 +529,22 @@ func (d *Drainer[T]) maybeReportWedge(ctx context.Context) {
 	}
 	d.lastWedgeCheck = time.Now()
 
-	// Oldest unsent row per partition, filtered to those exceeding the threshold.
-	// Uses the same partial index as the claim ((<PartitionColumn>), id) WHERE
-	// sent_at IS NULL. NULL partition keys are excluded (they carry no ordering).
+	// Oldest unsent row per partition, filtered to those exceeding the threshold and
+	// ordered oldest-first so the cap keeps the WORST offenders rather than an
+	// arbitrary sample. Uses the same partial index as the claim
+	// ((<PartitionColumn>), id) WHERE sent_at IS NULL. NULL partition keys are
+	// excluded (they carry no ordering). The key is rendered as text so any
+	// partition expression — not just a text column — scans into a string.
 	q := fmt.Sprintf(`
-		SELECT %[2]s AS part,
+		SELECT (%[2]s)::text AS part,
 		       EXTRACT(EPOCH FROM (now() - min(created_at)))::float8 AS age_s
 		  FROM %[1]s
 		 WHERE sent_at IS NULL AND (%[2]s) IS NOT NULL
 		 GROUP BY %[2]s
 		HAVING min(created_at) < now() - make_interval(secs => $1)
-	`, d.cfg.Table, d.cfg.PartitionColumn)
+		 ORDER BY min(created_at)
+		 LIMIT %[3]d
+	`, d.cfg.Table, d.cfg.PartitionColumn, wedgeReportLimit)
 
 	rows, err := d.pool.Query(ctx, q, d.cfg.WedgeWarnAfter.Seconds())
 	if err != nil {
