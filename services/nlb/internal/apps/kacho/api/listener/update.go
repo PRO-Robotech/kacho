@@ -344,24 +344,34 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 }
 
 // listenerMirrorIntent builds the mirror-feed register-intent for an
-// UPDATED Listener: the parent-link tuple (re-register is idempotent in IAM)
+// UPDATED Listener: the project-hierarchy tuple (re-register is idempotent in IAM)
 // carrying the refreshed labels + parent-project so kacho-iam updates its
 // resource_mirror. No creator tuple — Update never re-assigns ownership; this is a
 // pure labels-refresh feed (parity with lbMirrorIntent / tgMirrorIntent). Empty
 // labels (full removal) is a valid upsert payload — it stales the label selector
 // without unregistering the listener. source_version is stamped by the
 // outbox emitter from the DB clock inside the writer-tx.
+//
+// THE TUPLE MUST BE THE PROJECT ONE, and that is the whole substance of this feed.
+// kacho-iam writes resource_mirror only as a side effect of RegisterResource, and
+// it guards that proxy write-path with a least-privilege relation allow-list
+// (authzguard.allowedProxyRelations = {project, account, parent, owner}) evaluated
+// BEFORE the mirror UPSERT. nlb's parent-link relation `load_balancer` is not in
+// that set (see listenerRegisterIntent). Feeding the refresh through the
+// parent-link alone made every labels-Update a PermissionDenied that dropped the
+// labels payload on the floor: the mirror kept the labels a listener had at
+// creation, so clearing the label an ARM_LABELS grant selects on revoked nothing
+// (T31-LBLREVOKE-NLB-LISTENER-04 `lsn-post-revoke-deny` stayed {"allowed":true}
+// indefinitely — not a consistency lag). The project tuple is registrable, so the
+// refresh actually lands, and it is the same tuple the Create path registers — a
+// re-register is idempotent in IAM.
 func listenerMirrorIntent(l *kachorepo.ListenerRecord) domain.FGARegisterIntent {
 	id := string(l.ID)
 	return domain.FGARegisterIntent{
 		Kind:       "Listener",
 		ResourceID: id,
 		Tuples: []domain.FGATuple{
-			domain.FGAParentLinkTuple(
-				domain.FGAObjectTypeLoadBalancer, string(l.LoadBalancerID),
-				domain.FGARelationLoadBalancer,
-				domain.FGAObjectTypeListener, id,
-			),
+			domain.FGAProjectTuple(domain.FGAObjectTypeListener, id, string(l.ProjectID)),
 		},
 		Labels:          domain.LabelsToMap(l.Labels),
 		ParentProjectID: string(l.ProjectID),

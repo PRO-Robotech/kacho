@@ -39,9 +39,9 @@ import (
 // Async worker — одна writer-TX (внешнего side-effect нет):
 //
 //	INSERT listener (status='ACTIVE') + outbox `nlb_listener:<id> CREATED` +
-//	`nlb_load_balancer:<lb_id> UPDATED` + FGA-register-intent (creator +
-//	parent-link). Триггер lb_status_recompute переводит LB INACTIVE→ACTIVE, если
-//	теперь есть листенер И attached TG.
+//	`nlb_load_balancer:<lb_id> UPDATED` + FGA-register-intent (project-hierarchy).
+//	Триггер lb_status_recompute переводит LB INACTIVE→ACTIVE, если теперь есть
+//	листенер И attached TG.
 type CreateUseCase struct {
 	repo    RepoFactory
 	opsRepo OperationsRepo
@@ -180,9 +180,6 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	in := createInput{
 		listener: listener,
 		lb:       lb,
-		// Acting subject FGA-id inline (parity с loadbalancer/targetgroup):
-		// `<type>:<id>` либо "" для anonymous/system (creator-tuple пропускается).
-		fgaOwner: domain.FGASubjectFromPrincipal(principal.Type, principal.ID),
 	}
 	// Durable commit → op done сразу. Owner-tuple Listener материализуется
 	// eventually-consistent (writer-TX fga_register_outbox intent → register-
@@ -270,12 +267,11 @@ func buildDomainName(raw string) (domain.LbName, error) {
 type createInput struct {
 	listener domain.Listener
 	lb       *parentLB
-	fgaOwner string
 }
 
 // doCreate — worker: одна writer-TX (внешнего side-effect нет). INSERT листенера
-// (status='ACTIVE') + outbox CREATED + LB UPDATED + FGA-register-intent (creator +
-// parent-link). Триггер lb_status_recompute сам переводит LB INACTIVE→ACTIVE при
+// (status='ACTIVE') + outbox CREATED + LB UPDATED + FGA-register-intent
+// (project-hierarchy). Триггер lb_status_recompute сам переводит LB INACTIVE→ACTIVE при
 // has_listener AND has_attached. Возвращает anypb.Any(Listener) при успехе.
 func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.Any, error) {
 	w, err := u.repo.Writer(ctx)
@@ -307,7 +303,7 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
 	}
 	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		listenerRegisterIntent(created, in.fgaOwner)); err != nil {
+		listenerRegisterIntent(created)); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: fga register-intent emit: %v", domain.ErrInternal, err))
 	}
 	if err := w.Commit(); err != nil {
@@ -319,7 +315,7 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 	// fga_register_outbox-intent'а): containment-grant виден сразу, закрывая
 	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
 	// + register-drainer — backstop); Operation.done НЕ гейтится (ban #9).
-	u.syncRegister(ctx, listenerRegisterIntent(created, in.fgaOwner))
+	u.syncRegister(ctx, listenerRegisterIntent(created))
 
 	return marshalListener(created)
 }
@@ -339,56 +335,58 @@ func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 }
 
 // listenerRegisterIntent — FGA-register-intent для созданного Listener:
+// project-hierarchy tuple, несущий labels + parent-project, чтобы kacho-iam
+// обновил resource_mirror (γ-селекторы matchLabels). source_version штампует
+// outbox-emitter из DB-clock.
 //
-//	<subject> #admin @nlb_listener:<id>                                 (creator)
-//	nlb_network_load_balancer:<lb_id> #load_balancer @nlb_listener:<id>  (parent-link)
+// ONLY PROXY-REGISTRABLE TUPLES BELONG IN A DURABLE INTENT. kacho-iam's
+// least-privilege proxy policy accepts exactly {project, account, parent, owner}
+// (authzguard.allowedProxyRelations); privilege relations are writable only by the
+// AccessBinding flow, never by a module proxy. So the creator (`admin`) and
+// parent-link (`load_balancer`) tuples this intent used to carry were refused on
+// EVERY delivery and never once landed in FGA — the model's own `load_balancer`
+// is documented as a structural pointer, not an access cascade, and creator access
+// comes from IAM's per-object materialisation (flat Contract-A), not from a
+// module-written admin tuple.
 //
-// creator-tuple пропускается на пустом subject (system-initiated). Листенер
-// резолвит проект через parent-link → LB-иерархию (своего project-tuple нет).
-// Несёт labels + parent-project, чтобы kacho-iam обновил resource_mirror
-// (γ-селекторы matchLabels). source_version штампует outbox-emitter из DB-clock.
-func listenerRegisterIntent(l *kachorepo.ListenerRecord, subject string) domain.FGARegisterIntent {
+// Carrying them was not merely useless, it WEDGED the resource. The
+// register-drainer classifies PermissionDenied as transient and short-circuits the
+// tuple loop, so the row could never be marked sent: it retried to MaxAttempts
+// (10, backoff 1s→30s ≈ 150s). Since the drainer claims partition-head-only on
+// resource_id, that permanently-failing Create row blocked every LATER intent for
+// the same listener — including the labels-refresh that revokes an ARM_LABELS
+// grant. Ordering the project tuple first only ensured the mirror got written
+// before the rejection; it did not let the row complete.
+func listenerRegisterIntent(l *kachorepo.ListenerRecord) domain.FGARegisterIntent {
 	id := string(l.ID)
-	// project-tuple идёт ПЕРВЫМ — он даёт видимость Listener через project (как у
-	// LoadBalancer/TargetGroup: reconciler материализует v_*-relation по
-	// parent-project). Дренер применяет tuples по порядку и short-circuit'ит на
-	// первом отказе, а creator (relation admin) и parent-link (load_balancer)
-	// iam-proxy отвергает (allowedProxyRelations = {project, account, parent,
-	// owner}). Раньше первым шёл creator(admin) → падал сразу → НИ ОДИН tuple не
-	// применялся → Listener был невидим в authz-filtered List. Теперь project-
-	// tuple успевает примениться до отказа admin — Listener виден.
-	tuples := []domain.FGATuple{
-		domain.FGAProjectTuple(domain.FGAObjectTypeListener, id, string(l.ProjectID)),
-	}
-	if subject != "" {
-		tuples = append(tuples, domain.FGACreatorTuple(subject, domain.FGAObjectTypeListener, id))
-	}
-	tuples = append(tuples, domain.FGAParentLinkTuple(
-		domain.FGAObjectTypeLoadBalancer, string(l.LoadBalancerID),
-		domain.FGARelationLoadBalancer,
-		domain.FGAObjectTypeListener, id,
-	))
 	return domain.FGARegisterIntent{
-		Kind:            "Listener",
-		ResourceID:      id,
-		Tuples:          tuples,
+		Kind:       "Listener",
+		ResourceID: id,
+		Tuples: []domain.FGATuple{
+			domain.FGAProjectTuple(domain.FGAObjectTypeListener, id, string(l.ProjectID)),
+		},
 		Labels:          domain.LabelsToMap(l.Labels),
 		ParentProjectID: string(l.ProjectID),
 	}
 }
 
-// listenerUnregisterIntent — FGA-unregister-intent (parent-link) для удалённого
-// Listener (creator оставляется IAM-side GC).
-func listenerUnregisterIntent(listenerID, lbID string) domain.FGARegisterIntent {
+// listenerUnregisterIntent — FGA-unregister-intent (project-hierarchy) для
+// удалённого Listener (creator оставляется IAM-side GC).
+//
+// The tuple must be the project one for the same reason listenerMirrorIntent's
+// must (see update.go): UnregisterResource runs the identical least-privilege
+// ValidateProxyTuple gate, and the parent-link relation `load_balancer` is not
+// registrable. A retraction built from it is rejected before the resource_mirror
+// DELETE, so the mirror row of a DELETED listener survives and the reconciler
+// keeps re-materialising per-object grants from it — a deleted listener retaining
+// its access. Parity with lbUnregisterIntent / tgUnregisterIntent, which already
+// retract via the project tuple.
+func listenerUnregisterIntent(listenerID, projectID string) domain.FGARegisterIntent {
 	return domain.FGARegisterIntent{
 		Kind:       "Listener",
 		ResourceID: listenerID,
 		Tuples: []domain.FGATuple{
-			domain.FGAParentLinkTuple(
-				domain.FGAObjectTypeLoadBalancer, lbID,
-				domain.FGARelationLoadBalancer,
-				domain.FGAObjectTypeListener, listenerID,
-			),
+			domain.FGAProjectTuple(domain.FGAObjectTypeListener, listenerID, projectID),
 		},
 	}
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -42,30 +41,32 @@ func TestSubnetOfTarget(t *testing.T) {
 	}))
 }
 
-// TestLBRegisterIntent_SystemPrincipal_ProjectTupleOnly — a system /
-// unauthenticated principal yields only the project-hierarchy tuple (no creator).
-func TestLBRegisterIntent_SystemPrincipal_ProjectTupleOnly(t *testing.T) {
+// TestLBRegisterIntent_ProjectTupleOnly — the durable Create intent carries
+// exactly the project-hierarchy tuple, independent of the principal.
+//
+// It used to append a creator (`admin`) tuple for an authenticated user, and that
+// tuple could never land: kacho-iam's least-privilege proxy policy accepts only
+// ownership/parent relations ({project, account, parent, owner}) and reserves
+// privilege relations like `admin` for the AccessBinding flow, so every delivery
+// was refused. Worse, the register-drainer treats PermissionDenied as transient
+// and short-circuits, so the row was never marked sent — it retried to MaxAttempts
+// (≈150s) and, because the claim is partition-head-only on resource_id, blocked
+// every LATER intent for the same load balancer for that whole window, including a
+// labels-refresh that revokes an ARM_LABELS grant.
+//
+// Creator access does not depend on it: it is materialised per-object by IAM's
+// reconciler (flat Contract-A), not by a module-written admin tuple. The intent is
+// now principal-independent, which is why one case replaces the former
+// system-vs-user pair.
+func TestLBRegisterIntent_ProjectTupleOnly(t *testing.T) {
 	t.Parallel()
 	intent := lbRegisterIntent(
-		&kachorepo.LoadBalancerRecord{LoadBalancer: domain.LoadBalancer{ID: "nlb-x", ProjectID: "prj"}},
-		operations.SystemPrincipal())
+		&kachorepo.LoadBalancerRecord{LoadBalancer: domain.LoadBalancer{ID: "nlb-x", ProjectID: "prj"}})
 	require.Equal(t, "NetworkLoadBalancer", intent.Kind)
-	require.Len(t, intent.Tuples, 1)
+	require.Len(t, intent.Tuples, 1, "durable intent carries only proxy-registrable tuples")
 	require.Equal(t, domain.FGARelationProject, intent.Tuples[0].Relation)
 	require.Equal(t, "project:prj", intent.Tuples[0].SubjectID)
-}
-
-// TestLBRegisterIntent_UserPrincipal_ProjectAndCreator — an authenticated
-// user principal yields project-hierarchy + creator (admin) tuples.
-func TestLBRegisterIntent_UserPrincipal_ProjectAndCreator(t *testing.T) {
-	t.Parallel()
-	intent := lbRegisterIntent(
-		&kachorepo.LoadBalancerRecord{LoadBalancer: domain.LoadBalancer{ID: "nlb-x", ProjectID: "prj"}},
-		operations.Principal{Type: "user", ID: "usr-1"})
-	require.Len(t, intent.Tuples, 2)
-	require.Equal(t, "user:usr-1", intent.Tuples[1].SubjectID)
-	require.Equal(t, domain.FGARelationAdmin, intent.Tuples[1].Relation)
-	require.Equal(t, "nlb_network_load_balancer:nlb-x", intent.Tuples[1].Object)
+	require.Equal(t, "nlb_network_load_balancer:nlb-x", intent.Tuples[0].Object)
 }
 
 func TestPeerErrToStatus_ProjectClientCaller(t *testing.T) {

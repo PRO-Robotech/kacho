@@ -4,8 +4,6 @@
 package loadbalancer
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -50,20 +48,25 @@ func lbMovedPayload(id, srcProject, dstProject string) map[string]any {
 	}.Map()
 }
 
-// lbRegisterIntent — FGA-register-intent свежесозданного LB (project-hierarchy +
-// creator-tuple, если principal — аутентифицированный пользователь).
-func lbRegisterIntent(lb *kachorepo.LoadBalancerRecord, principal operations.Principal) domain.FGARegisterIntent {
+// lbRegisterIntent — FGA-register-intent свежесозданного LB (project-hierarchy).
+//
+// A durable intent carries ONLY proxy-registrable tuples. kacho-iam's
+// least-privilege policy accepts {project, account, parent, owner} and reserves
+// privilege relations for the AccessBinding flow, so the creator (`admin`) tuple
+// this used to append was refused on every delivery — and since the
+// register-drainer treats PermissionDenied as transient and short-circuits, its
+// presence kept the row un-sent to MaxAttempts (≈150s), head-of-line-blocking
+// every later intent for this same LB under the partition-head claim on
+// resource_id. Creator access is materialised per-object by IAM's reconciler
+// (flat Contract-A), not by a module-written admin tuple.
+func lbRegisterIntent(lb *kachorepo.LoadBalancerRecord) domain.FGARegisterIntent {
 	id := string(lb.ID)
-	tuples := []domain.FGATuple{
-		domain.FGAProjectTuple(domain.FGAObjectTypeLoadBalancer, id, string(lb.ProjectID)),
-	}
-	if subject := domain.FGASubjectFromPrincipal(principal.Type, principal.ID); subject != "" {
-		tuples = append(tuples, domain.FGACreatorTuple(subject, domain.FGAObjectTypeLoadBalancer, id))
-	}
 	return domain.FGARegisterIntent{
-		Kind:            "NetworkLoadBalancer",
-		ResourceID:      id,
-		Tuples:          tuples,
+		Kind:       "NetworkLoadBalancer",
+		ResourceID: id,
+		Tuples: []domain.FGATuple{
+			domain.FGAProjectTuple(domain.FGAObjectTypeLoadBalancer, id, string(lb.ProjectID)),
+		},
 		Labels:          domain.LabelsToMap(lb.Labels),
 		ParentProjectID: string(lb.ProjectID),
 	}

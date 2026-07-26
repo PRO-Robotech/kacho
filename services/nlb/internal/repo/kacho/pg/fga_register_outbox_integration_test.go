@@ -66,13 +66,16 @@ func TestFGARegisterOutbox_SECD01_CreateIntentInWriterTx(t *testing.T) {
 	const subject = "user:usr-xxxxxxxxxxxxxxxxx"
 	lb := newLB(projectID, "lb-a")
 
-	// project-hierarchy + creator tuple set (nlb writes project + admin@creator).
+	// A two-tuple payload: this exercises the emitter's JSON round-trip for a SET,
+	// independent of what production intents happen to contain today (they carry the
+	// project tuple alone — see lbRegisterIntent).
 	intent := domain.FGARegisterIntent{
 		Kind:       "NetworkLoadBalancer",
 		ResourceID: string(lb.ID),
 		Tuples: []domain.FGATuple{
 			domain.FGAProjectTuple(domain.FGAObjectTypeLoadBalancer, string(lb.ID), projectID),
-			domain.FGACreatorTuple(subject, domain.FGAObjectTypeLoadBalancer, string(lb.ID)),
+			{SubjectID: subject, Relation: domain.FGARelationAdmin,
+				Object: domain.FGAObjectRef(domain.FGAObjectTypeLoadBalancer, string(lb.ID))},
 		},
 	}
 

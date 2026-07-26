@@ -91,7 +91,11 @@ func lbUserIntent() domain.FGARegisterIntent {
 		ParentAccountID: "acc-aaaaaaaaaaaaaaaa",
 		Tuples: []domain.FGATuple{
 			domain.FGAProjectTuple(domain.FGAObjectTypeLoadBalancer, testLBID, testProjID),
-			domain.FGACreatorTuple("user:usr-1", domain.FGAObjectTypeLoadBalancer, testLBID),
+			// A relation the iam proxy refuses (privilege relations belong to the
+			// AccessBinding flow). Production intents no longer emit one — this fixture
+			// keeps exercising the registrar's "do not short-circuit on a rejection".
+			{SubjectID: "user:usr-1", Relation: domain.FGARelationAdmin,
+				Object: domain.FGAObjectRef(domain.FGAObjectTypeLoadBalancer, testLBID)},
 		},
 	}
 }

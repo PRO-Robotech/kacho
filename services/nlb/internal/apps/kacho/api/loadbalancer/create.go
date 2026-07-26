@@ -466,7 +466,7 @@ func (u *CreateLoadBalancerUseCase) doCreate(
 	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
 	// + register-drainer — backstop); Operation.done НЕ гейтится на видимость
 	// owner-tuple (ban #9).
-	u.syncRegister(ctx, lbRegisterIntent(created, principal))
+	u.syncRegister(ctx, lbRegisterIntent(created))
 
 	pb, err := lbRecordToProto(created)
 	if err != nil {
@@ -666,7 +666,7 @@ func (u *CreateLoadBalancerUseCase) finalizeCreate(
 		return nil, err
 	}
 	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		lbRegisterIntent(created, principal)); err != nil {
+		lbRegisterIntent(created)); err != nil {
 		return nil, err
 	}
 	if err := w.Commit(); err != nil {

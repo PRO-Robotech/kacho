@@ -303,8 +303,14 @@ func TestCreate_PeerProject_NotFound(t *testing.T) {
 	require.Contains(t, final.Error.Message, "Project prj-x not found")
 }
 
-// Create writes a fga.register-intent (project-hierarchy + creator) into
-// the writer-tx outbox when the principal is an authenticated user.
+// Create writes a fga.register-intent (project-hierarchy) into the writer-tx
+// outbox. It carries ONLY that tuple even for an authenticated user: the former
+// creator (`admin`) tuple was refused by kacho-iam's least-privilege proxy policy
+// on every delivery (privilege relations belong to the AccessBinding flow), and
+// because the register-drainer classifies PermissionDenied as transient and
+// short-circuits, its presence kept the row un-sent for MaxAttempts (≈150s) —
+// head-of-line-blocking every later intent for the same target group under the
+// partition-head claim on resource_id, including a labels-refresh that revokes.
 func TestCreate_EmitsFGARegisterIntent(t *testing.T) {
 	repo := newFakeRepo()
 	opsRepo := newFakeOpsRepo()
@@ -322,11 +328,9 @@ func TestCreate_EmitsFGARegisterIntent(t *testing.T) {
 	ev := repo.fga[0]
 	require.Equal(t, domain.FGAEventRegister, ev.EventType)
 	require.Equal(t, "TargetGroup", ev.Intent.Kind)
-	require.Len(t, ev.Intent.Tuples, 2, "project-hierarchy + creator")
+	require.Len(t, ev.Intent.Tuples, 1, "durable intent carries only proxy-registrable tuples")
 	require.Equal(t, domain.FGARelationProject, ev.Intent.Tuples[0].Relation)
 	require.Equal(t, "project:prj-fga", ev.Intent.Tuples[0].SubjectID)
-	require.Equal(t, "user:alice", ev.Intent.Tuples[1].SubjectID)
-	require.Equal(t, domain.FGARelationAdmin, ev.Intent.Tuples[1].Relation)
 
 	// (nlb-side): the Create register-intent carries the
 	// tenant labels + parent-project so kacho-iam feeds resource_mirror for the

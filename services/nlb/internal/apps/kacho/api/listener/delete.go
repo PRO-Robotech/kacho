@@ -178,10 +178,11 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
 	}
-	// FGA-unregister-intent (parent-link) in the SAME tx as the Delete —
-	// register-drainer removes the parent-link tuple via IAM.UnregisterResource.
+	// FGA-unregister-intent (project-hierarchy) in the SAME tx as the Delete —
+	// register-drainer retracts the tuple AND the resource_mirror row via
+	// IAM.UnregisterResource, so no grant is re-materialised onto a dead listener.
 	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
-		listenerUnregisterIntent(listenerID, lbID)); err != nil {
+		listenerUnregisterIntent(listenerID, projectID)); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: fga unregister-intent emit: %v", domain.ErrInternal, err))
 	}
 	if err := w.Commit(); err != nil {

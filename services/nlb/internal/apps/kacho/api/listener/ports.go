@@ -63,7 +63,8 @@ const (
 )
 
 // FGA relation strings live in `internal/domain`:
-// `domain.FGARelationAdmin` / `domain.FGARelationLoadBalancer`.
+// `domain.FGARelationAdmin` / `domain.FGARelationLoadBalancer` (named in the model;
+// not emitted in register-intents — the iam proxy refuses both).
 //
 // Acting-subject FGA-id извлекается inline в create.go как в sibling-пакетах
 // (loadbalancer/targetgroup): `domain.FGASubjectFromPrincipal(p.Type, p.ID)` над

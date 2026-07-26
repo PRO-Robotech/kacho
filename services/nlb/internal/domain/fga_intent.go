@@ -35,13 +35,17 @@ const (
 	FGAObjectTypeTargetGroup  = "nlb_target_group"
 )
 
-// FGA relation strings emitted in kacho-nlb tuples.
+// FGA relation strings of the kacho-nlb authorization model.
 //
-// creator relation is "admin" (NOT "owner"): the `nlb_*` model
-// defines only viewer/editor/admin. "admin" is the closest fit for creator
-// semantics (full control). "project" links a resource to its project for the
-// hierarchy cascade; "load_balancer" is the parent-link relation
-// (nlb_network_load_balancer → nlb_listener).
+// ONLY "project" is emitted in a register-intent. kacho-iam's FGA-proxy accepts
+// exactly the ownership/parent relations {project, account, parent, owner}
+// (authzguard.allowedProxyRelations) and reserves privilege relations for the
+// AccessBinding flow — so "admin" (formerly emitted as a creator tuple) and
+// "load_balancer" (formerly emitted as a parent-link) were refused on every
+// delivery and are no longer emitted at all. They remain named here because they
+// are real relations of the model: "admin" is written by the AccessBinding flow,
+// and "load_balancer" is a structural parent-pointer (fga_model.fga documents it
+// as NOT an access cascade — access is materialized per-object by the reconciler).
 const (
 	FGARelationAdmin        = "admin"
 	FGARelationProject      = "project"
@@ -86,7 +90,7 @@ func (t FGATuple) Valid() bool {
 }
 
 // FGARegisterIntent is the full set of owner-hierarchy tuples for one resource
-// (project-hierarchy + optional creator + optional parent-link).:
+// (the project-hierarchy tuple):
 // the whole set is one outbox row → one logical apply unit.
 type FGARegisterIntent struct {
 	// Kind is the resource kind for observability ("NetworkLoadBalancer" /
@@ -155,35 +159,11 @@ func FGAProjectTuple(objectType, objectID, projectID string) FGATuple {
 	}
 }
 
-// FGACreatorTuple builds the creator tuple
-// "<subject> #admin @<objectType>:<objectID>". subject is the FGA subject
-// string (e.g. "user:usr…") of the authenticated principal. An empty subject
-// yields an invalid tuple — callers skip it (system-initiated resources have no
-// human owner; parity with the old EmitCreator skip-on-empty-subject).
-func FGACreatorTuple(subject, objectType, objectID string) FGATuple {
-	return FGATuple{
-		SubjectID: subject,
-		Relation:  FGARelationAdmin,
-		Object:    FGAObjectRef(objectType, objectID),
-	}
-}
-
-// FGAParentLinkTuple builds the parent→child link tuple
-// "<parentType>:<parentID> #<relation> @<childType>:<childID>" (e.g.
-// nlb_network_load_balancer:<lbID> #load_balancer @nlb_listener:<id>).
-func FGAParentLinkTuple(parentType, parentID, relation, childType, childID string) FGATuple {
-	return FGATuple{
-		SubjectID: FGAObjectRef(parentType, parentID),
-		Relation:  relation,
-		Object:    FGAObjectRef(childType, childID),
-	}
-}
-
 // FGASubjectFromPrincipal returns the FGA subject string "<type>:<id>" for an
 // authenticated principal, or "" if the principal is system/unauthenticated (in
-// which case the creator-tuple is skipped). "system" is treated as
-// unauthenticated. Mirrors the former fgawrite.SubjectFromPrincipal so the
-// subject-string format stays in one place.
+// which case the caller has no subject to authorize and skips its Check).
+// "system" is treated as unauthenticated. Mirrors the former
+// fgawrite.SubjectFromPrincipal so the subject-string format stays in one place.
 //
 // Caller passes the principal's type and id (read from
 // operations.PrincipalFromContext at the transport edge) — domain stays free of

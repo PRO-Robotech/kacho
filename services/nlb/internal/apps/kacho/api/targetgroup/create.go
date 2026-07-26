@@ -190,9 +190,9 @@ func (u *CreateTargetGroupUseCase) doCreate(
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
-	// FGA-register-intent (project-hierarchy + creator) in the SAME tx.
+	// FGA-register-intent (project-hierarchy) in the SAME tx.
 	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		tgRegisterIntent(created, principal)); err != nil {
+		tgRegisterIntent(created)); err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if err := w.Commit(); err != nil {
@@ -203,7 +203,7 @@ func (u *CreateTargetGroupUseCase) doCreate(
 	// fga_register_outbox-intent'а): grant создателя виден сразу, закрывая
 	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
 	// + register-drainer — backstop); Operation.done НЕ гейтится (ban #9).
-	u.syncRegister(ctx, tgRegisterIntent(created, principal))
+	u.syncRegister(ctx, tgRegisterIntent(created))
 
 	// 4. Marshal response.
 	return marshalTargetGroup(created)
@@ -246,23 +246,28 @@ func (u *CreateTargetGroupUseCase) assertNameUnique(ctx context.Context, project
 }
 
 // tgRegisterIntent builds the FGA-register-intent for a created
-// TargetGroup: project-hierarchy tuple plus, for an authenticated (non-system)
-// principal, a creator (admin) tuple (skipped on empty subject).
-func tgRegisterIntent(tg *kachorepo.TargetGroupRecord, principal operations.Principal) domain.FGARegisterIntent {
+// TargetGroup: the project-hierarchy tuple, carrying tenant labels +
+// parent-project so kacho-iam feeds its resource_mirror (γ selector matchLabels /
+// containment). source_version is stamped by the outbox emitter from the DB clock
+// inside the writer-tx.
+//
+// A durable intent carries ONLY proxy-registrable tuples. kacho-iam's
+// least-privilege policy accepts {project, account, parent, owner} and reserves
+// privilege relations for the AccessBinding flow, so the creator (`admin`) tuple
+// this used to append was refused on every delivery — and since the
+// register-drainer treats PermissionDenied as transient and short-circuits, its
+// presence kept the row un-sent to MaxAttempts (≈150s), head-of-line-blocking
+// every later intent for this same target group under the partition-head claim on
+// resource_id. Creator access is materialised per-object by IAM's reconciler
+// (flat Contract-A), not by a module-written admin tuple.
+func tgRegisterIntent(tg *kachorepo.TargetGroupRecord) domain.FGARegisterIntent {
 	id := string(tg.ID)
-	tuples := []domain.FGATuple{
-		domain.FGAProjectTuple(domain.FGAObjectTypeTargetGroup, id, string(tg.ProjectID)),
-	}
-	if subject := domain.FGASubjectFromPrincipal(principal.Type, principal.ID); subject != "" {
-		tuples = append(tuples, domain.FGACreatorTuple(subject, domain.FGAObjectTypeTargetGroup, id))
-	}
-	// carry tenant labels + parent-project so kacho-iam feeds its
-	// resource_mirror (γ selector matchLabels / containment). source_version is
-	// stamped by the outbox emitter from the DB clock inside the writer-tx.
 	return domain.FGARegisterIntent{
-		Kind:            "TargetGroup",
-		ResourceID:      id,
-		Tuples:          tuples,
+		Kind:       "TargetGroup",
+		ResourceID: id,
+		Tuples: []domain.FGATuple{
+			domain.FGAProjectTuple(domain.FGAObjectTypeTargetGroup, id, string(tg.ProjectID)),
+		},
 		Labels:          domain.LabelsToMap(tg.Labels),
 		ParentProjectID: string(tg.ProjectID),
 	}
