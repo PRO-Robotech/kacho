@@ -87,10 +87,18 @@ func NewIAMRegisterApplier(c IAMRegisterRPC) drainer.Applier[FGARegisterPayload]
 			})
 			return classifyRegisterErr(err)
 		case fgaregister.EventUnregister:
+			// source_version на unregister — TOMBSTONE, а не «версия состояния». iam
+			// сносит строку зеркала под `source_version <= $tombstone`, поэтому
+			// unregister БЕЗ версии ('-infinity') не матчит версионированную
+			// register-строку: зеркало пережило бы удаление Volume/Snapshot, а
+			// level-triggered реконсайлер продолжал бы ре-материализовать его tuple'ы.
+			// Штамп — из той же outbox-строки (now() внутри writer-tx), т.е. заведомо
+			// не старше отменяемого register'а. Паритет с compute/nlb.
 			_, err := c.UnregisterResource(ctx, &iamv1.UnregisterResourceRequest{
-				SubjectId: p.SubjectID,
-				Relation:  p.Relation,
-				Object:    p.Object,
+				SubjectId:     p.SubjectID,
+				Relation:      p.Relation,
+				Object:        p.Object,
+				SourceVersion: sourceVersionPB(p.SourceVersion),
 			})
 			return classifyRegisterErr(err)
 		default:

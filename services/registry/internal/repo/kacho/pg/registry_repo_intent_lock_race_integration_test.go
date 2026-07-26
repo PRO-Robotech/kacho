@@ -5,11 +5,11 @@
 // intent'ы (RegisterRepository / UnregisterRepository) НЕ имеют registries-строки для
 // row-lock сериализации (source of truth репо = zot). Без явной сериализации две
 // конкурентные register/unregister одного repo-объекта могут закоммититься в порядке,
-// расходящемся с их BIGSERIAL id (source_version) → iam-mirror last-source-state-wins
-// выберет не финально-закоммиченное состояние (dangling authz-объект / непуллимый repo).
+// расходящемся с их source_version → iam-mirror last-source-state-wins выберет не
+// финально-закоммиченное состояние (dangling authz-объект / непуллимый repo).
 // Фикс: pg_advisory_xact_lock(hashtext(resource_id)) в начале emitRepoIntent-tx —
 // concurrent register/unregister ОДНОГО repo-объекта сериализуются (второй ждёт commit
-// первого → получает больший id), а РАЗНЫЕ repo-объекты не блокируют друг друга.
+// первого → получает больший маркер), а РАЗНЫЕ repo-объекты не блокируют друг друга.
 package pg_test
 
 import (

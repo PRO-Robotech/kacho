@@ -18,10 +18,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
@@ -102,10 +104,26 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 		// least-priv fga_writer приходит из mTLS client-cert.
 		ctx = auth.PropagateOutgoing(ctx)
 
-		var apply func(t domain.FGATuple) error
+		// Монотонный source_version, застампленный БД внутри writer-tx (миграция
+		// 0011). На register-пути он делает применение зеркала
+		// last-source-state-wins И даёт kacho-iam положительное доказательство
+		// редоставки: синхронный registrar штампует свою версию уже ПОСЛЕ commit'а,
+		// поэтому эта — заведомо не новее, зеркало не меняется, и iam пропускает
+		// повторную материализацию. На unregister-пути это TOMBSTONE: iam удаляет
+		// строку зеркала под `source_version <= $tombstone`, и unregister без версии
+		// ('-infinity') не смог бы снять версионированную строку. Zero (legacy-строка
+		// до 0011) → nil → '-infinity' → безусловное применение.
+		//
+		// Версия ШАГАЕТ на tuple внутри одной строки: gate ключуется на строке зеркала,
+		// а она — ПО ОБЪЕКТУ, и один intent несёт несколько tuple'ов ОДНОГО объекта
+		// (project-hierarchy + creator-owner). С одинаковой версией второй вызов
+		// зеркало не меняет и неотличим от редоставки — gate проглотил бы вместе с ним
+		// и постановку owner-tuple. Шаг микросекундный, поэтому строка целиком
+		// по-прежнему проигрывает синхронной доставке и гейтится как редоставка.
+		var apply func(t domain.FGATuple, seq int) error
 		switch eventType {
 		case domain.FGAEventRegister:
-			apply = func(t domain.FGATuple) error {
+			apply = func(t domain.FGATuple, seq int) error {
 				_, err := cli.RegisterResource(ctx, &iamv1.RegisterResourceRequest{
 					SubjectId:       t.SubjectID,
 					Relation:        t.Relation,
@@ -113,11 +131,12 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 					TraceId:         intent.ResourceID,
 					Labels:          intent.Labels,
 					ParentProjectId: intent.ParentProjectID,
+					SourceVersion:   stepSourceVersion(intent.SourceVersion.Time, seq),
 				})
 				return err
 			}
 		case domain.FGAEventUnregister:
-			apply = func(t domain.FGATuple) error {
+			apply = func(t domain.FGATuple, seq int) error {
 				_, err := cli.UnregisterResource(ctx, &iamv1.UnregisterResourceRequest{
 					SubjectId:       t.SubjectID,
 					Relation:        t.Relation,
@@ -125,6 +144,7 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 					TraceId:         intent.ResourceID,
 					Labels:          intent.Labels,
 					ParentProjectId: intent.ParentProjectID,
+					SourceVersion:   stepSourceVersion(intent.SourceVersion.Time, seq),
 				})
 				return err
 			}
@@ -136,8 +156,8 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 		// реальную работу (nil-ответ). Стартовое true покрывает пустой набор (decoder
 		// такой уже отсеял как poison, но keep-honest на случай прямого вызова).
 		allAlreadyApplied := true
-		for _, t := range intent.Tuples {
-			switch cerr := classifyRegisterErr(apply(t)); {
+		for seq, t := range intent.Tuples {
+			switch cerr := classifyRegisterErr(apply(t, seq)); {
 			case cerr == nil:
 				allAlreadyApplied = false
 			case errors.Is(cerr, drainer.ErrAlreadyApplied):
@@ -153,6 +173,24 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 		}
 		return nil
 	}
+}
+
+// sourceVersionStep — шаг версии между tuple'ами ОДНОЙ доставки. Ровно микросекунда:
+// это разрешение timestamptz, в котором kacho-iam хранит маркер, — меньший шаг
+// схлопнулся бы при записи, больший без нужды съедал бы зазор до версии следующей
+// мутации.
+const sourceVersionStep = time.Microsecond
+
+// stepSourceVersion — версия seq-го tuple доставки, стартующей с base. Нулевой base
+// (версии нет — строка, поставленная в очередь до миграции 0011, где лежал BIGSERIAL)
+// остаётся nil на ВСЕХ tuple'ах: kacho-iam трактует nil как '-infinity', а gate
+// редоставки при отсутствии версии обязан открыться в сторону работы для ВСЕГО набора,
+// а не для его части.
+func stepSourceVersion(base time.Time, seq int) *timestamppb.Timestamp {
+	if base.IsZero() {
+		return nil
+	}
+	return timestamppb.New(base.Add(time.Duration(seq) * sourceVersionStep))
 }
 
 // classifyRegisterErr мапит gRPC-ответ RegisterResource/UnregisterResource на

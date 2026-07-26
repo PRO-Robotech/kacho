@@ -241,10 +241,10 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 		// текущую ACTIVE-строку; mirror по-прежнему re-register'ит labels. FOR UPDATE
 		// берёт тот же row-lock, что и SET-ветка (UPDATE ... WHERE), поэтому outbox-
 		// INSERT этой ветки сериализуется с конкурентными реальными UPDATE того же
-		// реестра — source_version (BIGSERIAL id) остаётся commit-order-monotonic и
-		// mirror не откатывает label-scope к устаревшему снапшоту (MVCC-reader без
-		// FOR UPDATE не блокируется на writer-row-lock и мог бы получить больший id при
-		// stale labels). Ветка ныне недостижима через use-case, но FOR UPDATE закрывает
+		// реестра — source_version (clock_timestamp() на INSERT'е) остаётся
+		// commit-order-monotonic и mirror не откатывает label-scope к устаревшему
+		// снапшоту (MVCC-reader без FOR UPDATE не блокируется на writer-row-lock и мог бы
+		// получить больший маркер при stale labels). Ветка ныне недостижима через use-case, но FOR UPDATE закрывает
 		// её как foot-gun для любого прямого/будущего caller'а с пустым Apply-набором.
 		q := fmt.Sprintf(`SELECT %s FROM %s.registries WHERE id = $1 AND status = 'ACTIVE' FOR UPDATE`,
 			registryColumns, schema)
@@ -337,14 +337,14 @@ func (r *RegistryRepo) UnregisterRepository(ctx context.Context, intent domain.R
 //
 // В отличие от registry-scoped мутаций (Insert/Update/Delete сериализуются row-lock'ом
 // на registries — воркер, закоммитивший позже, обязательно выполнил outbox-INSERT позже
-// и получил больший BIGSERIAL source_version), у repo-объекта НЕТ registries-строки для
+// и получил больший source_version), у repo-объекта НЕТ registries-строки для
 // row-lock (source of truth репо = zot). Без явной сериализации две конкурентные
 // register/unregister ОДНОГО repo-объекта могли бы закоммититься в порядке, расходящемся
 // с их source_version → iam-mirror last-source-state-wins выбрал бы не финально-
 // закоммиченное состояние (dangling authz-объект / непуллимый свежий repo). Поэтому берём
 // per-repo pg_advisory_xact_lock(hashtext(resource_id)) ПЕРЕД outbox-INSERT: concurrent
 // intent'ы одного repo-объекта сериализуются (второй ждёт commit первого → получает
-// больший id), а разные repo-объекты друг друга не блокируют. Lock — xact-scoped,
+// больший маркер), а разные repo-объекты друг друга не блокируют. Lock — xact-scoped,
 // снимается на commit/rollback.
 func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, intent domain.RegisterIntent) error {
 	if err := r.ready(); err != nil {
@@ -396,10 +396,15 @@ func scanRegistry(row pgx.Row) (*domain.Registry, error) {
 }
 
 // emitFGAIntent пишет register/unregister intent в registry_outbox в текущей tx.
-// source_version штампуется BEFORE INSERT триггером как BIGSERIAL id самой строки
-// (миграция 0002) — commit-order-monotonic per-object маркер: воркер, закоммитивший
-// позже, получил больший id (его INSERT выполнился позже под row-lock сериализацией),
-// поэтому last-source-state-wins в iam-mirror корректен. Пустой набор tuple → no-op.
+// source_version штампуется BEFORE INSERT триггером как clock_timestamp() (миграция
+// 0011, ранее — BIGSERIAL id строки) — commit-order-monotonic per-object маркер:
+// воркер, закоммитивший позже, получил больший маркер (его INSERT выполнился позже под
+// row-lock сериализацией, а clock_timestamp() читает часы именно на INSERT'е, в отличие
+// от now()==transaction_timestamp), поэтому last-source-state-wins в iam-mirror
+// корректен. Шкала — время, а не sequence, потому что тот же маркер обязан быть сравним
+// с версией, которую синхронный registrar штампует после commit'а (у него нет
+// outbox-id), и потому что iam хранит его как timestamptz. Значение SourceVersion,
+// приехавшее из Go, триггер ПЕРЕЗАПИСЫВАЕТ. Пустой набор tuple → no-op.
 func emitFGAIntent(ctx context.Context, tx pgx.Tx, eventType string, intent domain.RegisterIntent) error {
 	if len(intent.Tuples) == 0 {
 		return nil

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // FGA-register-intent — чистые domain-value-типы transactional-outbox owner-tuple
@@ -123,6 +124,39 @@ func (t FGATuple) Valid() bool {
 	return t.SubjectID != "" && t.Relation != "" && t.Object != ""
 }
 
+// SourceVersion — монотонный per-object маркер регистрации, общий для ОБОИХ путей её
+// доставки в kacho-iam: BEFORE-INSERT-триггер registry_outbox штампует его
+// clock_timestamp()'ом внутри writer-tx (миграция 0011), а синхронный registrar
+// штампует wall-clock уже после commit'а — то есть строго не раньше. iam применяет
+// зеркало last-source-state-wins (`source_version < EXCLUDED.source_version`), поэтому
+// вторая доставка одной и той же регистрации не меняет ни одной строки, и iam по этому
+// признаку опознаёт редоставку и пропускает повторную материализацию. Повторная
+// регистрация (в т.ч. «выдать → отозвать → выдать») этим схлопнуться не может: каждая
+// несёт строго более новую версию, а снятие регистрации удаляет строку зеркала целиком.
+//
+// Собственный UnmarshalJSON нужен ради строк, поставленных в очередь ДО миграции 0011:
+// триггер штамповал туда BIGSERIAL id строки, то есть JSON-ЧИСЛО. Ошибка декода
+// классифицировалась бы drainer'ом как ErrPermanent и ОТРАВИЛА бы durable-строку,
+// потеряв owner-tuple. Число читается как «версии нет» (zero) → на проводе nil → iam
+// '-infinity' → безусловное применение, ровно прежнее поведение.
+type SourceVersion struct {
+	time.Time
+}
+
+// UnmarshalJSON принимает RFC3339-строку (текущий формат) и молча вырождает в zero
+// любое НЕ-строковое значение (legacy BIGSERIAL до миграции 0011) — см. тип.
+func (v *SourceVersion) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	if s == "" || s == "null" {
+		return nil
+	}
+	if s[0] != '"' {
+		v.Time = time.Time{}
+		return nil
+	}
+	return v.Time.UnmarshalJSON(b)
+}
+
 // RegisterIntent — полный набор owner-hierarchy tuple'ов одного реестра
 // (project-hierarchy + creator). Весь набор — одна outbox-строка = одна логическая
 // единица apply. Несёт labels + parent-project для output-only resource_mirror в
@@ -140,6 +174,13 @@ type RegisterIntent struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// ParentProjectID — owning-project (containment scope в iam-mirror).
 	ParentProjectID string `json:"parent_project_id,omitempty"`
+	// SourceVersion — монотонный per-object маркер. На write-пути значение,
+	// сериализованное здесь, ПЕРЕЗАПИСЫВАЕТСЯ BEFORE-INSERT-триггером
+	// registry_outbox (clock_timestamp() внутри writer-tx, миграция 0011) — Go его не
+	// проставляет. Читается на read-пути: applier прокидывает его в
+	// RegisterResource/UnregisterResource. Синхронный registrar штампует свою версию
+	// сам (после commit'а), в это поле не заглядывая.
+	SourceVersion SourceVersion `json:"source_version,omitempty"`
 }
 
 // Marshal сериализует intent в JSONB-payload registry_outbox.payload.

@@ -3,9 +3,9 @@
 
 // registry_update_emptyset_lock_integration_test.go — ветка Update с пустым набором
 // применяемых полей (все Apply* == false) обязана брать row-lock (SELECT ... FOR UPDATE),
-// а не unlocked MVCC-SELECT: иначе её outbox-INSERT (source_version = BIGSERIAL id) мог бы
-// получить больший id при stale-снапшоте labels конкурентного реального UPDATE → mirror
-// last-source-state-wins откатил бы label-scope.
+// а не unlocked MVCC-SELECT: иначе её outbox-INSERT (source_version = clock_timestamp()
+// на INSERT'е) мог бы получить больший маркер при stale-снапшоте labels конкурентного
+// реального UPDATE → mirror last-source-state-wins откатил бы label-scope.
 package pg_test
 
 import (
