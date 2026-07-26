@@ -30,12 +30,18 @@ The sensitive-41 (categories A–H): 4 credential (UserToken/SAKey Issue+Revoke)
 
 ## Enforcement & fail-safe
 
-Two runtime readers of the SAME catalog value: the public gateway `StepUpGate.Check` (RFC 9470 `401` + `WWW-Authenticate: acr_values`) and the iam internal `authzguard.ACRFloor` (:9091, gateway-fronted internal RPCs → `PERMISSION_DENIED` + step-up detail). They use **two separate, functionally-identical ranking tables** (`middleware.acrRank` vs `grpcsrv.ACRRank`), NOT a shared function — parity is locked by a verdict-parity test over the full `{presented}×{required}` matrix (`SEC-ACR-16`), so they cannot drift.
+Two enforcement points, **one implementation**: the public gateway `StepUpGate.Check` (RFC 9470 `401` + `WWW-Authenticate: acr_values`) and the iam internal `authzguard.ACRFloor` (:9091, gateway-fronted internal RPCs → `PERMISSION_DENIED` + step-up detail) both call `grpcsrv.EvaluateStepUp`, which owns the ACR ranking, the MFA-freshness window and the machine-principal exemption. Neither point re-derives any arm of it.
+
+It has to live under `pkg/` because `gateway/internal/...` and `services/iam/internal/...` cannot import each other; `grpcsrv` specifically, because it already owns every input of the decision (`ACRRank`/`ACRSatisfies`, `TrustedACRFromContext`/`TrustedPrincipalFromContext`, `MDKeyTokenACR`/`MDKeyPrincipalType`).
+
+Each point carries a verdict-parity guard pinning its REAL entrypoint to the shared rule over `{principal type}×{presented}×{required}` (+ freshness on the public side): `gateway/internal/middleware/stepup_verdict_parity_test.go` and `services/iam/internal/authzguard/acr_floor_stepup_parity_test.go`. Equality with a common reference gives equality with each other.
+
+> Superseded design: the halves previously kept **two separate ranking tables** (`middleware.acrRank` vs `grpcsrv.ACRRank`) with parity asserted only over `{presented}×{required}`. That guard built a non-machine token, so it never walked the one axis on which the halves actually disagreed — the gateway exempted machine principals and the iam floor did not, permanently denying service accounts on the acr-gated credential/grant RPCs. Machine rows are now mandatory in both guards.
 
 **Fail-safe is layered, and scoped to non-exempt RPC:**
 - The generator injects an explicit `required_acr_min="2"` for every **non-exempt** un-annotated RPC at gen-time (so a new non-exempt privileged RPC fails closed by default). Downgrade to routine is an **explicit `"1"`**, never deletion of the entry.
 - Catalog **completeness** (`"no entry for method" → AUTHZ_DENIED`) is the backstop for genuinely un-cataloged methods.
-- The step-up layer itself **fails open** on an empty `RequiredACRMin` (`if req.RequiredACRMin != ""` guard) — this is intentional; the two layers above provide net fail-closed for non-exempt RPC.
+- The step-up layer itself **fails open** on an empty `RequiredACRMin` (`grpcsrv.ACRSatisfies` treats `""`/`"0"` as no floor) — this is intentional; the two layers above provide net fail-closed for non-exempt RPC.
 - **Exempt carve-out:** an exempt un-annotated RPC gets an EMPTY acr (the generator's exempt short-circuit returns before default-injection), so neither backstop fires for it — it relies on authN + in-handler ReBAC + the deliberate FGA-exempt posture. **Adding a new exempt RPC is a high-scrutiny action** (see AccessBindingService/Create for the explicit-acr pattern).
 
 ## Out of scope (unchanged)

@@ -327,6 +327,28 @@ func WithTrustedACR(ctx context.Context, acr string, trusted bool) context.Conte
 	return context.WithValue(ctx, trustedPrincipalCtxKey{}, tp)
 }
 
+// WithTrustedPrincipal stores a forwarded principal and the trust flag directly
+// in ctx (bypassing the metadata extract) — the principal-side mirror of
+// WithTrustedACR, exposed for the same reason: so the iam floors and their tests
+// can drive a machine-vs-user caller deterministically without a live mTLS peer.
+// It keeps any acr already recorded on the carrier and overwrites the principal
+// and the trust flag.
+//
+// Note the asymmetry it preserves from the real extract path: on an untrusted
+// peer the forwarded PRINCIPAL is still recorded (only `trusted` goes false),
+// whereas the acr is scrubbed. Consumers must therefore consult the trusted flag
+// before believing the principal type — a forged `service_account` from an
+// unverified peer must never buy the step-up exemption.
+func WithTrustedPrincipal(ctx context.Context, p operations.Principal, trusted bool) context.Context {
+	tp := trustedPrincipal{principal: operations.SystemPrincipal()}
+	if v, ok := ctx.Value(trustedPrincipalCtxKey{}).(trustedPrincipal); ok {
+		tp = v
+	}
+	tp.principal = p
+	tp.trusted = trusted
+	return context.WithValue(ctx, trustedPrincipalCtxKey{}, tp)
+}
+
 // TrustedACRFromContext returns the forwarded JWT `acr` and whether it is trusted
 // under the trust invariant. trusted=false means the acr came from an unverified
 // peer on an mTLS listener (or no acr was carried) and an acr-floor must treat it
