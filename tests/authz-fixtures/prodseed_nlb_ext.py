@@ -20,6 +20,7 @@ subnet is a second zonal subnet in the same region.
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
@@ -31,8 +32,11 @@ pm.boot = m.mint_bootstrap()   # fresh bootstrap (cached one may be expired)
 boot = pm.boot
 RID = pm.RID
 
-proj = MATRIX["projectA1Id"]
-proj_cross = MATRIX["projectA2Id"]
+# The suite project is handed down by prodseed_all.py (PRODSEED_PROJECT_ID) so the
+# resources land in the SAME project the suite env points at; standalone runs
+# (prodrun.sh) fall back to the matrix home project.
+proj = os.environ.get("PRODSEED_PROJECT_ID") or MATRIX["projectA1Id"]
+proj_cross = os.environ.get("PRODSEED_PROJECT_CROSS_ID") or MATRIX["projectA2Id"]
 region = MATRIX["existingRegionId"]
 region_alt = MATRIX["existingRegionAltId"]
 zone_a = MATRIX["existingZoneId"]       # ru-central1-a

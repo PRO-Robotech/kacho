@@ -54,6 +54,32 @@ CLUSTER_ADMIN_WAIT_SECS="${CLUSTER_ADMIN_WAIT_SECS:-180}"
 # (PEM client-cert/key, принимаемые ClientCAFiles internal-листенера) — тогда grpcurl
 # идёт mTLS. -insecure пропускает проверку server-SAN (порт-форвард меняет hostname),
 # client-cert всё равно предъявляется.
+#
+# SELF-PROVISIONING (not just "if the caller passed one"): kacho-iam's internal listener
+# requires a verified client certificate in EVERY posture — security.md is explicit that
+# :9091 is NOT exempt and that «internal = trusted» is a forbidden assumption. A seed
+# that only carries a cert when its driver happened to export one works from
+# newman-parallel.sh and fails from a bare `bash setup.sh`, and the failure looks like an
+# authz problem rather than a missing credential. So: pull the leaf the cluster already
+# issued (api-gateway-client-tls — the identity iam admits for the ordinary internal
+# RPCs; the bootstrap-token MINT deliberately does NOT accept it) into a 0600 file under
+# /tmp. Never generated, never written into the repo, re-extracted every run because
+# cert-manager regenerates the internal CA on a fresh dev-up and a stale leaf is signed
+# by the OLD CA (a permanent handshake failure that a retry only repeats).
+IAM_MTLS_DIR="${IAM_MTLS_CERT_DIR:-/tmp/iam-mtls}"
+if [ -z "${IAM_INTERNAL_GRPC_MTLS_CERT:-}" ] && [ -z "${IAM_INTERNAL_GRPC_MTLS_KEY:-}" ] \
+   && command -v kubectl >/dev/null 2>&1 \
+   && kubectl -n "${SETUP_NS:-kacho}" get secret api-gateway-client-tls >/dev/null 2>&1; then
+  mkdir -p "$IAM_MTLS_DIR"
+  if kubectl -n "${SETUP_NS:-kacho}" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.crt" \
+     && kubectl -n "${SETUP_NS:-kacho}" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' 2>/dev/null | base64 -d > "$IAM_MTLS_DIR/client.key" \
+     && [ -s "$IAM_MTLS_DIR/client.crt" ] && [ -s "$IAM_MTLS_DIR/client.key" ]; then
+    chmod 600 "$IAM_MTLS_DIR/client.crt" "$IAM_MTLS_DIR/client.key"
+    IAM_INTERNAL_GRPC_MTLS_CERT="$IAM_MTLS_DIR/client.crt"
+    IAM_INTERNAL_GRPC_MTLS_KEY="$IAM_MTLS_DIR/client.key"
+  fi
+fi
+
 GRPCURL_TLS="-plaintext"
 if [ -n "${IAM_INTERNAL_GRPC_MTLS_CERT:-}" ] && [ -n "${IAM_INTERNAL_GRPC_MTLS_KEY:-}" ]; then
   GRPCURL_TLS="-insecure -cert ${IAM_INTERNAL_GRPC_MTLS_CERT} -key ${IAM_INTERNAL_GRPC_MTLS_KEY}"
@@ -69,6 +95,88 @@ mkdir -p "$OUT_DIR"
 
 log() { echo "[setup] $*" >&2; }
 vrun() { if [ "$VERBOSE" = "true" ]; then echo "+ $*" >&2; fi; "$@"; }
+
+# ── POSTURE GATE ────────────────────────────────────────────────────────────
+#
+# Everything BELOW this gate forges its own credentials: setup-jwt.py mints HS256
+# Bearers from the shared dev secret, and the grpcurl calls to kacho-iam :9091 rely on
+# the caller having supplied a client certificate. Both are properties of a stand
+# running `authn.mode=dev`.
+#
+# On a stand in PRODUCTION posture the gateway carries an EMPTY `authn.devSecret` and
+# accepts only Hydra-signed RS256, so every one of those Bearers is inert — this script
+# died on step 3 (Account.Create → 401 «token validation failed») and the seven green
+# suites were then evidence about a mode we do not ship. security.md §«Production-mode
+# обязателен ВЕЗДЕ» settles what to do: the harness authenticates with asymmetric
+# signatures obtained THROUGH iam, and the harness is what gets fixed — never the stand.
+#
+# So: detect the posture the LIVE gateway process reports, and on production hand the
+# whole seed to prodseed_all.py, which mints through iam
+# (MintBootstrapToken → SAKeyService.Issue → OAuth2 client_credentials).
+#
+# Detection reads the ONE line the process itself logs after its boot-guards
+# (`msg="boot security posture"`, pkg/observability/bootposture.go) — the same
+# observable deploy/scripts/assert-production-posture.sh grades on. Deliberately NOT the
+# ConfigMap/values: security knobs arrive via `envFrom` and are read once at start, so a
+# stored value can say `production` while the running process is still `dev` (the
+# 2026-07-25 storage incident). A pod that never rolled reports its OLD posture — which
+# is exactly the truth we want to seed against.
+#
+# SEED_POSTURE=dev|production forces it (CI without cluster read access, or a deliberate
+# rehearsal). `auto` (default) asks the stand.
+SETUP_NS="${SETUP_NS:-kacho}"
+SEED_POSTURE="${SEED_POSTURE:-auto}"
+
+gateway_boot_auth_mode() {
+  command -v kubectl >/dev/null 2>&1 || return 1
+  local pod
+  pod=$(kubectl -n "$SETUP_NS" get pods -o name 2>/dev/null | grep -m1 '^pod/api-gateway-' | cut -d/ -f2)
+  [ -n "$pod" ] || return 1
+  kubectl -n "$SETUP_NS" logs "$pod" 2>/dev/null | python3 -c '
+import json, sys
+for line in sys.stdin:
+    line = line.strip()
+    if "boot security posture" not in line:
+        continue
+    try:
+        d = json.loads(line)
+    except ValueError:
+        continue
+    if d.get("msg") == "boot security posture":
+        print(d.get("auth_mode", ""))
+        break
+'
+}
+
+if [ "$SEED_POSTURE" = "auto" ]; then
+  GW_AUTH_MODE="$(gateway_boot_auth_mode || true)"
+  case "$GW_AUTH_MODE" in
+    production|production-strict) SEED_POSTURE="production" ;;
+    dev)                          SEED_POSTURE="dev" ;;
+    *)
+      # Fail-closed on ambiguity would block dev; fail-DEV would silently forge tokens
+      # against a production stand and report the 401 as a product bug. Neither is
+      # acceptable silently, so say exactly what is unknown and stop.
+      echo "[setup] FATAL: cannot read the api-gateway boot posture (auth_mode='${GW_AUTH_MODE:-<none>}')." >&2
+      echo "[setup]        The seed must know whether to mint HS256 (dev) or go through iam (production)." >&2
+      echo "[setup]        Check kubectl access to ns/$SETUP_NS, or set SEED_POSTURE=dev|production." >&2
+      exit 1
+      ;;
+  esac
+  log "posture: $SEED_POSTURE (api-gateway reports auth_mode=$GW_AUTH_MODE)"
+else
+  log "posture: $SEED_POSTURE (forced via SEED_POSTURE)"
+fi
+
+# Record the posture this seed ran in. Drivers branch on it (deploy/scripts/
+# newman-parallel.sh) instead of re-deriving it, so there is ONE detector and the fixture
+# set can never be interpreted under the wrong posture.
+echo "$SEED_POSTURE" > "$OUT_DIR/seed-posture"
+
+if [ "$SEED_POSTURE" = "production" ]; then
+  log "delegating to prodseed_all.py — tokens issued BY iam, none minted here"
+  exec python3 "$SCRIPT_DIR/prodseed_all.py"
+fi
 
 # 0) Optional OpenFGA store-tuple reset (KAC-127 RC-1b).
 #

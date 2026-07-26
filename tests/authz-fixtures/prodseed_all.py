@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+"""Production-posture seed for EVERY newman suite — the counterpart of setup.sh.
+
+`setup.sh` seeds a stand whose api-gateway runs `authn.mode=dev`: it forges HS256
+Bearers from the shared dev secret and hands one to each matrix subject. On a stand in
+PRODUCTION posture that is inert by design — `authn.devSecret` is empty, the gateway
+accepts only Hydra-signed RS256, and iam's internal listener demands a verified client
+certificate. setup.sh therefore dies on its third step (Account.Create → 401) and the
+whole regression suite proves nothing about the posture we actually ship.
+
+This module is the production path setup.sh delegates to. Nothing is forged here:
+
+  * the admin Bearer comes from iam `InternalBootstrapTokenService.MintBootstrapToken`,
+    reached by a direct mTLS gRPC dial to kacho-iam :9091 with the dedicated
+    bootstrap-operator client certificate (the mint has no REST route, and the caller's
+    SPIFFE SAN IS the credential);
+  * every subject Bearer comes from iam `SAKeyService.Issue` — iam provisions the Hydra
+    OAuth client and returns an ES256 private key ONCE; we sign a private_key_jwt
+    `client_assertion` with it and run the standard OAuth2 client_credentials exchange.
+    That last hop is the one sanctioned direct-Hydra call (RFC 7521/7523 client flow);
+    issuance, client lifecycle and JWKS all stay behind the iam facade.
+
+WHY EVERY SUBJECT IS A ServiceAccount, not a User. Two independent product facts, both
+verified in the tree rather than assumed:
+  1. `IssueUserTokenUseCase.resolveAudience` takes NO caller audience — it always emits
+     the kacho-internal `<prefix>/user/<id>`, which can never equal the gateway's
+     ExpectedAudience (`https://<APIDomain>`);
+  2. a client_credentials token carries no `acr`, and 292 of the 357 catalogued RPCs
+     declare `required_acr_min` ≥ 1. `StepUpGate.Check` exempts principals whose
+     `kacho_principal_type` is exactly `service_account` and NEVER a user.
+A human User principal with an `acr` requires the interactive Kratos→Hydra login, which
+a machine harness cannot drive. So each matrix slot is backed by a ServiceAccount
+carrying the exact bindings that slot assumes — the FGA relation resolved is identical,
+only the principal class differs.
+
+Deliberately NOT minted (left at whatever the env already carries, so their cases fail
+loudly instead of being faked): `jwtAccountAdminAStepUp` and the static `apiToken*`
+family. Those need a real step-up/interactive credential — see the report.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+HERE = pathlib.Path(__file__).resolve().parent
+REPO = HERE.parent.parent
+sys.path.insert(0, str(HERE))
+
+# Suites whose newman env this seed patches. Order is irrelevant (each patch is a
+# key-merge into its own file). Kept in step with deploy/scripts/newman-parallel.sh's
+# SERVICES list — a suite missing here silently keeps its committed placeholder tokens
+# and reds wholesale under production authN.
+ALL_SERVICES = ("iam", "vpc", "compute", "nlb", "storage", "registry", "geo", "api-gateway")
+
+NS = os.environ.get("KACHO_NAMESPACE", os.environ.get("SETUP_NS", "kacho"))
+HYDRA_PF_PORT = int(os.environ.get("HYDRA_PUBLIC_PORT", "14444"))
+HYDRA_SVC = os.environ.get("HYDRA_PUBLIC_SVC", "kacho-umbrella-hydra-public")
+
+
+def log(msg: str) -> None:
+    print(f"[prodseed] {msg}", file=sys.stderr, flush=True)
+
+
+# ── prerequisites: client certificates + the Hydra token-endpoint forward ────
+def ensure_certs() -> None:
+    """Provision BOTH client identities the seed needs on the internal port.
+
+    kacho-iam :9091 requires a verified client certificate in EVERY posture
+    (security.md: «Internal (:9091) НЕ освобождён»), so a seed that dials it must carry
+    one. Two DISTINCT leaves, deliberately not interchangeable:
+
+      * `kacho-bootstrap-operator-client-tls` — the ONLY SAN iam allow-lists for
+        MintBootstrapToken. The gateway identity is deliberately excluded: the gateway
+        fronts tenant traffic, so "is the api-gateway" must never be a licence to mint
+        a cluster admin.
+      * `api-gateway-client-tls` — the identity for the ordinary internal RPCs the seed
+        drives (InternalUserService.UpsertFromIdentity, InternalIAMService.LookupSubject).
+
+    Material is copied out of the cluster's own Secrets to 0600 files under /tmp for the
+    duration of the run. Nothing is generated, nothing is written into the repository,
+    and both are re-extracted every run: cert-manager regenerates the internal CA on a
+    fresh `dev-up`, so a leaf left over from a previous stand is signed by the OLD CA and
+    the handshake fails permanently (a retry only repeats it).
+    """
+    import mint_rs256 as m
+
+    ok_op = m.ensure_client_cert(m.BOOTSTRAP_OPERATOR_SECRET,
+                                 m.BOOTSTRAP_MINT_MTLS_CERT, m.BOOTSTRAP_MINT_MTLS_KEY,
+                                 namespace=NS)
+    ok_gw = m.ensure_client_cert(m.GATEWAY_CLIENT_SECRET,
+                                 m.IAM_INTERNAL_MTLS_CERT, m.IAM_INTERNAL_MTLS_KEY,
+                                 namespace=NS)
+    if not ok_op:
+        raise SystemExit(
+            f"[prodseed] FATAL: no bootstrap-operator client certificate. MintBootstrapToken "
+            f"is gated on the caller's certificate; expected secret "
+            f"'{m.BOOTSTRAP_OPERATOR_SECRET}' in ns/{NS} (the umbrella issues it when "
+            f"mtls.bootstrapOperator is enabled) or BOOTSTRAP_MINT_MTLS_CERT/_KEY pointing "
+            f"at pre-extracted material.")
+    if not ok_gw:
+        raise SystemExit(
+            f"[prodseed] FATAL: no client certificate for kacho-iam :9091. Expected secret "
+            f"'{m.GATEWAY_CLIENT_SECRET}' in ns/{NS} or IAM_INTERNAL_GRPC_MTLS_CERT/_KEY.")
+    log(f"client certs ready: operator={m.BOOTSTRAP_MINT_MTLS_CERT} gateway={m.IAM_INTERNAL_MTLS_CERT}")
+
+
+def _hydra_serves(port: int) -> bool:
+    """Does Hydra actually ANSWER on this port — not merely: is the port bound?
+
+    A `kubectl port-forward` left over from before a rollout keeps its listening socket
+    but its backend connection is gone: `connect()` succeeds and the first request dies
+    `[Errno 111] Connection refused`. A TCP-level probe calls that healthy and the seed
+    then fails 8 minutes later, mid-token-exchange, looking like an auth defect (observed
+    exactly once, right after the production helm upgrade re-rolled Hydra). Ask the
+    endpoint a question instead: the discovery document is unauthenticated and cheap.
+    """
+    try:
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/.well-known/openid-configuration", timeout=3) as r:
+            return r.status == 200
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def ensure_hydra_forward() -> subprocess.Popen | None:
+    """Make Hydra's public token endpoint reachable for the client_credentials exchange.
+
+    Hydra public is a ClusterIP Service with no ingress route on this stand, so the final
+    OAuth2 hop needs a forward. Idempotent: a forward that genuinely serves is reused and
+    None is returned, so the caller never kills a forward it does not own.
+    """
+    if _hydra_serves(HYDRA_PF_PORT):
+        log(f"hydra token endpoint answers on :{HYDRA_PF_PORT} (reusing existing forward)")
+        return None
+    if not shutil.which("kubectl"):
+        raise SystemExit("[prodseed] FATAL: kubectl not found and Hydra public is not forwarded")
+    if _port_is_bound(HYDRA_PF_PORT):
+        raise SystemExit(
+            f"[prodseed] FATAL: :{HYDRA_PF_PORT} is bound but Hydra does not answer on it — "
+            f"a stale port-forward (its backend pod was re-rolled). Kill it and re-run; a "
+            f"seed started against it dies mid token-exchange and reads like an auth defect.")
+    log(f"port-forward {HYDRA_SVC} :{HYDRA_PF_PORT} → 4444")
+    proc = subprocess.Popen(
+        ["kubectl", "-n", NS, "port-forward", f"svc/{HYDRA_SVC}", f"{HYDRA_PF_PORT}:4444"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(40):
+        if _hydra_serves(HYDRA_PF_PORT):
+            return proc
+        time.sleep(0.5)
+    proc.terminate()
+    raise SystemExit(f"[prodseed] FATAL: Hydra did not answer on :{HYDRA_PF_PORT}")
+
+
+def _port_is_bound(port: int) -> bool:
+    with socket.socket() as s:
+        s.settimeout(1.0)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+# ── env patching ────────────────────────────────────────────────────────────
+def env_path(svc: str) -> pathlib.Path:
+    # The gateway's own suite does not live under services/ — mirrors suite_dir() in
+    # deploy/scripts/newman-parallel.sh.
+    root = REPO / "gateway" if svc == "api-gateway" else REPO / "services" / svc
+    return root / "tests" / "newman" / "environments" / "local.postman_environment.json"
+
+
+def patch(fixtures: dict, paths: list[pathlib.Path]) -> None:
+    """Merge fixtures into newman envs, DROPPING empty values.
+
+    An empty value means a sub-seed did not produce its id. Writing it would blank a
+    committed placeholder and turn a partial seed into a suite-wide cascade of
+    "invalid resource id" — the failure then reads like a product bug.
+    """
+    nonempty = {k: v for k, v in fixtures.items() if v not in (None, "")}
+    dropped = sorted(set(fixtures) - set(nonempty))
+    if dropped:
+        log(f"    not emitted (left as-is in env): {', '.join(dropped)}")
+    tmp = HERE / "out" / "_patch.json"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_text(json.dumps(nonempty, indent=2))
+    subprocess.run([sys.executable, str(HERE / "patch-env.py"), str(tmp),
+                    *[str(p) for p in paths if p.exists()]], check=True)
+
+
+# ── per-service extension seeders ───────────────────────────────────────────
+def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
+    """Run tests/authz-fixtures/prodseed_<svc>_ext.py, if one exists.
+
+    The extension seeders provision resource dependencies and object-scope FGA tuples
+    the public AccessBinding API cannot express. They read /tmp/matrix.json for the base
+    matrix and honour PRODSEED_PROJECT_ID / PRODSEED_PROJECT_CROSS_ID so their resources
+    land in the SAME project the suite env points at.
+    """
+    ext = HERE / f"prodseed_{svc}_ext.py"
+    if not ext.exists():
+        return {}
+    log(f"    extension seeder: {ext.name}")
+    env = dict(os.environ)
+    env["PRODSEED_PROJECT_ID"] = project_id
+    env["PRODSEED_PROJECT_CROSS_ID"] = project_cross_id
+    proc = subprocess.run([sys.executable, str(ext)], capture_output=True, text=True, env=env)
+    if proc.returncode != 0:
+        # A failed extension is NOT fatal for the run: the base matrix is still valid and
+        # the affected cases fail on their own missing fixture, which is honest. Surface
+        # the reason loudly so it is not mistaken for a product defect.
+        log(f"    WARN {ext.name} failed (rc={proc.returncode}): {proc.stderr.strip()[-400:]}")
+        return {}
+    try:
+        return json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError:
+        log(f"    WARN {ext.name} produced non-JSON output")
+        return {}
+
+
+_NLB_ID_KEYS = ("existingNetworkId", "existingSubnetId", "existingInstanceId",
+                "existingNicId", "existingExternalAddressId", "existingAddressIPv6Id",
+                "existingZoneId", "existingRegionId")
+
+
+def seed_nlb_resources(boot: str, base_url: str, internal_url: str, project_id: str,
+                       out_dir: pathlib.Path) -> dict:
+    """Delegate the nlb fixture set to its own seeder, authenticated with the RS256 admin.
+
+    deploy/scripts/seed-nlb-fixtures.sh is the SOLE author of the nlb-dedicated zone's
+    AddressPool + subnet + instance + NIC set (it reclaims foreign-zone twins of its own
+    pool name). Re-implementing any of it here would create a second author for the same
+    cluster-wide default slot — the exact collision class the script's header documents.
+    It only needs a Bearer, so it works unchanged in production once handed an RS256 one:
+    the RS256 admin is BOTH the project grantor and the cluster-singleton admin here (the
+    dev path splits them only because its project grantor is an account-scoped user).
+    """
+    script = REPO / "deploy" / "scripts" / "seed-nlb-fixtures.sh"
+    if not script.exists():
+        return {}
+    log("    nlb fixture seeder (RS256 admin Bearer)")
+    seeded = out_dir / "nlb-seeded-ids.env"
+    env = dict(os.environ)
+    env.update({"BASE_URL": base_url, "INTERNAL_BASE_URL": internal_url,
+                "JWT": boot, "ADMIN_JWT": boot,
+                "existingProjectId": project_id, "OUT_FILE": str(seeded),
+                "NLB_ZONE_ID": os.environ.get("NLB_ZONE", "ru-central1-e")})
+    log_path = out_dir / "nlb-seed.log"
+    with log_path.open("w") as fh:
+        proc = subprocess.run(["bash", str(script)], stdout=fh, stderr=subprocess.STDOUT, env=env)
+    if proc.returncode != 0:
+        log(f"    WARN seed-nlb-fixtures.sh rc={proc.returncode} — see {log_path}")
+    if not seeded.exists():
+        return {}
+    got = {}
+    for line in seeded.read_text().splitlines():
+        if "=" not in line or line.startswith("#"):
+            continue
+        k, _, v = line.partition("=")
+        if k in _NLB_ID_KEYS and v:
+            # The nlb env names the BYO-VIP handle `existingAddressId`; the seeder
+            # writes it as `existingExternalAddressId`.
+            got["existingAddressId" if k == "existingExternalAddressId" else k] = v
+    return got
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="production-posture newman seed (all suites)")
+    ap.add_argument("--services", default=os.environ.get("SERVICES", " ".join(ALL_SERVICES)),
+                    help="whitespace/comma separated suite list to patch")
+    ap.add_argument("--no-patch-env", action="store_true",
+                    help="emit fixtures on stdout without touching the newman envs")
+    args = ap.parse_args()
+    services = [s for s in args.services.replace(",", " ").split() if s]
+
+    ensure_certs()
+    forward = ensure_hydra_forward()
+    try:
+        # Imported AFTER the prerequisites: prodseed_matrix mints the bootstrap Bearer at
+        # import time, which needs the operator certificate on disk and iam :9091 reachable.
+        import prodseed_matrix as pm
+
+        log("minting the matrix (iam MintBootstrapToken → SAKeyService.Issue → OAuth2)")
+        fixtures = pm.seed()
+        boot = fixtures["jwtBootstrap"]
+        out_dir = pathlib.Path(os.environ.get("OUT_DIR", str(HERE / "out")))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "authz-fixtures.json").write_text(json.dumps(fixtures, indent=2) + "\n")
+        # /tmp/matrix.json is the handoff the extension seeders (and prodrun.sh) read.
+        pathlib.Path("/tmp/matrix.json").write_text(json.dumps(fixtures))
+        log(f"matrix seeded: acctA={fixtures['accountAId']} projA1={fixtures['projectA1Id']}")
+
+        if args.no_patch_env:
+            print(json.dumps(fixtures))
+            return 0
+
+        # Shared keys first (every suite), then per-suite extensions on top.
+        patch(fixtures, [env_path(s) for s in services])
+
+        proj = fixtures["projectA1Id"]
+        proj_cross = fixtures["projectA2Id"]
+        nlb_ids = {}
+        if "nlb" in services:
+            nlb_ids = seed_nlb_resources(boot, fixtures["baseUrl"],
+                                         fixtures["internalBaseUrl"], proj, out_dir)
+        for svc in services:
+            if svc == "nlb":
+                # prodseed_nlb_ext.py exists for the STANDALONE prodrun.sh flow, which does
+                # not run seed-nlb-fixtures.sh. Here the shell seeder already ran, and it is
+                # the placement-coherent author: it seeds into the nlb-DEDICATED zone, while
+                # the extension seeds into zone `a`. Running both would hand the suite a set
+                # whose ids straddle two zones — the exact incoherence seed-nlb-fixtures.sh's
+                # own header documents. Dev parity too: setup.sh runs only the shell seeder.
+                extra = dict(nlb_ids)
+            else:
+                extra = run_ext(svc, proj, proj_cross)
+            if extra:
+                (out_dir / f"{svc}-fixtures.json").write_text(json.dumps(extra, indent=2) + "\n")
+                patch(extra, [env_path(svc)])
+        # The newman environment files are git-TRACKED, and in this posture the tokens
+        # written into them are genuine Hydra-signed cluster credentials with a real
+        # lifetime — not the well-known dev HMAC strings the dev path leaves behind.
+        # Say so out loud: `git add -A` after a production seed would commit live
+        # bearers. (The seed's own outputs under out/ are gitignored; these are not.)
+        log("NOTE: the patched newman env files are git-tracked and now hold LIVE RS256")
+        log("      bearers. Do not commit them — commit by explicit path, never `-A`.")
+        log("DONE")
+        return 0
+    finally:
+        if forward is not None:
+            forward.terminate()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

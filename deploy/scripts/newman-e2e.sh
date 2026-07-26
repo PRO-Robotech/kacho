@@ -70,6 +70,11 @@ kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
 PF_PIDS+=($!)
+# Hydra public — POST target of the OAuth2 client_credentials exchange that turns an
+# iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
+# with no ingress route here. Unused in dev; required in production.
+kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
+PF_PIDS+=($!)
 sleep 4
 
 # mTLS для grpcurl → kacho-iam-internal:9091.
@@ -95,6 +100,18 @@ if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
 else
   echo "[e2e] iam-internal: mTLS-секрета нет — grpcurl пойдёт plaintext (mTLS-off стенд)"
 fi
+# Bootstrap-operator leaf — a DIFFERENT identity, the only SPIFFE SAN kacho-iam
+# allow-lists for MintBootstrapToken (the production seed's entry point). Deliberately
+# not the api-gateway one: the gateway fronts tenant traffic, so "is the api-gateway"
+# must never be a licence to mint a cluster admin.
+if kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls >/dev/null 2>&1; then
+  OP_DIR="$(mktemp -d)"; TMP_DIRS+=("$OP_DIR")
+  kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > "$OP_DIR/client.crt"
+  kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls -o jsonpath='{.data.tls\.key}' | base64 -d > "$OP_DIR/client.key"
+  chmod 600 "$OP_DIR"/*
+  MTLS_ENV+=(BOOTSTRAP_MINT_MTLS_CERT="$OP_DIR/client.crt"
+             BOOTSTRAP_MINT_MTLS_KEY="$OP_DIR/client.key")
+fi
 
 echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
 env BASE_URL="http://localhost:$GW_PORT" \
@@ -109,10 +126,17 @@ DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" \
 # it here (idempotent, best-effort) via the already-up internal-rest port-forward.
 # Only for nlb — no other suite needs the external pool. `|| true`: a failure degrades
 # to the pre-seed behaviour (external-create cases red → whitelist), never aborts the run.
-if [ "$SVC" = "nlb" ]; then
+# In PRODUCTION posture setup.sh delegates to prodseed_all.py, which already drives
+# seed-nlb-fixtures.sh with the RS256 admin Bearer — a second pass here would make a
+# second author for the same cluster-wide default-pool slot.
+SEED_POSTURE_RAN="$(cat "$REPO_ROOT/tests/authz-fixtures/out/seed-posture" 2>/dev/null || echo dev)"
+if [ "$SVC" = "nlb" ] && [ "$SEED_POSTURE_RAN" != "production" ]; then
   echo "[e2e] seeding nlb external-VIP AddressPool (idempotent, best-effort)"
-  SEED_JWT=$(python3 "$REPO_ROOT/tests/authz-fixtures/setup-jwt.py" --secret "$DEV_SECRET" --exp-hours 24 --bulk 2>/dev/null \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("jwtBootstrap",""))' 2>/dev/null || true)
+  # Use the admin Bearer the seed ACTUALLY produced rather than re-forging an HS256 one:
+  # on a production-posture stand a locally-minted HS256 token is rejected outright
+  # (empty devSecret) and this step would silently seed nothing.
+  SEED_JWT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("jwtBootstrap",""))' \
+    "$REPO_ROOT/tests/authz-fixtures/out/authz-fixtures.json" 2>/dev/null || true)
   # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/setup.sh block 5d owns the
   # zone table). Must be pinned here too: without it the seeder falls back to zone[0] =
   # ru-central1-a and plants a v6-carrying default EXTERNAL_PUBLIC pool there, which

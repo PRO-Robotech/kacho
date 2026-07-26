@@ -80,6 +80,20 @@ BOOTSTRAP_MINT_MTLS_KEY = os.environ.get(
     "BOOTSTRAP_MINT_MTLS_KEY", os.path.join(_OPERATOR_CERT_DIR, "client.key"))
 
 
+# ── gateway-identity client cert (gateway-fronted internal RPCs) ────────────
+# A SECOND, DIFFERENT identity from the bootstrap-operator above. kacho-iam :9091
+# admits the gateway SAN for the ordinary internal RPCs the seed drives through
+# grpcurl (InternalUserService.UpsertFromIdentity, InternalIAMService.LookupSubject)
+# but deliberately NOT for the bootstrap-token mint. Keep the two apart: pointing
+# the mint at this cert is the exact "fix" the #58 hardening exists to prevent.
+GATEWAY_CLIENT_SECRET = os.environ.get("GATEWAY_CLIENT_SECRET", "api-gateway-client-tls")
+_GATEWAY_CERT_DIR = os.environ.get("IAM_MTLS_CERT_DIR", "/tmp/iam-mtls")
+IAM_INTERNAL_MTLS_CERT = os.environ.get(
+    "IAM_INTERNAL_GRPC_MTLS_CERT", os.path.join(_GATEWAY_CERT_DIR, "client.crt"))
+IAM_INTERNAL_MTLS_KEY = os.environ.get(
+    "IAM_INTERNAL_GRPC_MTLS_KEY", os.path.join(_GATEWAY_CERT_DIR, "client.key"))
+
+
 # ── HTTP helpers ────────────────────────────────────────────────────────────
 def _post_json(url: str, payload: dict, bearer: str | None = None, timeout: int = 15) -> tuple[int, dict]:
     data = json.dumps(payload).encode()
@@ -129,8 +143,9 @@ def _get_json(url: str, bearer: str | None = None, timeout: int = 15) -> tuple[i
 
 
 # ── Step 1: bootstrap admin RS256 Bearer ────────────────────────────────────
-def _refresh_operator_cert(cert_path: str, key_path: str) -> None:
-    """Best-effort: (re)extract the bootstrap-operator client cert from the cluster.
+def ensure_client_cert(secret: str, cert_path: str, key_path: str,
+                       namespace: str | None = None) -> bool:
+    """Best-effort: (re)extract a kubernetes.io/tls client cert from the cluster.
 
     ALWAYS re-extracts when kubectl can read the Secret, deliberately: after a fresh
     `dev-up` cert-manager regenerates the internal CA, so a cert left from a PRIOR
@@ -139,31 +154,56 @@ def _refresh_operator_cert(cert_path: str, key_path: str) -> None:
     prodrun.sh documents for the gateway cert). If kubectl or the Secret is
     unavailable (CI without cluster access, pre-extracted material), leave whatever
     is on disk alone and let the caller's existence check decide.
+
+    The material is written 0600 OUTSIDE the repository (default /tmp/…): the seed
+    borrows the cluster's own leaf for the length of the run, it never carries key
+    material in git.
+
+    Returns True when the on-disk pair is usable (freshly written or pre-existing).
     """
-    if not shutil.which("kubectl"):
-        return
-    probe = subprocess.run(
-        ["kubectl", "-n", BOOTSTRAP_OPERATOR_NS, "get", "secret", BOOTSTRAP_OPERATOR_SECRET],
-        capture_output=True, text=True)
-    if probe.returncode != 0:
-        return
-    # Read BOTH halves before writing EITHER: a half-refreshed pair (new cert,
-    # stale key) fails the handshake in a way that reads like an authz problem.
-    material = []
-    for jsonpath in (r"{.data.tls\.crt}", r"{.data.tls\.key}"):
-        out = subprocess.run(
-            ["kubectl", "-n", BOOTSTRAP_OPERATOR_NS, "get", "secret", BOOTSTRAP_OPERATOR_SECRET,
-             "-o", f"jsonpath={jsonpath}"],
+    ns = namespace or BOOTSTRAP_OPERATOR_NS
+    if shutil.which("kubectl"):
+        probe = subprocess.run(
+            ["kubectl", "-n", ns, "get", "secret", secret],
             capture_output=True, text=True)
-        if out.returncode != 0 or not out.stdout.strip():
-            return
-        material.append(base64.b64decode(out.stdout))
-    os.makedirs(os.path.dirname(cert_path) or ".", exist_ok=True)
-    os.makedirs(os.path.dirname(key_path) or ".", exist_ok=True)
-    for path, blob in zip((cert_path, key_path), material):
-        with open(path, "wb") as fh:
-            fh.write(blob)
-        os.chmod(path, 0o600)
+        if probe.returncode == 0:
+            # Read BOTH halves before writing EITHER: a half-refreshed pair (new
+            # cert, stale key) fails the handshake in a way that reads like an authz
+            # problem.
+            material = []
+            ok = True
+            for jsonpath in (r"{.data.tls\.crt}", r"{.data.tls\.key}"):
+                out = subprocess.run(
+                    ["kubectl", "-n", ns, "get", "secret", secret, "-o", f"jsonpath={jsonpath}"],
+                    capture_output=True, text=True)
+                if out.returncode != 0 or not out.stdout.strip():
+                    ok = False
+                    break
+                material.append(base64.b64decode(out.stdout))
+            if ok:
+                os.makedirs(os.path.dirname(cert_path) or ".", exist_ok=True)
+                os.makedirs(os.path.dirname(key_path) or ".", exist_ok=True)
+                for path, blob in zip((cert_path, key_path), material):
+                    with open(path, "wb") as fh:
+                        fh.write(blob)
+                    os.chmod(path, 0o600)
+    return all(os.path.exists(p) and os.path.getsize(p) > 0 for p in (cert_path, key_path))
+
+
+def ensure_iam_internal_cert() -> bool:
+    """Provision the GATEWAY-identity client cert used for the internal :9091 RPCs.
+
+    kacho-iam's internal listener requires a verified client certificate in every
+    posture (security.md: internal is NOT exempt), so every grpcurl the seed makes
+    must present one. This is the identity for the ordinary internal RPCs — NOT for
+    the bootstrap-token mint, which admits only the dedicated operator SAN.
+    """
+    return ensure_client_cert(GATEWAY_CLIENT_SECRET, IAM_INTERNAL_MTLS_CERT, IAM_INTERNAL_MTLS_KEY)
+
+
+def _refresh_operator_cert(cert_path: str, key_path: str) -> None:
+    """Back-compat shim — bootstrap-operator flavour of ensure_client_cert."""
+    ensure_client_cert(BOOTSTRAP_OPERATOR_SECRET, cert_path, key_path)
 
 
 def mint_bootstrap(ttl_seconds: int = 3600, *, grpc_addr: str | None = None,

@@ -25,3 +25,11 @@ kubeconfig*
 # Отчёты прогонов newman, отложенные в сторону при верификации (out-stale-<ts>/).
 # Артефакты запуска, не исходники — в репозиторий не попадают.
 services/*/tests/newman/out-stale-*/
+
+# Файлы окружения newman переписываются посевом фикстур на КАЖДОМ прогоне и содержат
+# живые Bearer-токены (в production-посадке — RS256 с 4-часовым сроком). Это артефакты
+# прогона, а не исходники: закоммиченные значения всё равно протухают и вводят в
+# заблуждение. В репозитории остаётся только шаблон с плейсхолдерами (*.template.json),
+# из которого посев и генерирует рабочую копию.
+services/*/tests/newman/environments/local.postman_environment.json
+gateway/tests/newman/environments/local.postman_environment.json
