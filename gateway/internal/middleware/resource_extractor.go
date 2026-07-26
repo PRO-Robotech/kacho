@@ -266,6 +266,93 @@ func (e *ResourceExtractor) ResolveDefinitionTierScopeHTTP(fqn string, r *http.R
 	return ot, tierID, true
 }
 
+// legacyProjectScopeField is the LEGACY project-scope alternative
+// (`CreateRoleRequest.project_id`) that the proto keeps accepted for back-compat
+// when `definition_tier` is omitted: a custom Role is account- XOR
+// project-scoped, and the catalog `scope_extractor` can name only ONE field
+// (`account_id`). Without this arm a legacy project-scoped Create extracted to
+// the `account:*` wildcard, which AuthorizeService.Check rejects as "no path:
+// unscoped resource" → 403 at the edge, before the backend that honours the
+// promise ever saw the request.
+const legacyProjectScopeField = "project_id"
+
+// legacyProjectScopedFQNs — the CLOSED set of RPCs whose request message carries
+// the legacy account_id/project_id scope pair and may therefore have their authz
+// scope resolved from `project_id`. Today that is exactly RoleService/Create.
+//
+// The binding carries the same SECURITY weight as definitionTierScopedFQNs: on
+// the REST arm `project_id` is read straight out of the raw JSON body — before
+// grpc-gateway decodes it and silently drops unknown keys — i.e. from
+// unauthenticated client input. Unbound, a caller could smuggle
+// `{"accountId":"acc_victim","projectId":"<a project I own>"}` into any
+// JSON-bodied RPC and re-point the FGA Check at a scope of their own choosing
+// while the backend still acted on the real (victim) scope — a
+// BOLA/privilege-escalation primitive (security.md §object-scoped authz).
+//
+// A new RPC joins the set by carrying the pair in its request message AND being
+// listed here (both, deliberately — the code-driven allow-list keeps the
+// generated permission-catalog byte-identical).
+var legacyProjectScopedFQNs = map[string]struct{}{
+	"kacho.cloud.iam.v1.RoleService/Create": {},
+}
+
+// legacyProjectAnchored reports whether fqn is allowed to resolve its authz
+// scope from the legacy `project_id` field.
+func legacyProjectAnchored(fqn string) bool {
+	_, ok := legacyProjectScopedFQNs[strings.TrimPrefix(strings.TrimSpace(fqn), "/")]
+	return ok
+}
+
+// ResolveLegacyProjectScope reads the legacy `project_id` scope alternative off a
+// typed proto request. It returns the PROJECT id the authz scope must use;
+// ok=false when fqn does not declare the pair, the message has no `project_id`
+// field, or it is empty.
+//
+// The XOR side of the precedence (`definition_tier` > `account_id` >
+// `project_id`) is enforced by the CALLER, which only consults this resolver
+// once the canonical anchor and the catalog's `account_id` have both come up
+// empty — so a present account_id is never displaced by a project the caller
+// happens to own. The resulting scope is the SAME anchor the backend acts on
+// (role/create.go XOR switch + DB CHECK roles_definition_tier_xor), which is what
+// makes it anti-BOLA-correct rather than merely permissive.
+func (e *ResourceExtractor) ResolveLegacyProjectScope(fqn string, req any) (id string, ok bool) {
+	if !legacyProjectAnchored(fqn) {
+		return "", false
+	}
+	msg, okp := protoMessageFromAny(req)
+	if !okp {
+		return "", false
+	}
+	fd := msg.Descriptor().Fields().ByName(legacyProjectScopeField)
+	if fd == nil || fd.Kind() != protoreflect.StringKind {
+		return "", false
+	}
+	v := msg.Get(fd).String()
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
+// ResolveLegacyProjectScopeHTTP is the REST-path analogue of
+// ResolveLegacyProjectScope: it reads `projectId` (both spellings) out of the
+// JSON request body and restores the body for the downstream handler. Same
+// contract; the fqn gate is load-bearing here above all — this is the arm that
+// reads unauthenticated client input (see legacyProjectScopedFQNs).
+func (e *ResourceExtractor) ResolveLegacyProjectScopeHTTP(fqn string, r *http.Request) (id string, ok bool) {
+	if !legacyProjectAnchored(fqn) {
+		return "", false
+	}
+	if r == nil {
+		return "", false
+	}
+	v := extractFromJSONBody(r, legacyProjectScopeField)
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
 // subMessageString reads a named scalar string field off a sub-message, "" when
 // absent/empty.
 func subMessageString(sub protoreflect.Message, name string) string {

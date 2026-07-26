@@ -898,13 +898,34 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// body, before grpc-gateway drops unknown keys — so an unbound override would
 	// let a caller pick their own authz scope for any JSON-bodied RPC while the
 	// handler acted on the real one (BOLA, security.md §object-scoped authz).
-	if dr.ProtoReq != nil {
+	//
+	// Below it, the LEGACY `project_id` alternative closes the second half of the
+	// same scope contract: a custom Role is account- XOR project-scoped and the
+	// proto keeps the legacy account_id/project_id pair accepted for back-compat
+	// when definition_tier is omitted — but the catalog `scope_extractor` can name
+	// only ONE field, so a legacy project-scoped Create left `account:*` and was
+	// 403'd as "no path: unscoped resource" BEFORE the backend that honours the
+	// promise. It is consulted ONLY when the canonical anchor did not resolve AND
+	// the catalog extraction came up wildcard (i.e. account_id is absent) — that
+	// ordering IS the documented precedence (definition_tier > account_id >
+	// project_id) and keeps a present account_id from being displaced by a project
+	// the caller happens to own. Same FQN binding, same reason.
+	switch {
+	case dr.ProtoReq != nil:
 		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScope(dr.FQN, dr.ProtoReq); ok {
 			resourceType, resourceID = ot, ResourceID(id)
+		} else if resourceID.IsWildcard() {
+			if id, ok := m.cfg.Resources.ResolveLegacyProjectScope(dr.FQN, dr.ProtoReq); ok {
+				resourceType, resourceID = "project", ResourceID(id)
+			}
 		}
-	} else if dr.HTTPReq != nil {
+	case dr.HTTPReq != nil:
 		if ot, id, ok := m.cfg.Resources.ResolveDefinitionTierScopeHTTP(dr.FQN, dr.HTTPReq); ok {
 			resourceType, resourceID = ot, ResourceID(id)
+		} else if resourceID.IsWildcard() {
+			if id, ok := m.cfg.Resources.ResolveLegacyProjectScopeHTTP(dr.FQN, dr.HTTPReq); ok {
+				resourceType, resourceID = "project", ResourceID(id)
+			}
 		}
 	}
 

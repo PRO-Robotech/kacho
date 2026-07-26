@@ -49,13 +49,21 @@ service RoleService {
     };
     option (kacho.iam.authz.v1.permission)        = "iam.roles.create";
     option (kacho.iam.authz.v1.required_relation) = "editor";
-    // Scope = the role's home account (`editor@account:<account_id>`). For a
-    // PROJECT-scoped role (account_id empty, project_id set) the extractor finds
-    // no account_id and the gateway wildcard-defaults the scope; project-scoped
-    // authz-scope refinement (editor@project:<project_id>) is a follow-up —
-    // there is no single request field carrying the scope type, so the
-    // `object_type_from_request_field` polymorphism used by AccessBinding.Create
-    // does not directly apply.
+    // Scope = the role's home anchor. A custom role is account- XOR
+    // project-scoped, and `scope_extractor` can name only ONE request field, so
+    // the catalog entry below states the ACCOUNT arm
+    // (`editor@account:<account_id>`) and the api-gateway resolves the other two
+    // inputs code-side, FQN-bound to this method, in this precedence:
+    //   1. `definition_tier` (canonical) → editor@{account|project}:<tier_id>;
+    //   2. `account_id` (legacy)         → editor@account:<account_id>;
+    //   3. `project_id` (legacy)         → editor@project:<project_id>.
+    // Each resolves the SAME anchor the use-case acts on (create.go XOR switch +
+    // DB CHECK roles_definition_tier_xor), so the check is object-scoped on every
+    // arm. The `object_type_from_request_field` polymorphism used by
+    // AccessBinding.Create does not apply here — no single request field carries
+    // the scope TYPE; the type follows from which anchor is set.
+    // Neither anchor set → `account:*` → "no path: unscoped resource" 403 at the
+    // edge (fail-closed); the XOR message itself comes from the use-case.
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "account"
       from_request_field: "account_id"
