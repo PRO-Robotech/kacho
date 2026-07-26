@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6be94a30-27b0-4004-99c4-f879fc996f7b",
+    "_postman_id": "cc285d13-b7e2-41c2-baef-d88e682e2a05",
     "name": "kacho-vpc / newman / subnet",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -35538,7 +35538,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}/addresses",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -35546,7 +35546,8 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "{{subId}}:listUsedAddresses"
+                "{{subId}}",
+                "addresses"
               ]
             }
           },
@@ -35571,13 +35572,10 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('200 (cataloged) or fail-closed 403 (stale catalog), never 5xx/leak', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "if (pm.response.code === 200) {",
-                  "  const used = (pm.response.json().addresses) || [];",
-                  "  pm.test('ListUsedAddresses returns >= 3 entries (3 allocated)', () => pm.expect(used.length, JSON.stringify(used)).to.be.at.least(3));",
-                  "} else {",
-                  "  pm.test('403 is the fail-closed catalog default (AUTHZ_DENIED code 7)', () => pm.expect(pm.response.code).to.eql(403));",
-                  "}"
+                  "pm.test('ListUsedAddresses → 200 (a 403 here is a catalog miss / misrouted path, not a pass)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const used = (pm.response.json().addresses) || [];",
+                  "pm.test('ListUsedAddresses returns >= 3 entries (3 allocated)', () => pm.expect(used.length, JSON.stringify(used)).to.be.at.least(3));",
+                  "pm.test('every used entry carries a non-empty address', () => used.forEach(u => pm.expect(u.address, JSON.stringify(u)).to.be.a('string').and.not.empty));"
                 ]
               }
             }
@@ -36783,7 +36781,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}/addresses",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -36791,7 +36789,8 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "{{subId}}:listUsedAddresses"
+                "{{subId}}",
+                "addresses"
               ]
             }
           },
@@ -36816,8 +36815,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('200 (cataloged) or fail-closed 403 (stale catalog), never 5xx/leak', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "pm.environment.set('countBefore', pm.response.code === 200 ? String((pm.response.json().addresses || []).length) : '-1');"
+                  "pm.test('ListUsedAddresses → 200 (a 403 here is a catalog miss / misrouted path, not a pass)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "pm.test('5 allocated are all visible before the deletes', () => pm.expect((pm.response.json().addresses || []).length, pm.response.text()).to.be.at.least(5));",
+                  "pm.environment.set('countBefore', String((pm.response.json().addresses || []).length));"
                 ]
               }
             }
@@ -37107,7 +37107,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}/addresses",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -37115,7 +37115,8 @@
                 "vpc",
                 "v1",
                 "subnets",
-                "{{subId}}:listUsedAddresses"
+                "{{subId}}",
+                "addresses"
               ]
             }
           },
@@ -37140,14 +37141,11 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('200 (cataloged) or fail-closed 403 (stale catalog), never 5xx/leak', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "pm.test('ListUsedAddresses → 200 (a 403 here is a catalog miss / misrouted path, not a pass)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "const before = parseInt(pm.environment.get('countBefore') || '-1', 10);",
-                  "if (pm.response.code === 200 && before >= 0) {",
-                  "  const after = (pm.response.json().addresses || []).length;",
-                  "  pm.test('count decreased by exactly 3', () => pm.expect(before - after, `before=${before} after=${after}`).to.eql(3));",
-                  "} else {",
-                  "  pm.test('listUsedAddresses fail-closed (stale catalog) — fragmentation check skipped', () => pm.expect(pm.response.code).to.eql(403));",
-                  "}"
+                  "pm.test('countBefore was actually captured (list-before-delete ran)', () => pm.expect(before).to.be.at.least(0));",
+                  "const after = (pm.response.json().addresses || []).length;",
+                  "pm.test('count decreased by exactly 3', () => pm.expect(before - after, `before=${before} after=${after}`).to.eql(3));"
                 ]
               }
             }

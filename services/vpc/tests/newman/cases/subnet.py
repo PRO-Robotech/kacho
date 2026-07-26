@@ -1503,21 +1503,26 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId3")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="list-used", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+        # ListUsedAddresses is `GET /vpc/v1/subnets/{subnet_id}/addresses`
+        # (subnet_service.proto google.api.http; gateway route table + permission
+        # catalog agree — `vpc.used_addresseses.listUsedAddresses`, v_list on
+        # vpc_subnet). The suffix-verb form `:listUsedAddresses` this case used to
+        # call is NOT a route: an unresolvable path yields no FQN, the catalog
+        # lookup misses and the gateway fail-closes 403 AUTHZ_DENIED. The old
+        # comment blamed a "stale CI catalog" — that was never true (the entry is
+        # present in both embedded copies and every route in the table is
+        # catalogued); the path was simply wrong, so the 403 branch was taken on
+        # EVERY run and the `>= 3 used` invariant below never executed once.
+        #
+        # Asserting 200 strictly is what makes the invariant real: a regression
+        # back to a misrouted path (or a genuinely missing catalog entry) is a
+        # catalog-miss 403 and now FAILS instead of satisfying the case.
+        retry_until_authorized(Step(name="list-used", method="GET", path="/vpc/v1/subnets/{{subId}}/addresses",
              test_script=[
-                 # ListUsedAddresses закаталогизирован в source (permission_catalog.json),
-                 # но развёрнутый в CI gateway может нести stale-каталог → fail-closed
-                 # AUTHZ_DENIED "catalog: no entry for method" (code 7). Security-контракт
-                 # (security.md #4): метод либо закаталогизирован и отдаёт 200+массив,
-                 # либо fail-closed 403 — НИКОГДА 5xx/leak. Толерантны к обоим; при 200
-                 # энфорсим сам инвариант (>=3 used).
-                 "pm.test('200 (cataloged) or fail-closed 403 (stale catalog), never 5xx/leak', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                 "if (pm.response.code === 200) {",
-                 "  const used = (pm.response.json().addresses) || [];",
-                 "  pm.test('ListUsedAddresses returns >= 3 entries (3 allocated)', () => pm.expect(used.length, JSON.stringify(used)).to.be.at.least(3));",
-                 "} else {",
-                 "  pm.test('403 is the fail-closed catalog default (AUTHZ_DENIED code 7)', () => pm.expect(pm.response.code).to.eql(403));",
-                 "}",
+                 "pm.test('ListUsedAddresses → 200 (a 403 here is a catalog miss / misrouted path, not a pass)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const used = (pm.response.json().addresses) || [];",
+                 "pm.test('ListUsedAddresses returns >= 3 entries (3 allocated)', () => pm.expect(used.length, JSON.stringify(used)).to.be.at.least(3));",
+                 "pm.test('every used entry carries a non-empty address', () => used.forEach(u => pm.expect(u.address, JSON.stringify(u)).to.be.a('string').and.not.empty));",
              ])),
         Step(name="del-a1", method="DELETE", path="/vpc/v1/addresses/{{addrId1}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -1559,12 +1564,15 @@ CASES.append(Case(
                               *save_from_response("j.metadata && j.metadata.addressId", f"addrId{i}")]),
             poll_operation_until_done(),
         ]],
-        retry_until_authorized(Step(name="list-before-delete", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+        # Same route correction as SUB-LUA-COUNT above. The `-1` sentinel that used
+        # to be written on a 403 existed only to let `list-after` skip the
+        # fragmentation delta — with the correct path there is nothing to skip, so
+        # the count is always real and the delta below is always enforced.
+        retry_until_authorized(Step(name="list-before-delete", method="GET", path="/vpc/v1/subnets/{{subId}}/addresses",
              test_script=[
-                 # tolerant: cataloged 200 → записываем count; stale-catalog 403 → -1
-                 # sentinel (list-after тогда пропускает delta-проверку как fail-closed).
-                 "pm.test('200 (cataloged) or fail-closed 403 (stale catalog), never 5xx/leak', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                 "pm.environment.set('countBefore', pm.response.code === 200 ? String((pm.response.json().addresses || []).length) : '-1');",
+                 "pm.test('ListUsedAddresses → 200 (a 403 here is a catalog miss / misrouted path, not a pass)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "pm.test('5 allocated are all visible before the deletes', () => pm.expect((pm.response.json().addresses || []).length, pm.response.text()).to.be.at.least(5));",
+                 "pm.environment.set('countBefore', String((pm.response.json().addresses || []).length));",
              ])),
         # Delete middle 3 (indices 1, 2, 3).
         Step(name="del-1", method="DELETE", path="/vpc/v1/addresses/{{addrId1}}",
@@ -1576,18 +1584,13 @@ CASES.append(Case(
         Step(name="del-3", method="DELETE", path="/vpc/v1/addresses/{{addrId3}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="list-after", method="GET", path="/vpc/v1/subnets/{{subId}}:listUsedAddresses",
+        retry_until_authorized(Step(name="list-after", method="GET", path="/vpc/v1/subnets/{{subId}}/addresses",
              test_script=[
-                 # tolerant: если оба list'а закаталогизированы (200 + countBefore>=0) —
-                 # энфорсим фрагментацию (delta==3); иначе fail-closed 403 (stale catalog).
-                 "pm.test('200 (cataloged) or fail-closed 403 (stale catalog), never 5xx/leak', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "pm.test('ListUsedAddresses → 200 (a 403 here is a catalog miss / misrouted path, not a pass)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "const before = parseInt(pm.environment.get('countBefore') || '-1', 10);",
-                 "if (pm.response.code === 200 && before >= 0) {",
-                 "  const after = (pm.response.json().addresses || []).length;",
-                 "  pm.test('count decreased by exactly 3', () => pm.expect(before - after, `before=${before} after=${after}`).to.eql(3));",
-                 "} else {",
-                 "  pm.test('listUsedAddresses fail-closed (stale catalog) — fragmentation check skipped', () => pm.expect(pm.response.code).to.eql(403));",
-                 "}",
+                 "pm.test('countBefore was actually captured (list-before-delete ran)', () => pm.expect(before).to.be.at.least(0));",
+                 "const after = (pm.response.json().addresses || []).length;",
+                 "pm.test('count decreased by exactly 3', () => pm.expect(before - after, `before=${before} after=${after}`).to.eql(3));",
              ])),
         Step(name="del-0", method="DELETE", path="/vpc/v1/addresses/{{addrId0}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
