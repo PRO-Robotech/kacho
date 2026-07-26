@@ -52,11 +52,24 @@ service AccountService {
       response: "Account"
     };
     // Account.Create is self-service — a freshly-authenticated user
-    // creates their own Account (no parent scope to FGA-check). The IAM
-    // handler enforces `RequireOwnerMatchesPrincipal` (owner_user_id must
-    // equal the calling principal — anti-hijacking). The
-    // api-gateway per-RPC middleware therefore exempts it; anonymous is still
-    // rejected by the IAM anti-anonymous interceptor.
+    // creates their own Account (no parent scope to FGA-check).
+    //
+    // Anti-hijacking is BY CONSTRUCTION, not by a comparison (corrected
+    // 2026-07-27). `owner_user_id` is OUTPUT-ONLY on this request: supplying
+    // ANY value — including your own id — is a sync InvalidArgument
+    // ("Illegal argument ownerUserId (derived from caller)") as the first
+    // statement, before the Operation is minted; the owner is derived from
+    // the verified principal. There is nothing to hijack.
+    //
+    // This comment previously justified the exemption by
+    // `RequireOwnerMatchesPrincipal`, a guard that no longer exists — it was
+    // never applied here, and was removed everywhere else because it
+    // duplicated the model's per-object Check while being impossible for a
+    // machine principal to satisfy. Derivation is strictly stronger than the
+    // comparison ever was.
+    //
+    // The api-gateway per-RPC middleware therefore exempts it; anonymous is
+    // still rejected by the IAM anti-anonymous interceptor.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 

@@ -383,13 +383,18 @@ done
 
 # 3) Accounts (idempotent by name).
 #
-# KAC-127 Phase 3 authz contract: `AccountService.Create` enforces
-# `RequireOwnerMatchesPrincipal` (KAC-122 CRIT-3 anti-hijacking) — the
-# authenticated principal MUST equal `owner_user_id`. A user can only create
-# an Account owned by themselves. Therefore each account is created using the
-# *owner's* own JWT, not the bootstrap-admin token. (Previously the fixture
-# created every account as BOOT → `code 7 permission denied` on the first
-# Account.Create, which aborted the whole fixture run.)
+# `AccountService.Create` DERIVES `owner_user_id` from the authenticated caller
+# (redesign-2026 F1: the field is output-only — supplying any value is a sync
+# INVALID_ARGUMENT). So an account is always owned by whoever created it, and
+# each account here must be created using the *owner's* own JWT, not the
+# bootstrap-admin token. (Previously the fixture created every account as BOOT →
+# `code 7 permission denied` on the first Account.Create, which aborted the whole
+# fixture run.)
+#
+# NB: this used to cite `RequireOwnerMatchesPrincipal` as the mechanism. That
+# guard no longer exists anywhere (removed 2026-07-27) and had already stopped
+# applying to Account.Create when owner° became derived-from-caller — the
+# output-only field is the stronger, structural anti-hijacking guarantee.
 log "3/10 ensuring accounts authz-test-A / authz-test-B"
 find_account_by_name() {
   local name="$1" token="$2"

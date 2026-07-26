@@ -79,13 +79,17 @@ SEED_POSTURE=production bash tests/authz-fixtures/setup.sh
 Замерено на живом стенде 2026-07-26. Это ограничения ПРОДУКТА, а не посева — латать их
 подделкой токенов нельзя, иначе набор снова начнёт доказывать не то.
 
-1. **RPC, гейтящиеся на «вызывающий — это владелец-ЧЕЛОВЕК аккаунта»**
-   (`authzguard.RequireOwnerMatchesPrincipal`, 12 методов: Account/Project/User/Group/
-   Role/ServiceAccount delete-update-addMember…). Принципал-ServiceAccount не может их
-   удовлетворить НИКОГДА, а принципал-User не может получить неинтерактивный токен →
-   в production они недостижимы ни для одного машинного клиента. Ответ —
-   `400 INVALID_ARGUMENT "owner_user_id must match the authenticated principal"`, хотя
-   вызывающий это поле вообще не посылал (оно выводится из caller'а).
+1. ~~**RPC, гейтящиеся на «вызывающий — это владелец-ЧЕЛОВЕК аккаунта»**~~ — **СНЯТО
+   2026-07-27.** `authzguard.RequireOwnerMatchesPrincipal` удалена из всех 12 методов
+   (Account/Project/User/Group/Role/ServiceAccount delete-update-addMember…): решение о
+   доступе к ним принимает МОДЕЛЬ (каталог + per-object Check `v_delete`/`v_update` на
+   самом объекте), и она принимает машинного принципала как первоклассный субъект.
+   Проверка рядом с моделью была УЖЕ, коарснее (ключевалась на `accounts.owner_user_id`),
+   не выдавалась/не отзывалась/не попадала в аудит и делала все 12 недостижимыми для
+   любого машинного клиента by construction. Теперь SA-принципал с нужным грантом их
+   проходит; без гранта — по-прежнему `403` от gateway. Регрессия зафиксирована в
+   `gateway/internal/middleware/authz_iam_owner_guard_model_gate_test.go` (модель гейтит
+   все 12) + `…/api/*/machine_principal_reaches_usecase_test.go` (use-case не пере-решает).
 2. **`AccountService.Create`** выводит `owner_user_id` из вызывающего, поэтому SA-caller
    роняет его на FK: асинхронный `9 FAILED_PRECONDITION "referenced resource not found
    or still in use"`. Создать аккаунт машинным принципалом нельзя.
