@@ -265,7 +265,10 @@ func (u *UseCase) Update(ctx context.Context, id string, mask []string, name, de
 	if err := validate.UpdateMask("update_mask", mask, knownUpdateFields); err != nil {
 		return nil, err
 	}
-	upd := resolveUpdate(mask, name, description, labels)
+	upd, err := resolveUpdate(mask, name, description, labels)
+	if err != nil {
+		return nil, u.errStatus(err)
+	}
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Update snapshot %s", id),
 		&storagev1.UpdateSnapshotMetadata{SnapshotId: id})
@@ -314,7 +317,22 @@ func (u *UseCase) Delete(ctx context.Context, id string) (*operations.Operation,
 
 // resolveUpdate резолвит mutable-изменения из mask + тела. Пустой mask → full-object
 // PATCH (все mutable из тела). Непустой mask → только перечисленные поля.
-func resolveUpdate(mask []string, name, description string, labels map[string]string) SnapshotUpdate {
+//
+// Каждое ПРИМЕНЯЕМОЕ поле валидируется по тем же правилам, что Create. Проверка
+// стоит внутри ветки apply(...), а не перед ней, и это несущее решение: поле, не
+// попавшее в маску, сервис игнорирует — отвергать запрос за значение, которое всё
+// равно не будет записано, значит ввести новый дефект вместо исправленного. При
+// пустой маске применяется всё тело, поэтому проверяется тоже всё.
+//
+// До этого не проверялось НИ ОДНО из трёх (снимок был шире тома и образа — те хотя
+// бы прогоняли имя): переразмерное описание, переполненные метки и незаконное имя
+// доезжали до UPDATE, ловились snapshots_description_check / snapshots_labels_valid /
+// snapshots_name_check и возвращались АСИНХРОННО в ошибке операции обобщённым
+// «Illegal argument» — поздно и без имени поля. Ошибка pkg/validate уходит наверх
+// КАК ЕСТЬ: имя поля она кладёт в google.rpc.BadRequest-детали, а пересборка через
+// err.Error() их теряет. Имя — исключение: его контрактный текст сам называет поле
+// («Illegal argument name»), поэтому оно идёт привычной sentinel-обёрткой.
+func resolveUpdate(mask []string, name, description string, labels map[string]string) (SnapshotUpdate, error) {
 	var u SnapshotUpdate
 	apply := func(field string) bool {
 		if len(mask) == 0 {
@@ -328,18 +346,27 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 		return false
 	}
 	if apply("name") {
+		if err := domain.SnapshotName(name).Validate(); err != nil {
+			return SnapshotUpdate{}, fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error())
+		}
 		n := name
 		u.Name = &n
 	}
 	if apply("description") {
+		if err := validate.Description("description", description); err != nil {
+			return SnapshotUpdate{}, err
+		}
 		d := description
 		u.Description = &d
 	}
 	if apply("labels") {
+		if err := validate.Labels("labels", labels); err != nil {
+			return SnapshotUpdate{}, err
+		}
 		u.Labels = labels
 		u.LabelsSet = true
 	}
-	return u
+	return u, nil
 }
 
 // marshalSnapshot упаковывает domain.Snapshot в Operation.response через единый
