@@ -1388,9 +1388,11 @@ kacho-nlb:
   # refuse-to-start (migrate + serve) → Init:CrashLoopBackOff. So the dev profile
   # must also flip config.mode=dev (same triplet the compute chart documents:
   # mode=dev + mtls off + sslmode=disable). Ephemeral CI stand only; prod keeps
-  # production (values.prod.yaml).
-  config:
-    mode: dev
+  # production (values.prod.yaml). The `mode: dev` flip itself lives in the single
+  # `config:` block further down — this key was declared TWICE under kacho-nlb
+  # (here and again below), and a duplicate mapping key does not merge: the later
+  # block replaces this one wholesale. Both happened to set the same mode, so
+  # nothing misbehaved — but any key added here would have been silently dropped.
   # mTLS: server (gateway dials here) + client (nlb→iam, nlb→vpc, nlb→compute, nlb→geo).
   mtls:
     enable: true

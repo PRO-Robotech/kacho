@@ -698,6 +698,30 @@ hydra:
   # Hydra OAuth2 webhook config (under the subchart's nested `hydra.config` key).
   hydra:
     config:
+      # ─── Access-token shape ───────────────────────────────────────────────
+      # The api-gateway validates a bearer by SIGNATURE, against the JWKS the
+      # identity facade publishes. That only works on a self-contained JWT.
+      #
+      # This block was ABSENT here, and its absence is not a neutral default:
+      # the provider's built-in access-token strategy is `opaque` — a handle
+      # carrying no signature and no claims, verifiable only by calling back to
+      # introspect it, which the gateway does not do. So the canonical
+      # production profile minted tokens the gateway could not verify at all.
+      # It was declared only in values.dev.yaml, and the profiles are NOT
+      # layered (this file renders standalone, never on top of the dev one), so
+      # nothing in the dev profile ever reached production. Same class as the
+      # `ttl` block below, found the same way.
+      #
+      # `scope_claim: list` is part of the same contract: the gateway reads
+      # scopes as a list, and the provider's default string encoding would
+      # verify fine and then authorize wrongly — worse than failing shut.
+      #
+      # Guarded by gateway/deploy/token_shape_test.go, which reads the
+      # declaration rather than a rendered template, so it can never skip.
+      strategies:
+        access_token: jwt
+        jwt:
+          scope_claim: list
       # ─── Token TTL discipline (acceptance §5.2) ───────────────────────────
       # This block is what values.dev.yaml's TTL comment has always CLAIMED
       # lived here ("PRODUCTION: 15m, kept in values.prod.yaml"). It did not:
