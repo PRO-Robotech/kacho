@@ -152,6 +152,21 @@ func main() {
 		logger.Info("hybrid mTLS external listener: cert-principal path enabled")
 	}
 
+	// Machine principals are exempt from step-up (a machine has no second
+	// factor). That exemption is only defensible if the machine's token is
+	// protected some OTHER way — proof-of-possession. When enabled, an unbound
+	// (plain-bearer) machine token is rejected 401 on both surfaces. Default off
+	// until the provider mints bound tokens; see the config field's godoc for
+	// the rollout order.
+	authInterceptor = authInterceptor.WithRequireMachineTokenBinding(
+		cfg.AuthNRequireMachineTokenBinding)
+	if cfg.AuthNRequireMachineTokenBinding {
+		logger.Info("machine principals must present a sender-constrained token (cnf)")
+	} else {
+		logger.Info("machine token binding NOT required " +
+			"(set KACHO_API_GATEWAY_AUTHN_REQUIRE_MACHINE_TOKEN_BINDING=true once issuance mints bound tokens)")
+	}
+
 	logger.Info("auth-interceptor configured",
 		"mode", cfg.AuthNMode,
 		"iam_internal_addr", cfg.IAMInternalAddr,

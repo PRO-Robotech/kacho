@@ -116,7 +116,11 @@ type AuthInterceptor struct {
 	kratos        *KratosClient // optional Ory Kratos /whoami client (nil → disabled)
 	verifier      TokenVerifier // JWKS-валидатор Hydra RS256 access JWT (nil → disabled, HMAC-only)
 	mtlsPrincipal bool          // derive Principal from a verified client cert (hybrid external listener)
-	logger        *slog.Logger
+	// requireMachineBinding — when true, a token whose principal is a MACHINE
+	// (kacho_principal_type=service_account) must be sender-constrained (RFC
+	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
+	requireMachineBinding bool
+	logger                *slog.Logger
 
 	// Headers, которые auth-interceptor пропускает в backend metadata
 	// (после успешного auth). Backend через corelib `grpcsrv.PrincipalExtractInterceptor`
@@ -137,6 +141,56 @@ func NewAuthInterceptor(mode AuthMode, devSecret string, lookup SubjectLookuper,
 		mdKeyPrincipalID:      principalmeta.MetaPrincipalID,
 		mdKeyPrincipalDisplay: principalmeta.MetaPrincipalDisplay,
 	}
+}
+
+// WithRequireMachineTokenBinding demands that MACHINE principals present a
+// sender-constrained token (RFC 7800 `cnf` — DPoP `jkt` or mTLS `x5t#S256`).
+//
+// Why here and not in DPoPMiddleware / CnfBindingInterceptor: those are gated
+// behind KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP, which defaults off. This
+// interceptor is the one authN layer that always runs, so it is the only place
+// the requirement is actually reachable on a deployed stand.
+//
+// Why machines only: a machine principal is exempt from step-up because it has
+// no second factor. "Exempt" must mean "protected differently", not
+// "unprotected" — proof-of-possession is that different protection. The
+// interactive path is untouched: browser flows issue plain bearers and gain
+// their assurance from step-up instead.
+//
+// Default OFF. The provider does not yet register OAuth2 clients that mint
+// bound tokens, so enabling this before issuance lands rejects every
+// service-account token. Sequence: land issuance → observe `cnf` on minted
+// machine tokens → enable here.
+func (a *AuthInterceptor) WithRequireMachineTokenBinding(require bool) *AuthInterceptor {
+	a.requireMachineBinding = require
+	return a
+}
+
+// machineBindingViolation reports whether the verified token belongs to a
+// machine principal that failed to present a sender-constrained token.
+//
+// Fail-closed shape: the check keys on the principal type carried by the
+// token's own verified claims, and treats "no cnf at all" as the violation. A
+// token that IS bound is validated for actual possession by the DPoP / mTLS
+// validators (they own the proof check); this guard answers only the prior
+// question — "is this machine credential replayable as a plain bearer?".
+func (a *AuthInterceptor) machineBindingViolation(vt *VerifiedToken) bool {
+	return a.machineBindingViolationFor(vt, verifiedClaim(vt, "kacho_principal_type"))
+}
+
+// machineBindingViolationFor is the same check against an ALREADY-RESOLVED
+// principal type. It exists for the SubjectLookuper fallback, which reaches a
+// principal type without going through the token's own claims: guarding only
+// the claims path would leave the fallback as the way in for exactly the
+// credential the control is meant to constrain.
+func (a *AuthInterceptor) machineBindingViolationFor(vt *VerifiedToken, principalType string) bool {
+	if !a.requireMachineBinding || vt == nil {
+		return false
+	}
+	if principalType != "service_account" {
+		return false // human / unknown principal — untouched by this control
+	}
+	return !vt.Cnf.HasJkt && !vt.Cnf.HasX5tS
 }
 
 // WithKratos подключает Kratos /whoami client.
@@ -257,12 +311,20 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 				"method", fullMethod, "err", verr)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		}
+		// Machine principals must prove possession — parity with the REST path.
+		// A gap on either surface makes the other pointless: a replayer just
+		// uses the unguarded one.
+		if a.machineBindingViolation(vt) {
+			a.logger.Warn("auth: machine token is not sender-constrained; rejected",
+				"method", fullMethod)
+			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+		}
 		pType, pID, display, perr := principalFromVerifiedToken(vt)
 		if perr == nil {
 			return a.injectPrincipal(ctx, pType, pID, display), nil
 		}
 		// Claims absent → fall back to SubjectLookuper on the verified sub.
-		return a.authorizeViaLookup(ctx, fullMethod, vt.Subject)
+		return a.authorizeViaLookup(ctx, fullMethod, vt.Subject, vt)
 	}
 
 	// Validate JWT via the HMAC-dev path (dev/e2e tokens, zero regression).
@@ -301,7 +363,9 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		return a.injectPrincipal(ctx, "service_account", saID, saID), nil
 	}
 
-	return a.authorizeViaLookup(ctx, fullMethod, subjectID)
+	// nil vt — the HMAC-dev tail carries no verified asymmetric token, so there
+	// is no `cnf` to weigh (and this path is disabled outside dev anyway).
+	return a.authorizeViaLookup(ctx, fullMethod, subjectID, nil)
 }
 
 // authorizeViaLookup резолвит principal через SubjectLookuper по external id
@@ -309,7 +373,12 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 // токен без kacho_principal_* claims). Поведение при NotFound зависит от mode:
 // dev → anonymous (back-compat newman), production /
 // production-strict → reject Unauthenticated.
-func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, subjectID string) (context.Context, error) {
+//
+// vt is the verified token when one exists (JWKS-fallback), nil otherwise. It is
+// carried so the machine-binding requirement also covers a machine principal
+// resolved by LOOKUP rather than by claims — guarding only the claims path would
+// leave this branch as the way in for the very credential it constrains.
+func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, subjectID string, vt *VerifiedToken) (context.Context, error) {
 	if subjectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "token missing subject")
 	}
@@ -330,6 +399,12 @@ func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, su
 				"method", fullMethod, "external_id", subjectID, "err", err)
 			return a.injectAnonymous(ctx), nil
 		}
+	}
+
+	if a.machineBindingViolationFor(vt, subj.Type) {
+		a.logger.Warn("auth: machine token (resolved by lookup) is not sender-constrained; rejected",
+			"method", fullMethod)
+		return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 	}
 
 	// Inject Principal в ctx + metadata (backend читает через corelib).
@@ -722,6 +797,14 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 		writeHTTPUnauthorized(w, "token validation failed")
 		return true
 	}
+	// Machine principals must prove possession. Checked BEFORE the principal is
+	// injected, so a violating token never reaches authz or a backend.
+	if a.machineBindingViolation(vt) {
+		a.logger.Warn("auth.HTTP: machine token is not sender-constrained; rejected",
+			"path", r.URL.Path)
+		writeHTTPUnauthorized(w, "sender-constrained token required")
+		return true
+	}
 	if pType, pID, display, perr := principalFromVerifiedToken(vt); perr == nil {
 		setPrincipalHeaders(r, pType, pID, display)
 		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT)", "type", pType, "id", pID)
@@ -736,6 +819,13 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	}
 	if subj, lerr := a.subjectLookup.LookupByExternalID(r.Context(), vt.Subject); lerr != nil {
 		a.logger.Debug("auth.HTTP: SubjectLookup failed (Hydra JWT fallback)", "external_id", vt.Subject, "err", lerr.Error())
+	} else if a.machineBindingViolationFor(vt, subj.Type) {
+		// The lookup resolved a MACHINE principal from a token that carried no
+		// kacho_principal_* claims. Same requirement, same rejection.
+		a.logger.Warn("auth.HTTP: machine token (resolved by lookup) is not sender-constrained; rejected",
+			"path", r.URL.Path)
+		writeHTTPUnauthorized(w, "sender-constrained token required")
+		return true
 	} else {
 		setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
 		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT fallback)", "type", subj.Type, "id", subj.ID)

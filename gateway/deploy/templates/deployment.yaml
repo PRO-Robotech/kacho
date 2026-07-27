@@ -156,6 +156,27 @@ spec:
             - name: KACHO_API_GATEWAY_AUTHN_DEV_SECRET
               value: {{ .Values.authn.devSecret | quote }}
             {{- end }}
+            # Sender-constrained (RFC 7800 `cnf`) token handling.
+            #
+            # enableDpop mounts the DPoP/mTLS-bound validators (they verify the
+            # PROOF for a token that carries `cnf`). Until 2026-07-27 no template
+            # emitted this env at all, so that whole validation path was
+            # unreachable on every deployed stand regardless of intent — the
+            # documented `KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP: "true"` had no way
+            # to take effect through the chart.
+            {{- if .Values.authn.enableDpop }}
+            - name: KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP
+              value: "true"
+            {{- end }}
+            # requireMachineTokenBinding demands that MACHINE principals
+            # (service accounts) present a bound token; unbound ⇒ 401. Machines
+            # are exempt from step-up because they have no second factor, so
+            # proof-of-possession is what replaces it. The human path is
+            # unaffected. Default off — see values.yaml for the rollout order.
+            {{- if .Values.authn.requireMachineTokenBinding }}
+            - name: KACHO_API_GATEWAY_AUTHN_REQUIRE_MACHINE_TOKEN_BINDING
+              value: "true"
+            {{- end }}
             {{- end }}
             {{- if .Values.hydra }}
             # Hydra JWKS for RS256 access-token verification.

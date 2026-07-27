@@ -278,6 +278,22 @@ type Config struct {
 	// dev mode без sender-constrained tokens).
 	AuthNEnableDPoP bool `envconfig:"KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP" default:"false"`
 
+	// AuthNRequireMachineTokenBinding — true → a token whose principal is a
+	// MACHINE (kacho_principal_type=service_account) MUST be sender-constrained
+	// (RFC 7800 `cnf`: DPoP `jkt` or mTLS `x5t#S256`); an unbound machine token
+	// is rejected 401. The human/interactive path is unaffected.
+	//
+	// Enforced by AuthInterceptor — the one authN layer that always runs —
+	// rather than by DPoPMiddleware / CnfBindingInterceptor, which sit behind
+	// AuthNEnableDPoP and are therefore unmounted on a default deployment.
+	//
+	// Default false: the identity provider does not yet register OAuth2 clients
+	// that mint bound tokens, so switching this on before issuance lands would
+	// reject every service-account token. Sequence: enable issuance
+	// (kacho-iam sa-key `bindDpop`) → confirm minted machine tokens carry `cnf`
+	// → set this true.
+	AuthNRequireMachineTokenBinding bool `envconfig:"KACHO_API_GATEWAY_AUTHN_REQUIRE_MACHINE_TOKEN_BINDING" default:"false"`
+
 	// --- AuthZ core (per-RPC enforcement) ---
 
 	// AuthZEnabled — master toggle for the per-RPC AuthZ middleware. When
