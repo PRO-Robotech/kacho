@@ -446,6 +446,102 @@ CASES.append(Case(
 
 
 # ===========================================================================
+# Непринимаемые поля Create — отказ вместо молчаливого выбрасывания
+#
+# Шесть легаси-полей CreateInstanceRequest не имеют в compute ни одного читателя
+# (проверено grep по services/compute вне тестов). Раньше они принимались и молча
+# выбрасывались: клиент получал 200 + Operation и был уверен, что параметр применён.
+# «Принято-и-проигнорировано» — не исход (api-conventions.md); поля остаются в
+# контракте, но отвергаются явно, как docs/architecture/07-known-divergences.md уже
+# обещал по filesystemSpecs.
+#
+# Контракт отказа: 400 / code 3, сообщение ОБОБЩЁННОЕ («invalid argument»), имя поля
+# — в google.rpc.BadRequest.fieldViolations[].field (snake_case). Кейсы проверяют ОБЕ
+# половины: деталь (без неё клиент не узнает, что именно отвергли) и точный текст
+# (он поля не называет — прикладному парсеру не за что цепляться в прозе).
+# ===========================================================================
+
+def _unsupported_field_case(case_id, suffix, json_key, proto_field, value, why):
+    """Один непринимаемый ключ поверх ВАЛИДНОГО тела VM → sync 400 + field violation.
+
+    Тело валидно во всём остальном (placeholder-mt достаточно: отказ срабатывает
+    ДО резолва каталога), поэтому единственная причина 400 — сам ключ.
+    """
+    return Case(
+        id=case_id,
+        title=f"Create с {json_key} → sync 400 INVALID_ARGUMENT + fieldViolation '{proto_field}'; "
+              f"сообщение обобщённое (имя поля живёт в details, не в тексте). {why} "
+              "[class:NEG · accepted-and-ignored ban]",
+        classes=["VAL", "NEG"], priority="P1",
+        steps=[Step(name=f"cr-{proto_field.replace('_', '-')}", method="POST", path=INSTANCES,
+                    body=_vm_body(suffix, mt=_PLACEHOLDER_MT, extra={json_key: value}),
+                    test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                                 *assert_field_violation(proto_field),
+                                 "pm.test('message stays generic (field name lives in details)', () => "
+                                 "pm.expect(pm.response.json().message).to.eql('invalid argument'));"])],
+    )
+
+
+CASES.append(_unsupported_field_case(
+    "INST-RD-CR-VAL-UNSUPPORTED-NETWORK-SETTINGS", "netset",
+    "networkSettings", "network_settings", {"type": "SOFTWARE_ACCELERATED"},
+    "compute не конфигурирует сетевое ускорение."))
+
+CASES.append(_unsupported_field_case(
+    "INST-RD-CR-VAL-UNSUPPORTED-FILESYSTEM-SPECS", "fsspec",
+    "filesystemSpecs", "filesystem_specs",
+    [{"mode": "READ_WRITE", "deviceName": "fs0", "filesystemId": "fs-1"}],
+    "домена Filesystem в compute нет (контракт FilesystemService удалён)."))
+
+CASES.append(_unsupported_field_case(
+    "INST-RD-CR-VAL-UNSUPPORTED-LOCAL-DISK-SPECS", "lclspec",
+    "localDiskSpecs", "local_disk_specs", [{"size": "107374182400"}],
+    "compute не провижнит host-local диски."))
+
+CASES.append(_unsupported_field_case(
+    "INST-RD-CR-VAL-UNSUPPORTED-MAINTENANCE-POLICY", "mntpol",
+    "maintenancePolicy", "maintenance_policy", "MIGRATE",
+    "обслуживание хоста — не предмет control-plane."))
+
+CASES.append(_unsupported_field_case(
+    "INST-RD-CR-VAL-UNSUPPORTED-MAINTENANCE-GRACE-PERIOD", "mntgrc",
+    "maintenanceGracePeriod", "maintenance_grace_period", "60s",
+    "обслуживание хоста — не предмет control-plane."))
+
+CASES.append(_unsupported_field_case(
+    "INST-RD-CR-VAL-UNSUPPORTED-SERIAL-PORT-SETTINGS", "serprt",
+    "serialPortSettings", "serial_port_settings", {"sshAuthorization": "OS_LOGIN"},
+    "compute не конфигурирует доступ к последовательному порту."))
+
+CASES.append(Case(
+    id="INST-RD-CR-VAL-UNSUPPORTED-ALL-SIX-AT-ONCE",
+    title="Create со ВСЕМИ шестью непринимаемыми полями → одна 400 с шестью fieldViolations "
+          "(легаси-клиент узнаёт про все за один заход, а не по одному на запрос); "
+          "проверка идёт ПЕРВОЙ — instanceKind снят, но отвечают всё равно непринимаемые поля, "
+          "не instance_kind. [class:NEG · accepted-and-ignored ban]",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[Step(name="cr-all-six", method="POST", path=INSTANCES,
+                body={k: v for k, v in _vm_body("all6", mt=_PLACEHOLDER_MT, extra={
+                    "networkSettings": {"type": "SOFTWARE_ACCELERATED"},
+                    "filesystemSpecs": [{"mode": "READ_WRITE", "deviceName": "fs0", "filesystemId": "fs-1"}],
+                    "localDiskSpecs": [{"size": "107374182400"}],
+                    "maintenancePolicy": "MIGRATE",
+                    "maintenanceGracePeriod": "60s",
+                    "serialPortSettings": {"sshAuthorization": "OS_LOGIN"},
+                }).items() if k != "instanceKind"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('all six unsupported fields reported at once, and nothing else', () => {",
+                             "  const j = pm.response.json();",
+                             "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                             "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                             "  const got = (det.fieldViolations || []).map(v => v.field).sort();",
+                             "  pm.expect(got).to.eql(['filesystem_specs','local_disk_specs','maintenance_grace_period',"
+                             "'maintenance_policy','network_settings','serial_port_settings']);",
+                             "});"])],
+))
+
+
+# ===========================================================================
 # F8 — ins- prefix + malformed-first (COMP-1-22)
 # ===========================================================================
 
