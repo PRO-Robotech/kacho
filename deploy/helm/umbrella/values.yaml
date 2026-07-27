@@ -49,8 +49,6 @@ kacho:
     # подписант — Hydra, iam лишь проксирует её публичный JWKS байт-в-байт),
     # поэтому ротировать нечего. Подробности — charts/kacho-iam/values.yaml.
     jwks:
-      # Читается GetJWKSStatus как «ожидаемый интервал» при отчёте о возрасте.
-      rotationDays: 90
       # AES-GCM key: требуется production boot-guard'ом iam (refuse-to-start без
       # него). В prod — KMS-CMK через external-secrets.
       encKeySecretName: kacho-iam-jwks-enc-key
@@ -90,7 +88,6 @@ kacho-iam:
     iam:
       # Ротатора нет (см. выше) — остаются только реально потребляемые ключи.
       jwks:
-        rotationDays: 90
         encKeySecretName: kacho-iam-jwks-enc-key
         encKeySecretKey: enc_key
       sessionRevocations:

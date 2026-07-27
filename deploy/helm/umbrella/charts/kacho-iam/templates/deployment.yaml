@@ -323,8 +323,6 @@ spec:
               value: {{ .Values.kacho.iam.dpopReplay.cacheTTLSeconds | quote }}
             - name: KACHO_IAM_DPOP_REPLAY_CACHE_SIZE
               value: {{ .Values.kacho.iam.dpopReplay.cacheSize | quote }}
-            - name: KACHO_IAM_JWKS_ROTATION_DAYS
-              value: {{ .Values.kacho.iam.jwks.rotationDays | quote }}
             # SA-key lifetime discipline. A service-account key is the machine's
             # credential; machine principals are exempt from step-up (a machine
             # has no second factor), which holds only while the credential is

@@ -153,9 +153,7 @@ data:
       # через KACHO_IAM_HOOK_TOKEN env (Secret kacho-iam-hook-token).
       hook-token-from-env: KACHO_IAM_HOOK_TOKEN
 
-      # JWKS rotation cycle (acceptance §2.4). Worker rotate'ит ключ при age >= rotation-days.
       jwks:
-        rotation-days: {{ .Values.kacho.iam.jwks.rotationDays | int }}
         # AES-GCM key для encrypt-at-rest private_key_pem. ENV — KACHO_IAM_JWKS_ENC_KEY.
         enc-key-from-env: KACHO_IAM_JWKS_ENC_KEY
 
