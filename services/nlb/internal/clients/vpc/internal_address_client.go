@@ -428,8 +428,28 @@ func (c *internalAddressClient) linkOwnAddress(
 		"attempts", attempts,
 		"err", lastErr.Error(),
 	)
-	return fmt.Errorf("%w: vpc set address reference %s: owner-tuple not visible after %d attempts: %w",
-		domain.ErrUnavailable, addressID, attempts, lastErr)
+	// Ответ несёт ТОЛЬКО собственный вердикт полосы; `lastErr` остаётся в логе выше
+	// и НЕ попадает в цепочку — по двум причинам.
+	//
+	// 1. КОД. `lastErr` здесь по построению — то, что пропустил
+	// `ownResourceInvisible`: gRPC-status NOT_FOUND (hide-existence) либо
+	// PERMISSION_DENIED. Через `%w` он остался бы в цепочке, а `shared.MapDomainErr`
+	// (единый peer-маппер nlb) намеренно пробрасывает готовый status ПЕРВЫМ — и этот
+	// чужой код перебил бы UNAVAILABLE, который полоса и хотела сказать. Вызывающий
+	// получил бы ТЕРМИНАЛЬНОЕ «не найдено» и прекратил попытки ровно там, где обязан
+	// повторить: материализация eventually-consistent, следующая попытка вполне может
+	// пройти. Порядок ветвей маппера верен (типизированный peer-status обязан
+	// выживать) — не подмешивать чужой статус должно ЗДЕСЬ.
+	//
+	// 2. ТЕКСТ. `%w` на gRPC-ошибке впечатывает в сообщение транспортную обёртку
+	// («rpc error: code = … desc = …»), которой в тоне сообщений Kachō места нет
+	// (api-conventions.md). Пересказ самой фразы peer'а хуже: это hide-existence-
+	// ответ, созданный чтобы НЕ раскрывать, и он утверждает отсутствие адреса,
+	// который мы закоммитили мгновение назад.
+	//
+	// Причина не теряется — она логируется в точке сдачи (CWE-778), там ей и место.
+	return fmt.Errorf("%w: vpc set address reference %s: owner-tuple not visible after %d attempts",
+		domain.ErrUnavailable, addressID, attempts)
 }
 
 // freeOwnAddress — компенсирующий Delete адреса, который МЫ ЖЕ только что создали,
@@ -470,8 +490,18 @@ func (c *internalAddressClient) freeOwnAddress(ctx context.Context, addressID st
 		case <-time.After(interval):
 		}
 	}
-	return fmt.Errorf("%w: vpc address delete %s: owner-tuple not visible after %d attempts: %w",
-		domain.ErrUnavailable, addressID, attempts, lastErr)
+	// Та же дисциплина, что в linkOwnAddress: наружу — свой вердикт полосы, peer-статус
+	// в цепочку не подмешиваем (иначе он перебьёт код и притащит транспортную обёртку в
+	// текст). Причину логируем ЗДЕСЬ: вызывающий пишет только возвращённую ошибку
+	// (`address_compensation_free_failed`), поэтому без этой записи причина невозвращённого
+	// lease потерялась бы (CWE-778).
+	c.logger.Warn("address_compensation_owner_tuple_never_materialized",
+		"address_id", addressID,
+		"attempts", attempts,
+		"err", lastErr.Error(),
+	)
+	return fmt.Errorf("%w: vpc address delete %s: owner-tuple not visible after %d attempts",
+		domain.ErrUnavailable, addressID, attempts)
 }
 
 // deleteAddressRaw — AddressService.Delete + ожидание Operation, СЫРОЙ gRPC-status
