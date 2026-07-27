@@ -419,6 +419,9 @@ pg-vpc:
       effective_cache_size = 2GB
       checkpoint_timeout = 15min
       max_wal_size = 2GB
+      # kacho_vpc.fga_register_outbox. Rationale in values.yaml; repeated here
+      # because a later -f replaces this whole string instead of merging into it.
+      autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
   volumePermissions:
@@ -448,6 +451,9 @@ pg-compute:
       shared_buffers = 256MB
       work_mem = 16MB
       effective_cache_size = 1GB
+      # public.compute_fga_register_outbox. Rationale in values.yaml; repeated
+      # here because a later -f replaces this whole string instead of merging in.
+      autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
   volumePermissions:
@@ -530,6 +536,10 @@ pg-iam:
       shared_buffers = 128MB
       work_mem = 8MB
       effective_cache_size = 512MB
+      # kacho_iam.fga_outbox / .subject_change_outbox / .resource_reconcile_outbox.
+      # Rationale in values.yaml; repeated here because a later -f replaces this
+      # whole string instead of merging into it.
+      autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
   volumePermissions:
@@ -617,6 +627,9 @@ pg-nlb:
       shared_buffers = 128MB
       work_mem = 8MB
       effective_cache_size = 512MB
+      # kacho_nlb.fga_register_outbox. Rationale in values.yaml; repeated here
+      # because a later -f replaces this whole string instead of merging into it.
+      autovacuum_naptime = 5s
   image:
     repository: bitnamilegacy/postgresql
   volumePermissions:
