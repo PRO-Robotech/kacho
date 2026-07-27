@@ -1,6 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-jobs-healthy assert-production-posture \
+        assert-outbox-autovacuum \
         reload-svc logs-svc psql preflight e2e-test helm-lint seed-ipam \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
@@ -186,6 +187,7 @@ dev-prod-up: dev-up
 	  --wait --timeout 12m; \
 	$(MAKE) --no-print-directory assert-rollout-ready; \
 	$(MAKE) --no-print-directory assert-production-posture; \
+	$(MAKE) --no-print-directory assert-outbox-autovacuum; \
 	echo "production-posture stand is UP and READY"
 
 # assert-rollout-ready — КАЖДЫЙ workload в ns kacho обязан быть rollout-complete.
@@ -282,6 +284,24 @@ assert-jobs-healthy:
 # прод) контексте это как минимум утечка диагностики.
 assert-production-posture: guard-kind-context
 	@bash scripts/assert-production-posture.sh
+
+# assert-outbox-autovacuum — базы с очередями обязаны РАБОТАТЬ со свежей
+# статистикой, а не просто быть так описаны в values.
+#
+# Дренаж клеймит строки по `sent_at IS NULL`, и план для этого предиката берётся
+# из последнего ANALYZE. Очередь почти всегда пуста → последний ANALYZE снят на
+# пустом backlog'е → во всплеск планировщик входит с оценкой `rows=1`, отбрасывает
+# частичные индексы клейма, и claim дорожает с ~0.2 мс до ~125 мс. Держат свежесть
+# ДВЕ настройки: табличные autovacuum_analyze_* (миграции) и кластерный
+# autovacuum_naptime (чарт) — при дефолтной минуте именно он ограничивающий, и это
+# остаточный минутный всплеск в замерах «после» claim-throughput фикса.
+#
+# Гейт спрашивает ЖИВОЙ postmaster (`pg_settings`), а не ConfigMap: настройка,
+# не доехавшая до процесса, — не настройка (см. инцидент kacho-storage 2026-07-25).
+# guard-kind-context — как и у соседнего гейта: exec в поды на чужом контексте
+# недопустим.
+assert-outbox-autovacuum: guard-kind-context
+	@bash scripts/assert-outbox-autovacuum.sh
 
 helm-lint:
 	cd helm/umbrella && helm dep update >/dev/null && helm lint -f values.dev.yaml

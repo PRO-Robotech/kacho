@@ -415,6 +415,11 @@ kacho-nlb:
   enabled: false
 pg-nlb:
   enabled: false
+  # Carries kacho_nlb.fga_register_outbox. See "Statistics freshness for the
+  # databases that carry an outbox queue" at the bottom of this file.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
 
 # ─── kacho-storage — disabled in base values ───────────────────────────────
 # Storage control-plane (Volume/VolumeAttachment/Snapshot/DiskType) + its backing
@@ -428,6 +433,11 @@ storage:
     tag: main-latest
 pg-storage:
   enabled: false
+  # Carries kacho_storage.fga_register_outbox. See "Statistics freshness for the
+  # databases that carry an outbox queue" at the bottom of this file.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
 
 # ─── security.txt (RFC 9116) — served at /.well-known/security.txt via api-gateway
 # ingress; runtime-configurable per cluster.
@@ -444,3 +454,89 @@ security:
   hiringUrl: "https://kacho.cloud/careers"
   alternateCanonical:
     - "https://kacho.cloud/.well-known/security.txt"
+
+# ─── Statistics freshness for the databases that carry an outbox queue ──────
+#
+# WHAT THIS IS THE REMAINING HALF OF.
+#
+# Every outbox in this platform is drained by a claim that filters on
+# `sent_at IS NULL`, and the planner's row estimate for that predicate comes from
+# the last ANALYZE. A queue is empty almost all of the time, so the last ANALYZE
+# almost always ran against an empty backlog, and the estimate carried into a
+# burst is `rows=1`. On a one-row estimate the partial claim indexes are not worth
+# taking, and the claim degrades from ~0.2 ms to ~125 ms — measured on a live
+# stand, Postgres 16, 32 000 pending rows. At 16 rows per claim batch that is
+# ~128 rows/s against a producer measured at ~150-185 rows/s, so the backlog grows
+# for as long as the statistics stay stale.
+#
+# The per-table half of the treatment already landed, as migrations: analyze and
+# vacuum every 1000 modifications with scale_factor 0 (iam 0064, vpc 0021,
+# compute 0020, nlb 0027, storage 0010, registry 0010). That bounds ELIGIBILITY —
+# at the measured peak a table becomes analyze-eligible ~5.4 s into a burst. It
+# does not bound DETECTION: the autovacuum launcher revisits a database only once
+# per `autovacuum_naptime`, which defaults to 60 s. So a burst arriving after a
+# lull waits on the LAUNCHER, not on the threshold — 60 s against 5.4 s. That is
+# the one-minute onset spike still visible in the after-measurements of the
+# claim-throughput fix, and this section is what removes it.
+#
+# WHY IT IS HERE AND NOT IN A MIGRATION. `autovacuum_naptime` cannot be narrowed
+# to the queue tables. It is not a per-table storage parameter and it is not
+# settable per database — verified on Postgres 16:
+#
+#   ALTER TABLE q SET (autovacuum_analyze_threshold = 1000);  ->  ALTER TABLE
+#   ALTER TABLE q SET (autovacuum_naptime = '5s');            ->  ERROR: unrecognized parameter
+#   ALTER DATABASE d SET autovacuum_naptime = '5s';           ->  ERROR: cannot be changed now
+#   SELECT context FROM pg_settings WHERE name='autovacuum_naptime';  ->  sighup
+#
+# It is a postmaster knob, so postgresql.conf is the only place it can live, and
+# `primary.extendedConfiguration` is how this chart reaches postgresql.conf
+# (rendered into conf.d/override.conf; the sub-chart already hashes that ConfigMap
+# into the pod template as `checksum/extended-configuration`, so changing it does
+# roll the StatefulSet rather than leaving a live process on its boot-time value).
+#
+# The blast radius is narrowed by WHICH INSTANCES carry the line, not by scoping
+# inside one: these are database-per-service instances, so the line on pg-iam
+# reaches iam's tables and nothing else. Deliberately NOT listed: pg-geo (its
+# geo_outbox is a sequence-cursor audit feed with no `sent_at` claim and no
+# drainer), pg-openfga, pg-kratos, pg-hydra (third-party stores, no Kacho queue).
+#
+# WHY 5s. The launcher has to stop being the binding term: 5 s sits below the
+# ~5.4 s it takes to accumulate the per-table threshold of 1000 modifications at
+# the measured peak producer rate, so staleness is once again governed by the
+# per-table setting — which lives in a migration, beside the queue it describes,
+# and can be tuned per queue. Going lower buys nothing (the threshold dominates
+# below ~5 s) while forking an autovacuum worker more often than the check is
+# worth; going to 10-15 s puts the launcher back in front of the threshold, which
+# is exactly the property being removed. The cost of the shorter nap is a CHECK,
+# not work: the worker reads per-table modification counters (shared memory since
+# PG 15) and still acts only on tables over their OWN threshold, which is
+# unchanged for every non-queue table in these databases.
+#
+# A LATER `-f` REPLACES THIS WHOLE STRING. `extendedConfiguration` is a scalar, so
+# any profile that declares its own (values.dev.yaml does, for four of these) must
+# repeat the line. Two gates keep that honest:
+#   * tests/helm/outbox-autovacuum-naptime-test.sh — renders every deployed values
+#     combination and asserts the surviving ConfigMap still carries it (offline);
+#   * scripts/assert-outbox-autovacuum.sh — asks the RUNNING postmaster what it
+#     actually uses, because a ConfigMap that never reached a process is not a
+#     setting.
+pg-vpc:
+  # Carries kacho_vpc.fga_register_outbox.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
+pg-compute:
+  # Carries public.compute_fga_register_outbox.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
+pg-iam:
+  # Carries kacho_iam.fga_outbox, .subject_change_outbox, .resource_reconcile_outbox.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
+pg-registry:
+  # Carries kacho_registry.registry_outbox.
+  primary:
+    extendedConfiguration: |
+      autovacuum_naptime = 5s
