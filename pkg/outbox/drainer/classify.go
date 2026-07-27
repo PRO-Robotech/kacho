@@ -117,11 +117,18 @@ func Classify(err error) Class {
 // grants. A grant outliving the thing it grants is over-grant.
 //
 // Poisoning is the safe direction by comparison. The refused write never happened,
-// so nothing was granted (under-grant is fail-closed); the partition unblocks, so
-// the revocations behind it apply; and the platform's reconciler re-materializes
-// anything that legitimately should exist. A genuinely not-yet-provisioned peer is
-// therefore recovered by the reconciler, not by an unbounded retry that also
-// silences everything behind it.
+// so nothing was granted (under-grant is fail-closed), and the partition unblocks,
+// so the intents queued behind it — including the revocations — apply.
+//
+// It is NOT self-healing on its own, and that matters: a poisoned registration means
+// kacho-iam never got the resource's mirror row, and every candidate query the
+// binding reconciler runs reads that mirror, so the resource has no owner tuple and
+// no materialized verbs until the row is delivered. Poisoning is therefore only
+// correct in a service that also re-drives poisoned rows periodically
+// (reconciler.RedrivePoisoned). With that backstop the outcome is a bounded pause:
+// a cause that was temporary succeeds on a later pass, and a cause that is genuinely
+// permanent keeps poisoning — visibly, via the poison counter — instead of silently
+// wedging every intent behind it. Without it, poisoning loses the intent for good.
 //
 // The other codes (NotFound, FailedPrecondition, Unavailable, DeadlineExceeded)
 // stay transient: they describe peer STATE, which a retry genuinely can find

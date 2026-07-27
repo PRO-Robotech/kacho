@@ -80,7 +80,8 @@ func TestClassify_TransientNeverPoisons(t *testing.T) {
 // row of its partition. Since partitions are per-resource and a resource's
 // unregistration sits behind its registration, that wedge lets a grant outlive the
 // resource it grants. Poisoning fails closed instead: the write never happened, the
-// partition unblocks, and the reconciler re-materializes whatever should exist.
+// partition unblocks, and the service's periodic redrive replays the poisoned row,
+// so a cause that was temporary succeeds on a later pass.
 func TestClassify_PermissionDeniedIsPermanent(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, drainer.ClassPermanent,

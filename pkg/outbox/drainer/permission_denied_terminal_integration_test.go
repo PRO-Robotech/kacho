@@ -35,9 +35,9 @@ import (
 // A grant that survives the deletion of what it grants is over-grant.
 //
 // Poisoning is the safe direction of failure by comparison: the write never
-// happened (nothing was granted), the partition unblocks, and the platform's
-// reconciler re-materializes anything that should exist. Under-granting is
-// fail-closed; the wedge is fail-open.
+// happened (nothing was granted) and the partition unblocks, while the service's
+// periodic redrive replays the poisoned row so a temporary cause still succeeds
+// later. Under-granting is fail-closed; the wedge is fail-open.
 
 // Test_PermissionDeniedHead_DoesNotWedgePartition is the behavioural lock. The
 // head of a partition is refused on authorization grounds on every attempt; a

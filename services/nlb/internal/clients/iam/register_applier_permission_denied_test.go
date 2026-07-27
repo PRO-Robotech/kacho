@@ -16,8 +16,8 @@ package iam_test
 //
 // An identical retry cannot change an authorization decision — it is a function of
 // (caller, relation, object), none of which a retry alters. Poisoning is the safe
-// direction: the write never happened, the partition unblocks, and the reconciler
-// re-materializes whatever should exist.
+// direction: the write never happened, the partition unblocks, and the periodic
+// redrive backstop replays the poisoned row.
 
 import (
 	"context"

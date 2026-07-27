@@ -157,6 +157,44 @@ func New(pool *pgxpool.Pool, cfg Config, ad Adapters, logger *slog.Logger) (*Rec
 	}, nil
 }
 
+// NewRedriveOnly constructs a Reconciler that can run ONLY RedrivePoisoned.
+//
+// RedrivePoisoned is pure SQL over the outbox table — it consults neither the
+// resource enumerator nor the tuple registry — so a service that wants just the
+// poison backstop should not have to invent two domain adapters it will never call.
+// Requiring them anyway pushed services into one of two bad shapes: stub adapters
+// that exist only to satisfy a constructor (dead code that reads as if a reconcile
+// loop were running), or no backstop at all.
+//
+// The backstop is not optional in any service whose register-outbox can poison.
+// A poisoned row is excluded from the claim query's blocking set, so its partition
+// unblocks immediately — that is what stops one refused intent from silencing every
+// later intent for the same resource. But the row itself then stays undelivered
+// forever unless something re-drives it, and an undelivered registration means the
+// resource has no mirror row in kacho-iam, hence no owner tuple and no materialized
+// verbs: invisible to authz until someone edits the database by hand. The periodic
+// redrive is what makes poisoning a bounded pause rather than a permanent loss.
+//
+// BackfillFromState and GCOrphans return an error on a redrive-only Reconciler:
+// the narrowing is enforced where it matters, not left to a nil dereference.
+func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Reconciler, error) {
+	if pool == nil {
+		return nil, errors.New("reconciler.NewRedriveOnly: pool is nil")
+	}
+	if cfg.Table == "" {
+		return nil, errors.New("reconciler.NewRedriveOnly: Config.Table required")
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Reconciler{
+		pool:            pool,
+		cfg:             cfg.withDefaults(),
+		log:             logger.With(slog.String("component", "outbox_reconciler"), slog.String("table", cfg.Table)),
+		firstSeenAbsent: map[string]time.Time{},
+	}, nil
+}
+
 // RedrivePoisoned resets poisoned/exhausted rows (sent_at IS NULL AND
 // attempt_count >= MaxAttempts) back to claimable (attempt_count = 0, last_error
 // = NULL) so the drainer retries them. Returns the number re-driven.
@@ -181,6 +219,10 @@ func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 // emitted. Resources without a project_id are skipped (owner-self-grant is not
 // backfillable).
 func (r *Reconciler) BackfillFromState(ctx context.Context) (int, error) {
+	if r.ad.Enumerator == nil {
+		return 0, errors.New("reconciler.BackfillFromState: no resource enumerator " +
+			"(this Reconciler was built by NewRedriveOnly)")
+	}
 	rows, err := r.ad.Enumerator.ListResources(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("reconciler.BackfillFromState list: %w", err)
@@ -236,6 +278,10 @@ func (r *Reconciler) backfillOne(ctx context.Context, res ResourceRow) (int, err
 // register-intent (anti-race). Returns the count of unregister-intents
 // emitted. Safe to call concurrently.
 func (r *Reconciler) GCOrphans(ctx context.Context) (int, error) {
+	if r.ad.Registry == nil {
+		return 0, errors.New("reconciler.GCOrphans: no tuple registry " +
+			"(this Reconciler was built by NewRedriveOnly)")
+	}
 	tuples, err := r.ad.Registry.ListRegistered(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("reconciler.GCOrphans list: %w", err)

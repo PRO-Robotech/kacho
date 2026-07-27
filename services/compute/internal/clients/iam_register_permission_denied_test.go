@@ -15,7 +15,8 @@ package clients_test
 // partition. Partitions are keyed per resource and a resource's UNregistration is
 // queued behind its registration, so the wedge lets a grant outlive the resource it
 // grants. Poisoning is the safe direction: the write never happened, the partition
-// unblocks, and the reconciler re-materializes whatever should exist.
+// unblocks, and the periodic redrive backstop replays the poisoned row, so a cause
+// that was temporary succeeds on a later pass.
 
 import (
 	"context"

@@ -181,6 +181,13 @@ func runServe(cfg config.Config) error {
 		if derr := startRegisterDrainer(ctx, pool, authzConn, svcMetrics, logger); derr != nil {
 			return fmt.Errorf("start register-drainer: %w", derr)
 		}
+		// Отравление обязано быть паузой, а не потерей: без периодического
+		// redrive недоставленная регистрация оставляет ресурс без mirror-строки в
+		// kacho-iam, а значит без owner-tuple и без материализованных глаголов —
+		// невидимым для authz до ручной правки БД. См. redrive_backstop.go.
+		if derr := startRedriveBackstop(ctx, pool, logger); derr != nil {
+			return fmt.Errorf("start redrive backstop: %w", derr)
+		}
 		syncRegistrar := clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(authzConn))
 		volumeUC.WithRegistrar(syncRegistrar)
 		snapshotUC.WithRegistrar(syncRegistrar)

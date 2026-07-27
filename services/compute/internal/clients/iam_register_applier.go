@@ -145,8 +145,11 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 // query's blocking set and every later row of its partition is never claimed.
 // Partitions are keyed per resource and a resource's unregistration is queued
 // behind its registration — so the wedge lets a grant outlive the resource it
-// grants. Poisoning fails closed instead: the refused write never happened, the
-// partition unblocks, and the reconciler re-materializes what should exist.
+// grants. Poisoning fails closed instead: the refused write never happened and the
+// partition unblocks. It is not self-healing by itself — an undelivered registration
+// leaves the resource without a mirror row in kacho-iam, hence without an owner
+// tuple — so it is paired with the periodic redrive backstop, which turns a poisoned
+// row into a bounded pause rather than a permanent loss.
 func classifyApplyErr(err error) error {
 	if err == nil {
 		return nil
