@@ -33,7 +33,7 @@ import { DetailShell, type DetailTab } from "@shared/components/organisms/Detail
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api, ApiError } from "@shared/api/client";
 import { useProjectStore } from "@shared/lib/context-store";
-import { getByPath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { getByPath, mutationBasePath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 
@@ -186,7 +186,9 @@ export function ResourceDetailPage({
   const name = data ? (getByPath<string>(data, "name") ?? "") : "";
   const statusValue = data ? getByPath<string>(data, "status") : undefined;
   const resourceId = data ? (getByPath<string>(data, "id") ?? uid ?? "") : (uid ?? "");
-  const editPath = `${spec.apiPath}/${resourceId}`;
+  // Мутации адресуют admin-плоскость ресурса, если она у него есть (см.
+  // mutationBasePath); чтение выше по-прежнему идёт с публичного пути.
+  const editPath = `${mutationBasePath(spec)}/${resourceId}`;
 
   const backHref = useMemo(() => {
     if (backHrefOverride) return backHrefOverride;
@@ -665,6 +667,7 @@ export function ResourceDetailPage({
           resourceLabel={spec.singular}
           name={name || resourceId}
           projectId={project?.id ?? null}
+          expectOperation={spec.mutationsReturnOperation === true}
           onSuccess={() => navigate(backHref)}
         />
       )}

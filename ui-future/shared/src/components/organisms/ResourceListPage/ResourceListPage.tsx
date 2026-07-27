@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Input, Segmented, Select, Typography, Tag } from "antd";
+import { Button, Checkbox, Input, Segmented, Select, Typography, Tag } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
@@ -21,6 +21,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/components/molecules/TableToolbar";
 import { useResourceList } from "@shared/lib/use-resource-list";
+import { listViewState, loadedCountLabel } from "@shared/lib/list-view-state";
 
 interface Props {
   spec: ResourceSpec;
@@ -56,7 +57,24 @@ export function ResourceListPage({
   const [hidden, toggleHidden] = useHiddenColumns(`cols:${spec.id}`);
   const toggleCols: ToggleCol[] = spec.columns.map((c) => ({ key: c.header, label: c.header }));
 
-  const { data, isLoading, isError, error } = useResourceList(spec, parentField ?? null, filterValue, pageSize);
+  // Серверные фильтры списка (spec.listFilters) — уходят в query, а не режут
+  // загруженную страницу: клиентский фильтр поверх курсорной страницы отфильтровал
+  // бы только то, что успело приехать, и выдал бы это за весь список.
+  const [serverFilters, setServerFilters] = useState<Record<string, string>>({});
+  const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
+    spec,
+    parentField ?? null,
+    filterValue,
+    pageSize,
+    serverFilters,
+  );
+  const setServerFilter = (param: string, value: string) =>
+    setServerFilters((prev) => {
+      const next = { ...prev };
+      if (value) next[param] = value;
+      else delete next[param];
+      return next;
+    });
 
   const breadcrumb = useMemo(
     () => (
@@ -160,8 +178,7 @@ export function ResourceListPage({
       }
       if (hasZoneFilter && zone !== "all" && rowZone(row) !== zone) return false;
       if (hasSystemFilter && roleKind !== "all") {
-        const isSystem =
-          getByPath<boolean>(row, "is_system") === true || getByPath<boolean>(row, "isSystem") === true;
+        const isSystem = getByPath<boolean>(row, "is_system") === true || getByPath<boolean>(row, "isSystem") === true;
         if (roleKind === "system" && !isSystem) return false;
         if (roleKind === "custom" && isSystem) return false;
       }
@@ -194,17 +211,23 @@ export function ResourceListPage({
     ),
   });
 
-  // Пустой список (без активных пользовательских фильтров) → welcome, как у
-  // дочерних таблиц. По filteredItems (учитывает intrinsic-фильтр addresses
-  // «только внешние»): нет отображаемых строк при пустом поиске/зоне → welcome.
-  const showWelcome =
-    !isLoading &&
-    !isError &&
-    filteredItems.length === 0 &&
-    spec.ops.create &&
-    query.trim() === "" &&
-    (!hasZoneFilter || zone === "all") &&
-    (!hasSystemFilter || roleKind === "all");
+  // Какое из пяти состояний показать. Порядок важен: отказ никогда не должен
+  // проваливаться в приглашение «создайте первый» — на 403 это сообщает
+  // оператору, что список пуст, хотя ему просто отказали, а на 404 делает то же
+  // поверх ответа, который равно может означать «скрыт от вас».
+  const anyFilterActive =
+    query.trim() !== "" ||
+    (hasZoneFilter && zone !== "all") ||
+    (hasSystemFilter && roleKind !== "all") ||
+    Object.keys(serverFilters).length > 0;
+  const view = listViewState({
+    isLoading,
+    error: isError ? (error ?? new Error("list failed")) : null,
+    rowCount: filteredItems.length,
+    filtered: anyFilterActive,
+    canCreate: spec.ops.create,
+  });
+  const showWelcome = view === "welcome";
 
   // Единая шапка списка (PanelHeader) — те же 3 части, что у табов/форм:
   // [иконка ресурса] + «Список» (действие) + plural (название) + счётчик.
@@ -221,6 +244,7 @@ export function ResourceListPage({
           {spec.plural}
           {!isLoading && !isError && (
             <Tag
+              title={hasMore ? "Загружено строк; за курсором есть ещё" : undefined}
               style={{
                 margin: 0,
                 fontSize: 11.5,
@@ -231,7 +255,7 @@ export function ResourceListPage({
                 borderRadius: 5,
               }}
             >
-              {filteredItems.length}
+              {loadedCountLabel(filteredItems.length, hasMore)}
             </Tag>
           )}
         </span>
@@ -269,6 +293,25 @@ export function ResourceListPage({
               allowClear
             />
             {hasZoneFilter && <Select value={zone} onChange={setZone} options={zoneOptions} style={{ width: 220 }} />}
+            {(spec.listFilters ?? []).map((f) =>
+              f.kind === "toggle" ? (
+                <Checkbox
+                  key={f.param}
+                  checked={serverFilters[f.param] === "true"}
+                  onChange={(e) => setServerFilter(f.param, e.target.checked ? "true" : "")}
+                  title={f.description}
+                >
+                  {f.label}
+                </Checkbox>
+              ) : (
+                <ServerRefFilter
+                  key={f.param}
+                  filter={f}
+                  value={serverFilters[f.param] ?? ""}
+                  onChange={(v) => setServerFilter(f.param, v)}
+                />
+              ),
+            )}
             {hasSystemFilter && (
               <Segmented
                 value={roleKind}
@@ -288,7 +331,7 @@ export function ResourceListPage({
       {/* Тело таблицы заполняет остаток белой поверхности и скроллится внутри
           (горизонтально при широких колонках, вертикально при длинном списке). */}
       <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-        {isError ? (
+        {view === "error" ? (
           <ErrorResult error={error} />
         ) : (
           <ResourceTable
@@ -308,6 +351,50 @@ export function ResourceListPage({
           />
         )}
       </div>
+
+      {/* Курсорная пагинация: общего числа у List нет, поэтому «ещё» — это
+          наличие next_page_token, а не арифметика по общему числу. */}
+      {view !== "error" && hasMore && (
+        <div style={{ flexShrink: 0, marginTop: 12, textAlign: "center" }}>
+          <Button loading={isFetchingMore} onClick={() => void fetchMore()}>
+            Показать ещё
+          </Button>
+        </div>
+      )}
     </div>
+  );
+}
+
+// ServerRefFilter — выпадающий выбор значения серверного фильтра из другого
+// ресурса реестра (напр. зоны по региону). Список опций читается той же
+// курсорной страницей, что и всё остальное: это выбор фильтра, а не витрина.
+function ServerRefFilter({
+  filter,
+  value,
+  onChange,
+}: {
+  filter: { param: string; label: string; refSpecId: string; allLabel: string };
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const refSpec = REGISTRY[filter.refSpecId];
+  const { data } = useQuery({
+    queryKey: ["list-filter-options", filter.refSpecId],
+    queryFn: () => api.list<Record<string, Array<{ id: string; name?: string }>>>(refSpec.apiPath, { pageSize: "200" }),
+    enabled: !!refSpec,
+    staleTime: 60_000,
+  });
+  if (!refSpec) return null;
+  const rows = (data?.[refSpec.payloadKey] ?? []) as Array<{ id: string; name?: string }>;
+  return (
+    <Select
+      value={value || "all"}
+      onChange={(v) => onChange(v === "all" ? "" : v)}
+      style={{ width: 220 }}
+      options={[
+        { value: "all", label: filter.allLabel },
+        ...rows.map((r) => ({ value: r.id, label: r.name ? `${r.name} · ${r.id}` : r.id })),
+      ]}
+    />
   );
 }

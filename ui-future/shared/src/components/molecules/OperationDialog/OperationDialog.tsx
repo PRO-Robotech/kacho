@@ -14,6 +14,7 @@ import {
 } from "@shared/components/atoms/ui/Dialog";
 import { Button } from "@shared/components/atoms/ui/Button";
 import { useOperation } from "@shared/lib/use-operation";
+import { operationIdOf } from "@shared/lib/operation-outcome";
 import type { Operation } from "@shared/api/types";
 
 interface Props {
@@ -97,25 +98,14 @@ export function OperationDialog({ opId, title, onSuccess, onClose }: Props) {
 /**
  * Хелпер: достаёт Operation.id из ответа на Create/Update/Delete/action.
  *
- * Backend (через grpc-gateway) возвращает Operation как top-level JSON:
- * `{id, description, done, metadata, ...}` — БЕЗ обёртки `{operation: ...}`.
- * (api.create/update/delete TS-типы исторически указывали обёртку — она ошибочна.)
+ * Единственная реализация чтения живёт в lib/operation-outcome (`operationIdOf`);
+ * здесь — исторический реэкспорт под прежним именем для уже существующих
+ * вызывающих. Новый код разбирает ответ через `resolveMutationResponse`: она
+ * дополнительно отличает «синхронный ответ ресурсом» от «операции не пришло» у
+ * ресурса, который её обещал.
  */
 export function extractOperationId(
   resp: Partial<Operation> | { operation?: Operation } | null | undefined,
 ): string | null {
-  if (!resp) return null;
-  // Top-level Operation: имеет id + done. Если done нет — это sync resource
-  // (Region/Zone/AddressPool — admin-only RPC возвращают объект напрямую).
-  if (
-    "id" in resp &&
-    typeof resp.id === "string" &&
-    "done" in resp &&
-    typeof (resp as Record<string, unknown>).done === "boolean"
-  ) {
-    return resp.id;
-  }
-  // Legacy обёртка — на всякий случай.
-  if ("operation" in resp && resp.operation) return resp.operation.id ?? null;
-  return null;
+  return operationIdOf(resp);
 }
