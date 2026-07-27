@@ -255,7 +255,7 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 		// FGA check from tenant-controlled input.
 		{"kacho.cloud.iam.v1.AuthorizeService/Check", "iam.authorize.check", "*", "cluster"},
 		{"kacho.cloud.iam.v1.AuthorizeService/BatchCheck", "iam.authorize.batchCheck", "scope_id", "project"},
-		{"kacho.cloud.iam.v1.ConditionsService/Create", "iam.conditions.create", "folder_id", "project"},
+		{"kacho.cloud.iam.v1.ConditionsService/Create", "iam.conditions.create", "project_id", "project"},
 		// Condition-item RPCs scope on the condition object itself (`iam_condition:<id>`).
 		{"kacho.cloud.iam.v1.ConditionsService/Get", "iam.conditions.get", "condition_id", "iam_condition"},
 		{"kacho.cloud.iam.v1.ConditionsService/Update", "iam.conditions.update", "condition_id", "iam_condition"},

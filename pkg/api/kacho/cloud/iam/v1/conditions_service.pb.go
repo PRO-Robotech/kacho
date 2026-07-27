@@ -79,8 +79,8 @@ func (x *GetConditionRequest) GetConditionId() string {
 
 type ListConditionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Folder to enumerate Conditions in. Required (no cluster-wide list).
-	FolderId string `protobuf:"bytes,1,opt,name=folder_id,json=folderId,proto3" json:"folder_id,omitempty"`
+	// Project to enumerate Conditions in. Required (no cluster-wide list).
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Page size; default 100, max 1000.
 	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Page token.
@@ -121,9 +121,9 @@ func (*ListConditionsRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_iam_v1_conditions_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ListConditionsRequest) GetFolderId() string {
+func (x *ListConditionsRequest) GetProjectId() string {
 	if x != nil {
-		return x.FolderId
+		return x.ProjectId
 	}
 	return ""
 }
@@ -205,10 +205,9 @@ func (x *ListConditionsResponse) GetNextPageToken() string {
 
 type CreateConditionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Folder to create the Condition in. Cross-service ref to kacho-iam
-	// Project. Required.
-	FolderId string `protobuf:"bytes,1,opt,name=folder_id,json=folderId,proto3" json:"folder_id,omitempty"`
-	// Required human-readable name (UNIQUE within folder_id).
+	// Project to create the Condition in. Required.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Required human-readable name (UNIQUE within project_id).
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional description.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
@@ -252,9 +251,9 @@ func (*CreateConditionRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_iam_v1_conditions_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *CreateConditionRequest) GetFolderId() string {
+func (x *CreateConditionRequest) GetProjectId() string {
 	if x != nil {
-		return x.FolderId
+		return x.ProjectId
 	}
 	return ""
 }
@@ -299,7 +298,7 @@ type UpdateConditionRequest struct {
 	// ID of the Condition resource to update.
 	ConditionId string `protobuf:"bytes,1,opt,name=condition_id,json=conditionId,proto3" json:"condition_id,omitempty"`
 	// Field mask. Acceptable paths: `description`, `labels`, `expression`,
-	// `parameters_schema`. `name` and `folder_id` are immutable
+	// `parameters_schema`. `name` and `project_id` are immutable
 	// (InvalidArgument if present in mask).
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// New description (when `update_mask` includes `description`).
@@ -569,9 +568,10 @@ const file_kacho_cloud_iam_v1_conditions_service_proto_rawDesc = "" +
 	"\n" +
 	"+kacho/cloud/iam/v1/conditions_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\"kacho/cloud/iam/v1/condition.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"W\n" +
 	"\x13GetConditionRequest\x12@\n" +
-	"\fcondition_id\x18\x01 \x01(\tB\x1d\xe8\xc71\x01\xf2\xc71\rcnd_[0-9a-z]+\x8a\xc81\x04<=20R\vconditionId\"\xb9\x01\n" +
-	"\x15ListConditionsRequest\x12)\n" +
-	"\tfolder_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\bfolderId\x12'\n" +
+	"\fcondition_id\x18\x01 \x01(\tB\x1d\xe8\xc71\x01\xf2\xc71\rcnd_[0-9a-z]+\x8a\xc81\x04<=20R\vconditionId\"\xbb\x01\n" +
+	"\x15ListConditionsRequest\x12+\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\tprojectId\x12'\n" +
 	"\tpage_size\x18\x02 \x01(\x03B\n" +
 	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
 	"\n" +
@@ -582,9 +582,10 @@ const file_kacho_cloud_iam_v1_conditions_service_proto_rawDesc = "" +
 	"\n" +
 	"conditions\x18\x01 \x03(\v2\x1d.kacho.cloud.iam.v1.ConditionR\n" +
 	"conditions\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb6\x03\n" +
-	"\x16CreateConditionRequest\x12)\n" +
-	"\tfolder_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\bfolderId\x12C\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb8\x03\n" +
+	"\x16CreateConditionRequest\x12+\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\tprojectId\x12C\n" +
 	"\x04name\x18\x02 \x01(\tB/\xe8\xc71\x01\xf2\xc71\x1f[a-z]([-a-z0-9]{0,61}[a-z0-9])?\x8a\xc81\x041-63R\x04name\x12+\n" +
 	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12N\n" +
 	"\x06labels\x18\x04 \x03(\v26.kacho.cloud.iam.v1.CreateConditionRequest.LabelsEntryR\x06labels\x12.\n" +
@@ -618,15 +619,17 @@ const file_kacho_cloud_iam_v1_conditions_service_proto_rawDesc = "" +
 	"\x19EvaluateConditionResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x14\n" +
 	"\x05trace\x18\x02 \x01(\tR\x05trace\x12=\n" +
-	"\fevaluated_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vevaluatedAt2\xd7\n" +
+	"\fevaluated_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vevaluatedAt2\xd9\n" +
 	"\n" +
 	"\x11ConditionsService\x12\xbe\x01\n" +
 	"\x03Get\x12'.kacho.cloud.iam.v1.GetConditionRequest\x1a\x1d.kacho.cloud.iam.v1.Condition\"o\x8a\xb5\x18\x12iam.conditions.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\x1d\n" +
-	"\riam_condition\x12\fcondition_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02#\x12!/iam/v1/conditions/{condition_id}\x12\xb7\x01\n" +
-	"\x04List\x12).kacho.cloud.iam.v1.ListConditionsRequest\x1a*.kacho.cloud.iam.v1.ListConditionsResponse\"X\x8a\xb5\x18\x13iam.conditions.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x14\n" +
-	"\aproject\x12\tfolder_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x14\x12\x12/iam/v1/conditions\x12\xde\x01\n" +
-	"\x06Create\x12*.kacho.cloud.iam.v1.CreateConditionRequest\x1a .kacho.cloud.operation.Operation\"\x85\x01\x8a\xb5\x18\x15iam.conditions.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x14\n" +
-	"\aproject\x12\tfolder_id\xa2\xb5\x18\x011\xb2\xd2*$\n" +
+	"\riam_condition\x12\fcondition_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02#\x12!/iam/v1/conditions/{condition_id}\x12\xb8\x01\n" +
+	"\x04List\x12).kacho.cloud.iam.v1.ListConditionsRequest\x1a*.kacho.cloud.iam.v1.ListConditionsResponse\"Y\x8a\xb5\x18\x13iam.conditions.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
+	"\aproject\x12\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x14\x12\x12/iam/v1/conditions\x12\xdf\x01\n" +
+	"\x06Create\x12*.kacho.cloud.iam.v1.CreateConditionRequest\x1a .kacho.cloud.operation.Operation\"\x86\x01\x8a\xb5\x18\x15iam.conditions.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\aproject\x12\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*$\n" +
 	"\x17CreateConditionMetadata\x12\tCondition\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/iam/v1/conditions\x12\xf6\x01\n" +
 	"\x06Update\x12*.kacho.cloud.iam.v1.UpdateConditionRequest\x1a .kacho.cloud.operation.Operation\"\x9d\x01\x8a\xb5\x18\x15iam.conditions.update\x92\xb5\x18\x06editor\x9a\xb5\x18\x1d\n" +
 	"\riam_condition\x12\fcondition_id\xa2\xb5\x18\x012\xb2\xd2*$\n" +

@@ -108,7 +108,7 @@ message Tuple {
 message TupleCondition {
   // The named condition. Exactly one must be set.
   oneof selector {
-    // Reference to a `Condition` resource (folder-scoped). 1-20 chars.
+    // Reference to a `Condition` resource (project-scoped). 1-20 chars.
     string condition_id = 1;
 
     // Reference to a built-in condition catalogued in

@@ -19,7 +19,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 //   - `AccessBindingCondition` is **bound 1:1 to one AccessBinding** and carries
 //     a **whitelisted predicate kind** (MFA_FRESH / NON_EXPIRED / …) with kind-
 //     specific JSON params.
-//   - `Condition` is a **standalone, folder-scoped resource** that stores a
+//   - `Condition` is a **standalone, project-scoped resource** that stores a
 //     free-form CEL expression + JSON-Schema for its parameters. It is
 //     referenced by `AccessBinding.condition_ref.condition_id` (oneof) and
 //     evaluated by OpenFGA Conditions (FGA-engine pre-compiles the CEL on
@@ -59,16 +59,16 @@ message Condition {
   // ID of the condition.
   string id = 1 [(required) = true, (length) = "<=20", (pattern) = "cnd_[0-9a-z]+"];
 
-  // Folder in which this condition is scoped (Account/Project hierarchy from
-  // kacho-iam). Conditions are folder-local; references from AccessBindings
-  // on resources outside the folder are rejected at request-path
+  // Project this condition is scoped to (Account/Project hierarchy from
+  // kacho-iam). Conditions are project-local; references from AccessBindings
+  // on resources outside the project are rejected at request-path
   // validation.
-  string folder_id = 2 [(required) = true, (length) = "<=20"];
+  string project_id = 2 [(required) = true, (length) = "<=20"];
 
   // Creation timestamp (truncated to seconds — kacho timestamp convention).
   google.protobuf.Timestamp created_at = 3;
 
-  // Human-readable name. UNIQUE within `folder_id`. 1-63 chars,
+  // Human-readable name. UNIQUE within `project_id`. 1-63 chars,
   // Kachō label pattern.
   string name = 4 [(required) = true, (length) = "1-63", (pattern) = "[a-z]([-a-z0-9]{0,61}[a-z0-9])?"];
 

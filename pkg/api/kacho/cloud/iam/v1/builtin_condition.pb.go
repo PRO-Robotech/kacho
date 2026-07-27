@@ -27,7 +27,7 @@ const (
 // BuiltinCondition — well-known condition catalog.
 //
 // Referenced by `AccessBinding.condition_ref.builtin_condition` (oneof) so the
-// binding gains a Conditions overlay WITHOUT creating a per-folder
+// binding gains a Conditions overlay WITHOUT creating a per-project
 // `Condition` row. The 7 enum values parallel `AccessBindingCondition.Kind`
 // — they encode the same predicates but at the AccessBinding
 // surface use a single int32 instead of a separate row.
