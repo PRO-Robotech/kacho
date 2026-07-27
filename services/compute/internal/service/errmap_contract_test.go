@@ -1,0 +1,116 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package service
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+)
+
+// TestMapRepoErrFailureBandsCharacterization records the code AND the exact wire
+// text mapRepoErr produces on every failure band, for a bare sentinel and for a
+// sentinel carrying the caller's contract text.
+//
+// The message tone is part of the Kachō contract ("<Resource> %s not found" and
+// friends), and hide-existence needs a deny to read byte-for-byte like a real
+// miss, so drift here is an existence oracle rather than a cosmetic change. This
+// test exists so that reordering the mapper has to prove it moved nothing.
+func TestMapRepoErrFailureBandsCharacterization(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       error
+		wantCode codes.Code
+		wantMsg  string
+	}{
+		{"not_found/bare", ErrNotFound, codes.NotFound, "not found"},
+		{"not_found/wrapped", fmt.Errorf("%w: Instance ins-1 not found", ErrNotFound), codes.NotFound, "Instance ins-1 not found"},
+
+		{"already_exists/bare", ErrAlreadyExists, codes.AlreadyExists, "already exists"},
+		{"already_exists/wrapped", fmt.Errorf("%w: Instance ins-1 already exists", ErrAlreadyExists), codes.AlreadyExists, "Instance ins-1 already exists"},
+
+		{"failed_precondition/bare", ErrFailedPrecondition, codes.FailedPrecondition, "failed precondition"},
+		{"failed_precondition/wrapped", fmt.Errorf("%w: instance is not stopped", ErrFailedPrecondition), codes.FailedPrecondition, "instance is not stopped"},
+
+		{"invalid_argument/bare", ErrInvalidArg, codes.InvalidArgument, "invalid argument"},
+		{"invalid_argument/wrapped", fmt.Errorf("%w: invalid instance id 'zzz'", ErrInvalidArg), codes.InvalidArgument, "invalid instance id 'zzz'"},
+
+		{"internal/bare", ErrInternal, codes.Internal, "internal database error"},
+		{"internal/wrapped", fmt.Errorf("%w: pgx: dial tcp 10.0.0.7:5432", ErrInternal), codes.Internal, "internal database error"},
+
+		{"unavailable/status", status.Error(codes.Unavailable, "geo unavailable"), codes.Unavailable, "geo unavailable"},
+		{"passthrough/permission_denied", status.Error(codes.PermissionDenied, "denied"), codes.PermissionDenied, "denied"},
+
+		{"unclassified/raw", errors.New("dial tcp 10.0.0.7:5432: connect: connection refused"), codes.Internal, "internal database error"},
+		{"unclassified/unknown_coded_status", status.Error(codes.Unknown, "boom"), codes.Internal, "internal database error"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mapRepoErr(tc.in)
+			st, ok := status.FromError(got)
+			if !ok {
+				t.Fatalf("mapRepoErr returned a non-status error: %v", got)
+			}
+			if st.Code() != tc.wantCode {
+				t.Errorf("code = %v, want %v", st.Code(), tc.wantCode)
+			}
+			if st.Message() != tc.wantMsg {
+				t.Errorf("message = %q, want %q", st.Message(), tc.wantMsg)
+			}
+		})
+	}
+
+	t.Run("nil", func(t *testing.T) {
+		if got := mapRepoErr(nil); got != nil {
+			t.Errorf("mapRepoErr(nil) = %v, want nil", got)
+		}
+	})
+}
+
+// TestMapRepoErrPreservesDetailsThroughSentinelWrap locks the property itself:
+// a rich validator error wrapped onto a service sentinel with %w must reach the
+// client with its google.rpc.BadRequest field violation intact.
+//
+// pkg/validate puts the offending field name ONLY in the details — the message
+// stays the generic "invalid argument" — so a mapper that recognises the sentinel
+// and rebuilds a fresh status.Error(code, text) silently drops the one
+// machine-readable part of the answer. That has to be a property of the mapper,
+// not something every future author is expected to remember.
+func TestMapRepoErrPreservesDetailsThroughSentinelWrap(t *testing.T) {
+	rich := coreerrors.InvalidArgument().
+		AddFieldViolation("zoneId", "zoneId is required").
+		Err()
+	wrapped := fmt.Errorf("%w: %w", ErrInvalidArg, rich)
+
+	got := mapRepoErr(wrapped)
+
+	st, ok := status.FromError(got)
+	if !ok {
+		t.Fatalf("mapRepoErr returned a non-status error: %v", got)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Fatalf("code = %v, want InvalidArgument", st.Code())
+	}
+
+	var fields []string
+	for _, d := range st.Details() {
+		br, ok := d.(*errdetails.BadRequest)
+		if !ok {
+			continue
+		}
+		for _, v := range br.GetFieldViolations() {
+			fields = append(fields, v.GetField())
+		}
+	}
+	if len(fields) != 1 || fields[0] != "zoneId" {
+		t.Fatalf("field violations = %v, want exactly [zoneId]", fields)
+	}
+}
