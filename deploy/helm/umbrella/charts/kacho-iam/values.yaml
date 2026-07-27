@@ -58,6 +58,29 @@ kacho:
     dpopReplay:
       cacheTTLSeconds: 120
       cacheSize: 100000
+    # saKey — lifetime discipline for service-account keys (the machine
+    # credential). Go duration strings.
+    #   defaultTtl    — applied when the caller omits ttl_seconds. Finite by
+    #                   design: "omitted ⇒ never expires" made the default call
+    #                   shape the unbounded one.
+    #   maxTtl        — inclusive ceiling; a larger ttl_seconds is refused
+    #                   InvalidArgument before any OAuth2 client is registered.
+    #   accessTokenTtl — per-client access_token_lifespan for tokens minted from
+    #                   the key. EMPTY here on purpose: the env is then omitted
+    #                   and the provider-global TTL applies, so an existing
+    #                   deployment is unchanged. Production pins it explicitly
+    #                   (values.prod.yaml); the local e2e stand deliberately does
+    #                   NOT, because its Hydra access_token TTL is widened to
+    #                   cover long serial newman waves.
+    saKey:
+      defaultTtl: "2160h"   # 90d
+      maxTtl: "8760h"       # 365d
+      accessTokenTtl: ""
+      # bindDpop — issue sender-constrained (RFC 9449) machine tokens. OFF by
+      # default and deliberately NOT flipped here: it only affects keys issued
+      # after it is on, so it must be enabled first, existing keys rotated, and
+      # only then may the gateway require binding.
+      bindDpop: false
   hooks:
     tokenHookSecretName: kacho-iam-hook-token
     tokenHookSecretKey: token

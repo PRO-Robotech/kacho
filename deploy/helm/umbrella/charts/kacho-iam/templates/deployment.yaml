@@ -325,6 +325,38 @@ spec:
               value: {{ .Values.kacho.iam.dpopReplay.cacheSize | quote }}
             - name: KACHO_IAM_JWKS_ROTATION_DAYS
               value: {{ .Values.kacho.iam.jwks.rotationDays | quote }}
+            # SA-key lifetime discipline. A service-account key is the machine's
+            # credential; machine principals are exempt from step-up (a machine
+            # has no second factor), which holds only while the credential is
+            # itself time-bounded. defaultTtl replaces "ttl_seconds omitted ⇒
+            # never expires"; maxTtl is the inclusive ceiling.
+            {{- with .Values.kacho.iam.saKey }}
+            {{- if .defaultTtl }}
+            - name: KACHO_IAM_SAKEY_DEFAULT_TTL
+              value: {{ .defaultTtl | quote }}
+            {{- end }}
+            {{- if .maxTtl }}
+            - name: KACHO_IAM_SAKEY_MAX_TTL
+              value: {{ .maxTtl | quote }}
+            {{- end }}
+            # accessTokenTtl — per-client access_token_lifespan stamped on the
+            # OAuth2 client of every issued SA key. Empty ⇒ env absent ⇒ the
+            # provider-global TTL applies (unchanged behaviour), so a profile
+            # opts in rather than inheriting a silent change.
+            {{- if .accessTokenTtl }}
+            - name: KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL
+              value: {{ .accessTokenTtl | quote }}
+            {{- end }}
+            # bindDpop — register each key's OAuth2 client so the provider mints
+            # SENDER-CONSTRAINED tokens (RFC 9449) rather than plain bearers.
+            # Binding is registration metadata: it applies to keys issued AFTER
+            # this is switched on; pre-existing keys must be rotated. Enable this
+            # BEFORE the gateway's requireMachineTokenBinding.
+            {{- if .bindDpop }}
+            - name: KACHO_IAM_SAKEY_BIND_DPOP
+              value: "true"
+            {{- end }}
+            {{- end }}
             # Domain — для self-issued tokens / OIDC discovery / WebAuthn RP-id.
             - name: KACHO_IAM_DOMAIN
               value: {{ .Values.kacho.domain | quote }}

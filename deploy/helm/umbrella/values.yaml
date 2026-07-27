@@ -108,6 +108,13 @@ kacho-iam:
         defaultTtl: "2160h"   # 90d — applied when ttl_seconds is omitted
         maxTtl: "8760h"       # 365d — inclusive ceiling on ttl_seconds
         accessTokenTtl: ""
+        # bindDpop — mint SENDER-CONSTRAINED (RFC 9449) machine tokens. Off, and
+        # deliberately so: binding is per-client REGISTRATION metadata, so it
+        # only affects keys issued after it is enabled. Order is load-bearing —
+        # enable this, rotate existing SA keys, and only THEN set the gateway's
+        # api-gateway.authn.requireMachineTokenBinding. The reverse order rejects
+        # every service-account token.
+        bindDpop: false
     hooks:
       tokenHookSecretName: kacho-iam-hook-token
       tokenHookSecretKey: token
