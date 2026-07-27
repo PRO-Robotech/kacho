@@ -199,6 +199,9 @@ func stepSourceVersion(base time.Time, seq int) *timestamppb.Timestamp {
 //	nil                    → nil (применено / идемпотентный OK)
 //	AlreadyExists          → ErrAlreadyApplied (target «уже есть» — success)
 //	InvalidArgument        → ErrPermanent (malformed tuple — retry бессмыслен)
+//	PermissionDenied       → ErrPermanent (идентичный повтор не меняет решения об
+//	                         авторизации; см. ниже, почему «transient» здесь
+//	                         заклинивает партицию, а не лечит)
 //	прочее                 → raw (transient — drainer ретраит; intent durable)
 func classifyRegisterErr(err error) error {
 	if err == nil {
@@ -208,10 +211,20 @@ func classifyRegisterErr(err error) error {
 	if !ok {
 		return err
 	}
+	// Отказ по правам терминален, а не временен. Решение об авторизации зависит от
+	// (вызывающий, отношение, объект), и повтор не меняет ни одного из трёх, поэтому
+	// идентичный повтор пройти не может. «Transient» здесь не покупает будущий успех:
+	// дренаж намеренно держит временную строку на единицу НИЖЕ порога отравления,
+	// поэтому она никогда не покидает блокирующий набор claim-запроса, и ни одна
+	// последующая строка её партиции не клеймится. Партиция — это ресурс, а снятие
+	// регистрации стоит в очереди ЗА регистрацией: заклиненная голова означает грант,
+	// переживший удаление ресурса. Отравление, наоборот, отказывает закрыто:
+	// отвергнутая запись не состоялась, партиция разблокирована, а реконсайлер
+	// до-материализует то, что должно существовать.
 	switch st.Code() {
 	case codes.AlreadyExists:
 		return fmt.Errorf("%w: iam register reports duplicate: %s", drainer.ErrAlreadyApplied, st.Message())
-	case codes.InvalidArgument:
+	case codes.InvalidArgument, codes.PermissionDenied:
 		return fmt.Errorf("%w: iam register rejected (no retry): %s", drainer.ErrPermanent, st.Message())
 	default:
 		return err

@@ -133,15 +133,29 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 }
 
 // classifyApplyErr maps a gRPC status to the drainer disposition. InvalidArgument
-// is a permanent poison (malformed tuple — retry is pointless); every other code
-// (notably Unavailable from IAM-down or an mTLS handshake mismatch) is transient →
-// drainer retries with backoff (intent stays durable).
+// (malformed tuple — retry is pointless) and PermissionDenied are permanent poison;
+// every other code (notably Unavailable from IAM-down or an mTLS handshake
+// mismatch) is transient → drainer retries with backoff (intent stays durable).
+//
+// A refusal on authorization grounds is terminal, not transient. An authorization
+// decision is a function of (caller, relation, object) and a retry alters none of
+// them, so repeating an identical refused request cannot start succeeding. Calling
+// it transient does not buy a later success: the drainer deliberately keeps a
+// transient row one attempt BELOW the poison gate, so it never leaves the claim
+// query's blocking set and every later row of its partition is never claimed.
+// Partitions are keyed per resource and a resource's unregistration is queued
+// behind its registration — so the wedge lets a grant outlive the resource it
+// grants. Poisoning fails closed instead: the refused write never happened, the
+// partition unblocks, and the reconciler re-materializes what should exist.
 func classifyApplyErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if st, ok := status.FromError(err); ok && st.Code() == codes.InvalidArgument {
-		return errors.Join(drainer.ErrPermanent, err)
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.InvalidArgument, codes.PermissionDenied:
+			return errors.Join(drainer.ErrPermanent, err)
+		}
 	}
 	return err
 }

@@ -77,13 +77,23 @@ func TestIAMRegisterApplier_UnknownEvent(t *testing.T) {
 	require.True(t, errors.Is(err, drainer.ErrPermanent))
 }
 
-// TestClassifyRegisterErr — InvalidArgument → permanent; Unavailable/PermissionDenied
-// → transient (ретрай, intent durable — grant fga_writer мог ещё не осесть).
+// TestClassifyRegisterErr — InvalidArgument и PermissionDenied → permanent;
+// Unavailable → transient.
+//
+// Отказ IAM в правах терминален: повтор идентичного запроса не может пройти —
+// решение зависит от (вызывающий, отношение, объект), а повтор не меняет ни
+// одного из трёх. «Transient» здесь не покупает будущий успех, он покупает
+// строку, которая никогда не доходит до порога отравления (markTransientFailure
+// намеренно держит attempt_count на единицу ниже) и потому вечно остаётся в
+// блокирующем наборе claim-запроса. Партиция — это ресурс, и снятие регистрации
+// стоит в ней ЗА регистрацией: заклиненная голова означает грант, переживший
+// удаление ресурса.
 func TestClassifyRegisterErr(t *testing.T) {
 	require.NoError(t, classifyRegisterErr(nil))
 	require.True(t, errors.Is(classifyRegisterErr(status.Error(codes.InvalidArgument, "x")), drainer.ErrPermanent))
 	require.False(t, errors.Is(classifyRegisterErr(status.Error(codes.Unavailable, "x")), drainer.ErrPermanent))
-	require.False(t, errors.Is(classifyRegisterErr(status.Error(codes.PermissionDenied, "x")), drainer.ErrPermanent))
+	require.True(t, errors.Is(classifyRegisterErr(status.Error(codes.PermissionDenied, "x")), drainer.ErrPermanent),
+		"отказ в правах не чинится повтором — он обязан отравлять строку, а не заклинивать её партицию")
 }
 
 // TestDecodeFGARegisterPayload — валидный payload декодируется; malformed / неполный

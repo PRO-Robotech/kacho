@@ -63,16 +63,21 @@ func (c Class) String() string {
 //  1. nil                                   → ClassSuccess
 //  2. errors.Is(err, ErrAlreadyApplied)     → ClassAlreadyApplied
 //  3. errors.Is(err, ErrPermanent)          → ClassPermanent
-//  4. gRPC InvalidArgument (4xx, non-conflict) → ClassPermanent
+//  4. gRPC InvalidArgument / PermissionDenied → ClassPermanent
 //  5. everything else (Unavailable,
-//     DeadlineExceeded, PermissionDenied,
+//     DeadlineExceeded, NotFound,
+//     FailedPrecondition,
 //     connection-refused/timeout, raw)      → ClassTransient
 //
-// Rationale for step 5: the canonical applier classification (compute/nlb) maps
-// InvalidArgument → permanent but PermissionDenied / Unavailable → raw transient.
-// A raw, un-wrapped error of unknown shape is treated as transient — fail-SAFE
-// for delivery (retry rather than lose the tuple). Appliers that KNOW an error is
-// permanent must wrap it in ErrPermanent.
+// Rationale for step 4: both codes describe a decision about the REQUEST — its
+// content, or the caller's authority to make it — and an identical retry changes
+// neither. See isPermanentGRPC for why calling a refusal "transient" produces a
+// permanently wedged partition rather than an eventual success.
+//
+// Rationale for step 5: the remaining codes describe peer STATE, which a retry can
+// genuinely find changed. A raw, un-wrapped error of unknown shape is likewise
+// treated as transient — fail-SAFE for delivery (retry rather than lose the
+// tuple). Appliers that KNOW an error is permanent must wrap it in ErrPermanent.
 func Classify(err error) Class {
 	if err == nil {
 		return ClassSuccess
@@ -86,21 +91,45 @@ func Classify(err error) Class {
 	if isPermanentGRPC(err) {
 		return ClassPermanent
 	}
-	// Unavailable / DeadlineExceeded / PermissionDenied / connection errors /
-	// any unclassified error → transient (never poison).
+	// Unavailable / DeadlineExceeded / NotFound / FailedPrecondition / connection
+	// errors / any unclassified error → transient (never poison).
 	return ClassTransient
 }
 
 // isPermanentGRPC reports whether err carries a gRPC status code that is
-// permanent on the applier side. Only InvalidArgument is permanent here; the
-// other 4xx-style codes (PermissionDenied, NotFound, FailedPrecondition) are
-// treated as transient because they can be the symptom of a not-yet-provisioned
-// peer (e.g. apps-SA fga_writer grant not yet applied) which heals without
-// poisoning. Appliers wrap genuinely-permanent cases in ErrPermanent.
+// permanent on the applier side.
+//
+// InvalidArgument is permanent for the obvious reason: the peer rejected the
+// content, and re-sending the same content cannot change that.
+//
+// PermissionDenied is permanent for the same reason, arrived at less obviously.
+// An authorization decision is a function of (caller, relation, object); a retry
+// alters none of the three, so repeating an identical refused request cannot start
+// succeeding. Calling it transient was justified as "the peer may not be
+// provisioned yet, it will heal" — but that is not what the retry buys. A
+// transient row is deliberately held one attempt BELOW the poison gate
+// (markTransientFailure), so it never leaves the claim query's blocking set, and
+// with PartitionColumn set every later row of its partition is never claimed. What
+// the old classification actually produced was a partition wedged forever. It was
+// observed in production shape: a register queue in which no row had ever been
+// delivered, all refused on authorization grounds — and because a resource's
+// unregistration is queued behind its registration, deleted resources kept their
+// grants. A grant outliving the thing it grants is over-grant.
+//
+// Poisoning is the safe direction by comparison. The refused write never happened,
+// so nothing was granted (under-grant is fail-closed); the partition unblocks, so
+// the revocations behind it apply; and the platform's reconciler re-materializes
+// anything that legitimately should exist. A genuinely not-yet-provisioned peer is
+// therefore recovered by the reconciler, not by an unbounded retry that also
+// silences everything behind it.
+//
+// The other codes (NotFound, FailedPrecondition, Unavailable, DeadlineExceeded)
+// stay transient: they describe peer STATE, which a retry genuinely can find
+// changed. Appliers wrap additional permanent cases in ErrPermanent.
 func isPermanentGRPC(err error) bool {
 	st, ok := status.FromError(err)
 	if !ok {
 		return false
 	}
-	return st.Code() == codes.InvalidArgument
+	return st.Code() == codes.InvalidArgument || st.Code() == codes.PermissionDenied
 }

@@ -181,8 +181,8 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 //	codes.InvalidArgument            → ErrPermanent (malformed tuple — retry futile)
 //	codes.Unavailable / Deadline     → raw (transient — drainer retries; intent
 //	                                   durable; fail-closed)
-//	codes.PermissionDenied           → raw (transient: least-priv SA-relation may
-//	                                   be seeded shortly after first boot; retry)
+//	codes.PermissionDenied           → ErrPermanent (an identical retry cannot
+//	                                   change an authorization decision)
 //	otherwise                        → raw (transient)
 func classifyRegisterErr(err error) error {
 	if err == nil {
@@ -196,11 +196,11 @@ func classifyRegisterErr(err error) error {
 	switch st.Code() {
 	case codes.AlreadyExists:
 		return fmt.Errorf("%w: iam register reports duplicate: %s", drainer.ErrAlreadyApplied, st.Message())
-	case codes.InvalidArgument:
+	case codes.InvalidArgument, codes.PermissionDenied:
 		return fmt.Errorf("%w: iam register rejected (no retry): %s", drainer.ErrPermanent, st.Message())
 	default:
-		// Unavailable / DeadlineExceeded / PermissionDenied / Internal / … —
-		// transient: propagate raw, drainer retries with exp backoff.
+		// Unavailable / DeadlineExceeded / Internal / … — transient: propagate
+		// raw, drainer retries with exp backoff.
 		return err
 	}
 }

@@ -119,14 +119,26 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 }
 
 // classifyRegisterErr маппит ошибку IAM RPC на transient/permanent-контракт
-// drainer'а. nil → nil. InvalidArgument → permanent (poison). Всё остальное —
-// включая PermissionDenied (grant fga_writer ещё не засеян), Unavailable, транспорт
-// — → transient (ретрай, intent durable: fail-closed, но не теряется).
+// drainer'а. nil → nil. InvalidArgument и PermissionDenied → permanent (poison).
+// Всё остальное (Unavailable, транспорт, состояние пира) → transient (ретрай,
+// intent durable: fail-closed, но не теряется).
+//
+// Отказ по правам терминален, а не временен. Решение об авторизации зависит от
+// (вызывающий, отношение, объект), и повтор не меняет ни одного из трёх, поэтому
+// идентичный повтор пройти не может. «Transient» здесь не покупает будущий успех:
+// дренаж намеренно держит временную строку на единицу НИЖЕ порога отравления,
+// поэтому она никогда не покидает блокирующий набор claim-запроса, и ни одна
+// последующая строка её партиции не клеймится. Партиция — это ресурс, а снятие
+// регистрации стоит в очереди ЗА регистрацией: заклиненная голова означает грант,
+// переживший удаление ресурса. Отравление, наоборот, отказывает закрыто:
+// отвергнутая запись не состоялась, партиция разблокирована, а реконсайлер
+// до-материализует то, что должно существовать.
 func classifyRegisterErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if status.Code(err) == codes.InvalidArgument {
+	switch status.Code(err) {
+	case codes.InvalidArgument, codes.PermissionDenied:
 		return errors.Join(drainer.ErrPermanent, fmt.Errorf("iam register apply: %w", err))
 	}
 	return fmt.Errorf("iam register apply: %w", err)
