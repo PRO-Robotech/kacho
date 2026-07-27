@@ -8,19 +8,12 @@ Object.assign(globalThis, {
   TextEncoder,
 });
 
-jest.unstable_mockModule("@ant-design/icons", () => {
-  const Icon = (props: React.HTMLAttributes<HTMLSpanElement>) => React.createElement("span", props);
-
-  return new Proxy(
-    { __esModule: true },
-    {
-      get(target, prop) {
-        if (prop in target) return target[prop as keyof typeof target];
-        return Icon;
-      },
-    },
-  );
-});
+// @ant-design/icons мокается через moduleNameMapper (стаб ./antd-icons-stub.tsx
+// с реальными статическими named-экспортами), а НЕ Proxy-моком: Proxy их не
+// даёт, и под --experimental-vm-modules ESM-линкер не находит binding для
+// `import { XOutlined }` — процесс jest уходит молча, с кодом 0 и без отчёта,
+// то есть весь прогон читается как зелёный, ни разу не выполнившись. Тот же
+// корень и то же лечение, что в host.
 
 jest.unstable_mockModule("@monaco-editor/react", () => ({
   __esModule: true,

@@ -13,7 +13,7 @@ import {
 } from "@ant-design/icons";
 import { DeleteDialog, requiresNameConfirm } from "@shared/components/molecules/DeleteDialog";
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
-import { getByPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { getByPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 
 interface Props {
   spec: ResourceSpec;
@@ -37,7 +37,9 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   const name = getByPath<string>(row, "name") ?? id;
   const drillTarget = spec.childRoute ? spec.childRoute.replace(":id", id) : `${basePath}/${id}`;
   const drillIsChild = !!spec.childRoute;
-  const editPath = `${spec.apiPath}/${id}`;
+  // Удаление/перемещение адресуют admin-плоскость, если она есть: DELETE по
+  // публичному пути geo Region/Zone не смаршрутизирован.
+  const editPath = `${mutationBasePath(spec)}/${id}`;
 
   const isDefaultSg = spec.id === "security-groups" && Boolean(getByPath<boolean>(row, "default_for_network"));
   const showDelete = spec.ops.delete && !isDefaultSg;
@@ -137,6 +139,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           name={name}
           projectId={projectId}
           requireNameConfirm={requiresNameConfirm(spec.id)}
+          expectOperation={spec.mutationsReturnOperation === true}
         />
       )}
 

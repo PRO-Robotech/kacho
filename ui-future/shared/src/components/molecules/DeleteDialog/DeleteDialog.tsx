@@ -8,7 +8,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button, Modal, Typography, Input, theme } from "antd";
 import { DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
 import { ApiError, api } from "@shared/api/client";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { operationOutcome, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { DopplerButton } from "@shared/components/molecules/DopplerButton";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
@@ -43,6 +43,9 @@ interface Props {
   onSuccess?: () => void;
   /** Если true — требуется ввести имя ресурса для подтверждения. */
   requireNameConfirm?: boolean;
+  /** Ресурс объявил, что мутации отвечают Operation (`spec.mutationsReturnOperation`).
+   *  Тогда ответ без операции — не «удалено синхронно», а нечем подтверждать. */
+  expectOperation?: boolean;
 }
 
 export function DeleteDialog({
@@ -55,12 +58,14 @@ export function DeleteDialog({
   projectId,
   onSuccess,
   requireNameConfirm,
+  expectOperation,
 }: Props) {
   const { token } = theme.useToken();
   const [confirmText, setConfirmText] = useState("");
   const invalidate = useInvalidateResourceList();
   const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op } = useOperation(pendingOpId);
+  const { data: op, error: opFetchError } = useOperation(pendingOpId);
+  const outcome = operationOutcome({ opId: pendingOpId, op, fetchError: opFetchError });
 
   const resourceUid = useMemo(() => apiPath.split("/").filter(Boolean).pop() ?? "", [apiPath]);
   const showDeps = hasDependencyResolver(resourceId);
@@ -75,15 +80,19 @@ export function DeleteDialog({
   const mutation = useMutation({
     mutationFn: () => api.delete(apiPath),
     onSuccess: (resp) => {
-      const opId = extractOperationId(resp);
-      if (opId) {
-        setPendingOpId(opId);
-      } else {
-        invalidate(resourceId, projectId ?? null);
-        onOpenChange(false);
-        setConfirmText("");
-        onSuccess?.();
+      const resolved = resolveMutationResponse(resp, expectOperation === true);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+        return;
       }
+      if (resolved.kind === "violation") {
+        toast.error(`Удалить ${resourceLabel} ${name}: ${resolved.message}`);
+        return;
+      }
+      invalidate(resourceId, projectId ?? null);
+      onOpenChange(false);
+      setConfirmText("");
+      onSuccess?.();
     },
     onError: (e) => {
       const m = e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message;
@@ -92,19 +101,20 @@ export function DeleteDialog({
   });
 
   useEffect(() => {
-    if (!pendingOpId || !op?.done) return;
-    if (op.error) {
-      toast.error(`Удалить ${resourceLabel} ${name}: ${op.error.message ?? "ошибка"}`);
-    } else {
+    if (outcome.kind === "failed") {
+      toast.error(`Удалить ${resourceLabel} ${name}: ${outcome.message}`);
+    } else if (outcome.kind === "succeeded") {
       invalidate(resourceId, projectId ?? null);
       toast.success(`${resourceLabel} ${name} удалён`);
       onSuccess?.();
+    } else {
+      return;
     }
     setPendingOpId(null);
     onOpenChange(false);
     setConfirmText("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op?.done, op?.error?.code]);
+  }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 
   const pending = mutation.isPending || pendingOpId !== null;
   const canConfirm = !requireNameConfirm || confirmText.trim() === name;

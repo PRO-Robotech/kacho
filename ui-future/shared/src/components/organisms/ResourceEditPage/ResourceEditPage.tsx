@@ -9,12 +9,12 @@ import { ArrowLeftOutlined } from "@ant-design/icons";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { computeUpdateMask, snakeToCamelPath } from "@shared/lib/update-mask";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { ApiError, api } from "@shared/api/client";
-import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
+import { applyFieldDefaults, editReadPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
+import { operationOutcome, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
 import { useProjectStore } from "@shared/lib/context-store";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";
@@ -36,9 +36,14 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
   // backHref = current path без /edit (вернуться на detail).
   const backHref = location.pathname.replace(/\/edit$/, "") || "/";
 
+  // Начальное состояние формы читается с той проекции, где живут мутируемые
+  // поля. У двухпроекционного ресурса (geo Region/Zone) это Internal: `status` и
+  // infra° на публичной проекции отсутствуют, и форма, заполненная публичным
+  // чтением, показала бы пустое поле там, где значение есть.
+  const readPath = uid ? editReadPath(spec, uid) : "";
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: [spec.id, "detail", uid],
-    queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
+    queryKey: [spec.id, "detail", uid, readPath],
+    queryFn: () => api.get<Record<string, unknown>>(readPath),
     enabled: !!uid,
     staleTime: 0,
   });
@@ -50,12 +55,16 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
 
   useEffect(() => {
     if (!data || hydrated) return;
-    const baseObj: Record<string, unknown> = { ...data };
+    // hydrate — обратная sanitize: wire-форма поля (repeated, вложенный oneof) в
+    // то, что редактирует форма. Сравнение для update_mask идёт против
+    // ГИДРАТИРОВАННОГО снимка, иначе поле числилось бы изменённым, пока его не
+    // трогали.
+    const baseObj: Record<string, unknown> = spec.hydrate ? { ...spec.hydrate({ ...data }) } : { ...data };
     const merged = applyFieldDefaults(fields, baseObj);
     originalRef.current = baseObj;
     setObj(merged);
     setHydrated(true);
-  }, [data, fields, hydrated]);
+  }, [data, fields, hydrated, spec]);
 
   const name = (data?.name as string | undefined) ?? uid ?? "";
 
@@ -105,18 +114,23 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
 
   // Doppler-flow: ждём op.done через polling, кнопка пульсирует.
   const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op } = useOperation(pendingOpId);
+  const { data: op, error: opFetchError } = useOperation(pendingOpId);
+  const outcome = operationOutcome({ opId: pendingOpId, op, fetchError: opFetchError });
 
   const mutation = useMutation({
-    mutationFn: (item: unknown) => api.update(`${spec.apiPath}/${uid}`, item),
+    mutationFn: (item: unknown) => api.update(`${mutationBasePath(spec)}/${uid}`, item),
     onSuccess: (resp) => {
-      const opId = extractOperationId(resp);
-      if (opId) {
-        setPendingOpId(opId);
-      } else {
-        invalidate(spec.id, project?.id ?? null);
-        navigate(backHref);
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation === true);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+        return;
       }
+      if (resolved.kind === "violation") {
+        toast.error(`Сохранить ${spec.singular}: ${resolved.message}`);
+        return;
+      }
+      invalidate(spec.id, project?.id ?? null);
+      navigate(backHref);
     },
     onError: (err) => {
       const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
@@ -125,18 +139,18 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
   });
 
   useEffect(() => {
-    if (!pendingOpId || !op?.done) return;
-    if (op.error) {
-      toast.error(`Сохранить ${spec.singular}: ${op.error.message ?? "ошибка"}`);
+    if (outcome.kind === "failed") {
+      toast.error(`Сохранить ${spec.singular}: ${outcome.message}`);
       setPendingOpId(null);
-    } else {
-      invalidate(spec.id, project?.id ?? null);
-      toast.success(`${spec.singular} сохранён`);
-      setPendingOpId(null);
-      navigate(backHref);
+      return;
     }
+    if (outcome.kind !== "succeeded") return;
+    invalidate(spec.id, project?.id ?? null);
+    toast.success(`${spec.singular} сохранён`);
+    setPendingOpId(null);
+    navigate(backHref);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op?.done, op?.error?.code]);
+  }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 
   const submit = () => {
     if (!fields || !originalRef.current) return;

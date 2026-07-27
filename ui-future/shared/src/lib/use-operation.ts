@@ -12,6 +12,11 @@ import type { Operation } from "@shared/api/types";
  * Останавливается когда done=true.
  *
  * Передайте null чтобы деактивировать hook.
+ *
+ * Вызывающий обязан читать НЕ только `data`, но и `isError`/`error`: если сам
+ * опрос не проходит (403/404/сеть), операция не «выполняется» — про неё просто
+ * ничего не известно, и молча оставленный спиннер крутится бесконечно. Разбор
+ * состояний — `operationOutcome` (lib/operation-outcome).
  */
 export function useOperation(opId: string | null) {
   return useQuery({
@@ -20,6 +25,9 @@ export function useOperation(opId: string | null) {
     refetchInterval: (query) => (query.state.data?.done ? false : 1_000),
     enabled: !!opId,
     staleTime: 0,
+    // Сеть/пир могут моргнуть; но бесконечно ретраить нельзя — иначе ошибка так и
+    // не доедет до вызывающего и он останется в pending навсегда.
+    retry: 2,
   });
 }
 

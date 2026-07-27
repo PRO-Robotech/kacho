@@ -10,7 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { DeleteDialog, requiresNameConfirm } from "@shared/components/molecules/DeleteDialog";
-import { getByPath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { getByPath, mutationBasePath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 
 interface Props {
   spec: ResourceSpec;
@@ -27,7 +27,7 @@ export function DetailOverviewActions({ spec, data, projectId, detailBase, extAc
 
   const id = getByPath<string>(data, "id") ?? "";
   const name = getByPath<string>(data, "name") ?? id;
-  const apiPath = `${spec.apiPath}/${id}`;
+  const apiPath = `${mutationBasePath(spec)}/${id}`;
   const listPath = resourceProjectPath(spec.id, projectId) ?? `/${spec.route}`;
 
   const isDefaultSg = spec.id === "security-groups" && Boolean(getByPath<boolean>(data, "default_for_network"));
@@ -57,6 +57,7 @@ export function DetailOverviewActions({ spec, data, projectId, detailBase, extAc
           name={name}
           projectId={projectId}
           requireNameConfirm={requiresNameConfirm(spec.id)}
+          expectOperation={spec.mutationsReturnOperation === true}
           onSuccess={() => navigate(listPath)}
         />
       )}

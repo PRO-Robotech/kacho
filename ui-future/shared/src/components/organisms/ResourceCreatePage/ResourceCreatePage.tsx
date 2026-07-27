@@ -6,12 +6,12 @@ import { useMutation } from "@tanstack/react-query";
 import { Alert, Typography } from "antd";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { ApiError, api } from "@shared/api/client";
-import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
+import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
+import { operationOutcome, operationWarnings, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
 
 interface Props {
@@ -136,19 +136,29 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
   // Doppler-flow: после POST дожидаемся op.done через polling. Кнопка
   // пульсирует пока pending. По завершении — toast + navigate на список.
   const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op } = useOperation(pendingOpId);
+  const { data: op, error: opFetchError } = useOperation(pendingOpId);
+  const outcome = operationOutcome({ opId: pendingOpId, op, fetchError: opFetchError });
 
   const mutation = useMutation({
-    mutationFn: (item: unknown) => api.create(spec.apiPath, item),
+    // Мутация уходит на admin-плоскость ресурса, если она у него есть: публичный
+    // путь geo Region/Zone обслуживает только чтение (POST по нему не
+    // смаршрутизирован никем).
+    mutationFn: (item: unknown) => api.create(mutationBasePath(spec), item),
     onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) {
-        setPendingOpId(id);
-      } else {
-        // Sync (Region/Zone/AddressPool — admin RPC без Operation envelope).
-        invalidate(spec.id, filterValue ?? null);
-        navigate(backHref);
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation === true);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+        return;
       }
+      if (resolved.kind === "violation") {
+        // Ресурс объявил, что мутации отвечают Operation. Ответа без операции
+        // достаточно, чтобы НЕ утверждать успех: подтверждать нечем.
+        toast.error(`Создать ${spec.singular}: ${resolved.message}`);
+        return;
+      }
+      // Синхронный ответ самим ресурсом (vpc AddressPool).
+      invalidate(spec.id, filterValue ?? null);
+      navigate(backHref);
     },
     onError: (err) => {
       const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
@@ -157,18 +167,22 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
   });
 
   useEffect(() => {
-    if (!pendingOpId || !op?.done) return;
-    if (op.error) {
-      toast.error(`Создать ${spec.singular}: ${op.error.message ?? "ошибка"}`);
+    if (outcome.kind === "failed") {
+      toast.error(`Создать ${spec.singular}: ${outcome.message}`);
       setPendingOpId(null);
-    } else {
-      invalidate(spec.id, filterValue ?? null);
-      toast.success(`${spec.singular} создан`);
-      setPendingOpId(null);
-      navigate(backHref);
+      return;
     }
+    if (outcome.kind !== "succeeded") return;
+    invalidate(spec.id, filterValue ?? null);
+    // Loud-no-op канал операции: geo сообщает так, что регион/зона созданы
+    // ЗАКРЫТЫМИ для размещения. Операция при этом успешна — проглотив
+    // предупреждение, оператор уйдёт уверенным, что запись пригодна к работе.
+    for (const w of operationWarnings(op)) toast.error(`${spec.singular}: ${w}`);
+    toast.success(`${spec.singular} создан`);
+    setPendingOpId(null);
+    navigate(backHref);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op?.done, op?.error?.code]);
+  }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 
   const submit = () => {
     let parsed: Record<string, unknown> = obj;
