@@ -25,12 +25,19 @@
    Исключение: output-only поля `bootSource.name°/resolvedDigest°` — **known** proto-поля, реджектятся
    **сервисом** (не gateway) → `INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS` строго локает 400.
 
-2. **F14 filter-whitelist gap** — acceptance F14/COMP-1-36 заявляет whitelist `name=`/`placementGroupId=`/
-   `instanceKind=`, но реализация (`instance_repo.go`: `filter.Parse(f, []string{"name"})`) whitelist'ит
-   **только `name=`** (согласуется с `api-conventions.md` «текущая фаза — name=»). `filter=instanceKind=…`
-   сейчас → `400 unknown filter field`. `INST-RD-LST-FILTER-KIND-TOLERANT` документирует поведение
-   толерантно (`oneOf([200,400])`, но 500/leak падает). **→ acceptance-author reconcile** (F14 filter-список
-   vs current-phase). НЕ красный кейс: это фазовый scope-вопрос конвенции, не расхождение с реализацией.
+2. **F14 filter-whitelist — РАЗРЕШЕНО (2026-07-27), фаза остаётся `name=`.** Acceptance F14/COMP-1-36
+   заявлял whitelist `name=`/`placementGroupId=`/`instanceKind=`; реализация (`instance_repo.go`:
+   `filter.Parse(f, []string{"name"})`) whitelist'ит **только `name=`**, что совпадает с нормативным
+   `api-conventions.md` «текущая фаза — name=». Расхождение сведено **в пользу кода**: acceptance
+   приведён к реализации (§Reconcile F14 filter-whitelist), отклонение записано в
+   `services/compute/docs/architecture/07-known-divergences.md` §12, расширение отложено в COMP-3
+   вместе с ресурсом `PlacementGroup` и **обязательным** индексом под новое поле. Замеры на живой
+   Postgres, обосновавшие решение: camelCase-написание из дока → `42703 column "instancekind" does not
+   exist`; `instance_kind = 'CONTAINER'` → `22P02` (колонка INTEGER-ordinal, парсер даёт строку).
+   Прежний толерантный кейс `INST-RD-LST-FILTER-KIND-TOLERANT` (`oneOf([200,400])`) **заменён строгим**
+   `INST-RD-LST-FILTER-UNKNOWN-FIELD-REJECTED`: 400 + точное сообщение с именем поля, 3 написания.
+   Толерантность здесь была «формой без содержания» — `oneOf([200,400])` проходил и при молчаливом
+   игнорировании фильтра, то есть ровно на том дефекте, ради которого писался.
 
 3. **Legacy `cases/instance.py` (77 кейсов)** таргетит **retired YC-поверхность** (`platformId`/`resourcesSpec`/
    `bootDiskSpec`; 0 redesign-полей) → на `redesign/integration` его Create-кейсы **pre-existing-red**

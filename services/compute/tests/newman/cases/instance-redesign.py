@@ -671,18 +671,34 @@ CASES.append(Case(
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
+# Фаза фильтра — `name=` и только он (acceptance F14 сведён к коду 2026-07-27,
+# см. docs/architecture/07-known-divergences.md §12). Контракт наблюдаемый и СТРОГИЙ:
+# не-whitelisted поле отвергается 400 с ИМЕНЕМ поля в сообщении. Прежний oneOf([200,400])
+# был «формой без содержания» — он проходил и при молчаливом игнорировании фильтра,
+# то есть ровно на том дефекте, ради которого писался.
 CASES.append(Case(
-    id="INST-RD-LST-FILTER-KIND-TOLERANT",
-    title="COMP-1-36 (спорный контракт): List filter=instanceKind=CONTAINER — acceptance F14 заявляет "
-          "whitelist name=/placementGroupId=/instanceKind=, но текущая реализация (api-conventions «текущая "
-          "фаза — name=») whitelist'ит ТОЛЬКО name → oneOf([200,400]) (400=unknown-filter-field сейчас, "
-          "200=когда добавят). Задокументировано в RESULTS.md для acceptance-author reconcile. НЕ маскирует "
-          "баг — 500/leak падает. [verifies COMP-1-36 · conformance filter-whitelist gap]",
-    classes=["FILTER", "VAL"], priority="P3",
-    steps=[Step(name="flt-kind", method="GET",
-                path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=instanceKind%3D%22CONTAINER%22",
-                test_script=["pm.test('200 (supported) or 400 (name-only whitelist current phase)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                             "pm.test('never 500 / no leak', () => { pm.expect(pm.response.code).to.not.eql(500); const b = JSON.stringify(pm.response.json()||{}).toLowerCase(); ['sqlstate','panic','goroutine'].forEach(t => pm.expect(b).to.not.include(t)); });"])],
+    id="INST-RD-LST-FILTER-UNKNOWN-FIELD-REJECTED",
+    title="COMP-1-36: List filter по не-whitelisted полю (instanceKind / placementGroupId) → строго 400 "
+          "INVALID_ARGUMENT с именем поля в сообщении. Фаза whitelist'ит ТОЛЬКО name= (api-conventions "
+          "§pagination/filter; acceptance F14 сведён к коду). Неподдерживаемое поле обязано отвергаться "
+          "явно, НИКОГДА не игнорироваться молча — иначе caller получает нефильтрованную страницу под "
+          "фильтром, который считает применённым. [verifies COMP-1-36 · negative filter-whitelist]",
+    classes=["FILTER", "VAL", "NEG"], priority="P1",
+    steps=[
+        Step(name="flt-kind-rejected", method="GET",
+             path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=instanceKind%3D%22CONTAINER%22",
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('message names the offending field', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"instanceKind\"'));",
+                          "pm.test('no leak', () => { const b = JSON.stringify(pm.response.json()||{}).toLowerCase(); ['sqlstate','panic','goroutine','pgx'].forEach(t => pm.expect(b).to.not.include(t)); });"]),
+        Step(name="flt-pg-rejected", method="GET",
+             path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=placementGroupId%3D%22plg-x%22",
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('message names the offending field', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"placementGroupId\"'));"]),
+        Step(name="flt-snake-kind-rejected", method="GET",
+             path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=instance_kind%3D%22CONTAINER%22",
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('snake_case spelling rejected too', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"instance_kind\"'));"]),
+    ],
 ))
 
 
