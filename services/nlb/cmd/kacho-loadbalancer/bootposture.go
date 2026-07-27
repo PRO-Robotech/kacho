@@ -25,13 +25,31 @@ import (
 //   - authz_check   — не адрес, а факт проводки: клиент
 //     InternalIAMService.Check поднимается только при успешном dial'е
 //     iam-internal (peers.Check != nil).
+//   - trusted_forwarders — сужен ли круг отправителей, которым разрешено передавать
+//     личность конечного пользователя. Считается по НЕПУСТЫМ записям, а не по длине
+//     среза: corelib отбрасывает пустые строки, поэтому список из одних пустых
+//     записей вырождается там в «доверяем любому» — рапортовать его как сужение
+//     значило бы отчитываться о намерении вместо исхода.
 func bootPosture(cfg *config.Config, authzCheckWired bool) observability.BootPosture {
 	return observability.BootPosture{
-		Service:      "nlb",
-		AuthMode:     cfg.Mode().String(),
-		DBSSLMode:    coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL),
-		PublicMTLS:   cfg.MTLS.Server.Enable,
-		InternalMTLS: cfg.MTLS.Server.Enable,
-		AuthZCheck:   authzCheckWired,
+		Service:           "nlb",
+		AuthMode:          cfg.Mode().String(),
+		DBSSLMode:         coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL),
+		PublicMTLS:        cfg.MTLS.Server.Enable,
+		InternalMTLS:      cfg.MTLS.Server.Enable,
+		AuthZCheck:        authzCheckWired,
+		TrustedForwarders: hasNonEmptyForwarder(cfg.Authz.TrustedForwarderSANs),
 	}
+}
+
+// hasNonEmptyForwarder — есть ли в срезе хотя бы одна непустая запись. Зеркалит
+// фильтр corelib grpcsrv.WithTrustedForwarders (принимает только s != ""), поэтому
+// отчёт о посадке совпадает с тем, что реально попало в allow-list.
+func hasNonEmptyForwarder(ss []string) bool {
+	for _, s := range ss {
+		if s != "" {
+			return true
+		}
+	}
+	return false
 }

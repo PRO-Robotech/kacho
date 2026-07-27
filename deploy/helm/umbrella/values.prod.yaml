@@ -450,6 +450,8 @@ kacho-nlb:
 #   config.authzIamGrpcAddr       → per-RPC IAM Check interceptor attached
 #   config.listFilter.enabled     → per-object List filter (without it a project-tier
 #                                   viewer sees every volume/snapshot/image)
+#   config.trustedForwarderSANs   → who may forward an end-user identity (without it
+#                                   any certificate-verified peer may act as any tenant)
 storage:
   enabled: true
   config:
@@ -462,6 +464,19 @@ storage:
     # iam INTERNAL :9091 — carries BOTH the per-RPC Check and the fga-register
     # RegisterResource/UnregisterResource owner-tuple edge.
     authzIamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    # Who may forward an end-user identity (x-kacho-principal-*) into storage.
+    # Restated (it IS the chart default) so that no future edit to this profile can
+    # silently drop it: an EMPTY list does not mean "nobody" — corelib narrows the
+    # circle only when the list is non-empty, so empty means ANY certificate-verified
+    # peer may present someone else's identity and have the authorization decision
+    # made in that tenant's name. Production refuses to boot on an empty list.
+    #
+    # BOTH entries are load-bearing:
+    #   kacho-api-gateway → public :9090 (tenant requests)
+    #   kacho-compute     → internal :9091 (volume attach/detach runs under the
+    #                       identity of whoever initiated it) — drop it and volume
+    #                       attach breaks.
+    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
     # Owner-tuple register-drainer (SEC-D / CS-1 GAP-D). Chart default is already
     # true; restated because without it the gateway scope_extractors
     # {storage_volume,volume_id} / {storage_snapshot,snapshot_id} cannot resolve

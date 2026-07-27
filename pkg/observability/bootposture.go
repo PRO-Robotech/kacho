@@ -44,6 +44,20 @@ type BootPosture struct {
 	InternalMTLS bool
 	// AuthZCheck — проведён ли per-RPC authz-Check (непустой адрес / не-nil клиент).
 	AuthZCheck bool
+	// TrustedForwarders — сужен ли круг отправителей, которым процесс разрешает
+	// ПЕРЕДАВАТЬ личность конечного пользователя (x-kacho-principal-*), то есть
+	// непуст ли список, реально уехавший в grpcsrv.WithTrustedForwarders.
+	//
+	// Почему это отдельное измерение, а не следствие mTLS: contract corelib
+	// (principalIsTrusted) сужает круг ТОЛЬКО на непустом списке — на пустом любой
+	// пир, прошедший проверку сертификата, может представиться кем угодно, и решение
+	// о правах будет принято от имени названного им пользователя. Значит «mTLS есть»
+	// НЕ влечёт «личность нельзя подменить»: false здесь при public_mtls=true — это
+	// осмысленное, а не противоречивое сочетание.
+	//
+	// Заполняется тем же значением, что уходит в проводку (не сырым полем конфига),
+	// иначе отчёт снова описывал бы намерение вместо исхода.
+	TrustedForwarders bool
 }
 
 // LogBootPosture пишет BootPosture единственной структурированной строкой.
@@ -57,5 +71,6 @@ func LogBootPosture(logger *slog.Logger, p BootPosture) {
 		"public_mtls", p.PublicMTLS,
 		"internal_mtls", p.InternalMTLS,
 		"authz_check", p.AuthZCheck,
+		"trusted_forwarders", p.TrustedForwarders,
 	)
 }

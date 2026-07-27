@@ -1,0 +1,242 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package main
+
+// trusted_forwarders_test.go — поведенческие замки на измерение «кому разрешено
+// передавать чужую личность».
+//
+// Дефект, который они закрывают: оба листенера строили правильную цепочку
+// CertIdentityExtract → TrustedPrincipalExtract(WithTrustedForwarders(список)), но
+// получали ЛИТЕРАЛЬНЫЙ пустой список, а поля в конфигурации не было вовсе. Контракт
+// corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на непустом списке —
+// на пустом любой пир, прошедший проверку сертификата, присылал заголовки личности
+// жертвы, и субъектом проверки прав становилась она.
+//
+// Замки утверждают НАБЛЮДАЕМОЕ на цепочке, которую собирает боевая проводка
+// (unaryChain/streamChain из interceptors.go) со списком, полученным из боевой
+// конфигурации (config.TrustedForwarders) — а не с литералом, придуманным тестом.
+// Иначе тест доказывал бы работоспособность corelib, а не посадку storage.
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"io"
+	"log/slog"
+	"net/url"
+	"testing"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
+)
+
+const (
+	// Законные отправители: gateway передаёт личность пользователя на публичный
+	// листенер, compute — на внутренний (привязка тома идёт под личностью того, кто
+	// её инициировал, см. compute internal/clients/storage_client.go).
+	gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+	computeSAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
+	// Пир с законным сертификатом внутреннего центра, которому передавать чужую
+	// личность НЕ разрешено. vpc берём как представителя класса: у него есть
+	// валидный клиентский сертификат и сетевой доступ, но роли отправителя нет.
+	neighbourSAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc"
+
+	victimUserID = "usr-victim"
+)
+
+// prodCfg — конфигурация, с которой процесс поднимается в боевом режиме. Путь
+// «переменная окружения → срез» проверяется в пакете config (там же живёт
+// test-only загрузчик); здесь предмет другой — что делает проводка с УЖЕ
+// разобранным списком.
+func prodCfg(forwarders ...string) config.Config {
+	c := config.Config{
+		AuthMode:                  "production",
+		DBSSLMode:                 "require",
+		AuthZIAMGRPCAddr:          "kacho-iam-internal:9091",
+		ListFilterEnabled:         true,
+		AuthZTrustedForwarderSANs: forwarders,
+	}
+	c.PublicServerMTLS.Enable = true
+	c.InternalServerMTLS.Enable = true
+	return c
+}
+
+// listenerChain — ровно та цепочка, что уезжает в оба листенера: боевая
+// unaryChain со списком из боевой конфигурации. authz-звено не подключаем: оно
+// стоит ПОСЛЕ извлечения личности и читает уже готовый контекст, а предмет
+// проверки — именно то, какая личность в этот контекст попадает.
+func listenerChain(cfg config.Config) grpc.UnaryServerInterceptor {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return chainUnary(unaryChain(logger, cfg.TrustedForwarders(), nil)...)
+}
+
+// seenIdentity прогоняет запрос через цепочку и возвращает личность, которую
+// увидел бы обработчик, и признак доверия. Это и есть наблюдаемое: субъект
+// проверки прав собирается ровно из неё (pkg/authz subject_extract).
+func seenIdentity(t *testing.T, chain grpc.UnaryServerInterceptor, ctx context.Context) (id string, trusted bool, present bool) {
+	t.Helper()
+	final := func(c context.Context, _ any) (any, error) {
+		p, ok := operations.PrincipalFromContextOK(c)
+		id, present = p.ID, ok
+		_, trusted = grpcsrv.TrustedPrincipalFromContext(c)
+		return nil, nil
+	}
+	if _, err := chain(ctx, nil, &grpc.UnaryServerInfo{}, final); err != nil {
+		t.Fatalf("chain returned error: %v", err)
+	}
+	return id, trusted, present
+}
+
+// TestListener_NeighbourWithValidCertCannotActAsSomeoneElse — главный замок.
+//
+// Сосед предъявляет ЗАКОННЫЙ сертификат внутреннего центра (проверку проходит) и
+// присылает заголовки личности жертвы. Он обязан остаться собой: переданная
+// личность снимается, носитель вычищается, и проверка прав не может выполниться от
+// имени жертвы.
+//
+// RED при возврате пустого списка (`forwarders := []string{}`): личность жертвы
+// доходит до обработчика и становится субъектом проверки прав.
+func TestListener_NeighbourWithValidCertCannotActAsSomeoneElse(t *testing.T) {
+	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
+
+	id, trusted, present := seenIdentity(t, chain, forwarded(verifiedPeer(t, neighbourSAN), victimUserID))
+
+	if id == victimUserID {
+		t.Fatalf("a neighbouring service (%s) presented itself as %q: the authorization "+
+			"decision would be made in the victim's name — read/update/delete of foreign "+
+			"volumes, snapshots and images, and attach/detach on the internal listener",
+			neighbourSAN, victimUserID)
+	}
+	if trusted {
+		t.Fatalf("the forwarded identity from %s was marked trusted", neighbourSAN)
+	}
+	if present {
+		t.Fatalf("the identity carrier survived for an untrusted sender: got %q "+
+			"(it must be scrubbed, otherwise use-cases downstream see a forged owner)", id)
+	}
+}
+
+// TestListener_PinnedSendersKeepWorking — рабочий путь не сломан. Оба отправителя
+// обязаны быть honored, иначе замок «сужает» ценой отказа в обслуживании: без
+// gateway встают все пользовательские запросы, без compute — привязка тома.
+func TestListener_PinnedSendersKeepWorking(t *testing.T) {
+	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
+
+	for name, san := range map[string]string{
+		"api-gateway (public :9090)": gatewaySAN,
+		"compute (internal :9091)":   computeSAN,
+	} {
+		t.Run(name, func(t *testing.T) {
+			id, trusted, present := seenIdentity(t, chain, forwarded(verifiedPeer(t, san), "usr-alice"))
+			if !trusted || !present {
+				t.Fatalf("%s: a legitimate sender was refused (trusted=%v present=%v) — "+
+					"the change denies service instead of narrowing it", name, trusted, present)
+			}
+			if id != "usr-alice" {
+				t.Fatalf("%s: forwarded identity not honoured: got %q, want %q", name, id, "usr-alice")
+			}
+		})
+	}
+}
+
+// TestListener_UnverifiedPeerCannotForward — пир без подтверждённого клиентского
+// сертификата не форвардит личность независимо от списка (нижний слой инварианта).
+func TestListener_UnverifiedPeerCannotForward(t *testing.T) {
+	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
+
+	id, trusted, _ := seenIdentity(t, chain, forwarded(unverifiedTLSPeer(), victimUserID))
+	if trusted || id == victimUserID {
+		t.Fatalf("a peer without a verified client certificate forwarded an identity: id=%q trusted=%v", id, trusted)
+	}
+}
+
+// TestBootPosture_ReportsWhetherTheCircleIsNarrowed — самоотчёт живого процесса
+// обязан нести это измерение: гейт посадки читает строку процесса, а не хранимые
+// настройки, поэтому неотчитанное измерение для него не существует.
+//
+// Значение берётся из той же config.TrustedForwarders, что уходит в проводку, —
+// отчёт не может разойтись с посадкой.
+func TestBootPosture_ReportsWhetherTheCircleIsNarrowed(t *testing.T) {
+	t.Run("pinned", func(t *testing.T) {
+		requireFields(t, captureBootPosture(t, bootPosture(prodCfg(gatewaySAN))), map[string]any{
+			"service":            "storage",
+			"trusted_forwarders": true,
+		})
+	})
+
+	t.Run("empty_is_reported_honestly", func(t *testing.T) {
+		requireFields(t, captureBootPosture(t, bootPosture(prodCfg())), map[string]any{
+			"trusted_forwarders": false,
+		})
+	})
+
+	// Список из одних пустых записей corelib отбрасывает — значит круг НЕ сужен, и
+	// отчёт обязан говорить это, а не пересказывать намерение оператора.
+	t.Run("blank_entries_are_not_a_narrowing", func(t *testing.T) {
+		requireFields(t, captureBootPosture(t, bootPosture(prodCfg("", ""))), map[string]any{
+			"trusted_forwarders": false,
+		})
+	})
+}
+
+// TestTrustedForwarders_MatchesTheCorelibFilter — значение, отдаваемое в проводку,
+// отфильтровано так же, как фильтрует corelib (пустые записи отбрасываются). Иначе
+// стража считала бы список заполненным там, где corelib видит пустой.
+func TestTrustedForwarders_MatchesTheCorelibFilter(t *testing.T) {
+	got := prodCfg(" ", gatewaySAN+" ", "").TrustedForwarders()
+	if len(got) != 1 || got[0] != gatewaySAN {
+		t.Fatalf("TrustedForwarders() = %#v, want exactly [%q]", got, gatewaySAN)
+	}
+}
+
+// --- helpers ---
+
+func forwarded(ctx context.Context, userID string) context.Context {
+	return metadata.NewIncomingContext(ctx, metadata.Pairs(
+		grpcsrv.MDKeyPrincipalType, "user",
+		grpcsrv.MDKeyPrincipalID, userID,
+		grpcsrv.MDKeyPrincipalDisplay, userID,
+	))
+}
+
+// verifiedPeer — пир, прошедший проверку клиентского сертификата, с указанной
+// личностью сертификата.
+func verifiedPeer(t *testing.T, san string) context.Context {
+	t.Helper()
+	u, err := url.Parse(san)
+	if err != nil {
+		t.Fatalf("parse SAN %q: %v", san, err)
+	}
+	leaf := &x509.Certificate{URIs: []*url.URL{u}}
+	return peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{
+		State: tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{leaf}}},
+	}})
+}
+
+// unverifiedTLSPeer — TLS есть, подтверждённого клиентского сертификата нет.
+func unverifiedTLSPeer() context.Context {
+	return peer.NewContext(context.Background(), &peer.Peer{
+		AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{}},
+	})
+}
+
+// chainUnary композирует unary-интерсепторы слева направо (семантика
+// grpc.ChainUnaryInterceptor).
+func chainUnary(interceptors ...grpc.UnaryServerInterceptor) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		chained := handler
+		for i := len(interceptors) - 1; i >= 0; i-- {
+			ic, next := interceptors[i], chained
+			chained = func(c context.Context, r any) (any, error) { return ic(c, r, info, next) }
+		}
+		return chained(ctx, req)
+	}
+}

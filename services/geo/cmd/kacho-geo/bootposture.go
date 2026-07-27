@@ -20,13 +20,19 @@ import (
 //     (пустой DBSSLMode деривится в `disable` внутри baseDSN).
 //   - public/internal mtls — server-creds двух gRPC-листенеров (:9090/:9091).
 //   - authz_check   — поднято ли ребро geo→iam InternalIAMService.Check.
+//   - trusted_forwarders — сужен ли круг отправителей, которым разрешено передавать
+//     личность конечного пользователя. Считается тем же countNonEmpty, что и в
+//     validateSecurityConfig, потому что corelib отбрасывает пустые записи: список
+//     из одних пустых строк там вырождается в «доверяем любому», и рапортовать его
+//     как сужение значило бы отчитываться о намерении вместо исхода.
 func bootPosture(cfg config.Config) observability.BootPosture {
 	return observability.BootPosture{
-		Service:      "geo",
-		AuthMode:     cfg.AuthMode,
-		DBSSLMode:    coredb.SSLModeFromDSN(cfg.DSN()),
-		PublicMTLS:   cfg.PublicServerMTLS.Enable,
-		InternalMTLS: cfg.InternalServerMTLS.Enable,
-		AuthZCheck:   cfg.AuthZIAMGRPCAddr != "",
+		Service:           "geo",
+		AuthMode:          cfg.AuthMode,
+		DBSSLMode:         coredb.SSLModeFromDSN(cfg.DSN()),
+		PublicMTLS:        cfg.PublicServerMTLS.Enable,
+		InternalMTLS:      cfg.InternalServerMTLS.Enable,
+		AuthZCheck:        cfg.AuthZIAMGRPCAddr != "",
+		TrustedForwarders: countNonEmpty(cfg.AuthZTrustedForwarderSANs) > 0,
 	}
 }

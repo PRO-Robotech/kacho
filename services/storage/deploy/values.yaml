@@ -57,6 +57,24 @@ config:
   # RegisterResource/UnregisterResource (FGA-proxy owner-tuple, SEC-D). Пусто →
   # authz-интерсептор и register-drainer не подключаются (dev). Прод ОБЯЗАН задать.
   authzIamGrpcAddr: ""
+  # trustedForwarderSANs — список через запятую тех личностей клиентского
+  # сертификата (SPIFFE-SAN), которым разрешено ПЕРЕДАВАТЬ личность конечного
+  # пользователя (заголовки x-kacho-principal-*). Уезжает в оба листенера.
+  #
+  # Пустая строка НЕ означает «не принимаем ни от кого»: контракт corelib сужает
+  # круг только на непустом списке, а на пустом принимает переданную личность от
+  # ЛЮБОГО пира, прошедшего проверку сертификата. Внутренний периметр объявлен
+  # НЕдоверенным, поэтому пусто = сосед со своим законным сертификатом действует от
+  # имени любого тенанта. Боевой режим на пустом списке НЕ СТАРТУЕТ
+  # (Config.Validate, refuse-to-start).
+  #
+  # Законных отправителя ДВА, и оба обязаны быть в списке:
+  #   - kacho-api-gateway — публичный :9090 (запросы пользователя);
+  #   - kacho-compute — внутренний :9091 (привязка/отвязка тома идёт под личностью
+  #     того, кто её инициировал). Без него ломается привязка тома к машине.
+  # Дефолт чарта непустой — как у compute: профиль, забывший ручку, не должен
+  # отгружать «доверяем любому». Пусто ставится осознанно и только при authMode=dev.
+  trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
   # fgaRegisterDrainerEnabled — SEC-D/CS-1 GAP-D: register-drainer применяет
   # owner-tuple register-intent'ы (kacho_storage.fga_register_outbox) через kacho-iam
   # RegisterResource по ребру storage→iam (authzIamGrpcAddr, mTLS). Без него

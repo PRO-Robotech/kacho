@@ -17,10 +17,19 @@ import (
 // отправная точка, из которой каждый negative-кейс ослабляет ровно одно измерение.
 func secureProd() config.Config {
 	return config.Config{
-		AuthMode:           "production",
-		DBSSLMode:          "require",
-		AuthZIAMGRPCAddr:   "kacho-iam-internal:9091",
-		ListFilterEnabled:  true,
+		AuthMode:          "production",
+		DBSSLMode:         "require",
+		AuthZIAMGRPCAddr:  "kacho-iam-internal:9091",
+		ListFilterEnabled: true,
+		// Круг отправителей, которым разрешено передавать личность конечного
+		// пользователя, обязан быть сужен — пустой список для corelib означает
+		// «принимаем от любого пира с сертификатом», поэтому конфиг с пустым
+		// списком БОЛЬШЕ НЕ является безопасной отправной точкой. Оба законных
+		// отправителя: api-gateway (публичный :9090) и compute (внутренний :9091).
+		AuthZTrustedForwarderSANs: []string{
+			"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
+			"spiffe://kacho.cloud/ns/kacho/sa/kacho-compute",
+		},
 		GeoClientMTLS:      grpcclient.TLSClient{Enable: true},
 		IAMClientMTLS:      grpcclient.TLSClient{Enable: true},
 		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
