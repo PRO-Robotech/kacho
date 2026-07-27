@@ -35,7 +35,10 @@ type DiskType struct {
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the disk type. 0-256 characters long.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	// Availability zones where this disk type is offered.
+	// Availability zones where this disk type is offered. Enforced by
+	// VolumeService.Create: a Volume whose zone is absent from a non-empty list is
+	// refused with FAILED_PRECONDITION "DiskType <id> is not offered in zone <zone>".
+	// An EMPTY list means the type is not zone-scoped and is offered in every zone.
 	ZoneIds []string `protobuf:"bytes,4,rep,name=zone_ids,json=zoneIds,proto3" json:"zone_ids,omitempty"`
 	// Performance tier of the disk type (e.g. "standard", "high"). Optional.
 	PerformanceTier string `protobuf:"bytes,5,opt,name=performance_tier,json=performanceTier,proto3" json:"performance_tier,omitempty"`

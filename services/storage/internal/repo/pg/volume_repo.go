@@ -193,20 +193,39 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // не энфорсил никто, хотя image.proto заявлял обратное). Сравнение идёт с той же
 // уже РАЗРЕШЁННОЙ строкой образа (CTE src), поэтому TOCTOU-окна нет.
 //
-// Три полосы дают три разных исхода, и их обязательно различать: «образ не
-// разрешился» — это ответ про образ, который вызывающему может быть вообще не
-// виден (чужой проект/регион), и его минимум в ответе появляться не должен.
-// Поэтому стейтмент ВСЕГДА возвращает ровно одну строку-дискриминатор: успешную
-// вставку ЛИБО (NULL, NULL, min_disk_bytes разрешённого образа). min_disk IS NULL
-// в отказе ⟺ образ не разрешился ⟹ hide-existence; min_disk NOT NULL ⟺ образ свой
-// и виден, отказ по размеру называется вслух. Модифицирующий CTE выполняется ровно
-// один раз, поэтому обе ветки UNION видят один и тот же его результат.
+// ЧЕТВЁРТАЯ полоса — зональная доступность типа диска: `disk_types.zone_ids`
+// объявлен (в storage/v1/disk_type.proto и в миграции 0003) как «зоны, где этот
+// тип предлагается», и админ задаёт его через InternalDiskTypeService. Volume.Create
+// в этот список НЕ смотрел — то есть поле не ограничивало ничего, и том спокойно
+// создавался на типе, который его собственная карточка в этой зоне не предлагает.
+// Пустой список — это anycast-образная ветка правила placement-coherence: тип не
+// зон-скоупнут, сравнивать не с чем, зональная полоса выполнена by construction
+// (весь сид каталога едет с `[]`). Сравнение идёт в ТОМ ЖЕ стейтменте, что вставка
+// (ban #10 — не Get→check→INSERT); голый FK на disk_types проверяет лишь
+// существование строки и про зоны ничего не знает.
+//
+// Полосы дают РАЗНЫЕ исходы, и их обязательно различать: «образ не разрешился» —
+// это ответ про образ, который вызывающему может быть вообще не виден (чужой
+// проект/регион), и его минимум в ответе появляться не должен. Поэтому стейтмент
+// ВСЕГДА возвращает ровно одну строку-дискриминатор: успешную вставку ЛИБО
+// (NULL, NULL, min_disk_bytes разрешённого образа, доступность типа в зоне).
+// min_disk IS NULL в отказе ⟺ образ не разрешился ⟹ hide-existence; min_disk NOT
+// NULL ⟺ образ свой и виден, отказ по размеру называется вслух. dt_offered
+// трёхзначен намеренно: NULL ⟺ строки типа нет вовсе (тот же ответ, что раньше
+// давал FK), FALSE ⟺ тип есть, но в этой зоне не предлагается, TRUE ⟺ полоса
+// пройдена. Модифицирующий CTE выполняется ровно один раз, поэтому обе ветки
+// UNION видят один и тот же его результат.
 const volumeInsertCoherentSQL = `
 	WITH src AS (
 		SELECT i.min_disk_bytes
 		  FROM images i
 		 WHERE i.id = $11::text AND i.project_id = $2::text
 		   AND $12::text <> '' AND i.region_id = $12::text
+	), dt AS (
+		SELECT (jsonb_array_length(d.zone_ids) = 0
+		        OR d.zone_ids @> to_jsonb($6::text)) AS offered
+		  FROM disk_types d
+		 WHERE d.id = $7::text
 	), ins AS (
 		INSERT INTO volumes
 			(id, project_id, name, description, labels, zone_id, disk_type_id,
@@ -215,11 +234,12 @@ const volumeInsertCoherentSQL = `
 		       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
 		 WHERE ($10::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$10 AND s.project_id=$2))
 		   AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
+		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered)
 		RETURNING created_at, updated_at
 	)
-	SELECT created_at, updated_at, NULL::bigint FROM ins
+	SELECT created_at, updated_at, NULL::bigint, NULL::boolean FROM ins
 	UNION ALL
-	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src)
+	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src), (SELECT offered FROM dt)
 	 WHERE NOT EXISTS (SELECT 1 FROM ins)`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
@@ -233,6 +253,10 @@ const volumeInsertCoherentSQL = `
 // образ дополнительно требует ёмкости: size_bytes ≥ min_disk_bytes образа, иначе
 // InvalidArgument "Volume size %d is less than image min_disk_bytes %d" — отказ, у
 // которого образ УЖЕ виден вызывающему, поэтому он не путается с hide-existence.
+// Тип диска обязан ПРЕДЛАГАТЬСЯ в зоне тома (`disk_types.zone_ids`; пустой список —
+// «предлагается везде»): не предлагается → FailedPrecondition "DiskType %s is not
+// offered in zone %s"; строки типа нет вовсе → прежний "DiskType %s not found"
+// (FK-текст, который теперь выдаёт сам стейтмент — до FK он не доходит).
 func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, error) {
 	blockSize := v.BlockSize
 	if blockSize == 0 {
@@ -255,13 +279,15 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 	created := *v
 	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого образа).
+		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого
+		// образа, доступность типа диска в зоне тома).
 		var createdAt, updatedAt *time.Time
 		var srcMinDisk *int64
+		var dtOffered *bool
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
 			v.SizeBytes, blockSize, srcSnap, srcImg, zoneRegionID).
-			Scan(&createdAt, &updatedAt, &srcMinDisk)
+			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered)
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
 				// Стейтмент обязан вернуть строку всегда; пусто = неучтённый исход.
@@ -270,6 +296,18 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			return serr
 		}
 		if createdAt == nil {
+			// Тип диска разбирается ПЕРВЫМ и детерминированно: это cluster-публичный
+			// каталог (DiskTypeService.Get читает любой аутентифицированный тенант),
+			// поэтому hide-existence тут не при чём, и обе его причины называются
+			// вслух. NULL ⟺ строки типа нет — тот же текст, что раньше давал FK
+			// (INSERT теперь до FK не доходит, значит текст выдаём сами).
+			if dtOffered == nil {
+				return fmt.Errorf("%w: DiskType %s not found", ports.ErrFailedPrecondition, v.DiskTypeID)
+			}
+			if !*dtOffered {
+				return fmt.Errorf("%w: DiskType %s is not offered in zone %s",
+					ports.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)
+			}
 			// Образ разрешился (свой проект + свой регион), не прошёл только размер —
 			// его минимум вызывающему уже виден, называем причину прямо.
 			if srcMinDisk != nil {

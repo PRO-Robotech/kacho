@@ -20,7 +20,10 @@ message DiskType {
   // Description of the disk type. 0-256 characters long.
   string description = 3;
 
-  // Availability zones where this disk type is offered.
+  // Availability zones where this disk type is offered. Enforced by
+  // VolumeService.Create: a Volume whose zone is absent from a non-empty list is
+  // refused with FAILED_PRECONDITION "DiskType <id> is not offered in zone <zone>".
+  // An EMPTY list means the type is not zone-scoped and is offered in every zone.
   repeated string zone_ids = 4;
 
   // Performance tier of the disk type (e.g. "standard", "high"). Optional.
