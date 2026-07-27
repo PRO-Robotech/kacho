@@ -168,8 +168,6 @@ type Address struct {
 	IpVersion Address_IpVersion `protobuf:"varint,18,opt,name=ip_version,json=ipVersion,proto3,enum=kacho.cloud.vpc.v1.Address_IpVersion" json:"ip_version,omitempty"`
 	// Specifies if address protected from deletion.
 	DeletionProtection bool `protobuf:"varint,19,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`
-	// Optional DNS record specifications
-	DnsRecords []*DnsRecord `protobuf:"bytes,20,rep,name=dns_records,json=dnsRecords,proto3" json:"dns_records,omitempty"`
 	// Resources currently using
 	// this address. Output-only — populated by the service on Get/List; ignored
 	// on Create/Update. For compute instance NIC/NAT addresses, contains a
@@ -328,13 +326,6 @@ func (x *Address) GetDeletionProtection() bool {
 		return x.DeletionProtection
 	}
 	return false
-}
-
-func (x *Address) GetDnsRecords() []*DnsRecord {
-	if x != nil {
-		return x.DnsRecords
-	}
-	return nil
 }
 
 func (x *Address) GetUsedBy() []*reference.Reference {
@@ -712,83 +703,11 @@ func (x *AddressRequirements) GetOutgoingSmtpCapability() string {
 	return ""
 }
 
-type DnsRecord struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// DNS record name (absolute or relative to the DNS zone in use).
-	Fqdn string `protobuf:"bytes,1,opt,name=fqdn,proto3" json:"fqdn,omitempty"`
-	// ID of the public DNS zone.
-	DnsZoneId string `protobuf:"bytes,2,opt,name=dns_zone_id,json=dnsZoneId,proto3" json:"dns_zone_id,omitempty"`
-	// TTL of record.
-	Ttl int64 `protobuf:"varint,3,opt,name=ttl,proto3" json:"ttl,omitempty"`
-	// If the PTR record is required, this parameter must be set to "true".
-	Ptr           bool `protobuf:"varint,4,opt,name=ptr,proto3" json:"ptr,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DnsRecord) Reset() {
-	*x = DnsRecord{}
-	mi := &file_kacho_cloud_vpc_v1_address_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DnsRecord) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DnsRecord) ProtoMessage() {}
-
-func (x *DnsRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DnsRecord.ProtoReflect.Descriptor instead.
-func (*DnsRecord) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *DnsRecord) GetFqdn() string {
-	if x != nil {
-		return x.Fqdn
-	}
-	return ""
-}
-
-func (x *DnsRecord) GetDnsZoneId() string {
-	if x != nil {
-		return x.DnsZoneId
-	}
-	return ""
-}
-
-func (x *DnsRecord) GetTtl() int64 {
-	if x != nil {
-		return x.Ttl
-	}
-	return 0
-}
-
-func (x *DnsRecord) GetPtr() bool {
-	if x != nil {
-		return x.Ptr
-	}
-	return false
-}
-
 var File_kacho_cloud_vpc_v1_address_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/vpc/v1/address.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1ckacho/cloud/validation.proto\"\x87\t\n" +
+	" kacho/cloud/vpc/v1/address.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1ckacho/cloud/validation.proto\"\xda\b\n" +
 	"\aAddress\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -807,9 +726,7 @@ const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\x04type\x18\x11 \x01(\x0e2 .kacho.cloud.vpc.v1.Address.TypeR\x04type\x12D\n" +
 	"\n" +
 	"ip_version\x18\x12 \x01(\x0e2%.kacho.cloud.vpc.v1.Address.IpVersionR\tipVersion\x12/\n" +
-	"\x13deletion_protection\x18\x13 \x01(\bR\x12deletionProtection\x12>\n" +
-	"\vdns_records\x18\x14 \x03(\v2\x1d.kacho.cloud.vpc.v1.DnsRecordR\n" +
-	"dnsRecords\x129\n" +
+	"\x13deletion_protection\x18\x13 \x01(\bR\x12deletionProtection\x129\n" +
 	"\aused_by\x18\x15 \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
@@ -822,7 +739,7 @@ const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\x16IP_VERSION_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04IPV4\x10\x01\x12\b\n" +
 	"\x04IPV6\x10\x02B\x0f\n" +
-	"\aaddress\x12\x04\xc0\xc11\x01J\x04\b\t\x10\x0f\"\x95\x01\n" +
+	"\aaddress\x12\x04\xc0\xc11\x01J\x04\b\t\x10\x0fJ\x04\b\x14\x10\x15R\vdns_records\"\x95\x01\n" +
 	"\x13ExternalIpv4Address\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
 	"\azone_id\x18\x02 \x01(\tR\x06zoneId\x12K\n" +
@@ -841,12 +758,7 @@ const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\frequirements\x18\x03 \x01(\v2'.kacho.cloud.vpc.v1.AddressRequirementsR\frequirements\"\x89\x01\n" +
 	"\x13AddressRequirements\x128\n" +
 	"\x18ddos_protection_provider\x18\x01 \x01(\tR\x16ddosProtectionProvider\x128\n" +
-	"\x18outgoing_smtp_capability\x18\x02 \x01(\tR\x16outgoingSmtpCapability\"c\n" +
-	"\tDnsRecord\x12\x12\n" +
-	"\x04fqdn\x18\x01 \x01(\tR\x04fqdn\x12\x1e\n" +
-	"\vdns_zone_id\x18\x02 \x01(\tR\tdnsZoneId\x12\x10\n" +
-	"\x03ttl\x18\x03 \x01(\x03R\x03ttl\x12\x10\n" +
-	"\x03ptr\x18\x04 \x01(\bR\x03ptrB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"\x18outgoing_smtp_capability\x18\x02 \x01(\tR\x16outgoingSmtpCapabilityB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_address_proto_rawDescOnce sync.Once
@@ -861,7 +773,7 @@ func file_kacho_cloud_vpc_v1_address_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_vpc_v1_address_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_kacho_cloud_vpc_v1_address_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_kacho_cloud_vpc_v1_address_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kacho_cloud_vpc_v1_address_proto_goTypes = []any{
 	(Address_Type)(0),             // 0: kacho.cloud.vpc.v1.Address.Type
 	(Address_IpVersion)(0),        // 1: kacho.cloud.vpc.v1.Address.IpVersion
@@ -871,29 +783,27 @@ var file_kacho_cloud_vpc_v1_address_proto_goTypes = []any{
 	(*InternalIpv6Address)(nil),   // 5: kacho.cloud.vpc.v1.InternalIpv6Address
 	(*ExternalIpv6Address)(nil),   // 6: kacho.cloud.vpc.v1.ExternalIpv6Address
 	(*AddressRequirements)(nil),   // 7: kacho.cloud.vpc.v1.AddressRequirements
-	(*DnsRecord)(nil),             // 8: kacho.cloud.vpc.v1.DnsRecord
-	nil,                           // 9: kacho.cloud.vpc.v1.Address.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
-	(*reference.Reference)(nil),   // 11: kacho.cloud.reference.Reference
+	nil,                           // 8: kacho.cloud.vpc.v1.Address.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*reference.Reference)(nil),   // 10: kacho.cloud.reference.Reference
 }
 var file_kacho_cloud_vpc_v1_address_proto_depIdxs = []int32{
-	10, // 0: kacho.cloud.vpc.v1.Address.created_at:type_name -> google.protobuf.Timestamp
-	9,  // 1: kacho.cloud.vpc.v1.Address.labels:type_name -> kacho.cloud.vpc.v1.Address.LabelsEntry
+	9,  // 0: kacho.cloud.vpc.v1.Address.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 1: kacho.cloud.vpc.v1.Address.labels:type_name -> kacho.cloud.vpc.v1.Address.LabelsEntry
 	3,  // 2: kacho.cloud.vpc.v1.Address.external_ipv4_address:type_name -> kacho.cloud.vpc.v1.ExternalIpv4Address
 	4,  // 3: kacho.cloud.vpc.v1.Address.internal_ipv4_address:type_name -> kacho.cloud.vpc.v1.InternalIpv4Address
 	5,  // 4: kacho.cloud.vpc.v1.Address.internal_ipv6_address:type_name -> kacho.cloud.vpc.v1.InternalIpv6Address
 	6,  // 5: kacho.cloud.vpc.v1.Address.external_ipv6_address:type_name -> kacho.cloud.vpc.v1.ExternalIpv6Address
 	0,  // 6: kacho.cloud.vpc.v1.Address.type:type_name -> kacho.cloud.vpc.v1.Address.Type
 	1,  // 7: kacho.cloud.vpc.v1.Address.ip_version:type_name -> kacho.cloud.vpc.v1.Address.IpVersion
-	8,  // 8: kacho.cloud.vpc.v1.Address.dns_records:type_name -> kacho.cloud.vpc.v1.DnsRecord
-	11, // 9: kacho.cloud.vpc.v1.Address.used_by:type_name -> kacho.cloud.reference.Reference
-	7,  // 10: kacho.cloud.vpc.v1.ExternalIpv4Address.requirements:type_name -> kacho.cloud.vpc.v1.AddressRequirements
-	7,  // 11: kacho.cloud.vpc.v1.ExternalIpv6Address.requirements:type_name -> kacho.cloud.vpc.v1.AddressRequirements
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	10, // 8: kacho.cloud.vpc.v1.Address.used_by:type_name -> kacho.cloud.reference.Reference
+	7,  // 9: kacho.cloud.vpc.v1.ExternalIpv4Address.requirements:type_name -> kacho.cloud.vpc.v1.AddressRequirements
+	7,  // 10: kacho.cloud.vpc.v1.ExternalIpv6Address.requirements:type_name -> kacho.cloud.vpc.v1.AddressRequirements
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_address_proto_init() }
@@ -919,7 +829,7 @@ func file_kacho_cloud_vpc_v1_address_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_address_proto_rawDesc), len(file_kacho_cloud_vpc_v1_address_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   8,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
