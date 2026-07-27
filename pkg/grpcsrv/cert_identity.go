@@ -212,6 +212,13 @@ func withCertIdentityFromPeer(ctx context.Context) context.Context {
 //   - TLS peer without a verified client-cert → principal NOT trusted; dropped
 //     (defense-in-depth).
 //
+// Trust answers "may this peer speak for a user", not "did this request name
+// one". A trusted peer that forwarded NO principal-metadata leaves the request
+// principal-less: the standard carrier reports no principal, and no identity is
+// invented for it. Anything else would hand the system identity — the one the
+// ownership predicate matches on every system-written operation — to a request
+// that presented no credential at all.
+//
 // The decision is recorded via withTrustedPrincipal so TrustedPrincipalFromContext
 // returns (principal, trusted). cert-identity and principal are orthogonal and
 // both remain available downstream for audit — neither substitutes the other.
@@ -252,15 +259,20 @@ type trustedPrincipal struct {
 
 func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) context.Context {
 	trusted := principalIsTrusted(ctx, cfg)
-	p := operations.SystemPrincipal()
+	// p is whatever the peer FORWARDED — nothing when it forwarded nothing. It is
+	// deliberately NOT seeded with the system principal: trust is a property of
+	// the FORWARDER (this peer may speak for a user), never a property of the
+	// request (this request named someone). A trusted peer is trusted while it
+	// forwards nothing too, so seeding would hand the system identity to a
+	// request that presented none — and that identity is the one the ownership
+	// predicate matches on every system-written operation.
+	p, forwarded := principalFromIncomingMetadata(ctx, defaultDebugConfig())
 	acr := ""
-	if pp, ok := principalFromIncomingMetadata(ctx, defaultDebugConfig()); ok {
-		p = pp
-	}
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		acr = first(md.Get(MDKeyTokenACR))
 	}
-	if !trusted {
+	switch {
+	case !trusted:
 		// On an unverified / non-forwarder peer the forwarded principal-metadata is
 		// dropped — and so is the acr (anti-spoof; a non-gateway peer cannot elevate
 		// its acr by forging the header).
@@ -268,10 +280,14 @@ func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) conte
 		// Scrub any pre-set principal carrier so a forged/leftover principal from
 		// an untrusted peer never reaches use-cases (defense-in-depth).
 		ctx = operations.WithoutPrincipal(ctx)
-	} else {
+	case forwarded:
 		// Make the trusted principal available to the standard operations carrier
 		// so existing use-cases (operations.PrincipalFromContext) see it too.
 		ctx = operations.WithPrincipal(ctx, p)
+	default:
+		// Trusted peer, but the request carried no identity at all. Record the
+		// absence: the carrier must report "no principal", not a fabricated one.
+		ctx = operations.WithoutPrincipal(ctx)
 	}
 	return context.WithValue(ctx, trustedPrincipalCtxKey{}, trustedPrincipal{principal: p, acr: acr, trusted: trusted})
 }
@@ -301,14 +317,24 @@ func principalIsTrusted(ctx context.Context, cfg trustedPrincipalConfig) bool {
 // TrustedPrincipalFromContext returns the principal and whether it is trusted
 // under the trust invariant. trusted=false means the principal-metadata came from
 // an unverified peer on an mTLS listener and the authz layer must ignore it.
+//
+// The returned principal is the ZERO Principal when the peer forwarded none,
+// and likewise when ctx never carried the trust decision at all — trusted=true
+// then says "this forwarder is recognised", not "someone was named". Callers
+// must treat an empty Type/ID as "no principal" and never as an identity to
+// compare against (operations.Principal.IsAnonymous is the shared predicate).
+// The absent-carrier case deliberately does NOT fall back to the system
+// principal: pairing a real-looking value with trusted=false only protects
+// callers who read the flag, and the value would be the very identity the
+// operation-ownership predicate honours everywhere.
 func TrustedPrincipalFromContext(ctx context.Context) (operations.Principal, bool) {
 	if ctx == nil {
-		return operations.SystemPrincipal(), false
+		return operations.Principal{}, false
 	}
 	if v, ok := ctx.Value(trustedPrincipalCtxKey{}).(trustedPrincipal); ok {
 		return v.principal, v.trusted
 	}
-	return operations.SystemPrincipal(), false
+	return operations.Principal{}, false
 }
 
 // WithTrustedACR stores a forwarded JWT `acr` and the trust flag directly in
@@ -316,9 +342,11 @@ func TrustedPrincipalFromContext(ctx context.Context) (operations.Principal, boo
 // can assert the floor deterministically without a live mTLS peer — the mirror of
 // WithCertIdentity for the principal/acr layer. Note: this overwrites any existing
 // trusted-principal carrier's acr/trusted with the given values while keeping the
-// principal as previously recorded (or the system fallback).
+// principal as previously recorded — and leaving it EMPTY when none was: an acr
+// says how strongly someone authenticated, never who they are, so this
+// constructor has no business naming anyone.
 func WithTrustedACR(ctx context.Context, acr string, trusted bool) context.Context {
-	tp := trustedPrincipal{principal: operations.SystemPrincipal()}
+	var tp trustedPrincipal
 	if v, ok := ctx.Value(trustedPrincipalCtxKey{}).(trustedPrincipal); ok {
 		tp = v
 	}
@@ -340,7 +368,7 @@ func WithTrustedACR(ctx context.Context, acr string, trusted bool) context.Conte
 // before believing the principal type — a forged `service_account` from an
 // unverified peer must never buy the step-up exemption.
 func WithTrustedPrincipal(ctx context.Context, p operations.Principal, trusted bool) context.Context {
-	tp := trustedPrincipal{principal: operations.SystemPrincipal()}
+	var tp trustedPrincipal
 	if v, ok := ctx.Value(trustedPrincipalCtxKey{}).(trustedPrincipal); ok {
 		tp = v
 	}

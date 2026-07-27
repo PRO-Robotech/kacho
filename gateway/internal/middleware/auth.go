@@ -288,12 +288,21 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	bearer := extractBearer(ctx)
 
 	// Empty Bearer handling per mode.
+	//
+	// A request with no credential is not authenticated, and `production` must
+	// say so. It used to be answered with an injected {system, anonymous}
+	// principal, which reads as a NAME everywhere downstream: subject-extraction
+	// resolves it, so the "unauthenticated" gate never fires, and the ownership
+	// predicate matches it against itself, so every anonymous request owns every
+	// other anonymous request's operations. `dev` keeps the pass-through — it is
+	// the in-process/dev-stand affordance and the only mode where the HMAC token
+	// path lives at all.
 	if bearer == "" {
 		switch a.mode {
-		case AuthModeProductionStrict:
-			return nil, status.Error(codes.Unauthenticated, "missing Bearer token")
-		default: // dev / production
+		case AuthModeDev:
 			return a.injectAnonymous(ctx), nil
+		default: // production / production-strict
+			return nil, status.Error(codes.Unauthenticated, "missing Bearer token")
 		}
 	}
 
@@ -411,8 +420,13 @@ func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, su
 	return a.injectPrincipal(ctx, subj.Type, subj.ID, subj.DisplayName), nil
 }
 
+// injectAnonymous marks the request as "nobody" — dev-mode only (see authorize).
+// The marker is a reserved word, NOT an identity: everything that compares
+// identities must read it through operations.Principal.IsAnonymous, which is why
+// the word is taken from there rather than spelled out here. Producer and
+// recogniser sharing one constant is what keeps them from drifting apart.
 func (a *AuthInterceptor) injectAnonymous(ctx context.Context) context.Context {
-	return a.injectPrincipal(ctx, "system", "anonymous", "")
+	return a.injectPrincipal(ctx, "system", operations.AnonymousPrincipalID, "")
 }
 
 func (a *AuthInterceptor) injectPrincipal(ctx context.Context, pType, pID, displayName string) context.Context {

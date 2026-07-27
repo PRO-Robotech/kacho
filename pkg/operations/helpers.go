@@ -64,12 +64,19 @@ func New(domainPrefix, description string, metadata proto.Message) (Operation, e
 // fallback к SystemPrincipal). С явно установленным (и не-scrub'нутым)
 // ctx-Principal — он переносится в op.Principal, и Create / CreateWithPrincipal
 // будут использовать его как источник правды.
+//
+// БЕЗЫМЯННЫЙ ctx-Principal (Principal.IsAnonymous — пустая пара либо ярлык
+// анонима) переносом НЕ считается: имя, общее для всех безымянных запросов,
+// стало бы общим ключом ВЛАДЕНИЯ на записанных строках. Такую строку правильнее
+// не создавать, чем рассчитывать, что читатель её отсеет; владелец у неё
+// остаётся неизвестен (SystemPrincipal-fallback в Create), и tenant-чтение
+// fail-closed по общему правилу.
 func NewFromContext(ctx context.Context, domainPrefix, description string, metadata proto.Message) (Operation, error) {
 	op, err := New(domainPrefix, description, metadata)
 	if err != nil {
 		return op, err
 	}
-	if v, ok := PrincipalFromContextOK(ctx); ok && v != (Principal{}) {
+	if v, ok := PrincipalFromContextOK(ctx); ok && !v.IsAnonymous() {
 		op.Principal = v
 		// Также синхронизируем CreatedBy с principal.ID для backward-compat
 		// (старые клиенты читают createdBy; новые — principal_*). Default

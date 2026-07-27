@@ -39,6 +39,7 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
@@ -219,17 +220,23 @@ func (p *OpsProxy) Cancel(ctx context.Context, req *operationpb.CancelOperationR
 // Логика (fail-closed на публичной поверхности — порядок важен: caller-identity
 // проверяется ПЕРЕД owner-полями операции, чтобы owner-less операция не стала
 // world-readable, минуя anonymous/tenant-гейты):
-//   - Если principal в ctx не извлекается (анонимный) — PermissionDenied.
+//   - Если principal в ctx не извлекается — PermissionDenied. Сюда же относится
+//     ИМЕНОВАННАЯ анонимность (`{system, anonymous}`, ярлык запроса без
+//     credential'а): пара непуста, поэтому без явной проверки она проходила
+//     гейт «личность не извлеклась» и дальше СОВПАДАЛА САМА С СОБОЙ — один
+//     безымянный запрос читал и отменял операции другого. Ключ у безымянных
+//     общий по построению, поэтому «свой» здесь означает «любой».
 //     (Каталог уже требует аутентификацию для OperationService через <exempt>,
 //     поэтому этот case теоретически не должен дойти сюда, но мы fail-closed.)
 //   - Внутренний system/bootstrap caller (воркер) — пропускаем: он может читать
 //     любую операцию (cross-service polling / реконсайл), включая owner-less.
-//   - С этого места caller — tenant. Операция без записанного owner'а (nil op или
-//     пустой principal_id: legacy pre-owner-tracking строка) НЕ world-readable —
-//     реальный owner неизвестен, поэтому tenant'у fail-closed (defense-in-depth
-//     против cross-tenant BOLA — CWE-639). Внутренний system-caller (обработан
-//     выше) её по-прежнему читает. Owner-less строка строго менее атрибутируема,
-//     чем system-owned, поэтому денаим её как минимум так же строго.
+//   - С этого места caller — tenant. Операция без ИМЕНУЕМОГО owner'а (nil op;
+//     пустой principal_id/principal_type — legacy pre-owner-tracking строка;
+//     принципал-ярлык анонима) НЕ world-readable — реальный owner неизвестен,
+//     поэтому tenant'у fail-closed (defense-in-depth против cross-tenant BOLA —
+//     CWE-639). Внутренний system-caller (обработан выше) её по-прежнему читает.
+//     Такая строка строго менее атрибутируема, чем system-owned, поэтому денаим
+//     её как минимум так же строго.
 //   - Операция, owner которой — system/bootstrap (backend без mounted
 //     UnaryPrincipalExtract записывает SystemPrincipal()={type:"system",
 //     id:"bootstrap"} для КАЖДОЙ Operation, т.к. corelib operations.Repo.Create
@@ -242,8 +249,9 @@ func (p *OpsProxy) Cancel(ctx context.Context, req *operationpb.CancelOperationR
 //     principal-типами, напр. user vs service_account — CWE-863).
 func checkOperationOwnership(ctx context.Context, op *operationpb.Operation) error {
 	callerID, callerType := principalFromContext(ctx)
-	if callerID == "" {
-		// Анонимный caller — не должен читать операции.
+	// Безымянный caller — не должен читать операции. Пустая пара и именованная
+	// анонимность здесь одно и то же: «неизвестно кто» не владеет ничем.
+	if (operations.Principal{Type: callerType, ID: callerID}).IsAnonymous() {
 		return status.Error(codes.PermissionDenied, "permission denied")
 	}
 	// system/bootstrap — внутренний воркер, не tenant. Пропускаем: он читает
@@ -252,8 +260,9 @@ func checkOperationOwnership(ctx context.Context, op *operationpb.Operation) err
 		return nil
 	}
 	// Далее caller — tenant. Операция без записанного owner'а не world-readable:
-	// реальный owner неизвестен → fail-closed (CWE-639).
-	if op == nil || op.GetPrincipalId() == "" {
+	// реальный owner неизвестен → fail-closed (CWE-639). Сюда же — строка,
+	// записанная безымянным запросом: её владелец не менее неизвестен.
+	if op == nil || (operations.Principal{Type: op.GetPrincipalType(), ID: op.GetPrincipalId()}).IsAnonymous() {
 		return status.Error(codes.PermissionDenied, "permission denied")
 	}
 	// Операция с system/bootstrap owner'ом читаема только внутренним
