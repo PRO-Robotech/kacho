@@ -78,8 +78,11 @@ software TOCTOU — data-integrity.md ban #10):
   никогда); запрос без caller-identity → пустая страница, не bypass. Фильтр
   конфигурируется `KACHO_STORAGE_LIST_FILTER_*`; production boot-guard
   (`config.Validate`) не пускает старт с `LIST_FILTER_ENABLED=false`.
-  CI-гейт `make audit-list-filter` (`tools/audit-list-filter.sh`, продублирован в
-  `go test ./tools/...`) роняет PR, если **тело** `repo.List` перестаёт сужать по
+  CI-гейт `make -C services/storage audit-list-filter` (`tools/audit-list-filter.sh`,
+  продублирован в `go test ./tools/...`; корневого Makefile в репо нет, поэтому голое
+  `make audit-list-filter` из корня не исполняется — CI вызывает именно `-C`-форму,
+  `.github/workflows/ci.yaml`, job `authz-artifacts`) роняет PR, если **тело**
+  `repo.List` перестаёт сужать по
   `project_id`, use-case `List` перестаёт требовать непустой `projectId` **или**
   перестаёт фильтровать страницу per-object; `DiskType` (cluster-каталог
   `{cluster,*}`, per-object грантов не несёт) whitelisted.

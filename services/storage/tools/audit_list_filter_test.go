@@ -11,10 +11,17 @@
 //   - TestAuditListFilter — the gate's DETECTION LOGIC against synthetic fixtures
 //     (does it still catch each leak shape?);
 //   - TestAuditListFilter_RealTreePasses — the gate against THIS SERVICE'S REAL
-//     tree. Without it the script is merely present: no CI job invokes
-//     `make audit-list-filter`, so a List that quietly drops its filter would ship
-//     green. `go test ./services/storage/...` does run in CI, so routing the gate
-//     through it is what actually makes storage covered.
+//     tree, inside the ordinary `go test ./...` run.
+//
+// A note on why the second one exists, since this comment used to say something
+// that is no longer true. It was written when NO CI job invoked
+// `make audit-list-filter`, which made routing the gate through `go test` the only
+// thing that covered storage at all. CI has since grown that step
+// (.github/workflows/ci.yaml, job authz-artifacts, four services), so the claim
+// went stale in place — and a stale claim about whether a gate runs is exactly the
+// hazard the gate is for. Both paths are kept deliberately: `go test` reaches the
+// real tree wherever tests run, the make target is what CI issues. The wiring is no
+// longer described in prose alone — see ci_gate_wiring_test.go.
 package tools_regression
 
 import (

@@ -41,8 +41,17 @@ lint:
 #       authzfilter.FilterVisiblePage (kacho-iam BatchCheck, viewer ∪ v_list).
 # (1) без (2) — ровно то слепое пятно, с которым storage отгрузил List, показывавший
 # любому члену проекта каждый том/снимок/образ. DiskType (cluster-catalog) whitelisted.
-# Гейт дублируется в go test (tools/audit_list_filter_test.go), т.к. CI-workflow этот
-# make-таргет не вызывает. См. tools/audit-list-filter.sh.
+#
+# Как это запускается. Корневого Makefile в репо НЕТ, поэтому голое
+# `make audit-list-filter` из корня отвечает «No rule to make target» — команда
+# набирается как `make -C services/storage audit-list-filter`. Ровно в этой форме её
+# и вызывает CI: .github/workflows/ci.yaml, job authz-artifacts, шаг
+# «listauthz — публичный List фильтрует по объекту (4 сервиса)». Прежняя редакция
+# этого комментария утверждала обратное («CI-workflow этот make-таргет не вызывает») —
+# верно на момент написания, ложно с тех пор, как шаг появился. Чтобы утверждение не
+# протухло снова, оно проверяется: tools/ci_gate_wiring_test.go.
+# Дубль в go test (tools/audit_list_filter_test.go) остаётся: он гоняет гейт против
+# РЕАЛЬНОГО дерева сервиса внутри обычного `go test ./...`. См. tools/audit-list-filter.sh.
 audit-list-filter:
 	./tools/audit-list-filter.sh
 
