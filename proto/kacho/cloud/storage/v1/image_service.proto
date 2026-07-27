@@ -148,9 +148,18 @@ message ListImagesRequest {
   // filtering is supported on the `name` field only.
   string filter = 4 [(length) = "<=1000"];
 
-  // By which column the listing should be ordered and in which direction,
-  // format is "createdAt desc". "id asc" if omitted.
-  string order_by = 5 [(length) = "<=100"];
+  // Field 5 held `order_by`, a free-form sort expression. It was accepted,
+  // length-checked and then read by nothing: no handler, use-case or repository
+  // ever looked at it, and its documented default ("id asc") did not describe the
+  // order the query produced either. It could not have been honoured as declared —
+  // this List pages with a keyset cursor over (created_at, id), which is the page
+  // token itself, so a caller-chosen order leaves the cursor describing a position
+  // in an order that no longer exists, and ordering by an unindexed column turns a
+  // page read into a full scan. Removed deliberately; the slot stays shut so it
+  // cannot return meaning something else. A descending listing, if ever wanted, is
+  // its own field with a closed set of values.
+  reserved 5;
+  reserved "order_by";
 }
 
 message ListImagesResponse {

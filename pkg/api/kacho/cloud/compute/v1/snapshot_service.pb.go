@@ -98,11 +98,7 @@ type ListSnapshotsRequest struct {
 	// 2. `<operator>` is a logical operator, one of `=`, `!=`, `IN`, `NOT IN`.
 	// 3. `<value>` represents a value.
 	// String values should be written in double (`"`) or single (`'`) quotes. C-style escape sequences are supported (`\"` turns to `"`, `\'` to `'`, `\\` to backslash).
-	Filter string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
-	// By which column the listing should be ordered and in which direction,
-	// format is "createdAt desc". "id asc" if omitted.
-	// The default sorting order is ascending
-	OrderBy       string `protobuf:"bytes,5,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -161,13 +157,6 @@ func (x *ListSnapshotsRequest) GetPageToken() string {
 func (x *ListSnapshotsRequest) GetFilter() string {
 	if x != nil {
 		return x.Filter
-	}
-	return ""
-}
-
-func (x *ListSnapshotsRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
 	}
 	return ""
 }
@@ -728,7 +717,7 @@ const file_kacho_cloud_compute_v1_snapshot_service_proto_rawDesc = "" +
 	"-kacho/cloud/compute/v1/snapshot_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/access/access.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a0kacho/cloud/compute/v1/hardware_generation.proto\x1a%kacho/cloud/compute/v1/snapshot.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"C\n" +
 	"\x12GetSnapshotRequest\x12-\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"snapshotId\"\xe0\x01\n" +
+	"snapshotId\"\xca\x01\n" +
 	"\x14ListSnapshotsRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
@@ -737,8 +726,7 @@ const file_kacho_cloud_compute_v1_snapshot_service_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
 	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\x12$\n" +
-	"\border_by\x18\x05 \x01(\tB\t\x8a\xc81\x05<=100R\aorderBy\"\x7f\n" +
+	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"\x7f\n" +
 	"\x15ListSnapshotsResponse\x12>\n" +
 	"\tsnapshots\x18\x01 \x03(\v2 .kacho.cloud.compute.v1.SnapshotR\tsnapshots\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8a\x04\n" +

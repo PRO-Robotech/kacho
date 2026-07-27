@@ -27,7 +27,7 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | RPC | REST | sync/async | metadata / response | статус |
 |---|---|---|---|---|
 | `Get` | `GET /compute/v1/disks/{disk_id}` | sync | → `Disk` | ✅ |
-| `List` | `GET /compute/v1/disks?folderId=&pageSize=&pageToken=&filter=&orderBy=` | sync | → `ListDisksResponse` | ✅ |
+| `List` | `GET /compute/v1/disks?folderId=&pageSize=&pageToken=&filter=` | sync | → `ListDisksResponse` | ✅ |
 | `Create` | `POST /compute/v1/disks` body `*` | async | `CreateDiskMetadata{disk_id}` / `Disk` | ✅ (`kms_key_id`→`blocked:kacho-kms`, `snapshot_schedule_ids`→`blocked:kacho-snapshot-schedule`) |
 | `Update` | `PATCH /compute/v1/disks/{disk_id}` body `*` | async | `UpdateDiskMetadata` / `Disk` | ✅ |
 | `Delete` | `DELETE /compute/v1/disks/{disk_id}` | async | `DeleteDiskMetadata` / `google.protobuf.Empty` | ✅ |

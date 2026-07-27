@@ -91,10 +91,7 @@ type ListImagesRequest struct {
 	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	// A filter expression that filters resources listed in the response. Currently
 	// filtering is supported on the `name` field only.
-	Filter string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
-	// By which column the listing should be ordered and in which direction,
-	// format is "createdAt desc". "id asc" if omitted.
-	OrderBy       string `protobuf:"bytes,5,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -153,13 +150,6 @@ func (x *ListImagesRequest) GetPageToken() string {
 func (x *ListImagesRequest) GetFilter() string {
 	if x != nil {
 		return x.Filter
-	}
-	return ""
-}
-
-func (x *ListImagesRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
 	}
 	return ""
 }
@@ -711,7 +701,7 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\n" +
 	"*kacho/cloud/storage/v1/image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\":\n" +
 	"\x0fGetImageRequest\x12'\n" +
-	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\"\xdd\x01\n" +
+	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\"\xc7\x01\n" +
 	"\x11ListImagesRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
@@ -720,8 +710,7 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
 	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\x12$\n" +
-	"\border_by\x18\x05 \x01(\tB\t\x8a\xc81\x05<=100R\aorderBy\"s\n" +
+	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"s\n" +
 	"\x12ListImagesResponse\x125\n" +
 	"\x06images\x18\x01 \x03(\v2\x1d.kacho.cloud.storage.v1.ImageR\x06images\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x91\x04\n" +

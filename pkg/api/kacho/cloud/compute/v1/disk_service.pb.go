@@ -98,11 +98,7 @@ type ListDisksRequest struct {
 	// 2. `<operator>` is a logical operator, one of `=`, `!=`, `IN`, `NOT IN`.
 	// 3. `<value>` represents a value.
 	// String values should be written in double (`"`) or single (`'`) quotes. C-style escape sequences are supported (`\"` turns to `"`, `\'` to `'`, `\\` to backslash).
-	Filter string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
-	// By which column the listing should be ordered and in which direction,
-	// format is "createdAt desc". "id asc" if omitted.
-	// The default sorting order is ascending
-	OrderBy       string `protobuf:"bytes,5,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -161,13 +157,6 @@ func (x *ListDisksRequest) GetPageToken() string {
 func (x *ListDisksRequest) GetFilter() string {
 	if x != nil {
 		return x.Filter
-	}
-	return ""
-}
-
-func (x *ListDisksRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
 	}
 	return ""
 }
@@ -971,7 +960,7 @@ const file_kacho_cloud_compute_v1_disk_service_proto_rawDesc = "" +
 	"\n" +
 	")kacho/cloud/compute/v1/disk_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/access/access.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a!kacho/cloud/compute/v1/disk.proto\x1a0kacho/cloud/compute/v1/hardware_generation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"7\n" +
 	"\x0eGetDiskRequest\x12%\n" +
-	"\adisk_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06diskId\"\xdc\x01\n" +
+	"\adisk_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06diskId\"\xc6\x01\n" +
 	"\x10ListDisksRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
@@ -980,8 +969,7 @@ const file_kacho_cloud_compute_v1_disk_service_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
 	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\x12$\n" +
-	"\border_by\x18\x05 \x01(\tB\t\x8a\xc81\x05<=100R\aorderBy\"o\n" +
+	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"o\n" +
 	"\x11ListDisksResponse\x122\n" +
 	"\x05disks\x18\x01 \x03(\v2\x1c.kacho.cloud.compute.v1.DiskR\x05disks\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8d\a\n" +

@@ -91,10 +91,7 @@ type ListVolumesRequest struct {
 	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	// A filter expression that filters resources listed in the response. Currently
 	// filtering is supported on the `name` field only.
-	Filter string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
-	// By which column the listing should be ordered and in which direction,
-	// format is "createdAt desc". "id asc" if omitted.
-	OrderBy       string `protobuf:"bytes,5,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -153,13 +150,6 @@ func (x *ListVolumesRequest) GetPageToken() string {
 func (x *ListVolumesRequest) GetFilter() string {
 	if x != nil {
 		return x.Filter
-	}
-	return ""
-}
-
-func (x *ListVolumesRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
 	}
 	return ""
 }
@@ -748,7 +738,7 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\n" +
 	"+kacho/cloud/storage/v1/volume_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a#kacho/cloud/storage/v1/volume.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"=\n" +
 	"\x10GetVolumeRequest\x12)\n" +
-	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\"\xde\x01\n" +
+	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\"\xc8\x01\n" +
 	"\x12ListVolumesRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
@@ -757,8 +747,7 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
 	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\x12$\n" +
-	"\border_by\x18\x05 \x01(\tB\t\x8a\xc81\x05<=100R\aorderBy\"w\n" +
+	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"w\n" +
 	"\x13ListVolumesResponse\x128\n" +
 	"\avolumes\x18\x01 \x03(\v2\x1e.kacho.cloud.storage.v1.VolumeR\avolumes\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x83\x05\n" +

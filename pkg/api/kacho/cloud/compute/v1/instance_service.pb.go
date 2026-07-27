@@ -267,11 +267,7 @@ type ListInstancesRequest struct {
 	// 2. `<operator>` is a logical operator, one of `=`, `!=`, `IN`, `NOT IN`.
 	// 3. `<value>` represents a value.
 	// String values should be written in double (`"`) or single (`'`) quotes. C-style escape sequences are supported (`\"` turns to `"`, `\'` to `'`, `\\` to backslash).
-	Filter string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
-	// By which column the listing should be ordered and in which direction,
-	// format is "createdAt desc". "id asc" if omitted.
-	// The default sorting order is ascending
-	OrderBy       string `protobuf:"bytes,5,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -330,13 +326,6 @@ func (x *ListInstancesRequest) GetPageToken() string {
 func (x *ListInstancesRequest) GetFilter() string {
 	if x != nil {
 		return x.Filter
-	}
-	return ""
-}
-
-func (x *ListInstancesRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
 	}
 	return ""
 }
@@ -3931,7 +3920,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\x12GetInstanceRequest\x12-\n" +
 	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
 	"instanceId\x128\n" +
-	"\x04view\x18\x02 \x01(\x0e2$.kacho.cloud.compute.v1.InstanceViewR\x04view\"\xe0\x01\n" +
+	"\x04view\x18\x02 \x01(\x0e2$.kacho.cloud.compute.v1.InstanceViewR\x04view\"\xca\x01\n" +
 	"\x14ListInstancesRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
@@ -3940,8 +3929,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
 	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\x12$\n" +
-	"\border_by\x18\x05 \x01(\tB\t\x8a\xc81\x05<=100R\aorderBy\"\x7f\n" +
+	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"\x7f\n" +
 	"\x15ListInstancesResponse\x12>\n" +
 	"\tinstances\x18\x01 \x03(\v2 .kacho.cloud.compute.v1.InstanceR\tinstances\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xae\x12\n" +
