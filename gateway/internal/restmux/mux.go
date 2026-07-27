@@ -23,9 +23,15 @@
 //     поверхности этот шум вреден и сбивает админов.
 //
 // Все RPC handlers регистрируются на ОБА mux'а — разница только в JSON
-// маршалинге. Path-based dispatch выбирает нужный mux на основании
-// `request.URL.Path`:
+// маршалинге. Диспетчер выбирает нужный mux по ПАРЕ (HTTP-метод, путь) —
+// `isInternalRoute`, см. также internal_routes.go:
 //
+//   - Любой REST-биндинг любого Internal*-сервиса (собирается из
+//     proto-дескрипторов) → internal mux. Именно поэтому решение keyed на пару,
+//     а не на путь: admin-CRUD каталога DiskType висит на ТОМ ЖЕ пути, что и
+//     публичное чтение каталога (`/storage/v1/diskTypes`, `/compute/v1/diskTypes`),
+//     и отличается только методом — `GET` публичный, `POST`/`PATCH`/`DELETE`
+//     admin-only.
 //   - Любой путь, содержащий сегмент `/internal` (например
 //     `/vpc/v1/networks/{id}/internal`, `/vpc/v1/networkInterfaces/{id}/internal`),
 //     → internal mux.
@@ -33,6 +39,9 @@
 //     `/vpc/v1/addressPools`,
 //     `/vpc/v1/networks/{id}/addressPoolBinding`.
 //   - Все остальное → public mux.
+//
+// Запрос, классифицированный как internal, но пришедший на ВНЕШНИЙ листенер,
+// получает 404 (existence-hiding) и до обработчика не доходит.
 //
 // Корневой `http.Handler` (диспетчер) экспонируется как `http.Handler`
 // и передается в `httpMux.Handle("/", restHandler)` в `cmd/api-gateway/main.go`.
@@ -189,7 +198,24 @@ func principalMetadata(_ context.Context, r *http.Request) metadata.MD {
 	return buildPrincipalMetadata(r)
 }
 
-// isInternalPath решает, какой sub-mux обрабатывает запрос.
+// isInternalRoute решает, какой sub-mux обрабатывает запрос.
+//
+// Решение keyed на ПАРУ (HTTP-метод, path), а не на один path: часть
+// Internal*-биндингов делит REST-путь с публичным чтением того же ресурса и
+// отличается ТОЛЬКО методом (каталог DiskType в storage и compute: `GET` —
+// публичный DiskTypeService, `POST`/`PATCH`/`DELETE` — admin-only
+// InternalDiskTypeService на :9091). Классификация по одной строке пути такие
+// пары не различает в принципе.
+//
+// Источник истины — REST-биндинги Internal*-сервисов из proto-дескрипторов
+// (см. internal_routes.go); path-shaped правила ниже остаются как
+// эшелонированная защита и покрывают формы, которых в дескрипторах нет
+// (default unbound-route в gRPC-форме).
+func isInternalRoute(method, path string) bool {
+	return isInternalPath(path) || matchesInternalRESTBinding(method, path)
+}
+
+// isInternalPath — path-shaped правила классификации (метод-агностичные).
 //
 // Правила (в порядке проверки):
 //  1. Любой path-сегмент `/internal` ИЛИ verb-suffix `:internal` → internal mux.
@@ -250,7 +276,7 @@ func isInternalPath(path string) bool {
 // активные публичные сервисы плюс OperationService (через OpsProxy).
 //
 // Возвращает `http.Handler`-диспетчер, который на каждый request выбирает
-// public или internal sub-mux на основании `isInternalPath(r.URL.Path)`.
+// public или internal sub-mux на основании `isInternalRoute(r.Method, r.URL.Path)`.
 //
 // addrs — карта domain → адрес gRPC backend:
 //
@@ -296,6 +322,14 @@ func NewMux(
 	conns map[string]*grpc.ClientConn,
 	dialOpts map[string]grpc.DialOption,
 ) (http.Handler, error) {
+	// Boot-guard: таблица внутренних REST-маршрутов строится из proto-дескрипторов
+	// (internal_routes.go). Пустая таблица означала бы, что дескрипторы не
+	// слинкованы, и admin-поверхности молча уехали бы на публичный mux —
+	// отказываемся стартовать, а не работаем без изоляции.
+	if len(loadedInternalRoutes()) == 0 {
+		return nil, fmt.Errorf("internal REST route table is empty: Internal*Service descriptors not linked — refusing to serve without external-listener isolation")
+	}
+
 	// JSON-marshallers (отличаются ТОЛЬКО `EmitUnpopulated`):
 	//   - public: EmitUnpopulated=true — отдаем явные нулевые значения
 	//     (`""`/`{}`/`[]`/`null`) для proto-полей. На публичной поверхности
@@ -373,8 +407,8 @@ func NewMux(
 		storageInternalAddr = addrs["storageInternal"]
 	}
 
-	// Регистрируем КАЖДЫЙ handler на ОБА mux'а (public + internal). Path-based
-	// dispatch (isInternalPath) ниже выбирает, какой из них фактически обработает
+	// Регистрируем КАЖДЫЙ handler на ОБА mux'а (public + internal). Диспетчер по
+	// паре (метод, путь) — isInternalRoute — ниже выбирает, какой из них фактически обработает
 	// конкретный запрос — разница только в JSON-маршалинге. Так нам не нужно
 	// заранее знать, какой RPC попадет на какой путь: grpc-gateway сам разрулит,
 	// а мы лишь подсовываем правильный JSONPb.
@@ -456,7 +490,7 @@ func NewMux(
 			}
 			// InternalMachineTypeService — admin CRUD над каталогом MachineType
 			// (POST/PATCH/DELETE на /compute/v1/internal/machineTypes; async Operation,
-			// system_admin). Путь несет сегмент `/internal/` → isInternalPath 404-ит его
+			// system_admin). Путь несет сегмент `/internal/` → isInternalRoute 404-ит его
 			// на external TLS listener, а gRPC-роутер блокирует Internal* через
 			// HasInternalSuffix. Cluster-internal only (ban #6, parity с geo InternalRegion/Zone).
 			if err := computepb.RegisterInternalMachineTypeServiceHandlerFromEndpoint(ctx, mux, computeInternalAddr, optsFor("computeInternal")); err != nil {
@@ -493,7 +527,7 @@ func NewMux(
 		// POST /kacho.cloud.storage.v1.InternalVolumeService/<Method> (аналог iam
 		// InternalUserService / registry InternalRegistryService). Несет placement/
 		// инфра-чувствительные поля (security.md) → доступно ТОЛЬКО через
-		// cluster-internal REST listener: dispatcher (isInternalPath →
+		// cluster-internal REST listener: dispatcher (isInternalRoute →
 		// HasInternalSuffix) 404-ит эти пути на external TLS listener, а gRPC-роутер
 		// блокирует Internal* через HasInternalSuffix. Data-plane consumer'ы могут
 		// ходить напрямую gRPC до kacho-storage:9091.
@@ -512,7 +546,7 @@ func NewMux(
 			// POST /kacho.cloud.storage.v1.InternalImageService/GetInternal (аналог
 			// InternalVolumeService). Несет инфра-чувствительные поля (security.md) →
 			// доступно ТОЛЬКО через cluster-internal REST listener: dispatcher
-			// (isInternalPath → HasInternalSuffix) 404-ит его на external TLS listener.
+			// (isInternalRoute → HasInternalSuffix) 404-ит его на external TLS listener.
 			if err := storagepb.RegisterInternalImageServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
 				return nil, fmt.Errorf("register storage InternalImageService: %w", err)
 			}
@@ -619,7 +653,7 @@ func NewMux(
 		// REST HTTP annotations on internal IAM proto RPCs (UpsertFromIdentity,
 		// LookupSubject, ListPermissions, Check) make grpc-gateway create routes
 		// for /iam/v1/internal/* paths.
-		// These handlers are dispatched to the internal mux (isInternalPath
+		// These handlers are dispatched to the internal mux (isInternalRoute
 		// returns true for any path containing /internal/); the authz middleware
 		// lets them through via the public allowlist (no Bearer JWT required —
 		// the IAM service enforces its own per-handler auth via authzguard
@@ -636,7 +670,7 @@ func NewMux(
 			// InternalClusterService — cluster-admin RBAC management
 			// (Get / GrantAdmin / RevokeAdmin / ListAdmins) under
 			// /iam/v1/internal/cluster/...  Internal-only;
-			// isInternalPath sends these paths to the internal sub-mux. Catalog gate
+			// isInternalRoute sends these paths to the internal sub-mux. Catalog gate
 			// (`required_relation: admin`) enforces the FGA computed-alias
 			// `system_admin OR emergency_admin` on `cluster:cluster_kacho_root`.
 			if err := iampb.RegisterInternalClusterServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
@@ -644,7 +678,7 @@ func NewMux(
 			}
 			// InternalOperationsService.ListIamOperations — cluster-wide IAM
 			// operations dump for admin-UI under GET /iam/v1/internal/operations.
-			// Internal-only; isInternalPath routes /iam/v1/internal/* to
+			// Internal-only; isInternalRoute routes /iam/v1/internal/* to
 			// the internal sub-mux and the dispatcher 404s it on the external TLS
 			// listener. The gRPC router's HasInternalSuffix also blocks the
 			// InternalOperationsService suffix on the public listener.
@@ -730,7 +764,7 @@ func NewMux(
 		// grpc-gateway создает default unbound-route
 		// POST /kacho.cloud.registry.v1.InternalRegistryService/<Method> (аналог iam
 		// InternalUserService.Get). Доступно ТОЛЬКО через cluster-internal REST listener:
-		// dispatcher (isInternalPath → HasInternalSuffix) 404-ит эти пути на external
+		// dispatcher (isInternalRoute → HasInternalSuffix) 404-ит эти пути на external
 		// TLS listener, а gRPC-роутер блокирует Internal* через HasInternalSuffix.
 		// Admin-tooling может ходить и напрямую gRPC до kacho-registry:9091.
 		if registryInternalAddr != "" {
@@ -753,13 +787,13 @@ func NewMux(
 		}
 	}
 
-	// Path-based dispatcher. Решает, какому sub-mux'у скормить запрос. Сами
+	// Диспетчер по паре (HTTP-метод, путь). Решает, какому sub-mux'у скормить запрос. Сами
 	// RPC-роуты внутри grpc-gateway-mux'ов идентичны — отличается только JSON
 	// маршалинг ответа (EmitUnpopulated). Запрос НЕ переадресуется куда-то еще:
 	// internal sub-mux обработает request тем же handler'ом, что и public, но
 	// сожмет response пустых полей.
 	dispatcher := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isInternalPath(r.URL.Path) {
+		if isInternalRoute(r.Method, r.URL.Path) {
 			// SECURITY: Internal* REST paths are cluster-internal-only.
 			// When the request arrived on the advertised external TLS listener
 			// (listenerorigin.IsExternal), reject with 404 — existence-hiding,

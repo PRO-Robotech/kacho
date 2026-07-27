@@ -16,6 +16,16 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v
 // (9091); проброшен через api-gateway internal mux на /compute/v1/diskTypes —
 // НЕ на external TLS endpoint (см. workspace CLAUDE.md §запрет 6).
 //
+// ВАЖНО про изоляцию этих трёх RPC: их REST-путь СОВПАДАЕТ с публичным чтением
+// каталога (`GET /compute/v1/diskTypes[/{id}]` — DiskTypeService), и admin-CRUD
+// отличается от него ТОЛЬКО HTTP-методом (POST/PATCH/DELETE). Поэтому
+// external-изоляция в api-gateway keyed на пару (метод, путь), а не на путь:
+// классификация по одной строке пути эти биндинги не различает и уводит
+// admin-мутации на публичный mux. Источник истины для классификации —
+// REST-биндинги Internal*-сервисов из proto-дескрипторов
+// (gateway/internal/restmux/internal_routes.go), поэтому новый RPC этого
+// сервиса изолируется автоматически.
+//
 // Geography (Region/Zone) — домен kacho-geo (geo.v1). Перенесено из compute.v1
 // (epic kacho-geo S7); compute.v1 Region/Zone + Internal{Region,Zone}Service
 // удалены здесь после переключения всех consumer'ов на geo.v1.

@@ -46,6 +46,17 @@ service DiskTypeService {
 // DiskType catalog. Exposed ONLY on the cluster-internal port of kacho-storage
 // (:9091); proxied through api-gateway internal mux to /storage/v1/diskTypes —
 // NOT on the external TLS endpoint (workspace CLAUDE.md ban #6).
+//
+// IMPORTANT, on how that isolation actually holds: these three RPCs share their
+// REST path with the PUBLIC catalog read (`GET /storage/v1/diskTypes[/{id}]` —
+// DiskTypeService) and differ from it ONLY by HTTP method (POST/PATCH/DELETE).
+// The api-gateway external-isolation gate is therefore keyed on the (method,
+// path) PAIR, never on the path alone: a path-only classifier cannot tell these
+// bindings apart and routes the admin mutations to the public mux. The source
+// of truth for that classification is the set of Internal*Service REST bindings
+// read from the proto descriptors
+// (gateway/internal/restmux/internal_routes.go), so a new RPC on this service
+// is isolated automatically.
 service InternalDiskTypeService {
   rpc Create(CreateDiskTypeRequest) returns (DiskType) {
     option (google.api.http) = {
