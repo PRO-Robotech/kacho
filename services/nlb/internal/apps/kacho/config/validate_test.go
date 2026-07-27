@@ -611,3 +611,19 @@ func TestValidate_Dev_PeerEdgesOptional(t *testing.T) {
 		t.Fatalf("dev config without peer edges must stay valid: %v", err)
 	}
 }
+
+// TestValidate_Production_MTLSRejectsBlankOnlyTrustedForwarderSANs — список из
+// одних ПУСТЫХ записей для corelib не существует: grpcsrv.WithTrustedForwarders
+// принимает только s != "", поэтому такой список вырождается там в пустое
+// множество — то есть снова «доверяем ЛЮБОМУ mTLS-verified пиру». Стража,
+// считающая длину сырого среза, этого не видит: значение из одной запятой
+// проходит гейт, и сервис стартует, доверяя всем.
+func TestValidate_Production_MTLSRejectsBlankOnlyTrustedForwarderSANs(t *testing.T) {
+	cfg := productionSecureConfig() // mtls.server.enable=true
+	cfg.Authz.TrustedForwarderSANs = []string{"", ""}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "trusted-forwarder-sans") {
+		t.Fatalf("a list of blank entries passed the guard: corelib drops empty strings, so the "+
+			"allow-list is empty and any mTLS-verified peer may forward an end-user principal; got %v", err)
+	}
+}

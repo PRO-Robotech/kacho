@@ -22,13 +22,21 @@ import (
 //     контракт не подмешивается (иначе поле перестало бы значить одно и то же в
 //     разных сервисах).
 //   - authz_check   — поднято ли ребро registry→iam InternalIAMService.Check.
+//   - trusted_forwarders — сужен ли круг отправителей, которым разрешено передавать
+//     личность конечного пользователя. Берётся из cfg.TrustedForwarders() — ровно
+//     того значения, что уходит в grpcsrv.WithTrustedForwarders на обоих
+//     листенерах, — а не из сырого поля: corelib отбрасывает пустые записи,
+//     поэтому список из одних пустых записей вырождается там в «доверяем любому»,
+//     и рапортовать его как сужение значило бы отчитываться о намерении вместо
+//     исхода.
 func bootPosture(cfg config.Config) observability.BootPosture {
 	return observability.BootPosture{
-		Service:      "registry",
-		AuthMode:     cfg.AuthMode,
-		DBSSLMode:    coredb.SSLModeFromDSN(cfg.DSN()),
-		PublicMTLS:   cfg.PublicServerMTLS.Enable,
-		InternalMTLS: cfg.InternalServerMTLS.Enable,
-		AuthZCheck:   cfg.AuthZIAMGRPCAddr != "",
+		Service:           "registry",
+		AuthMode:          cfg.AuthMode,
+		DBSSLMode:         coredb.SSLModeFromDSN(cfg.DSN()),
+		PublicMTLS:        cfg.PublicServerMTLS.Enable,
+		InternalMTLS:      cfg.InternalServerMTLS.Enable,
+		AuthZCheck:        cfg.AuthZIAMGRPCAddr != "",
+		TrustedForwarders: len(cfg.TrustedForwarders()) > 0,
 	}
 }

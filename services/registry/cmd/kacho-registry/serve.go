@@ -251,19 +251,14 @@ func runServe(cfg config.Config) error {
 	})
 
 	// ── цепочки интерсепторов ──
-	// Public (:9090): principal-extract → authz Check.
-	publicUnary := []grpc.UnaryServerInterceptor{grpcsrv.UnaryPrincipalExtract()}
-	publicStream := []grpc.StreamServerInterceptor{grpcsrv.StreamPrincipalExtract()}
-	// Internal (:9091): cert-identity → trusted-principal (anti-spoof) → authz Check.
-	// ТОТ ЖЕ per-RPC authz, что и на public — internal не доверенный.
-	internalUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(),
-	}
-	internalStream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(),
-	}
+	// ОБА листенера: cert-identity → trusted-principal (anti-spoof) → authz Check.
+	// Public (:9090) не освобождён от доверенной пары так же, как internal (:9091)
+	// не освобождён от per-RPC authz: публичный листенер — обычный Service внутри
+	// пространства имён, и дозвониться до него может любой под (см. identityUnary).
+	publicUnary := identityUnary(cfg)
+	publicStream := identityStream(cfg)
+	internalUnary := identityUnary(cfg)
+	internalStream := identityStream(cfg)
 
 	switch {
 	case aerr == nil && authzIntr != nil:
@@ -607,5 +602,78 @@ func validateSecurityConfig(cfg config.Config) error {
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
 		return errors.New("mTLS required on both listeners: set KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE and KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE=true (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
 	}
+	return requireTrustedForwarders(cfg)
+}
+
+// requireTrustedForwarders — в любом боевом режиме круг отправителей чужой
+// личности обязан быть сужен.
+//
+// Оба листенера строят цепочку CertIdentityExtract →
+// TrustedPrincipalExtract(WithTrustedForwarders(cfg.TrustedForwarders())).
+// Контракт corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на непустом
+// списке; на пустом он отвечает «доверяем» ЛЮБОМУ пиру, прошедшему проверку
+// сертификата, и переданная в метаданных личность становится субъектом проверки
+// прав (pkg/authz subject_extract). То есть на пустом списке сосед со своим
+// законным сертификатом (compute, nlb, vpc, storage, оператор) читает, меняет и
+// удаляет чужие реестры и репозитории от имени жертвы, а на внутреннем листенере
+// ещё и дёргает административные RPC. Внутренний периметр у нас объявлен
+// НЕдоверенным, сетевой политики на поды registry нет, и слой TLS имена не сверяет
+// — сужает только этот список.
+//
+// Проверяем результат TrustedForwarders(), а не длину сырого поля: там же, где
+// сужение реально произойдёт, отбрасываются пустые записи, поэтому `SANS=","` не
+// может пройти гейт и вернуть дыру.
+//
+// dev осознанно терпит пусто (in-process фикстуры) — но только там: на РАЗВЁРНУТОМ
+// стенде dev-посадка запрещена отдельным правилом (production-mode ВЕЗДЕ).
+func requireTrustedForwarders(cfg config.Config) error {
+	switch cfg.AuthMode {
+	case "production", "production-strict":
+	default:
+		return nil
+	}
+	if len(cfg.TrustedForwarders()) == 0 {
+		return errors.New("trusted-forwarder allow-list required: set KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS " +
+			"(empty → any certificate-verified peer may forward an end-user identity, so a neighbouring " +
+			"service can act as any tenant; pin the api-gateway SAN)")
+	}
 	return nil
+}
+
+// identityUnary / identityStream — цепочка извлечения личности вызывающего,
+// ОДНА на оба листенера.
+//
+// Пара, а не одиночный извлекатель: сначала классифицируется транспорт и
+// снимается личность клиентского сертификата (CertIdentityExtract), и только
+// потом переданная в метаданных личность конечного пользователя принимается —
+// и только от пира, чья личность сертификата перечислена оператором.
+//
+// Почему это обязательно и на ПУБЛИЧНОМ листенере. Прежде он монтировал
+// grpcsrv.UnaryPrincipalExtract, который читает x-kacho-principal-* безусловно;
+// его собственный godoc разрешает такое лишь там, куда не дозвонится
+// неконтролируемый пир. У registry дозванивается любой: сетевой политики на его
+// поды нет (в отличие от vpc/nlb), :9090 — обычный Service пространства имён, а
+// клиентский сертификат всем соседям выдаёт один и тот же внутренний центр.
+//
+// Список отправителей приходит ТОЛЬКО из конфигурации и никогда не задаётся здесь
+// литералом: пустой список для corelib означает не «никому», а «любому пиру с
+// проверенным сертификатом» (pkg/grpcsrv principalIsTrusted сужает круг лишь на
+// непустом списке), и переданная личность становится субъектом проверки прав.
+// Боевой режим на пустом списке не стартует (validateSecurityConfig).
+//
+// Законный отправитель один — api-gateway, и он ходит на ОБА листенера
+// (KACHO_API_GATEWAY_REGISTRY_GRPC :9090 и ..._REGISTRY_INTERNAL_GRPC :9091),
+// поэтому список общий: внутренний периметр не освобождён.
+func identityUnary(cfg config.Config) []grpc.UnaryServerInterceptor {
+	return []grpc.UnaryServerInterceptor{
+		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(cfg.TrustedForwarders()...)),
+	}
+}
+
+func identityStream(cfg config.Config) []grpc.StreamServerInterceptor {
+	return []grpc.StreamServerInterceptor{
+		grpcsrv.StreamCertIdentityExtract(),
+		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(cfg.TrustedForwarders()...)),
+	}
 }

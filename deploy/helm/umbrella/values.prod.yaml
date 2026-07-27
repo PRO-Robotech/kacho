@@ -539,6 +539,15 @@ registry:
     iamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
     iamProjectGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
     geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090
+    # Who may forward an end-user identity (x-kacho-principal-*) into registry.
+    # Restated (it IS the chart default) so that no future edit to this profile can
+    # silently drop it: an EMPTY list does not mean "nobody" — corelib narrows the
+    # circle only when the list is non-empty, so empty means ANY certificate-verified
+    # peer may present itself as any tenant, and the authorization decision is then
+    # made in that tenant's name. Any production mode refuses to start on empty.
+    # One entry, because the import graph shows exactly one sender: the api-gateway,
+    # which dials BOTH registry listeners.
+    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
     # breakglass bypasses per-RPC authz Check AND mTLS on both listeners; any
     # production mode refuses to start with it on. Pinned off explicitly.
     breakglass: false

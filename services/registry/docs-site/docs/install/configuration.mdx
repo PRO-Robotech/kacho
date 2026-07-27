@@ -63,7 +63,8 @@ Kachō Registry конфигурируется через переменные �
   <tbody>
     <tr><td><code>KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal endpoint kacho-iam (:9091) для per-RPC <code>Check</code> + fga-proxy <code>RegisterResource</code>. Пусто + не breakglass → интерсептор не подключается</td></tr>
     <tr><td><code>KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR</code></td><td><code>kacho-iam.kacho.svc.cluster.local:9090</code></td><td>PUBLIC endpoint kacho-iam (:9090) для <code>ProjectService.Get</code> (валидация project на Create) — отдельный conn от authz-ребра</td></tr>
-    <tr><td><code>KACHO_REGISTRY_AUTH_MODE</code></td><td><code>dev</code></td><td>Режим строгости: <code>dev</code> · <code>production</code> · <code>production-strict</code></td></tr>
+    <tr><td><code>KACHO_REGISTRY_AUTH_MODE</code></td><td><code>production</code></td><td>Режим строгости: <code>dev</code> · <code>production</code> · <code>production-strict</code>. Дефолт secure-by-default: незаданная переменная не поднимает сервис в insecure-режиме</td></tr>
+    <tr><td><code>KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS</code></td><td><em>(пусто)</em></td><td>Список через запятую тех личностей клиентского сертификата (SPIFFE-SAN), которым разрешено <strong>передавать</strong> личность конечного пользователя (заголовки <code>x-kacho-principal-*</code>). Действует на <strong>обоих</strong> listener'ах. Пусто — это не «никому», а «любому пиру с проверенным сертификатом», поэтому в любом production-режиме пустое значение <strong>отказывает в старте</strong>. Законный отправитель один — api-gateway (<code>spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway</code>), он же ходит на оба listener'а</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTHZ_BREAKGLASS</code></td><td><code>false</code></td><td>Аварийный обход: пропуск всех RPC без Check + WARN. Единственный способ работать без authz/mTLS</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTHZ_CACHE_TTL</code></td><td><code>2s</code></td><td>TTL positive-кеша authz-<code>Check</code> gRPC-интерсептора (оба listener'а). Ограничивает окно, в котором отозванный субъект держит закешированный <code>allow</code> после удаления AccessBinding (registry не подписан на IAM cache-invalidation). <code>0</code> → positive-кеш выключен (каждый gRPC-RPC — живой <code>Check</code>). data-plane <code>/v2/</code> не кеширует authz — knob влияет только на control-plane</td></tr>
   </tbody>
@@ -74,6 +75,13 @@ Kachō Registry конфигурируется через переменные �
 По умолчанию (`breakglass=false`) операции control-plane **без авторизации и mTLS запрещены**: per-RPC
 authz `Check` (через kacho-iam) и mTLS на **обоих** gRPC-listener'ах обязательны — иначе сервис
 **откажется стартовать**. Это инвариант «AuthN + AuthZ везде» (internal `:9091` не освобождён).
+
+В любом production-режиме к этому добавляется **непустой список доверенных отправителей**
+(`KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS`). Проверенный сертификат отвечает на вопрос «кто
+звонит», но не на вопрос «вправе ли он говорить от чужого имени»: без списка любой пир, чей
+сертификат выдал тот же внутренний центр, присылает заголовки личности произвольного пользователя,
+и решение о правах принимается от его имени. Список сужает круг до перечисленных отправителей —
+у registry это api-gateway, и только он.
 
 :::warning Единственный обход — breakglass
 `KACHO_REGISTRY_AUTHZ_BREAKGLASS=true` запускает сервис, **пропуская per-RPC Check и не требуя mTLS**.
@@ -137,6 +145,7 @@ internal ребёр к iam различаются, поэтому это **дв�
     KACHO_REGISTRY_AUTH_MODE: production-strict
     KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR: kacho-iam-internal.kacho.svc:9091
     KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR: kacho-iam.kacho.svc:9090
+    KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS: spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
     KACHO_REGISTRY_AUTHZ_BREAKGLASS: "false"
 
     # data-plane (Hydra identity-JWT)

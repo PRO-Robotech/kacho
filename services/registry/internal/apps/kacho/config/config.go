@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -74,6 +75,31 @@ type Config struct {
 	// REG-1 F4). RegionService — публичный read-only справочник Geography на :9090.
 	// Пусто → geo-client nil → RegionExists отвечает Unavailable (Create fail-closed).
 	GeoGRPCAddr string `envconfig:"KACHO_REGISTRY_GEO_GRPC_ADDR" default:"kacho-geo.kacho.svc.cluster.local:9090"`
+	// AuthZTrustedForwarderSANs — allow-list личностей клиентского сертификата
+	// (SPIFFE-SAN), которым разрешено ПЕРЕДАВАТЬ личность конечного пользователя в
+	// метаданных x-kacho-principal-*. Уезжает в ОБА листенера через
+	// grpcsrv.WithTrustedForwarders (см. cmd/kacho-registry/serve.go).
+	//
+	// Почему это ручка, а не константа: contract corelib (pkg/grpcsrv
+	// principalIsTrusted) сужает круг отправителей ТОЛЬКО когда список непуст; на
+	// пустом он отвечает «доверяем» любому пиру, прошедшему проверку сертификата.
+	// Внутренний периметр у нас объявлен НЕдоверенным, сетевой политики у registry
+	// нет вовсе, а клиентский сертификат всем соседям выдаёт один и тот же
+	// внутренний центр — то есть пустой список означает: любой под кластера
+	// присылает заголовки личности жертвы, и решение о правах принимается от её
+	// имени (pkg/authz subject_extract читает ровно эту личность).
+	//
+	// Формат — список через запятую. Законный отправитель ОДИН — api-gateway: по
+	// графу импортов заглушки registry вне самого сервиса импортирует только
+	// gateway/internal/restmux, и он же держит адреса ОБОИХ листенеров
+	// (KACHO_API_GATEWAY_REGISTRY_GRPC :9090 и ..._REGISTRY_INTERNAL_GRPC :9091).
+	// Каноническое значение — в values.prod.
+	//
+	// Пусто допустимо ТОЛЬКО в dev (in-process фикстуры); в любом боевом режиме
+	// validateSecurityConfig отказывает в старте (fail-closed, зеркалит
+	// geo/compute/nlb/storage).
+	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS"`
+
 	// AuthZBreakglass — аварийный режим: пропускать все RPC без Check + WARN
 	// (только dev / break-glass).
 	AuthZBreakglass bool `envconfig:"KACHO_REGISTRY_AUTHZ_BREAKGLASS" default:"false"`
@@ -196,6 +222,37 @@ type Config struct {
 
 	// InternalServerMTLS — server-creds для cluster-internal листенера (:9091).
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
+}
+
+// TrustedForwarders — список личностей сертификата, который РЕАЛЬНО уезжает в
+// grpcsrv.WithTrustedForwarders на обоих листенерах.
+//
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/kacho-registry/serve.go), и стража старта (validateSecurityConfig), и
+// самоотчёт о посадке (cmd/kacho-registry/bootposture.go). Поэтому «стража
+// пропустила» ⟺ «круг отправителей реально сужен» — по построению, а не по
+// совпадению.
+//
+// Отбрасывает пустые записи, потому что их отбрасывает и corelib
+// (WithTrustedForwarders пропускает только s != ""): список из одних пустых строк
+// (`SANS=","`) там вырождается в пустое множество, то есть снова «доверяем
+// любому». Считать такую строку заполненной значило бы пропустить дыру через гейт.
+//
+// Пробелы по краям срезаются — и это НЕ зеркало corelib, а осознанное расхождение:
+// corelib сравнивает личность сертификата побайтово (CertIdentity отдаёт SAN как
+// есть), поэтому запись " spiffe://…" не совпала бы там ни с одним сертификатом.
+// Без среза оператор, написавший список через «запятая-пробел», получил бы не
+// отказ старта, а молчаливый отказ в обслуживании законному отправителю. Круг
+// доверенных от этого не расширяется: в него попадают ровно те строки, которые
+// оператор перечислил, — срезаются только окружающие пробелы.
+func (c Config) TrustedForwarders() []string {
+	out := make([]string, 0, len(c.AuthZTrustedForwarderSANs))
+	for _, s := range c.AuthZTrustedForwarderSANs {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // PublicServerCreds возвращает grpc.ServerOption для публичного листенера (:9090).

@@ -172,6 +172,31 @@ authz:
   # a SEPARATE conn from the iam edges. Empty → geo-client nil → RegionExists
   # returns Unavailable (Create fail-closed).
   geoGrpcAddr: "kacho-geo.kacho.svc.cluster.local:9090"
+  # trustedForwarderSANs — comma-separated list of the client-cert identities
+  # (SPIFFE SANs) allowed to FORWARD an end-user identity (the x-kacho-principal-*
+  # headers). Goes to BOTH gRPC listeners.
+  #
+  # An empty string does NOT mean "nobody": the corelib contract narrows the circle
+  # only when the list is non-empty, and on an empty one it accepts a forwarded
+  # identity from ANY certificate-verified peer. The internal perimeter is declared
+  # untrusted, registry has no NetworkPolicy of its own, and every neighbour's
+  # client cert comes from the same internal CA — so an empty list means a
+  # neighbouring pod can read, change and delete foreign registries and repositories
+  # in the victim's name. Any production mode therefore refuses to start on an empty
+  # list (validateSecurityConfig → requireTrustedForwarders).
+  #
+  # There is exactly ONE legitimate sender: the api-gateway. Established from the
+  # import graph — outside the service itself, the registry gRPC stubs are imported
+  # only by gateway/internal/restmux, which also holds the addresses of BOTH
+  # listeners (:9090 public and :9091 internal). Hence one entry, one list, both
+  # listeners.
+  #
+  # The chart default is non-empty on purpose (as in compute and storage): a profile
+  # that forgets the knob must not ship "trust anybody". The dev profile does not set
+  # it either, and the default narrows there too — dev runs registry with mTLS on
+  # both listeners and the gateway→registry edge armed, so the gateway presents this
+  # very SAN. Setting it empty makes sense only where there is no mTLS at all.
+  trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   # Emergency pass-all (dev / break-glass only): bypasses authz Check + mTLS on BOTH
   # gRPC listeners AND data-plane AuthN+AuthZ. production forbids leaving it on.
   breakglass: false

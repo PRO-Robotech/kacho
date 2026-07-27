@@ -396,3 +396,36 @@ func TestValidateAuthMode_Production_PeerEdgesNotRequired(t *testing.T) {
 		t.Errorf("production must report productionMode=true")
 	}
 }
+
+// Список из одних ПУСТЫХ записей (`SANS=","`) для corelib не существует:
+// grpcsrv.WithTrustedForwarders принимает только s != "", поэтому такой список
+// вырождается там в пустое множество — то есть снова «доверяем ЛЮБОМУ пиру с
+// проверенным сертификатом». Стража, считающая длину сырого среза, этого не видит:
+// значение из одной запятой проходит гейт, и сервис стартует, доверяя всем.
+//
+// Тот же предикат (s != "") уже применяет самоотчёт о посадке (hasNonEmpty), так
+// что после правки «стража пропустила» и «отчёт говорит: круг сужен» не могут
+// разъехаться.
+func TestValidateAuthMode_Production_RejectsBlankOnlyTrustedForwarders(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  func() config.Config
+	}{
+		{"production", securedProduction},
+		{"production-strict", allEdgesSecured},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg()
+			cfg.AuthZTrustedForwarderSANs = []string{"", ""}
+			_, err := validateAuthMode(cfg, discardLogger())
+			if err == nil {
+				t.Fatal("a list of blank entries passed the guard: corelib drops empty strings, " +
+					"so the resulting allow-list is empty and every certificate-verified peer " +
+					"may forward an end-user identity")
+			}
+			if !strings.Contains(err.Error(), "AUTHZ_TRUSTED_FORWARDER_SANS") {
+				t.Errorf("gate error must name the knob; got: %v", err)
+			}
+		})
+	}
+}

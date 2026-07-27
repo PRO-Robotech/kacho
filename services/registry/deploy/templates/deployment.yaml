@@ -105,6 +105,12 @@ spec:
             # Empty → geo-client nil → Create fail-closed (RegionExists Unavailable).
             - name: KACHO_REGISTRY_GEO_GRPC_ADDR
               value: "{{ .Values.authz.geoGrpcAddr }}"
+            # Who may FORWARD an end-user identity (x-kacho-principal-*) into
+            # registry. Empty is refused at boot in any production mode: corelib
+            # narrows the circle only on a non-empty list, so empty means ANY
+            # certificate-verified peer may act as any tenant. See values.yaml.
+            - name: KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS
+              value: "{{ .Values.authz.trustedForwarderSANs }}"
             - name: KACHO_REGISTRY_AUTHZ_BREAKGLASS
               value: "{{ .Values.authz.breakglass }}"
             # ─── zot OCI backend (cluster-internal, never public) ───

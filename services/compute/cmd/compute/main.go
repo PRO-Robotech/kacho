@@ -565,8 +565,15 @@ func requireDBSSLMode(cfg config.Config) error {
 // (confused deputy → tenant crossing, CWE-441/CWE-290). Fail-closed зеркалит
 // insecureListenersInProduction / requireDBSSLMode. В dev допустимо пусто
 // (принимаем любой principal — back-compat локальных фикстур).
+//
+// Считаем НЕПУСТЫЕ записи, а не длину среза: WithTrustedForwarders принимает
+// только s != "", поэтому список из одних пустых строк (`SANS=","`) вырождается
+// там в пустое множество — то есть снова «доверяем любому». Проверка по длине
+// пропускала такое значение, и сервис стартовал, доверяя всем. Тот же предикат
+// применяет самоотчёт о посадке (hasNonEmpty), поэтому «стража пропустила» и
+// «отчёт говорит: круг сужен» не могут разъехаться.
 func requireTrustedForwarders(cfg config.Config) error {
-	if len(cfg.AuthZTrustedForwarderSANs) == 0 {
+	if !hasNonEmpty(cfg.AuthZTrustedForwarderSANs) {
 		return fmt.Errorf("production mode requires a non-empty KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS allow-list " +
 			"(empty → any mTLS peer is trusted to forward the end-user principal → subject spoofing / tenant crossing)")
 	}
