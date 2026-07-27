@@ -11,11 +11,15 @@
 //	kacho_api_gateway_authz_check_latency_ms (histogram, fixed buckets)
 //	kacho_api_gateway_authz_cache_hit_total / authz_cache_miss_total
 //
-// Implementation: atomic-counter-only (no Prometheus client dependency to
-// stay lean — the gateway does its own /metrics rendering elsewhere; this
-// type's Snapshot() returns a printable map that the textfile handler can
-// fold in. Adding a real prometheus.Client wrapper is a no-op switch when
-// the gateway adopts one).
+// Implementation: atomic-counter-only, no Prometheus client dependency.
+//
+// NOTE ON REACH: the names above are the names these counters WOULD carry if they
+// were exported. They are not — the gateway serves /healthz and /readyz and has no
+// /metrics endpoint, and nothing calls Snapshot() outside tests. So today this is an
+// in-process counter an operator cannot see. That is recorded here rather than
+// implied away, because the previous wording ("the gateway does its own /metrics
+// rendering elsewhere") described an endpoint that does not exist and read as if
+// authz decisions were already observable.
 package middleware
 
 import (

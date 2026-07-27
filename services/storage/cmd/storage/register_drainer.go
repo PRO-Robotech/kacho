@@ -13,8 +13,10 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
 )
 
 const (
@@ -31,7 +33,7 @@ const (
 // claim-CAS (FOR UPDATE SKIP LOCKED) для exactly-once между репликами. Дренаж живёт до
 // ctx.Done() (graceful shutdown). iamConn — тот же mTLS-conn к kacho-iam :9091, что и
 // authz-Check (RegisterResource Internal-only, ban #6).
-func startRegisterDrainer(ctx context.Context, pool *pgxpool.Pool, iamConn *grpc.ClientConn, logger *slog.Logger) error {
+func startRegisterDrainer(ctx context.Context, pool *pgxpool.Pool, iamConn *grpc.ClientConn, m *metrics.Metrics, logger *slog.Logger) error {
 	iamClient := iamv1.NewInternalIAMServiceClient(iamConn)
 	d, err := drainer.New[clients.FGARegisterPayload](
 		pool,
@@ -67,6 +69,13 @@ func startRegisterDrainer(ctx context.Context, pool *pgxpool.Pool, iamConn *grpc
 		clients.DecodeFGARegisterPayload,
 		clients.NewIAMRegisterApplier(iamClient),
 		logger.With(slog.String("component", "fga-register-drainer")),
+		// Отравление — СОБЫТИЕ, и после ужесточения классификации отказа в правах
+		// до терминального оно реально достижимо: строка, которую iam отверг по
+		// правам, больше не ретраится вечно, а выбывает. Считаем её монотонным
+		// счётчиком, иначе единственный след — WARN в логе.
+		drainer.WithPoisonObserver[clients.FGARegisterPayload](func() {
+			m.IncPoisoned(fgaRegisterOutboxTable)
+		}),
 	)
 	if err != nil {
 		return fmt.Errorf("build register-drainer: %w", err)
@@ -76,6 +85,17 @@ func startRegisterDrainer(ctx context.Context, pool *pgxpool.Pool, iamConn *grpc
 			logger.Error("register-drainer stopped", "err", rerr)
 		}
 	}()
+	// Коллектор backlog/oldest/poisoned той же таблицы. Дренаж сообщает только о
+	// СОБЫТИЯХ; «в очереди лежит N строк, старейшей M секунд» — состояние, и без
+	// него застрявшая очередь неотличима от пустой (data-integrity.md требует
+	// table-wide oldest-pending gauge именно поэтому).
+	collector := outboxmetrics.NewCollector(pool, m, outboxmetrics.CollectorConfig{
+		Table: fgaRegisterOutboxTable,
+	})
+	go collector.Run(ctx, func(cerr error) {
+		logger.Warn("outbox metrics scan failed", "table", fgaRegisterOutboxTable, "err", cerr)
+	})
+
 	logger.Info("FGA register-drainer started", "table", fgaRegisterOutboxTable, "channel", fgaRegisterOutboxChannel)
 	return nil
 }

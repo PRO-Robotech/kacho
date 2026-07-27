@@ -222,7 +222,8 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 	}, nil
 }
 
-// Metrics returns the metrics sink; used by `/metrics` rendering elsewhere.
+// Metrics returns the metrics sink. NOTE: the gateway exposes no /metrics endpoint
+// today, so this sink is in-process only — see authz_metrics.go.
 func (m *AuthzMiddleware) Metrics() *AuthzMetrics { return m.metrics }
 
 // subjectChangingFQNs — gRPC FQNs whose success changes a subject's grants.
