@@ -124,9 +124,10 @@ func TestListener_NeighbourWithValidCertCannotActAsSomeoneElse(t *testing.T) {
 	}
 }
 
-// TestListener_PinnedSendersKeepWorking — рабочий путь не сломан. Оба отправителя
-// обязаны быть honored, иначе замок «сужает» ценой отказа в обслуживании: без
-// gateway встают все пользовательские запросы, без compute — привязка тома.
+// TestListener_PinnedSendersKeepWorking — НЕ замок на дыру (с пустым списком он тоже
+// зелёный: там доверены все, включая этих двоих). Его предмет — обратная ошибка:
+// сузить так, что перестанет работать рабочий путь. Без gateway встают все
+// пользовательские запросы, без compute — привязка тома.
 func TestListener_PinnedSendersKeepWorking(t *testing.T) {
 	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
 
@@ -147,8 +148,10 @@ func TestListener_PinnedSendersKeepWorking(t *testing.T) {
 	}
 }
 
-// TestListener_UnverifiedPeerCannotForward — пир без подтверждённого клиентского
-// сертификата не форвардит личность независимо от списка (нижний слой инварианта).
+// TestListener_UnverifiedPeerCannotForward — тоже НЕ замок на дыру: эта ветка
+// срабатывает независимо от списка. Держит нижний слой инварианта, чтобы правка
+// списка не увела внимание от него. Единственный замок на саму дыру —
+// TestListener_NeighbourWithValidCertCannotActAsSomeoneElse выше.
 func TestListener_UnverifiedPeerCannotForward(t *testing.T) {
 	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
 

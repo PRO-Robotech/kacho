@@ -20,8 +20,16 @@ import (
 	"testing"
 )
 
-// forwardersAssign — присваивание переменной, уезжающей в WithTrustedForwarders.
-var forwardersAssign = regexp.MustCompile(`(?m)^\s*forwarders\s*:?=\s*(.+)$`)
+// forwardersAssign — ЛЮБОЕ присваивание переменной, уезжающей в
+// WithTrustedForwarders. Ищем все вхождения, а не первое: `forwarders :=
+// cfg.TrustedForwarders()` с последующим `forwarders = nil` прошёл бы проверку
+// первого совпадения и вернул бы дыру.
+var forwardersAssign = regexp.MustCompile(`(?m)^\s*forwarders\s*:?=\s*(.+?)\s*$`)
+
+// chainCall — вызов боевой цепочки со списком отправителей. Пробелы внутри списка
+// аргументов не фиксируем: перенос строки при форматировании не должен превращать
+// стража в ложное падение.
+var chainCall = regexp.MustCompile(`(?s)(unary|stream)Chain\(\s*logger\s*,\s*forwarders\s*,`)
 
 func readServeSrc(t *testing.T) string {
 	t.Helper()
@@ -39,18 +47,21 @@ func readServeSrc(t *testing.T) string {
 func TestServe_ForwarderAllowListComesFromConfig(t *testing.T) {
 	src := readServeSrc(t)
 
-	m := forwardersAssign.FindStringSubmatch(src)
-	if m == nil {
+	all := forwardersAssign.FindAllStringSubmatch(src, -1)
+	if len(all) == 0 {
 		t.Fatal("serve.go: не найдено присваивание `forwarders` — " +
 			"страж потерял цель, обнови его вместе с проводкой")
 	}
-	rhs := strings.TrimSpace(m[1])
-
-	if !strings.Contains(rhs, "cfg.") {
-		t.Fatalf("serve.go: список доверенных отправителей задан литералом `%s`, "+
-			"а не конфигурацией. Пустой литерал означает «принимаем переданную личность "+
-			"от ЛЮБОГО пира с сертификатом» (pkg/grpcsrv principalIsTrusted сужает круг "+
-			"только на непустом списке) — и настроить это невозможно ни одним способом", rhs)
+	// КАЖДОЕ присваивание обязано приходить из конфигурации: достаточно одного
+	// переприсваивания литералом ниже по функции, чтобы круг снова не сужался.
+	for _, m := range all {
+		rhs := strings.TrimSpace(m[1])
+		if !strings.Contains(rhs, "cfg.") {
+			t.Fatalf("serve.go: список доверенных отправителей присваивается как `%s` — "+
+				"литералом, а не конфигурацией. Пустой литерал означает «принимаем переданную "+
+				"личность от ЛЮБОГО пира с сертификатом» (pkg/grpcsrv principalIsTrusted сужает "+
+				"круг только на непустом списке) — и настроить это невозможно ни одним способом", rhs)
+		}
 	}
 }
 
@@ -60,11 +71,19 @@ func TestServe_ForwarderAllowListComesFromConfig(t *testing.T) {
 func TestServe_BothListenersGetTheSameAllowList(t *testing.T) {
 	src := readServeSrc(t)
 
-	if n := strings.Count(src, "unaryChain(logger, forwarders,"); n != 2 {
-		t.Fatalf("unaryChain с общим списком отправителей встречается %d раз(а), ожидается 2 "+
-			"(публичный :9090 и внутренний :9091)", n)
+	var unary, stream int
+	for _, m := range chainCall.FindAllStringSubmatch(src, -1) {
+		if m[1] == "unary" {
+			unary++
+		} else {
+			stream++
+		}
 	}
-	if n := strings.Count(src, "streamChain(logger, forwarders,"); n != 2 {
-		t.Fatalf("streamChain с общим списком отправителей встречается %d раз(а), ожидается 2", n)
+	if unary != 2 {
+		t.Fatalf("unaryChain с общим списком отправителей встречается %d раз(а), ожидается 2 "+
+			"(публичный :9090 и внутренний :9091)", unary)
+	}
+	if stream != 2 {
+		t.Fatalf("streamChain с общим списком отправителей встречается %d раз(а), ожидается 2", stream)
 	}
 }

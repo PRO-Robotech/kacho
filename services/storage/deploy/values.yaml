@@ -73,7 +73,14 @@ config:
   #   - kacho-compute — внутренний :9091 (привязка/отвязка тома идёт под личностью
   #     того, кто её инициировал). Без него ломается привязка тома к машине.
   # Дефолт чарта непустой — как у compute: профиль, забывший ручку, не должен
-  # отгружать «доверяем любому». Пусто ставится осознанно и только при authMode=dev.
+  # отгружать «доверяем любому». Именно на этом дефолте держатся профили, которые
+  # ручку не задают (values.prod её повторяет, dev-prod и fe3455-prod — нет).
+  #
+  # В dev дефолт ТОЖЕ действует и круг ТОЖЕ сужается: dev-профиль поднимает storage
+  # с mTLS на обоих листенерах, поэтому список работает точно так же — просто старт
+  # на пустом там не запрещён. Оба законных отправителя в dev предъявляют свои
+  # сертификаты (у gateway и compute включено ребро на storage), поэтому дефолт
+  # ничего не ломает. Пусто имеет смысл ставить только там, где mTLS нет вовсе.
   trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
   # fgaRegisterDrainerEnabled — SEC-D/CS-1 GAP-D: register-drainer применяет
   # owner-tuple register-intent'ы (kacho_storage.fga_register_outbox) через kacho-iam

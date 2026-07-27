@@ -101,6 +101,27 @@ vpc|vpc|kacho-umbrella-pg-vpc
 "
 POSTURE_SKIP="${POSTURE_SKIP:-}"
 
+# Сервисы, у которых ЕСТЬ измерение «круг отправителей чужой личности» — то есть
+# те, что реально зовут grpcsrv.WithTrustedForwarders и потому могут его сузить.
+# Только для них поле trusted_forwarders градуируется как требование.
+#
+# Почему список, а не «требовать со всех»: false в самоотчёте покрывает ДВА разных
+# случая (см. pkg/observability/bootposture.go). У api-gateway измерения нет вовсе —
+# он личность НЕ принимает, а чеканит из проверенного токена; требовать с него
+# сужения значило бы красить сервис за отсутствие механизма, которого у него и не
+# должно быть. У vpc, iam и registry механизма тоже нет, но по ДРУГОЙ причине —
+# они принимают переданную личность и никого не пинят. Это открытый долг, а не
+# норма: как только сервис получит ручку и стражу, он добавляется сюда, и с этого
+# момента его посадка градуируется. Пустой список отключает проверку целиком.
+FORWARDER_NARROWING_REQUIRED="${FORWARDER_NARROWING_REQUIRED:-geo compute nlb storage}"
+
+# needs_forwarder_narrowing <svc> — участвует ли сервис в измерении.
+needs_forwarder_narrowing() {
+  local svc="$1" s
+  for s in $FORWARDER_NARROWING_REQUIRED; do [ "$s" = "$svc" ] && return 0; done
+  return 1
+}
+
 FAILED=0
 fail() { echo "  ✗ $*"; FAILED=1; }
 ok()   { echo "  ✓ $*"; }
@@ -161,14 +182,20 @@ for row in $SERVICES; do
       continue
     fi
 
-    verdict="$(printf '%s' "$line" | jq -r '
+    # need_fwd передаётся в jq, чтобы требование по кругу отправителей
+    # применялось только к сервисам, у которых это измерение есть.
+    if needs_forwarder_narrowing "$svc"; then need_fwd=true; else need_fwd=false; fi
+
+    verdict="$(printf '%s' "$line" | jq -r --argjson need_fwd "$need_fwd" '
       [ (if (.auth_mode // "")   | test("^production(-strict)?$") then empty
          else "auth_mode=\(.auth_mode // "<нет>")" end),
         (if (.db_sslmode // "")  | test("^(require|verify-ca|verify-full|n/a)$") then empty
          else "db_sslmode=\(.db_sslmode // "<нет>")" end),
         (if (.public_mtls   == true) then empty else "public_mtls=\(.public_mtls // "<нет>")"   end),
         (if (.internal_mtls == true) then empty else "internal_mtls=\(.internal_mtls // "<нет>")" end),
-        (if (.authz_check   == true) then empty else "authz_check=\(.authz_check // "<нет>")"   end)
+        (if (.authz_check   == true) then empty else "authz_check=\(.authz_check // "<нет>")"   end),
+        (if ($need_fwd | not) or (.trusted_forwarders == true) then empty
+         else "trusted_forwarders=\(.trusted_forwarders // "<нет>")" end)
       ] | join(", ")')"
 
     if [ -n "$verdict" ]; then
@@ -179,7 +206,7 @@ for row in $SERVICES; do
       echo "      перезапускался, поэтому и не падал. Настройки могли уже быть"
       echo "      переписаны в production, но процесс живёт со СТАРЫМ окружением."
     else
-      ok "$svc/$p $(printf '%s' "$line" | jq -r '"auth_mode=\(.auth_mode) db_sslmode=\(.db_sslmode) public_mtls=\(.public_mtls) internal_mtls=\(.internal_mtls) authz_check=\(.authz_check)"')"
+      ok "$svc/$p $(printf '%s' "$line" | jq -r '"auth_mode=\(.auth_mode) db_sslmode=\(.db_sslmode) public_mtls=\(.public_mtls) internal_mtls=\(.internal_mtls) authz_check=\(.authz_check) trusted_forwarders=\(.trusted_forwarders)"')"
     fi
   done
 done

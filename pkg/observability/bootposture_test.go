@@ -18,12 +18,13 @@ import (
 func TestLogBootPosture_ContractShape(t *testing.T) {
 	var buf bytes.Buffer
 	observability.LogBootPosture(observability.NewSlogger(&buf), observability.BootPosture{
-		Service:      "vpc",
-		AuthMode:     "production",
-		DBSSLMode:    "require",
-		PublicMTLS:   true,
-		InternalMTLS: true,
-		AuthZCheck:   true,
+		Service:           "vpc",
+		AuthMode:          "production",
+		DBSSLMode:         "require",
+		PublicMTLS:        true,
+		InternalMTLS:      true,
+		AuthZCheck:        true,
+		TrustedForwarders: true,
 	})
 
 	var line map[string]any
@@ -31,13 +32,14 @@ func TestLogBootPosture_ContractShape(t *testing.T) {
 		t.Fatalf("boot posture line is not one JSON object: %v (raw=%q)", err, buf.String())
 	}
 	want := map[string]any{
-		"msg":           "boot security posture",
-		"service":       "vpc",
-		"auth_mode":     "production",
-		"db_sslmode":    "require",
-		"public_mtls":   true,
-		"internal_mtls": true,
-		"authz_check":   true,
+		"msg":                "boot security posture",
+		"service":            "vpc",
+		"auth_mode":          "production",
+		"db_sslmode":         "require",
+		"public_mtls":        true,
+		"internal_mtls":      true,
+		"authz_check":        true,
+		"trusted_forwarders": true,
 	}
 	for k, v := range want {
 		got, ok := line[k]
@@ -64,7 +66,7 @@ func TestLogBootPosture_FalseFlagsAreEmitted(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
 		t.Fatalf("unmarshal: %v (raw=%q)", err, buf.String())
 	}
-	for _, k := range []string{"public_mtls", "internal_mtls", "authz_check"} {
+	for _, k := range []string{"public_mtls", "internal_mtls", "authz_check", "trusted_forwarders"} {
 		v, ok := line[k]
 		if !ok {
 			t.Fatalf("field %q must be emitted even when false: %v", k, line)
