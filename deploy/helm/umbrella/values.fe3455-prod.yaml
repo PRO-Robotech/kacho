@@ -45,8 +45,16 @@
 # auth over TLS is the intended posture here (see pg-certificates.yaml).
 mtls:
   pgTls:
-    enabled: true
-    services: [vpc, compute, iam, geo, nlb, storage]
+    # MUST list every pg-<svc> that carries `tls.enabled: true` below or in
+    # values.prod.yaml — this list is what ISSUES the server cert, and Helm
+    # REPLACES lists rather than merging them, so omitting a name here while the
+    # instance still references kacho-umbrella-pg-<svc>-server-tls leaves the
+    # StatefulSet mounting a Secret nobody creates (pod stuck, not a render error).
+    # `registry` is included for exactly that reason: values.prod.yaml enables TLS
+    # on pg-registry. The registry SERVICE keeps its sslmode=disable concession on
+    # this cluster (see the registry block) — a server that offers TLS to a client
+    # that does not ask for it is a no-op, so this is safe and reversible.
+    services: [vpc, compute, iam, geo, nlb, storage, registry]
 
 # ── greenfield image provisioning: bitnami PGs from docker.io/bitnamilegacy ──
 # values.yaml pins global.imageRegistry=docker.io/prorobotech (the kacho-* mirror,

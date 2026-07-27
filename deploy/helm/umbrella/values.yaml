@@ -98,6 +98,16 @@ kacho-iam:
       dpopReplay:
         cacheTTLSeconds: 120
         cacheSize: 100000
+      # saKey — lifetime discipline for the machine credential (see the
+      # kacho-iam sub-chart values for the full rationale). accessTokenTtl is
+      # empty by default: the env is then omitted and the provider-global token
+      # TTL applies, so no existing deployment changes on upgrade. Production
+      # pins it (values.prod.yaml) as defence-in-depth against a future
+      # regression in the global TTL silently extending machine-token life.
+      saKey:
+        defaultTtl: "2160h"   # 90d — applied when ttl_seconds is omitted
+        maxTtl: "8760h"       # 365d — inclusive ceiling on ttl_seconds
+        accessTokenTtl: ""
     hooks:
       tokenHookSecretName: kacho-iam-hook-token
       tokenHookSecretKey: token
@@ -186,11 +196,17 @@ opaSidecar:
     # OpenFGA :8081. A service missing from this list is fail-CLOSED on every RPC once
     # these policies are enforced — it is an allowlist, not a hint. `kacho-storage` is
     # the storage control-plane pod label (chart fullnameOverride, `app: kacho-storage`).
+    # `kacho-geo` and `registry` dial kacho-iam :9091 exactly like the others
+    # (per-RPC Check; registry additionally uses the fga-register edge). Both were
+    # missing, so once these policies are enforced every geo and registry RPC was
+    # refused at the network layer — the same fail-closed omission storage had.
+    # Labels are the pods' own `app` values: geo → `kacho-geo`, registry →
+    # `registry` (registry chart `.Values.name`, NOT `kacho-registry`).
     backendPodSelector:
       matchExpressions:
         - key: app
           operator: In
-          values: [vpc, compute, kacho-nlb, kacho-storage]
+          values: [vpc, compute, kacho-nlb, kacho-storage, kacho-geo, registry]
 
 # ─── Per-datastore Postgres ingress allowlist (templates/networkpolicy-datastore) ─
 # Each backing Postgres StatefulSet (bitnami sub-chart, pod label
@@ -245,6 +261,13 @@ networkPolicy:
         from:
           - podSelector:
               matchLabels: { app: kacho-storage }
+      # covers the registry Deployment and its `migrate` init-container (both
+      # carry `app: registry`). Rendering this entry while registry is disabled is
+      # harmless — the podSelector then matches no pod.
+      - name: pg-registry
+        from:
+          - podSelector:
+              matchLabels: { app: registry }
 
 # ─── cluster-internal mTLS PKI (cert-manager internal-CA) ──────────────────
 # Master switch for the whole service→service mTLS scheme. When enabled:

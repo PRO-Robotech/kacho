@@ -875,7 +875,13 @@ hydra:
         jwt:
           scope_claim: list
       ttl:
-        # Acceptance §5.2 — TTL discipline (PRODUCTION: 15m, kept in values.prod.yaml).
+        # Acceptance §5.2 — TTL discipline. The production value (15m) lives in
+        # values.prod.yaml. NOTE: that was not true until 2026-07-27 — this
+        # comment asserted a production block that did not exist, and because
+        # the profiles are NOT layered (values.prod.yaml renders standalone,
+        # never on top of this file) production was inheriting the identity
+        # provider's own 1h default. The block now exists there; keep the two in
+        # deliberate disagreement only for the documented reason below.
         # LOCAL TEST-STAND override (#69): e2e waves run 30-40 min serially (iam runs its
         # ~30 collections under the EXCLUSIVE-lock rule) and outran a 15m access_token → late
         # collections failed 401 ("expected 401 == 200") — a token-expiry ARTIFACT, not a

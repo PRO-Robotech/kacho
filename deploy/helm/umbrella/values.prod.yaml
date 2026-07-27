@@ -24,12 +24,21 @@
 # ─── What this profile flips (vs the dev/insecure default) ──────────────────
 #   1. AuthN mode → production / production-strict on every service that has a
 #      mode knob (api-gateway, kacho-iam, kacho-vpc, kacho-nlb, kacho-geo,
-#      kacho-storage). kacho-compute has no `mode` knob: it is a pure
-#      cluster-internal backend whose posture is per-RPC IAM Check (authzIam) +
-#      fail-closed list-filter + mTLS, all set below. kacho-storage additionally
-#      REFUSES TO START (Config.Validate) on any of: plaintext DB, mTLS off on
-#      either listener, empty authz IAM address, list-filter off — so its block
-#      below is a boot requirement, not a preference.
+#      kacho-storage, kacho-registry). kacho-compute has no `mode` knob: it is a
+#      pure cluster-internal backend whose posture is per-RPC IAM Check (authzIam)
+#      + fail-closed list-filter + mTLS, all set below.
+#
+#      MOST OF THIS FILE IS BOOT REQUIREMENTS, NOT PREFERENCES. api-gateway,
+#      kacho-vpc, kacho-nlb, kacho-geo, kacho-storage and kacho-registry all carry
+#      fail-closed Config.Validate/serve guards that REFUSE TO START on an
+#      incomplete production config — plaintext DB, mTLS off on either listener,
+#      an empty authz address, an empty trusted-forwarder allow-list, a peer edge
+#      configured without a secure transport. A knob missing here is a
+#      CrashLoopBackOff, not a soft default.
+#
+#      COROLLARY, LEARNED THE HARD WAY: `helm template` proves NOTHING about this
+#      profile. Every gap listed below rendered perfectly valid YAML. Validate
+#      changes with `helm install` + rollout-ready in production posture.
 #   2. Postgres ssl-mode → `require` (encrypted transport; the production floor).
 #      `require` — not `verify-full` — because the in-cluster Postgres TLS server
 #      cert + CA trust bundle are an infra concern provisioned per-cluster, not a
@@ -69,11 +78,72 @@
 # --cluster-resource-namespace (see values.fe3455.yaml) via a per-cluster overlay.
 mtls:
   enabled: true
+  # ─── Postgres SERVER-TLS from the same internal CA (templates/pg-certificates.yaml) ─
+  # LOAD-BEARING, not hardening-extra: this profile sets ssl-mode=require on EVERY
+  # kacho service (§2 above). `require` means the client SENDS an SSLRequest and
+  # ABORTS if the server refuses it — so a Postgres that does not serve TLS makes
+  # every service (and its goose migrator init-container) fail to connect. The
+  # bitnami sub-chart default is tls.enabled=false, therefore the profile that
+  # demands `require` is the profile that must also issue the server certs.
+  # pg-certificates.yaml is gated on `mtls.pgTls.enabled` and was never set here —
+  # it rendered nothing while every service still asked for TLS.
+  #
+  # Server-auth ONLY. Do NOT add `certCAFilename` on the pg-<svc> sub-charts: that
+  # switches bitnami Postgres to VERIFY client certs (pg_hba `cert`), and the
+  # bitnami readiness/liveness probe presents the server leaf (server-auth EKU) as
+  # its client cert → PG rejects it and the pod never turns Ready. Password auth
+  # over an encrypted channel is the intended posture.
+  pgTls:
+    enabled: true
+    # One entry per kacho-owned datastore that a service dials with ssl-mode=require.
+    # The Ory/OpenFGA tier (pg-kratos/pg-hydra/pg-openfga) is excluded — those DSNs
+    # are managed by their own charts and are not on the kacho ssl-mode floor.
+    services: [vpc, compute, iam, geo, nlb, storage, registry]
 cert-manager:
   enabled: true
 
 # ─── api-gateway (edge) ─────────────────────────────────────────────────────
 api-gateway:
+  # KACHO_APP_ENV — keys the two fail-fast production guards
+  # (validateProductionAuthzConfig + validateProductionInternalListener). An
+  # empty/unset label is ALREADY production-class by design (a forgotten label must
+  # not silently downgrade to dev), so this is a statement of intent rather than a
+  # behaviour change — but it makes the posture legible instead of implicit.
+  appEnv: production
+  # ─── cluster-internal :9091 listener — mTLS + SPIFFE caller allow-list ──────
+  # BOOT REQUIREMENT, not hardening-extra. The internal listener hosts
+  # InternalAuthzCacheService.InvalidateSubject; in a production-class env
+  # validateProductionInternalListener REFUSES TO START unless mTLS is on here.
+  # With appEnv production-class and this left at the chart default (false), the
+  # gateway CrashLoopBackOffs — while `helm template` renders perfectly. This is
+  # the defect the gateway chart's own comment records as "a dev-masked gap that
+  # crash-looped the gateway under values.prod.yaml": the first-class knob was
+  # added to the chart, but the canonical profile was never taught to set it, so
+  # the only cluster that booted was the one patching it via extraEnv.
+  # Server cert reuses the already-mounted external TLS secret; incoming client
+  # certs verify against the internal CA (requires mtls.enable below — the chart
+  # hard-fails the render otherwise). The iam push-drainer is the only legitimate
+  # caller (allowedSpiffe chart default).
+  internalListener:
+    mtls:
+      enable: true
+  # ─── Backend dial addresses ────────────────────────────────────────────────
+  # Restated ONLY where the chart default does not resolve in this umbrella —
+  # the same class as storage's db.host. Everything else keeps the chart default.
+  backends:
+    # The registry Services are `registry` / `registry-internal` (registry chart
+    # `.Values.name`), NOT `kacho-registry`. The chart default dials
+    # kacho-registry.kacho.svc.cluster.local, which does not exist → NXDOMAIN →
+    # 503 on every /registries/v1/* call. The dev profile carries this override
+    # with the same note; the production profile never did.
+    # These hosts are also the registry server-cert SANs, so the derived
+    # SERVER_NAME matches once the mTLS edge below is armed.
+    registry: registry.kacho.svc.cluster.local:9090
+    registryInternal: registry-internal.kacho.svc.cluster.local:9091
+    # nlb's internal listener lives on its OWN Service `kacho-nlb-internal`; the
+    # public `kacho-nlb` Service publishes only grpc/metrics, so the chart default
+    # (kacho-nlb:9091) hits a port the Service does not expose.
+    nlbInternal: kacho-nlb-internal.kacho.svc.cluster.local:9091
   # AuthN: production-strict → Bearer REQUIRED (reject missing token) + Hydra
   # JWKS RS256 validation. No devSecret (HS256 dev path is never used in prod).
   authn:
@@ -100,6 +170,22 @@ api-gateway:
       compute: true
       iam: true
       nlb: true
+      # gateway→geo (public :9090 Region/Zone read + the internal :9091 admin
+      # surface). kacho-geo runs mtls.enable=true in THIS profile, i.e.
+      # RequireAndVerifyClientCert on BOTH listeners — so with this edge off the
+      # gateway dials geo without a client cert and every /geo/v1/regions|zones
+      # request dies on the handshake (503). The edge map here predates the geo
+      # cutover; only the fe3455 cluster overlay patched it, and its comment
+      # records exactly this 503. SERVER_NAME is derived per dial-host
+      # (kacho-geo / kacho-geo-internal — both in the geo server-cert SAN).
+      geo: true
+      # gateway→registry (public :9090 Registry/Repository + internal :9091
+      # InternalRegistryService). registry.mtls.enable=true below → server-mTLS on
+      # both listeners, so this leg is what makes the registry reachable at all;
+      # without it every /registries/v1/* call fails the handshake. SERVER_NAME is
+      # derived from the corrected dial-hosts above (registry / registry-internal,
+      # both in the registry server-cert SAN).
+      registry: true
       # gateway→storage (public :9090 Volume/Snapshot/Image/DiskType read + the
       # internal :9091 admin surface). storage runs server-mTLS on BOTH listeners
       # (RequireAndVerifyClientCert), so without this edge every /storage/v1/* call
@@ -136,14 +222,23 @@ vpc:
       modelIdSecretName: openfga-model-id
       modelIdSecretKey: current
       timeoutMs: 2000
-  # mTLS: server (gateway/compute/nlb dial here) + client (vpc→iam, vpc→compute).
+  # mTLS: server (gateway/compute/nlb dial here) + client (vpc→iam, vpc→geo).
   mtls:
     enable: true
     edges:
       iamRegister: true
       iamProject: true
       iamAuthz: true
-      compute: true
+      # vpc→geo ZoneService.Get (Subnet/AddressPool zone_id validation). BOOT
+      # REQUIREMENT: vpc's ValidatePeerTransport refuses to start in production
+      # when the geo peer edge is configured but neither client-mTLS nor TLS is
+      # armed — and extapi.geo.endpoint is non-empty by chart default, so the edge
+      # is always configured. This slot previously held `compute: true`, a key the
+      # vpc chart does not have at all (its edges are iamRegister/iamProject/
+      # iamAuthz/geo): a silent no-op that read like coverage while the one real
+      # missing edge — and a fatal one — sat unset. vpc→compute is not an edge in
+      # the first place; the zone-validation reason for it moved to geo.
+      geo: true
 
 # ─── kacho-compute ──────────────────────────────────────────────────────────
 # compute has no `mode` knob — it is a pure cluster-internal backend behind the
@@ -151,8 +246,19 @@ vpc:
 # grpcAddr) + fail-closed FGA list-filter + DB ssl-mode=require (env escape-hatch:
 # the compute Go config reads KACHO_COMPUTE_DB_SSLMODE, default `disable`).
 compute:
-  env:
-    KACHO_COMPUTE_DB_SSLMODE: require
+  # First-class knob, NOT the free-form `env` passthrough. The chart already emits
+  # KACHO_COMPUTE_DB_SSLMODE from db.sslMode; setting the same variable through
+  # `env` too put TWO entries with the same name in one container's env list — the
+  # strategic-merge $setElementOrder hazard this repo has already been bitten by.
+  # (The chart default is require; restated so the profile states its own floor.)
+  db:
+    sslMode: require
+  # Non-empty trusted-forwarder allow-list — restated (it IS the chart default) so
+  # that no future edit to this profile can silently drop it: empty ⇒ ANY
+  # mTLS-verified peer may forge the forwarded end-user principal
+  # (confused-deputy / tenant crossing), and production refuses to boot on it.
+  auth:
+    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   authzIam:
     grpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
     tls: false
@@ -177,6 +283,12 @@ compute:
       iamProject: true
       iamAuthz: true
       vpc: true
+      # compute→geo ZoneService.Get (Instance.zone_id validation, :9090). geo runs
+      # RequireAndVerifyClientCert on both listeners in this profile, so without
+      # this leg compute dials geo with no client cert and every Instance.Create
+      # fails zone validation on the handshake. geoAddr is non-empty by chart
+      # default, so the edge is always live — it was only ever missing its cert.
+      geo: true
       # compute→storage InternalVolumeService (:9091 attach/detach + the Volume
       # mirror on Instance). storage owns volume_attachments, so this edge IS the
       # attach path — with storage enabled below and running server-mTLS, leaving
@@ -194,6 +306,14 @@ compute:
 kacho-geo:
   authMode: production
   authzBreakglass: false
+  # BOOT REQUIREMENT: geo's validateSecurityConfig refuses to start in production
+  # with an empty trusted-forwarder allow-list — an empty list means "trust ANY
+  # mTLS-verified peer to forward the end-user principal", i.e. principal-spoofing
+  # straight through to admin Region/Zone CRUD on :9091. The geo chart ships no
+  # default (env: {}), so this profile MUST pin it; the dev profile does, which is
+  # why the gap never showed locally. api-gateway is the only legitimate forwarder.
+  env:
+    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   db:
     sslmode: require
   mtls:
@@ -234,6 +354,22 @@ kacho-iam:
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
     metricsClientAuthMode: server-tls-only
+  kacho:
+    iam:
+      # Machine-credential lifetime, production posture.
+      #
+      # accessTokenTtl pins `access_token_lifespan` ON EACH SA-key OAuth2 client
+      # instead of letting it inherit the provider-global TTL. The global TTL is
+      # now set (hydra.hydra.config.ttl below) — this is the second, per-client
+      # layer, so a future regression in the global value cannot silently extend
+      # the life of tokens minted from machine credentials. It matches the
+      # documented 15m production access-token lifetime.
+      #
+      # defaultTtl / maxTtl are inherited from the chart defaults (90d / 365d):
+      # a key issued without an explicit ttl_seconds still expires, and no caller
+      # can mint one that outlives a year.
+      saKey:
+        accessTokenTtl: "15m"
   config:
     repository:
       postgres:
@@ -264,7 +400,21 @@ kacho-nlb:
       iamProject: true
       vpc: true
       compute: true
+      # nlb→geo RegionService.Get (LoadBalancer/TargetGroup region_id validation).
+      # BOOT REQUIREMENT: nlb's peer-edge guard demands a secure transport for
+      # every CONFIGURED peer edge, and extapi.geo.addr is non-empty by chart
+      # default with tls:false — so an unset geo edge is refuse-to-start, not just
+      # a broken dial. geo also serves RequireAndVerifyClientCert here.
+      geo: true
   db:
+    # The nlb chart default host is `kacho-pg-nlb`, which assumes the release is
+    # named `kacho`; this release is `kacho-umbrella`, so the real Service is
+    # kacho-umbrella-pg-nlb and the default resolves to nothing — the goose
+    # migrator init-container fails DNS and the pod never starts. Exactly the
+    # trap that storage's db.host below was written to avoid; nlb was missed
+    # because the correct host happened to come from the dev profile, which this
+    # production layer does not inherit.
+    host: kacho-umbrella-pg-nlb
     sslmode: require
     # No plaintext password in values — reference an existing Secret (key
     # `password`). Operator provisions kacho-umbrella-pg-nlb (or override the
@@ -276,6 +426,12 @@ kacho-nlb:
     mode: production
     authz:
       breakglass: false
+      # BOOT REQUIREMENT: non-empty when mode=production AND mtls.enable=true.
+      # The chart default is [] — "trust any mTLS peer to forward the end-user
+      # principal" — which production refuses to start on. Only api-gateway
+      # legitimately forwards a principal.
+      trustedForwarderSANs:
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
 
 # ─── kacho-storage (block-storage control-plane) ────────────────────────────
 # Volume / VolumeAttachment / Snapshot / Image / DiskType. Enabled in production:
@@ -333,31 +489,128 @@ storage:
       geo: true
       iam: true
 
+# ─── kacho-registry (OCI/Docker registry control-plane + data-plane) ────────
+# Registry / Repository / Tag over a bundled zot storage backend. Enabled in
+# production for the same reason storage was: the sub-chart and its Postgres are
+# condition-gated, base values.yaml carries NO `registry` key at all, and this
+# profile never set one — so the canonical production install shipped WITHOUT AN
+# IMAGE REGISTRY. Worse than merely off: with the condition path undefined, the
+# posture the profile hands to a per-cluster overlay is the bare chart default
+# (mTLS off, all three peer edges off, db sslmode=disable), so a downstream
+# overlay that only flips `enabled: true` gets an INSECURE registry.
+#
+# registry carries real production boot-guards (serve.go), so every knob below is
+# load-bearing — the pod refuses to start without them:
+#   authMode + breakglass=false → arms the guards; breakglass is fatal in prod
+#   mtls.enable                 → mTLS demanded on BOTH listeners (:9090 + :9091)
+#   authz.iamGrpcAddr           → per-RPC IAM Check interceptor attached
+#   iam.jwksUrl (https)         → requireSecureJWKSURL
+#   hydra.issuer (non-empty)    → requireIssuerPinned
+#   dataplaneTLSTerminatedExternally → requireDataplaneTLSAck
+#   db.sslmode ∈ require|verify-* → production-strict refuses plaintext DB
+registry:
+  enabled: true
+  # production-strict — the same floor iam and the gateway run at. Satisfiable
+  # here because pg-registry serves TLS (mtls.pgTls.services includes registry),
+  # so the DB leg is encrypted rather than conceded.
+  authMode: production-strict
+  db:
+    # Chart default host (kacho-umbrella-pg-registry) and existingSecret are
+    # already correct for this umbrella — only the ssl floor needs stating.
+    sslmode: require
+  authz:
+    # Restated (they ARE the chart defaults) because all three are fail-closed:
+    # an empty address does not degrade, it refuses to boot or refuses the call.
+    iamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    iamProjectGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
+    geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090
+    # breakglass bypasses per-RPC authz Check AND mTLS on both listeners; any
+    # production mode refuses to start with it on. Pinned off explicitly.
+    breakglass: false
+  # Data-plane docker-Bearer verification: keys come from the cluster-INTERNAL
+  # kacho-iam JWKS proxy (:9097) over https — NOT from Hydra directly. iam is the
+  # single facade to Hydra (core rule #16); Hydra remains the token SIGNER, only
+  # key DISTRIBUTION goes through iam. https is required by requireSecureJWKSURL,
+  # and the chart default is http:// — which fails the guard.
+  iam:
+    jwksUrl: https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json
+  hydra:
+    # Expected `iss` of the identity-JWT — pinned on Hydra (the signer), decoupled
+    # from the JWKS URL above. Empty fails requireIssuerPinned; an unpinned issuer
+    # would federate in any RP sharing JWKS+aud. Same issuer string the gateway
+    # verifier pins; a per-cluster overlay overrides both together.
+    issuer: "https://hydra.api.kacho.cloud"
+  # Operator acknowledgement that the plaintext data-plane :8080 listener sits
+  # behind external TLS termination — bearer identity-JWTs must not transit
+  # cleartext. Required by requireDataplaneTLSAck in any production mode.
+  dataplaneTLSTerminatedExternally: true
+  # NB (per-cluster): tokenRealm / serviceAud / endpointBase keep their chart
+  # defaults, which carry a concrete OCI hostname. They are tenant-facing DNS, not
+  # security posture — set them in the per-cluster overlay alongside kacho.domain,
+  # the same way image tags are layered.
+  #
+  # server-mTLS on both listeners (the gateway dials both) + client-mTLS
+  # registry→{iam,geo}. iam and geo both run RequireAndVerifyClientCert in this
+  # profile, so each client leg is what makes the edge work at all — unset means
+  # every Check / ProjectService.Get / RegionService.Get dies on the handshake.
+  mtls:
+    enable: true
+    edges:
+      iamAuthz: true
+      iamProject: true
+      geo: true
+
 # ─── Per-service Postgres (database-per-service) — credentials via existingSecret ─
 # NO plaintext passwords in this profile. Each bitnami pg instance reads its
 # password from an existing Secret the operator provisions out-of-band (keys
 # `password` + `postgres-password`). username/database stay here (non-secret).
 # Override the Secret names per cluster via a layered overlay if they differ.
+#
+# Each kacho-owned instance also SERVES TLS, consuming the cert-manager Secret
+# issued by mtls.pgTls above (kacho-umbrella-pg-<svc>-server-tls). This is the
+# server side of the ssl-mode=require floor: without it the services' `require`
+# has nothing to negotiate with and every connection is refused. Server-auth
+# only — deliberately NO certCAFilename (see the mtls.pgTls note).
 pg-vpc:
   auth:
     username: vpc
     database: kacho_vpc
     existingSecret: kacho-umbrella-pg-vpc
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-vpc-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
 pg-compute:
   auth:
     username: compute
     database: kacho_compute
     existingSecret: kacho-umbrella-pg-compute
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-compute-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
 pg-iam:
   auth:
     username: iam
     database: kacho_iam
     existingSecret: kacho-umbrella-pg-iam
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-iam-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
 pg-geo:
   auth:
     username: geo
     database: kacho_geo
     existingSecret: kacho-umbrella-pg-geo
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-geo-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
 pg-openfga:
   enabled: true
   auth:
@@ -370,6 +623,11 @@ pg-nlb:
     username: kacho_nlb
     database: kacho_nlb
     existingSecret: kacho-umbrella-pg-nlb
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-nlb-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
 # Backing Postgres for kacho-storage (schema kacho_storage). Condition-gated and
 # OFF in base values — enabled here together with `storage` above; the service's
 # db.host/passwordSecretName point at this instance.
@@ -379,6 +637,25 @@ pg-storage:
     username: storage
     database: kacho_storage
     existingSecret: kacho-umbrella-pg-storage
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-storage-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
+# Backing Postgres for kacho-registry (schema kacho_registry). Condition-gated and
+# absent from base values — enabled here together with `registry` above; the
+# service's chart-default db.host/existingSecret already point at this instance.
+pg-registry:
+  enabled: true
+  auth:
+    username: registry
+    database: kacho_registry
+    existingSecret: kacho-umbrella-pg-registry
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-registry-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
 pg-kratos:
   enabled: true
   auth:
@@ -421,6 +698,25 @@ hydra:
   # Hydra OAuth2 webhook config (under the subchart's nested `hydra.config` key).
   hydra:
     config:
+      # ─── Token TTL discipline (acceptance §5.2) ───────────────────────────
+      # This block is what values.dev.yaml's TTL comment has always CLAIMED
+      # lived here ("PRODUCTION: 15m, kept in values.prod.yaml"). It did not:
+      # this profile carried no `ttl` key at all, so production silently
+      # inherited the identity provider's own built-in default (1h) — a longer
+      # access-token life than the security posture documents, and one that no
+      # gate asserted. The profiles are NOT layered (this file is rendered
+      # standalone / as the base of the prod chain, never on top of
+      # values.dev.yaml), so nothing in the dev profile ever reached production.
+      #
+      # 15m is the documented production access-token lifetime. The local e2e
+      # stand deliberately widens it (values.dev.yaml: 4h) because serial newman
+      # waves outrun 15m — that widening is a dev-only artifact and must not be
+      # read as the production value.
+      ttl:
+        access_token: 15m
+        refresh_token: 720h        # 30 days
+        id_token: 15m
+        auth_code: 1m
       oauth2:
         # token/refresh webhooks → https on the kacho-iam-internal Service :9092
         # HTTP hooks listener (NOT the gRPC :9091). api_key HMAC header unchanged.
