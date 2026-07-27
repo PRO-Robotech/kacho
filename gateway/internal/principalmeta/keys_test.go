@@ -55,7 +55,4 @@ func TestPrefixes(t *testing.T) {
 	if !strings.HasPrefix(principalmeta.MetaPrincipalType, principalmeta.MetaPrincipalPrefix) {
 		t.Errorf("MetaPrincipalType %q must start with prefix %q", principalmeta.MetaPrincipalType, principalmeta.MetaPrincipalPrefix)
 	}
-	if want := "grpc-metadata-" + principalmeta.MetaPrincipalPrefix; principalmeta.MetaGRPCPrincipalPrefix != want {
-		t.Errorf("MetaGRPCPrincipalPrefix %q != %q", principalmeta.MetaGRPCPrincipalPrefix, want)
-	}
 }

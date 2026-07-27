@@ -61,9 +61,8 @@ const (
 // Lowercase prefixes used to strip forgeable client-supplied identity
 // headers/metadata before the gateway sets its own trusted values.
 const (
-	MetaPrincipalPrefix     = "x-kacho-principal-"
-	MetaGRPCPrincipalPrefix = "grpc-metadata-x-kacho-principal-"
-	MetaTokenPrefix         = "x-kacho-token-" // #nosec G101 -- metadata key prefix, not a credential
+	MetaPrincipalPrefix = "x-kacho-principal-"
+	MetaTokenPrefix     = "x-kacho-token-" // #nosec G101 -- metadata key prefix, not a credential
 )
 
 // Namespace is the reserved prefix of EVERY Kachō identity/context key on the

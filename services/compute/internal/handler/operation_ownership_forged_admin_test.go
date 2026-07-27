@@ -86,7 +86,7 @@ func TestOperationHandler_OwnerStillWorks(t *testing.T) {
 	assert.True(t, cancelled.Done)
 }
 
-// TestOperationService_NotOnInternalListener — почему admin-обхода в
+// TestOperationService_PublicChainYieldsNoAdmin — почему admin-обхода в
 // OperationHandler не должно быть в принципе (паритет с kacho-vpc): сервис
 // выставлен ТОЛЬКО на публичном листенере, где Admin недостижим by construction.
 // Ветка admin-bypass была бы одновременно мёртвой и, при любой ошибке в
