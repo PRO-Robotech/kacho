@@ -2267,6 +2267,84 @@ CASES.append(Case(
     ],
 ))
 
+# --- Foreign VIP-source reference: shape lane, black-box -----------------------
+#
+# `v4Source/v6Source.subnetId|.addressId` are vpc-owned. api-conventions §By-lane
+# code-split (B4) keeps existence with the OWNER; nlb keeps only a *family-agnostic*
+# syntactic gate over the platform prefix catalogue in front of it — a recorded,
+# narrow exception (services/nlb/docs/architecture/08-known-divergences.md
+# §"Формат чужого id (VIP-источники)"). These three lock what the CALLER reads, end
+# to end through the gateway; all are fixture-free and strict (a literal non-id and
+# a literal empty string need nothing seeded).
+#
+# The gate is what makes obvious garbage TERMINAL: without it the same request
+# answers `subnet <X> not found` — the contract tone for an ABSENT resource applied
+# to a string that cannot be one — and degrades to retryable 503 whenever vpc is
+# unreachable. Hence the message is asserted verbatim, not just the code.
+
+CASES.append(Case(
+    id="NLB-CR-VAL-SUBNET-ID-MALFORMED",
+    title="v4Source.subnetId that is not a Kachō id → 400 invalid subnet id '<X>' (format lane, not a miss)",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[
+        Step(name="cr-subnet-id-malformed", method="POST", path=_CREATE_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "sub-malformed-{{runId}}",
+                   "v4Source": {"subnetId": "garbage!!"}},
+             test_script=[
+                 "pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
+                 "pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
+                 "pm.test('names the format problem, does NOT claim the subnet is absent', () => {",
+                 "  const m = pm.response.json().message || '';",
+                 "  pm.expect(m).to.eql(\"invalid subnet id 'garbage!!'\");",
+                 "});",
+             ]),
+    ],
+))
+
+CASES.append(Case(
+    id="NLB-CR-VAL-ADDRESS-ID-MALFORMED",
+    title="v4Source.addressId that is not a Kachō id → 400 invalid address id '<X>' (format lane)",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[
+        Step(name="cr-address-id-malformed", method="POST", path=_CREATE_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "adr-malformed-{{runId}}",
+                   "v4Source": {"addressId": "garbage!!"}},
+             test_script=[
+                 "pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
+                 "pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
+                 "pm.test('names the format problem', () => "
+                 "  pm.expect(pm.response.json().message || '').to.eql(\"invalid address id 'garbage!!'\"));",
+             ]),
+    ],
+))
+
+CASES.append(Case(
+    id="NLB-CR-VAL-SUBNET-ID-EMPTY",
+    title="v4Source.subnetId empty → 400 v4_source.subnet_id: required (request shape, not a phantom miss)",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[
+        # Selecting the oneof branch and leaving it blank is a malformed REQUEST.
+        # It used to travel to vpc and come back as `subnet  not found` — the
+        # not-found tone with the id spliced out, asserting the absence of a
+        # resource the caller never named.
+        Step(name="cr-subnet-id-empty", method="POST", path=_CREATE_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "placement": "INTERNAL_REGIONAL", "name": "sub-empty-{{runId}}",
+                   "v4Source": {"subnetId": ""}},
+             test_script=[
+                 "pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
+                 "pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
+                 "pm.test('reads as a required-field violation, never as a not-found', () => {",
+                 "  const m = pm.response.json().message || '';",
+                 "  pm.expect(m).to.eql('v4_source.subnet_id: required');",
+                 "  pm.expect(m).to.not.match(/not found/i);",
+                 "});",
+             ]),
+    ],
+))
+
 
 # --- Group A/B: INTERNAL / EXTERNAL happy source-resolution (inline fixtures) ---
 

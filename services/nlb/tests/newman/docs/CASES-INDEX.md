@@ -116,6 +116,9 @@ Source × type × placement matrix — sync fail-fast negatives (decision-table)
 - `*-CR-VAL-ADDRESS-KIND-MISMATCH` — VAL,NEG/P1 — EXTERNAL address linked into INTERNAL → generic Illegal argument addressId (8.1-10)
 - `*-CR-VAL-ADDRESS-FOREIGN-PROJECT` — VAL,NEG/P2 — address of another project → generic Illegal argument addressId (8.1-16)
 - `*-CR-VAL-ADDRESS-FAMILY-SLOT` — VAL,NEG/P2 — v4Source pointing at an IPv6 address → generic Illegal argument addressId (8.1-17)
+- `*-CR-VAL-SUBNET-ID-MALFORMED` — VAL,NEG/P1 — `v4Source.subnetId` that is not a Kachō id → 400 `invalid subnet id '<X>'` verbatim (foreign-ref format lane, recorded B4 exception — never the not-found tone)
+- `*-CR-VAL-ADDRESS-ID-MALFORMED` — VAL,NEG/P1 — `v4Source.addressId` that is not a Kachō id → 400 `invalid address id '<X>'` verbatim (same lane)
+- `*-CR-VAL-SUBNET-ID-EMPTY` — VAL,NEG/P1 — selected oneof branch with an empty reference → 400 `v4_source.subnet_id: required` (request shape; previously leaked as `subnet  not found`)
 
 INTERNAL / EXTERNAL happy source-resolution (inline vpc fixtures, tolerant):
 - `*-CR-CRUD-INTERNAL-REGIONAL` — CRUD/P1 — INTERNAL REGIONAL subnet-auto (anycast) VIP (8.1-02)

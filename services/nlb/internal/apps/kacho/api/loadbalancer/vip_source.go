@@ -90,8 +90,46 @@ func derivedModeInputErr(field string) error {
 		"is derived output-only; the load balancer mode is set solely by placement")
 }
 
+// foreignVipRef — проверка ФОРМЫ ЗАПРОСА для ссылки VIP-источника на ЧУЖОЙ
+// (vpc-owned) ресурс. Существование, тип и placement решает ВЛАДЕЛЕЦ
+// (peer-validate в resolveOneSource/resolveLinkedAddress) — здесь только два
+// вопроса о самом запросе:
+//
+//  1. **ссылка названа.** Ветка oneof выбрана — значит caller обязался дать
+//     ссылку; пустая строка означает, что спрашивать владельца не о чем. Без
+//     этой проверки пустой id доезжал до peer-адаптера и возвращался как
+//     `"subnet  not found"` — контракт-тон miss'а с вырезанным id, то есть
+//     утверждение об отсутствии ресурса, который caller не называл.
+//  2. **строка вообще является id Kachō.** `corevalidate.ResourceID`
+//     **family-agnostic по контракту**: аргумент `expectedPrefix` НЕ сверяется
+//     (см. его godoc) — проверяется лишь то, что первый сегмент входит в
+//     ПЛАТФОРМЕННЫЙ каталог префиксов (`ids.KnownPrefixes()` /
+//     `ids.KnownHyphenPrefixes()` + config-extras). Это НЕ приватный словарь
+//     vpc: каталог принадлежит corelib и общий для всех сервисов, поэтому
+//     дрейфа «vpc сменил префикс — nlb отвергает валидный id» здесь нет. Тип
+//     ресурса локально НЕ утверждается: id с чужим для подсети префиксом
+//     проходит и адресуется владельцу (B4 «чужой prefix — не наш словарь»).
+//     `ids.PrefixSubnet`/`ids.PrefixAddress` остаются в вызове как документация
+//     ожидаемого семейства — они ничего не гейтят.
+//
+// Осознанное отступление от буквы B4 («foreign id — existence-only») и его
+// обоснование записаны в `docs/architecture/08-known-divergences.md`
+// §«Формат чужого id (VIP-источники) проверяется синхронно — узкое, записанное
+// отступление от B4»; carve-out — в самом B4 `api-conventions.md`. Коротко:
+// быстрый терминальный 400 на явно
+// не-id лучше служит вызывающему, чем поход к соседу — он остаётся терминальным
+// и когда vpc недоступен (иначе caller получил бы retryable `UNAVAILABLE` на
+// ввод, который не станет валидным никогда).
+func foreignVipRef(field, resourceType, expectedFamilyPrefix, id string) error {
+	if id == "" {
+		return errInvalidArg(field, "required")
+	}
+	return corevalidate.ResourceID(resourceType, expectedFamilyPrefix, id)
+}
+
 // resolveVipSources — VipSource v4/v6 → упорядоченный набор familyVIPSpec. ≥1
-// семейство обязательно; malformed subnet_id/address_id ловится синхронно.
+// семейство обязательно; форма ссылок subnet_id/address_id проверяется
+// синхронно (foreignVipRef), существование — владельцем.
 func resolveVipSources(v4, v6 *lbv1.VipSource) ([]familyVIPSpec, error) {
 	var out []familyVIPSpec
 	add := func(family domain.IPVersion, src *lbv1.VipSource) error {
@@ -101,13 +139,15 @@ func resolveVipSources(v4, v6 *lbv1.VipSource) ([]familyVIPSpec, error) {
 		fs := familyVIPSpec{family: family}
 		switch s := src.GetSource().(type) {
 		case *lbv1.VipSource_SubnetId:
-			if err := corevalidate.ResourceID("subnet", ids.PrefixSubnet, s.SubnetId); err != nil {
+			if err := foreignVipRef(familyTag(family)+"_source.subnet_id",
+				"subnet", ids.PrefixSubnet, s.SubnetId); err != nil {
 				return err
 			}
 			fs.kind = srcSubnetAuto
 			fs.subnetID = s.SubnetId
 		case *lbv1.VipSource_AddressId:
-			if err := corevalidate.ResourceID("address", ids.PrefixAddress, s.AddressId); err != nil {
+			if err := foreignVipRef(familyTag(family)+"_source.address_id",
+				"address", ids.PrefixAddress, s.AddressId); err != nil {
 				return err
 			}
 			fs.kind = srcAddressLink

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "2594b6bf-7901-4a40-8732-7621e3fa3a4b",
+    "_postman_id": "2e3f983d-a7e8-4b82-9403-c37dbe4a7e8a",
     "name": "kacho-nlb / newman / load-balancer",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -21815,6 +21815,166 @@
                   "  pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "  pm.test('generic anti-oracle message (family/slot)', () =>     pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
                   "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NLB-CR-VAL-SUBNET-ID-MALFORMED — v4Source.subnetId that is not a Kachō id → 400 invalid subnet id '<X>' (format lane, not a miss)",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-subnet-id-malformed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"INTERNAL_REGIONAL\", \"name\": \"sub-malformed-{{runId}}\", \"v4Source\": {\"subnetId\": \"garbage!!\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
+                  "pm.test('names the format problem, does NOT claim the subnet is absent', () => {",
+                  "  const m = pm.response.json().message || '';",
+                  "  pm.expect(m).to.eql(\"invalid subnet id 'garbage!!'\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NLB-CR-VAL-ADDRESS-ID-MALFORMED — v4Source.addressId that is not a Kachō id → 400 invalid address id '<X>' (format lane)",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-address-id-malformed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"INTERNAL_REGIONAL\", \"name\": \"adr-malformed-{{runId}}\", \"v4Source\": {\"addressId\": \"garbage!!\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
+                  "pm.test('names the format problem', () =>   pm.expect(pm.response.json().message || '').to.eql(\"invalid address id 'garbage!!'\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NLB-CR-VAL-SUBNET-ID-EMPTY — v4Source.subnetId empty → 400 v4_source.subnet_id: required (request shape, not a phantom miss)",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-subnet-id-empty",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"INTERNAL_REGIONAL\", \"name\": \"sub-empty-{{runId}}\", \"v4Source\": {\"subnetId\": \"\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
+                  "pm.test('reads as a required-field violation, never as a not-found', () => {",
+                  "  const m = pm.response.json().message || '';",
+                  "  pm.expect(m).to.eql('v4_source.subnet_id: required');",
+                  "  pm.expect(m).to.not.match(/not found/i);",
+                  "});"
                 ]
               }
             }
