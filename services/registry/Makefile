@@ -41,10 +41,31 @@ sync-migrations:
 	@mkdir -p internal/migrations/common
 	@cp -v "$(CORELIB_MIGRATIONS)"/* internal/migrations/common/ 2>/dev/null || true
 
-# audit-list-filter — CI-гейт listauthz: публичный List обязан фильтровать выдачу
-# (viewer∪v_list). Наполняется вместе с реализацией List (rpc-implementer).
+# audit-list-filter — CI-гейт listauthz: публичный List обязан отдавать только те
+# объекты, которые вызывающему видеть можно.
+#
+# До этого здесь стоял `echo` и `exit 0`: цель существовала, выглядела рабочей и не
+# проверяла ничего — а CI её и не звал (цикл перечислял compute/nlb/storage/vpc).
+# Значит каждый документ, ссылавшийся на «зелёный audit-list-filter» реестра,
+# ссылался на пустоту. Теперь цель запускает настоящий анализ.
+#
+# Почему не скрипт-близнец storage. Инвариант общий, место энфорса — нет. В storage
+# List проектный: repo сужает строки по project_id, use-case прогоняет прочитанную
+# страницу через батч-проверку — и тамошний shell-гейт грепает internal/repo/pg +
+# internal/service. В реестре таких директорий нет вовсе (гейт прошёл бы вхолостую):
+# грант живёт на registry_registry/registry_repository, репозиторий принадлежит
+# реестру, а не проекту, теги/референсы вообще не объекты прав, а список
+# репозиториев — объединение durable-overlay и живой проекции zot, где сужать
+# нечего. Поэтому решение принимает handler, а гейт разбирает его AST.
+#
+# Команда набирается как `make -C services/registry audit-list-filter` (корневого
+# Makefile в репо нет). Ровно в этой форме её зовёт CI: .github/workflows/ci.yaml,
+# job authz-artifacts. Что CI её действительно зовёт — проверяется тестом
+# tools/auditlistfilter/ci_wiring_test.go, чтобы утверждение не протухло молча.
+# Тот же анализ гоняется внутри обычного `go test ./services/registry/...`
+# (tools/auditlistfilter/audit_test.go, TestAnalyzeRealTree).
 audit-list-filter:
-	@echo "audit-list-filter: реализуется вместе с RegistryService.List (rpc-implementer)"
+	@go run ./tools/auditlistfilter/cmd/audit-list-filter
 
 .PHONY: migrate-up migrate-down migrate-status
 migrate-up: build-migrator
