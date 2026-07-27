@@ -47,7 +47,15 @@ func (h *OperationHandler) Get(ctx context.Context, req *operationpb.GetOperatio
 	if !ok {
 		return nil, status.Error(codes.Internal, "operation get failed")
 	}
-	owner := operations.OwnerFromPrincipal(operations.PrincipalFromContext(ctx))
+	// Анонимный запрос владельцем не является. PrincipalFromContext на ctx без
+	// принципала отдаёт системный fallback {system, bootstrap}, который совпадает
+	// с ownership-предикатом на КАЖДОЙ операции, записанной системным путём;
+	// OwnerFromContext вместо этого сообщает об отсутствии ключа, и мы отдаём тот
+	// же no-leak NotFound, что и на чужой операции.
+	owner, hasOwner := operations.OwnerFromContext(ctx)
+	if !hasOwner {
+		return nil, status.Errorf(codes.NotFound, "operation %s not found", req.OperationId)
+	}
 	op, err := owned.GetOwned(ctx, req.OperationId, owner)
 	if err != nil {
 		return nil, mapOpGetErr(err, req.OperationId)
@@ -65,9 +73,18 @@ func (h *OperationHandler) Cancel(ctx context.Context, req *operationpb.CancelOp
 	}
 
 	// Owner-ключ резолвится ИСКЛЮЧИТЕЛЬНО из доверенного ctx-principal'а
-	// (anti-spoof). Атомарный CancelOwned возвращает терминальное состояние в
-	// RETURNING — отдельный reload-Get после отмены не нужен.
-	owner := operations.OwnerFromPrincipal(operations.PrincipalFromContext(ctx))
+	// (anti-spoof).
+	// Анонимный запрос владельцем не является. PrincipalFromContext на ctx без
+	// принципала отдаёт системный fallback {system, bootstrap}, который совпадает
+	// с ownership-предикатом на КАЖДОЙ операции, записанной системным путём;
+	// OwnerFromContext вместо этого сообщает об отсутствии ключа, и мы отдаём тот
+	// же no-leak NotFound, что и на чужой операции.
+	owner, hasOwner := operations.OwnerFromContext(ctx)
+	if !hasOwner {
+		return nil, status.Errorf(codes.NotFound, "operation %s not found", req.OperationId)
+	}
+	// Атомарный CancelOwned возвращает терминальное состояние в RETURNING —
+	// отдельный reload-Get после отмены не нужен.
 	op, err := owned.CancelOwned(ctx, req.OperationId, owner)
 	if err != nil {
 		if errors.Is(err, operations.ErrNotFound) {

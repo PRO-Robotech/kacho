@@ -17,11 +17,56 @@ type Owner struct {
 	AccountID     string
 }
 
-// OwnerFromPrincipal строит Owner из доверенного Principal (резолвится
-// исключительно из ctx — operations.PrincipalFromContext). AccountID не
-// заполняется (principal-ключ); IAM-сервис при необходимости выставляет его сам.
+// OwnerFromPrincipal строит Owner из УЖЕ УСТАНОВЛЕННОГО Principal'а. AccountID
+// не заполняется (principal-ключ); IAM-сервис при необходимости выставляет его
+// сам.
+//
+// ВНИМАНИЕ: не скармливай сюда PrincipalFromContext(ctx). Тот на пустом (и на
+// явно очищенном) ctx отдаёт SystemPrincipal() — backward-compat fallback для
+// ЗАПИСИ операций фоновыми путями, а не удостоверение личности. Как owner-ключ
+// для ЧТЕНИЯ он совпадает с ownership-предикатом на каждой операции, записанной
+// системным принципалом, то есть анонимный вызывающий получает чужие операции.
+// Для вывода owner-ключа из ctx есть OwnerFromContext.
 func OwnerFromPrincipal(p Principal) Owner {
 	return Owner{PrincipalType: p.Type, PrincipalID: p.ID}
+}
+
+// OwnerFromContext выводит owner-ключ из ctx и отдельно сообщает, есть ли он.
+//
+// ok=false означает «принципала не было» (анонимный запрос, ctx без
+// auth-интерсептора, либо принципал явно снят transport-слоем на недоверенном
+// форвардере) ЛИБО «принципал без id». В этом случае возвращается НУЛЕВОЙ Owner,
+// а не SystemPrincipal-fallback: личность по умолчанию не может быть владельцем
+// чего-либо. Вызывающий обязан на ok=false отказать (для tenant-facing чтения —
+// тем же no-leak NotFound, что и «чужая операция»), а не продолжать с
+// полученным ключом.
+//
+// ЯВНО установленный системный принципал (WithPrincipal(SystemPrincipal()) на
+// доверенном internal-пути) даёт ok=true и остаётся владельцем своих операций —
+// сужается именно анонимность, а не bootstrap-личность как таковая. Ровно то же
+// различение делает authz-слой (pkg/authz defaultSubjectExtractor).
+func OwnerFromContext(ctx context.Context) (Owner, bool) {
+	p, ok := PrincipalFromContextOK(ctx)
+	if !ok || p.ID == "" || p.Type == "" {
+		return Owner{}, false
+	}
+	return OwnerFromPrincipal(p), true
+}
+
+// IsAnonymous — principal-ключ отсутствует. Такой ключ НИКОГДА не должен
+// доезжать до ownership-предиката: пустые компоненты матчатся со строками, у
+// которых колонки принципала пусты.
+//
+// Про AccountID: у предиката есть вторая, account-ветка, но её ключ сейчас НИКТО
+// не заполняет — во всём дереве Owner строится исключительно из пары
+// (PrincipalType, PrincipalID) через OwnerFromPrincipal/OwnerFromContext, а
+// AccountID остаётся "" и ветка инертна. Поэтому проверка намеренно смотрит
+// только на principal-пару. Если появится account-only владелец (Owner с пустым
+// принципалом и непустым AccountID), этот предикат обязан быть расширен ВМЕСТЕ
+// с ним — иначе такой владелец будет молча отвергнут; правку делать осознанно,
+// а не «ослабить проверку, чтобы прошло».
+func (o Owner) IsAnonymous() bool {
+	return o.PrincipalType == "" || o.PrincipalID == ""
 }
 
 // OwnedOperationRepo — узкий ownership-scoped порт чтения/отмены операции.

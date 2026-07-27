@@ -4,7 +4,6 @@
 package operation
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -30,9 +29,9 @@ func TestOperation_OP001_GetInFlight(t *testing.T) {
 	op, err := operations.New(ids.PrefixOperationNLB,
 		"Create network load balancer test-nlb-001", nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.Create(context.Background(), op))
+	require.NoError(t, repo.Create(callerCtx(), op))
 
-	got, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+	got, err := h.Get(callerCtx(), &operationpb.GetOperationRequest{
 		OperationId: op.ID,
 	})
 	require.NoError(t, err)
@@ -56,10 +55,10 @@ func TestOperation_OP002_GetCompletedResponse(t *testing.T) {
 
 	op, err := operations.New(ids.PrefixOperationNLB, "Delete NLB", nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.Create(context.Background(), op))
-	require.NoError(t, repo.MarkDone(context.Background(), op.ID, nil))
+	require.NoError(t, repo.Create(callerCtx(), op))
+	require.NoError(t, repo.MarkDone(callerCtx(), op.ID, nil))
 
-	got, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+	got, err := h.Get(callerCtx(), &operationpb.GetOperationRequest{
 		OperationId: op.ID,
 	})
 	require.NoError(t, err)
@@ -74,7 +73,7 @@ func TestOperation_OP003_GetNotFound(t *testing.T) {
 	repo := newFakeOpsRepo()
 	h := NewHandler(repo)
 
-	_, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+	_, err := h.Get(callerCtx(), &operationpb.GetOperationRequest{
 		OperationId: ids.NewID(ids.PrefixOperationNLB),
 	})
 	require.Error(t, err)
@@ -88,7 +87,7 @@ func TestOperation_Get_EmptyOperationID(t *testing.T) {
 	repo := newFakeOpsRepo()
 	h := NewHandler(repo)
 
-	_, err := h.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: ""})
+	_, err := h.Get(callerCtx(), &operationpb.GetOperationRequest{OperationId: ""})
 	require.Error(t, err)
 	st, ok := grpcstatus.FromError(err)
 	require.True(t, ok)
@@ -112,10 +111,10 @@ func TestOperation_Get_CrossTenant_NotFound(t *testing.T) {
 
 	op, err := operations.New(ids.PrefixOperationNLB, "Create NLB owned by A", nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.CreateWithPrincipal(context.Background(), op,
+	require.NoError(t, repo.CreateWithPrincipal(callerCtx(), op,
 		operations.Principal{Type: "user", ID: "usr_alice"}))
 
-	ctxB := operations.WithPrincipal(context.Background(),
+	ctxB := operations.WithPrincipal(callerCtx(),
 		operations.Principal{Type: "user", ID: "usr_bob"})
 	_, err = h.Get(ctxB, &operationpb.GetOperationRequest{OperationId: op.ID})
 	require.Error(t, err)
@@ -133,9 +132,9 @@ func TestOperation_Get_Owner_OK(t *testing.T) {
 	op, err := operations.New(ids.PrefixOperationNLB, "Owned op", nil)
 	require.NoError(t, err)
 	pa := operations.Principal{Type: "user", ID: "usr_alice"}
-	require.NoError(t, repo.CreateWithPrincipal(context.Background(), op, pa))
+	require.NoError(t, repo.CreateWithPrincipal(callerCtx(), op, pa))
 
-	got, err := h.Get(operations.WithPrincipal(context.Background(), pa),
+	got, err := h.Get(operations.WithPrincipal(callerCtx(), pa),
 		&operationpb.GetOperationRequest{OperationId: op.ID})
 	require.NoError(t, err)
 	assert.Equal(t, op.ID, got.GetId())
@@ -146,7 +145,7 @@ func TestOperation_Get_RepoError_MapsToInternal(t *testing.T) {
 	fail := &failingOpsRepo{getErr: errors.New("pgx: connection refused to localhost:5432")}
 	h := NewHandler(fail)
 
-	_, err := h.Get(context.Background(), &operationpb.GetOperationRequest{
+	_, err := h.Get(callerCtx(), &operationpb.GetOperationRequest{
 		OperationId: ids.NewID(ids.PrefixOperationNLB),
 	})
 	require.Error(t, err)

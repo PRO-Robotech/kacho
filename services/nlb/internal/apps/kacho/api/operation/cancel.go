@@ -58,10 +58,18 @@ func (u *CancelUseCase) Run(ctx context.Context, req *operationpb.CancelOperatio
 	if !ok {
 		return nil, status.Error(codes.Internal, "operation cancel failed")
 	}
+	// Анонимный запрос владельцем не является. PrincipalFromContext на ctx без
+	// принципала отдаёт системный fallback {system, bootstrap}, который совпадает
+	// с ownership-предикатом на КАЖДОЙ операции, записанной системным путём;
+	// OwnerFromContext вместо этого сообщает об отсутствии ключа, и мы отдаём тот
+	// же no-leak NotFound, что и на чужой операции.
+	owner, hasOwner := operations.OwnerFromContext(ctx)
+	if !hasOwner {
+		return nil, status.Errorf(codes.NotFound, "operation %s not found", req.GetOperationId())
+	}
 	// Ownership-gate: чужой/несуществующий op-id → NotFound (existence-hiding) до
 	// любой мутации. Ownership неизменна, поэтому read-gate перед атомарным CAS не
 	// создаёт TOCTOU на состояние (саму отмену выигрывает single-statement Cancel).
-	owner := operations.OwnerFromPrincipal(operations.PrincipalFromContext(ctx))
 	if _, err := owned.GetOwned(ctx, req.GetOperationId(), owner); err != nil {
 		if errors.Is(err, operations.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "operation %s not found", req.GetOperationId())

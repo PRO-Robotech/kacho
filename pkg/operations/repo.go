@@ -198,6 +198,10 @@ func marshalStatus(errStatus *status.Status) (*int32, *string, []byte) {
 // ownerPredicateSQL — ownership-предикат для GetOwned/CancelOwned: match по паре
 // (principal_type, principal_id) ЛИБО по account_id там, где он NOT NULL и
 // owner.AccountID непуст (IAM-ветка; для vpc/compute/nlb AccountID="" → инертна).
+//
+// Предикат ЗНАЧИМ только для непустого owner-ключа: пустые компоненты матчатся
+// со строками, у которых колонки принципала пусты. Поэтому все три
+// ownership-scoped метода отсекают Owner.IsAnonymous() ДО построения запроса.
 func ownerPredicateSQL(ptIdx, pidIdx, aidIdx int) string {
 	return fmt.Sprintf(
 		"((principal_type = $%d AND principal_id = $%d) OR ($%d <> '' AND account_id IS NOT NULL AND account_id = $%d))",
@@ -351,6 +355,11 @@ func (r *pgRepo) List(ctx context.Context, filter ListFilter) ([]Operation, stri
 // ListOwned — ownership-scoped листинг: ownerPredicateSQL AND-ится с фильтрами
 // ListFilter (симметрично GetOwned/CancelOwned). Чужие строки не возвращаются.
 func (r *pgRepo) ListOwned(ctx context.Context, filter ListFilter, owner Owner) ([]Operation, string, error) {
+	if owner.IsAnonymous() {
+		// Нет owner-ключа → своих операций нет. Пустая страница, а не
+		// unscoped-выдача.
+		return nil, "", nil
+	}
 	return r.listWithOwner(ctx, filter, &owner)
 }
 
@@ -521,6 +530,11 @@ func (r *pgRepo) Cancel(ctx context.Context, id string) error {
 // предикат — внутри SQL WHERE (within-service инвариант на DB-уровне). 0 строк
 // (нет такой ИЛИ не владелец) → ErrNotFound (no-leak, неотличимо).
 func (r *pgRepo) GetOwned(ctx context.Context, id string, owner Owner) (*Operation, error) {
+	if owner.IsAnonymous() {
+		// Нет owner-ключа → владельцем ничего не является. Тот же no-leak
+		// NotFound, что и на чужой операции.
+		return nil, ErrNotFound
+	}
 	q := fmt.Sprintf(`SELECT %s FROM %s WHERE id = $1 AND %s`,
 		opColumns, r.tableName(), ownerPredicateSQL(2, 3, 4))
 	row := r.pool.QueryRow(ctx, q, id, owner.PrincipalType, owner.PrincipalID, owner.AccountID)
@@ -540,6 +554,9 @@ func (r *pgRepo) GetOwned(ctx context.Context, id string, owner Owner) (*Operati
 // Идемпотентна на уже-CANCELLED (→ OK с тем же Operation); на терминале
 // SUCCESS/ERROR → ErrAlreadyDone; чужая/нет → ErrNotFound.
 func (r *pgRepo) CancelOwned(ctx context.Context, id string, owner Owner) (*Operation, error) {
+	if owner.IsAnonymous() {
+		return nil, ErrNotFound
+	}
 	q := fmt.Sprintf(`
 		UPDATE %s
 		   SET done = true, modified_at = $2, error_code = 1, error_message = 'operation cancelled'

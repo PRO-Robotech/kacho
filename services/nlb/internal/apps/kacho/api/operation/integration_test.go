@@ -34,6 +34,14 @@ import (
 // (0001_initial.sql) → возвращает DSN с search_path=kacho_nlb,public.
 //
 // Зеркалит проверенный pattern kacho-vpc/internal/repo/integration_test.go.
+// testCaller/callerCtx — принципал вызывающего. Реальный запрос всегда несёт
+// принципала; на ctx без него owner-ключа нет вовсе и доступ отвергается.
+var testCaller = operations.Principal{Type: "user", ID: "usrtest0000000000001", DisplayName: "op owner"}
+
+func callerCtx() context.Context {
+	return operations.WithPrincipal(context.Background(), testCaller)
+}
+
 func setupTestDB(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
@@ -87,7 +95,7 @@ func TestIntegration_OperationService_GetCancel_AgainstPostgres(t *testing.T) {
 		t.Skip("skipping integration test in -short mode")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(callerCtx(), 2*time.Minute)
 	defer cancel()
 
 	dsn := setupTestDB(t)
@@ -179,7 +187,7 @@ func TestIntegration_OperationService_CancelRace(t *testing.T) {
 		t.Skip("skipping integration test in -short mode")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(callerCtx(), 2*time.Minute)
 	defer cancel()
 
 	dsn := setupTestDB(t)

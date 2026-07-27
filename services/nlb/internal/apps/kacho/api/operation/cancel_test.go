@@ -4,7 +4,6 @@
 package operation
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -29,9 +28,9 @@ func TestOperation_OP005_CancelInFlight(t *testing.T) {
 
 	op, err := operations.New(ids.PrefixOperationNLB, "Create NLB long-op", nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.Create(context.Background(), op))
+	require.NoError(t, repo.Create(callerCtx(), op))
 
-	got, err := h.Cancel(context.Background(), &operationpb.CancelOperationRequest{
+	got, err := h.Cancel(callerCtx(), &operationpb.CancelOperationRequest{
 		OperationId: op.ID,
 	})
 	require.NoError(t, err)
@@ -43,7 +42,7 @@ func TestOperation_OP005_CancelInFlight(t *testing.T) {
 	assert.Contains(t, got.GetError().GetMessage(), "cancel")
 
 	// repo-state также done=true
-	stored, gerr := repo.Get(context.Background(), op.ID)
+	stored, gerr := repo.Get(callerCtx(), op.ID)
 	require.NoError(t, gerr)
 	assert.True(t, stored.Done)
 }
@@ -58,10 +57,10 @@ func TestOperation_OP006_CancelAlreadyDone(t *testing.T) {
 
 	op, err := operations.New(ids.PrefixOperationNLB, "Done op", nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.Create(context.Background(), op))
-	require.NoError(t, repo.MarkDone(context.Background(), op.ID, nil))
+	require.NoError(t, repo.Create(callerCtx(), op))
+	require.NoError(t, repo.MarkDone(callerCtx(), op.ID, nil))
 
-	_, err = h.Cancel(context.Background(), &operationpb.CancelOperationRequest{
+	_, err = h.Cancel(callerCtx(), &operationpb.CancelOperationRequest{
 		OperationId: op.ID,
 	})
 	require.Error(t, err)
@@ -75,7 +74,7 @@ func TestOperation_Cancel_NotFound(t *testing.T) {
 	repo := newFakeOpsRepo()
 	h := NewHandler(repo)
 
-	_, err := h.Cancel(context.Background(), &operationpb.CancelOperationRequest{
+	_, err := h.Cancel(callerCtx(), &operationpb.CancelOperationRequest{
 		OperationId: ids.NewID(ids.PrefixOperationNLB),
 	})
 	require.Error(t, err)
@@ -88,7 +87,7 @@ func TestOperation_Cancel_EmptyOperationID(t *testing.T) {
 	repo := newFakeOpsRepo()
 	h := NewHandler(repo)
 
-	_, err := h.Cancel(context.Background(), &operationpb.CancelOperationRequest{OperationId: ""})
+	_, err := h.Cancel(callerCtx(), &operationpb.CancelOperationRequest{OperationId: ""})
 	require.Error(t, err)
 	st, ok := grpcstatus.FromError(err)
 	require.True(t, ok)
@@ -108,10 +107,10 @@ func TestOperation_Cancel_CrossTenant_NotFound(t *testing.T) {
 
 	op, err := operations.New(ids.PrefixOperationNLB, "in-flight owned by A", nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.CreateWithPrincipal(context.Background(), op,
+	require.NoError(t, repo.CreateWithPrincipal(callerCtx(), op,
 		operations.Principal{Type: "user", ID: "usr_alice"}))
 
-	ctxB := operations.WithPrincipal(context.Background(),
+	ctxB := operations.WithPrincipal(callerCtx(),
 		operations.Principal{Type: "user", ID: "usr_bob"})
 	_, err = h.Cancel(ctxB, &operationpb.CancelOperationRequest{OperationId: op.ID})
 	require.Error(t, err)
@@ -119,7 +118,7 @@ func TestOperation_Cancel_CrossTenant_NotFound(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, codes.NotFound, st.Code())
 
-	stored, gerr := repo.Get(context.Background(), op.ID)
+	stored, gerr := repo.Get(callerCtx(), op.ID)
 	require.NoError(t, gerr)
 	assert.False(t, stored.Done, "cross-tenant Cancel must not affect the op")
 }
@@ -132,9 +131,9 @@ func TestOperation_Cancel_Owner_OK(t *testing.T) {
 	op, err := operations.New(ids.PrefixOperationNLB, "owned in-flight", nil)
 	require.NoError(t, err)
 	pa := operations.Principal{Type: "user", ID: "usr_alice"}
-	require.NoError(t, repo.CreateWithPrincipal(context.Background(), op, pa))
+	require.NoError(t, repo.CreateWithPrincipal(callerCtx(), op, pa))
 
-	got, err := h.Cancel(operations.WithPrincipal(context.Background(), pa),
+	got, err := h.Cancel(operations.WithPrincipal(callerCtx(), pa),
 		&operationpb.CancelOperationRequest{OperationId: op.ID})
 	require.NoError(t, err)
 	assert.True(t, got.GetDone())
@@ -146,7 +145,7 @@ func TestOperation_Cancel_RepoError_MapsToInternal(t *testing.T) {
 	fail := &failingOpsRepo{cancelErr: errors.New("pgx: connection refused")}
 	h := NewHandler(fail)
 
-	_, err := h.Cancel(context.Background(), &operationpb.CancelOperationRequest{
+	_, err := h.Cancel(callerCtx(), &operationpb.CancelOperationRequest{
 		OperationId: ids.NewID(ids.PrefixOperationNLB),
 	})
 	require.Error(t, err)
@@ -165,12 +164,12 @@ func TestOperation_Cancel_DoubleCancel(t *testing.T) {
 
 	op, err := operations.New(ids.PrefixOperationNLB, "double-cancel op", nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.Create(context.Background(), op))
+	require.NoError(t, repo.Create(callerCtx(), op))
 
-	_, err = h.Cancel(context.Background(), &operationpb.CancelOperationRequest{OperationId: op.ID})
+	_, err = h.Cancel(callerCtx(), &operationpb.CancelOperationRequest{OperationId: op.ID})
 	require.NoError(t, err)
 
-	_, err = h.Cancel(context.Background(), &operationpb.CancelOperationRequest{OperationId: op.ID})
+	_, err = h.Cancel(callerCtx(), &operationpb.CancelOperationRequest{OperationId: op.ID})
 	require.Error(t, err)
 	st, _ := grpcstatus.FromError(err)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())

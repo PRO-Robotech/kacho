@@ -36,15 +36,34 @@ func newFakeOpsRepo() *fakeOpsRepo {
 	return &fakeOpsRepo{ops: make(map[string]*operations.Operation)}
 }
 
-func (r *fakeOpsRepo) Create(_ context.Context, op operations.Operation) error {
+// Create зеркалит резолв принципала боевого pgRepo.Create: явный op.Principal →
+// принципал из ctx (если он реальный, не system-fallback) → SystemPrincipal.
+// Без этого fake записывал бы КАЖДУЮ операцию на системный принципал, и тест
+// «владелец читает свою операцию» на деле проверял бы совпадение анонимного
+// fallback'а с самим собой.
+func (r *fakeOpsRepo) Create(ctx context.Context, op operations.Operation) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	cp := op
 	if cp.Principal == (operations.Principal{}) {
 		cp.Principal = operations.SystemPrincipal()
+		if ctxP, ok := operations.PrincipalFromContextOK(ctx); ok && ctxP.Type != "" && ctxP.Type != "system" {
+			cp.Principal = ctxP
+		}
 	}
 	r.ops[cp.ID] = &cp
 	return nil
+}
+
+// testCaller — принципал вызывающего в тестах Operation-use-case'ов. Реальный
+// запрос всегда несёт принципала (его проставляет principal-интерсептор из
+// x-kacho-principal-* заголовков), поэтому тесты обязаны делать то же: на ctx
+// без принципала owner-ключа нет вовсе и любой доступ отвергается.
+var testCaller = operations.Principal{Type: "user", ID: "usrtest0000000000001", DisplayName: "op owner"}
+
+// callerCtx — ctx с принципалом вызывающего (он же — создатель операции).
+func callerCtx() context.Context {
+	return operations.WithPrincipal(context.Background(), testCaller)
 }
 
 func (r *fakeOpsRepo) CreateWithPrincipal(_ context.Context, op operations.Operation, p operations.Principal) error {

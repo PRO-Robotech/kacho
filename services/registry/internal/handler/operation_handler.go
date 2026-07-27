@@ -46,7 +46,15 @@ func (h *OperationHandler) Get(ctx context.Context, req *operationpb.GetOperatio
 	if req.GetOperationId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation_id required")
 	}
-	owner := operations.OwnerFromPrincipal(operations.PrincipalFromContext(ctx))
+	// Анонимный запрос владельцем не является. PrincipalFromContext на ctx без
+	// принципала отдаёт системный fallback {system, bootstrap}, который совпадает
+	// с ownership-предикатом на КАЖДОЙ операции, записанной системным путём;
+	// OwnerFromContext вместо этого сообщает об отсутствии ключа, и мы отдаём тот
+	// же no-leak NotFound, что и на чужой операции.
+	owner, hasOwner := operations.OwnerFromContext(ctx)
+	if !hasOwner {
+		return nil, status.Errorf(codes.NotFound, "operation %s not found", req.GetOperationId())
+	}
 	op, err := h.owned.GetOwned(ctx, req.GetOperationId(), owner)
 	if err != nil {
 		if errors.Is(err, operations.ErrNotFound) {
@@ -64,7 +72,15 @@ func (h *OperationHandler) Cancel(ctx context.Context, req *operationpb.CancelOp
 	if req.GetOperationId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation_id required")
 	}
-	owner := operations.OwnerFromPrincipal(operations.PrincipalFromContext(ctx))
+	// Анонимный запрос владельцем не является. PrincipalFromContext на ctx без
+	// принципала отдаёт системный fallback {system, bootstrap}, который совпадает
+	// с ownership-предикатом на КАЖДОЙ операции, записанной системным путём;
+	// OwnerFromContext вместо этого сообщает об отсутствии ключа, и мы отдаём тот
+	// же no-leak NotFound, что и на чужой операции.
+	owner, hasOwner := operations.OwnerFromContext(ctx)
+	if !hasOwner {
+		return nil, status.Errorf(codes.NotFound, "operation %s not found", req.GetOperationId())
+	}
 	op, err := h.owned.CancelOwned(ctx, req.GetOperationId(), owner)
 	if err != nil {
 		if errors.Is(err, operations.ErrNotFound) {

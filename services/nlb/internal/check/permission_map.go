@@ -395,9 +395,18 @@ func PermissionMap() authz.RPCMap {
 		// Proto-аннотация `(kacho.iam.authz.v1.permission) = "<exempt>"` для
 		// Get/Cancel ⇒ Public, без per-RPC FGA Check. Семантика: op-id opaque
 		// + creator поллит сразу после Create, в этом окне FGA-tuple ещё может
-		// быть не виден (no path) → лишний 403. Owner-check для Cancel
-		// ("only the operation creator may cancel") —
-		// handler'ом на основе `operation.created_by` в БД.
+		// быть не виден (no path) → лишний 403.
+		//
+		// Owner-check и для Get, и для Cancel делает use-case (api/operation):
+		// owner-ключ выводится через operations.OwnerFromContext, и предикат
+		// владельца живёт в SQL WHERE ownership-scoped GetOwned — это пара
+		// (principal_type, principal_id) создателя, НЕ колонка `created_by`
+		// (та legacy-строка back-compat-чтений и решением о доступе не является).
+		// Запрос без принципала ключа не получает вовсе → no-leak NotFound.
+		//
+		// Отдельного anti-anon-барьера перед этими RPC нет: на записи с
+		// Public:true authz-интерсептор отвечает allow ДО извлечения субъекта.
+		// Защищают owner-гейт и обязательный mTLS на обоих листенерах.
 		// =========================
 		"/kacho.cloud.operation.OperationService/Get":    {Public: true},
 		"/kacho.cloud.operation.OperationService/Cancel": {Public: true},

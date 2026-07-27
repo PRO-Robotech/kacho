@@ -108,7 +108,17 @@ func PermissionMap() authz.RPCMap {
 		// «unauthenticated / без owner-гейта»: в FGA-модели нет object type
 		// `geo_operation` и per-operation tuple'ы не эмитятся, поэтому
 		// `Check viewer on geo_operation:<id>` не имеет пути и отверг бы даже
-		// owner-poll. Anti-anon (principal-цепочка на обоих листенерах) сохраняется.
+		// owner-poll.
+		//
+		// ВНИМАНИЕ, про anti-anon: цепочка интерсепторов geo — recovery →
+		// principal-extract → authz, и на записи с Public:true authz возвращает
+		// allow СРАЗУ, ДО извлечения субъекта. Principal-extract личность только
+		// ПРОСТАВЛЯЕТ и никого не отвергает. То есть отдельного anti-anon-барьера
+		// на этих двух RPC НЕТ (в отличие от kacho-vpc, где в цепочке стоит
+		// TenantUnaryInterceptor, отвергающий anonymous в production-mode). Не
+		// описывать это как «anti-anon сохраняется»: правка «под комментарий»
+		// вернула бы дыру. Реально защищают owner-гейт (ниже) и обязательный mTLS
+		// на обоих листенерах.
 		//
 		// Ownership энфорсится В HANDLER'е (sec-hardening-r3): OperationHandler.
 		// Get/Cancel через ownership-scoped GetOwned/CancelOwned (owner —
@@ -116,8 +126,10 @@ func PermissionMap() authz.RPCMap {
 		// NotFound, no-leak). Op-id опакен, но это прямой object-reference — раньше
 		// ЕДИНСТВЕННЫМ барьером был негадаемый id (capability-style), что позволяло
 		// BOLA (read/cancel чужой in-flight admin-мутации по утёкшему id). Теперь
-		// закрыто owner-предикатом. Анти-регресс: пометка Public тут НЕ освобождает
-		// Operation RPC ни от anti-anon, ни от ownership. Зеркалит kacho-vpc.
+		// закрыто owner-предикатом: owner-ключ выводится через
+		// operations.OwnerFromContext, поэтому запрос БЕЗ принципала ключа не
+		// получает вовсе и отваливается тем же no-leak NotFound. Анти-регресс:
+		// пометка Public снимает ReBAC-Check, но НЕ owner-гейт.
 		"/kacho.cloud.operation.OperationService/Get":    {Public: true},
 		"/kacho.cloud.operation.OperationService/Cancel": {Public: true},
 	}

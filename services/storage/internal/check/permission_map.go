@@ -144,9 +144,26 @@ func PermissionMap() authz.RPCMap {
 
 		// ---- LRO Operation-envelope (ReBAC-exempt, owner-scoped в handler) ----
 		// Async-мутации возвращают Operation, клиент поллит OperationService.Get.
-		// Public:true снимает per-RPC ReBAC-Check (нет object type storage_operation),
-		// но anti-anon (principal-цепочка) и ownership-gate в handler (GetOwned/
-		// CancelOwned, no-leak NotFound) сохраняются. Зеркалит geo/vpc.
+		// Зеркалит geo/vpc.
+		//
+		// Что Public:true РЕАЛЬНО делает: интерсептор (pkg/authz) на этой записи
+		// возвращает allow СРАЗУ, ДО извлечения субъекта — то есть per-RPC
+		// ReBAC-Check снят (object type storage_operation не существует), и
+		// anti-anon-ветка субъект-экстрактора для этих двух RPC НЕ выполняется.
+		// Не описывать это как «anti-anon сохраняется»: такой цепочки здесь нет,
+		// и правка «под комментарий» вернула бы дыру.
+		//
+		// Что защищает на самом деле:
+		//   1. ownership-gate в handler — owner-ключ выводится через
+		//      operations.OwnerFromContext, поэтому запрос БЕЗ принципала ключа не
+		//      получает вовсе и отваливается no-leak NotFound; предикат владельца
+		//      живёт в SQL WHERE (GetOwned/CancelOwned) и дополнительно отвергает
+		//      нулевой ключ;
+		//   2. обязательный mTLS на обоих листенерах — на этот путь не попасть,
+		//      не предъявив клиентский сертификат.
+		// Список доверенных форвардеров (cmd/storage/serve.go) сейчас пуст:
+		// forwarded-principal не принимается ни от кого, личность берётся только
+		// из собственного ctx.
 		"/kacho.cloud.operation.OperationService/Get":    {Public: true},
 		"/kacho.cloud.operation.OperationService/Cancel": {Public: true},
 	}
