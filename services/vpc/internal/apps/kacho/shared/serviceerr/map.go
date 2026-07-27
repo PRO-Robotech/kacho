@@ -58,9 +58,25 @@ func classifyRepoSentinel(err error) (code codes.Code, sentinel error, ok bool) 
 // **локальные** копии `mapRepoErr`; этот общий `MapRepoErr` используется
 // не-ресурсными сервисами в `internal/apps/kacho/services/*`
 // (AddressPoolService, AddressReferenceService, NetworkInternal).
+//
+// Порядок веток — сначала pass-through, потом sentinel-классификация (форма
+// kacho-nlb). Он несущий, а не косметический: pkg/validate кладёт имя поля
+// ТОЛЬКО в google.rpc.BadRequest-details, сообщение остаётся общим «invalid
+// argument». Пересборка статуса в sentinel-ветке (`status.Error(code,
+// stripSentinel(...))`) детали теряет, поэтому ошибка, обёрнутая через `%w` на
+// repo-sentinel, обязана пройти pass-through ПЕРВОЙ. status с codes.Unknown под
+// pass-through НЕ попадает (guard `!= Unknown`) — он падает в классификацию и
+// дальше в фиксированный INTERNAL, без leak'а.
 func MapRepoErr(err error) error {
 	if err == nil {
 		return nil
+	}
+	// Если err уже gRPC-status (например из самого service-слоя через
+	// status.Errorf) — пробрасываем как есть. status.FromError возвращает
+	// (status, true) даже для не-status err (с code=Unknown) — поэтому
+	// проверяем code != Unknown.
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	if code, sentinel, ok := classifyRepoSentinel(err); ok {
 		if sentinel == ErrInternal {
@@ -72,13 +88,6 @@ func MapRepoErr(err error) error {
 			return status.Error(codes.Aborted, ErrConflict.Error())
 		}
 		return status.Error(code, stripSentinel(err, sentinel))
-	}
-	// Если err уже gRPC-status (например из самого service-слоя через
-	// status.Errorf) — пробрасываем как есть. status.FromError возвращает
-	// (status, true) даже для не-status err (с code=Unknown) — поэтому
-	// проверяем code != Unknown.
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return err
 	}
 	// Defensive: raw error из repo без обертки → не leak'аем текст.
 	return status.Error(codes.Internal, "internal database error")
@@ -94,18 +103,23 @@ func MapRepoErr(err error) error {
 // Единая замена бывших handler.internalMapErr и addresspool.mapPoolErr, которые
 // повторяли этот switch. `fallback` — контекстный tag оператора ("internal
 // error" / "address pool admin error" / ...).
+//
+// Порядок веток — тот же, что в MapRepoErr: pass-through идёт ПЕРВЫМ, чтобы
+// details уже-сформированного статуса не терялись при пересборке. Строгая
+// текстовая политика касается sentinel-ветвей (голый `sentinel.Error()`), а не
+// уже-курированного статуса, который и раньше проходил насквозь — просто ниже.
 func MapRepoErrLeakSafe(err error, fallback string) error {
 	if err == nil {
 		return nil
+	}
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	if code, sentinel, ok := classifyRepoSentinel(err); ok {
 		if sentinel == ErrInternal {
 			return status.Error(codes.Internal, "internal database error")
 		}
 		return status.Error(code, sentinel.Error())
-	}
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return err
 	}
 	if fallback == "" {
 		fallback = "internal database error"

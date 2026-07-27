@@ -19,9 +19,22 @@ import (
 //
 // Fallthrough: неклассифицированный err → codes.Internal с фиксированным
 // "internal database error" (закрывает info-leak vector через Operation.error.message).
+//
+// Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
+// Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
+// google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
+// Пересборка статуса в sentinel-ветке (`status.Error(code, stripSentinel(...))`)
+// детали теряет, поэтому ошибка, обёрнутая через `%w` на ports.Err*, обязана
+// пройти pass-through ПЕРВОЙ. status с codes.Unknown под pass-through НЕ попадает
+// (guard `!= Unknown`) — он падает в sentinel-switch и дальше в фиксированный
+// INTERNAL, без leak'а.
 func mapRepoErr(err error) error {
 	if err == nil {
 		return nil
+	}
+	// Если err уже gRPC-status (например из самого service-слоя) — пробрасываем.
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -34,10 +47,6 @@ func mapRepoErr(err error) error {
 		return status.Error(codes.InvalidArgument, stripSentinel(err, ErrInvalidArg))
 	case errors.Is(err, ErrInternal):
 		return status.Error(codes.Internal, "internal database error")
-	}
-	// Если err уже gRPC-status (например из самого service-слоя) — пробрасываем.
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return err
 	}
 	// Defensive: raw error из repo без обёртки → generic Internal без leak'а текста.
 	return status.Error(codes.Internal, "internal database error")

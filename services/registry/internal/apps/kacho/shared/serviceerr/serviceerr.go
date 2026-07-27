@@ -25,9 +25,21 @@ import (
 // ToStatus переводит ошибку use-case/repo/clients в gRPC-статус, срезая
 // sentinel-префикс. Неклассифицированное → фиксированный INTERNAL (без leak'а).
 // Уже-gRPC-статус (например, validate.PageSize) пробрасывается как есть.
+//
+// Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
+// Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
+// google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
+// Пересборка статуса в sentinel-ветке (`status.Error(code, strip(err))`) детали
+// теряет, поэтому ошибка, обёрнутая через `%w` на regerrors.Err*, обязана пройти
+// pass-through ПЕРВОЙ. status с codes.Unknown под pass-through НЕ попадает
+// (guard `!= Unknown`) — он падает в sentinel-switch и дальше в фиксированный
+// INTERNAL (с лог-строкой), без leak'а.
 func ToStatus(err error) error {
 	if err == nil {
 		return nil
+	}
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	switch {
 	case errors.Is(err, regerrors.ErrNotFound):
@@ -44,9 +56,6 @@ func ToStatus(err error) error {
 		// ErrInternal-класс: сырой текст (если обёрнут контекстом) в лог, клиенту — фикс.
 		slog.Default().Error("registry: internal error mapped to gRPC INTERNAL", "err", err.Error())
 		return status.Error(codes.Internal, "internal database error")
-	}
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return err
 	}
 	// Неклассифицированная ошибка (напр. corelib operations `repo.Create: <raw pg>`,
 	// не прошедшая через registry-adapter Wrap) — логируем сырую причину ПЕРЕД схлопом,

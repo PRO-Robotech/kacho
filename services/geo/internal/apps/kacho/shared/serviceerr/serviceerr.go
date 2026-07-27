@@ -25,9 +25,21 @@ import (
 // чтобы клиент видел стабильное сообщение Kachō. Неклассифицированная ошибка →
 // фиксированный INTERNAL "internal database error" (без leak'а pgx-текста).
 // Уже-gRPC-статус (например, validate.PageSize) пробрасывается как есть.
+//
+// Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
+// Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
+// google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
+// Пересборка статуса в sentinel-ветке (`status.Error(code, strip(err))`) детали
+// теряет, поэтому ошибка, обёрнутая через `%w` на geoerrors.Err*, обязана пройти
+// pass-through ПЕРВОЙ. status с codes.Unknown под pass-through НЕ попадает
+// (guard `!= Unknown`) — он падает в sentinel-switch и дальше в фиксированный
+// INTERNAL, без leak'а.
 func ToStatus(err error) error {
 	if err == nil {
 		return nil
+	}
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	switch {
 	case errors.Is(err, geoerrors.ErrNotFound):
@@ -44,9 +56,6 @@ func ToStatus(err error) error {
 		return status.Error(codes.DeadlineExceeded, "request deadline exceeded")
 	case errors.Is(err, geoerrors.ErrInternal):
 		return status.Error(codes.Internal, "internal database error")
-	}
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return err
 	}
 	return status.Error(codes.Internal, "internal database error")
 }

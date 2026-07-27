@@ -15,9 +15,20 @@ import (
 // internalMapErr — admin/Internal-handler error mapper. Гарантирует что raw
 // pgx-text (хранит hostname/db/query) не уходит в response даже на
 // cluster-internal listener (:9091). Зеркалит kacho-vpc/internal/handler/internal_maperr.go.
+//
+// Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
+// Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
+// google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
+// Пересборка статуса в sentinel-ветке (`status.Error(code, sentinel.Error())`)
+// детали теряет, поэтому ошибка, обёрнутая через `%w` на service.Err*, обязана
+// пройти pass-through ПЕРВОЙ. Строгая текстовая политика касается sentinel-ветвей,
+// а не уже-курированного статуса, который и раньше проходил насквозь — просто ниже.
 func internalMapErr(tag string, err error) error {
 	if err == nil {
 		return nil
+	}
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	switch {
 	case errors.Is(err, service.ErrNotFound):
@@ -28,9 +39,6 @@ func internalMapErr(tag string, err error) error {
 		return status.Error(codes.FailedPrecondition, service.ErrFailedPrecondition.Error())
 	case errors.Is(err, service.ErrInvalidArg):
 		return status.Error(codes.InvalidArgument, service.ErrInvalidArg.Error())
-	}
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return err
 	}
 	if tag == "" {
 		tag = "internal error"

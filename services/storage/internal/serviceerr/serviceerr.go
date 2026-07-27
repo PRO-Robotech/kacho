@@ -24,9 +24,21 @@ import (
 // codes.Unimplemented из adapter-заглушки скелета или validate.PageSize)
 // пробрасывается как есть. Неклассифицированная ошибка → фиксированный INTERNAL
 // "internal error" (§1.7 контрактный текст; без leak'а pgx-текста).
+//
+// Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
+// Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
+// google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
+// Пересборка статуса в sentinel-ветке (`status.Error(code, strip(err))`) детали
+// теряет, поэтому ошибка, обёрнутая через `%w` на ports.Err*, обязана пройти
+// pass-through ПЕРВОЙ. status с codes.Unknown под pass-through НЕ попадает
+// (guard `!= Unknown`) — он падает в sentinel-switch и дальше в фиксированный
+// INTERNAL, без leak'а.
 func ToStatus(err error) error {
 	if err == nil {
 		return nil
+	}
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	switch {
 	case errors.Is(err, ports.ErrNotFound):
@@ -41,9 +53,6 @@ func ToStatus(err error) error {
 		return status.Error(codes.Unimplemented, strip(err, ports.ErrUnimplemented))
 	case errors.Is(err, ports.ErrInternal):
 		return status.Error(codes.Internal, "internal error")
-	}
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return err
 	}
 	return status.Error(codes.Internal, "internal database error")
 }
