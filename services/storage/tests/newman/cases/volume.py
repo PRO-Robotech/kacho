@@ -758,3 +758,77 @@ CASES.append(Case(
                     "pm.test('no pgx/sqlstate/panic leak', () => { pm.expect(body).to.not.include('sqlstate'); pm.expect(body).to.not.include('pgx'); pm.expect(body).to.not.include('panic'); });",
                 ])],
 ))
+
+# ---------------------------------------------------------------------------
+# CS1-S1-04 (add) — Update: BVA description / labels НА ПУТИ ОБНОВЛЕНИЯ.
+#
+#   Create прогонял оба поля через validate.* на кромке запроса, Update — нет:
+#   он валидировал только имя. Переразмерное описание доезжало до UPDATE,
+#   ловилось volumes_description_check и возвращалось АСИНХРОННО в ошибке
+#   операции обобщённым "Illegal argument" — то есть 200 на PATCH, а отказ
+#   позже и без имени поля.
+#
+#   Наблюдаемое, которое здесь фиксируется: отказ СИНХРОННЫЙ (400 на самом
+#   PATCH, а не 200 + упавшая операция) и имя поля приезжает в ДЕТАЛЯХ
+#   (google.rpc.BadRequest.fieldViolations[].field). Текст сообщения намеренно
+#   НЕ утверждается — общий валидатор держит его обобщённым по контракту, и
+#   утверждение текста залочило бы не ту половину.
+#
+#   Граница остаётся проходимой: ровно 256 символов и ровно 64 метки — не отказ,
+#   и Get показывает применённое значение.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="VOL-UPD-BVA-DESC-256-257",
+    title="Update description: ровно 256 -> 200 + Operation ok + Get отражает; 257 -> СИНХРОННЫЙ 400 INVALID_ARGUMENT с fieldViolation 'description' (BVA обе стороны границы)",
+    classes=["BVA", "VAL", "STATE", "CONF"], priority="P1",
+    # verifies CS1-S1-04
+    steps=[
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("updbvad"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-desc-256", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
+             body={"updateMask": "description", "description": "x" * 256},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify-256-applied", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('description at the limit was stored', () => pm.expect((pm.response.json().description || '').length).to.eql(256));"]),
+        Step(name="patch-desc-257", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
+             body={"updateMask": "description", "description": "x" * 257},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("description")]),
+        Step(name="verify-257-not-applied", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('rejected description was not stored', () => pm.expect((pm.response.json().description || '').length).to.eql(256));"]),
+        Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+    ],
+))
+
+CASES.append(Case(
+    id="VOL-UPD-BVA-LABELS-64-65",
+    title="Update labels: ровно 64 -> 200 + Operation ok; 65 -> СИНХРОННЫЙ 400 INVALID_ARGUMENT с fieldViolation 'labels' (BVA обе стороны границы)",
+    classes=["BVA", "VAL", "STATE", "CONF"], priority="P1",
+    # verifies CS1-S1-04
+    steps=[
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("updbval"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-labels-64", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
+             body={"updateMask": "labels", "labels": {f"k{i}": f"v{i}" for i in range(64)}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify-64-applied", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('64 labels at the limit were stored', () => pm.expect(Object.keys(pm.response.json().labels || {}).length).to.eql(64));"]),
+        Step(name="patch-labels-65", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
+             body={"updateMask": "labels", "labels": {f"k{i}": f"v{i}" for i in range(65)}},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("labels")]),
+        Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+    ],
+))

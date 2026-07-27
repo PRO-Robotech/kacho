@@ -376,3 +376,104 @@ CASES.append(Case(
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("Illegal argument name")])],
 ))
+
+# ---------------------------------------------------------------------------
+# CS1-S3-05 (add) — Update: BVA description / labels + формат имени НА ПУТИ
+#   ОБНОВЛЕНИЯ.
+#
+#   Снимок был шире тома и образа: те хотя бы прогоняли имя через доменный
+#   валидатор, снимок не проверял на обновлении НИ ОДНО из трёх. Переразмерное
+#   описание, переполненные метки и незаконное имя доезжали до UPDATE, ловились
+#   snapshots_description_check / snapshots_labels_valid / snapshots_name_check и
+#   возвращались АСИНХРОННО в ошибке операции обобщённым "Illegal argument" —
+#   то есть 200 на PATCH, а отказ позже.
+#
+#   Для описания и меток утверждаются ДЕТАЛИ (fieldViolations[].field), а не
+#   текст: общий валидатор держит сообщение обобщённым по контракту. Для имени
+#   наоборот — его контрактный текст сам называет поле ("Illegal argument name").
+#
+#   Граница остаётся проходимой: ровно 256 символов и ровно 64 метки — не отказ.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="SNP-UPD-BVA-DESC-256-257",
+    title="Update description снимка: ровно 256 -> 200 + Operation ok + Get отражает; 257 -> СИНХРОННЫЙ 400 INVALID_ARGUMENT с fieldViolation 'description'",
+    classes=["BVA", "VAL", "STATE", "CONF"], priority="P1",
+    # verifies CS1-S3-05
+    steps=[
+        *_pre_volume("updbvad"),
+        Step(name="cr", method="POST", path=SNP, body=_snap_body("updbvad"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-desc-256", method="PATCH", path=f"{SNP}/{{{{snapshotId}}}}",
+             body={"updateMask": "description", "description": "x" * 256},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify-256-applied", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('description at the limit was stored', () => pm.expect((pm.response.json().description || '').length).to.eql(256));"]),
+        Step(name="patch-desc-257", method="PATCH", path=f"{SNP}/{{{{snapshotId}}}}",
+             body={"updateMask": "description", "description": "x" * 257},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("description")]),
+        Step(name="verify-257-not-applied", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('rejected description was not stored', () => pm.expect((pm.response.json().description || '').length).to.eql(256));"]),
+        Step(name="del-snap", method="DELETE", path=f"{SNP}/{{{{snapshotId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_source_volume(),
+    ],
+))
+
+CASES.append(Case(
+    id="SNP-UPD-BVA-LABELS-64-65",
+    title="Update labels снимка: ровно 64 -> 200 + Operation ok; 65 -> СИНХРОННЫЙ 400 INVALID_ARGUMENT с fieldViolation 'labels'",
+    classes=["BVA", "VAL", "STATE", "CONF"], priority="P1",
+    # verifies CS1-S3-05
+    steps=[
+        *_pre_volume("updbval"),
+        Step(name="cr", method="POST", path=SNP, body=_snap_body("updbval"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-labels-64", method="PATCH", path=f"{SNP}/{{{{snapshotId}}}}",
+             body={"updateMask": "labels", "labels": {f"k{i}": f"v{i}" for i in range(64)}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify-64-applied", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('64 labels at the limit were stored', () => pm.expect(Object.keys(pm.response.json().labels || {}).length).to.eql(64));"]),
+        Step(name="patch-labels-65", method="PATCH", path=f"{SNP}/{{{{snapshotId}}}}",
+             body={"updateMask": "labels", "labels": {f"k{i}": f"v{i}" for i in range(65)}},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("labels")]),
+        Step(name="del-snap", method="DELETE", path=f"{SNP}/{{{{snapshotId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_source_volume(),
+    ],
+))
+
+CASES.append(Case(
+    id="SNP-UPD-VAL-NAME-UPPERCASE",
+    title="Update name снимка = 'Snap_Upper' -> СИНХРОННЫЙ 400 INVALID_ARGUMENT 'Illegal argument name' (доменный валидатор на пути обновления; снимок его не звал вовсе)",
+    classes=["VAL", "NEG", "STATE", "CONF"], priority="P1",
+    # verifies CS1-S3-05
+    steps=[
+        *_pre_volume("updname"),
+        Step(name="cr", method="POST", path=SNP, body=_snap_body("updname"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="patch-name-upper", method="PATCH", path=f"{SNP}/{{{{snapshotId}}}}",
+             body={"updateMask": "name", "name": "Snap_Upper"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *_assert_msg("Illegal argument name")])),
+        Step(name="verify-name-unchanged", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('rejected name was not stored', () => pm.expect(pm.response.json().name).to.match(/^snap-updname-/));"]),
+        Step(name="del-snap", method="DELETE", path=f"{SNP}/{{{{snapshotId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_source_volume(),
+    ],
+))

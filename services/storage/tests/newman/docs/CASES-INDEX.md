@@ -65,6 +65,8 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | VOL-UPD-MASK-EMPTY-FULL-PATCH-OK | CS1-S1-05 | happy (full-PATCH) |
 | VOL-CR-SEC-NAME-INJECTION | CS1-S1-11 | negative (SEC no-leak) |
 | VOL-LST-SEC-FILTER-SQLI | CS1-S1-03 | negative (SEC no-leak) |
+| VOL-UPD-BVA-DESC-256-257 | CS1-S1-04 | BVA обе стороны границы (update-path, sync + details) |
+| VOL-UPD-BVA-LABELS-64-65 | CS1-S1-04 | BVA обе стороны границы (update-path, sync + details) |
 | VOL-OBJSELF-PROJECT-SCOPED-CRUD | #71 | happy (object-self anti-BOLA, project-scoped actor — not cluster-admin-masked) |
 
 ## Snapshot (`cases/snapshot.py`) — stage S3
@@ -92,6 +94,9 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | SNP-UPD-MASK-IMMUTABLE-PROJECT | CS1-S3-05 | negative (sync) |
 | SNP-UPD-MASK-IMMUTABLE-SIZE | CS1-S3-05 | negative (sync) |
 | SNP-CR-BVA-NAME-OVER-64 | CS1-S3-03 | negative (BVA) |
+| SNP-UPD-BVA-DESC-256-257 | CS1-S3-05 | BVA обе стороны границы (update-path, sync + details) |
+| SNP-UPD-BVA-LABELS-64-65 | CS1-S3-05 | BVA обе стороны границы (update-path, sync + details) |
+| SNP-UPD-VAL-NAME-UPPERCASE | CS1-S3-05 | negative (sync; формат имени на update-path) |
 
 ## Image (`cases/image.py`) — redesign STOR-1 (NET-NEW ресурс `img-`)
 
@@ -128,6 +133,8 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | IMG-LST-FILTER-NAME-NONE | STOR-1-33 | edge (empty) |
 | IMG-LST-PAGE-CURSOR | STOR-1-33 | edge (cursor) |
 | IMG-GET-CONF-LEAN-PROJECTION | STOR-1-25 | conformance (two-projection INV-1) |
+| IMG-UPD-BVA-DESC-256-257 | STOR-1-22 | BVA обе стороны границы (update-path, sync + details) |
+| IMG-UPD-BVA-LABELS-64-65 | STOR-1-22 | BVA обе стороны границы (update-path, sync + details) |
 | IMG-DEL-CRUD-OK | STOR-1-20 | happy |
 | IMG-DEL-NEG-NOTFOUND | STOR-1-21 | negative (op-error) |
 | IMG-VOL-CR-SOURCE-IMAGE-OK | STOR-1-18 | happy (boot-Volume materialize) |

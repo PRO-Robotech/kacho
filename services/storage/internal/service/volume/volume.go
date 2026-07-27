@@ -445,7 +445,18 @@ func (u *UseCase) GetInternal(ctx context.Context, id string) (*domain.Volume, e
 // resolveUpdate резолвит mutable-изменения из mask + тела. Пустой mask →
 // full-object PATCH (все mutable из тела; size применяется лишь если >0 — 0 не
 // «уменьшение до нуля», а «не задано»). Непустой mask → только перечисленные поля.
-// name (если применяется) валидируется по тем же правилам, что Create.
+//
+// Каждое ПРИМЕНЯЕМОЕ поле валидируется по тем же правилам, что Create. Проверка
+// стоит внутри ветки apply(...), а не перед ней, и это несущее решение: поле, не
+// попавшее в маску, сервис игнорирует — отвергать запрос за значение, которое всё
+// равно не будет записано, значит ввести новый дефект вместо исправленного. При
+// пустой маске применяется всё тело, поэтому проверяется тоже всё.
+//
+// До этого description и labels не проверялись вовсе: переразмерное значение
+// доезжало до UPDATE, ловилось volumes_description_check / volumes_labels_valid и
+// возвращалось АСИНХРОННО в ошибке операции обобщённым «Illegal argument» — поздно
+// и без имени поля. Ошибка pkg/validate уходит наверх КАК ЕСТЬ: имя поля она
+// кладёт в google.rpc.BadRequest-детали, а пересборка через err.Error() их теряет.
 func resolveUpdate(mask []string, name, description string, labels map[string]string, sizeBytes int64) (VolumeUpdate, error) {
 	var u VolumeUpdate
 	apply := func(field string) bool {
@@ -467,10 +478,16 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 		u.Name = &n
 	}
 	if apply("description") {
+		if err := validate.Description("description", description); err != nil {
+			return VolumeUpdate{}, err
+		}
 		d := description
 		u.Description = &d
 	}
 	if apply("labels") {
+		if err := validate.Labels("labels", labels); err != nil {
+			return VolumeUpdate{}, err
+		}
 		u.Labels = labels
 		u.LabelsSet = true
 	}
