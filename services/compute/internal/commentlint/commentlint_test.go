@@ -26,7 +26,15 @@ var forbidden = []struct {
 }{
 	// Сторонние облака — модель описывается только в терминах Kachō.
 	{"foreign-cloud:yandex", regexp.MustCompile(`(?i)yandex`)},
-	{"foreign-cloud:verbatim", regexp.MustCompile(`(?i)verbatim`)},
+	// `verbatim` was listed here as a foreign-cloud token and is not one: it names
+	// no cloud, and unlike every neighbour it is an ordinary English adverb. The
+	// pattern was also the only unanchored one in the group, so it matched inside
+	// words as well. What it actually did was flag honest prose ("emits the field
+	// verbatim") and teach contributors to write around a matcher rather than to
+	// avoid a vendor name — a rule whose name and whose behaviour disagree. If the
+	// intent was "do not paste foreign documentation word for word", a token match
+	// cannot express that; removed rather than reworded, because contorting comments
+	// to satisfy a broken matcher is the wrong direction.
 	{"foreign-cloud:ycloud", regexp.MustCompile(`\bYC\b`)},
 	{"foreign-cloud:aws", regexp.MustCompile(`\bAWS\b`)},
 	{"foreign-cloud:eni", regexp.MustCompile(`\bENI\b`)},

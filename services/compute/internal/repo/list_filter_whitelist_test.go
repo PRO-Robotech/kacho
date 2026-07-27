@@ -4,16 +4,16 @@
 // list_filter_whitelist_test.go — behaviour lock on the `filter` whitelist of
 // every compute List repo (Instance / Disk / Image / Snapshot).
 //
-// The contract pinned here: this phase supports exactly `name="…"`
-// (api-conventions.md §pagination/filter) and every OTHER field name is REJECTED
+// The contract pinned here: the list surface supports exactly `name="…"`
+// (api-conventions.md, pagination and filter) and every OTHER field name is REJECTED
 // with a sync InvalidArgument carrying the parser's fixed message. It is never
 // silently dropped and never reaches SQL — silently ignoring an unsupported
 // field is the worse failure: the caller gets rows back under a filter they
 // believe was applied.
 //
 // Why widening the whitelist is not a one-token edit (evidence behind the
-// reconciliation recorded in docs/architecture/07-known-divergences.md §12):
-// pkg/filter.Parse emits FilterAST.Field VERBATIM as a SQL column identifier, so
+// reconciliation recorded in docs/architecture/07-known-divergences.md, entry 12):
+// pkg/filter.Parse emits FilterAST.Field unchanged as a SQL column identifier, so
 //   - the acceptance spelling was camelCase (`instanceKind`, `placementGroupId`)
 //     while the columns are snake_case → `instanceKind = $2` fails at the DB with
 //     42703 (undefined column);
@@ -72,7 +72,7 @@ var listFilterRejectCases = []struct {
 		wantMsg: `Bad expression at column 1. Unknown field: "projectId"`,
 	},
 	{
-		name:    "status is not filterable in this phase",
+		name:    "status is not a filterable field",
 		filter:  `status="RUNNING"`,
 		wantMsg: `Bad expression at column 1. Unknown field: "status"`,
 	},
