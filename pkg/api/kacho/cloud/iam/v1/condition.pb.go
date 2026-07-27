@@ -100,7 +100,7 @@ func (Condition_Status) EnumDescriptor() ([]byte, []int) {
 //   - `AccessBindingCondition` is **bound 1:1 to one AccessBinding** and carries
 //     a **whitelisted predicate kind** (MFA_FRESH / NON_EXPIRED / …) with kind-
 //     specific JSON params.
-//   - `Condition` is a **standalone, folder-scoped resource** that stores a
+//   - `Condition` is a **standalone, project-scoped resource** that stores a
 //     free-form CEL expression + JSON-Schema for its parameters. It is
 //     referenced by `AccessBinding.condition_ref.condition_id` (oneof) and
 //     evaluated by OpenFGA Conditions (FGA-engine pre-compiles the CEL on
@@ -122,14 +122,14 @@ type Condition struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the condition.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Folder in which this condition is scoped (Account/Project hierarchy from
-	// kacho-iam). Conditions are folder-local; references from AccessBindings
-	// on resources outside the folder are rejected at request-path
+	// Project this condition is scoped to (Account/Project hierarchy from
+	// kacho-iam). Conditions are project-local; references from AccessBindings
+	// on resources outside the project are rejected at request-path
 	// validation.
-	FolderId string `protobuf:"bytes,2,opt,name=folder_id,json=folderId,proto3" json:"folder_id,omitempty"`
+	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Creation timestamp (truncated to seconds — kacho timestamp convention).
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// Human-readable name. UNIQUE within `folder_id`. 1-63 chars,
+	// Human-readable name. UNIQUE within `project_id`. 1-63 chars,
 	// Kachō label pattern.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Free-form description; ≤ 256 chars.
@@ -195,9 +195,9 @@ func (x *Condition) GetId() string {
 	return ""
 }
 
-func (x *Condition) GetFolderId() string {
+func (x *Condition) GetProjectId() string {
 	if x != nil {
-		return x.FolderId
+		return x.ProjectId
 	}
 	return ""
 }
@@ -393,10 +393,11 @@ var File_kacho_cloud_iam_v1_condition_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_condition_proto_rawDesc = "" +
 	"\n" +
-	"\"kacho/cloud/iam/v1/condition.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\x99\x05\n" +
+	"\"kacho/cloud/iam/v1/condition.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\x9b\x05\n" +
 	"\tCondition\x12-\n" +
-	"\x02id\x18\x01 \x01(\tB\x1d\xe8\xc71\x01\xf2\xc71\rcnd_[0-9a-z]+\x8a\xc81\x04<=20R\x02id\x12)\n" +
-	"\tfolder_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\bfolderId\x129\n" +
+	"\x02id\x18\x01 \x01(\tB\x1d\xe8\xc71\x01\xf2\xc71\rcnd_[0-9a-z]+\x8a\xc81\x04<=20R\x02id\x12+\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\tprojectId\x129\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12C\n" +
 	"\x04name\x18\x04 \x01(\tB/\xe8\xc71\x01\xf2\xc71\x1f[a-z]([-a-z0-9]{0,61}[a-z0-9])?\x8a\xc81\x041-63R\x04name\x12+\n" +

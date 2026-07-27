@@ -18,7 +18,7 @@ import "kacho/iam/authz/v1/authz_options.proto";
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
 // A set of methods for managing reusable Condition resources.
-// Conditions are CEL-like expressions stored at folder scope and
+// Conditions are CEL-like expressions stored at project scope and
 // referenced from AccessBindings via `condition_ref.condition_id`.
 //
 // All mutations return `operation.Operation` (flat resources + Operations
@@ -36,14 +36,14 @@ service ConditionsService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // List — page Conditions in a folder.
+  // List — page Conditions in a project.
   rpc List (ListConditionsRequest) returns (ListConditionsResponse) {
     option (google.api.http) = { get: "/iam/v1/conditions" };
     option (kacho.iam.authz.v1.permission)        = "iam.conditions.list";
     option (kacho.iam.authz.v1.required_relation) = "viewer";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
-      from_request_field: "folder_id"
+      from_request_field: "project_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
@@ -61,7 +61,7 @@ service ConditionsService {
     option (kacho.iam.authz.v1.required_relation) = "editor";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
-      from_request_field: "folder_id"
+      from_request_field: "project_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
@@ -129,8 +129,8 @@ message GetConditionRequest {
 }
 
 message ListConditionsRequest {
-  // Folder to enumerate Conditions in. Required (no cluster-wide list).
-  string folder_id = 1 [(required) = true, (length) = "<=20"];
+  // Project to enumerate Conditions in. Required (no cluster-wide list).
+  string project_id = 1 [(required) = true, (length) = "<=20"];
 
   // Page size; default 100, max 1000.
   int64 page_size = 2 [(value) = "<=1000"];
@@ -151,11 +151,10 @@ message ListConditionsResponse {
 }
 
 message CreateConditionRequest {
-  // Folder to create the Condition in. Cross-service ref to kacho-iam
-  // Project. Required.
-  string folder_id = 1 [(required) = true, (length) = "<=20"];
+  // Project to create the Condition in. Required.
+  string project_id = 1 [(required) = true, (length) = "<=20"];
 
-  // Required human-readable name (UNIQUE within folder_id).
+  // Required human-readable name (UNIQUE within project_id).
   string name = 2 [(required) = true, (length) = "1-63", (pattern) = "[a-z]([-a-z0-9]{0,61}[a-z0-9])?"];
 
   // Optional description.
@@ -176,7 +175,7 @@ message UpdateConditionRequest {
   string condition_id = 1 [(required) = true, (length) = "<=20", (pattern) = "cnd_[0-9a-z]+"];
 
   // Field mask. Acceptable paths: `description`, `labels`, `expression`,
-  // `parameters_schema`. `name` and `folder_id` are immutable
+  // `parameters_schema`. `name` and `project_id` are immutable
   // (InvalidArgument if present in mask).
   google.protobuf.FieldMask update_mask = 2;
 

@@ -241,8 +241,8 @@ func IsValid(id, prefix string) bool {
 // (оба выводятся из knownPrefixes / KnownPrefixes()). Плюс legacy shared vpc
 // prefix e9b (backward-compat для id переходного периода).
 var domainStringPrefixes = []string{
-	// iam: Account/Project/User/ServiceAccount/Group/Role/AccessBinding/Operation/UserOAuthClient
-	"acc", "prj", "usr", "sva", "grp", "rol", "acb", "iop", "uoc",
+	// iam: Account/Project/User/ServiceAccount/Group/Role/AccessBinding/Operation/UserOAuthClient/Condition
+	"acc", "prj", "usr", "sva", "grp", "rol", "acb", "iop", "uoc", "cnd",
 	// legacy shared vpc prefix
 	"e9b",
 }

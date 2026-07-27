@@ -326,8 +326,10 @@ type iam_access_binding
 type iam_condition
   relations
     define project: [project]
-    # Latent until an emitter writes the `project` pointer for conditions — no
-    # hierarchy-tuple writer exists for iam_condition today (reported finding).
+    # The pointer is written by ConditionsService.Create in the same
+    # writer-transaction as the row, and retracted on Delete, so this cascade is
+    # live: cloud administrator / bootstrap identity / account administrator all
+    # reach a Condition through `project.super_admin`.
     define super_admin: super_admin from project
     define admin: [user, service_account, group#member] or super_admin
     # editor / viewer — directly-assignable (poison-fix): reconciler пишет

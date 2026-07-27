@@ -36,7 +36,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // A set of methods for managing reusable Condition resources.
-// Conditions are CEL-like expressions stored at folder scope and
+// Conditions are CEL-like expressions stored at project scope and
 // referenced from AccessBindings via `condition_ref.condition_id`.
 //
 // All mutations return `operation.Operation` (flat resources + Operations
@@ -44,7 +44,7 @@ const (
 type ConditionsServiceClient interface {
 	// Get — return a Condition by id.
 	Get(ctx context.Context, in *GetConditionRequest, opts ...grpc.CallOption) (*Condition, error)
-	// List — page Conditions in a folder.
+	// List — page Conditions in a project.
 	List(ctx context.Context, in *ListConditionsRequest, opts ...grpc.CallOption) (*ListConditionsResponse, error)
 	// Create — create a Condition. CEL `expression` is validated by the
 	// FGA-engine (`WriteAuthorizationModel`); compilation failures are
@@ -143,7 +143,7 @@ func (c *conditionsServiceClient) Evaluate(ctx context.Context, in *EvaluateCond
 // for forward compatibility.
 //
 // A set of methods for managing reusable Condition resources.
-// Conditions are CEL-like expressions stored at folder scope and
+// Conditions are CEL-like expressions stored at project scope and
 // referenced from AccessBindings via `condition_ref.condition_id`.
 //
 // All mutations return `operation.Operation` (flat resources + Operations
@@ -151,7 +151,7 @@ func (c *conditionsServiceClient) Evaluate(ctx context.Context, in *EvaluateCond
 type ConditionsServiceServer interface {
 	// Get — return a Condition by id.
 	Get(context.Context, *GetConditionRequest) (*Condition, error)
-	// List — page Conditions in a folder.
+	// List — page Conditions in a project.
 	List(context.Context, *ListConditionsRequest) (*ListConditionsResponse, error)
 	// Create — create a Condition. CEL `expression` is validated by the
 	// FGA-engine (`WriteAuthorizationModel`); compilation failures are

@@ -191,7 +191,7 @@ type isTupleCondition_Selector interface {
 }
 
 type TupleCondition_ConditionId struct {
-	// Reference to a `Condition` resource (folder-scoped). 1-20 chars.
+	// Reference to a `Condition` resource (project-scoped). 1-20 chars.
 	ConditionId string `protobuf:"bytes,1,opt,name=condition_id,json=conditionId,proto3,oneof"`
 }
 

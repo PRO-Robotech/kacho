@@ -604,6 +604,14 @@ func NewMux(
 			if err := iampb.RegisterAuthorizeServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AuthorizeService: %w", err)
 			}
+			// ConditionsService — reusable project-scoped Condition resources under
+			// /iam/v1/conditions. The service was registered on the iam gRPC listener
+			// and carried through the generated route table and permission catalog,
+			// but was never mounted here — so every REST call to it answered 404 and
+			// the resource was unreachable from outside the cluster.
+			if err := iampb.RegisterConditionsServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam ConditionsService: %w", err)
+			}
 		}
 
 		// --- iam.v1 admin (InternalUserService + InternalIAMService) —
