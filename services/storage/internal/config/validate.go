@@ -19,12 +19,18 @@ import (
 // фикстур и dev-профиля стенда, НИКОГДА на кластере (KACHO_STORAGE_AUTH_MODE=dev на
 // проде — security-долг под снос).
 //
-// Гейтит ровно те три измерения, которые serve.go реально wire'ит по конфигу:
+// Гейтит ровно те измерения, которые serve.go реально wire'ит по конфигу:
 //   - mTLS листенеров — cfg.PublicServerMTLS.Enable / cfg.InternalServerMTLS.Enable;
 //   - per-RPC authz Check — подключается ⟺ непустой cfg.AuthZIAMGRPCAddr;
-//   - DB-транспорт — cfg.DBSSLMode в DSN.
+//   - DB-транспорт — cfg.DBSSLMode в DSN;
+//   - per-object фильтр публичного List — cfg.ListFilterEnabled;
+//   - круг отправителей чужой личности — cfg.TrustedForwarders() (ровно то
+//     значение, что уезжает в grpcsrv.WithTrustedForwarders на обоих листенерах).
 //
 // Поэтому «Validate прошёл в production» ⟺ «serve поднимется secure» by construction.
+// Перечень обязан оставаться полным: измерение, которое serve.go настраивает, но
+// Validate не проверяет, — это как раз тот класс, которым сюда попал список
+// доверенных отправителей (проводка была, ручки и стражи не было).
 func (c Config) Validate() error {
 	mode, err := parseMode(c.AuthMode)
 	if err != nil {
@@ -81,6 +87,32 @@ func (c Config) Validate() error {
 		problems = append(problems,
 			"per-object List filter required: set KACHO_STORAGE_LIST_FILTER_ENABLED=true "+
 				"(false → public List bypasses the per-object FGA filter; a project-tier viewer sees every volume/snapshot/image)")
+	}
+
+	// ── круг отправителей чужой личности обязан быть сужен ──────────────────
+	// Оба листенера строят цепочку CertIdentityExtract →
+	// TrustedPrincipalExtract(WithTrustedForwarders(cfg.TrustedForwarders())).
+	// Контракт corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на
+	// непустом списке; на пустом он отвечает «доверяем» ЛЮБОМУ пиру, прошедшему
+	// проверку сертификата, и переданная в метаданных личность становится субъектом
+	// проверки прав (pkg/authz subject_extract). То есть на пустом списке сосед со
+	// своим законным сертификатом (compute, nlb, vpc, registry, оператор) читает,
+	// меняет и удаляет чужие тома, снимки и образы от имени жертвы, а на внутреннем
+	// листенере ещё и привязывает/отвязывает их. Внутренний периметр у нас объявлен
+	// НЕдоверенным, и слой TLS имена не сверяет — сужает только этот список.
+	//
+	// Проверяем результат TrustedForwarders(), а не длину сырого поля: там же, где
+	// сужение реально произойдёт, отбрасываются пустые записи, поэтому `SANS=","`
+	// не может пройти гейт и вернуть дыру (у compute и nlb этот кейс считается
+	// len() и проходит).
+	//
+	// dev осознанно терпит пусто — но только в in-process фикстурах: на РАЗВЁРНУТОМ
+	// стенде dev-посадка запрещена отдельным правилом (production-mode ВЕЗДЕ).
+	if len(c.TrustedForwarders()) == 0 {
+		problems = append(problems,
+			"trusted-forwarder allow-list required: set KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS "+
+				"(empty → any certificate-verified peer may forward an end-user identity, so a neighbouring "+
+				"service can act as any tenant; pin the api-gateway SAN and the compute SAN)")
 	}
 
 	if len(problems) > 0 {

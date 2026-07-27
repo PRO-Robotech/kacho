@@ -198,9 +198,20 @@ func runServe(cfg config.Config) error {
 	}
 
 	// ── interceptor-цепочки обоих листенеров (recovery→logging→principal→authz).
-	// forwarders — allow-list SAN'ов доверенных форвардеров (production пинит
-	// api-gateway SAN); пустой в dev-скелете. ──
-	forwarders := []string{}
+	//
+	// forwarders — круг отправителей, которым разрешено ПЕРЕДАВАТЬ личность
+	// конечного пользователя (x-kacho-principal-*). Значение приходит из
+	// конфигурации и НИКОГДА не задаётся здесь литералом: пустой список для corelib
+	// означает не «никому», а «кому угодно, у кого есть валидный клиентский
+	// сертификат» (pkg/grpcsrv principalIsTrusted сужает круг только на непустом
+	// списке), и переданная личность становится субъектом проверки прав. Боевой
+	// режим на пустом списке не стартует (config.Validate).
+	//
+	// Законных отправителей два, оба пинятся в values.prod: api-gateway (публичный
+	// :9090) и compute (внутренний :9091 — привязка тома идёт под личностью того,
+	// кто её инициировал). Список общий для обоих листенеров: внутренний периметр
+	// не освобождён.
+	forwarders := cfg.TrustedForwarders()
 	publicCreds, err := cfg.PublicServerCreds()
 	if err != nil {
 		return fmt.Errorf("public listener tls creds: %w", err)

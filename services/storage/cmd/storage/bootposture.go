@@ -25,13 +25,21 @@ import (
 //     Пустое поле деривится в `disable` внутри baseDSN — и так и будет доложено.
 //   - public/internal mtls — server-creds двух gRPC-листенеров (:9090/:9091).
 //   - authz_check   — поднято ли ребро storage→iam InternalIAMService.Check.
+//   - trusted_forwarders — сужен ли круг отправителей, которым разрешено передавать
+//     личность конечного пользователя. Читается из cfg.TrustedForwarders() — из ТОЙ
+//     ЖЕ функции, значение которой serve.go отдаёт в grpcsrv.WithTrustedForwarders,
+//     поэтому отчёт не может разойтись с проводкой. Измерение отдельное от mTLS:
+//     сертификат доказывает, ЧЕЙ это пир, но не даёт права представляться другим —
+//     это и решает список. Без строки в отчёте гейт посадки, читающий живой
+//     процесс, измерения бы не видел вовсе.
 func bootPosture(cfg config.Config) observability.BootPosture {
 	return observability.BootPosture{
-		Service:      "storage",
-		AuthMode:     cfg.AuthMode,
-		DBSSLMode:    coredb.SSLModeFromDSN(cfg.DSN()),
-		PublicMTLS:   cfg.PublicServerMTLS.Enable,
-		InternalMTLS: cfg.InternalServerMTLS.Enable,
-		AuthZCheck:   cfg.AuthZIAMGRPCAddr != "",
+		Service:           "storage",
+		AuthMode:          cfg.AuthMode,
+		DBSSLMode:         coredb.SSLModeFromDSN(cfg.DSN()),
+		PublicMTLS:        cfg.PublicServerMTLS.Enable,
+		InternalMTLS:      cfg.InternalServerMTLS.Enable,
+		AuthZCheck:        cfg.AuthZIAMGRPCAddr != "",
+		TrustedForwarders: len(cfg.TrustedForwarders()) > 0,
 	}
 }

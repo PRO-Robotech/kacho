@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc"
 
@@ -62,6 +63,32 @@ type Config struct {
 	// InternalIAMService.RegisterResource/UnregisterResource (FGA-proxy, Internal-only
 	// :9091) — его переиспользует register-drainer + sync-registrar.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR" default:""`
+
+	// AuthZTrustedForwarderSANs — allow-list личностей сертификата (SPIFFE-SAN),
+	// которым разрешено ПЕРЕДАВАТЬ личность конечного пользователя в метаданных
+	// x-kacho-principal-*. Пробрасывается в оба листенера через
+	// grpcsrv.WithTrustedForwarders (см. cmd/storage/serve.go).
+	//
+	// Почему это ручка, а не константа, и почему её отсутствие было дырой: contract
+	// corelib (pkg/grpcsrv principalIsTrusted) сужает круг отправителей ТОЛЬКО когда
+	// список непуст; на пустом он отвечает «доверяем» любому пиру, прошедшему
+	// проверку сертификата. Внутренний периметр у нас объявлен НЕдоверенным, поэтому
+	// пустой список означает: любой сосед со своим законным клиентским сертификатом
+	// присылает заголовки личности жертвы, и решение о правах принимается от её
+	// имени. Раньше поля не было вовсе, а serve.go передавал литеральный пустой
+	// список — то есть сузить круг было нечем.
+	//
+	// Формат — список через запятую. Законных отправителей ДВА, и оба обязаны быть
+	// в списке (иначе ломается рабочий путь):
+	//   - api-gateway — передаёт личность пользователя на публичный :9090;
+	//   - compute — передаёт её же на внутренний :9091 (привязка/отвязка тома идёт
+	//     под личностью того, кто её инициировал, см. compute
+	//     internal/clients/storage_client.go → pkg/auth.PropagateOutgoing).
+	// Канонические значения — в values.prod.
+	//
+	// Пусто допустимо ТОЛЬКО в dev (in-process фикстуры); в любом боевом режиме
+	// Validate() отказывает в старте (fail-closed, зеркалит geo/compute/nlb).
+	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS"`
 
 	// FGARegisterDrainerEnabled — включает register-drainer owner-tuple'ов (SEC-D):
 	// применяет fga_register_outbox-intents через kacho-iam RegisterResource/
@@ -120,6 +147,36 @@ type Config struct {
 	PublicServerMTLS grpcsrv.TLSServer `envconfig:"PUBLIC_SERVER_MTLS"`
 	// InternalServerMTLS — server-creds cluster-internal листенера (:9091).
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
+}
+
+// TrustedForwarders — список личностей сертификата, который РЕАЛЬНО уезжает в
+// grpcsrv.WithTrustedForwarders на обоих листенерах.
+//
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/storage/serve.go), и стража старта (Validate), и самоотчёт о посадке
+// (cmd/storage/bootposture.go). Поэтому «стража пропустила» ⟺ «круг отправителей
+// реально сужен» — по построению, а не по совпадению; разъехаться им нечем.
+//
+// Отбрасывает пустые записи, потому что их отбрасывает и corelib
+// (WithTrustedForwarders пропускает только s != ""): список из одних пустых строк
+// (`SANS=","`) там вырождается в пустое множество, то есть снова «доверяем любому».
+// Считать такую строку заполненной значило бы пропустить дыру через гейт.
+//
+// Пробелы по краям срезаются — и это НЕ зеркало corelib, а осознанное расхождение:
+// corelib сравнивает личность сертификата побайтово (CertIdentity отдаёт SAN как
+// есть), поэтому запись " spiffe://…" не совпала бы там ни с одним сертификатом.
+// Без среза оператор, написавший список через «запятая-пробел», получил бы не
+// отказ старта, а молчаливый отказ в обслуживании законному отправителю. Круг
+// доверенных от этого не расширяется: в него попадают ровно те строки, которые
+// оператор перечислил, — срезаются только окружающие пробелы.
+func (c Config) TrustedForwarders() []string {
+	out := make([]string, 0, len(c.AuthZTrustedForwarderSANs))
+	for _, s := range c.AuthZTrustedForwarderSANs {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // PublicServerCreds возвращает grpc.ServerOption для публичного листенера (:9090).
