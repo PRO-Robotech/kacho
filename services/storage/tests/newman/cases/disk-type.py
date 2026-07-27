@@ -82,16 +82,21 @@ CASES.append(Case(
 # CS1-S2-04 — admin CRUD Internal-only: absent on external endpoint (INV-7a)
 # ---------------------------------------------------------------------------
 
-# INV-7a robust-form (парити с compute DT-CR-NEG-EMPTY-ID): InternalDiskTypeService
-# admin CRUD забриджен на публичный collection-путь /storage/v1/diskTypes (mux.go —
-# как compute /compute/v1/diskTypes), isInternalPath его НЕ ловит (не bare-gRPC
-# Internal*Service-путь) → на external он ДОСТИЖИМ и гейтится authz-каталогом
-# (system_admin), НЕ route-absent-404. Прежняя форма слала VALID body/реальный target
-# (block-balanced) → admin write УСПЕВАЛ (200) и МУТИРОВАЛ seed (del удалял block-balanced!)
-# — деструктивно и flaky. Инвариант, который реально проверяем: admin write НЕ ДОЛЖЕН
-# УСПЕТЬ (200) для external-tenant. Достигаем non-destructive input'ом (empty-id create /
-# несуществующий target для upd/del) → любой из 400(validation)/403(authz)/404(not-found|
-# route-absent), НИКОГДА 200. Compute уже поймал это (200→409 поллюция) и перешёл на empty-id.
+# INV-7a. ВАЖНО: прежний текст здесь утверждал, что admin CRUD на external ДОСТИЖИМ и
+# держится одним лишь authz-каталогом. Это больше не так и было дефектом, пока было так:
+# диспетчер решает по паре (метод, путь), таблица внутренних биндингов выводится из
+# proto-дескрипторов, и все три админ-метода на внешнем слушателе отбиваются маршрутом.
+# Публичное чтение того же пути при этом сохранено — путь один, методы разные.
+#
+# Ожидание сужено соответственно: 401/403/404 и НИКОГДА 200. Не строгий 404, потому что
+# authz-прослойка обёрнута СНАРУЖИ диспетчера — аутентифицированный не-админ получит 403,
+# неаутентифицированный 401, и до 404-гейта они не доходят. 400/405/501 стали
+# недостижимы: валидация тела за отбитым маршрутом не выполняется.
+#
+# Тело запроса остаётся non-destructive (пустой id на создании, несуществующая цель на
+# изменении и удалении): прежняя форма слала валидное тело и на успехе МУТИРОВАЛА посев.
+# Это свойство кейса сохраняем независимо от того, отбивает ли маршрут — проверка не
+# должна разрушать стенд, даже когда она красная.
 CASES.append(Case(
     id="DT-CR-NEG-EXTERNAL-ABSENT",
     title="POST /storage/v1/diskTypes empty-id на external → rejected (admin Create Internal-only, ban #6): 400/403/404 — НИКОГДА 200-mutation",
@@ -100,7 +105,7 @@ CASES.append(Case(
     #   route забриджен и authz прошёл (validation 400 до вставки).
     steps=[Step(name="cr-external", method="POST", path=DT, body={"id": ""},
                 test_script=[
-                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
+                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
                     "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"])],
 ))
 
@@ -112,7 +117,7 @@ CASES.append(Case(
     #   → NOT_FOUND/403, не 200, seed не мутируется.
     steps=[Step(name="upd-external", method="PATCH", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
                 body={"name": "block-hacked"},
-                test_script=["pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"])],
+                test_script=["pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"])],
 ))
 
 CASES.append(Case(
@@ -122,7 +127,7 @@ CASES.append(Case(
     # verifies CS1-S2-04 (INV-7a). Non-destructive: несуществующий target (прежняя форма
     #   DELETE block-balanced удаляла реальный seed-тип → 200 в artifact).
     steps=[Step(name="del-external", method="DELETE", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
-                test_script=["pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"])],
+                test_script=["pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"])],
 ))
 
 # ---------------------------------------------------------------------------

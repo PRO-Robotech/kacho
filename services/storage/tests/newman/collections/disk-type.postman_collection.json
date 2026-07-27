@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "99e6d2cf-e586-4e7f-963a-fbbaf274aba4",
+    "_postman_id": "dbdf44e7-d6a6-4b3b-ae8b-7aaa6cd7db2a",
     "name": "kacho-storage / newman / disk-type",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -249,7 +249,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
+                  "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
                   "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"
                 ]
               }
@@ -300,7 +300,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"
+                  "pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"
                 ]
               }
             }
@@ -341,7 +341,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"
+                  "pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"
                 ]
               }
             }
