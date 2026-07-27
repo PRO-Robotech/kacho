@@ -11,22 +11,37 @@
 //
 // Resolution priority:
 //
+//  0. The reserved "nobody" word (operations.AnonymousPrincipalID) on `sub` or
+//     on the principal claim — resolves to NOTHING. It labels a request that
+//     presented no credential, and while it resolved, every downstream gate of
+//     the form "a subject came out ⇒ authenticated" read true for exactly the
+//     caller those gates exist to stop.
 //  1. `ext_claims.kacho_principal_type` + `ext_claims.kacho_principal_id`
 //     — explicit unified shape, populated by token_hook for both User and
-//     ServiceAccount flows.
+//     ServiceAccount flows. A stated principal whose type is not an
+//     authenticable kind (`system`, …) does not resolve, but rules 2-4 still
+//     get their turn — those are positive identity assertions. Rule 5 does not:
+//     see below.
 //  2. `ext_claims.kacho_user_id` (User flow).
 //  3. `ext_claims.kacho_sa_id` (ServiceAccount flow).
 //  4. `ext_claims.kacho_workload_id` (federated Workload identity).
 //  5. Hydra `sub` claim as the final fallback when none of the above are
-//     present — yields a `external:<sub>` subject for diagnostic purposes
-//     but is **rejected** by the middleware in production-strict mode.
+//     present — yields an `external:<sub>` subject for diagnostic purposes.
+//     Skipped when rule 1 stated a non-authenticable principal: this rule mints
+//     a subject out of a bare `sub`, and doing so there would overrule the
+//     token's own declaration of what it is.
+//     Nothing downstream gates on SubjectKindExternal today, so this fallback
+//     ONLY carries a stable identifier into the access log; FGA denies it by
+//     construction (no such object type). Enabled by allowExternalFallback.
 //
 // Empty / structurally-invalid claims return ok=false; the middleware then
-// treats this as "no subject" (denied / pass-through per its policy).
+// treats this as "no subject" (401 Unauthenticated).
 package middleware
 
 import (
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
 // Subject FGA-prefix vocabulary. Mirrors the OpenFGA Authorization Model
@@ -106,12 +121,30 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 	}
 	ext := t.ExtClaims
 
+	// 0. The reserved "nobody" word is never a subject — on `sub` or on the
+	// principal claim. A request with no credential is labelled with it, and
+	// while it resolves, every "did a subject come out?" gate reads true for an
+	// unauthenticated caller.
+	if isAnonymousSubjectID(t.Subject) {
+		return ResolvedSubject{}, false
+	}
+
+	// statedNonTenant records that rule 1 found an explicit principal whose type
+	// is not an authenticable kind (`system`, …). Rules 2-4 may still resolve —
+	// they are POSITIVE identity assertions and outrank a malformed rule-1 shape.
+	// Rule 5 may not: it invents `external:<sub>` out of a bare `sub`, which
+	// would overrule the token's own declaration of not being a tenant.
+	statedNonTenant := false
+
 	// 1. Unified ext_claims.kacho_principal_*.
 	if ext != nil {
 		pType, _ := ext["kacho_principal_type"].(string)
 		pID, _ := ext["kacho_principal_id"].(string)
 		pType = strings.TrimSpace(pType)
 		pID = strings.TrimSpace(pID)
+		if isAnonymousSubjectID(pID) {
+			return ResolvedSubject{}, false
+		}
 		if pType != "" && pID != "" {
 			kind, prefix := classifyPrincipal(pType)
 			if kind != SubjectKindUnknown {
@@ -122,6 +155,7 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 					Source: "ext_claims.kacho_principal_*",
 				}, true
 			}
+			statedNonTenant = true
 		}
 	}
 
@@ -161,8 +195,9 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 		}
 	}
 
-	// 5. Hydra `sub` fallback — diagnostic only.
-	if e.allowExternalFallback && t.Subject != "" {
+	// 5. Hydra `sub` fallback — diagnostic only, and never over a token that
+	// already declared itself a non-tenant principal (see statedNonTenant).
+	if e.allowExternalFallback && !statedNonTenant && t.Subject != "" {
 		return ResolvedSubject{
 			FGA:    subjectPrefixExternal + ":" + t.Subject,
 			Kind:   SubjectKindExternal,
@@ -172,6 +207,15 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 	}
 
 	return ResolvedSubject{}, false
+}
+
+// isAnonymousSubjectID reports whether an id is the reserved "nobody" word the
+// edge stamps on a credential-less request. It is checked on both the `sub` and
+// the principal claim because either one reaching a resolution rule is enough to
+// turn "unknown who" into a subject — and a subject is what every
+// authentication gate downstream looks for.
+func isAnonymousSubjectID(id string) bool {
+	return strings.TrimSpace(id) == operations.AnonymousPrincipalID
 }
 
 // classifyPrincipal maps the kacho-native principal-type string to a Kind

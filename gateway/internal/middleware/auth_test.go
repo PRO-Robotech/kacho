@@ -193,17 +193,8 @@ func TestAuth_Production_InvalidBearer_Rejected(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, st.Code())
 }
 
-func TestAuth_Production_NoBearer_AllowsAnonymous(t *testing.T) {
-	auth := middleware.NewAuthInterceptor(middleware.AuthModeProduction, "secret", &fakeLookup{}, authTestLogger())
-	called := false
-	handler := func(ctx context.Context, _ any) (any, error) {
-		called = true
-		p := operations.PrincipalFromContext(ctx)
-		assert.Equal(t, "system", p.Type)
-		assert.Equal(t, "anonymous", p.ID)
-		return nil, nil
-	}
-	_, err := auth.Unary()(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/test/Method"}, handler)
-	require.NoError(t, err)
-	assert.True(t, called)
-}
+// A missing Bearer in `production` is a request with no credential, and it is
+// rejected — see TestAuth_Production_NoBearer_Unauthenticated in
+// anonymity_not_an_identity_test.go, which replaced the pass-through this file
+// used to pin. `dev` keeps the anonymous pass-through
+// (TestAuth_DevMode_NoBearer_Anonymous above).
