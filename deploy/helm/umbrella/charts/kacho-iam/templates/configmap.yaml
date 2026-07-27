@@ -82,6 +82,23 @@ data:
       bootstrap-mint:
         allowed-client-sans:
 {{ toYaml ($bm.allowedClientSANs | default list) | indent 10 }}
+      # trusted-forwarder-sans — the client-certificate SPIFFE SANs allowed to
+      # FORWARD an end-user identity (x-kacho-principal-*) to iam. Fed into
+      # grpcsrv.WithTrustedForwarders on BOTH gRPC listeners.
+      #
+      # An EMPTY list does NOT mean "nobody": the corelib contract narrows the
+      # circle only when the list is non-empty, so empty means "any peer that
+      # presented a certificate from the internal CA". Both gRPC ports are ordinary
+      # Services inside the namespace, every neighbour's certificate is issued by
+      # that same authority, and iam deliberately does not re-ReBAC the end user
+      # (the api-gateway is the single authZ front door) — so an empty list lets any
+      # neighbouring pod act as any tenant. Production REFUSES TO BOOT on an empty
+      # list (Config.Validate → validateProductionTrustedForwarders).
+      #
+      # The chart default is non-empty on purpose — a profile that forgets the knob
+      # must not ship "trust anybody".
+      trusted-forwarder-sans:
+{{ toYaml (.Values.config.authn.trustedForwarderSANs | default list) | indent 8 }}
 
     extapi:
       def-dial-duration: 10s

@@ -244,6 +244,52 @@ config:
     # override: KACHO_IAM_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS, comma-separated).
     bootstrapMint:
       allowedClientSANs: []
+    # ─── who may FORWARD an end-user identity to iam ─────────────────────────
+    # Client-certificate SPIFFE SANs permitted to send x-kacho-principal-* headers.
+    # Rendered into config.yaml as authn.trusted-forwarder-sans (env override:
+    # KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS, comma-separated) and fed into
+    # grpcsrv.WithTrustedForwarders on BOTH gRPC listeners.
+    #
+    # DEFAULT NON-EMPTY, unlike bootstrapMint above, and for the opposite reason:
+    # there an empty list denies everyone (fail-closed), here an empty list TRUSTS
+    # EVERYONE — the corelib contract narrows the circle only when the list is
+    # non-empty. A profile that forgot this knob would ship "any pod with an
+    # internal-CA certificate may act as any tenant". Production refuses to boot on
+    # an empty list, so the omission is loud rather than silent, but the default
+    # must still be safe.
+    #
+    # The entries are the senders that legitimately speak for a user, each
+    # established from a runtime edge rather than by name:
+    #   - api-gateway — the front door; the only sender on the whole surface.
+    #   - vpc/compute/nlb/storage/registry — ProjectService.Get on :9090 (project
+    #     existence + owning account on their own Create path) and
+    #     InternalIAMService.Check / fga-proxy on :9091, all under the end user.
+    #   - geo — InternalIAMService.Check on :9091 under the end user.
+    #   - vpc-operator — the SEC-G fan-out read (AccountService.List →
+    #     ProjectService.List) under its own least-privilege module SA.
+    #
+    # The ns segment is NOT uniform and must not be assumed: it comes from each
+    # peer chart's own mtls.spiffe.namespace, which defaults to the release
+    # namespace but is overridden by storage (kacho-storage) and by the operator
+    # (kacho-vpc-operator). An entry copied "by pattern" from a neighbour would not
+    # match the certificate that peer actually presents, and the effect would be a
+    # SILENT denial of service on a working path — the peer stays itself, its
+    # forwarded identity is scrubbed, and its read answers as if unauthenticated.
+    # deploy/tests/helm/iam-trusted-forwarder-test.sh derives the expected set by
+    # rendering the peer charts, so a chart that moves namespace fails loudly here
+    # instead of at runtime.
+    #
+    # WHICH RPC each may reach is a separate, narrower decision made in code
+    # (authzguard.PublicPeerCallableRPCs / GatewayFrontedInternalRPCs).
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
+      - spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
+      - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
   extapi:
     # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
     openfga:

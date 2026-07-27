@@ -380,6 +380,24 @@ kacho-iam:
     # secretKeyRef (kacho.hooks.* / kacho.iam.jwks.*); operator provisions them.
     authn:
       mode: production-strict
+      # Who may FORWARD an end-user identity (x-kacho-principal-*) to iam.
+      # Restated here even though the chart default already carries it: an EMPTY
+      # list does not mean "nobody" — the corelib contract narrows the circle only
+      # when the list is non-empty, so empty means "any peer holding an internal-CA
+      # certificate may act as any tenant". iam refuses to boot in production on an
+      # empty list, and stating it in the production profile means no future edit
+      # to the chart default can quietly drop it. WHICH RPC each sender may reach
+      # is decided in code (authzguard.PublicPeerCallableRPCs /
+      # GatewayFrontedInternalRPCs), not here.
+      trustedForwarderSANs:
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
+        - spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
+        - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
     extapi:
       openfga:
         # ReBAC Check ON — store id injected by the openfga-bootstrap-job Secret.
