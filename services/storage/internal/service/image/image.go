@@ -263,9 +263,19 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 	// его источник ZONAL, и они когерентны только если зона источника лежит в
 	// этом регионе. Резолв идёт до Operation, поэтому недоступность geo видна
 	// вызывающему синхронно (fail-closed), а не прячется в асинхронный отказ.
-	regionZones, err := u.geo.ZonesOfRegion(ctx, i.RegionID)
-	if err != nil {
-		return nil, u.errStatus(err)
+	//
+	// Спрашиваем ТОЛЬКО когда источник вообще задан: без источника сверять нечего
+	// (оба предиката CAS тривиально истинны на NULL), и платить за вызов пира —
+	// и делать образ без источника заложником доступности geo — незачем. Решение
+	// принимается по полю ЗАПРОСА, а не по состоянию БД, поэтому это не
+	// check-then-act.
+	var regionZones []string
+	if i.SourceSnapshot != "" || i.SourceVolume != "" {
+		zones, zerr := u.geo.ZonesOfRegion(ctx, i.RegionID)
+		if zerr != nil {
+			return nil, u.errStatus(zerr)
+		}
+		regionZones = zones
 	}
 	i.ID = ids.NewID(domain.PrefixImage)
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
