@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a3e19860-0768-41a2-afc6-15f64be0dad9",
+    "_postman_id": "e8bf15d9-a59d-46d6-b999-d78596ecd56b",
     "name": "kacho-geo / newman / region",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -654,6 +654,143 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-GET-CONF-NO-RAW-STATUS — Public Region.Get exposes the derived openForPlacement°, never raw GeoStatus (raw status is InternalRegion-only — two-projection)",
+      "description": "class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "list-pick",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = ((pm.response.json().regions.find(r => !String(r.id).startsWith('qa')) || pm.response.json().regions[0]).id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('pickRegionId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/{{pickRegionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "{{pickRegionId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('public Region carries NO raw status', () => pm.expect(pm.response.json()).to.not.have.property('status'));",
+                  "pm.test('the derived placement signal IS present instead', () => pm.expect(pm.response.json().openForPlacement).to.be.a('boolean'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-LST-CONF-NO-RAW-STATUS — Public Region.List — EVERY item carries the derived signal and neither raw status nor infra. List serializes on its own path; Get coverage does not speak for it",
+      "description": "class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "list-regions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions?pageSize=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions?pageSize=100"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                  "pm.test('no list item carries raw status', () => {",
+                  "  (pm.response.json().regions || []).forEach(r => {",
+                  "    pm.expect(r, 'raw status on public list item: ' + JSON.stringify(r)).to.not.have.property('status');",
+                  "    pm.expect(r.openForPlacement, 'derived signal missing: ' + JSON.stringify(r)).to.be.a('boolean');",
+                  "  });",
+                  "});",
+                  "pm.test('public projection carries NO infra fields (two-projection invariant)', () => {",
+                  "  const o = pm.response.json();",
+                  "  const body = JSON.stringify(o).toLowerCase();",
+                  "  ['numericinfraid','infra','hostclasses','underlayanchor','capacityhint','failuredomaincount'].forEach(k => {",
+                  "    pm.expect(body, 'leaked infra field: ' + k + ' in ' + body).to.not.include(k);",
+                  "  });",
+                  "});"
                 ]
               }
             }

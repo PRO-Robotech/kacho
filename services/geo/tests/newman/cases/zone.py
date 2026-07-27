@@ -110,8 +110,11 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# ZON-GET-CONF-NO-INFRA — two-projection: public Zone carries NO infra fields
-# (status IS present AS-IS; the invariant that holds now AND post-GEO-1 is: no infra).
+# ZON-GET-CONF-NO-INFRA — two-projection: public Zone carries NO infra fields.
+# (The parenthetical that used to sit here said raw status IS present AS-IS. That
+#  was written pre-GEO-1 and has been false since: the public Zone message carries
+#  no status field at all, and ZON-GET-CRUD-OK two blocks up already asserts its
+#  absence. Left uncorrected it invites the next reader to "fix" the assertion.)
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="ZON-GET-CONF-NO-INFRA",
@@ -209,5 +212,35 @@ CASES.append(Case(
                           "pm.test('token is string', () => pm.expect(tok).to.be.a('string'));"]),
         Step(name="list-p2", method="GET", path="/geo/v1/zones?pageSize=1&pageToken={{zonNextToken}}",
              test_script=[*assert_status(200)]),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# ZON-LST-CONF-NO-INFRA — two-projection on the LIST projection.
+#
+# ZON-GET-CONF-NO-INFRA covers Get; ZON-LST-CRUD-OK asserts absent raw status on
+# list items but says nothing about infra. List is a separate serialization path
+# (its own protoconv call site), so an infra field added there would pass every
+# existing case.
+# ---------------------------------------------------------------------------
+CASES.append(Case(
+    id="ZON-LST-CONF-NO-INFRA",
+    title="Public Zone.List — no item carries infra fields (numericInfraId/hostClasses/underlayAnchor/"
+          "failureDomainCount/capacityHint); ZoneInfra is InternalZone-only",
+    classes=["CONF"], priority="P1",
+    steps=[
+        Step(name="list-zones", method="GET", path="/geo/v1/zones?pageSize=100",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('zones non-empty', () => pm.expect((pm.response.json().zones||[]).length).to.be.greaterThan(0));",
+                 *assert_no_infra_fields(),
+                 "pm.test('no list item carries raw status; the derived signal is there instead', () => {",
+                 "  (pm.response.json().zones || []).forEach(z => {",
+                 "    pm.expect(z, 'raw status on public list item: ' + JSON.stringify(z)).to.not.have.property('status');",
+                 "    pm.expect(z.openForPlacement, 'derived signal missing: ' + JSON.stringify(z)).to.be.a('boolean');",
+                 "  });",
+                 "});",
+             ]),
     ],
 ))

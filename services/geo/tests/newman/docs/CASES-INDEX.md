@@ -20,6 +20,8 @@ case-id обязан быть здесь литерально ИЛИ покры�
 | `GEO-REG-GT-CONF-OK` | CONF/CRUD | P0 | GET /geo/v1/regions → 200, regions[] non-empty + well-formed, not 503/code14 (migrated from iam) |
 | `REG-GET-CRUD-OK` | CRUD/CONF | P0 | Get region (resolved from List) → 200, flat shape {id,name,createdAt}, createdAt truncate-to-seconds |
 | `REG-GET-CONF-NO-INFRA` | CONF | P1 | public Region carries NO infra fields (two-projection invariant) |
+| `REG-GET-CONF-NO-RAW-STATUS` | CONF | P1 | public Region.Get exposes derived openForPlacement°, NEVER raw GeoStatus (raw status = InternalRegion-only) |
+| `REG-LST-CONF-NO-RAW-STATUS` | CONF | P1 | public Region.List — every item: no raw status, no infra, derived signal present (List is its own serialization path) |
 | `REG-GET-VAL-MALFORMED` | VAL/NEG | P1 | malformed (non-slug) id → 400 INVALID_ARGUMENT (first statement) |
 | `REG-GET-VAL-ID-TOOLONG` | VAL/BVA/NEG | P2 | over-length id (64 chars) → 400 INVALID_ARGUMENT |
 | `REG-GET-NEG-NOTFOUND` | NEG/CONF | P1 | well-formed-absent id → 404 verbatim "Region <id> not found" |
@@ -36,6 +38,7 @@ case-id обязан быть здесь литерально ИЛИ покры�
 | `GEO-ZON-GT-CONF-OK` | CONF/CRUD | P0 | GET /geo/v1/zones → 200, zones[] non-empty + well-formed (id+openForPlacement; NO raw status), not 503/code14 (migrated from iam) |
 | `ZON-GET-CRUD-OK` | CRUD/CONF | P0 | Get zone (resolved from List) → 200, flat shape {id,regionId,name,openForPlacement°,placementBlockedReason°,createdAt}, createdAt truncated |
 | `ZON-GET-CONF-NO-INFRA` | CONF | P1 | public Zone carries NO infra fields (two-projection invariant; NO raw status) |
+| `ZON-LST-CONF-NO-INFRA` | CONF | P1 | public Zone.List — no item carries infra fields nor raw status (List path, separate from Get) |
 | `ZON-GET-VAL-MALFORMED` | VAL/NEG | P1 | malformed (non-slug) id → 400 INVALID_ARGUMENT |
 | `ZON-GET-NEG-NOTFOUND` | NEG/CONF | P1 | well-formed-absent id → 404 verbatim "Zone <id> not found" |
 | `ZON-LST-BVA-PAGESIZE-ZERO` | BVA/PAGE | P2 | pageSize=0 → 200 |
@@ -66,6 +69,18 @@ case-id обязан быть здесь литерально ИЛИ покры�
 | `GEO-REG-GT-AUTHZ-AMBIENT-OK` | AUTHZ/CONF | P1 | authenticated zero-binding GET /geo/v1/regions → 200 (ambient read; project-scope EXEMPT, GEO-1-20) |
 | `GEO-REG-CR-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG | P0 | non-admin InternalRegion.Create (/geo/v1/internal/regions) → 403 PERMISSION_DENIED (system_admin required; GEO-1-22) |
 | `GEO-ZON-CR-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG | P0 | non-admin InternalZone.Create (/geo/v1/internal/zones) → 403 PERMISSION_DENIED |
+| `GEO-REG-GET-AUTHZ-ANON-DENY` | AUTHZ/NEG | P1 | anonymous GET /geo/v1/regions/{id} → 401 UNAUTHENTICATED (Get is a separate exempt RPC from List; GEO-1-21) |
+| `GEO-ZON-GET-AUTHZ-ANON-DENY` | AUTHZ/NEG | P1 | anonymous GET /geo/v1/zones/{id} → 401 UNAUTHENTICATED (GEO-1-21) |
+| `GEO-ZON-GT-AUTHZ-AMBIENT-OK` | AUTHZ/CONF | P0 | never-granted jwtPureNoBindings GET /geo/v1/zones → 200 ambient read (zoneId is what every placement Create needs; GEO-1-20) |
+| `GEO-REG-GET-AUTHZ-AMBIENT-OK` | AUTHZ/CONF | P1 | never-granted principal GET /geo/v1/regions/{id} → 200 (exemption covers Get-by-id, not only List) |
+| `GEO-ZON-GET-AUTHZ-AMBIENT-OK` | AUTHZ/CONF | P1 | never-granted principal GET /geo/v1/zones/{id} → 200 |
+| `GEO-REG-CR-AUTHZ-ANON-DENY` | AUTHZ/NEG | P0 | anonymous InternalRegion.Create on the internal listener → 401 UNAUTHENTICATED (internal is NOT exempt from authN) |
+| `GEO-REG-UPD-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG | P0 | non-admin InternalRegion.Update → 403 PERMISSION_DENIED (system_admin@cluster) |
+| `GEO-REG-DEL-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG | P0 | non-admin InternalRegion.Delete → 403 PERMISSION_DENIED |
+| `GEO-ZON-UPD-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG | P0 | non-admin InternalZone.Update → 403 PERMISSION_DENIED |
+| `GEO-ZON-DEL-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG | P0 | non-admin InternalZone.Delete → 403 PERMISSION_DENIED |
+| `GEO-REG-GTI-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG/CONF | P0 | non-admin InternalRegion.GetInternal on a region the SAME subject just read publicly → 403; raw status + infra stay behind system_admin |
+| `GEO-ZON-GTI-AUTHZ-NONADMIN-DENY` | AUTHZ/NEG/CONF | P0 | non-admin InternalZone.GetInternal on a publicly-readable zone → 403; ZoneInfra stays behind system_admin |
 
 ---
 

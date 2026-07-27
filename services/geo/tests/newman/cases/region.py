@@ -241,3 +241,57 @@ CASES.append(Case(
              test_script=[*assert_status(200)]),
     ],
 ))
+
+
+# ---------------------------------------------------------------------------
+# REG-GET-CONF-NO-RAW-STATUS / REG-LST-CONF-NO-RAW-STATUS — two-projection, the
+# half REG-GET-CONF-NO-INFRA does not cover.
+#
+# assert_no_infra_fields() scans for infra tokens only; `status` is not among
+# them. Raw GeoStatus lives on InternalRegion and is deliberately absent from the
+# public message — the public signal is the DERIVED openForPlacement°. Nothing
+# asserted that on Region until now (Zone had it, Region did not), and nothing
+# asserted either invariant on the LIST projection, which is a different
+# serialization path from Get and can regress on its own.
+# ---------------------------------------------------------------------------
+CASES.append(Case(
+    id="REG-GET-CONF-NO-RAW-STATUS",
+    title="Public Region.Get exposes the derived openForPlacement°, never raw GeoStatus (raw status is "
+          "InternalRegion-only — two-projection)",
+    classes=["CONF"], priority="P1",
+    steps=[
+        Step(name="list-pick", method="GET", path="/geo/v1/regions",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                 *save_from_response("(pm.response.json().regions.find(r => !String(r.id).startsWith('qa')) || pm.response.json().regions[0]).id", "pickRegionId"),
+             ]),
+        Step(name="get-region", method="GET", path="/geo/v1/regions/{{pickRegionId}}",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('public Region carries NO raw status', () => pm.expect(pm.response.json()).to.not.have.property('status'));",
+                 "pm.test('the derived placement signal IS present instead', () => pm.expect(pm.response.json().openForPlacement).to.be.a('boolean'));",
+             ]),
+    ],
+))
+
+CASES.append(Case(
+    id="REG-LST-CONF-NO-RAW-STATUS",
+    title="Public Region.List — EVERY item carries the derived signal and neither raw status nor infra. List "
+          "serializes on its own path; Get coverage does not speak for it",
+    classes=["CONF"], priority="P1",
+    steps=[
+        Step(name="list-regions", method="GET", path="/geo/v1/regions?pageSize=100",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('regions non-empty', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                 "pm.test('no list item carries raw status', () => {",
+                 "  (pm.response.json().regions || []).forEach(r => {",
+                 "    pm.expect(r, 'raw status on public list item: ' + JSON.stringify(r)).to.not.have.property('status');",
+                 "    pm.expect(r.openForPlacement, 'derived signal missing: ' + JSON.stringify(r)).to.be.a('boolean');",
+                 "  });",
+                 "});",
+                 *assert_no_infra_fields(),
+             ]),
+    ],
+))

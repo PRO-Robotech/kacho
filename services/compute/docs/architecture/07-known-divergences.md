@@ -758,3 +758,46 @@ sentinel→code в отдельный слой (если когда-либо) �
 - **envconfig-config (#3), non-CQRS repo-порты (#4), anemic domain (#5)** — уже
   задокументированы как workspace-wide решения в секциях **r7b** (findings7 #9/#8/#7)
   и **r8b**. Здесь — только указатель. (findings r9b #3/#4/#5)
+
+## 12. `List`-фильтр остаётся `name=`, хотя acceptance F14 обещал больше
+
+**Решение:** whitelist `filter` во всех четырёх List-репозиториях compute
+(`instance`/`disk`/`image`/`snapshot`) — **`name=` и только он**. Прежняя редакция
+COMP-1 F14 / COMP-1-36 заявляла ещё `placementGroupId=` и `instanceKind=`; расхождение
+сведено **в пользу кода**, acceptance-док приведён к реализации (§Reconcile F14
+filter-whitelist в `docs/specs/sub-phase-COMP-1-instance-machinetype-acceptance.md`).
+Совпадает с нормативным `api-conventions.md` §pagination/filter («текущая фаза — `name=`»).
+
+**Почему не расширили** (проверено на живой Postgres с применёнными миграциями, а не
+рассуждением):
+
+1. Заявленное **написание** нереализуемо. `pkg/filter.Parse` подставляет имя поля в SQL
+   дословно (`FilterAST.ToSQL`), колонки — snake_case. `… AND instanceKind = $1` →
+   `SQLSTATE 42703 column "instancekind" does not exist`; то же для `placementGroupId`.
+   camelCase из дока дал бы `INTERNAL`, а не отфильтрованную страницу.
+2. `instanceKind` не фильтруется строкой **в принципе**: `instances.instance_kind` —
+   `INTEGER` (ordinal enum, миграция 0016), парсер производит только строковое значение.
+   `… AND instance_kind = 'CONTAINER'` → `SQLSTATE 22P02 invalid input syntax for type
+   integer`. Нужен enum-декодер в **общем** `pkg/filter` — кросс-сервисное изменение.
+3. **Индекса нет, и завести его сейчас нечем оправдать.** Поле фильтра без индекса
+   превращает `List` в полное сканирование под нагрузкой. `instance_kind` — ≤3 значения
+   (нулевая селективность); `placement_group_id` — `DEFAULT ''` практически на всех
+   строках. Существующие индексы `instances` — `(project_id)`, `(created_at)`, `(zone_id)`,
+   `(machine_type_id)` + partial `UNIQUE(project_id,name) WHERE name<>''`; ни один не
+   покрывает новые предикаты.
+4. `placementGroupId` в COMP-1 — **opaque passthrough** (OQ4): без existence/coherence, а
+   сам `PlacementGroup` появляется в **COMP-3**. Фильтр по нему осмыслен одновременно с
+   ресурсом — там же он и заводится, вместе со **своим** partial-индексом
+   `(project_id, placement_group_id, created_at, id) WHERE placement_group_id <> ''`.
+
+Из трёх спорных полей технически реализуемо **одно** — `placement_group_id` (TEXT,
+запрос отработал в замере). Оно отложено не по невозможности, а по п.3-4: индекс сейчас
+был бы стоимостью записи без выигрыша чтения.
+
+**Что вместо этого залочено (наблюдаемо, а не на честном слове):** любое не-`name` поле
+фильтра отвергается **явно** — `INVALID_ARGUMENT "Bad expression at column 1. Unknown
+field: \"<field>\""`, и **никогда** не игнорируется молча. Молчаливое игнорирование было
+бы хуже отказа: caller получил бы нефильтрованную страницу под фильтром, который считает
+применённым. Тесты: `internal/repo/list_filter_whitelist_test.go` (4 репозитория × 6
+полей, assert кода **и** сообщения; проверен инъекцией — расширение whitelist'а красит
+его) + newman `INST-RD-LST-FILTER-UNKNOWN-FIELD-REJECTED` (строгий 400, не `oneOf`).
