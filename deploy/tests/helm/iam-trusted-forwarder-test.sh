@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# iam: кто вправе передавать чужую личность — и видит ли это гейт посадки.
+#
+# Предмет. Оба листенера kacho-iam строили доверенную пару CertIdentityExtract →
+# TrustedPrincipalExtract, но с ПУСТЫМ списком отправителей, что по контракту
+# corelib означает не «никому», а «любому пиру с проверенным сертификатом». Цена
+# именно у iam выше, чем у соседей: на :9090 он СОЗНАТЕЛЬНО не перепроверяет права
+# конечного пользователя (единственная парадная дверь — api-gateway), поэтому
+# сосед с законным сертификатом получал полномочия названной им жертвы на всей
+# тенантской поверхности — вплоть до чеканки личных токенов и ключей служебных
+# учёток. Теперь список приходит из конфигурации, боевой режим на пустом не
+# стартует, а пер-RPC политика вызывающего сужает ещё и «на каком RPC».
+#
+# Этот файл закрывает то, что Go-тесты закрыть не могут:
+#   (1) чарт РЕАЛЬНО отдаёт ручку в конфиг пода, и её дефолт непуст (профиль,
+#       забывший ручку, не должен отгружать «доверяем любому»);
+#   (2) боевой профиль повторяет её явно (правка профиля не может её потерять);
+#   (3) правка ручки перекатывает под (иначе процесс живёт со старой посадкой, а
+#       стража старта не срабатывает, потому что старта нет);
+#   (4) гейт посадки ГРАДУИРУЕТ измерение для iam. Именно тут прячется класс
+#       «форма без содержания»: сервис может честно отчитываться полем, а вердикт
+#       гейта на это поле не смотреть — и красный под печатает галочку.
+#
+# Offline-харнесс (без кластера): рендер под-чарта + чтение профиля + прогон
+# ВЕРДИКТА САМОГО ГЕЙТА (программа jq вынимается из скрипта, а не переписывается
+# здесь — копия разъехалась бы с оригиналом и снова ничего не проверяла).
+set -euo pipefail
+
+SCRIPT="$(basename "$0")"
+DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
+CHART="$DEPLOY_ROOT/helm/umbrella/charts/kacho-iam"
+PROD="$DEPLOY_ROOT/helm/umbrella/values.prod.yaml"
+GATE="$DEPLOY_ROOT/scripts/assert-production-posture.sh"
+
+GATEWAY_SAN="spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+OPERATOR_SAN="spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator"
+
+N=0
+fail() { echo "FAIL: $1"; exit 1; }
+ok() { N=$((N + 1)); }
+
+[ -d "$CHART" ] || fail "iam chart not found at $CHART"
+[ -f "$PROD" ] || fail "values.prod.yaml not found at $PROD"
+[ -f "$GATE" ] || fail "posture gate not found at $GATE"
+
+# rendered_list <render> — записи списка trusted-forwarder-sans из отрендеренного
+# config.yaml. Читаем текстом, а не через yq: в разных средах под этим именем
+# стоят два разных инструмента с несовместимым синтаксисом, и тест не должен
+# зависеть от того, какой из них оказался в PATH.
+rendered_list() {
+  printf '%s\n' "$1" \
+    | awk '/^ *trusted-forwarder-sans: *$/ {inblk=1; next}
+           inblk && /^ *- / {sub(/^ *- */, ""); gsub(/^"|"$/, ""); print; next}
+           inblk && !/^ *$/ {exit}'
+}
+
+# peer_san <chart-path> — личность сертификата, которую этот чарт РЕАЛЬНО выдаёт
+# своему поду. Берём из рендера, а не из шаблона строки: сегмент пространства имён
+# НЕ единообразен (storage и оператор живут в своих), и запись, скопированная у
+# соседа «по образцу», не совпала бы с предъявляемым сертификатом. Промах здесь
+# молчаливый: пир остаётся собой, переданная им личность снимается, и его чтение
+# отвечает как неаутентифицированному.
+peer_san() {
+  # db.password — обязательное значение у части чартов (иначе рендер падает ещё до
+  # сертификата); подставляем заглушку, к предмету проверки она отношения не имеет.
+  helm template x "$1" --namespace kacho --set mtls.enable=true --set db.password=x \
+    --show-only templates/certificate.yaml 2>/dev/null \
+    | grep -oE 'spiffe://[^"]+' | head -1
+}
+
+# ── 1. Дефолт чарта непуст и совпадает с сертификатами, которые выдают соседи ─
+# Круг установлен по рёбрам (кто зовёт ProjectService.Get / Check под личностью
+# конечного пользователя), а сами строки — по чартам этих соседей.
+DEFAULT_RENDER="$(helm template iam "$CHART" --show-only templates/configmap.yaml 2>/dev/null)" \
+  || fail "iam chart does not render"
+def_list="$(rendered_list "$DEFAULT_RENDER")"
+[ -n "$def_list" ] \
+  || fail "trusted-forwarder-sans отсутствует в конфиге пода ИЛИ пуст по умолчанию: профиль, не задавший ручку, отгрузил бы «доверяем любому пиру с сертификатом» (в боевом режиме — отказ старта)"
+for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
+             "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
+             "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
+             "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
+  san="$(peer_san "$chart")"
+  [ -n "$san" ] || fail "чарт $chart не отрендерил сертификат — тест разошёлся с деревом, обнови его"
+  printf '%s\n' "$def_list" | grep -qxF "$san" \
+    || fail "дефолт iam не содержит $san (чарт $chart) — этот пир перестал бы говорить за пользователя, и его путь под личностью тенанта молча отвечал бы как неаутентифицированный"
+done
+# Оператор пространств имён — вне дерева (sibling), его чарта здесь нет; строка
+# зафиксирована по ребру SEC-G. Проверяем хотя бы, что её не потеряли.
+printf '%s\n' "$def_list" | grep -qxF "$OPERATOR_SAN" \
+  || fail "дефолт чарта не содержит оператора пространств имён ($OPERATOR_SAN) — его веерное чтение (SEC-G) стало бы анонимным и вернуло пустоту"
+ok
+
+# ── 2. Оператор всё ещё может выразить пустой список ─────────────────────────
+# Чарт не решает за стражу: пусто он отрендерит, а откажет в старте боевой режим
+# (Config.Validate → validateProductionTrustedForwarders). Так «пусто» остаётся
+# наблюдаемым, а не подменяется чартом на дефолт втихую.
+EMPTY_RENDER="$(helm template iam "$CHART" --set 'config.authn.trustedForwarderSANs=[]' \
+  --show-only templates/configmap.yaml 2>/dev/null)" || fail "render with an empty override failed"
+[ -z "$(rendered_list "$EMPTY_RENDER")" ] \
+  || fail "явно пустая ручка отрендерилась непустой — чарт подменяет намерение оператора"
+ok
+
+# ── 3. Правка ручки перекатывает под ─────────────────────────────────────────
+# Настройки приезжают файлом из ConfigMap и читаются ОДИН раз при старте. Без
+# привязки шаблона пода к содержимому конфига правка не перекатила бы под, процесс
+# жил бы со старой посадкой, а стража старта молчала бы — потому что старта не
+# было. Ровно этот класс однажды дал ложный зелёный на storage.
+POD_ANNOT_A="$(helm template iam "$CHART" --show-only templates/deployment.yaml 2>/dev/null \
+  | grep -m1 'kacho.cloud/config-checksum:')" || fail "deployment does not render"
+POD_ANNOT_B="$(helm template iam "$CHART" --set 'config.authn.trustedForwarderSANs[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway' \
+  --show-only templates/deployment.yaml 2>/dev/null | grep -m1 'kacho.cloud/config-checksum:')"
+[ -n "$POD_ANNOT_A" ] \
+  || fail "у пода нет аннотации с хешем конфига — правка списка не перекатит его, и процесс останется со старой посадкой"
+[ "$POD_ANNOT_A" != "$POD_ANNOT_B" ] \
+  || fail "смена списка не меняет хеш конфига в шаблоне пода — под не перекатится, стража старта не сработает"
+ok
+
+# ── 4. Боевой профиль повторяет ручку явно ───────────────────────────────────
+# Профиль читается через ЕГО СОБСТВЕННЫЙ блок kacho-iam (под-чарт рендерится
+# отдельно, umbrella требует vendored-зависимостей). Сверяем поимённо, а не по
+# счётчику: «стало на одну меньше» должно называть, кого именно потеряли.
+IAM_BLOCK="$(mktemp)"; trap 'rm -f "$IAM_BLOCK"' EXIT
+awk '/^kacho-iam:[[:space:]]*$/{i=1;next} i&&/^[A-Za-z0-9_.-]+:/{exit} i{sub(/^  /,"");print}' "$PROD" > "$IAM_BLOCK"
+[ -s "$IAM_BLOCK" ] || fail "в $PROD нет блока kacho-iam — тест разошёлся с профилем"
+PROD_RENDER="$(helm template iam "$CHART" -f "$IAM_BLOCK" --show-only templates/configmap.yaml 2>/dev/null)" \
+  || fail "iam chart does not render with the production profile"
+prod_list="$(rendered_list "$PROD_RENDER")"
+printf '%s\n' "$prod_list" | grep -qxF "$OPERATOR_SAN" \
+  || fail "боевой профиль потерял оператора пространств имён ($OPERATOR_SAN) — его веерное чтение встанет"
+for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
+             "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
+             "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
+             "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
+  san="$(peer_san "$chart")"
+  printf '%s\n' "$prod_list" | grep -qxF "$san" \
+    || fail "боевой профиль потерял отправителя $san (чарт $chart) — его путь под личностью пользователя встанет"
+done
+ok
+
+# ── 5. Гейт посадки участвует: iam в списке градуируемых ─────────────────────
+grep -qE '^FORWARDER_NARROWING_REQUIRED=.*\biam\b' "$GATE" \
+  || fail "iam не входит в FORWARDER_NARROWING_REQUIRED — гейт не станет градуировать измерение, и под, никого не сузивший, напечатает галочку"
+ok
+
+# ── 6. …и вердикт гейта действительно смотрит на это поле ────────────────────
+# Программу jq вынимаем из самого гейта: переписанная здесь копия разъехалась бы с
+# оригиналом, и проверка снова стала бы формой без содержания.
+JQPROG="$(awk '/verdict="\$\(printf/{f=1} f{print} /join\(", "\)/{if(f) exit}' "$GATE" \
+  | sed "1s/.*jq -r --argjson need_fwd \"\\\$need_fwd\" '//")"
+JQPROG="${JQPROG%\')\"}"
+[ -n "$JQPROG" ] || fail "не удалось вынуть программу вердикта из $GATE (гейт изменил форму — обнови тест)"
+
+line() { # line <trusted_forwarders-фрагмент>
+  printf '{"msg":"boot security posture","service":"iam","auth_mode":"production-strict",'
+  printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":true,"authz_check":true%s}' "$1"
+}
+verdict() { echo "$1" | jq -r --argjson need_fwd "$2" "$JQPROG"; }
+
+# сузивший круг под проходит…
+v="$(verdict "$(line ',"trusted_forwarders":true')" true)"
+[ -z "$v" ] || fail "под, сузивший круг отправителей, забракован вердиктом: '$v'"
+ok
+
+# …не сузивший — валится…
+v="$(verdict "$(line ',"trusted_forwarders":false')" true)"
+case "$v" in *trusted_forwarders*) ;; *) fail "под, НЕ сузивший круг, прошёл вердикт: '$v'";; esac
+ok
+
+# …устаревший бинарь без поля — тоже (fail-closed: неотчитанное не считается сделанным).
+v="$(verdict "$(line '')" true)"
+case "$v" in *trusted_forwarders*) ;; *) fail "самоотчёт без поля прошёл вердикт: '$v'";; esac
+ok
+
+echo "$SCRIPT: OK ($N assertions)"
