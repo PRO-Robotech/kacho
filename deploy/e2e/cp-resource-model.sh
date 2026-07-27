@@ -4,31 +4,68 @@
 # kacho-deploy/e2e/cp-resource-model.sh — integration / e2e test for the public
 # NetworkInterface resource + a negative "infra-info leak" audit of the public
 # REST surface. Runs against a deployed stack via the api-gateway REST endpoint
-# ($BASE_URL — same as e2e/geography-move.sh).
+# ($BASE_URL).
 #
 # Scenarios:
 #   S1 — Network public projection is lean: it must not carry any infra-sensitive
 #        keys.
-#   S2 — NetworkInterface public view is lean (id/folder/name/.../status, used_by);
+#   S2 — NetworkInterface public view is lean (id/project/name/.../status, used_by);
 #        none of the infra-sensitive keys appear publicly.
 #   S3 — freshly-created NIC has empty used_by (public projection). NIC
 #        attach/detach RPCs were removed in KAC-266, so no attach lifecycle here.
-#   S4 — negative infra-leak audit: every public vpc & compute list/get endpoint is
-#        crawled and asserted free of forbidden infra keys (recursive JSON key walk).
+#   S4 — negative infra-leak audit over a REQUIRED set of public list/get endpoints,
+#        asserted free of forbidden infra keys (recursive JSON key walk).
 #
-# Prereqs: stack up; ci/seed.sh has run (so the default folder + a VPC network exist).
+# ---------------------------------------------------------------------------
+# S4 audits BLOCK STORAGE ON ITS OWNER (kacho-storage), and a missing target is a
+# FAILURE — read this before "simplifying" either half back.
 #
-# Usage: BASE_URL=http://localhost:28080 ./e2e/cp-resource-model.sh
+# The audit used to crawl /compute/v1/disks and /compute/v1/images: the block-storage
+# DUPLICATE that kacho-compute still carries while its ownership sits with
+# kacho-storage. It also treated a missing route as a reason to SKIP. Those two
+# choices combined into a check that would disappear on its own: the moment the
+# duplicate is deleted, its routes stop answering, every audited path turns into a
+# skip, and the script goes green while auditing nothing. That is not a hypothetical
+# — deleting the duplicate is the very next step, and this file was the only thing
+# still asserting that block-storage projections carry no infra keys.
+#
+# So: the audited paths are the OWNER's (/storage/v1/...), and REQUIRED_ENDPOINTS is
+# required literally. A target that answers anything other than 200 — route absent,
+# denied, backend down — is reported as FAIL, never as SKIP or WARN. If a path is
+# retired on purpose, this list is edited on purpose; silence is not a way to retire
+# a check.
+#
+# For the same reason S4 SEEDS a volume in the audited project and asserts it is
+# present in the audited payload. Walking an empty list finds no forbidden keys and
+# proves nothing; the audit has to be looking at an actual resource projection.
+# ---------------------------------------------------------------------------
+#
+# Prereqs: stack up and seeded (at least one project exists, geo zones/regions and
+# storage disk types are seeded), plus a bearer token for an identity allowed to read
+# the audited projections.
+#
+# Usage:
+#   BASE_URL=http://localhost:18080 TOKEN="$(…mint…)" ./e2e/cp-resource-model.sh
+#   PROJECT_ID=prj… — optional; otherwise the first project readable by TOKEN is used.
 set -uo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:28080}"
+BASE_URL="${BASE_URL:-http://localhost:18080}"
+TOKEN="${TOKEN:-}"
+PROJECT_ID="${PROJECT_ID:-}"
 PASS=0 FAIL=0
 ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 bad()  { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 warn() { echo "  WARN: $1"; }
 skip() { echo "  SKIP: $1"; }
-code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
-body() { curl -s "$@"; }
+
+# Every request carries the caller's identity. Without it the whole stack answers 401
+# and each assertion below degrades into "could not check" — which is exactly the
+# failure mode this file is being hardened against, so an absent token is fatal up
+# front rather than a runtime shrug.
+AUTH_ARGS=()
+if [[ -n "$TOKEN" ]]; then AUTH_ARGS=(-H "Authorization: Bearer $TOKEN"); fi
+code() { curl -s -o /dev/null -w '%{http_code}' "${AUTH_ARGS[@]}" "$@"; }
+body() { curl -s "${AUTH_ARGS[@]}" "$@"; }
 
 # Forbidden infra-sensitive JSON keys (case-insensitive) — must never appear on the
 # public REST surface (see workspace CLAUDE.md §"Инфра-чувствительные данные").
@@ -83,27 +120,65 @@ wait_op() {
 
 echo "== NetworkInterface resource-model e2e against $BASE_URL =="
 
-# --- discover the seed folder + a VPC network/subnet (ci/seed.sh fixtures) ---
-FOLDER_ID=$(body "$BASE_URL/resource-manager/v1/folders" | python3 -c 'import sys,json;
-try: print((json.load(sys.stdin).get("folders") or [{}])[0].get("id",""))
-except Exception: print("")')
-echo "[setup] folder=$FOLDER_ID"
-[[ -n "$FOLDER_ID" ]] || { echo "FATAL: no folder (run ci/seed.sh)"; exit 1; }
+[[ -n "$TOKEN" ]] || {
+  echo "FATAL: TOKEN is empty — every request would be 401 and every check below would"
+  echo "       report 'could not verify' instead of a verdict. Pass a bearer token."
+  exit 1
+}
 
-CREATED_NETS=() CREATED_NICS=() CREATED_ADDRS=()
+# --- discover a project the caller can read (IAM is the owner of the hierarchy) ---
+if [[ -z "$PROJECT_ID" ]]; then
+  PROJECT_ID=$(body "$BASE_URL/iam/v1/projects" | python3 -c 'import sys,json;
+try: print((json.load(sys.stdin).get("projects") or [{}])[0].get("id",""))
+except Exception: print("")')
+fi
+echo "[setup] project=$PROJECT_ID"
+[[ -n "$PROJECT_ID" ]] || { echo "FATAL: no project readable by TOKEN (seed the stand)"; exit 1; }
+
+# Placement comes from the geo catalog, never from a literal: a hard-coded zone name
+# is a guess about someone else's seed and turns into an async "unknown zone" the
+# moment that seed changes.
+ZONE_ID=$(body "$BASE_URL/geo/v1/zones" | python3 -c 'import sys,json;
+try: print((json.load(sys.stdin).get("zones") or [{}])[0].get("id",""))
+except Exception: print("")')
+echo "[setup] zone=$ZONE_ID"
+[[ -n "$ZONE_ID" ]] || { echo "FATAL: no geo zone (seed the stand)"; exit 1; }
+
+# The subnet CIDR is randomised per run. This script shares a stand with the newman
+# suites, and a fixed block collides with whatever else is holding it — the collision
+# then looks like a flaky product failure rather than a fixture clash.
+CIDR_OCT_A=$(( (RANDOM % 200) + 20 ))
+CIDR_OCT_B=$(( RANDOM % 256 ))
+
+CREATED_NETS=() CREATED_NICS=() CREATED_ADDRS=() CREATED_SUBNETS=()
+SEED_VOL_ID=""
 cleanup() {
+  # The seeded block-storage resource goes first: it is the one this run adds to a
+  # shared stand, and leaving it behind would slowly inflate every other suite's
+  # list expectations.
+  if [[ -n "${SEED_VOL_ID:-}" ]]; then
+    op=$(body -X DELETE "$BASE_URL/storage/v1/volumes/$SEED_VOL_ID" || true)
+    op_id=$(printf '%s' "$op" | jget id); [[ -n "$op_id" ]] && wait_op "$op_id" >/dev/null
+  fi
   for n in "${CREATED_NICS[@]:-}"; do
     [[ -n "$n" ]] || continue
-    op=$(curl -s -X DELETE "$BASE_URL/vpc/v1/networkInterfaces/$n" || true)
+    op=$(body -X DELETE "$BASE_URL/vpc/v1/networkInterfaces/$n" || true)
     op_id=$(printf '%s' "$op" | jget id); [[ -n "$op_id" ]] && wait_op "$op_id" >/dev/null
   done
   for a in "${CREATED_ADDRS[@]:-}"; do
     [[ -n "$a" ]] || continue
-    op=$(curl -s -X DELETE "$BASE_URL/vpc/v1/addresses/$a" || true)
+    op=$(body -X DELETE "$BASE_URL/vpc/v1/addresses/$a" || true)
     op_id=$(printf '%s' "$op" | jget id); [[ -n "$op_id" ]] && wait_op "$op_id" >/dev/null
   done
-  # subnets/networks have dependents; best-effort, ignore failures
-  for net in "${CREATED_NETS[@]:-}"; do [[ -n "$net" ]] && curl -s -o /dev/null -X DELETE "$BASE_URL/vpc/v1/networks/$net" || true; done
+  # Subnets are deleted BEFORE their network: a network with a live subnet refuses to
+  # go, which is how repeated runs used to leave a trail of orphaned networks behind
+  # on a shared stand.
+  for s in "${CREATED_SUBNETS[@]:-}"; do
+    [[ -n "$s" ]] || continue
+    op=$(body -X DELETE "$BASE_URL/vpc/v1/subnets/$s" || true)
+    op_id=$(printf '%s' "$op" | jget id); [[ -n "$op_id" ]] && wait_op "$op_id" >/dev/null
+  done
+  for net in "${CREATED_NETS[@]:-}"; do [[ -n "$net" ]] && code -X DELETE "$BASE_URL/vpc/v1/networks/$net" >/dev/null || true; done
 }
 trap cleanup EXIT
 
@@ -111,7 +186,7 @@ trap cleanup EXIT
 echo
 echo "[S1] Network public projection is lean (no infra-sensitive keys)"
 NET_OP=$(body -X POST "$BASE_URL/vpc/v1/networks" -H 'Content-Type: application/json' \
-            -d "{\"folderId\":\"$FOLDER_ID\",\"name\":\"cprm-s1-net-$RANDOM\",\"description\":\"S1\"}")
+            -d "{\"projectId\":\"$PROJECT_ID\",\"name\":\"cprm-s1-net-$RANDOM\",\"description\":\"S1\"}")
 NET_OP_ID=$(printf '%s' "$NET_OP" | jget id)
 NET_ID=""
 if [[ -n "$NET_OP_ID" ]]; then
@@ -135,13 +210,14 @@ fi
 # ===========================================================================
 echo
 echo "[S2] NetworkInterface — lean public view (no infra-sensitive keys)"
-# need a subnet (zone ru-central1-a, like geography-move.sh)
+# need a subnet (zone + CIDR both come from setup, not from literals)
 SUBNET_ID=""
 if [[ -n "$NET_ID" ]]; then
   SUB_OP=$(body -X POST "$BASE_URL/vpc/v1/subnets" -H 'Content-Type: application/json' \
-              -d "{\"folderId\":\"$FOLDER_ID\",\"name\":\"cprm-s2-sub-$RANDOM\",\"networkId\":\"$NET_ID\",\"zoneId\":\"ru-central1-a\",\"v4CidrBlocks\":[\"10.241.0.0/24\"]}")
+              -d "{\"projectId\":\"$PROJECT_ID\",\"name\":\"cprm-s2-sub-$RANDOM\",\"networkId\":\"$NET_ID\",\"zoneId\":\"$ZONE_ID\",\"v4CidrBlocks\":[\"10.$CIDR_OCT_A.$CIDR_OCT_B.0/24\"]}")
   SUB_OP_ID=$(printf '%s' "$SUB_OP" | jget id)
   [[ -n "$SUB_OP_ID" ]] && SUBNET_ID=$(wait_op "$SUB_OP_ID" | jget metadata.subnetId)
+  [[ -n "$SUBNET_ID" ]] && CREATED_SUBNETS+=("$SUBNET_ID")
 fi
 if [[ -z "$SUBNET_ID" ]]; then
   skip "S2: could not create a subnet — skipping NIC scenario"
@@ -150,7 +226,7 @@ else
   # try NIC create with empty address arrays first; if it requires an address, make one
   NIC_NAME="cprm-s2-nic-$RANDOM"
   NIC_OP=$(body -X POST "$BASE_URL/vpc/v1/networkInterfaces" -H 'Content-Type: application/json' \
-              -d "{\"folderId\":\"$FOLDER_ID\",\"name\":\"$NIC_NAME\",\"subnetId\":\"$SUBNET_ID\"}")
+              -d "{\"projectId\":\"$PROJECT_ID\",\"name\":\"$NIC_NAME\",\"subnetId\":\"$SUBNET_ID\"}")
   NIC_OP_ID=$(printf '%s' "$NIC_OP" | jget id)
   NIC_ID=""
   if [[ -n "$NIC_OP_ID" ]]; then
@@ -162,14 +238,14 @@ else
   if [[ -z "$NIC_ID" ]]; then
     # retry: allocate an internal_ipv4 Address in the subnet first
     ADDR_OP=$(body -X POST "$BASE_URL/vpc/v1/addresses" -H 'Content-Type: application/json' \
-                 -d "{\"folderId\":\"$FOLDER_ID\",\"name\":\"cprm-s2-addr-$RANDOM\",\"internalIpv4AddressSpec\":{\"subnetId\":\"$SUBNET_ID\"}}")
+                 -d "{\"projectId\":\"$PROJECT_ID\",\"name\":\"cprm-s2-addr-$RANDOM\",\"internalIpv4AddressSpec\":{\"subnetId\":\"$SUBNET_ID\"}}")
     ADDR_OP_ID=$(printf '%s' "$ADDR_OP" | jget id)
     ADDR_ID=""
     [[ -n "$ADDR_OP_ID" ]] && ADDR_ID=$(wait_op "$ADDR_OP_ID" | jget metadata.addressId)
     if [[ -n "$ADDR_ID" ]]; then
       CREATED_ADDRS+=("$ADDR_ID")
       NIC_OP=$(body -X POST "$BASE_URL/vpc/v1/networkInterfaces" -H 'Content-Type: application/json' \
-                  -d "{\"folderId\":\"$FOLDER_ID\",\"name\":\"$NIC_NAME\",\"subnetId\":\"$SUBNET_ID\",\"v4AddressIds\":[\"$ADDR_ID\"]}")
+                  -d "{\"projectId\":\"$PROJECT_ID\",\"name\":\"$NIC_NAME\",\"subnetId\":\"$SUBNET_ID\",\"v4AddressIds\":[\"$ADDR_ID\"]}")
       NIC_OP_ID=$(printf '%s' "$NIC_OP" | jget id)
       [[ -n "$NIC_OP_ID" ]] && NIC_ID=$(wait_op "$NIC_OP_ID" | jget metadata.networkInterfaceId)
     fi
@@ -188,7 +264,7 @@ else
       bad "public NIC view LEAKS infra keys: [$LEAKED] body=$NIC_BODY"
     fi
     # spot-check: must still carry the lean fields it is supposed to have
-    for k in id folderId subnetId status; do
+    for k in id projectId subnetId status; do
       [[ -n "$(printf '%s' "$NIC_BODY" | python3 -c "import sys,json
 try:
   d=json.load(sys.stdin); print('1' if '$k' in d else '')
@@ -211,27 +287,62 @@ fi
 
 # ===========================================================================
 echo
-echo "[S4] negative infra-leak audit of the public VPC & Compute REST surface"
-PUBLIC_ENDPOINTS=(
-  "/vpc/v1/networks?folderId=$FOLDER_ID"
-  "/vpc/v1/subnets?folderId=$FOLDER_ID"
-  "/vpc/v1/networkInterfaces?folderId=$FOLDER_ID"
-  "/vpc/v1/addresses?folderId=$FOLDER_ID"
-  "/vpc/v1/securityGroups?folderId=$FOLDER_ID"
-  "/vpc/v1/routeTables?folderId=$FOLDER_ID"
-  "/vpc/v1/gateways?folderId=$FOLDER_ID"
-  "/compute/v1/instances?folderId=$FOLDER_ID"
-  "/compute/v1/disks?folderId=$FOLDER_ID"
-  "/compute/v1/images?folderId=$FOLDER_ID"
-)
-for ep in "${PUBLIC_ENDPOINTS[@]}"; do
-  c=$(code "$BASE_URL$ep")
-  if [[ "$c" == 404 ]]; then
-    skip "$ep -> 404 (not deployed / no such route)"
-    continue
+echo "[S4] negative infra-leak audit of the public VPC / Storage / Compute REST surface"
+
+# --- seed a real block-storage resource so the audit has something to look at ----
+# An audit that walks an empty collection finds no forbidden keys and concludes
+# nothing. The seeded volume makes the storage projections non-empty, and its id is
+# asserted to be present in the audited payload below. (SEED_VOL_ID is declared next
+# to the cleanup trap so the trap can always see it, even on an early exit.)
+DISK_TYPE_ID=$(body "$BASE_URL/storage/v1/diskTypes" | python3 -c 'import sys,json;
+try: print((json.load(sys.stdin).get("diskTypes") or [{}])[0].get("id",""))
+except Exception: print("")')
+if [[ -z "$DISK_TYPE_ID" ]]; then
+  bad "S4 seed: could not discover a storage diskType — the storage audit would run against an empty projection"
+else
+  VOL_OP=$(body -X POST "$BASE_URL/storage/v1/volumes" -H 'Content-Type: application/json' \
+              -d "{\"projectId\":\"$PROJECT_ID\",\"name\":\"cprm-s4-vol-$RANDOM\",\"zoneId\":\"$ZONE_ID\",\"diskTypeId\":\"$DISK_TYPE_ID\",\"sizeBytes\":10737418240}")
+  VOL_OP_ID=$(printf '%s' "$VOL_OP" | jget id)
+  if [[ -n "$VOL_OP_ID" ]]; then
+    OP=$(wait_op "$VOL_OP_ID")
+    # The operation carries a pre-allocated volume id even when it finished WITH an
+    # error, so the error is checked BEFORE the id is used — otherwise the audit
+    # would chase a phantom and report a missing resource as a leak-audit problem.
+    OP_ERR=$(printf '%s' "$OP" | jget error.message)
+    if [[ -n "$OP_ERR" ]]; then
+      bad "S4 seed: volume create failed asynchronously: $OP_ERR"
+    else
+      SEED_VOL_ID=$(printf '%s' "$OP" | jget metadata.volumeId)
+    fi
   fi
+  [[ -n "$SEED_VOL_ID" ]] && ok "S4 seed volume created ($SEED_VOL_ID)" \
+                          || bad "S4 seed: no volume created (op=$VOL_OP) — storage audit would be vacuous"
+fi
+
+# --- required audit targets -----------------------------------------------------
+# REQUIRED means required. Block storage is audited on its OWNER (kacho-storage);
+# compute keeps only what it actually owns (Instance). Anything other than 200 here —
+# route absent, denied, backend down — is a FAILURE, because "the path stopped
+# answering" is precisely how this audit would otherwise delete itself when the
+# compute block-storage duplicate is removed. See the header for the full rationale.
+REQUIRED_ENDPOINTS=(
+  "/vpc/v1/networks?projectId=$PROJECT_ID"
+  "/vpc/v1/subnets?projectId=$PROJECT_ID"
+  "/vpc/v1/networkInterfaces?projectId=$PROJECT_ID"
+  "/vpc/v1/addresses?projectId=$PROJECT_ID"
+  "/vpc/v1/securityGroups?projectId=$PROJECT_ID"
+  "/vpc/v1/routeTables?projectId=$PROJECT_ID"
+  "/vpc/v1/gateways?projectId=$PROJECT_ID"
+  "/storage/v1/volumes?projectId=$PROJECT_ID"
+  "/storage/v1/snapshots?projectId=$PROJECT_ID"
+  "/storage/v1/images?projectId=$PROJECT_ID"
+  "/storage/v1/diskTypes"
+  "/compute/v1/instances?projectId=$PROJECT_ID"
+)
+for ep in "${REQUIRED_ENDPOINTS[@]}"; do
+  c=$(code "$BASE_URL$ep")
   if [[ "$c" != 200 ]]; then
-    warn "$ep -> HTTP $c (not 200) — skipping leak check for it"
+    bad "$ep -> HTTP $c — REQUIRED audit target did not answer 200 (route absent / denied / backend down). This is a failure, not a skip: an unanswered path audits nothing."
     continue
   fi
   b=$(body "$BASE_URL$ep")
@@ -242,6 +353,21 @@ for ep in "${PUBLIC_ENDPOINTS[@]}"; do
     bad "$ep — LEAKS infra keys: [$leaked]"
   fi
 done
+
+# --- non-vacuity: the storage audit must have seen the seeded volume ------------
+# Without this, "no forbidden keys found" stays true for an empty list forever, and
+# a projection change on a resource nobody listed would sail straight through.
+if [[ -n "$SEED_VOL_ID" ]]; then
+  b=$(body "$BASE_URL/storage/v1/volumes?projectId=$PROJECT_ID")
+  if printf '%s' "$b" | grep -q -- "$SEED_VOL_ID"; then
+    ok "storage volume audit is non-vacuous (seeded volume present in the audited payload)"
+  else
+    bad "storage volume audit is VACUOUS: seeded volume $SEED_VOL_ID absent from /storage/v1/volumes — the leak walk had no resource projection to inspect"
+  fi
+  b=$(body "$BASE_URL/storage/v1/volumes/$SEED_VOL_ID"); leaked=$(printf '%s' "$b" | leak_keys)
+  [[ -z "$leaked" ]] && ok "GET storage volume/{id} — no infra keys" \
+                     || bad "GET storage volume/{id} LEAKS: [$leaked]"
+fi
 # also re-check the specific GET-by-id of resources we created (list responses may
 # project differently than single-get on some servers)
 if [[ -n "${NET_ID:-}" ]]; then

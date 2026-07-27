@@ -29,7 +29,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # COLLECTIONS — собственный ожидаемый набор суиты (gen.py эмитит 1:1 из cases/*.py).
-COLLECTIONS=(volume image snapshot disk-type operation internal-volume authz)
+COLLECTIONS=(volume image snapshot disk-type operation internal-volume authz authz-catalog sec-d)
 
 SERVICE=""
 BAIL=""

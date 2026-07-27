@@ -152,11 +152,19 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 
 ## Operation (`cases/operation.py`) — OperationService via OpsProxy (sop-prefix)
 
+Паритет с compute-набором доведён перед сжатием раскола блочного хранения (Get:
+failed-op + контракт-тон not-found; Cancel: вся поверхность — её у storage не было).
+
 | case-id | класс |
 |---|---|
 | OP-GET-CRUD-OK | happy |
+| OP-GET-CRUD-FAILED-OP | negative (ветка `error` в `oneof result`) |
 | OP-GET-NEG-NOTFOUND-VALID-PREFIX | negative |
+| OP-GET-CONF-NF-TEXT | negative (контракт-тон сообщения) |
 | OP-GET-NEG-UNKNOWN-PREFIX | negative |
+| OP-CANCEL-NEG-ALREADY-DONE | negative (STATE) |
+| OP-CANCEL-NEG-NOTFOUND | negative |
+| OP-CANCEL-NEG-UNKNOWN-PREFIX | negative |
 
 ## Public-authz (`cases/authz.py`) — INV-10 (listauthz + object-scoped анти-BOLA)
 
@@ -188,6 +196,57 @@ compute `LF-INST-LST-OVERSHOW-LEAK-GUARD`: владелец создаёт об�
 объекта в выдаче быть не должно. Строго single-shot (retry маскировал бы утечку),
 `pageSize=1000` (чтобы «не видно» не было артефактом первой страницы). Что именно
 сторож доказывает и чего НЕ доказывает — буквально расписано в шапке `cases/authz.py`.
+
+## SEC-D owner-tuple (`cases/sec-d.py`) — register/unregister через kacho-iam
+
+Полный цикл owner-hierarchy tuple на ВСЕХ трёх ресурсах, которые его эмитят
+(`storage_volume` / `storage_snapshot` / `storage_image`): Create → op done+success →
+Get владельцем → **прямая проба отношения** на cluster-internal `iam:check` →
+Delete → Get 404 → проба снятия. Обратная сторона (unregister) проверяется явно:
+односторонний кейс пропустил бы залипший grant на удалённый ресурс.
+
+Кейсы гоняются под `jwtAccountAdminA` (владелец аккаунта суиты), **не** под дефолтным
+cluster-admin: для последнего решение принимается каскадом до вопроса об объекте, и
+кейс отдал бы 200 при полностью не материализованном tuple. Обоснование — в шапке
+`cases/sec-d.py`.
+
+| case-id | ресурс / FGA-тип | класс |
+|---|---|---|
+| SECD-VOL-CR-GET-AFTER-TUPLE-OK | Volume / `storage_volume` | happy (register+unregister) |
+| SECD-SNP-CR-GET-AFTER-TUPLE-OK | Snapshot / `storage_snapshot` | happy (register+unregister) |
+| SECD-IMG-CR-GET-AFTER-TUPLE-OK | Image / `storage_image` | happy (register+unregister) |
+| SECD-DEL-NEG-NOT-FOUND | Volume | negative (нет Operation → нет осиротевшего intent) |
+
+## Каталог DiskType — матрица доступа (`cases/authz-catalog.py`)
+
+Шесть субъектов × три операции над admin-каталогом DiskType: публичное чтение
+(List/Get) доступно любому аутентифицированному, административная мутация — никому
+из них. Матрица зеркалит compute-набор для того же каталога, чтобы сжатие раскола
+блочного хранения не унесло единственную живую проверку этой поверхности.
+
+Две линии отказа различаются намеренно: без учётных данных → 401 / code 16
+UNAUTHENTICATED; с учётными данными, но без права → 403 / code 7 PERMISSION_DENIED.
+
+| case-id | scope | вердикт |
+|---|---|---|
+| SDT-LS-ANON | catalog-read | UNAUTH (401/16) |
+| SDT-LS-NOB | catalog-read | ALLOW (200) |
+| SDT-LS-PA1 | catalog-read | ALLOW (200) |
+| SDT-LS-AAA | catalog-read | ALLOW (200) |
+| SDT-LS-AAB | catalog-read | ALLOW (200) |
+| SDT-LS-INV | catalog-read | ALLOW (200) |
+| SDT-GT-ANON | catalog-read | UNAUTH (401/16) |
+| SDT-GT-NOB | catalog-read | ALLOW (200) |
+| SDT-GT-PA1 | catalog-read | ALLOW (200) |
+| SDT-GT-AAA | catalog-read | ALLOW (200) |
+| SDT-GT-AAB | catalog-read | ALLOW (200) |
+| SDT-GT-INV | catalog-read | ALLOW (200) |
+| SDT-CR-ANON | catalog-mutate | UNAUTH (401/16) |
+| SDT-CR-NOB | catalog-mutate | DENY (403/7) |
+| SDT-CR-PA1 | catalog-mutate | DENY (403/7) |
+| SDT-CR-AAA | catalog-mutate | DENY (403/7) |
+| SDT-CR-AAB | catalog-mutate | DENY (403/7) |
+| SDT-CR-INV | catalog-mutate | DENY (403/7) |
 
 ## InternalVolumeService (`cases/internal-volume.py`) — stage S4 (заметка)
 
