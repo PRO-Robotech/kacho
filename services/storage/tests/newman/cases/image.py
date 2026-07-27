@@ -64,9 +64,32 @@ def _img_body(suffix, **over):
     return b
 
 
+def _assert_env_placement_coherent(suffix):
+    """Предусловие фикстуры: зона окружения обязана лежать в регионе окружения.
+
+    Образ РЕГИОНАЛЬНЫЙ, том-источник ЗОНАЛЬНЫЙ, и Image.Create отвергает захват из
+    тома чужого региона тем же hide-existence-текстом, что и настоящий miss — то
+    есть «Volume <id> not found». Текст такой намеренно (иначе он был бы оракулом
+    существования), но на несогласованном окружении он уводит расследование не туда.
+    Поэтому пара (existingZoneId, existingRegionId) проверяется ОДИН раз и вслух: она
+    когерентна лишь по соглашению об именах, и до сих пор её никто не сверял."""
+    return [
+        Step(name=f"pre-zone-region-coherent-{suffix}", method="GET",
+             path="/geo/v1/zones/{{existingZoneId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                          "  const j = pm.response.json();",
+                          "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; "
+                          "otherwise Image.Create refuses the source volume with the same "
+                          "hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                          "});"]),
+    ]
+
+
 def _pre_source_volume(suffix):
     """Создать READY-том (источник образа/снапшота); сохраняет sourceVolumeId."""
     return [
+        *_assert_env_placement_coherent(suffix),
         Step(name=f"pre-vol-{suffix}", method="POST", path=VOL,
              body={"projectId": "{{_suiteFolderId}}", "name": f"vol-imgsrc-{suffix}-{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",

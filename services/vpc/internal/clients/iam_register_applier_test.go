@@ -129,19 +129,26 @@ func TestIAMRegisterApplier_InvalidArgument_Permanent(t *testing.T) {
 	assert.True(t, errors.Is(err, drainer.ErrPermanent), "InvalidArgument must be poison (no retry)")
 }
 
-// PermissionDenied «grant еще не засеян» (tuple fga_writer@iam_fgaproxy:system у SA
-// пока не провижен) должен классифицироваться как TRANSIENT — drainer ретраит,
-// intent остается durable (sent_at NULL), и owner-tuple доставляется, как только
-// grant осядет. НЕ должно быть ErrPermanent (poison) — иначе потеряли бы tuple
-// из-за временного порядка provisioning'а. Poison'ит только InvalidArgument.
-func TestIAMRegisterApplier_PermissionDenied_Transient(t *testing.T) {
+// PermissionDenied обязан классифицироваться как PERMANENT (poison).
+//
+// Повтор идентичного запроса, которому IAM отказал по правам, пройти не может:
+// решение зависит от (вызывающий, отношение, объект), а повтор не меняет ни одного
+// из трёх. Прежняя трактовка «grant ещё не засеян → ретраим» не покупала будущий
+// успех: transient-строка намеренно держится на attempt_count на единицу ниже
+// порога отравления, поэтому вечно остаётся в блокирующем наборе claim-запроса и
+// заклинивает СВОЮ партицию. Партиция — ресурс, снятие регистрации стоит в ней за
+// регистрацией ⇒ грант переживает удаление ресурса. Отравление — безопасное
+// направление отказа: запись не состоялась, партиция разблокирована, а
+// периодический redrive-бэкстоп переигрывает отравленную строку, поэтому временная
+// причина отработает на следующем круге.
+func TestIAMRegisterApplier_PermissionDenied_Permanent(t *testing.T) {
 	f := &fakeIAMRegisterClient{errSeq: []error{status.Error(codes.PermissionDenied, "no fga_writer relation")}}
 	apply := applierFor(f)
 	err := apply(context.Background(), fgaregister.EventRegister,
 		fgaregister.ProjectHierarchy("proj-x", "vpc_network", "net-1"))
 	require.Error(t, err)
-	assert.False(t, errors.Is(err, drainer.ErrPermanent),
-		"PermissionDenied (grant not yet seeded) must be transient (retry), not poison")
+	assert.True(t, errors.Is(err, drainer.ErrPermanent),
+		"PermissionDenied must poison: an identical retry cannot succeed, and a non-poisoned head wedges its partition")
 	assert.Contains(t, err.Error(), "PermissionDenied")
 }
 

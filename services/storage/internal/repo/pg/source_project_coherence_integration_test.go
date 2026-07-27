@@ -160,14 +160,14 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		ownImgFromSnap, err := ir.Insert(ctx, &domain.Image{
 			ID: ids.NewID(domain.PrefixImage), ProjectID: projAttacker, Name: "own-img-snap",
 			RegionID: "ru-central1", SourceSnapshot: ownSnap.ID,
-		})
+		}, fixtureRegionZones)
 		require.NoError(t, err)
 		require.EqualValues(t, 4<<30, ownImgFromSnap.SizeBytes, "size derived from own snapshot")
 
 		ownImgFromVol, err := ir.Insert(ctx, &domain.Image{
 			ID: ids.NewID(domain.PrefixImage), ProjectID: projAttacker, Name: "own-img-vol",
 			RegionID: "ru-central1", SourceVolume: ownVol.ID,
-		})
+		}, fixtureRegionZones)
 		require.NoError(t, err)
 		require.EqualValues(t, 4<<30, ownImgFromVol.SizeBytes, "size derived from own volume")
 
@@ -193,7 +193,7 @@ func insertImage(ctx context.Context, r *pg.ImageRepo, id, project, name string,
 	_, err := r.Insert(ctx, &domain.Image{
 		ID: id, ProjectID: project, Name: name, RegionID: "ru-central1",
 		SourceSnapshot: src.SourceSnapshot, SourceVolume: src.SourceVolume,
-	})
+	}, fixtureRegionZones)
 	return err
 }
 

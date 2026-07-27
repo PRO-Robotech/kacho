@@ -32,6 +32,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
@@ -108,6 +109,10 @@ func runServe(cfg config.Config) error {
 	geoClient := clients.NewGeoClient(geoConn)
 	iamClient := clients.NewIAMClient(iamConn)
 
+	// Приватный prometheus-реестр. Скрейпится ТОЛЬКО с cluster-internal
+	// diagnostic-порта; ServiceMonitor чарта нацелен именно на него.
+	svcMetrics := metrics.New()
+
 	// ── use-cases (repo → use-case → handler). CQRS reader/writer связываются
 	// раздельно (сейчас обе стороны — один pg-adapter). errStatus — transport-
 	// mapper sentinel→gRPC, инжектится из handler-слоя (serviceerr.ToStatus). ──
@@ -153,7 +158,8 @@ func runServe(cfg config.Config) error {
 	// ── per-object list-filter публичного List (анти-over-show) ───────────────
 	// Per-RPC Check выше гейтит List на project-tier `viewer` — «вправе ли листать
 	// ЭТОТ проект». Сужение страницы до объектов, на которые есть грант
-	// (`viewer ∪ v_list` батчем по прочитанной странице), делает ТОЛЬКО этот фильтр.
+	// (per-object `viewer` батчем по прочитанной странице — то же отношение, что
+	// энфорсит Get), делает ТОЛЬКО этот фильтр.
 	// Без него любой член проекта видел КАЖДЫЙ том/снимок/образ проекта. Тот же
 	// authzConn (kacho-iam internal :9091, mTLS) — там живёт AuthorizeService.
 	// Production boot-guard (config.Validate) не пускает старт с выключенным
@@ -172,8 +178,15 @@ func runServe(cfg config.Config) error {
 	// без гонки с async drainer'ом; drainer — at-least-once backstop). authzConn nil
 	// (dev/no-iam) или drainer выключен → путь пропускается, intents durable.
 	if cfg.FGARegisterDrainerEnabled && authzConn != nil {
-		if derr := startRegisterDrainer(ctx, pool, authzConn, logger); derr != nil {
+		if derr := startRegisterDrainer(ctx, pool, authzConn, svcMetrics, logger); derr != nil {
 			return fmt.Errorf("start register-drainer: %w", derr)
+		}
+		// Отравление обязано быть паузой, а не потерей: без периодического
+		// redrive недоставленная регистрация оставляет ресурс без mirror-строки в
+		// kacho-iam, а значит без owner-tuple и без материализованных глаголов —
+		// невидимым для authz до ручной правки БД. См. redrive_backstop.go.
+		if derr := startRedriveBackstop(ctx, pool, logger); derr != nil {
+			return fmt.Errorf("start redrive backstop: %w", derr)
 		}
 		syncRegistrar := clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(authzConn))
 		volumeUC.WithRegistrar(syncRegistrar)
@@ -232,8 +245,8 @@ func runServe(cfg config.Config) error {
 		"public_port", cfg.GrpcPort,
 		"internal_port", cfg.InternalGrpcPort)
 
-	// ── cluster-internal diagnostic HTTP (/healthz). Пустой addr отключает. ──
-	diagTask, diagShutdown, err := startDiagnosticListener(cfg.MetricsAddr, logger)
+	// ── cluster-internal diagnostic HTTP (/healthz, /metrics). Пустой addr отключает. ──
+	diagTask, diagShutdown, err := startDiagnosticListener(cfg.MetricsAddr, svcMetrics, logger)
 	if err != nil {
 		_ = listener.Close()
 		_ = internalListener.Close()
@@ -320,24 +333,33 @@ func dialPeer(addr string, tls grpcclient.TLSClient, logger *slog.Logger, name s
 	return conn, nil
 }
 
-// startDiagnosticListener поднимает cluster-internal HTTP-listener (/healthz).
-// Пустой addr → (nil, no-op): отключён. net.Listen синхронный — ошибка привязки
-// видна вызывающему сразу.
-func startDiagnosticListener(addr string, logger *slog.Logger) (task func() error, shutdown func(context.Context), err error) {
-	if addr == "" {
-		return nil, func(context.Context) {}, nil
-	}
+// diagnosticMux — маршруты cluster-internal diagnostic-листенера. Вынесен из
+// startDiagnosticListener, чтобы то, ЧТО отдаётся, можно было проверить без сети:
+// расхождение между объявленным в чарте скрейпом и реально обслуживаемым путём
+// иначе замечается только на живом Prometheus (см. diagnostic_metrics_test.go).
+func diagnosticMux(m *metrics.Metrics) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	mux.Handle("GET /metrics", m.Handler())
+	return mux
+}
+
+// startDiagnosticListener поднимает cluster-internal HTTP-listener
+// (/healthz, /metrics). Пустой addr → (nil, no-op): отключён. net.Listen
+// синхронный — ошибка привязки видна вызывающему сразу.
+func startDiagnosticListener(addr string, m *metrics.Metrics, logger *slog.Logger) (task func() error, shutdown func(context.Context), err error) {
+	if addr == "" {
+		return nil, func(context.Context) {}, nil
+	}
+	srv := &http.Server{Addr: addr, Handler: diagnosticMux(m), ReadHeaderTimeout: 5 * time.Second}
 	lis, lerr := net.Listen("tcp", addr)
 	if lerr != nil {
 		return nil, nil, lerr
 	}
-	logger.Info("kacho-storage diagnostic listener", "endpoint", addr, "paths", "/healthz")
+	logger.Info("kacho-storage diagnostic listener", "endpoint", addr, "paths", "/healthz,/metrics")
 	task = func() error {
 		if serr := srv.Serve(lis); serr != nil && serr != http.ErrServerClosed {
 			return serr

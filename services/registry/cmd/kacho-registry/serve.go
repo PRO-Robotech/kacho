@@ -186,8 +186,8 @@ func runServe(cfg config.Config) error {
 	regDrainer, derr := drainer.New[domain.RegisterIntent](
 		pool,
 		drainer.Config{
-			Table:   "kacho_registry.registry_outbox",
-			Channel: "kacho_registry_outbox",
+			Table:   registerOutboxTable,
+			Channel: registerOutboxChannel,
 			// Order-preserving drain, per resource. registry_outbox — это
 			// register-outbox (несмотря на имя): он несёт И fga.register, И
 			// fga.unregister ОДНОГО объекта (Registry Create/Update/Delete;
@@ -231,6 +231,13 @@ func runServe(cfg config.Config) error {
 			logger.Error("register-drainer stopped", "err", rerr)
 		}
 	}()
+	// Отравление обязано быть паузой, а не потерей: без периодического redrive
+	// недоставленная регистрация оставляет объект без mirror-строки в kacho-iam, а
+	// значит без owner-tuple и без материализованных глаголов — невидимым в
+	// authz-фильтрованном List до ручной правки БД. См. redrive_backstop.go.
+	if rerr := startRedriveBackstop(ctx, pool, logger); rerr != nil {
+		return fmt.Errorf("start redrive backstop: %w", rerr)
+	}
 
 	// ── authz: per-RPC OpenFGA Check на ОБОИХ листенерах (AuthN+AuthZ везде —
 	// internal :9091 НЕ освобождён, security.md). Check обязателен —

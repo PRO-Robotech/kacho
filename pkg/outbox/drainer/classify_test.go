@@ -62,13 +62,30 @@ func TestClassify_TransientNeverPoisons(t *testing.T) {
 		fmt.Errorf("dial tcp 10.0.0.1:9091: connect: connection refused"),
 		&net.OpError{Op: "dial", Err: errors.New("connection refused")},
 		errors.New("test: simulated transient"),
-		// PermissionDenied is RAW transient per canonical applier classification
-		// (compute/nlb: PermissionDenied/Unavailable → raw transient, retry, NOT
-		// poison). Only InvalidArgument is permanent.
-		status.Error(codes.PermissionDenied, "no relation"),
 	}
 	for _, err := range transient {
 		assert.Equalf(t, drainer.ClassTransient, drainer.Classify(err),
 			"%v must classify transient (never poison)", err)
 	}
+}
+
+// TestClassify_PermissionDeniedIsPermanent — a denial on authorization grounds is
+// terminal, not transient.
+//
+// Retrying it cannot change the answer: the decision is a function of (caller,
+// relation, object) and a retry alters none of them. Calling it transient does not
+// buy a later success, it buys a row that never reaches the poison gate
+// (markTransientFailure caps attempt_count one below MaxAttempts deliberately) and
+// therefore stays in the claim query's blocking set forever — wedging every later
+// row of its partition. Since partitions are per-resource and a resource's
+// unregistration sits behind its registration, that wedge lets a grant outlive the
+// resource it grants. Poisoning fails closed instead: the write never happened, the
+// partition unblocks, and the service's periodic redrive replays the poisoned row,
+// so a cause that was temporary succeeds on a later pass.
+func TestClassify_PermissionDeniedIsPermanent(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, drainer.ClassPermanent,
+		drainer.Classify(status.Error(codes.PermissionDenied, "no fga_writer relation")),
+		"a permission denial cannot be fixed by repeating the identical request; "+
+			"treating it as transient wedges the partition instead of failing closed")
 }

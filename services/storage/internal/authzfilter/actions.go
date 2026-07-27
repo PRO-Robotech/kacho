@@ -17,7 +17,7 @@ const (
 //
 // Action едет в каждом AuthorizeCheckRequest для аудита/трассировки; РЕШЕНИЕ
 // принимается по явному `required_relation`, который фильтр пинит на батч
-// (`viewer`, затем `v_list` — см. visibilityRelations), а не по server-side
+// (`viewer` — см. visibilityRelations), а не по server-side
 // деривации verb→relation. Но verb всё равно ОБЯЗАН быть из числа тех, что
 // kacho-iam умеет резолвить (канонические get/list), иначе запрос падает на
 // action-валидации ещё до проверки отношения.

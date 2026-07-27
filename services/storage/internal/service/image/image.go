@@ -63,16 +63,29 @@ type Reader interface {
 
 // Writer — write-порт мутаций образов (Insert/Update/Delete).
 type Writer interface {
-	Insert(ctx context.Context, i *domain.Image) (*domain.Image, error)
+	// Insert вставляет образ, сверяя источник с regionZones — зонами, которые
+	// СОСТАВЛЯЮТ регион образа. Сверка идёт ВНУТРИ вставки-CAS (ban #10), см.
+	// repo/pg.imageInsertCoherentSQL; несовпадение → 0 строк → hide-existence
+	// "<Resource> <id> not found", байт-в-байт как настоящий miss.
+	Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error)
 	Update(ctx context.Context, id string, u ImageUpdate) (*domain.Image, error)
 	Delete(ctx context.Context, id string) error
 }
 
-// GeoClient — порт peer-валидации region_id через kacho-geo (RegionService.Get,
-// fail-closed). Ребро storage→geo (one-way). Image — REGIONAL, поэтому валидируется
-// регион (не зона, как Volume).
+// GeoClient — порт peer-валидации размещения через kacho-geo (fail-closed). Ребро
+// storage→geo (one-way). Image — REGIONAL, поэтому валидируется регион (не зона,
+// как Volume).
 type GeoClient interface {
 	EnsureRegionExists(ctx context.Context, regionID string) error
+
+	// ZonesOfRegion возвращает зоны региона по данным ВЛАДЕЛЬЦА Geography.
+	// Нужен, потому что источник образа (Volume) — ЗОНАЛЬНЫЙ, а образ —
+	// РЕГИОНАЛЬНЫЙ: когерентность означает «зона источника ∈ регион образа», и
+	// решает это сам insert-CAS, сверяя живую строку источника с этим набором.
+	// Регион зоны НИКОГДА не выводится разбором имени (data-integrity.md).
+	// Пир недоступен → Unavailable (fail-closed: непроверяемое предусловие не
+	// считается выполненным).
+	ZonesOfRegion(ctx context.Context, regionID string) ([]string, error)
 }
 
 // IAMClient — порт peer-валидации project_id через kacho-iam (ProjectService.Get,
@@ -200,7 +213,8 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Image, stri
 	if err != nil {
 		return nil, "", u.errStatus(err)
 	}
-	// Per-object видимость страницы (batched Check по её id, `viewer ∪ v_list`) —
+	// Per-object видимость страницы (batched Check по её id на `viewer` — то же
+	// отношение, что энфорсит Get) —
 	// см. authzfilter package-doc: вопрос задаётся про ПРОЧИТАННУЮ страницу, а не
 	// «перечисли всё разрешённое» (тот приём усекается пределом ListObjects).
 	// Вызывается ПОСЛЕ валидации page_size (выше) и page_token (repo), поэтому
@@ -244,6 +258,25 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 	if err := u.iam.EnsureProjectExists(ctx, i.ProjectID); err != nil {
 		return nil, u.errStatus(err)
 	}
+	// Зоны региона образа — у владельца Geography. Их сверяет с живой строкой
+	// источника САМ insert-CAS (placement-coherence, ban #10): образ REGIONAL,
+	// его источник ZONAL, и они когерентны только если зона источника лежит в
+	// этом регионе. Резолв идёт до Operation, поэтому недоступность geo видна
+	// вызывающему синхронно (fail-closed), а не прячется в асинхронный отказ.
+	//
+	// Спрашиваем ТОЛЬКО когда источник вообще задан: без источника сверять нечего
+	// (оба предиката CAS тривиально истинны на NULL), и платить за вызов пира —
+	// и делать образ без источника заложником доступности geo — незачем. Решение
+	// принимается по полю ЗАПРОСА, а не по состоянию БД, поэтому это не
+	// check-then-act.
+	var regionZones []string
+	if i.SourceSnapshot != "" || i.SourceVolume != "" {
+		zones, zerr := u.geo.ZonesOfRegion(ctx, i.RegionID)
+		if zerr != nil {
+			return nil, u.errStatus(zerr)
+		}
+		regionZones = zones
+	}
 	i.ID = ids.NewID(domain.PrefixImage)
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Create image %s", i.ID),
@@ -257,7 +290,7 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 	}
 	created := *i
 	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
-		res, derr := u.writer.Insert(ctx, &created)
+		res, derr := u.writer.Insert(ctx, &created, regionZones)
 		if derr != nil {
 			return nil, u.errStatus(derr)
 		}

@@ -80,6 +80,7 @@ type PeerClient struct {
 	RegionOfZoneFunc  func(ctx context.Context, zoneID string) (string, error)
 	EnsureRegionFunc  func(ctx context.Context, regionID string) error
 	EnsureProjectFunc func(ctx context.Context, projectID string) error
+	ZonesOfRegionFunc func(ctx context.Context, regionID string) ([]string, error)
 }
 
 func (m *PeerClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
@@ -98,6 +99,16 @@ func (m *PeerClient) RegionOfZone(ctx context.Context, zoneID string) (string, e
 
 func (m *PeerClient) EnsureRegionExists(ctx context.Context, regionID string) error {
 	return m.EnsureRegionFunc(ctx, regionID)
+}
+
+// ZonesOfRegion — зоны региона по данным владельца Geography. Как и RegionOfZone,
+// принадлежность зоны региону НЕ выводится из имени, поэтому фейк обязан её
+// назвать: незаданный ZonesOfRegionFunc → зоны дефолтного региона фикстур.
+func (m *PeerClient) ZonesOfRegion(ctx context.Context, regionID string) ([]string, error) {
+	if m.ZonesOfRegionFunc != nil {
+		return m.ZonesOfRegionFunc(ctx, regionID)
+	}
+	return []string{"region-1-a", "region-1-b"}, nil
 }
 func (m *PeerClient) EnsureProjectExists(ctx context.Context, projectID string) error {
 	return m.EnsureProjectFunc(ctx, projectID)
@@ -122,13 +133,13 @@ func (m *ImageReader) GetInternal(ctx context.Context, id string) (*domain.Image
 
 // ImageWriter — мок image.Writer на функциях-полях.
 type ImageWriter struct {
-	InsertFunc func(ctx context.Context, i *domain.Image) (*domain.Image, error)
+	InsertFunc func(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error)
 	UpdateFunc func(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error)
 	DeleteFunc func(ctx context.Context, id string) error
 }
 
-func (m *ImageWriter) Insert(ctx context.Context, i *domain.Image) (*domain.Image, error) {
-	return m.InsertFunc(ctx, i)
+func (m *ImageWriter) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error) {
+	return m.InsertFunc(ctx, i, regionZones)
 }
 func (m *ImageWriter) Update(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error) {
 	return m.UpdateFunc(ctx, id, u)

@@ -128,17 +128,31 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 }
 
 // classifyRegisterErr маппит ошибку IAM RPC на transient/permanent-контракт
-// drainer'а. nil → nil (успех). InvalidArgument → permanent (poison: malformed tuple
-// ретраем не починить). Все остальное — включая PermissionDenied (grant fga_writer
-// еще не засеян), Unavailable и транспорт — → transient (ретрай, intent остается
-// durable: fail-closed, но не теряется). Poison'ит только InvalidArgument.
+// drainer'а. nil → nil (успех). InvalidArgument (malformed tuple ретраем не
+// починить) и PermissionDenied → permanent (poison). Все остальное — Unavailable,
+// транспорт, состояние пира — → transient (ретрай, intent остается durable).
+//
+// Отказ по правам терминален, а не временен. Решение об авторизации зависит от
+// (вызывающий, отношение, объект), и повтор не меняет ни одного из трёх, поэтому
+// идентичный повтор пройти не может. «Transient» здесь не покупает будущий успех:
+// дренаж намеренно держит временную строку на единицу НИЖЕ порога отравления,
+// поэтому она никогда не покидает блокирующий набор claim-запроса, и ни одна
+// последующая строка её партиции не клеймится. Партиция — это ресурс, а снятие
+// регистрации стоит в очереди ЗА регистрацией: заклиненная голова означает грант,
+// переживший удаление ресурса. Отравление, наоборот, отказывает закрыто:
+// отвергнутая запись не состоялась, партиция разблокирована. Само по себе оно НЕ
+// самоисцеляется — недоставленная регистрация оставляет ресурс без mirror-строки в
+// kacho-iam, а значит без owner-tuple, — поэтому идёт в паре с периодическим
+// redrive-бэкстопом, который превращает отравление в ограниченную паузу, а не в
+// безвозвратную потерю.
 func classifyRegisterErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if status.Code(err) == codes.InvalidArgument {
+	switch status.Code(err) {
+	case codes.InvalidArgument, codes.PermissionDenied:
 		return errors.Join(drainer.ErrPermanent, fmt.Errorf("iam register apply: %w", err))
 	}
-	// Unavailable / DeadlineExceeded / PermissionDenied / Internal / транспорт → transient.
+	// Unavailable / DeadlineExceeded / Internal / транспорт → transient.
 	return fmt.Errorf("iam register apply: %w", err)
 }

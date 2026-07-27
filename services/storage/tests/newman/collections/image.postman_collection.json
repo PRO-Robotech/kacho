@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "49429c48-2af7-49c1-a7f0-2ee07eeecf68",
+    "_postman_id": "85624cf1-5eeb-4ce0-b6dd-1c0ae0a0969c",
     "name": "kacho-storage / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -31,6 +31,45 @@
       "name": "IMG-CR-CRUD-OK — Create Image из sourceVolumeId → Operation(img metadata) → poll READY → Get: img-prefix, regionId, placementType REGIONAL, format STANDARD, sizeBytes/minDiskBytes derived, createdAt sec",
       "description": "class:CRUD | class:CONF | priority:P1",
       "item": [
+        {
+          "name": "pre-zone-region-coherent-crok",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "pre-vol-crok",
           "request": {
@@ -513,6 +552,45 @@
       "name": "IMG-CR-CRUD-FROM-SNAPSHOT-OK — Create Image из sourceSnapshotId (snapshot-путь source-oneof) → poll READY → Get sourceSnapshotId, status READY",
       "description": "class:CRUD | class:CONF | priority:P1",
       "item": [
+        {
+          "name": "pre-zone-region-coherent-crsnap",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "pre-vol-crsnap",
           "request": {
@@ -1545,6 +1623,45 @@
       "name": "IMG-CR-NEG-DUP-NAME — Create duplicate name в том же project → Operation error ALREADY_EXISTS 'image with name <n> already exists in project' (partial UNIQUE(project_id,name))",
       "description": "class:NEG | class:CONC | class:CONF | priority:P1",
       "item": [
+        {
+          "name": "pre-zone-region-coherent-dup",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "pre-vol-dup",
           "request": {
@@ -2656,6 +2773,45 @@
       "description": "class:CRUD | class:STATE | priority:P1",
       "item": [
         {
+          "name": "pre-zone-region-coherent-upd",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "pre-vol-upd",
           "request": {
             "method": "POST",
@@ -3608,6 +3764,45 @@
       "description": "class:FILTER | class:CRUD | priority:P2",
       "item": [
         {
+          "name": "pre-zone-region-coherent-flt",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "pre-vol-flt",
           "request": {
             "method": "POST",
@@ -4073,6 +4268,45 @@
       "name": "IMG-LST-PAGE-CURSOR — Seed 2 images → List pageSize=1 → ≤1 item + непустой nextPageToken → follow → 200 (cursor (created_at,id) ASC)",
       "description": "class:PAGE | class:CRUD | priority:P2",
       "item": [
+        {
+          "name": "pre-zone-region-coherent-cur",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "pre-vol-cur",
           "request": {
@@ -4724,6 +4958,45 @@
       "description": "class:CONF | class:SEC | priority:P1",
       "item": [
         {
+          "name": "pre-zone-region-coherent-lean",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "pre-vol-lean",
           "request": {
             "method": "POST",
@@ -5153,6 +5426,45 @@
       "name": "IMG-DEL-CRUD-OK — Delete Image → Operation ok (response Empty); Get → 404 NOT_FOUND",
       "description": "class:CRUD | class:STATE | priority:P1",
       "item": [
+        {
+          "name": "pre-zone-region-coherent-delok",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "pre-vol-delok",
           "request": {
@@ -5746,6 +6058,45 @@
       "name": "IMG-VOL-CR-SOURCE-IMAGE-OK — Create boot-Volume c sourceImageId (материализация из Image) → poll → Get: sourceImageId==image, status AVAILABLE (regional-coherent zone∈image.region)",
       "description": "class:CRUD | class:CONF | class:STATE | priority:P1",
       "item": [
+        {
+          "name": "pre-zone-region-coherent-bootsrc",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "pre-vol-bootsrc",
           "request": {
@@ -6618,6 +6969,45 @@
       "description": "class:STATE | class:CONF | priority:P1",
       "item": [
         {
+          "name": "pre-zone-region-coherent-setnull",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "pre-vol-setnull",
           "request": {
             "method": "POST",
@@ -7426,6 +7816,45 @@
       "name": "IMG-LOP-CRUD-OK — ListOperations image → ≥1 op (create), каждый с sop-id",
       "description": "class:CRUD | priority:P1",
       "item": [
+        {
+          "name": "pre-zone-region-coherent-lop",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('env zone belongs to env region (fixture precondition)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.regionId, 'existingZoneId must live in existingRegionId; otherwise Image.Create refuses the source volume with the same hide-existence wording a real miss uses').to.eql(pm.environment.get('existingRegionId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "pre-vol-lop",
           "request": {

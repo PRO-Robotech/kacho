@@ -235,6 +235,10 @@ func TestClassifyRegisterErr(t *testing.T) {
 		{name: "nil", err: nil, wantNil: true},
 		{name: "already_exists", err: status.Error(codes.AlreadyExists, "dup"), wantIs: drainer.ErrAlreadyApplied},
 		{name: "invalid_argument", err: status.Error(codes.InvalidArgument, "bad"), wantIs: drainer.ErrPermanent},
+		// A denial on authorization grounds is terminal: an identical retry cannot
+		// change the answer, and a non-poisoned head stays in the claim query's
+		// blocking set forever — wedging the unregistration queued behind it.
+		{name: "permission_denied", err: status.Error(codes.PermissionDenied, "no fga_writer"), wantIs: drainer.ErrPermanent},
 		{name: "unavailable_raw_transient", err: status.Error(codes.Unavailable, "down")},
 		{name: "internal_raw_transient", err: status.Error(codes.Internal, "boom")},
 	}
