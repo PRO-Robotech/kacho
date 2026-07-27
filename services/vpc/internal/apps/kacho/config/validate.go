@@ -220,8 +220,8 @@ func (c Config) ValidateServerMTLS(m MTLSConfig) error {
 // ScopeFiltered RPC, его object-scope авторизация возлагается на data-level
 // list-filter (authz-interceptor отдаёт для ScopeFiltered DecisionInternal и
 // пропускает per-RPC Check). В production фильтр ОБЯЗАН быть включён и иметь
-// резолвимый authorize/iam эндпоинт — иначе авторизация деградирует до
-// header-trusted AssertProjectOwnership (cross-project enumeration).
+// резолвимый authorize/iam эндпоинт — иначе такой RPC остаётся вообще без
+// object-scope авторизации (cross-project enumeration).
 //
 // scopeFilteredRPCs — имена ScopeFiltered методов из permission-map. Передаются
 // composition root'ом (check.ScopeFilteredRPCs()), чтобы config НЕ импортировал

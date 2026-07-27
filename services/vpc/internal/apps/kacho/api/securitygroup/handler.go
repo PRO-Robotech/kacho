@@ -19,7 +19,6 @@ import (
 
 	// Blank-import регистрирует SecurityGroup/time DTO-трансферы через init().
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/tenant"
 )
 
 // Handler — реализация vpcv1.SecurityGroupServiceServer на основе use-case'ов.
@@ -79,17 +78,12 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetSecurityGroupRequest) (
 	if err != nil {
 		return nil, err
 	}
-	if err := tenant.AssertProjectOwnership(ctx, sg.ProjectID); err != nil {
-		return nil, err
-	}
 	return securityGroupToPb(sg)
 }
 
-// List — project_id required + AuthZ + FGA list-filter.
+// List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
+// project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListSecurityGroupsRequest) (*vpcv1.ListSecurityGroupsResponse, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	subject := pbconv.SubjectFromContext(ctx)
 	sgs, nextToken, err := h.list.Execute(ctx, subject, SecurityGroupFilter{
 		ProjectID: req.ProjectId,
@@ -112,11 +106,9 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListSecurityGroupsRequest
 	return resp, nil
 }
 
-// Create — AuthZ → proto → domain → use-case.
+// Create — proto → domain → use-case. Project-scope AuthZ (`editor @
+// project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateSecurityGroupRequest) (*operationpb.Operation, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	sg := domain.SecurityGroup{
 		ProjectID:   req.ProjectId,
 		NetworkID:   req.NetworkId,
@@ -134,18 +126,15 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateSecurityGroupRequ
 	return pbconv.OperationToProto(op), nil
 }
 
-// Update — sync repo.Get + AuthZ + use-case. Весь набор правил можно заменить
-// целиком (full-replace) через update_mask=rule_specs; инкрементальная правка —
-// через split-endpoint UpdateRules.
+// Update — sync repo.Get (existence → NotFound) + use-case; per-object AuthZ
+// энфорсит per-RPC authz-interceptor. Весь набор правил можно заменить целиком
+// (full-replace) через update_mask=rule_specs; инкрементальная правка — через
+// split-endpoint UpdateRules.
 func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSecurityGroupRequest) (*operationpb.Operation, error) {
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, sg.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SecurityGroupId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -177,11 +166,7 @@ func (h *Handler) UpdateRules(ctx context.Context, req *vpcv1.UpdateSecurityGrou
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, sg.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SecurityGroupId); err != nil {
 		return nil, err
 	}
 	in := UpdateRulesInput{
@@ -204,11 +189,7 @@ func (h *Handler) UpdateRule(ctx context.Context, req *vpcv1.UpdateSecurityGroup
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, sg.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SecurityGroupId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -228,16 +209,13 @@ func (h *Handler) UpdateRule(ctx context.Context, req *vpcv1.UpdateSecurityGroup
 	return pbconv.OperationToProto(op), nil
 }
 
-// Delete — sync repo.Get для AuthZ + default-SG-protected, затем use-case.
+// Delete — sync repo.Get (existence → NotFound) + default-SG-protected, затем
+// use-case. Per-object AuthZ энфорсит per-RPC authz-interceptor.
 func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteSecurityGroupRequest) (*operationpb.Operation, error) {
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, sg.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SecurityGroupId); err != nil {
 		return nil, err
 	}
 	op, err := h.delete.Execute(ctx, req.SecurityGroupId)
@@ -247,16 +225,13 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteSecurityGroupRequ
 	return pbconv.OperationToProto(op), nil
 }
 
-// ListOperations — SG обязан существовать (Get для AuthZ) → list operations.
+// ListOperations — SG обязан существовать (Get → NotFound) → list operations.
+// Per-object AuthZ энфорсит per-RPC authz-interceptor.
 func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListSecurityGroupOperationsRequest) (*vpcv1.ListSecurityGroupOperationsResponse, error) {
 	if req.SecurityGroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
-	sg, err := h.get.Execute(ctx, req.SecurityGroupId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, sg.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SecurityGroupId); err != nil {
 		return nil, err
 	}
 	ops, nextToken, err := h.listOperations.Execute(ctx, req.SecurityGroupId, Pagination{

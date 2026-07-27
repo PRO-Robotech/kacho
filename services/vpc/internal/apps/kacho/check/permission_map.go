@@ -130,11 +130,10 @@ func PermissionMap() authz.RPCMap {
 		// `viewer` на `project:<project_id>` (parity с остальными 6 top-level
 		// List RPC). data-level list-filter (ListNetworksUseCase → BatchCheck)
 		// сужает результат per-object ПОВЕРХ Check'а, но НЕ заменяет его: при
-		// выключенном фильтре (helm-default) единственным гейтом остался бы
-		// header-trusted handler-side AssertProjectOwnership → cross-project
-		// enumeration. Поэтому Check обязателен (НЕ ScopeFiltered) — object-scope
-		// авторизация не деградирует до client-заголовка (SEC audit 2026-07-05,
-		// CWE-862/CWE-639). visibility per-object — через iam BatchCheck
+		// выключенном фильтре (helm-default) RPC остался бы вообще без гейта →
+		// cross-project enumeration. Поэтому Check обязателен (НЕ ScopeFiltered) —
+		// per-RPC Check есть единственная авторизация этого RPC (SEC audit
+		// 2026-07-05, CWE-862/CWE-639). visibility per-object — через iam BatchCheck
 		// `viewer ∪ v_list`, см. authzfilter.
 		"/kacho.cloud.vpc.v1.NetworkService/List": {
 			Relation: relationViewer,

@@ -18,8 +18,8 @@ import (
 
 // MachineTypeHandler реализует computev1.MachineTypeServiceServer (COMP-1 F7) —
 // тонкий transport-слой для public read каталога machine-type. Read ambient
-// (cluster-scoped viewer, project-scope EXEMPT — авторизацию несёт api-gateway;
-// хендлер НЕ вызывает AssertProjectOwnership, паритет с geo-каталогом).
+// (cluster-scoped viewer, project-scope EXEMPT — авторизацию несёт api-gateway
+// и per-RPC Check authz-интерсептора, паритет с geo-каталогом).
 type MachineTypeHandler struct {
 	computev1.UnimplementedMachineTypeServiceServer
 	svc *svc.MachineTypeService

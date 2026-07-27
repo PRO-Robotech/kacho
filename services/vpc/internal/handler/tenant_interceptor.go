@@ -4,13 +4,18 @@
 // Package handler — gRPC unary/stream interceptor, извлекающий caller-identity
 // из metadata и кладущий ее в context через `internal/tenant`.
 //
-// AuthZ-обвязка: метаданные читаются как plaintext (без AuthN/токенов). С
-// интеграцией IAM здесь появится JWT-validating interceptor, достающий
-// projects/admin claims из token; downstream API (`tenant.TenantFromCtx`,
-// `tenant.AssertProjectOwnership`) при этом не меняется.
+// Метаданные читаются как plaintext (без AuthN/токенов). С интеграцией IAM
+// здесь появится JWT-validating interceptor, достающий projects/admin claims из
+// token; downstream API (`tenant.TenantFromCtx`) при этом не меняется.
 //
-// Identity-носитель и handler-side AuthZ-хелперы живут в `internal/tenant`,
-// чтобы use-case-пакеты не зависели от транспорта.
+// AuthZ здесь НЕ живёт: авторизация выражена в permission-модели
+// (`internal/apps/kacho/check.PermissionMap`) и энфорсится per-RPC
+// authz-интерсептором на обоих листенерах, fail-closed. Этот интерсептор даёт
+// только identity — из неё выводятся production-mode AuthN-guard (IsAnonymous)
+// и admin-gate internal-листенера.
+//
+// Identity-носитель живёт в `internal/tenant`, чтобы use-case-пакеты не зависели
+// от транспорта.
 package handler
 
 import (
@@ -62,9 +67,9 @@ func principalForwarded(ctx context.Context) bool {
 //
 // x-kacho-admin honored ТОЛЬКО на internal listener (honorAdmin=requireAdmin):
 // на public listener'е client-supplied admin-заголовок игнорируется, чтобы
-// подделанный `x-kacho-admin:true` не превращал AssertProjectOwnership в no-op
-// cluster-wide (SEC hardening — defense-in-depth: admin-полномочия не выводятся
-// из plaintext-заголовка на tenant-facing поверхности).
+// подделанный `x-kacho-admin:true` не проносил caller'а через admin-gate
+// internal-листенера (SEC hardening — defense-in-depth: admin-полномочия не
+// выводятся из plaintext-заголовка на tenant-facing поверхности).
 func TenantUnaryInterceptor(requireAdmin, productionMode bool) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		t := tenantFromMetadata(ctx, requireAdmin)
@@ -143,9 +148,9 @@ func (w *wrappedStream) Context() context.Context { return w.ctx }
 // tenantFromMetadata — извлекает tenant.TenantCtx из gRPC metadata.
 //
 // honorAdmin=false (public listener) — client-supplied x-kacho-admin
-// игнорируется: t.Admin остается false, чтобы подделанный заголовок не давал
-// cluster-wide bypass AssertProjectOwnership. honorAdmin=true — только internal
-// admin-listener (:9091), где admin-полномочия легитимны.
+// игнорируется: t.Admin остается false, чтобы подделанный заголовок не проносил
+// caller'а через admin-gate. honorAdmin=true — только internal admin-listener
+// (:9091), где admin-полномочия легитимны.
 func tenantFromMetadata(ctx context.Context, honorAdmin bool) tenant.TenantCtx {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {

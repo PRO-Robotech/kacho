@@ -19,7 +19,6 @@ import (
 	// Blank-import регистрирует RouteTable/time DTO трансферы.
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/tenant"
 )
 
 // Handler — реализация vpcv1.RouteTableServiceServer на основе use-case'ов.
@@ -63,17 +62,12 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetRouteTableRequest) (*vp
 	if err != nil {
 		return nil, err
 	}
-	if err := tenant.AssertProjectOwnership(ctx, rt.ProjectID); err != nil {
-		return nil, err
-	}
 	return routeTableToPb(rt)
 }
 
-// List — project_id required + AuthZ + FGA list-filter.
+// List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
+// project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListRouteTablesRequest) (*vpcv1.ListRouteTablesResponse, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	subject := pbconv.SubjectFromContext(ctx)
 	rts, nextToken, err := h.list.Execute(ctx, subject, RouteTableFilter{
 		ProjectID: req.ProjectId,
@@ -96,11 +90,9 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListRouteTablesRequest) (
 	return resp, nil
 }
 
-// Create — AuthZ → proto → domain → use-case.
+// Create — proto → domain → use-case. Project-scope AuthZ (`editor @
+// project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateRouteTableRequest) (*operationpb.Operation, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	rt := domain.RouteTable{
 		ProjectID:   req.ProjectId,
 		NetworkID:   req.NetworkId,
@@ -127,16 +119,13 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateRouteTableRequest
 	return pbconv.OperationToProto(op), nil
 }
 
-// Update — sync repo.Get + AuthZ + use-case.
+// Update — sync repo.Get (existence → NotFound) + use-case. Per-object AuthZ
+// энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateRouteTableRequest) (*operationpb.Operation, error) {
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	rt, err := h.get.Execute(ctx, req.RouteTableId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, rt.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.RouteTableId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -171,16 +160,13 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateRouteTableRequest
 	return pbconv.OperationToProto(op), nil
 }
 
-// Delete — sync repo.Get для AuthZ, затем use-case.
+// Delete — sync repo.Get (existence → NotFound), затем use-case. Per-object
+// AuthZ энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteRouteTableRequest) (*operationpb.Operation, error) {
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	rt, err := h.get.Execute(ctx, req.RouteTableId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, rt.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.RouteTableId); err != nil {
 		return nil, err
 	}
 	op, err := h.delete.Execute(ctx, req.RouteTableId)
@@ -190,16 +176,14 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteRouteTableRequest
 	return pbconv.OperationToProto(op), nil
 }
 
-// ListOperations — best-effort AuthZ.
+// ListOperations — best-effort existence-probe: ресурс удален (NotFound от get)
+// → пропускаем, прочая ошибка возвращается. Per-object AuthZ энфорсит per-RPC
+// authz-interceptor.
 func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListRouteTableOperationsRequest) (*vpcv1.ListRouteTableOperationsResponse, error) {
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	if rt, gerr := h.get.Execute(ctx, req.RouteTableId); gerr == nil {
-		if err := tenant.AssertProjectOwnership(ctx, rt.ProjectID); err != nil {
-			return nil, err
-		}
-	} else if status.Code(gerr) != codes.NotFound {
+	if _, gerr := h.get.Execute(ctx, req.RouteTableId); gerr != nil && status.Code(gerr) != codes.NotFound {
 		return nil, gerr
 	}
 	ops, nextToken, err := h.listOperations.Execute(ctx, req.RouteTableId, Pagination{

@@ -72,12 +72,12 @@ func (u *GetAddressUseCase) Execute(ctx context.Context, id string) (*kachorepo.
 //
 // # AuthZ
 //
-// Как и GetAddressUseCase, собственного authz-гейта не несёт: RPC гейтит per-RPC
-// interceptor (scope на `subnet_id`), а handler дополнительно проверяет
-// `AssertProjectOwnership` найденной строки и маскирует чужой адрес под NotFound
-// — существование IP в чужом project'е не раскрывается. Прежний
-// `enforceGetVisible` здесь страдал ровно тем же дефектом ListObjects-предела,
-// что и на GetAddressUseCase (собственный адрес за 1000-префиксом → ложный 404).
+// Как и GetAddressUseCase, собственного authz-гейта не несёт: RPC целиком гейтит
+// per-RPC authz-interceptor прямым Check'ом `v_get @ vpc_subnet:<req.subnet_id>`
+// (fail-closed, если subnet_id не задан) — handler своей проверки не делает и НЕ
+// дублирует. Прежний `enforceGetVisible` здесь страдал ровно тем же дефектом
+// ListObjects-предела, что и на GetAddressUseCase (собственный адрес за
+// 1000-префиксом → ложный 404).
 type GetByValueUseCase struct {
 	repo Repo
 }

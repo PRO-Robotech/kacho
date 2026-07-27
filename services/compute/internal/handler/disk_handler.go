@@ -45,9 +45,6 @@ func (h *DiskHandler) Get(ctx context.Context, req *computev1.GetDiskRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	if err := AssertProjectOwnership(ctx, d.ProjectID); err != nil {
-		return nil, err
-	}
 	return protoconv.Disk(d), nil
 }
 
@@ -58,9 +55,6 @@ func (h *DiskHandler) Get(ctx context.Context, req *computev1.GetDiskRequest) (*
 // list_filter.go. Нет доступа ни к одной строке страницы → пустая страница (NOT
 // error). filter == nil (dev-bypass) → без фильтрации.
 func (h *DiskHandler) List(ctx context.Context, req *computev1.ListDisksRequest) (*computev1.ListDisksResponse, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	// Validate pagination BEFORE anything authz-related, so a malformed page_token /
 	// out-of-range page_size is 400 InvalidArgument regardless of grant state
 	// (api-convention parity; the repo re-validates as backstop).
@@ -87,9 +81,6 @@ func (h *DiskHandler) List(ctx context.Context, req *computev1.ListDisksRequest)
 
 // Create инициирует создание Disk.
 func (h *DiskHandler) Create(ctx context.Context, req *computev1.CreateDiskRequest) (*operationpb.Operation, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	op, err := h.svc.Create(ctx, svc.CreateDiskReq{
 		ProjectID:           req.ProjectId,
 		Name:                req.Name,
@@ -116,11 +107,7 @@ func (h *DiskHandler) Update(ctx context.Context, req *computev1.UpdateDiskReque
 	if req.DiskId == "" {
 		return nil, status.Error(codes.InvalidArgument, "disk_id required")
 	}
-	d, err := h.svc.Get(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, d.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.DiskId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -147,11 +134,7 @@ func (h *DiskHandler) Delete(ctx context.Context, req *computev1.DeleteDiskReque
 	if req.DiskId == "" {
 		return nil, status.Error(codes.InvalidArgument, "disk_id required")
 	}
-	d, err := h.svc.Get(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, d.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.DiskId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.Delete(ctx, req.DiskId)
@@ -166,11 +149,7 @@ func (h *DiskHandler) Relocate(ctx context.Context, req *computev1.RelocateDiskR
 	if req.DiskId == "" {
 		return nil, status.Error(codes.InvalidArgument, "disk_id required")
 	}
-	d, err := h.svc.Get(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, d.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.DiskId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.Relocate(ctx, req.DiskId, req.DestinationZoneId)
@@ -185,11 +164,7 @@ func (h *DiskHandler) ListOperations(ctx context.Context, req *computev1.ListDis
 	if req.DiskId == "" {
 		return nil, status.Error(codes.InvalidArgument, "disk_id required")
 	}
-	d, err := h.svc.Get(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, d.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.DiskId); err != nil {
 		return nil, err
 	}
 	ops, nextToken, err := h.svc.ListOperations(ctx, req.DiskId, svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})

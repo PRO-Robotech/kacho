@@ -14,8 +14,9 @@ import (
 // TestTenantFromMetadata_ReadsProjectIDHeader locks the post-project-rename wire
 // contract: caller project-scope is carried by the canonical `x-kacho-project-id`
 // header (matching the renamed project_id model and the kacho-vpc sibling), NOT
-// the vestigial `x-kacho-folder-id`. Reading the wrong header name silently drops
-// the defense-in-depth ownership scope (ProjectIDs empty → full access).
+// the vestigial `x-kacho-folder-id`. Resource access is NOT gated on this scope
+// (that is the per-RPC FGA Check + listauthz); it feeds IsAnonymous, so reading
+// the wrong header name would make a scoped caller look anonymous.
 func TestTenantFromMetadata_ReadsProjectIDHeader(t *testing.T) {
 	md := metadata.New(map[string]string{
 		"x-kacho-project-id": "p1",
@@ -25,10 +26,8 @@ func TestTenantFromMetadata_ReadsProjectIDHeader(t *testing.T) {
 	trusted := tenantFromMetadata(ctx, true)
 	assert.Contains(t, trusted.ProjectIDs, "p1",
 		"trusted peer's x-kacho-project-id must populate ProjectIDs")
-	assert.True(t, trusted.HasProjectAccess("p1"),
-		"caller scoped to p1 has access to p1")
-	assert.False(t, trusted.HasProjectAccess("p-other"),
-		"caller scoped to p1 must not have access to a different project")
+	assert.False(t, trusted.IsAnonymous(),
+		"a caller with a trusted project-scope is not anonymous for the AuthN gate")
 }
 
 // TestTenantFromMetadata_IgnoresLegacyFolderHeader ensures the legacy

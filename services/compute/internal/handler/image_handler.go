@@ -41,9 +41,6 @@ func (h *ImageHandler) Get(ctx context.Context, req *computev1.GetImageRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if err := AssertProjectOwnership(ctx, i.ProjectID); err != nil {
-		return nil, err
-	}
 	return protoconv.Image(i), nil
 }
 
@@ -64,9 +61,6 @@ func (h *ImageHandler) Get(ctx context.Context, req *computev1.GetImageRequest) 
 // continuation-token'а) и на большом сторе отдавала NotFound для СВОЕГО
 // разрешённого образа; см. package-doc `internal/authzfilter`.
 func (h *ImageHandler) GetLatestByFamily(ctx context.Context, req *computev1.GetImageLatestByFamilyRequest) (*computev1.Image, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	i, err := h.svc.GetLatestByFamily(ctx, req.ProjectId, req.Family)
 	if err != nil {
 		return nil, err
@@ -87,9 +81,6 @@ func (h *ImageHandler) GetLatestByFamily(ctx context.Context, req *computev1.Get
 // Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
 // iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.
 func (h *ImageHandler) List(ctx context.Context, req *computev1.ListImagesRequest) (*computev1.ListImagesResponse, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	// Validate pagination BEFORE anything authz-related (see disk_handler).
 	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
@@ -114,9 +105,6 @@ func (h *ImageHandler) List(ctx context.Context, req *computev1.ListImagesReques
 
 // Create инициирует создание Image.
 func (h *ImageHandler) Create(ctx context.Context, req *computev1.CreateImageRequest) (*operationpb.Operation, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	op, err := h.svc.Create(ctx, svc.CreateImageReq{
 		ProjectID:          req.ProjectId,
 		Name:               req.Name,
@@ -144,11 +132,7 @@ func (h *ImageHandler) Update(ctx context.Context, req *computev1.UpdateImageReq
 	if req.ImageId == "" {
 		return nil, status.Error(codes.InvalidArgument, "image_id required")
 	}
-	i, err := h.svc.Get(ctx, req.ImageId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, i.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.ImageId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -174,11 +158,7 @@ func (h *ImageHandler) Delete(ctx context.Context, req *computev1.DeleteImageReq
 	if req.ImageId == "" {
 		return nil, status.Error(codes.InvalidArgument, "image_id required")
 	}
-	i, err := h.svc.Get(ctx, req.ImageId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, i.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.ImageId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.Delete(ctx, req.ImageId)
@@ -193,11 +173,7 @@ func (h *ImageHandler) ListOperations(ctx context.Context, req *computev1.ListIm
 	if req.ImageId == "" {
 		return nil, status.Error(codes.InvalidArgument, "image_id required")
 	}
-	i, err := h.svc.Get(ctx, req.ImageId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, i.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.ImageId); err != nil {
 		return nil, err
 	}
 	ops, nextToken, err := h.svc.ListOperations(ctx, req.ImageId, svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})

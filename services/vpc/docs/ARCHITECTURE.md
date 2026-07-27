@@ -281,7 +281,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 | `operation_handler.go` | `OperationService.Get` / `Cancel` |
 | `internal_address_allocate_handler.go` | `InternalAddressService.AllocateInternalIP/IPv6/External` + referrer-tracking |
 | `internal_network_handler.go` | `InternalNetworkService` (`GetNetwork` — internal-only `vrf_id`; `SetDefaultSecurityGroupId`) |
-| `tenant_interceptor.go` | `TenantUnaryInterceptor`, `TenantStreamInterceptor` (tenant-context из gRPC metadata; `TenantCtx` / `AssertProjectOwnership` — в `internal/tenant`) |
+| `tenant_interceptor.go` | `TenantUnaryInterceptor`, `TenantStreamInterceptor` (tenant-context из gRPC metadata; `TenantCtx` — в `internal/tenant`) |
 | `internal_maperr.go` | Общий маппер ошибок internal-handlers без info-leak |
 
 Конвертация `Operation` в proto — пакет `internal/apps/kacho/shared/pbconv`
@@ -500,12 +500,15 @@ Immutable-поля по ресурсам:
 
 | Header | Семантика |
 |---|---|
-| `x-kacho-project-id` (повторяемый) | Project, к которому caller имеет доступ |
-| `x-kacho-admin: true` | Cluster-wide админ, минует project-check |
+| `x-kacho-project-id` (повторяемый) | Project'ы, **заявленные** caller'ом. НЕ выдают доступ: объектную авторизацию решает per-RPC FGA-Check. Питает только `IsAnonymous` |
+| `x-kacho-admin: true` | Cluster-wide админ, минует admin-gate :9091 |
 
-В context кладется `TenantCtx{ProjectIDs, Admin}`. Handler-ы
-вызывают `AssertProjectOwnership(ctx, resource.ProjectID)` после `repo.Get`
-и до возврата ресурса/мутации.
+В context кладется `TenantCtx{ProjectIDs, Admin}`. Она несёт только identity:
+из неё выводятся production-mode AuthN-guard (`IsAnonymous`) и admin-gate
+internal-листенера. **Объектная авторизация в handler-ах не живёт** — она
+выражена в permission-модели (`internal/apps/kacho/check.PermissionMap`) и
+энфорсится per-RPC authz-интерсептором (`InternalIAMService.Check` → OpenFGA)
+на обоих листенерах, fail-closed для не описанных в карте RPC.
 
 Anonymous (нет ни Admin, ни ProjectIDs) ведет себя по-разному в зависимости
 от `KACHO_VPC_AUTH_MODE`:
@@ -1041,7 +1044,7 @@ umbrella-чартом `kacho-deploy` для dev-стенда (kind + Postgres + 
 | Транспорт (cross-service) | TLS на gRPC к kacho-iam (`KACHO_VPC_IAM_TLS`) |
 | Транспорт (cross-service DB) | sslmode для pgx DSN |
 | AuthN | Сейчас не реализован — IAM scaffolding через metadata headers, future — JWT |
-| AuthZ (project ownership) | `AssertProjectOwnership(ctx, project_id)` во всех публичных handler-ах |
+| AuthZ (object-scope) | per-RPC FGA-Check из `internal/apps/kacho/check.PermissionMap` на обоих листенерах (fail-closed для RPC вне карты) |
 | AuthZ (admin operations) | `requireAdmin=true` interceptor на :9091 |
 | Сетевая защита :9091 | k8s NetworkPolicy (allowlist namespaces) |
 | Info-leak guard | `mapRepoErr`/`internalMapErr` не передают raw err.Error в gRPC-text |
@@ -1231,8 +1234,9 @@ baseline в `tests/k6/results/BASELINE.md`.)
 1. Public per-resource handler — `internal/apps/kacho/api/<resource>/handler.go`
    рядом со своим use-case'ом; internal/cross-cutting — в `internal/handler/`.
 2. Handler — thin transport: parse req → call service → format resp.
-3. Каждый Get/Update/Delete делает `AssertProjectOwnership(ctx, resource.ProjectID)`
-   (`internal/tenant`) после `repo.Get` (через service).
+3. Get/Update/Delete делают `repo.Get` (через service) ради existence-контракта
+   (`NOT_FOUND`); объектную авторизацию делает per-RPC authz-интерсептор по
+   `internal/apps/kacho/check.PermissionMap`, а не handler.
 4. В `internal/handler/tenant_interceptor.go` — unary и stream interceptors поверх
    `TenantCtx` и AuthMode.
 5. В `internal/handler/internal_address_allocate_handler.go` — обертка над
@@ -1285,7 +1289,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
 | timestamp truncation | Все `created_at` в proto-response обрезаны до секунд |
 | empty mask | `UpdateNetwork` с пустой mask применяет mutable поля и игнорирует immutable из body |
 | Operation response type | `Delete*` возвращают `Operation` с `response = google.protobuf.Empty` (а не `Delete*Metadata`) |
-| Cross-tenant denied | Caller с `x-kacho-project-id: f1` не видит ресурс из `f2` → `PERMISSION_DENIED` |
+| Cross-tenant denied | Principal без гранта на объект → per-RPC FGA-Check (`v_get`/`v_update`/… на `vpc_<resource>:<id>`) отдаёт `PERMISSION_DENIED` (либо `NOT_FOUND` при hide-existence) ещё до handler'а |
 | Internal listener camouflage | Non-admin caller на :9091 для не-Internal RPC получает `NOT_FOUND`, не `PERMISSION_DENIED` |
 
 ---

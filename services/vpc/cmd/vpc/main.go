@@ -991,9 +991,6 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	addressHandler := addressapp.NewHandler(
 		addressCreateUC, addressUpdateUC, addressDeleteUC,
 		addressGetUC, addressGetByValueUC, addressListUC, addressListBySubnetUC, addressListOpsUC,
-		// SubnetAuthZ: handler-level ownership pre-check для ListBySubnet
-		// (defense-in-depth поверх per-RPC authz-interceptor).
-		subnetAdapter,
 	)
 
 	// SecurityGroup — use-case-структура. Split-endpoint Update / UpdateRules /

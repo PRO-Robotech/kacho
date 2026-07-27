@@ -20,20 +20,19 @@ import (
 // `project:<project_id>`) точно так же, как остальные 6 top-level List RPC
 // (Subnet/Address/RouteTable/SecurityGroup/Gateway/NetworkInterface). Пометка
 // ScopeFiltered=true отдавала бы DecisionInternal в authz-interceptor'е →
-// per-RPC Check пропускался, и единственным гейтом оставался handler-side
-// tenant.AssertProjectOwnership, который доверяет client-supplied
-// x-kacho-admin / x-kacho-project-id metadata. При выключенном data-level
-// list-filter (helm-default `listFilter.enabled=false`) это открывало
-// cross-project enumeration Network'ов через подделанный admin-заголовок.
+// per-RPC Check пропускался бы, и RPC остался бы вообще без объектной
+// авторизации: in-service per-RPC Check — единственный её гейт. При выключенном
+// data-level list-filter (helm-default `listFilter.enabled=false`) это открывало
+// cross-project enumeration Network'ов.
 //
 // Инвариант: НИ ОДИН top-level project List не должен быть ScopeFiltered —
-// объектная авторизация не должна деградировать до header-trusted пути.
+// объектная авторизация не должна исчезать с request-path.
 func TestPermissionMap_NetworkList_ServerSideCheck(t *testing.T) {
 	m := check.PermissionMap()
 	e, ok := m.Lookup("/kacho.cloud.vpc.v1.NetworkService/List")
 	require.True(t, ok, "NetworkService/List должен быть в PermissionMap")
 	require.Falsef(t, e.ScopeFiltered,
-		"NetworkService/List не должен быть ScopeFiltered — иначе per-RPC Check пропускается и остаётся только header-trusted AssertProjectOwnership (cross-project enumeration)")
+		"NetworkService/List не должен быть ScopeFiltered — иначе per-RPC Check пропускается и RPC остаётся без объектной авторизации (cross-project enumeration)")
 	require.Equal(t, "viewer", e.Relation,
 		"top-level project List гейтится tier viewer на project (parity с остальными List)")
 

@@ -41,9 +41,6 @@ func (h *SnapshotHandler) Get(ctx context.Context, req *computev1.GetSnapshotReq
 	if err != nil {
 		return nil, err
 	}
-	if err := AssertProjectOwnership(ctx, snap.ProjectID); err != nil {
-		return nil, err
-	}
 	return protoconv.Snapshot(snap), nil
 }
 
@@ -52,9 +49,6 @@ func (h *SnapshotHandler) Get(ctx context.Context, req *computev1.GetSnapshotReq
 // Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
 // iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.
 func (h *SnapshotHandler) List(ctx context.Context, req *computev1.ListSnapshotsRequest) (*computev1.ListSnapshotsResponse, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	// Validate pagination BEFORE anything authz-related (see disk_handler).
 	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
@@ -79,9 +73,6 @@ func (h *SnapshotHandler) List(ctx context.Context, req *computev1.ListSnapshots
 
 // Create инициирует создание Snapshot.
 func (h *SnapshotHandler) Create(ctx context.Context, req *computev1.CreateSnapshotRequest) (*operationpb.Operation, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	op, err := h.svc.Create(ctx, svc.CreateSnapshotReq{
 		ProjectID:          req.ProjectId,
 		DiskID:             req.DiskId,
@@ -101,11 +92,7 @@ func (h *SnapshotHandler) Update(ctx context.Context, req *computev1.UpdateSnaps
 	if req.SnapshotId == "" {
 		return nil, status.Error(codes.InvalidArgument, "snapshot_id required")
 	}
-	snap, err := h.svc.Get(ctx, req.SnapshotId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, snap.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.SnapshotId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -130,11 +117,7 @@ func (h *SnapshotHandler) Delete(ctx context.Context, req *computev1.DeleteSnaps
 	if req.SnapshotId == "" {
 		return nil, status.Error(codes.InvalidArgument, "snapshot_id required")
 	}
-	snap, err := h.svc.Get(ctx, req.SnapshotId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, snap.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.SnapshotId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.Delete(ctx, req.SnapshotId)
@@ -149,11 +132,7 @@ func (h *SnapshotHandler) ListOperations(ctx context.Context, req *computev1.Lis
 	if req.SnapshotId == "" {
 		return nil, status.Error(codes.InvalidArgument, "snapshot_id required")
 	}
-	snap, err := h.svc.Get(ctx, req.SnapshotId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, snap.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.SnapshotId); err != nil {
 		return nil, err
 	}
 	ops, nextToken, err := h.svc.ListOperations(ctx, req.SnapshotId, svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})

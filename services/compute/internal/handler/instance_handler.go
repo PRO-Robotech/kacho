@@ -50,9 +50,6 @@ func (h *InstanceHandler) Get(ctx context.Context, req *computev1.GetInstanceReq
 	if err != nil {
 		return nil, err
 	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
-		return nil, err
-	}
 	p := protoconv.Instance(in)
 	// GetInstanceRequest.view — metadata возвращается только при view=FULL.
 	if req.View != computev1.InstanceView_FULL {
@@ -67,9 +64,6 @@ func (h *InstanceHandler) Get(ctx context.Context, req *computev1.GetInstanceReq
 // iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.
 // Ничего не видно → пустая страница (NOT 403 — конвенция Kachō для list-empty).
 func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstancesRequest) (*computev1.ListInstancesResponse, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	// Validate pagination BEFORE anything authz-related (see disk_handler).
 	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
@@ -98,9 +92,6 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 
 // Create инициирует создание Instance (COMP-1 redesign).
 func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInstanceRequest) (*operationpb.Operation, error) {
-	if err := AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	op, err := h.svc.Create(ctx, CreateReqFromProto(req))
 	if err != nil {
 		return nil, err
@@ -149,11 +140,7 @@ func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInsta
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -185,11 +172,7 @@ func (h *InstanceHandler) UpdateMetadata(ctx context.Context, req *computev1.Upd
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.UpdateMetadata(ctx, req.InstanceId, req.Delete, req.Upsert)
@@ -218,11 +201,7 @@ func (h *InstanceHandler) lifecycle(ctx context.Context, id string, fn func(cont
 	if id == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, id); err != nil {
 		return nil, err
 	}
 	op, err := fn(ctx, id)
@@ -237,11 +216,7 @@ func (h *InstanceHandler) AttachDisk(ctx context.Context, req *computev1.AttachI
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.AttachDisk(ctx, req.InstanceId, attachDiskReqFromSpec(req.AttachedDiskSpec))
@@ -256,11 +231,7 @@ func (h *InstanceHandler) DetachDisk(ctx context.Context, req *computev1.DetachI
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.DetachDisk(ctx, req.InstanceId, req.GetVolumeId(), req.GetDeviceName())
@@ -280,11 +251,7 @@ func (h *InstanceHandler) AttachNetworkInterface(ctx context.Context, req *compu
 	if spec == nil {
 		return nil, status.Error(codes.InvalidArgument, "attached_nic_spec is required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.AttachNetworkInterface(ctx, req.InstanceId, spec.GetNicId(), spec.GetIndex())
@@ -300,14 +267,13 @@ func (h *InstanceHandler) DetachNetworkInterface(ctx context.Context, req *compu
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
-		return nil, err
-	}
-	var op *operations.Operation
+	var (
+		op  *operations.Operation
+		err error
+	)
 	switch req.GetNetworkInterface().(type) {
 	case *computev1.DetachInstanceNetworkInterfaceRequest_NicId:
 		op, err = h.svc.DetachNetworkInterface(ctx, req.InstanceId, req.GetNicId(), 0, false)
@@ -327,11 +293,7 @@ func (h *InstanceHandler) SimulateMaintenanceEvent(ctx context.Context, req *com
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.SimulateMaintenanceEvent(ctx, req.InstanceId)
@@ -346,11 +308,7 @@ func (h *InstanceHandler) Delete(ctx context.Context, req *computev1.DeleteInsta
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	op, err := h.svc.Delete(ctx, req.InstanceId)
@@ -365,11 +323,7 @@ func (h *InstanceHandler) GetSerialPortOutput(ctx context.Context, req *computev
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	contents, err := h.svc.GetSerialPortOutput(ctx, req.InstanceId)
@@ -384,11 +338,7 @@ func (h *InstanceHandler) ListOperations(ctx context.Context, req *computev1.Lis
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	in, err := h.svc.Get(ctx, req.InstanceId)
-	if err != nil {
-		return nil, err
-	}
-	if err := AssertProjectOwnership(ctx, in.ProjectID); err != nil {
+	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
 	ops, nextToken, err := h.svc.ListOperations(ctx, req.InstanceId, svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})

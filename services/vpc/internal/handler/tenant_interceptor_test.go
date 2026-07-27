@@ -146,9 +146,9 @@ func TestTenantUnary_ProjectProductionPasses(t *testing.T) {
 
 // TestTenantUnary_AdminHeaderNotHonoredOnPublic — на public-listener'е
 // (requireAdmin=false) client-supplied x-kacho-admin НЕ должен давать
-// cluster-admin: t.Admin остается false, поэтому AssertProjectOwnership не
-// обходится подделанным заголовком (SEC-low hardening). Admin-only header в
-// production → без реального project-claim'а caller anonymous → PermissionDenied.
+// cluster-admin: t.Admin остается false, поэтому admin-gate не обходится
+// подделанным заголовком (SEC-low hardening). Admin-only header в production →
+// без реального project-claim'а caller anonymous → PermissionDenied.
 func TestTenantUnary_AdminHeaderNotHonoredOnPublic(t *testing.T) {
 	// dev-mode: admin header игнорируется на public, t.Admin=false.
 	captured, err := runInterceptorCapture(t, false, false, "/svc/M",
@@ -157,7 +157,7 @@ func TestTenantUnary_AdminHeaderNotHonoredOnPublic(t *testing.T) {
 		t.Fatalf("dev public admin-header: unexpected err %v", err)
 	}
 	if captured.Admin {
-		t.Fatal("public listener не должен доверять client x-kacho-admin (t.Admin=true) — обход AssertProjectOwnership")
+		t.Fatal("public listener не должен доверять client x-kacho-admin (t.Admin=true) — обход admin-gate")
 	}
 	// production-mode: admin-only header не авторизует → anonymous → reject.
 	_, perr := runInterceptorCapture(t, true, false, "/svc/M",
@@ -192,8 +192,11 @@ func TestTenantUnary_PublicProjectClaimStillHonored(t *testing.T) {
 	if captured.Admin {
 		t.Fatal("project-claim не должен давать Admin")
 	}
-	if !captured.HasProjectAccess("f1") || captured.HasProjectAccess("f2") {
-		t.Fatal("project-scope нарушен: должен видеть f1, не f2")
+	if _, ok := captured.ProjectIDs["f1"]; !ok {
+		t.Fatal("project-scope нарушен: identity должна нести f1")
+	}
+	if _, ok := captured.ProjectIDs["f2"]; ok {
+		t.Fatal("project-scope нарушен: identity не должна нести f2")
 	}
 }
 

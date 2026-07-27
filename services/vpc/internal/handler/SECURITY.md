@@ -27,15 +27,18 @@ GitHub Security Advisories репозитория (`Security` → `Report a vuln
 
 ## Что сделано
 
-### Tenant isolation (project ownership) на public-handler'ах
+### Tenant isolation — permission-модель, не handler-код
 
-Каждый public RPC, читающий/мутирующий конкретный ресурс, проверяет, что
-`resource.project_id` принадлежит caller'у. Tenant-context извлекается
-interceptor'ом (`internal/handler/tenant_interceptor.go`), проверка —
-`AssertProjectOwnership` в handler'ах (address/network/subnet/route_table/
-security_group/gateway). Cross-tenant `Get` и `Get`
-несуществующего ресурса дают одинаковый `404` (info-leak prevention; см.
-`Address.GetByValue`).
+Каждый public RPC, читающий/мутирующий конкретный ресурс, авторизуется **per-RPC
+FGA-Check'ом** из `internal/apps/kacho/check.PermissionMap` (`v_get`/`v_list`/
+`v_update`/`v_delete` per-object; `viewer`/`editor` на `project:<project_id>` для
+top-level List/Create), на **обоих** листенерах, fail-closed для RPC вне карты.
+Handler'ы (address/network/subnet/route_table/security_group/gateway) собственной
+ownership-проверки НЕ делают и НЕ дублируют её: их `repo.Get` остаётся только
+ради existence-контракта (`NOT_FOUND`). Tenant-context (`internal/handler/
+tenant_interceptor.go`) несёт identity для AuthN-guard и admin-gate, но не
+авторизует. Deny на существующий-но-недоступный ресурс маскируется под тот же
+`404`, что и настоящий miss (info-leak prevention).
 
 `KACHO_VPC_AUTH_MODE` (`internal/config/config.go`):
 - `dev` — anonymous-mode, callers без AuthN-headers пропускаются как admin
@@ -81,9 +84,9 @@ hostname/db/query-fragment в тексте. Прямых `status.Errorf(codes.In
 
 - **Реальный AuthN (JWT-validating interceptor)** — сейчас claims приходят от
   upstream-proxy без валидации токена и без реальной проверки членства в
-  project/cloud через resource-manager. Контракт `TenantFromCtx` /
-  `AssertProjectOwnership` спроектирован так, чтобы interceptor можно было
-  заменить без правок handler'ов.
+  project/cloud через resource-manager. Контракт `TenantFromCtx` спроектирован
+  так, чтобы interceptor можно было заменить без правок handler'ов (объектная
+  авторизация от него не зависит — она в permission-модели).
 - **`OperationService.Get(operation_id)` без project-ownership-check** —
   единственный public RPC без проверки (`internal/handler/operation_handler.go`).
   Требует `project_id` на таблице `operations` (она в `kacho-corelib`, shared) либо

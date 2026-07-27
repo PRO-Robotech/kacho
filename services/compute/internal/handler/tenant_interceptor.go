@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package handler — tenant_interceptor.go: gRPC unary/stream interceptor
-// который извлекает caller-project identity из metadata и кладёт в context.
+// который извлекает caller identity из metadata и кладёт в context.
 //
-// Это **scaffolding** под AuthZ: сейчас метаданные читаются как plaintext (нет
-// AuthN, нет токенов). Когда будет IAM — вместо metadata будут claims из
-// validated JWT/IAM-token, но downstream API (TenantFromCtx, AssertProjectOwnership)
-// не изменится. Зеркалит kacho-vpc/internal/handler/tenant_interceptor.go.
+// Это НЕ authz-плоскость. Авторизация ресурсов живёт в permission-модели:
+// per-RPC InternalIAMService.Check (FGA) в authz-интерсепторе на ОБОИХ
+// листенерах (см. internal/check) + per-object listauthz-фильтр на List
+// (list_filter.go). Здесь остаётся только то, что моделью не выражается:
+// production-mode AuthN-гейт (anonymous fail-closed) и admin-гейт internal
+// :9091 листенера. Зеркалит kacho-vpc/internal/handler/tenant_interceptor.go.
 package handler
 
 import (
@@ -50,22 +52,14 @@ type tenantCtxKey struct{}
 // TenantCtx — caller identity. Сейчас populated из gRPC metadata
 // (`x-kacho-project-id`, `x-kacho-actor`); future — из validated IAM token.
 type TenantCtx struct {
-	// ProjectIDs — projects которые caller'у разрешено читать/писать.
-	// Empty = full access (admin / cluster-scoped) — backward-compat без AuthN.
+	// ProjectIDs — project-scope, объявленный доверенным forwarder'ом. Доступ к
+	// ресурсам им НЕ гейтится (это делает per-RPC FGA Check + listauthz); поле
+	// участвует только в IsAnonymous → production-mode AuthN-гейт и admin-гейт.
 	ProjectIDs map[string]struct{}
 	// Actor — для audit log (admin@kacho, или sub-claim из JWT).
 	Actor string
 	// Admin — true если caller имеет cluster-wide read/write.
 	Admin bool
-}
-
-// HasProjectAccess — может ли caller трогать ресурс из project'а.
-func (t TenantCtx) HasProjectAccess(projectID string) bool {
-	if t.Admin || len(t.ProjectIDs) == 0 {
-		return true
-	}
-	_, ok := t.ProjectIDs[projectID]
-	return ok
 }
 
 // IsAnonymous — true если caller не предъявил identity, влияющую на AuthZ
@@ -75,7 +69,9 @@ func (t TenantCtx) IsAnonymous() bool {
 }
 
 // TenantFromCtx извлекает TenantCtx из context. Если interceptor не сработал —
-// empty TenantCtx (ProjectIDs=nil → backward-compat "full access").
+// empty TenantCtx (Admin=false, ProjectIDs=nil → anonymous для AuthN-гейта).
+// Единственный prod-потребитель — OperationHandler (cluster-admin bypass
+// ownership-предиката, operation_handler.go).
 func TenantFromCtx(ctx context.Context) TenantCtx {
 	if v := ctx.Value(tenantCtxKey{}); v != nil {
 		if t, ok := v.(TenantCtx); ok {
@@ -83,16 +79,6 @@ func TenantFromCtx(ctx context.Context) TenantCtx {
 		}
 	}
 	return TenantCtx{}
-}
-
-// AssertProjectOwnership — handler-side AuthZ check. PermissionDenied если caller
-// не имеет доступа к project'у. Вызывается в Get/Update/Delete/List после repo.Get.
-func AssertProjectOwnership(ctx context.Context, projectID string) error {
-	t := TenantFromCtx(ctx)
-	if t.HasProjectAccess(projectID) {
-		return nil
-	}
-	return status.Error(codes.PermissionDenied, "Permission denied")
 }
 
 // TenantUnaryInterceptor — gRPC unary interceptor. Извлекает caller-project
@@ -167,9 +153,9 @@ func (w *wrappedStream) Context() context.Context { return w.ctx }
 // authz-влияющие заголовки (x-kacho-admin → Admin, x-kacho-project-id → ProjectIDs)
 // читаются ТОЛЬКО от trusted peer'а — иначе peer, дотянувшийся до листенера напрямую
 // (TLS без verified cert), мог бы подделать `x-kacho-admin: true` и пройти admin-gate
-// / project-ownership, т.к. эти заголовки не связаны с verified peer-identity
-// (в отличие от principal, который trust-gated). x-kacho-actor — audit-only, не
-// влияет на authz → читается всегда.
+// internal-листенера / operation-ownership bypass, т.к. эти заголовки не связаны с
+// verified peer-identity (в отличие от principal, который trust-gated).
+// x-kacho-actor — audit-only, не влияет на authz → читается всегда.
 func tenantFromMetadata(ctx context.Context, trusted bool) TenantCtx {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {

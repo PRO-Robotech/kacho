@@ -595,8 +595,9 @@ func TestHandler_FullFlow(t *testing.T) {
 	_, err = h.ListUsedAddresses(context.Background(), &vpcv1.ListUsedAddressesRequest{SubnetId: subID})
 	require.NoError(t, err)
 
-	// Delete (sub в f2 теперь — owner был f1 при Get'е выше; в этом тесте
-	// AssertProjectOwnership не запрещает: см. minimalHandler — context без tenant).
+	// Delete (sub в f2 теперь — owner был f1 при Get'е выше; handler объектную
+	// авторизацию не делает — её энфорсит per-RPC authz-interceptor, которого в
+	// этом unit-харнессе нет).
 	delOp, err := h.Delete(context.Background(), &vpcv1.DeleteSubnetRequest{SubnetId: subID})
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, delOp.Id)

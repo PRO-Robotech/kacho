@@ -489,7 +489,7 @@ Boundary 1000 → ok; 1001 → `400`.
 ### REQ-DEL-01 — Delete несуществующего → sync 404 (точный текст) [P1]
 `Delete` несуществующего ресурса → sync `NOT_FOUND "<Resource> <id> not found"` (не Operation).
 - Validated-by: `*-DEL-AUTHZ-NF-SYNC`, `*-DEL-CONF-NF-TEXT`, `*-DEL-CONF-FULLTEXT`, `*-DEL-NEG-NF-INVALID-PREFIX`
-- Проверка: `internal/service/*.go` Delete — `corevalidate.ResourceID(...)` (первым стейтментом) + `repo.Get` + `AssertProjectOwnership` ДО Operation. (id-syntax → `InvalidArgument`: см. REQ-CONF-04.)
+- Проверка: `internal/service/*.go` Delete — `corevalidate.ResourceID(...)` (первым стейтментом) + `repo.Get` ДО Operation. (id-syntax → `InvalidArgument`: см. REQ-CONF-04.)
 
 ### REQ-DEL-02 — Network: нельзя удалить с детьми (FK RESTRICT) [P0]
 `Delete` Network, у которой есть Subnet / RouteTable / не-default SecurityGroup → `FailedPrecondition "network is not empty"` (FK RESTRICT).
@@ -576,7 +576,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ проверять, что `resource.project_id` принадлежит caller'у;
 чужой ресурс → `PERMISSION_DENIED` (в `dev`-mode AuthN permissive — anonymous=admin; в `production`/`production-strict` fail-closed).
 - Validated-by: `*-AUTHZ-NF-SYNC` (Get/Update/Delete/Move/UpdateRule/UpdateRules), `*-AUTHZ-EMPTY-PROJECT-HEADER`; **gap** — полноценная cross-tenant matrix с двумя header-set'ами (см. `REQUIREMENTS.md` REQ-006)
-- Проверка: `internal/handler/*.go` — `AssertProjectOwnership` после `repo.Get`; `internal/handler/tenant_interceptor.go`; `internal/config/config.go` `AuthMode`.
+- Проверка: `internal/apps/kacho/check/permission_map.go` — per-RPC FGA-Check (`v_get`/`v_update`/`v_delete` per-object) на обоих листенерах; `internal/handler/tenant_interceptor.go`; `internal/config/config.go` `AuthMode`.
 
 ### REQ-AUTHZ-02 — List: project isolation [P0]
 Ресурс в project A не виден в `List` по project B.
@@ -584,7 +584,7 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 - Проверка: `internal/repo/*.go` `List` — `WHERE project_id = $1`.
 
 ### REQ-AUTHZ-03 — мутация несуществующего ресурса → sync ошибка, не async [P1]
-`Update`/`Delete`/`Move`/`AddCidrBlocks`/... несуществующего → sync `NOT_FOUND`/`PERMISSION_DENIED` (через `repo.Get`+`AssertProjectOwnership` до Operation), а не Operation, которая потом падает. Часть контракта Kachō.
+`Update`/`Delete`/`Move`/`AddCidrBlocks`/... несуществующего → sync `NOT_FOUND`/`PERMISSION_DENIED` (per-RPC FGA-Check в интерсепторе + `repo.Get` до Operation), а не Operation, которая потом падает. Часть контракта Kachō.
 - Validated-by: `*-UPD-AUTHZ-NF-SYNC`, `*-DEL-AUTHZ-NF-SYNC`, `*-MV-AUTHZ-NF-SYNC`, `*-UR-AUTHZ-NF-SYNC`, `*-URL-AUTHZ-NF-SYNC`, `*-UPD-CONF-NF-TEXT`, `*-DEL-CONF-NF-TEXT`, `*-MV-CONF-NF-TEXT`
 - Проверка: `internal/service/*.go` — `repo.Get` ДО `operations.New` для не-Create мутаций.
 

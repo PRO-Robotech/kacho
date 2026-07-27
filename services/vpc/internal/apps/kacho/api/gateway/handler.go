@@ -19,7 +19,6 @@ import (
 
 	// Blank-import регистрирует Gateway/time DTO-трансферы через init().
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/tenant"
 )
 
 // Handler — реализация vpcv1.GatewayServiceServer на основе use-case'ов. Тонкий
@@ -65,17 +64,12 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetGatewayRequest) (*vpcv1
 	if err != nil {
 		return nil, err
 	}
-	if err := tenant.AssertProjectOwnership(ctx, g.ProjectID); err != nil {
-		return nil, err
-	}
 	return gatewayToPb(g)
 }
 
-// List — project_id required + AuthZ + FGA list-filter.
+// List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
+// project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListGatewaysRequest) (*vpcv1.ListGatewaysResponse, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	subject := pbconv.SubjectFromContext(ctx)
 	gws, nextToken, err := h.list.Execute(ctx, subject, GatewayFilter{
 		ProjectID: req.ProjectId,
@@ -98,11 +92,9 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListGatewaysRequest) (*vp
 	return resp, nil
 }
 
-// Create — AuthZ → proto → domain → use-case.
+// Create — proto → domain → use-case. Project-scope AuthZ (`editor @
+// project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateGatewayRequest) (*operationpb.Operation, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	gtype := ""
 	if _, ok := req.Gateway.(*vpcv1.CreateGatewayRequest_SharedEgressGatewaySpec); ok {
 		gtype = "shared_egress"
@@ -121,16 +113,13 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateGatewayRequest) (
 	return pbconv.OperationToProto(op), nil
 }
 
-// Update — sync repo.Get + AuthZ + use-case.
+// Update — sync repo.Get (existence → NotFound) + use-case. Per-object AuthZ
+// энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateGatewayRequest) (*operationpb.Operation, error) {
 	if req.GatewayId == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
-	g, err := h.get.Execute(ctx, req.GatewayId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, g.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.GatewayId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -158,16 +147,13 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateGatewayRequest) (
 	return pbconv.OperationToProto(op), nil
 }
 
-// Delete — sync repo.Get для AuthZ, затем use-case.
+// Delete — sync repo.Get (existence → NotFound), затем use-case. Per-object
+// AuthZ энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteGatewayRequest) (*operationpb.Operation, error) {
 	if req.GatewayId == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
-	g, err := h.get.Execute(ctx, req.GatewayId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, g.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.GatewayId); err != nil {
 		return nil, err
 	}
 	op, err := h.delete.Execute(ctx, req.GatewayId)
@@ -177,18 +163,14 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteGatewayRequest) (
 	return pbconv.OperationToProto(op), nil
 }
 
-// ListOperations — best-effort AuthZ: ресурс жив → project-ownership проверяем;
-// удален (NotFound от get) → пропускаем (история операций должна оставаться
-// доступной).
+// ListOperations — best-effort existence-probe: ресурс удален (NotFound от get)
+// → пропускаем (история операций должна оставаться доступной), прочая ошибка
+// возвращается. Per-object AuthZ энфорсит per-RPC authz-interceptor.
 func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListGatewayOperationsRequest) (*vpcv1.ListGatewayOperationsResponse, error) {
 	if req.GatewayId == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
-	if g, gerr := h.get.Execute(ctx, req.GatewayId); gerr == nil {
-		if err := tenant.AssertProjectOwnership(ctx, g.ProjectID); err != nil {
-			return nil, err
-		}
-	} else if status.Code(gerr) != codes.NotFound {
+	if _, gerr := h.get.Execute(ctx, req.GatewayId); gerr != nil && status.Code(gerr) != codes.NotFound {
 		return nil, gerr
 	}
 	ops, nextToken, err := h.listOperations.Execute(ctx, req.GatewayId, Pagination{

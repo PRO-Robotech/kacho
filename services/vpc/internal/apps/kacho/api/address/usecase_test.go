@@ -62,7 +62,7 @@ func makeHandler(t *testing.T,
 	list := NewListAddressesUseCase(kr, nil)
 	listBySubnet := NewListBySubnetUseCase(kr, sr)
 	listOps := NewListOperationsUseCase(or)
-	return NewHandler(create, update, deleteUC, get, getByValue, list, listBySubnet, listOps, nil)
+	return NewHandler(create, update, deleteUC, get, getByValue, list, listBySubnet, listOps)
 }
 
 func minimalHandler(t *testing.T, projectOK bool) (*Handler, *repomock.OpsRepo, *kachomock.Repository, *repomock.SubnetRepo) {

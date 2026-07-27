@@ -170,7 +170,7 @@ func (s *InstanceService) WithOwnerRegistrar(registrar OwnerRegistrar) *Instance
 func (s *InstanceService) Get(ctx context.Context, id string) (*domain.Instance, error) {
 	// malformed-id первым стейтментом (COMP-1 F8/F22): sync InvalidArgument до repo;
 	// well-formed-но-нет → NotFound через repo.Get. Покрывает и Update/Delete-хендлеры
-	// (они зовут Get для ownership-guard первым).
+	// (они зовут Get первым — ради existence/NotFound-контракта).
 	if err := corevalidate.ResourceID(insResource, ids.PrefixInstanceHyphen, id); err != nil {
 		return nil, err
 	}

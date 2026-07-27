@@ -1,22 +1,19 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package tenant — нейтральный (transport-free) носитель caller-identity и
-// handler-side AuthZ-проверки. Это leaf-пакет: use-case-слой
-// `internal/apps/kacho/api/*` зовет AssertProjectOwnership, не завися от
-// транспорта; identity в ctx кладет `internal/handler` через WithTenant из
-// своих gRPC-интерсепторов.
+// Package tenant — нейтральный (transport-free) носитель caller-identity. Это
+// leaf-пакет: identity в ctx кладет `internal/handler` через WithTenant из своих
+// gRPC-интерсепторов, а читают её transport-independent потребители.
 //
-// Identity сейчас читается из gRPC metadata (без токенов). С приходом IAM
-// источником станут claims из validated JWT, но downstream API (TenantFromCtx,
-// AssertProjectOwnership) при этом не меняется.
+// AuthZ здесь НЕ живёт: авторизация выражена в permission-модели и энфорсится
+// per-RPC authz-интерсептором (`internal/apps/kacho/check.PermissionMap` →
+// `InternalIAMService.Check`) на обоих листенерах, fail-closed. Единственный
+// оставшийся здесь потребитель identity — `IsAnonymous`, на который опираются
+// production-mode AuthN-guard и admin-gate в `internal/handler`.
 package tenant
 
 import (
 	"context"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type tenantCtxKey struct{}
@@ -24,22 +21,13 @@ type tenantCtxKey struct{}
 // TenantCtx — caller identity. Заполняется из gRPC metadata интерсептором
 // (`internal/handler`); в перспективе — из validated IAM token.
 type TenantCtx struct {
-	// ProjectIDs — projects, которые caller'у разрешено читать/писать.
-	// Empty = full access (admin / cluster-scoped) — backward-compat без AuthN.
+	// ProjectIDs — projects, заявленные caller'ом в metadata. НЕ авторизация:
+	// доступ решает per-RPC FGA-Check. Здесь поле нужно как признак предъявленных
+	// claims — пустое множество (и не Admin) = anonymous, см. IsAnonymous.
 	ProjectIDs map[string]struct{}
-	// Admin — true, если caller имеет cluster-wide read/write.
+	// Admin — true, если caller предъявил cluster-admin claim (honored только на
+	// internal-листенере). Питает admin-gate, не объектную авторизацию.
 	Admin bool
-}
-
-// HasProjectAccess — может ли caller трогать ресурс из project'а. Empty ProjectIDs
-// → true (backward-compat dev-mode); в production-mode guard в интерсепторе
-// отвергает anonymous раньше, чем дойдет сюда.
-func (t TenantCtx) HasProjectAccess(projectID string) bool {
-	if t.Admin || len(t.ProjectIDs) == 0 {
-		return true
-	}
-	_, ok := t.ProjectIDs[projectID]
-	return ok
 }
 
 // IsAnonymous — true, если caller не предъявил authorization-claims (ни Admin,
@@ -54,7 +42,8 @@ func WithTenant(ctx context.Context, t TenantCtx) context.Context {
 }
 
 // TenantFromCtx извлекает TenantCtx; если интерсептор не сработал — возвращает
-// empty (ProjectIDs=nil → backward-compat "full access" anonymous mode).
+// empty (ProjectIDs=nil → IsAnonymous()==true; в production-mode такой caller
+// отвергается AuthN-guard'ом интерсептора).
 func TenantFromCtx(ctx context.Context) TenantCtx {
 	if v := ctx.Value(tenantCtxKey{}); v != nil {
 		if t, ok := v.(TenantCtx); ok {
@@ -62,13 +51,4 @@ func TenantFromCtx(ctx context.Context) TenantCtx {
 		}
 	}
 	return TenantCtx{}
-}
-
-// AssertProjectOwnership — handler-side AuthZ: PermissionDenied, если caller не
-// имеет доступа к project'у.
-func AssertProjectOwnership(ctx context.Context, projectID string) error {
-	if TenantFromCtx(ctx).HasProjectAccess(projectID) {
-		return nil
-	}
-	return status.Error(codes.PermissionDenied, "Permission denied")
 }

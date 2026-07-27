@@ -20,7 +20,6 @@ import (
 
 	// Blank-import регистрирует Subnet/Address/time DTO-трансферы.
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/tenant"
 )
 
 // Handler — реализация vpcv1.SubnetServiceServer на основе use-case'ов.
@@ -78,17 +77,12 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetSubnetRequest) (*vpcv1.
 	if err != nil {
 		return nil, err
 	}
-	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
-		return nil, err
-	}
 	return subnetToPb(s)
 }
 
-// List — project_id required + AuthZ + per-object FGA list-filter.
+// List — project_id required + per-object FGA list-filter. Project-scope AuthZ
+// (`viewer @ project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListSubnetsRequest) (*vpcv1.ListSubnetsResponse, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	subject := pbconv.SubjectFromContext(ctx)
 	subs, nextToken, err := h.list.Execute(ctx, subject, SubnetFilter{
 		ProjectID: req.ProjectId,
@@ -111,11 +105,9 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListSubnetsRequest) (*vpc
 	return resp, nil
 }
 
-// Create — AuthZ → proto → domain → use-case.
+// Create — proto → domain → use-case. Project-scope AuthZ (`editor @
+// project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateSubnetRequest) (*operationpb.Operation, error) {
-	if err := tenant.AssertProjectOwnership(ctx, req.ProjectId); err != nil {
-		return nil, err
-	}
 	s := domain.Subnet{
 		ProjectID:     req.ProjectId,
 		Name:          domain.RcNameVPC(req.Name),
@@ -163,16 +155,13 @@ func placementFromPb(p vpcv1.SubnetPlacementType) domain.SubnetPlacementType {
 	}
 }
 
-// Update — sync repo.Get + AuthZ + use-case.
+// Update — sync repo.Get (existence → NotFound) + use-case. Per-object AuthZ
+// энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSubnetRequest) (*operationpb.Operation, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, req.SubnetId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SubnetId); err != nil {
 		return nil, err
 	}
 	var mask []string
@@ -199,16 +188,13 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSubnetRequest) (*
 	return pbconv.OperationToProto(op), nil
 }
 
-// Delete — sync repo.Get для AuthZ, затем use-case.
+// Delete — sync repo.Get (existence → NotFound), затем use-case. Per-object
+// AuthZ энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteSubnetRequest) (*operationpb.Operation, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, req.SubnetId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SubnetId); err != nil {
 		return nil, err
 	}
 	op, err := h.delete.Execute(ctx, req.SubnetId)
@@ -218,16 +204,13 @@ func (h *Handler) Delete(ctx context.Context, req *vpcv1.DeleteSubnetRequest) (*
 	return pbconv.OperationToProto(op), nil
 }
 
-// AddCidrBlocks — sync repo.Get для AuthZ, затем use-case.
+// AddCidrBlocks — sync repo.Get (existence → NotFound), затем use-case.
+// Per-object AuthZ энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) AddCidrBlocks(ctx context.Context, req *vpcv1.AddSubnetCidrBlocksRequest) (*operationpb.Operation, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, req.SubnetId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SubnetId); err != nil {
 		return nil, err
 	}
 	op, err := h.addCidrBlocks.Execute(ctx, req.SubnetId, req.GetIpv4CidrBlocks(), req.GetIpv6CidrBlocks())
@@ -237,16 +220,13 @@ func (h *Handler) AddCidrBlocks(ctx context.Context, req *vpcv1.AddSubnetCidrBlo
 	return pbconv.OperationToProto(op), nil
 }
 
-// RemoveCidrBlocks — sync repo.Get для AuthZ, затем use-case.
+// RemoveCidrBlocks — sync repo.Get (existence → NotFound), затем use-case.
+// Per-object AuthZ энфорсит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveSubnetCidrBlocksRequest) (*operationpb.Operation, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, req.SubnetId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SubnetId); err != nil {
 		return nil, err
 	}
 	op, err := h.removeCidrBlocks.Execute(ctx, req.SubnetId, req.GetIpv4CidrBlocks(), req.GetIpv6CidrBlocks())
@@ -256,16 +236,13 @@ func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveSubnetC
 	return pbconv.OperationToProto(op), nil
 }
 
-// ListUsedAddresses — sync read; AuthZ через parent Subnet.
+// ListUsedAddresses — sync read; existence parent Subnet'а (→ NotFound). Доступ
+// к parent'у гейтит per-RPC authz-interceptor прямым Check'ом.
 func (h *Handler) ListUsedAddresses(ctx context.Context, req *vpcv1.ListUsedAddressesRequest) (*vpcv1.ListUsedAddressesResponse, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	s, err := h.get.Execute(ctx, req.SubnetId)
-	if err != nil {
-		return nil, err
-	}
-	if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
+	if _, err := h.get.Execute(ctx, req.SubnetId); err != nil {
 		return nil, err
 	}
 	addrs, refs, nextToken, err := h.listUsedAddresses.Execute(ctx, req.SubnetId, Pagination{
@@ -297,18 +274,14 @@ func (h *Handler) ListUsedAddresses(ctx context.Context, req *vpcv1.ListUsedAddr
 	return resp, nil
 }
 
-// ListOperations — best-effort AuthZ: ресурс жив → project-ownership проверяем;
-// удален (NotFound от get) → пропускаем (история операций должна оставаться
-// доступной).
+// ListOperations — best-effort existence-probe: ресурс удален (NotFound от get)
+// → пропускаем (история операций должна оставаться доступной), прочая ошибка
+// возвращается. Per-object AuthZ энфорсит per-RPC authz-interceptor.
 func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListSubnetOperationsRequest) (*vpcv1.ListSubnetOperationsResponse, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
-	if s, gerr := h.get.Execute(ctx, req.SubnetId); gerr == nil {
-		if err := tenant.AssertProjectOwnership(ctx, s.ProjectID); err != nil {
-			return nil, err
-		}
-	} else if status.Code(gerr) != codes.NotFound {
+	if _, gerr := h.get.Execute(ctx, req.SubnetId); gerr != nil && status.Code(gerr) != codes.NotFound {
 		return nil, gerr
 	}
 	ops, nextToken, err := h.listOperations.Execute(ctx, req.SubnetId, Pagination{
