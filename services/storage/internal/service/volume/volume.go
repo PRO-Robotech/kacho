@@ -256,11 +256,18 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	}
 	// Sync BVA at the request edge (parity with Image, #61): reject over-limit
 	// description (>256) / labels (>64) BEFORE any peer/DB call.
+	//
+	// The error goes to the mapper AS IS. pkg/validate already answers in the
+	// contract's own shape — INVALID_ARGUMENT, generic "invalid argument" message,
+	// offending field in the google.rpc.BadRequest detail — and rebuilding it from
+	// err.Error() took the text and dropped the detail, so the caller learned the
+	// code and never learned WHICH field was rejected. (It also pasted gRPC's wire
+	// framing into the message: "rpc error: code = ... desc = ...".)
 	if err := validate.Description("description", v.Description); err != nil {
-		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+		return nil, u.errStatus(err)
 	}
 	if err := validate.Labels("labels", v.Labels); err != nil {
-		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+		return nil, u.errStatus(err)
 	}
 	if err := u.geo.EnsureZoneExists(ctx, v.ZoneID); err != nil {
 		return nil, u.errStatus(err)

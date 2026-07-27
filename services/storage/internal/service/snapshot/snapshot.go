@@ -208,11 +208,17 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 	// constraint, and came back ASYNCHRONOUSLY inside the operation error under a
 	// generic text. For the caller that is the difference between "your description
 	// is too long" and "the operation failed for some reason".
+	//
+	// The error goes to the mapper AS IS. pkg/validate already answers in the
+	// contract's own shape — INVALID_ARGUMENT, generic "invalid argument" message,
+	// offending field in the google.rpc.BadRequest detail — and rebuilding it from
+	// err.Error() took the text and dropped the detail, so the caller learned the
+	// code and never learned WHICH field was rejected.
 	if err := validate.Description("description", s.Description); err != nil {
-		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+		return nil, u.errStatus(err)
 	}
 	if err := validate.Labels("labels", s.Labels); err != nil {
-		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+		return nil, u.errStatus(err)
 	}
 	if err := u.iam.EnsureProjectExists(ctx, s.ProjectID); err != nil {
 		return nil, u.errStatus(err)
