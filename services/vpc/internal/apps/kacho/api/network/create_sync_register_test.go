@@ -78,10 +78,19 @@ func TestCreateUseCase_SyncRegister_OwnerTuple(t *testing.T) {
 	require.GreaterOrEqual(t, len(kr.FGARegisterEvents()), 1, "outbox-intent остается backstop'ом")
 }
 
-// Decision 2 GWT-2.2: ошибка синхронной регистрации → Operation завершается с
-// ошибкой (fail-closed мутация). Ресурс закоммичен, outbox-intent durable —
-// backstop drainer дорегистрирует при восстановлении iam.
-func TestCreateUseCase_SyncRegister_FailClosed(t *testing.T) {
+// Отказ синхронной регистрации НЕ проваливает мутацию. Это заменяет прежний
+// «Decision 2 GWT-2.2: fail-closed», и обоснование — ровно та посылка, которая
+// стояла в его же комментарии: «ресурс закоммичен, outbox-intent durable —
+// backstop drainer дорегистрирует». Если посылка верна, то отказ операции не
+// защищает ничего: строка уже есть и никуда не денется, а клиент получает
+// ошибку на существующий ресурс — фантом (повтор ловит AlreadyExists по
+// занятому имени). Sync-registrar — оптимизация окна видимости гранта поверх
+// at-least-once дренажа, а не условие успеха Create.
+//
+// Здесь registrar отдаёт ПЛОСКУЮ (не gRPC-status) ошибку: она дополняет
+// create_register_denied_test.go, где отказ несёт чужой gRPC-код и служебную
+// обёртку. Оба вида отказа обязаны оставлять операцию успешной.
+func TestCreateUseCase_SyncRegisterFailure_DoesNotFailTheMutation(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
 	reg := &recordingRegistrar{err: errors.New("iam unavailable")}
@@ -89,13 +98,19 @@ func TestCreateUseCase_SyncRegister_FailClosed(t *testing.T) {
 
 	op, err := uc.Execute(context.Background(), domain.Network{
 		ProjectID: "f1",
-		Name:      domain.RcNameVPC("net-failclosed"),
+		Name:      domain.RcNameVPC("net-register-failure"),
 	})
-	require.NoError(t, err) // sync-валидация прошла; ошибка приходит через Operation
+	require.NoError(t, err)
 
 	saved := repomock.AwaitOpDone(t, or, op.ID)
 	require.True(t, saved.Done)
-	require.NotNil(t, saved.Error, "sync register failure → Operation error (fail-closed)")
+	require.Len(t, reg.snapshot(), 1, "registrar must have been invoked on the create path")
+	require.Nil(t, saved.Error,
+		"registration runs after the durable commit — its failure must not fail the mutation")
+
+	require.Len(t, kr.Networks(), 1, "resource is durable: commit happened before registration")
+	require.GreaterOrEqual(t, len(kr.FGARegisterEvents()), 1,
+		"durable register-intent is the at-least-once backstop that makes swallowing safe")
 }
 
 // Без registrar (nil) поведение прежнее: Create проходит, sync-register

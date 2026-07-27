@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 
 	"google.golang.org/grpc/codes"
@@ -276,11 +277,17 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	if err := w.Commit(); err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	// Sync-primary owner-tuple registration (после durable commit). Грант доступен
-	// сразу; fail-closed — сбой → Operation error (intent durable, backstop дорегистрирует).
+	// Sync-primary owner-tuple registration идёт ПОСЛЕ durable commit: она
+	// сокращает окно видимости гранта, но НЕ является условием успеха мутации.
+	// Intent на тот же tuple лежит в fga_register_outbox той же writer-TX →
+	// at-least-once дренаж доведёт грант сам. Провалить операцию здесь значило бы
+	// отдать вызывающему код узла прав (status.FromError достаёт вложенный статус
+	// и подменяет сообщение всей цепочкой) на уже созданную подсеть, чей CIDR уже
+	// занят EXCLUDE-ограничением, — фантом. Поэтому предупреждение, а не ошибка.
 	if u.registrar != nil {
 		if err := u.registrar.Register(ctx, items); err != nil {
-			return nil, err
+			slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
+				"resource", "Subnet", "id", created.ID, "err", err)
 		}
 	}
 	return marshalSubnetRecord(created)

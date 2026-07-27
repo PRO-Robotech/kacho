@@ -18,9 +18,12 @@ import (
 	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -882,6 +885,51 @@ func (r *OpsRepo) Cancel(_ context.Context, id string) error {
 	op.Done = true
 	return nil
 }
+
+// ---- FGA owner-tuple registrar ----
+
+// DenyingRegistrar — fake fgaregister.Registrar, отказывающий ровно в той форме,
+// в какой это делает боевой clients.SyncRegistrar: gRPC-status узла прав,
+// завёрнутый в `fmt.Errorf("sync register owner-tuple %s: %w", …)`.
+//
+// Форма обёртки существенна и является предметом теста: status.FromError на
+// такой ошибке через errors.As достаёт ВЛОЖЕННЫЙ статус, забирает его код как
+// есть и подменяет сообщение текстом ВСЕЙ цепочки (grpc-go status.go:
+// `p.Message = err.Error()`). Поэтому неотображённый проброс наверх отдаёт
+// вызывающему чужой код и служебную обёртку `rpc error: …` в тексте.
+//
+// Регистрация owner-tuple выполняется ПОСЛЕ durable commit ресурса, а intent на
+// тот же tuple лежит в fga_register_outbox той же writer-TX (at-least-once
+// backstop) — поэтому её отказ не имеет права проваливать мутацию.
+type DenyingRegistrar struct {
+	mu    sync.Mutex
+	calls int
+}
+
+// Register всегда отказывает. Счётчик вызовов позволяет тесту убедиться, что он
+// реально прошёл по спорной ветке, а не мимо неё (иначе проверка вакуумна).
+func (r *DenyingRegistrar) Register(_ context.Context, items []fgaregister.Item) error {
+	r.mu.Lock()
+	r.calls++
+	r.mu.Unlock()
+
+	object := "<no-items>"
+	if len(items) > 0 {
+		object = items[0].Tuple.Object
+	}
+	return fmt.Errorf("sync register owner-tuple %s: %w", object,
+		grpcstatus.Error(codes.PermissionDenied, "fga write denied"))
+}
+
+// Calls — сколько раз registrar был позван.
+func (r *DenyingRegistrar) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+// Compile-time check: fake обязан удовлетворять реальному порту.
+var _ fgaregister.Registrar = (*DenyingRegistrar)(nil)
 
 // ---- await-helpers для async Operation worker'ов ----
 

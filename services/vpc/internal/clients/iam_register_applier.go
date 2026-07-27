@@ -13,10 +13,10 @@
 //   - OK                    → nil (drainer ставит sent_at).
 //   - codes.InvalidArgument → ErrPermanent (malformed tuple = poison, без бесконечных
 //     ретраев).
-//   - codes.PermissionDenied → transient (raw): отсутствующий grant
-//     fga_writer@iam_fgaproxy:system — это вопрос порядка provisioning'а, который
-//     лечится после применения SA-grant-миграции; ретрай дает owner-tuple осесть,
-//     поэтому НЕ должен poison'ить (как в compute/nlb и в corelib-классификаторе).
+//   - codes.PermissionDenied → ErrPermanent (poison): отказ по правам терминален —
+//     решение зависит от (вызывающий, отношение, объект), и повтор не меняет ни
+//     одного из трёх. Держать его transient значило бы навсегда заклинить голову
+//     партиции (подробный разбор — в godoc classifyRegisterErr ниже).
 //   - все остальное (Unavailable, DeadlineExceeded, транспорт)
 //     → transient (raw) → drainer ретраит с backoff; intent остается durable
 //     (sent_at NULL) и НЕ теряется.

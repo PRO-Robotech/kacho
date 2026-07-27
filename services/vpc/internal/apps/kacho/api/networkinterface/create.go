@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -253,13 +254,18 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 			// (attach был в этой же writer-TX). Компенсация не нужна.
 			return nil, serviceerr.MapRepoErr(cerr)
 		}
-		// Sync-primary owner-tuple registration (после durable commit). NIC уже
-		// закоммичен и валиден — на ошибке регистрации адреса НЕ трогаем (attach
-		// закоммичен вместе с NIC); возвращаем error → Operation fail-closed,
-		// backstop drainer дорегистрирует tuple при восстановлении iam.
+		// Sync-primary owner-tuple registration идёт ПОСЛЕ durable commit: она
+		// сокращает окно видимости гранта, но НЕ является условием успеха мутации.
+		// NIC уже закоммичен и валиден (attach и address-reservation закоммичены
+		// вместе с ним), а intent на тот же tuple лежит в fga_register_outbox той
+		// же writer-TX → at-least-once дренаж доведёт грант сам. Провалить операцию
+		// здесь значило бы отдать вызывающему код узла прав (status.FromError
+		// достаёт вложенный статус и подменяет сообщение всей цепочкой) на уже
+		// созданный NIC — фантом. Поэтому предупреждение, а не ошибка.
 		if u.registrar != nil {
 			if rerr := u.registrar.Register(ctx, items); rerr != nil {
-				return nil, rerr
+				slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
+					"resource", "NetworkInterface", "id", created.ID, "err", rerr)
 			}
 		}
 		return marshalNetworkInterfaceRecord(created)

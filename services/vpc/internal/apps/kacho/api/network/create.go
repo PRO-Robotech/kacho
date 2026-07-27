@@ -287,13 +287,17 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 		return nil, serviceerr.MapRepoErr(err)
 	}
 
-	// Sync-primary owner-tuple registration (после durable commit ресурса +
-	// outbox-intent). Грант доступен сразу — без гонки с async drainer'ом.
-	// Fail-closed: сбой регистрации → Operation error (ресурс закоммичен,
-	// intent durable → backstop drainer дорегистрирует при восстановлении iam).
+	// Sync-primary owner-tuple registration идёт ПОСЛЕ durable commit ресурса +
+	// outbox-intent: она сокращает окно видимости гранта, но НЕ является условием
+	// успеха мутации. Intent на те же tuple'ы лежит в fga_register_outbox той же
+	// writer-TX → at-least-once дренаж доведёт грант сам. Провалить операцию здесь
+	// значило бы отдать вызывающему код узла прав (status.FromError достаёт
+	// вложенный статус и подменяет сообщение всей цепочкой) на уже созданную сеть
+	// вместе с её системными SG/RT — фантом. Поэтому предупреждение, а не ошибка.
 	if u.registrar != nil {
 		if err := u.registrar.Register(ctx, items); err != nil {
-			return nil, err
+			slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
+				"resource", "Network", "id", finalRec.ID, "err", err)
 		}
 	}
 
