@@ -231,9 +231,24 @@ func TestRegisterDrainer_PartitionHead_UnregisterThenStaleRegister(t *testing.T)
 			insertPartitionIntent(ctx, t, pool, fgaintent.EventRegister, resourceID, t1, 5)
 			// U: unregister(t2), fresh. Inserted SECOND → id > R.
 			insertPartitionIntent(ctx, t, pool, fgaintent.EventUnregister, resourceID, t2, 0)
-			// Filler rows of OTHER resources so the attempt=5 register and the
-			// attempt=0 unregister never share one claim batch.
-			for i := 0; i < 4; i++ {
+			// Filler rows of OTHER resources, all attempt_count=0, so the bumped
+			// register (attempt=5) sorts behind ALL of them and cannot be claimed
+			// until they are drained.
+			//
+			// The count matters and four is not enough. The claim takes a RANDOM
+			// small limit (1..4) per iteration and the appliers run concurrently, so
+			// with a handful of fillers the batch carrying the fresh unregister and
+			// the batch carrying the stale register are in flight AT THE SAME TIME —
+			// they race, and the race lands on the non-inverting side often enough
+			// that this case stopped reproducing the defect it exists to demonstrate.
+			// A control that cannot construct its scenario is not a control: the
+			// guard below stays green while nothing proves it is needed.
+			//
+			// Sizing it past BOTH the claim batch size and the apply concurrency
+			// makes the inversion deterministic: the unregister is claimed in the
+			// first iteration and long applied before the register is reached.
+			const fillers = 20 // > BatchSize (16) and > ApplyConcurrency (16)
+			for i := 0; i < fillers; i++ {
 				insertPartitionIntent(ctx, t, pool, fgaintent.EventRegister,
 					fmt.Sprintf("epd-filler-%02d", i), t1, 0)
 			}
