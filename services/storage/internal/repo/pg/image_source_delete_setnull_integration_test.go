@@ -69,7 +69,7 @@ func TestImageSourceVolumeDeleteSetNull(t *testing.T) {
 	img, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "prov-from-vol",
 		RegionID: "ru-central1", SourceVolume: srcVol.ID,
-	})
+	}, fixtureRegionZones)
 	require.NoError(t, err)
 	require.Equal(t, srcVol.ID, img.SourceVolume, "image seeded directly from volume")
 

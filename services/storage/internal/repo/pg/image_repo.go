@@ -133,14 +133,38 @@ func (r *ImageRepo) List(ctx context.Context, p image.Pagination) ([]*domain.Ima
 }
 
 // imageInsertCoherentSQL — атомарная вставка-если-можно (INSERT…SELECT, ban #10 — НЕ
-// Get→check→INSERT): источник (snapshot ЛИБО volume) обязан принадлежать ТОМУ ЖЕ
-// проекту, что создаваемый Image. Голого FK недостаточно — он проверяет лишь
-// существование строки, поэтому caller мог засеять свой образ ЧУЖИМ приватным
-// снапшотом/томом и вычитать содержимое чужого тома (cross-project disclosure/BOLA).
-// Предикат project-coherence вычисляется в ТОМ ЖЕ стейтменте, что вставка (row-lock
-// FK-проверки), поэтому TOCTOU-окна нет. size_bytes/min_disk_bytes снимаются с той же
-// project-scoped строки источника. Источник не задан (”→NULL, пост-SET-NULL форма) →
-// предикат тривиально истинен, size 0 — прежнее поведение сохранено.
+// Get→check→INSERT): источник (snapshot ЛИБО volume) обязан быть когерентен
+// создаваемому Image по ДВУМ осям сразу, и обе проверяются в ТОМ ЖЕ стейтменте, что
+// вставка (row-lock FK-проверки), поэтому TOCTOU-окна нет ни у одной.
+//
+// Ось 1 — ПРОЕКТ. Голого FK недостаточно: он проверяет лишь существование строки,
+// поэтому caller мог засеять свой образ ЧУЖИМ приватным снапшотом/томом и вычитать
+// содержимое чужого тома (cross-project disclosure/BOLA).
+//
+// Ось 2 — РАЗМЕЩЕНИЕ. Image — REGIONAL, Volume — ZONAL, и они когерентны только
+// когда зона тома принадлежит региону образа (migration 0007 и image.proto заявляют
+// именно это). Обратное направление — Volume ИЗ Image — это уже энфорсило; захват
+// Image ИЗ Volume не энфорсил ничего, кроме проекта, поэтому region-1-образ можно
+// было собрать из region-2-тома: и расхождение с заявленным контрактом, и тихий
+// перенос данных через границу размещения.
+//
+// $10 — зоны, СОСТАВЛЯЮЩИЕ регион образа, полученные у ВЛАДЕЛЬЦА Geography (kacho-geo).
+// Регион зоны НИКОГДА не выводится разбором имени (data-integrity.md прямо это
+// запрещает: строковая деривация молча даёт пустую строку и превращает проверку в
+// no-op). Решение принимает САМ стейтмент, сверяя живую строку источника с этим
+// набором, — не Go-код до него.
+//
+// Снапшот СВОЕЙ зоны не несёт (колонки нет): его единственное свидетельство
+// размещения — том, с которого он снят (`snapshots.source_volume_id`). Поэтому для
+// snapshot-источника сверяется зона ЭТОГО тома — иначе проверка обходилась бы одним
+// лишним шагом (сначала снять снапшот, потом собрать образ). Лineage может быть уже
+// NULL (FK на volumes — ON DELETE SET NULL): тогда у снапшота размещения нет вовсе,
+// сравнивать не с чем, и придумывать его нельзя — строка проходит (см.
+// image_source_region_integration_test.go, где эта граница зафиксирована явно).
+//
+// size_bytes/min_disk_bytes снимаются с той же уже РАЗРЕШЁННОЙ строки источника.
+// Источник не задан (”→NULL, пост-SET-NULL форма) → оба предиката тривиально истинны,
+// size 0 — прежнее поведение сохранено.
 const imageInsertCoherentSQL = `
 	INSERT INTO images
 		(id, project_id, name, description, labels, region_id,
@@ -151,8 +175,17 @@ const imageInsertCoherentSQL = `
 	       COALESCE((SELECT s.size_bytes FROM snapshots s WHERE s.id=$7 AND s.project_id=$2),
 	                (SELECT v.size_bytes FROM volumes   v WHERE v.id=$8 AND v.project_id=$2), 0),
 	       $9::text,'READY'
-	 WHERE ($7::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$7 AND s.project_id=$2))
-	   AND ($8::text IS NULL OR EXISTS (SELECT 1 FROM volumes   v WHERE v.id=$8 AND v.project_id=$2))
+	 WHERE ($7::text IS NULL OR EXISTS (
+	            SELECT 1 FROM snapshots s
+	             WHERE s.id=$7 AND s.project_id=$2
+	               AND (s.source_volume_id IS NULL OR EXISTS (
+	                       SELECT 1 FROM volumes lv
+	                        WHERE lv.id = s.source_volume_id
+	                          AND lv.zone_id = ANY($10::text[])))))
+	   AND ($8::text IS NULL OR EXISTS (
+	            SELECT 1 FROM volumes v
+	             WHERE v.id=$8 AND v.project_id=$2
+	               AND v.zone_id = ANY($10::text[])))
 	RETURNING created_at, updated_at, size_bytes, min_disk_bytes`
 
 // Insert реализует image.Writer: state=READY сразу; size_bytes/min_disk_bytes derived
@@ -163,7 +196,7 @@ const imageInsertCoherentSQL = `
 // CHECK (23514) / partial UNIQUE(name) (23505) → контрактные sentinel'ы. exactly-one
 // на Create — domain.Validate() (sync). storage_outbox CREATED + fga_register_outbox
 // (owner-tuple storage_image) — та же writer-TX (один commit).
-func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image) (*domain.Image, error) {
+func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error) {
 	labels, err := json.Marshal(nonNilLabels(i.Labels))
 	if err != nil {
 		return nil, ports.ErrInternal
@@ -175,11 +208,18 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image) (*domain.Image,
 	if i.SourceVolume != "" {
 		srcVol = &i.SourceVolume
 	}
+	// nil и пустой срез в `= ANY($10)` ведут себя одинаково (ни одна зона не
+	// совпадает), но передаём всегда непустой типизированный срез, чтобы драйвер
+	// не отправил NULL: `zone_id = ANY(NULL)` даёт NULL, а не false, и предикат
+	// стал бы неопределённым вместо отказа.
+	if regionZones == nil {
+		regionZones = []string{}
+	}
 	created := *i
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx, imageInsertCoherentSQL,
 			i.ID, i.ProjectID, i.Name, i.Description, labels, i.RegionID,
-			srcSnap, srcVol, domain.FormatStandard).
+			srcSnap, srcVol, domain.FormatStandard, regionZones).
 			Scan(&created.CreatedAt, &created.UpdatedAt, &created.SizeBytes, &created.MinDiskBytes)
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {

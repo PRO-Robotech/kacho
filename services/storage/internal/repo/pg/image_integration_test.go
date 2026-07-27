@@ -42,7 +42,7 @@ func mkImageFromSnapshot(t *testing.T, r *pg.ImageRepo, project, name, region, s
 		Name:           name,
 		RegionID:       region,
 		SourceSnapshot: snapID,
-	})
+	}, fixtureRegionZones)
 	require.NoError(t, err)
 	return i
 }
@@ -86,7 +86,7 @@ func TestImageCreateFromVolume(t *testing.T) {
 	img, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "from-vol",
 		RegionID: "ru-central1", SourceVolume: v.ID,
-	})
+	}, fixtureRegionZones)
 	require.NoError(t, err)
 	require.Equal(t, v.ID, img.SourceVolume)
 	require.Empty(t, img.SourceSnapshot)
@@ -121,7 +121,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 			_, err := r.Insert(context.Background(), &domain.Image{
 				ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "dup-img",
 				RegionID: "ru-central1", SourceSnapshot: snapID,
-			})
+			}, fixtureRegionZones)
 			switch {
 			case err == nil:
 				ok.Add(1)
@@ -143,7 +143,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 	_, err := r.Insert(context.Background(), &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-2", Name: "dup-img",
 		RegionID: "ru-central1", SourceSnapshot: snap2,
-	})
+	}, fixtureRegionZones)
 	require.NoError(t, err, "same name in another project is allowed")
 }
 
@@ -157,14 +157,14 @@ func TestImageSourceFKNotFound(t *testing.T) {
 	_, err := r.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "bad-snap-src",
 		RegionID: "ru-central1", SourceSnapshot: "snp00000000000000000",
-	})
+	}, fixtureRegionZones)
 	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Snapshot snp00000000000000000 not found", err.Error()[len("failed precondition: "):])
 
 	_, err = r.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "bad-vol-src",
 		RegionID: "ru-central1", SourceVolume: "vol00000000000000000",
-	})
+	}, fixtureRegionZones)
 	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Volume vol00000000000000000 not found", err.Error()[len("failed precondition: "):])
 }

@@ -162,7 +162,7 @@ func TestUpdateImmutableField(t *testing.T) {
 // вызывает writer.Insert, маршалит Image в Operation.response, done=true.
 func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	writer := &portmock.ImageWriter{
-		InsertFunc: func(_ context.Context, i *domain.Image) (*domain.Image, error) {
+		InsertFunc: func(_ context.Context, i *domain.Image, _ []string) (*domain.Image, error) {
 			out := *i // id уже присвоен use-case'ом (ids.NewID) до Run
 			out.Status = domain.ImageStatusReady
 			return &out, nil
@@ -214,7 +214,7 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 func TestCreateLROWriterErrorMarksError(t *testing.T) {
 	sentinel := fmt.Errorf("%w: Snapshot snp00000000000000000 not found", ports.ErrFailedPrecondition)
 	writer := &portmock.ImageWriter{
-		InsertFunc: func(context.Context, *domain.Image) (*domain.Image, error) { return nil, sentinel },
+		InsertFunc: func(context.Context, *domain.Image, []string) (*domain.Image, error) { return nil, sentinel },
 	}
 	geo := &portmock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
 	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
