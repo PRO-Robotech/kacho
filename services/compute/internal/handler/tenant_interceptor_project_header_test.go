@@ -23,7 +23,7 @@ func TestTenantFromMetadata_ReadsProjectIDHeader(t *testing.T) {
 	})
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	trusted := tenantFromMetadata(ctx, true)
+	trusted := tenantFromMetadata(ctx, true, true /*internal listener*/)
 	assert.Contains(t, trusted.ProjectIDs, "p1",
 		"trusted peer's x-kacho-project-id must populate ProjectIDs")
 	assert.False(t, trusted.IsAnonymous(),
@@ -38,7 +38,7 @@ func TestTenantFromMetadata_IgnoresLegacyFolderHeader(t *testing.T) {
 	})
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	trusted := tenantFromMetadata(ctx, true)
+	trusted := tenantFromMetadata(ctx, true, true /*internal listener*/)
 	assert.Empty(t, trusted.ProjectIDs,
 		"legacy x-kacho-folder-id must not populate ProjectIDs")
 }

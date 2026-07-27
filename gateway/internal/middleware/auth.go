@@ -646,22 +646,22 @@ func writeHTTPUnauthorized(w http.ResponseWriter, desc string) {
 	_, _ = w.Write([]byte(`{"code":16,"message":"` + desc + `"}`))
 }
 
-// isClientForgeableIdentityHeader reports whether a lower-cased inbound header
-// name carries gateway-derived identity/token context that a client must never
-// supply: principal (type/id/display-name) and token (acr/jti/scope/exp), in
-// both the plain and grpc-gateway `grpc-metadata-` forms. These are set only by
-// the gateway after a validated credential, so they are stripped before the
-// auth flow — otherwise a forged X-Kacho-Token-Acr would reach the step-up gate
-// and the backend acr-floor.
+// isClientForgeableIdentityHeader reports whether an inbound header name /
+// metadata key carries gateway-derived identity context that a client must never
+// supply. The predicate covers the WHOLE reserved `x-kacho-` namespace in both
+// surface forms (bare and grpc-gateway `grpc-metadata-`-bridged) — see
+// principalmeta.IsClientForgeableKey for the namespace contract and for why this
+// is a namespace sweep rather than a list of banned names.
+//
+// It previously enumerated two families (principal + token) and therefore missed
+// `x-kacho-admin` / `x-kacho-project-id`, which kacho-compute and kacho-vpc read
+// off the wire: a client set `Grpc-Metadata-X-Kacho-Admin: true`, the REST→gRPC
+// bridge forwarded it, and compute raised its cluster-admin flag on the PUBLIC
+// listener — bypassing the operation-ownership predicate, whose response carries
+// the created resource in full. Enumerating names is what produced the hole; the
+// namespace form cannot forget a key that does not exist yet.
 func isClientForgeableIdentityHeader(lower string) bool {
-	switch {
-	case strings.HasPrefix(lower, principalmeta.MetaPrincipalPrefix),
-		strings.HasPrefix(lower, principalmeta.MetaGRPCPrincipalPrefix),
-		strings.HasPrefix(lower, "x-kacho-token-"),
-		strings.HasPrefix(lower, "grpc-metadata-x-kacho-token-"):
-		return true
-	}
-	return false
+	return principalmeta.IsClientForgeableKey(lower)
 }
 
 func extractBearer(ctx context.Context) string {

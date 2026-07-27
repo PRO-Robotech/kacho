@@ -27,14 +27,17 @@ func TestTenantFromMetadata_AdminProjectRequireTrust(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	// Untrusted peer → admin/project DROPPED (anonymous для authz), actor сохранён.
-	untrusted := tenantFromMetadata(ctx, false)
+	// Второй аргумент — internal-листенер: даже там trust-гейт держит.
+	untrusted := tenantFromMetadata(ctx, false, true)
 	assert.False(t, untrusted.Admin, "untrusted peer must not gain admin from raw x-kacho-admin")
 	assert.Empty(t, untrusted.ProjectIDs, "untrusted peer must not gain project-scope from raw x-kacho-project-id")
 	assert.True(t, untrusted.IsAnonymous(), "untrusted peer with forged headers is anonymous for authz")
 	assert.Equal(t, "someone", untrusted.Actor, "actor is audit-only, read regardless of trust")
 
-	// Trusted peer (gateway / insecure back-compat) → headers honoured.
-	trusted := tenantFromMetadata(ctx, true)
+	// Trusted peer (gateway / insecure back-compat) на internal-листенере →
+	// headers honoured. На публичном листенере они не читаются вообще — это
+	// отдельный, независимый гейт (tenant_admin_listener_test.go).
+	trusted := tenantFromMetadata(ctx, true, true)
 	assert.True(t, trusted.Admin, "trusted peer's x-kacho-admin is honoured")
 	assert.Contains(t, trusted.ProjectIDs, "p1", "trusted peer's x-kacho-project-id is honoured")
 	assert.Equal(t, "someone", trusted.Actor)

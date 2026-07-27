@@ -25,13 +25,20 @@
 //
 // # Security boundary
 //
-// This helper is for **cluster-internal** service→service calls only. The
-// external TLS listener of api-gateway STRIPS client-supplied
-// `x-kacho-principal-*` headers so a tenant cannot inject a principal header
-// to impersonate another user. The server-side cluster-internal listener is
-// mTLS-only and not reachable from outside the cluster, so it does not need a
-// symmetric strip today. If that guarantee weakens, add a strip-on-entry in
-// vpc/compute server interceptors in a separate change.
+// This helper is for **cluster-internal** service→service calls only. Both edges
+// of api-gateway (the REST middleware and the native-gRPC interceptor) STRIP the
+// ENTIRE client-supplied `x-kacho-` namespace — in the bare form and in the
+// grpc-gateway `Grpc-Metadata-x-kacho-…` bridged form — so a tenant can inject
+// neither a principal, nor an admin flag, nor a project scope. The strip is a
+// namespace sweep, not a list of banned names: it previously enumerated
+// `principal`/`token` only, and `x-kacho-admin` / `x-kacho-project-id` (read by
+// compute/vpc) slipped through the bridge into a live privilege escalation.
+//
+// Backends must NOT treat that strip as licence to trust the headers: the gateway
+// is not the only way to reach a listener. Authz-bearing metadata is honoured
+// only when it is both (a) forwarded by a trust-gated peer and (b) received on the
+// listener where it is meaningful — see kacho-compute / kacho-vpc
+// `internal/handler/tenant_interceptor.go`.
 package auth
 
 import (

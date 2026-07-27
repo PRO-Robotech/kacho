@@ -24,6 +24,8 @@
 //     read by a backend / opsproxy via metadata.FromIncomingContext.
 package principalmeta
 
+import "strings"
+
 // Canonical HTTP header names.
 const (
 	HeaderPrincipalType    = "X-Kacho-Principal-Type"
@@ -61,4 +63,89 @@ const (
 const (
 	MetaPrincipalPrefix     = "x-kacho-principal-"
 	MetaGRPCPrincipalPrefix = "grpc-metadata-x-kacho-principal-"
+	MetaTokenPrefix         = "x-kacho-token-" // #nosec G101 -- metadata key prefix, not a credential
 )
+
+// Namespace is the reserved prefix of EVERY Kachō identity/context key on the
+// wire. Anything under it is gateway-owned by definition: it is derived from a
+// validated credential and a client may never supply it.
+//
+// BridgePrefix is grpc-gateway's REST→gRPC bridge prefix: an inbound HTTP header
+// `Grpc-Metadata-Foo` is forwarded to the backend as gRPC metadata `foo`
+// (runtime.DefaultHeaderMatcher). Both surface forms of the same logical key must
+// therefore be treated identically by any policy over the namespace.
+const (
+	Namespace    = "x-kacho-"
+	BridgePrefix = "grpc-metadata-"
+)
+
+// gatewayProducedPrefixes — the CLOSED set of `x-kacho-` sub-families the
+// gateway itself produces after a validated credential and is therefore allowed
+// to forward to a backend:
+//
+//   - `x-kacho-principal-` (type / id / display-name) — set by the Bearer, Kratos,
+//     DPoP and mTLS auth paths (setPrincipalHeaders / injectVerifiedTokenHeaders).
+//   - `x-kacho-token-` (acr / jti / scope / exp) — validated JWT claims, consumed
+//     by the step-up gate and the iam acr-floor on the internal re-dial.
+//
+// Everything else in the namespace — `x-kacho-admin`, `x-kacho-project-id`,
+// `x-kacho-actor`, and any key added tomorrow — is client-forgeable input and is
+// dropped at the edge.
+//
+// # Why a closed set and not a list of banned names
+//
+// The previous form enumerated the FORBIDDEN keys (principal + token). It was
+// correct on the day it was written and silently wrong the day a backend started
+// reading a third key: `x-kacho-admin` and `x-kacho-project-id` were never added
+// to the list, so a client could set `Grpc-Metadata-X-Kacho-Admin: true`, the
+// bridge forwarded it verbatim, and kacho-compute raised its cluster-admin flag
+// on the PUBLIC listener — lifting the operation-ownership predicate (an
+// Operation response carries the created resource in full). A deny-list has to
+// be extended for every new key or it leaks; an allow-list has to be extended for
+// every new key or the key simply does not work. Only the second failure mode is
+// safe, and only the second one is noticed immediately.
+var gatewayProducedPrefixes = []string{MetaPrincipalPrefix, MetaTokenPrefix}
+
+// KachoNamespaceKey normalises an inbound HTTP header name or gRPC metadata key
+// to its bare lower-cased form and reports whether it belongs to the reserved
+// `x-kacho-` namespace. The grpc-gateway bridge prefix is stripped first, so
+// `Grpc-Metadata-X-Kacho-Admin` and `x-kacho-admin` both yield
+// ("x-kacho-admin", true).
+func KachoNamespaceKey(key string) (string, bool) {
+	lower := strings.ToLower(key)
+	lower = strings.TrimPrefix(lower, BridgePrefix)
+	if !strings.HasPrefix(lower, Namespace) {
+		return "", false
+	}
+	return lower, true
+}
+
+// IsGatewayProducedKey reports whether a bare lower-cased `x-kacho-` key (as
+// returned by KachoNamespaceKey) is one the gateway itself produces — i.e. one
+// that may legitimately cross the REST→gRPC bridge to a backend.
+func IsGatewayProducedKey(name string) bool {
+	for _, p := range gatewayProducedPrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsClientForgeableKey reports whether an inbound header name / metadata key
+// must be stripped before any auth path runs. True for the ENTIRE `x-kacho-`
+// namespace in both surface forms: every key under it is gateway-derived, so a
+// client-supplied one is by definition a forgery — including the keys the
+// gateway produces itself (they are re-set from the validated credential right
+// after the strip).
+//
+// No client-supplied `X-Kacho-…` header is legitimate at the gateway edge: the
+// UI and the SDKs authenticate with `Authorization`/`Cookie`/`DPoP`, and the one
+// shared-secret Kachō header that does exist (`X-Kacho-Hook-Token`, the
+// Hydra→iam webhook) is served by iam's own HTTP listener, not by this gateway.
+// If that ever changes, add the key to an explicit allow-list here rather than
+// narrowing the namespace sweep.
+func IsClientForgeableKey(key string) bool {
+	_, ok := KachoNamespaceKey(key)
+	return ok
+}

@@ -150,6 +150,45 @@ func buildPrincipalMetadata(r *http.Request) metadata.MD {
 	return md
 }
 
+// principalHeaderMatcher — grpc-gateway IncomingHeaderMatcher: решает, какой
+// inbound HTTP header пересекает REST→gRPC мост и под каким metadata-ключом.
+//
+// Второй (независимый от strip'а) слой защиты от identity-подлога. Первый слой —
+// `middleware.AuthInterceptor.HTTP`, который вычищает ВЕСЬ клиентский
+// `x-kacho-`-namespace до того, как сюда дойдёт запрос. Здесь мы к тому же
+// сужаем сам мост: `runtime.DefaultHeaderMatcher` бриджит ЛЮБОЙ заголовок с
+// префиксом `Grpc-Metadata-` в одноимённую gRPC-метадату, поэтому
+// `Grpc-Metadata-X-Kacho-<что-угодно>` доезжал бы до backend'а как
+// `x-kacho-<что-угодно>`. Для зарезервированного namespace мост открыт только
+// тому, что ставит сам gateway после проверенного credential'а
+// (`principalmeta.IsGatewayProducedKey`) — всё остальное в этом namespace
+// отбрасывается.
+//
+// Свойство, ради которого форма именно такая: новый identity-заголовок нельзя
+// «забыть». Чтобы он поехал на backend, его нужно явно внести в
+// gateway-produced-набор `principalmeta`; ни strip, ни мост его по умолчанию не
+// пропустят. Прежняя форма (перечисление запрещённых имён) требовала помнить про
+// каждое новое имя — так и появилась дыра с `x-kacho-admin`/`x-kacho-project-id`.
+//
+// Заголовки вне `x-kacho-` namespace обрабатываются штатным
+// `runtime.DefaultHeaderMatcher` (permanent-HTTP + `Grpc-Metadata-`-бридж) —
+// поведение для них не меняется.
+func principalHeaderMatcher(key string) (string, bool) {
+	if name, ok := principalmeta.KachoNamespaceKey(key); ok {
+		if principalmeta.IsGatewayProducedKey(name) {
+			return name, true
+		}
+		return "", false
+	}
+	return runtime.DefaultHeaderMatcher(key)
+}
+
+// principalMetadata — grpc-gateway WithMetadata annotator: собирает outgoing
+// gRPC-metadata из gateway-выставленных headers (см. buildPrincipalMetadata).
+func principalMetadata(_ context.Context, r *http.Request) metadata.MD {
+	return buildPrincipalMetadata(r)
+}
+
 // isInternalPath решает, какой sub-mux обрабатывает запрос.
 //
 // Правила (в порядке проверки):
@@ -284,26 +323,6 @@ func NewMux(
 		UnmarshalOptions: protojson.UnmarshalOptions{
 			DiscardUnknown: true,
 		},
-	}
-
-	// Explicit IncomingHeaderMatcher для x-kacho-principal-*
-	// + WithMetadata callback что явно собирает outgoing metadata из
-	// HTTP middleware-set headers `X-Kacho-Principal-*`. Без WithMetadata
-	// grpc-gateway не пробрасывает кастомные headers — одного
-	// IncomingHeaderMatcher мало.
-	principalHeaderMatcher := func(key string) (string, bool) {
-		if k, ok := runtime.DefaultHeaderMatcher(key); ok {
-			return k, true
-		}
-		lower := strings.ToLower(key)
-		if strings.HasPrefix(lower, principalmeta.MetaPrincipalPrefix) {
-			return lower, true
-		}
-		return "", false
-	}
-
-	principalMetadata := func(_ context.Context, r *http.Request) metadata.MD {
-		return buildPrincipalMetadata(r)
 	}
 
 	publicMux := runtime.NewServeMux(

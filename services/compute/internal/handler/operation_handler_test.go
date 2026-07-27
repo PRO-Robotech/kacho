@@ -205,12 +205,6 @@ func opSACtx(id string) context.Context {
 		operations.Principal{Type: "service_account", ID: id, DisplayName: "test"})
 }
 
-// opAdminCtx — ctx cluster-admin'а (TenantCtx.Admin=true, как после доверенного
-// x-kacho-admin). tenantCtxKey — package-private ключ tenant_interceptor.go.
-func opAdminCtx() context.Context {
-	return context.WithValue(context.Background(), tenantCtxKey{}, TenantCtx{Admin: true})
-}
-
 // seedInFlight — кладёт in-flight (done=false) операцию владельца (type,id).
 func seedInFlight(repo *fakeOwnedOpsRepo, principalType, principalID string) *operations.Operation {
 	op := &operations.Operation{
@@ -350,29 +344,38 @@ func TestOperationHandler_Cancel_AlreadyCompleted_FailedPrecondition(t *testing.
 	assert.Equal(t, "operation "+op.ID+" already completed", st.Message())
 }
 
-// --- cluster-admin short-circuit ---
+// --- ownership-предикат не снимается ничем ---
 
-func TestOperationHandler_Admin_ShortCircuit(t *testing.T) {
+// TestOperationHandler_NoAdminShortCircuit — паритет с kacho-vpc: admin-обхода
+// ownership-предиката НЕТ. Раньше здесь жил `TestOperationHandler_Admin_ShortCircuit`,
+// который фиксировал обратное — и то, что он фиксировал, было живой эскалацией:
+// TenantCtx.Admin поднимался из клиентского `x-kacho-admin`, ретранслированного
+// шлюзом через `Grpc-Metadata-`-мост на ПУБЛИЧНЫЙ листенер, а Operation.response
+// несёт созданный ресурс целиком.
+//
+// Позитивная сторона (владелец читает и отменяет свою операцию) и негативная
+// (не-владелец получает NotFound) — в TestOperationHandler_Owner_* и
+// operation_ownership_forged_admin_test.go.
+func TestOperationHandler_NoAdminShortCircuit(t *testing.T) {
 	repo := newFakeOwnedOpsRepo()
 	op := seedInFlight(repo, "user", "usr-A")
 	h := NewOperationHandler(repo)
 
-	// admin Get чужой op → OK.
-	got, err := h.Get(opAdminCtx(), &operationpb.GetOperationRequest{OperationId: op.ID})
-	require.NoError(t, err)
-	assert.Equal(t, op.ID, got.Id)
+	// Даже с поднятым TenantCtx.Admin чужая операция не читается и не отменяется.
+	adminCtx := context.WithValue(opUserCtx("usr-B"), tenantCtxKey{}, TenantCtx{Admin: true})
 
-	// admin Cancel чужой in-flight op → OK, терминал CANCELLED.
-	cancelled, err := h.Cancel(opAdminCtx(), &operationpb.CancelOperationRequest{OperationId: op.ID})
-	require.NoError(t, err)
-	assert.True(t, cancelled.Done)
-	require.NotNil(t, cancelled.GetError())
-	assert.Equal(t, int32(1), cancelled.GetError().GetCode())
-
-	// non-admin не-владелец по-прежнему NotFound на ту же op.
-	_, err = h.Get(opUserCtx("usr-B"), &operationpb.GetOperationRequest{OperationId: op.ID})
+	_, err := h.Get(adminCtx, &operationpb.GetOperationRequest{OperationId: op.ID})
+	require.Error(t, err)
 	st, _ := grpcstatus.FromError(err)
 	assert.Equal(t, codes.NotFound, st.Code())
+
+	_, err = h.Cancel(adminCtx, &operationpb.CancelOperationRequest{OperationId: op.ID})
+	require.Error(t, err)
+	st, _ = grpcstatus.FromError(err)
+	assert.Equal(t, codes.NotFound, st.Code())
+
+	// Операция осталась in-flight — отмены не произошло.
+	assert.False(t, repo.ops[op.ID].Done, "foreign operation must not have been cancelled")
 }
 
 // --- service-account владелец — match по паре (type,id) ---

@@ -70,8 +70,9 @@ func (t TenantCtx) IsAnonymous() bool {
 
 // TenantFromCtx извлекает TenantCtx из context. Если interceptor не сработал —
 // empty TenantCtx (Admin=false, ProjectIDs=nil → anonymous для AuthN-гейта).
-// Единственный prod-потребитель — OperationHandler (cluster-admin bypass
-// ownership-предиката, operation_handler.go).
+// Identity кладётся в ctx интерсептором для downstream-слоёв; ownership-гейты
+// (OperationService) её НЕ читают — они резолвят владельца из доверенного
+// ctx-principal'а. Паритет с kacho-vpc `internal/tenant.TenantFromCtx`.
 func TenantFromCtx(ctx context.Context) TenantCtx {
 	if v := ctx.Value(tenantCtxKey{}); v != nil {
 		if t, ok := v.(TenantCtx); ok {
@@ -89,7 +90,7 @@ func TenantFromCtx(ctx context.Context) TenantCtx {
 func TenantUnaryInterceptor(requireAdmin, productionMode bool) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		_, trusted := grpcsrv.TrustedPrincipalFromContext(ctx)
-		t := tenantFromMetadata(ctx, trusted)
+		t := tenantFromMetadata(ctx, trusted, requireAdmin)
 		if productionMode && t.IsAnonymous() && !principalForwarded(ctx) {
 			return nil, status.Error(codes.PermissionDenied,
 				"AuthN required (production mode): set x-kacho-* identity headers via gateway")
@@ -108,7 +109,7 @@ func TenantUnaryInterceptor(requireAdmin, productionMode bool) grpc.UnaryServerI
 func TenantStreamInterceptor(requireAdmin, productionMode bool) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		_, trusted := grpcsrv.TrustedPrincipalFromContext(ss.Context())
-		t := tenantFromMetadata(ss.Context(), trusted)
+		t := tenantFromMetadata(ss.Context(), trusted, requireAdmin)
 		if productionMode && t.IsAnonymous() && !principalForwarded(ss.Context()) {
 			return status.Error(codes.PermissionDenied,
 				"AuthN required (production mode): set x-kacho-* identity headers via gateway")
@@ -147,16 +148,44 @@ func (w *wrappedStream) Context() context.Context { return w.ctx }
 
 // tenantFromMetadata — internal helper, извлекает TenantCtx из gRPC md.
 //
-// trusted — решение trust-aware principal-extract'а (grpcsrv.TrustedPrincipalFromContext):
-// на mTLS-листенере метадата доверяется ⟺ peer предъявил verified client-cert
-// trusted forwarder'а (api-gateway); insecure-листенер = back-compat trusted.
-// authz-влияющие заголовки (x-kacho-admin → Admin, x-kacho-project-id → ProjectIDs)
-// читаются ТОЛЬКО от trusted peer'а — иначе peer, дотянувшийся до листенера напрямую
-// (TLS без verified cert), мог бы подделать `x-kacho-admin: true` и пройти admin-gate
-// internal-листенера / operation-ownership bypass, т.к. эти заголовки не связаны с
-// verified peer-identity (в отличие от principal, который trust-gated).
+// Два независимых условия, оба обязательны для authz-влияющих заголовков:
+//
+//   - trusted — решение trust-aware principal-extract'а
+//     (grpcsrv.TrustedPrincipalFromContext): метадата доверяется ⟺ peer предъявил
+//     verified client-cert trusted forwarder'а (api-gateway); insecure-листенер =
+//     back-compat trusted. Отвечает на вопрос «КТО со мной говорит по проводу» —
+//     защищает от peer'а, дотянувшегося до листенера напрямую.
+//   - internalListener — листенер, на котором эти заголовки вообще осмысленны
+//     (= requireAdmin, т.е. только :9091). Отвечает на другой вопрос — «ОТКУДА
+//     взялось значение».
+//
+// Trust-гейта одного НЕДОСТАТОЧНО, и это ядро дефекта: api-gateway — доверенный
+// peer, но заголовок в него приносит tenant. Пока gateway пробрасывал
+// `Grpc-Metadata-X-Kacho-Admin` (мост REST→gRPC форвардит любой `Grpc-Metadata-*`),
+// подлог приезжал на ПУБЛИЧНЫЙ листенер как метадата доверенного форвардера,
+// поднимал t.Admin и снимал ownership-предикат OperationService (ответ операции
+// несёт созданный ресурс целиком). Доверяя такому значению на tenant-facing
+// поверхности, сервис доверяет произвольному клиенту.
+//
+// Отсюда — паритет с kacho-vpc (`honorAdmin = requireAdmin`): публичный листенер
+// admin-полномочий не выдаёт вообще, нет заголовка, которым их можно попросить.
+// Trust-гейт compute при этом сохранён (он строже vpc и снимает второй,
+// независимый вектор — прямой dial в обход gateway).
+//
+// x-kacho-project-id гейтится тем же листенер-условием (compute строже vpc):
+// api-gateway его вообще не производит (buildPrincipalMetadata форвардит только
+// x-kacho-principal-* + x-kacho-token-acr), поэтому на публичной поверхности он
+// может быть только подлогом. Он не выдаёт доступ к объектам (это per-RPC FGA
+// Check + listauthz), но питает IsAnonymous — то есть подложенный project-id
+// удовлетворял бы production-mode AuthN-гейт без единого credential'а. На
+// публичном листенере не-anonymous теперь следует ИСКЛЮЧИТЕЛЬНО из trust-gated
+// principal'а (principalForwarded) — ровно то, что форвардит gateway.
+//
+// Заголовочная гигиена шлюза остаётся первым слоем, но НЕ основанием доверять:
+// gateway — не единственный способ дотянуться до листенера.
+//
 // x-kacho-actor — audit-only, не влияет на authz → читается всегда.
-func tenantFromMetadata(ctx context.Context, trusted bool) TenantCtx {
+func tenantFromMetadata(ctx context.Context, trusted, internalListener bool) TenantCtx {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return TenantCtx{}
@@ -170,6 +199,11 @@ func tenantFromMetadata(ctx context.Context, trusted bool) TenantCtx {
 		// anonymous для authz (Admin=false, ProjectIDs=nil) — production-mode gate
 		// отобьёт его как anonymous, а authoritative per-RPC FGA Check (на trust-gated
 		// principal) остаётся основным гейтом.
+		return t
+	}
+	if !internalListener {
+		// Публичный листенер (:9090): authz-влияющие заголовки не читаются вообще —
+		// gateway их не производит, значит любое значение здесь — клиентский подлог.
 		return t
 	}
 	if v := md.Get("x-kacho-admin"); len(v) > 0 && v[0] == "true" {
