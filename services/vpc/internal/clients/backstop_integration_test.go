@@ -249,16 +249,30 @@ func Test_1_4_32_LongOutageNoPoison_ThenMetricsSurface(t *testing.T) {
 	assert.True(t, sentNullDuringOutage, "intent durable (pending) through a transient outage longer than MaxAttempts")
 
 	// IAM восстановился → тот же durable-intent доставляется ровно один раз (не потерян).
+	//
+	// Ждём ОБА факта в одном условии: применитель вызван ровно один раз И строка
+	// помечена отправленной. Ждать только вызова нельзя — drainer ставит sent_at
+	// ОТДЕЛЬНЫМ стейтментом (markSuccess) уже ПОСЛЕ возврата применителя, поэтому
+	// чтение строки сразу за ожиданием вызова попадает в окно между ними. Окно
+	// узкое и на тихой машине почти всегда закрыто, но под конкуренцией за хост
+	// (параллельные testcontainers-суиты) раскрывается — и проба краснеет на
+	// здоровом продукте, то есть меряет загрузку машины, а не поведение дренажа.
+	// Соседний iam_register_drainer_integration_test.go читает sent_at внутри
+	// ожидания — здесь та же форма.
 	down.Store(false)
 	require.Eventually(t, func() bool {
-		return iam.count("vpc_network:net-long") == 1
-	}, 10*time.Second, 100*time.Millisecond, "tuple delivered exactly once after long transient outage (no poison)")
-
-	var sentNotNull bool
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT sent_at IS NOT NULL FROM kacho_vpc.fga_register_outbox WHERE payload->>'object'='vpc_network:net-long'`).
-		Scan(&sentNotNull))
-	assert.True(t, sentNotNull, "intent ultimately delivered (not lost to transient outage)")
+		if iam.count("vpc_network:net-long") != 1 {
+			return false
+		}
+		var sent bool
+		if err := pool.QueryRow(ctx,
+			`SELECT sent_at IS NOT NULL FROM kacho_vpc.fga_register_outbox WHERE payload->>'object'='vpc_network:net-long'`).
+			Scan(&sent); err != nil {
+			return false
+		}
+		return sent
+	}, 10*time.Second, 100*time.Millisecond,
+		"tuple delivered exactly once after long transient outage, and the intent marked sent (no poison, not lost)")
 
 	// Счетчик poisoned остается 0 (permanent-ошибки не было).
 	col2 := metrics.NewCollector(pool, rec, metrics.CollectorConfig{Table: vpcOutboxTable, MaxAttempts: maxAttempts})
