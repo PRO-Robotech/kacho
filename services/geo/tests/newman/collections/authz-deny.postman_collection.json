@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "625daf90-78c0-4016-ae2c-383af6997650",
+    "_postman_id": "30056ac5-8829-42dd-85b5-0b63c63a0b44",
     "name": "kacho-geo / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -329,6 +329,1000 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
                   "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-GET-AUTHZ-ANON-DENY — GET /geo/v1/regions/{id} as anonymous (no Bearer) → 401 UNAUTHENTICATED — project-scope EXEMPT removes authZ, never authN; Get carries its own <exempt> annotation, so List coverage does not speak for it",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get-region-anon",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/{{existingRegionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "{{existingRegionId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('no catalog payload leaks on the unauthenticated path', () => pm.expect(pm.response.text()).to.not.include('openForPlacement'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-GET-AUTHZ-ANON-DENY — GET /geo/v1/zones/{id} as anonymous (no Bearer) → 401 UNAUTHENTICATED (same as Region: exempt from project-scope authZ, still authenticated)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "get-zone-anon",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{existingZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{existingZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('no catalog payload leaks on the unauthenticated path', () => pm.expect(pm.response.text()).to.not.include('openForPlacement'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-GT-AUTHZ-AMBIENT-OK — GET /geo/v1/zones as authenticated jwtPureNoBindings (never-granted subject) → 200 ambient read. Zones matter more than regions here: zoneId is what every placement Create needs, so a tenant with no bindings yet must be able to read it",
+      "description": "class:AUTHZ | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "list-zones-purenobindings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "pm.test('zones is an array', () => pm.expect(pm.response.json().zones).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-GET-AUTHZ-AMBIENT-OK — GET /geo/v1/regions/{id} as authenticated jwtPureNoBindings → 200 — the exemption covers Get-by-id, not only List",
+      "description": "class:AUTHZ | class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "list-pick-ambient",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('regions non-empty (geography seeded)', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = ((pm.response.json().regions.find(r => !String(r.id).startsWith('qa')) || pm.response.json().regions[0]).id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('ambientPickRegionId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-region-purenobindings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/{{ambientPickRegionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "{{ambientPickRegionId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "pm.test('id echoes the requested region', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickRegionId')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-GET-AUTHZ-AMBIENT-OK — GET /geo/v1/zones/{id} as authenticated jwtPureNoBindings → 200 (exemption covers zone Get-by-id)",
+      "description": "class:AUTHZ | class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "list-pick-ambient",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('zones non-empty (geography seeded)', () => pm.expect((pm.response.json().zones||[]).length).to.be.greaterThan(0));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = ((pm.response.json().zones.find(z => !String(z.id).startsWith('qa')) || pm.response.json().zones[0]).id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('ambientPickZoneId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-zone-purenobindings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones/{{ambientPickZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones",
+                "{{ambientPickZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "pm.test('id echoes the requested zone', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickZoneId')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-CR-AUTHZ-ANON-DENY — InternalRegionService.Create as anonymous → 401 UNAUTHENTICATED. The internal listener is NOT exempt from authN: 'internal = trusted' is the forbidden assumption (security.md §AuthN+AuthZ everywhere)",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "create-region-anon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-anon-reg-{{runId}}\", \"name\": \"QA Anon Region {{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: anonymous",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-UPD-AUTHZ-NONADMIN-DENY — InternalRegionService.Update as non-admin jwtPureNoBindings → 403 PERMISSION_DENIED (system_admin@cluster). Create was covered; Update carries its own annotation",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "update-region-nonadmin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-deny-upd-reg-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions",
+                "qa-deny-upd-reg-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"QA Denied Rename {{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-DEL-AUTHZ-NONADMIN-DENY — InternalRegionService.Delete as non-admin jwtPureNoBindings → 403 PERMISSION_DENIED. Deleting a region is the most destructive verb on the placement axis — it must be the least reachable",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "delete-region-nonadmin",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-deny-del-reg-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions",
+                "qa-deny-del-reg-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-UPD-AUTHZ-NONADMIN-DENY — InternalZoneService.Update as non-admin jwtPureNoBindings → 403 PERMISSION_DENIED (system_admin@cluster)",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "update-zone-nonadmin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-deny-upd-{{runId}}-a",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "zones",
+                "qa-deny-upd-{{runId}}-a"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"DOWN\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-DEL-AUTHZ-NONADMIN-DENY — InternalZoneService.Delete as non-admin jwtPureNoBindings → 403 PERMISSION_DENIED",
+      "description": "class:AUTHZ | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "delete-zone-nonadmin",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/qa-deny-del-{{runId}}-a",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "zones",
+                "qa-deny-del-{{runId}}-a"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-REG-GTI-AUTHZ-NONADMIN-DENY — InternalRegionService.GetInternal as non-admin jwtPureNoBindings → 403 PERMISSION_DENIED on a region the same subject just read publicly — raw status + infra stay behind system_admin",
+      "description": "class:AUTHZ | class:NEG | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "public-read-first",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('regions non-empty (geography seeded)', () => pm.expect((pm.response.json().regions||[]).length).to.be.greaterThan(0));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = ((pm.response.json().regions.find(r => !String(r.id).startsWith('qa')) || pm.response.json().regions[0]).id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('ambientRegionId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-internal-nonadmin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/{{ambientRegionId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions",
+                "{{ambientRegionId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('denied body carries no infra and no raw status', () => { const b = pm.response.text().toLowerCase(); ['numericinfraid','hostclasses','underlayanchor','capacityhint','failuredomaincount','\"status\"'].forEach(k => pm.expect(b, 'leaked on deny: ' + k).to.not.include(k)); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GEO-ZON-GTI-AUTHZ-NONADMIN-DENY — InternalZoneService.GetInternal as non-admin jwtPureNoBindings → 403 PERMISSION_DENIED on a zone the same subject just read publicly — ZoneInfra (hostClasses/underlayAnchor/failureDomainCount) stays behind system_admin",
+      "description": "class:AUTHZ | class:NEG | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "public-read-first",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('zones non-empty (geography seeded)', () => pm.expect((pm.response.json().zones||[]).length).to.be.greaterThan(0));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = ((pm.response.json().zones.find(z => !String(z.id).startsWith('qa')) || pm.response.json().zones[0]).id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('ambientZoneId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-internal-nonadmin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/zones/{{ambientZoneId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "zones",
+                "{{ambientZoneId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step: bearer from env 'jwtPureNoBindings'",
+                  "const __t = pm.environment.get('jwtPureNoBindings') || pm.variables.get('jwtPureNoBindings') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('denied body carries no infra and no raw status', () => { const b = pm.response.text().toLowerCase(); ['numericinfraid','hostclasses','underlayanchor','capacityhint','failuredomaincount','\"status\"'].forEach(k => pm.expect(b, 'leaked on deny: ' + k).to.not.include(k)); });"
                 ]
               }
             }

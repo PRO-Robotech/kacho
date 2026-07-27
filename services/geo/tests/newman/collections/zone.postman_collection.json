@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9240d159-f25b-44af-9def-a550ee862d6b",
+    "_postman_id": "27872ab5-68e2-4303-ae7c-757f8f8657c1",
     "name": "kacho-geo / newman / zone",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -573,6 +573,60 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ZON-LST-CONF-NO-INFRA — Public Zone.List — no item carries infra fields (numericInfraId/hostClasses/underlayAnchor/failureDomainCount/capacityHint); ZoneInfra is InternalZone-only",
+      "description": "class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "list-zones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/zones?pageSize=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "zones?pageSize=100"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('zones non-empty', () => pm.expect((pm.response.json().zones||[]).length).to.be.greaterThan(0));",
+                  "pm.test('public projection carries NO infra fields (two-projection invariant)', () => {",
+                  "  const o = pm.response.json();",
+                  "  const body = JSON.stringify(o).toLowerCase();",
+                  "  ['numericinfraid','infra','hostclasses','underlayanchor','capacityhint','failuredomaincount'].forEach(k => {",
+                  "    pm.expect(body, 'leaked infra field: ' + k + ' in ' + body).to.not.include(k);",
+                  "  });",
+                  "});",
+                  "pm.test('no list item carries raw status; the derived signal is there instead', () => {",
+                  "  (pm.response.json().zones || []).forEach(z => {",
+                  "    pm.expect(z, 'raw status on public list item: ' + JSON.stringify(z)).to.not.have.property('status');",
+                  "    pm.expect(z.openForPlacement, 'derived signal missing: ' + JSON.stringify(z)).to.be.a('boolean');",
+                  "  });",
+                  "});"
                 ]
               }
             }

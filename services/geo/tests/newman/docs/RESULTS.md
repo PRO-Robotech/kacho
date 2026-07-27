@@ -54,6 +54,48 @@ RED-lock неконтрактной поверхности = suite красны�
 `prefixToBackend`-фикс geo остаётся отдельным (не-GEO-1) улучшением, если публичный
 OpsProxy-poll geo-op когда-либо понадобится — но это НЕ блокирует зелёность suite.
 
+## Отложенные GEO-1-сценарии дописаны (2026-07-27) — что прогнано, что нет
+
+Набор принимался forward-compatible ДО посадки GEO-1 и покрывал контракт только по
+самым широким точкам: anonymous **List**, один ambient **List**, один internal
+**Create**-deny. Дописаны 15 кейсов ровно там, где контракт мог сломаться молча:
+
+* **authN на публичном read** (exempt снимает authZ, не authN): anonymous **Get-by-id**
+  region/zone — `Get` несёт СВОЮ `<exempt>`-аннотацию, покрытие `List` за него не говорит.
+* **ambient-200**: zones-List (раньше был только regions) + Get-by-id обоих ресурсов.
+  Субъект — `jwtPureNoBindings` (выделенный never-granted), НЕ `jwtNoBindings`: последний
+  является grant-ТАРГЕТОМ в iam-суитах, и под параллельным прогоном может транзиентно
+  иметь привязки — тогда «zero-binding читает каталог» доказывался бы принципалом,
+  который в тот момент zero-binding не был.
+* **two-projection на публичной поверхности**: сырой `status` на Region (был проверен
+  только у Zone) + отсутствие infra/`status` на **List**-проекции обоих (List — отдельный
+  путь сериализации, покрытие `Get` за него не отвечает).
+* **internal listener целиком**: anonymous → 401 (internal НЕ освобождён от authN) +
+  Update/Delete/**GetInternal** deny. `GetInternal` — та самая дверь к сырому `status` и
+  `infra`, и у неё не было ни одного deny-кейса.
+
+**Прогнано против живого стенда (read-only, стенд не поднимался и не перекатывался):**
+3 anonymous-кейса — `GEO-REG-GET-AUTHZ-ANON-DENY`, `GEO-ZON-GET-AUTHZ-ANON-DENY`,
+`GEO-REG-CR-AUTHZ-ANON-DENY` — **GREEN** (по 1 выполненному запросу, 3/3/2 ассерта).
+Замок проверен инъекцией: ожидание «anonymous internal Create → 200» → **RED**
+(`expected 401 to deeply equal 200`, тело — `AUTHN_REQUIRED`), возврат → **GREEN**.
+
+**НЕ прогнано здесь: 12 кейсов, требующих токена.** Живой env-файл суиты gitignored, а
+его посев (`tests/authz-fixtures/setup.sh`) — запись на общем стенде; единственный
+доступный сохранённый env просрочен на ~10 суток. Эти кейсы **не заявляются зелёными** —
+их арбитр CI-раннер на свежепосеянном стенде. Отсутствие токена они переживают
+громко, а не тихо: `gen.py` хардфейлит шаг с пустой auth-переменной
+(`harness config: <var> is set`), поэтому «прогон без фикстур» даёт RED, а не ложный GREEN.
+
+**Гейты:** `validate-cases.py` → OK (57 уникальных id, все каталогизированы; до внесения
+строк в `CASES-INDEX.md` гейт был RED по всем 15 — это и есть его red→green пара);
+`gen.py` → 7 коллекций, число сгенерированных кейсов пофайлово совпадает с числом
+объявленных `CASES.append` (2/17/6/7/2/13/10).
+
+Побочно исправлен неверный комментарий в `cases/zone.py`: он утверждал «raw status IS
+present AS-IS» рядом с ассертом, который проверяет его ОТСУТСТВИЕ. Написан до GEO-1 и с
+тех пор ложен; такой комментарий провоцирует «починить» ассерт под себя.
+
 ## Известное расхождение стенда (stale pod) — НЕ баг теста
 
 На момент реконсиляции локально-развёрнутый `kacho-geo` pod (11h old) СТАРЕЕ ветки:
@@ -66,8 +108,11 @@ pod'а даст ложные падения GEO-1-полей до пересбо
 
 ## Расширяемая поверхность (следующий инкремент)
 
-Net-new GEO-1-сценарии, ещё не покрытые кейсами (integration-tester/qa follow-up):
-`GetInternal` full projection (status+infra°, GEO-1-01), `warnings°` fresh-DOWN loud no-op
+Net-new GEO-1-сценарии, ещё не покрытые кейсами (integration-tester/qa follow-up).
+Из прежнего списка снято то, что дописано 2026-07-27 (см. выше): deny-полоса
+`GetInternal`/Update/Delete, anonymous на internal, ambient-Get-by-id, two-projection на
+List. Остаётся:
+`GetInternal` **positive** full projection под admin (status+infra°, GEO-1-01), `warnings°` fresh-DOWN loud no-op
 (GEO-1-12/13), `?regionId`/`?openForPlacement` list-фильтры (GEO-1-24/26), immutable regionId
 reject (GEO-1-32), `countryCode` ISO-3166 формат (GEO-1-39), `UNIQUE(name)` dup op.error
 (GEO-1-36), coupling strict-startsWith counter-пример `ru-central10-a` (GEO-1-30),
