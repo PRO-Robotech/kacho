@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -261,5 +262,104 @@ func TestCreateLRORepoErrorMarksError(t *testing.T) {
 	}
 	if done.Error == nil || done.Error.GetCode() != int32(codes.FailedPrecondition) {
 		t.Fatalf("op error = %v, want FailedPrecondition", done.Error)
+	}
+}
+
+// ── description / labels: отвергаются СИНХРОННО, как у тома и образа ─────────
+//
+// Том и образ прогоняют оба поля через validate.* на кромке запроса. Снимок этого
+// не делал: доменная проверка описания и меток не касается вовсе, поэтому
+// переразмерное значение доезжало до вставки, ловилось ограничением БД и
+// возвращалось АСИНХРОННО в ошибке операции обобщённым текстом — то есть поздно и
+// без имени поля. Для вызывающего это разница между «ты прислал слишком длинное
+// описание» и «операция почему-то не удалась».
+//
+// Утверждается наблюдаемое: отказ СИНХРОННЫЙ (ошибка из самого вызова, не из
+// операции), код InvalidArgument, и до однорангового узла дело не доходит — то
+// есть проверка стоит ДО сетевых вызовов, а не после.
+//
+// Имя поля здесь НЕ утверждается, и это не послабление. Общий валидатор кладёт
+// его в field violation внутри деталей, но слой use-case пересобирает ошибку через
+// её текст и детали теряет — одинаково у тома, образа и снимка. Утверждать здесь
+// имя поля значило бы держать снимок строже двух соседей по контракту, который
+// продукт не выполняет ни для одного из трёх. Потеря деталей заведена отдельно.
+
+func TestCreateRejectsOverLongDescriptionSynchronously(t *testing.T) {
+	iam := &portmock.PeerClient{
+		EnsureProjectFunc: func(context.Context, string) error {
+			t.Fatal("peer must not be called before the request edge rejects the body")
+			return nil
+		},
+	}
+	uc := snapshot.New(&portmock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+
+	s := &domain.Snapshot{
+		ProjectID:      "prj-1",
+		SourceVolumeID: "vol00000000000000000",
+		Description:    strings.Repeat("x", 257), // предел 256
+	}
+	op, err := uc.Create(context.Background(), s)
+	if op != nil {
+		t.Fatalf("Create returned an operation %v — the refusal must be synchronous", op)
+	}
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Create over-long description code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestCreateRejectsTooManyLabelsSynchronously(t *testing.T) {
+	iam := &portmock.PeerClient{
+		EnsureProjectFunc: func(context.Context, string) error {
+			t.Fatal("peer must not be called before the request edge rejects the body")
+			return nil
+		},
+	}
+	uc := snapshot.New(&portmock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+
+	labels := make(map[string]string, 65) // предел 64
+	for i := 0; i < 65; i++ {
+		labels[fmt.Sprintf("k%02d", i)] = "v"
+	}
+	s := &domain.Snapshot{
+		ProjectID:      "prj-1",
+		SourceVolumeID: "vol00000000000000000",
+		Labels:         labels,
+	}
+	op, err := uc.Create(context.Background(), s)
+	if op != nil {
+		t.Fatalf("Create returned an operation %v — the refusal must be synchronous", op)
+	}
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Create over-limit labels code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+// Граница остаётся проходимой: ровно 256 символов и ровно 64 метки — не отказ.
+func TestCreateAcceptsDescriptionAndLabelsAtTheLimit(t *testing.T) {
+	repo := &portmock.SnapshotRepo{
+		InsertFunc: func(_ context.Context, s *domain.Snapshot) (*domain.Snapshot, error) {
+			out := *s
+			out.Status = domain.SnapshotStatusReady
+			return &out, nil
+		},
+	}
+	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	// Валидный вход доходит до создания операции, поэтому здесь нужен настоящий
+	// репозиторий операций: с пустым вызов падает ещё до утверждения, и тест
+	// краснел бы по причине, к границе отношения не имеющей.
+	uc := snapshot.New(repo, iam, portmock.NewOpsRepo(), serviceerr.ToStatus)
+
+	labels := make(map[string]string, 64)
+	for i := 0; i < 64; i++ {
+		labels[fmt.Sprintf("k%02d", i)] = "v"
+	}
+	s := &domain.Snapshot{
+		ProjectID:      "prj-1",
+		SourceVolumeID: "vol00000000000000000",
+		Description:    strings.Repeat("x", 256),
+		Labels:         labels,
+	}
+	if _, err := uc.Create(context.Background(), s); status.Code(err) == codes.InvalidArgument {
+		t.Fatalf("Create at the limit was refused: %v", err)
 	}
 }

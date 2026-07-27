@@ -202,6 +202,18 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 	if err := s.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
 	}
+	// Sync BVA at the request edge, matching Volume and Image. The domain validator
+	// does not look at description or labels, so without these two an over-limit
+	// value travelled all the way to the INSERT, was caught by a database
+	// constraint, and came back ASYNCHRONOUSLY inside the operation error under a
+	// generic text. For the caller that is the difference between "your description
+	// is too long" and "the operation failed for some reason".
+	if err := validate.Description("description", s.Description); err != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+	}
+	if err := validate.Labels("labels", s.Labels); err != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+	}
 	if err := u.iam.EnsureProjectExists(ctx, s.ProjectID); err != nil {
 		return nil, u.errStatus(err)
 	}
