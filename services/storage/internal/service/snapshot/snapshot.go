@@ -175,7 +175,8 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Snapshot, s
 	if err != nil {
 		return nil, "", u.errStatus(err)
 	}
-	// Per-object видимость страницы (batched Check по её id, `viewer ∪ v_list`) —
+	// Per-object видимость страницы (batched Check по её id на `viewer` — то же
+	// отношение, что энфорсит Get) —
 	// см. authzfilter package-doc: вопрос задаётся про ПРОЧИТАННУЮ страницу, а не
 	// «перечисли всё разрешённое» (тот приём усекается пределом ListObjects).
 	// Вызывается ПОСЛЕ валидации page_size (выше) и page_token (repo), поэтому

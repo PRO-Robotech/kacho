@@ -36,10 +36,16 @@
 //
 // # Предикат видимости
 //
-// Видимость — союз `viewer ∪ v_list`: `viewer` (read-tier: direct usersets ∪
-// editor ∪ admin) и `v_list` (object-only selector-грант «видеть в списке»). Тот же
-// `viewer`, который энфорсит per-RPC Check на Get (см. internal/check/
-// permission_map.go), поэтому «видно в списке» ⟺ «Get разрешён» (read==enforce).
+// Видимость — РОВНО `viewer` (read-tier: direct usersets ∪ editor ∪ admin): то же
+// отношение, на котором permission-catalog энфорсит per-RPC Check на `Get` (и
+// которое зеркалит internal/check/permission_map.go), поэтому «видно в списке» ⟺
+// «Get разрешён» (read==enforce).
+//
+// Предикат НЕЛЬЗЯ расширять: список отдаёт полные строки, поэтому любое отношение
+// сверх Get-овского кладёт на страницу объект, который Get затем не отдаст, —
+// вызывающий узнаёт идентификатор недоступного ему ресурса. Ровно это и делал
+// прежний союз `viewer ∪ v_list`; подробности и замок — filter.go
+// (visibilityRelations) и filter_get_parity_test.go.
 //
 // # Дисциплина фильтра
 //

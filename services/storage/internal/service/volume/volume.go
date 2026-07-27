@@ -220,7 +220,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Volume, str
 		return nil, "", u.errStatus(err)
 	}
 	// Per-object видимость: страница уже прочитана курсором — спрашиваем kacho-iam
-	// БАТЧЕМ про её id (`viewer ∪ v_list`, read==enforce). Обратный порядок
+	// БАТЧЕМ про её id (`viewer` — то же отношение, что энфорсит Get; read==enforce). Обратный порядок
 	// («перечисли все разрешённые id → сузь ими SQL») запрещён: у OpenFGA
 	// ListObjects жёсткий предел без continuation-token'а, и собственный ресурс
 	// тенанта молча выпадал бы за префикс. Побочный эффект: страница может вернуться

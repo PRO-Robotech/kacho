@@ -131,15 +131,19 @@ func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
 		"the decision must ride an explicit required_relation, not a server-side verb derivation")
 }
 
-// v_list добирает то, чему отказал viewer — тот же союз, что даёт per-RPC Check.
-func TestFGAFilter_VListPicksUpWhatViewerDenied(t *testing.T) {
+// Отказ viewer'а — окончательный: страница не добирается вторым, более широким
+// отношением. `v_list` без резолвящегося `viewer` — это не выданный доступ, а
+// недоматериализованный/недоотозванный грант, и показывать по нему нечего: Get на
+// этот же объект гейтится `viewer`'ом и ответил бы отказом (см.
+// filter_get_parity_test.go).
+func TestFGAFilter_ViewerDenialIsFinal(t *testing.T) {
 	cli := newFakeAuthorizeClient().allow("viewer", "a").allow("v_list", "b")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x",
 		ResourceTypeSnapshot, ActionSnapshotList, []string{"a", "b", "c"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"a", "b"}, got)
+	assert.Equal(t, []string{"a"}, got)
 }
 
 // Пустой subject — fail-closed Unauthenticated, НИКОГДА не passthrough.

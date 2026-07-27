@@ -47,12 +47,11 @@ func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
 		id := fmt.Sprintf("vol%017d", i)
 		ids = append(ids, id)
 		switch i % 3 {
-		case 0: // viewer-видимый
+		case 0: // viewer-видимый — единственное отношение видимости
 			cli.allow("viewer", id)
 			want = append(want, id)
-		case 1: // v_list-видимый (viewer отказал → уходит во вторую фазу)
+		case 1: // только v_list: Get отказал бы, значит и в списке его нет
 			cli.allow("v_list", id)
-			want = append(want, id)
 		default: // невидимый ни по одному отношению
 		}
 	}
@@ -198,8 +197,10 @@ func TestFGAFilter_OperationBudgetCapsHangingPeer(t *testing.T) {
 func TestDeriveOverallTimeout_IsDerivedFromContractNotHandTuned(t *testing.T) {
 	perCall := time.Second
 	depth := worstCaseDepth(defaultParallelism)
-	// 1000/100 = 10 батчей на relation; 10/5 = 2 волны; 2 relations ⇒ 4 волны.
-	require.Equal(t, 4, depth)
+	// 1000/100 = 10 батчей на relation; 10/5 = 2 волны на relation. Глубина —
+	// произведение на число отношений видимости, а не переписываемая от руки
+	// константа: сузили предикат до одного отношения — глубина обязана упасть сама.
+	require.Equal(t, 2*len(visibilityRelations), depth)
 	assert.Equal(t, time.Duration(depth)*perCall*budgetHeadroomNum/budgetHeadroomDen,
 		deriveOverallTimeout(perCall, defaultParallelism))
 
