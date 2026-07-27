@@ -231,16 +231,24 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 		labelsArg = b
 	}
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		var rowID string
+		var (
+			rowID       string
+			projectID   string
+			labelsAfter []byte
+		)
 		serr := tx.QueryRow(ctx, `UPDATE images SET
 				name        = COALESCE($2, name),
 				description = COALESCE($3, description),
 				labels      = COALESCE($4::jsonb, labels),
 				updated_at  = now()
 			WHERE id = $1
-			RETURNING id`, id, u.Name, u.Description, labelsArg).Scan(&rowID)
+			RETURNING id, project_id, labels`,
+			id, u.Name, u.Description, labelsArg).Scan(&rowID, &projectID, &labelsAfter)
 		if serr == nil {
-			return nil
+			return reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
+				func(labels map[string]string) fgaregister.Item {
+					return fgaregister.ImageItem(projectID, rowID, labels)
+				})
 		}
 		if errors.Is(serr, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Image %s not found", ports.ErrNotFound, id)

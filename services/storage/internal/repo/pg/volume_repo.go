@@ -327,7 +327,11 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		// size-CAS: $5 IS NULL → размер не меняется; иначе применяется ТОЛЬКО если
 		// строго больше текущего (increase-only, не software-compare).
-		var rowID string
+		var (
+			rowID       string
+			projectID   string
+			labelsAfter []byte
+		)
 		serr := tx.QueryRow(ctx, `UPDATE volumes SET
 				name        = COALESCE($2, name),
 				description = COALESCE($3, description),
@@ -335,9 +339,13 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 				size_bytes  = COALESCE($5, size_bytes),
 				updated_at  = now()
 			WHERE id = $1 AND ($5::bigint IS NULL OR $5 > size_bytes)
-			RETURNING id`, id, u.Name, u.Description, labelsArg, u.SizeBytes).Scan(&rowID)
+			RETURNING id, project_id, labels`,
+			id, u.Name, u.Description, labelsArg, u.SizeBytes).Scan(&rowID, &projectID, &labelsAfter)
 		if serr == nil {
-			return nil
+			return reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
+				func(labels map[string]string) fgaregister.Item {
+					return fgaregister.VolumeItem(projectID, rowID, labels)
+				})
 		}
 		if !errors.Is(serr, pgx.ErrNoRows) {
 			return serr

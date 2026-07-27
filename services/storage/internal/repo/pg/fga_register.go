@@ -5,6 +5,7 @@ package pg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -44,6 +45,44 @@ func emitFGARegister(ctx context.Context, tx pgx.Tx, eventType string, item fgar
 		return fmt.Errorf("fga register intent insert: %w", err)
 	}
 	return nil
+}
+
+// reEmitLabelMirror переэмитит register-intent ПОСЛЕ смены меток, в той же
+// writer-TX, что и UPDATE строки.
+//
+// Зачем. Доступ, выданный через label-селектор, отзывается СНЯТИЕМ метки — но это
+// работает, только если владелец прав видит новые метки, а видит он их через
+// mirror-строку, которую кормит владелец ресурса. storage эмитил intent на Create
+// и на Delete, и ничего между ними: зеркало застывало на моменте создания,
+// селектор продолжал матчить метки, которых у ресурса уже нет, и грант переживал
+// метку, через которую был выдан. kacho-vpc это уже делает (network update
+// переэмитит, когда labels в маске) — здесь были пропущены три ресурса, а не
+// введён новый контракт.
+//
+// labelsChanged=false → no-op: переименование селектору ничего не сообщает, а
+// лишняя строка — трафик дренажа, который голова партиции обязана разгрести
+// прежде настоящего intent'а.
+//
+// Полное снятие меток — UPSERT С ПУСТЫМИ метками, НИКОГДА не unregister: ресурс
+// существует и сохраняет свой owner-tuple, он лишь перестаёт матчиться
+// селектором. Unregister здесь снял бы доступ у самого владельца.
+func reEmitLabelMirror(
+	ctx context.Context,
+	tx pgx.Tx,
+	labelsChanged bool,
+	labelsAfterJSON []byte,
+	item func(labels map[string]string) fgaregister.Item,
+) error {
+	if !labelsChanged {
+		return nil
+	}
+	labels := map[string]string{}
+	if len(labelsAfterJSON) > 0 {
+		if err := json.Unmarshal(labelsAfterJSON, &labels); err != nil {
+			return fmt.Errorf("fga register intent: decode labels after update: %w", err)
+		}
+	}
+	return emitFGARegister(ctx, tx, fgaregister.EventRegister, item(labels))
 }
 
 // splitFGAObject разбивает FGA-object "<kind>:<id>" на (kind, id) для
