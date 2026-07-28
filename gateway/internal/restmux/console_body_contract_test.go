@@ -552,8 +552,6 @@ var specDrivenFormComponent = map[string]bool{
 var bespokeConsoleMutationSites = map[string]string{
 	"iam/src/components/organisms/iam/AccessBindingCreateForm/AccessBindingCreateForm.tsx":                  "выдача доступа: тело собирается из состояния формы, состав объявлен не реестром",
 	"iam/src/pages/iam/AccessPage/AccessPage.tsx":                                                           "выдача и отзыв доступа со страницы, тело из локального состояния",
-	"vpc/src/pages/iam/AccessBindingsPage.tsx":                                                              "выдача и отзыв доступа со страницы, тело из локального состояния",
-	"vpc/src/pages/iam/AccessPage.tsx":                                                                      "выдача и отзыв доступа со страницы, тело из локального состояния",
 	"shared/src/components/organisms/iam/IamCommon/IamCommon.tsx":                                           "общие действия IAM, тело из локального состояния",
 	"shared/src/components/organisms/InlineAddressPoolCreateForm/InlineAddressPoolCreateForm.tsx":           "адресный пул: собственная форма, тело из локального состояния",
 	"shared/src/components/organisms/InlineAddressPoolEditForm/InlineAddressPoolEditForm.tsx":               "адресный пул: собственная форма, тело из локального состояния",
