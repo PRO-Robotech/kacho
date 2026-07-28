@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 
 // TestToStatusFailureBandsCharacterization records the code AND the exact wire

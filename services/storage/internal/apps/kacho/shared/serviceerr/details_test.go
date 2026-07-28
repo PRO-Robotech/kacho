@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/validate"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 )
 
 // TestToStatusKeepsFieldViolationDetails pins the guarantee every use-case now

@@ -31,6 +31,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
@@ -38,7 +39,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 
 // lroDrainTimeout — граница graceful-дренажа in-flight LRO-worker'ов на SIGTERM

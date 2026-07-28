@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 
 // TestCreateBVADescriptionLabels — regression against

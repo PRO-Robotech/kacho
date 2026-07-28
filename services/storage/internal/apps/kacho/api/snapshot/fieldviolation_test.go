@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 
 // violatedFields returns the field names carried by the google.rpc.BadRequest
