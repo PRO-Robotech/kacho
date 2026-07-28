@@ -375,32 +375,41 @@ func injectVerifiedTokenHeaders(r *http.Request, t *VerifiedToken) {
 	if t == nil {
 		return
 	}
-	// Derive the principal with the SAME precedence as the legacy auth.HTTP
-	// Hydra path (principalFromVerifiedToken): prefer the canonical
-	// kacho_principal_id / _type claims (top-level or ext_claims) over the raw
-	// OIDC `sub`. DPoP.Wrap runs as the inner handler after auth.HTTP and would
-	// otherwise overwrite the principal headers auth.HTTP just set, making the
-	// downstream FGA subject user:<oidc-sub> instead of user:<kacho-id> and the
-	// two authN paths disagree on identity (CWE-287 / OWASP A07).
-	pType, subj := "user", t.Subject
-	if claimType := verifiedClaim(t, "kacho_principal_type"); claimType != "" {
-		pType = claimType
+	// WHO a token names is decided in exactly one place — the same one the
+	// legacy auth.HTTP Hydra path uses — so the two cannot disagree about
+	// identity (CWE-287 / OWASP A07). They already had: this comment used to
+	// claim that parity while the code beneath it back-filled a missing
+	// identifier from the raw OIDC `sub`, which principalFromVerifiedToken
+	// refuses outright.
+	//
+	// The claim set that exposed the difference states a principal TYPE and no
+	// principal IDENTIFIER. The omission is deliberate — withholding the
+	// identifier is precisely why such a token authorizes nothing — and `sub` is
+	// not a stand-in for it: it is the provider's name for its own subject, not
+	// this platform's name for a principal. Supplied in the identifier's place
+	// it is indistinguishable downstream from a claimed one, so subject
+	// extraction matches on its FIRST rule, the one reserved for a token that
+	// said outright who it is, and a request that named nobody arrives as
+	// somebody.
+	//
+	// So absence travels as absence: no principal header is written at all. That
+	// is not a loss of identity for tokens that legitimately carry only `sub` —
+	// the authN layer ahead of this one runs first and resolves such a `sub`
+	// through a real lookup; leaving its headers standing is the whole point.
+	if pType, pID, _, err := principalFromVerifiedToken(t); err == nil {
+		r.Header.Set(principalmeta.HeaderPrincipalType, pType)
+		r.Header.Set(principalmeta.HeaderPrincipalID, pID)
+		r.Header.Set(principalmeta.HeaderPrincipalDisplay, "") // not forwarded on this path
+		// Legacy grpc-gateway convention fallback.
+		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, pType)
+		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, pID)
+		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, "")
 	}
-	if claimID := verifiedClaim(t, "kacho_principal_id"); claimID != "" {
-		subj = claimID
-	}
-	if subj == "" {
-		return
-	}
-	r.Header.Set(principalmeta.HeaderPrincipalType, pType)
-	r.Header.Set(principalmeta.HeaderPrincipalID, subj)
-	r.Header.Set(principalmeta.HeaderPrincipalDisplay, "") // tokens carry no display name
-	// Legacy grpc-gateway convention fallback.
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, pType)
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, subj)
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, "")
 
-	// Bonus: expose ACR / scope / jti for downstream audit.
+	// The token's own context — ACR, jti, scope, exp — describes the CREDENTIAL,
+	// never who anyone is, so it travels either way: the layer ahead may have
+	// resolved a principal properly, and dropping its audit and step-up context
+	// along with the fabricated name would trade one defect for another.
 	r.Header.Set(principalmeta.HeaderTokenACR, t.ACR)
 	r.Header.Set(principalmeta.HeaderTokenJti, t.JTI)
 	r.Header.Set(principalmeta.HeaderTokenScope, t.Scope)
