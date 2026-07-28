@@ -44,7 +44,7 @@ func (h *SnapshotHandler) Get(ctx context.Context, req *computev1.GetSnapshotReq
 	return protoconv.Snapshot(snap), nil
 }
 
-// List возвращает список снапшотов в folder.
+// List возвращает список снапшотов в проекте.
 //
 // Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
 // iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.

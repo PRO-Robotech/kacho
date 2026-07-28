@@ -5,7 +5,7 @@
 // Цель: найти capacity (max sustained RPS до violation SLO).
 
 import { sleep } from 'k6';
-import { FOLDER_ID, post, get, del, uid, expect200 } from './lib/client.js';
+import { PROJECT_ID, post, get, del, uid, expect200 } from './lib/client.js';
 import { pollOperation } from './lib/poll-op.js';
 
 export const options = {
@@ -26,7 +26,7 @@ export const options = {
 
 export default function () {
   // Легкая операция — Get/List (не мутация чтобы не overload writes)
-  const path = `/vpc/v1/networks?folderId=${FOLDER_ID}&pageSize=10`;
+  const path = `/vpc/v1/networks?projectId=${PROJECT_ID}&pageSize=10`;
   expect200(get(path), 'list-stress');
   sleep(0.01);
 }

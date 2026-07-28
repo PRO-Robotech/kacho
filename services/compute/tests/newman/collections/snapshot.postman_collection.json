@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "4b7055a2-16f2-4768-9b88-9c4bd23bb421",
+    "_postman_id": "71f73248-9aab-4bc3-8bac-c54244bbbce6",
     "name": "kacho-compute / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "// internalBaseUrl fallback: CI-драйвер (newman-e2e.sh) прокидывает --env-var,",
           "// но для standalone-прогона деривируем cluster-internal listener из baseUrl",
           "// (публичный :8080/:18080 → internal-rest :8081/:18081). Internal*-шаги",
@@ -64,7 +64,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-crok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-crok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -163,7 +163,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-cr-{{runId}}\", \"diskId\": \"{{baseDiskId}}\", \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-cr-{{runId}}\", \"diskId\": \"{{baseDiskId}}\", \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -326,7 +326,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches & fd8 prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('snapshotId')); pm.expect(j.id).to.match(/^fd8/); });",
-                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                   "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
                   "pm.test('sourceDiskId matches', () => pm.expect(j.sourceDiskId).to.eql(pm.environment.get('baseDiskId')));",
                   "pm.test('diskSize == disk.size', () => pm.expect(String(j.diskSize)).to.eql('16106127360'));",
@@ -515,7 +515,7 @@
       ]
     },
     {
-      "name": "SNAP-CR-VAL-FOLDER-REQUIRED — Create snapshot без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
+      "name": "SNAP-CR-VAL-PROJECT-REQUIRED — Create snapshot без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
       "description": "class:VAL | priority:P0",
       "item": [
         {
@@ -596,7 +596,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-nd-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-nd-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -649,7 +649,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-bd-{{runId}}\", \"diskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-bd-{{runId}}\", \"diskId\": \"{{garbageComputeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -758,7 +758,7 @@
       ]
     },
     {
-      "name": "SNAP-CR-NEG-FOLDER-NOTFOUND — Create snapshot в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
+      "name": "SNAP-CR-NEG-PROJECT-NOTFOUND — Create snapshot в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
       "description": "class:NEG | priority:P0",
       "item": [
         {
@@ -784,7 +784,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-bf-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-bf-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -861,7 +861,7 @@
           ]
         },
         {
-          "name": "cr-bad-folder",
+          "name": "cr-bad-project",
           "request": {
             "method": "POST",
             "header": [
@@ -1078,7 +1078,7 @@
       ]
     },
     {
-      "name": "SNAP-CR-NEG-DUP-NAME — Create snapshot с дубликатом name в folder → async ALREADY_EXISTS",
+      "name": "SNAP-CR-NEG-DUP-NAME — Create snapshot с дубликатом name в проекте → async ALREADY_EXISTS",
       "description": "class:NEG | class:CONC | priority:P1",
       "item": [
         {
@@ -1104,7 +1104,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1203,7 +1203,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-dup-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-dup-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1302,7 +1302,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-dup-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-dup-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1672,7 +1672,7 @@
       ]
     },
     {
-      "name": "SNAP-LST-CRUD-OK — List snapshots в folder → snapshots array",
+      "name": "SNAP-LST-CRUD-OK — List snapshots в проекте → snapshots array",
       "description": "class:CRUD | priority:P1",
       "item": [
         {
@@ -1686,14 +1686,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}"
+                "snapshots?projectId={{_suiteProjectId}}"
               ]
             }
           },
@@ -1713,7 +1713,7 @@
       ]
     },
     {
-      "name": "SNAP-LST-VAL-FOLDER-REQUIRED — List snapshots без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
+      "name": "SNAP-LST-VAL-PROJECT-REQUIRED — List snapshots без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
       "description": "class:VAL | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -1785,7 +1785,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1884,7 +1884,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-upd-{{runId}}\", \"diskId\": \"{{baseDiskId}}\", \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-upd-{{runId}}\", \"diskId\": \"{{baseDiskId}}\", \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2513,7 +2513,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-empmask-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-empmask-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2612,7 +2612,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-empm-{{runId}}\", \"diskId\": \"{{baseDiskId}}\", \"description\": \"init\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-empm-{{runId}}\", \"diskId\": \"{{baseDiskId}}\", \"description\": \"init\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3071,7 +3071,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3170,7 +3170,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-delok-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-delok-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3580,7 +3580,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-delafter-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-delafter-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3679,7 +3679,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-delafter-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-delafter-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4041,7 +4041,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-delm-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-delm-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4140,7 +4140,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-delm-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-delm-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4468,7 +4468,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4567,7 +4567,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-lop-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-lop-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4936,7 +4936,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-life-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-life-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5035,7 +5035,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-life-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-life-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5173,14 +5173,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=1000",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=1000"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=1000"
               ]
             }
           },
@@ -5443,14 +5443,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=1000",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=1000"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=1000"
               ]
             }
           },
@@ -5609,14 +5609,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=0",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=0",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=0"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=0"
               ]
             }
           },
@@ -5649,14 +5649,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=1",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=1",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=1"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=1"
               ]
             }
           },
@@ -5690,14 +5690,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=1000",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=1000"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=1000"
               ]
             }
           },
@@ -5730,14 +5730,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=1001",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=1001",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=1001"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=1001"
               ]
             }
           },
@@ -5774,14 +5774,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=10&pageToken=not-a-real-token",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=10&pageToken=not-a-real-token"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token"
               ]
             }
           },
@@ -5818,14 +5818,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&filter=name%3D%22foo%22",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&filter=name%3D%22foo%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&filter=name%3D%22foo%22"
+                "snapshots?projectId={{_suiteProjectId}}&filter=name%3D%22foo%22"
               ]
             }
           },
@@ -5858,14 +5858,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&filter=this%20is%20not%20valid%20syntax",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&filter=this%20is%20not%20valid%20syntax",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&filter=this%20is%20not%20valid%20syntax"
+                "snapshots?projectId={{_suiteProjectId}}&filter=this%20is%20not%20valid%20syntax"
               ]
             }
           },
@@ -5898,14 +5898,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&filter=nonexistent_field%3D%22x%22",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&filter=nonexistent_field%3D%22x%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&filter=nonexistent_field%3D%22x%22"
+                "snapshots?projectId={{_suiteProjectId}}&filter=nonexistent_field%3D%22x%22"
               ]
             }
           },
@@ -5950,7 +5950,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-lnameemptyok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-lnameemptyok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6049,7 +6049,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6234,7 +6234,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-bvanamemax63-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-bvanamemax63-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6333,7 +6333,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijab\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijab\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6518,7 +6518,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6571,7 +6571,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"InvalidUpper-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpper-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6624,7 +6624,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"9invalid-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"9invalid-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6677,7 +6677,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"-bad-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"-bad-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6730,7 +6730,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"name!@#-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"name!@#-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6783,7 +6783,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-vadescmax256-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-vadescmax256-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6882,7 +6882,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-descm-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-descm-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7067,7 +7067,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-d2-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-d2-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7120,7 +7120,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-lblup-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}, \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-lblup-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}, \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7173,7 +7173,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-lblbad-{{runId}}\", \"labels\": {\"bad key!\": \"v\"}, \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-lblbad-{{runId}}\", \"labels\": {\"bad key!\": \"v\"}, \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7226,7 +7226,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-alabelsmax64-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-alabelsmax64-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7325,7 +7325,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-lblm-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\"}, \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-lblm-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\"}, \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7510,7 +7510,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-lblo-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-lblo-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7563,7 +7563,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7756,7 +7756,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"test' OR 1=1--\", \"diskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"test' OR 1=1--\", \"diskId\": \"{{garbageComputeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7808,7 +7808,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"x' UNION SELECT * FROM operations--\", \"diskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"x' UNION SELECT * FROM operations--\", \"diskId\": \"{{garbageComputeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7860,7 +7860,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"<script>alert(1)</script>\", \"diskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"<script>alert(1)</script>\", \"diskId\": \"{{garbageComputeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7912,7 +7912,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"; rm -rf / ;\", \"diskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"; rm -rf / ;\", \"diskId\": \"{{garbageComputeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7964,7 +7964,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"../../etc/passwd\", \"diskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"../../etc/passwd\", \"diskId\": \"{{garbageComputeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8016,7 +8016,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"diskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"diskId\": \"{{garbageComputeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8056,14 +8056,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteFolderId}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{_suiteProjectId}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&filter=name%3D%22a%27%20OR%201%3D1--%22"
+                "snapshots?projectId={{_suiteProjectId}}&filter=name%3D%22a%27%20OR%201%3D1--%22"
               ]
             }
           },
@@ -8109,7 +8109,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-snapsrc-idpfx-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-snapsrc-idpfx-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8208,7 +8208,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-idpfx-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-idpfx-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

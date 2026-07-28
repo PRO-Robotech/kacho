@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "8dbd80cd-5a5c-4c66-b8c0-b0aee4ef099a",
+    "_postman_id": "dd93a237-c90a-473e-9afc-13bb869259e0",
     "name": "kacho-storage / newman / sec-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
           "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
           "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
@@ -54,7 +54,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"secd-vol-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240, \"labels\": {\"suite\": \"sec-d\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"secd-vol-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240, \"labels\": {\"suite\": \"sec-d\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -289,7 +289,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches & vol prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('volumeId')); pm.expect(j.id).to.match(/^vol/); });",
-                  "pm.test('projectId matches the suite project', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                  "pm.test('projectId matches the suite project', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                   "pm.test('createdAt truncated to seconds', () => {",
                   "  const ts = (pm.response.json().createdAt);",
                   "  pm.expect(ts, 'createdAt present').to.be.a('string');",
@@ -722,7 +722,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"secd-src-snap-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"secd-src-snap-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -910,7 +910,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{secdSrcVolumeId}}\", \"name\": \"secd-snap-{{runId}}\", \"labels\": {\"suite\": \"sec-d\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{secdSrcVolumeId}}\", \"name\": \"secd-snap-{{runId}}\", \"labels\": {\"suite\": \"sec-d\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1145,7 +1145,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches & snp prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('snapshotId')); pm.expect(j.id).to.match(/^snp/); });",
-                  "pm.test('projectId matches the suite project', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                  "pm.test('projectId matches the suite project', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                   "pm.test('createdAt truncated to seconds', () => {",
                   "  const ts = (pm.response.json().createdAt);",
                   "  pm.expect(ts, 'createdAt present').to.be.a('string');",
@@ -1700,7 +1700,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"secd-src-img-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"secd-src-img-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1888,7 +1888,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"sourceVolumeId\": \"{{secdImgSrcVolumeId}}\", \"name\": \"secd-img-{{runId}}\", \"labels\": {\"suite\": \"sec-d\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"sourceVolumeId\": \"{{secdImgSrcVolumeId}}\", \"name\": \"secd-img-{{runId}}\", \"labels\": {\"suite\": \"sec-d\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2123,7 +2123,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches & img prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('imageId')); pm.expect(j.id).to.match(/^img/); });",
-                  "pm.test('projectId matches the suite project', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                  "pm.test('projectId matches the suite project', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                   "pm.test('createdAt truncated to seconds', () => {",
                   "  const ts = (pm.response.json().createdAt);",
                   "  pm.expect(ts, 'createdAt present').to.be.a('string');",

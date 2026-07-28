@@ -23,16 +23,15 @@
 
 Bash-сценарии против поднятого стенда через REST api-gateway (`BASE_URL`):
 
-- `e2e/geography-move.sh` — Geography (Region/Zone) переехала в kacho-compute
-  (`/compute/v1/regions`,`/compute/v1/zones`), kacho-vpc больше зон не отдаёт.
 - `e2e/cp-resource-model.sh` — e2e публичной NetworkInterface-модели: NIC — lean
   публичная проекция (`id/folder/name/subnet_id/primary_v4_address/security_group_ids/used_by/status`),
   `used_by` attach/detach. **Плюс негативный infra-leak audit**: краулит все публичные
   vpc & compute list/get endpoints и проверяет, что ни один не отдаёт
   инфра-чувствительных ключей (`sid`/`sidLocator`).
 
-Оба запускаются в nightly CI-job `e2e-on-kind` (`.github/workflows/ci.yaml`,
-`cron: 0 3 * * *`). Newman-suite kacho-vpc ускорена (`tests/newman/scripts/run.sh`
+Запускается вручную против поднятого стенда. Ни один workflow его не зовёт: job
+`e2e-on-kind`, на который ссылался этот абзац, в `.github/workflows/` отсутствует.
+Newman-suite kacho-vpc ускорена (`tests/newman/scripts/run.sh`
 — per-request delay 100→15 ms, коллекции гоняются параллельно с cap 4) — CI
 newman-job ~7 мин → ~3 мин.
 

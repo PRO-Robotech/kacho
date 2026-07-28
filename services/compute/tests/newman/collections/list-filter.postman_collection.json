@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "023e8f80-57e1-4d20-8aba-d6ae67012f2d",
+    "_postman_id": "9cdc0bd1-17ad-4d69-b2bd-80584622c9ed",
     "name": "kacho-compute / newman / list-filter",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "// internalBaseUrl fallback: CI-драйвер (newman-e2e.sh) прокидывает --env-var,",
           "// но для standalone-прогона деривируем cluster-internal listener из baseUrl",
           "// (публичный :8080/:18080 → internal-rest :8081/:18081). Internal*-шаги",

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "40531576-3255-4a09-8bdc-dbd8e4fb4a50",
+    "_postman_id": "55335e2e-887a-411d-a4d5-1ceb6f006bbb",
     "name": "kacho-storage / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
           "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
           "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
@@ -54,7 +54,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-op-get-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-op-get-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -284,7 +284,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-opfail-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"block-nope-{{runId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-opfail-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"block-nope-{{runId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -555,7 +555,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-op-cancel-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-op-cancel-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"

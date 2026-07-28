@@ -169,17 +169,17 @@ func TestExtractResourceID_ResourceIDFieldEmptyFallsBack(t *testing.T) {
 // TestResolveResourceID_ExplicitWins — если use-case явно задал Operation.ResourceID,
 // именно оно денормализуется в колонку resource_id, а НЕ угаданное reflection'ом
 // первое _id-поле metadata. Это защищает от fragile «первое _id == owning resource»:
-// метаданные, где первым объявлено НЕ-owning поле (folder_id/parent_id), больше не
+// метаданные, где первым объявлено НЕ-owning поле (project_id/parent_id), больше не
 // уводят resource_id на чужой id.
 func TestResolveResourceID_ExplicitWins(t *testing.T) {
-	// Метаданные, где ПЕРВЫМ идёт не-owning folder_id, а owning address_id — второй.
+	// Метаданные, где ПЕРВЫМ идёт не-owning project_id, а owning address_id — второй.
 	meta := buildAny(t, "CreateAddressMetadata",
-		[2]string{"folder_id", "prj-owner"},
+		[2]string{"project_id", "prj-owner"},
 		[2]string{"address_id", "adr-real"},
 	)
-	// Reflection взял бы folder_id (первое _id-поле) — это и есть баг.
+	// Reflection взял бы project_id (первое _id-поле) — это и есть баг.
 	require.Equal(t, "prj-owner", extractResourceID(meta),
-		"sanity: reflection берёт первое _id-поле (folder_id) — фрагильно")
+		"sanity: reflection берёт первое _id-поле (project_id) — фрагильно")
 
 	op := Operation{Metadata: meta, ResourceID: "adr-real"}
 	assert.Equal(t, "adr-real", resolveResourceID(op),

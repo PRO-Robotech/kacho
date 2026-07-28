@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "5a081780-2303-4f88-81a7-74c947140cc0",
+    "_postman_id": "726571fb-6a4b-4577-a08b-2c46723bc9c5",
     "name": "kacho-compute / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "// internalBaseUrl fallback: CI-драйвер (newman-e2e.sh) прокидывает --env-var,",
           "// но для standalone-прогона деривируем cluster-internal listener из baseUrl",
           "// (публичный :8080/:18080 → internal-rest :8081/:18081). Internal*-шаги",
@@ -64,7 +64,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-opget-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-opget-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -268,7 +268,7 @@
       ]
     },
     {
-      "name": "OP-GET-CRUD-FAILED-OP — Get завершённой failed-operation (Disk.Create в garbage folder) → done=true, has error code 5",
+      "name": "OP-GET-CRUD-FAILED-OP — Get завершённой failed-operation (Disk.Create в garbage project) → done=true, has error code 5",
       "description": "class:CRUD | class:NEG | priority:P1",
       "item": [
         {
@@ -563,7 +563,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-opcancel-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-opcancel-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"

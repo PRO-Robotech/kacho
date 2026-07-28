@@ -32,7 +32,7 @@ CONF (тон ошибок, placementType/format, createdAt-truncate, lean-projec
 read-your-writes: первый Get/Update/Delete СВОЕГО свежего Image/Volume обёрнут в
 `retry_until_authorized` (owner-tuple EC-окно); async-мутации → op-poll с inter-poll
 задержкой. Negatives НЕ оборачиваются. Изоляция: {{runId}}-суффикс + cleanup своих
-ресурсов; работа внутри pre-allocated {{_suiteFolderId}}.
+ресурсов; работа внутри pre-allocated {{_suiteProjectId}}.
 """
 
 CASES = []
@@ -58,7 +58,7 @@ def _assert_msg(substr):
 def _img_body(suffix, **over):
     """Тело Image.Create; caller обязан передать источник (sourceVolumeId ЛИБО
     sourceSnapshotId) через over — source oneof exactly-one (F12)."""
-    b = {"projectId": "{{_suiteFolderId}}", "regionId": "{{existingRegionId}}",
+    b = {"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
          "name": f"img-{suffix}-{{{{runId}}}}"}
     b.update(over)
     return b
@@ -91,7 +91,7 @@ def _pre_source_volume(suffix):
     return [
         *_assert_env_placement_coherent(suffix),
         Step(name=f"pre-vol-{suffix}", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": f"vol-imgsrc-{suffix}-{{{{runId}}}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": f"vol-imgsrc-{suffix}-{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _SRC_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
@@ -106,7 +106,7 @@ def _pre_source_snapshot(suffix):
     return [
         *_pre_source_volume(suffix),
         Step(name=f"pre-snap-{suffix}", method="POST", path=SNP,
-             body={"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{sourceVolumeId}}",
+             body={"projectId": "{{_suiteProjectId}}", "sourceVolumeId": "{{sourceVolumeId}}",
                    "name": f"snap-imgsrc-{suffix}-{{{{runId}}}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "sourceSnapshotId")]),
@@ -159,7 +159,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & img prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('imageId')); pm.expect(j.id).to.match(/^img/); });",
-                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('regionId matches', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));",
                           "pm.test('placementType REGIONAL (anycast const)', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
                           "pm.test('format STANDARD (native single-tier enum)', () => pm.expect(j.format).to.eql('STANDARD'));",
@@ -318,7 +318,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P0",
     # verifies STOR-1-20
     steps=[Step(name="cr-nr", method="POST", path=IMG,
-                body={"projectId": "{{_suiteFolderId}}", "name": "img-nr-{{runId}}",
+                body={"projectId": "{{_suiteProjectId}}", "name": "img-nr-{{runId}}",
                       "sourceVolumeId": "{{garbageStorageId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
@@ -501,7 +501,7 @@ CASES.append(Case(
     title="List images в project → images array (project-scoped, listauthz row-filter)",
     classes=["CRUD"], priority="P1",
     # verifies STOR-1-31
-    steps=[Step(name="list", method="GET", path=f"{IMG}?projectId={{{{_suiteFolderId}}}}",
+    steps=[Step(name="list", method="GET", path=f"{IMG}?projectId={{{{_suiteProjectId}}}}",
                 test_script=[*assert_status(200),
                              "pm.test('images is array', () => pm.expect(pm.response.json().images || []).to.be.an('array'));"])],
 ))
@@ -520,7 +520,7 @@ CASES.append(Case(
     title="List pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (отвергается, не clamp; format-validate ДО authz-short-circuit)",
     classes=["BVA", "VAL", "PAGE", "NEG"], priority="P1",
     # verifies STOR-1-32
-    steps=[Step(name="ps-over", method="GET", path=f"{IMG}?projectId={{{{_suiteFolderId}}}}&pageSize=1001",
+    steps=[Step(name="ps-over", method="GET", path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&pageSize=1001",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -530,7 +530,7 @@ CASES.append(Case(
     classes=["PAGE", "VAL", "NEG"], priority="P1",
     # verifies STOR-1-32
     steps=[Step(name="bad-token", method="GET",
-                path=f"{IMG}?projectId={{{{_suiteFolderId}}}}&pageSize=10&pageToken=!!!not-base64!!!",
+                path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&pageSize=10&pageToken=!!!not-base64!!!",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -547,7 +547,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="list-filtered", method="GET",
-             path=f"{IMG}?projectId={{{{_suiteFolderId}}}}&pageSize=1000&filter=name%3D%22img-flt-{{{{runId}}}}%22",
+             path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&pageSize=1000&filter=name%3D%22img-flt-{{{{runId}}}}%22",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().images || []).map(x => x.id);",
                           "pm.test('filtered list contains created', () => pm.expect(ids).to.include(pm.environment.get('imageId')));"])),
@@ -562,7 +562,7 @@ CASES.append(Case(
     classes=["FILTER", "CRUD"], priority="P2",
     # verifies STOR-1-33
     steps=[Step(name="flt-none", method="GET",
-                path=f"{IMG}?projectId={{{{_suiteFolderId}}}}&filter=name%3D%22img-none-{{{{runId}}}}%22",
+                path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22img-none-{{{{runId}}}}%22",
                 test_script=[*assert_status(200),
                              "pm.test('images empty (no match)', () => pm.expect(pm.response.json().images || []).to.be.an('array').that.is.empty);"])],
 ))
@@ -585,14 +585,14 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.imageId", "imageBId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="page1", method="GET",
-             path=f"{IMG}?projectId={{{{_suiteFolderId}}}}&pageSize=1",
+             path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&pageSize=1",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('page1 at most 1 item', () => pm.expect((j.images || []).length).to.be.at.most(1));",
                           "pm.test('nextPageToken present (≥2 images exist)', () => pm.expect(j.nextPageToken || '').to.not.eql(''));",
                           *save_from_response("j.nextPageToken", "imgPageToken")])),
         Step(name="page2", method="GET",
-             path=f"{IMG}?projectId={{{{_suiteFolderId}}}}&pageSize=1&pageToken={{{{imgPageToken}}}}",
+             path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&pageSize=1&pageToken={{{{imgPageToken}}}}",
              test_script=[*assert_status(200),
                           "pm.test('page2 returns array', () => pm.expect(pm.response.json().images || []).to.be.an('array'));"]),
         *_cleanup(f"{IMG}/{{{{imageAId}}}}"),
@@ -686,7 +686,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(), assert_op_success(),
         Step(name="cr-boot-vol", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": "vol-boot-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "vol-boot-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{imageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
@@ -709,7 +709,7 @@ CASES.append(Case(
     classes=["VAL", "NEG", "CONF"], priority="P1",
     # verifies STOR-1-19
     steps=[Step(name="cr-vol-xor", method="POST", path=VOL,
-                body={"projectId": "{{_suiteFolderId}}", "name": "vol-xor-{{runId}}",
+                body={"projectId": "{{_suiteProjectId}}", "name": "vol-xor-{{runId}}",
                       "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                       "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{garbageImageId}}",
                       "sourceSnapshotId": "{{garbageSnapshotId}}"},
@@ -724,7 +724,7 @@ CASES.append(Case(
     # verifies STOR-1-19
     steps=[
         Step(name="cr-vol-bad-img", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": "vol-badimg-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "vol-badimg-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{garbageImageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -785,21 +785,21 @@ CASES.append(Case(
         # Source volume in the alt zone → image in the alt region (Image.Create itself
         # requires the source volume's zone to belong to the image's region).
         Step(name="alt-src-vol", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": "vol-altregion-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "vol-altregion-{{runId}}",
                    "zoneId": _ALT_ZONE, "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _SRC_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "altSourceVolumeId")]),
         poll_operation_until_done(), assert_op_success(),
         Step(name="alt-image", method="POST", path=IMG,
-             body={"projectId": "{{_suiteFolderId}}", "regionId": _ALT_REGION,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": _ALT_REGION,
                    "name": "img-altregion-{{runId}}", "sourceVolumeId": "{{altSourceVolumeId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "altImageId")]),
         poll_operation_until_done(), assert_op_success(),
         # The refusal: boot volume in the suite's zone (other region) from that image.
         Step(name="cr-boot-cross-region", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": "vol-bootxreg-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "vol-bootxreg-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{altImageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -833,7 +833,7 @@ CASES.append(Case(
     # verifies security.md §6 (hide-existence byte-identity), STOR-1-19
     steps=[
         Step(name="cross-src-vol", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderCrossId}}", "name": "vol-crosssrc-{{runId}}",
+             body={"projectId": "{{_suiteProjectCrossId}}", "name": "vol-crosssrc-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _SRC_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
@@ -842,13 +842,13 @@ CASES.append(Case(
         # Same region as the home project's zone — so ONLY the project differs and the
         # answer cannot be attributed to placement.
         Step(name="cross-image", method="POST", path=IMG,
-             body={"projectId": "{{_suiteFolderCrossId}}", "regionId": "{{existingRegionId}}",
+             body={"projectId": "{{_suiteProjectCrossId}}", "regionId": "{{existingRegionId}}",
                    "name": "img-cross-{{runId}}", "sourceVolumeId": "{{crossSourceVolumeId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "crossImageId")]),
         poll_operation_until_done(), assert_op_success(),
         Step(name="cr-boot-cross-project", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": "vol-bootxprj-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "vol-bootxprj-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{crossImageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -884,7 +884,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(), assert_op_success(),
         Step(name="cr-boot-vol", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": "vol-bootsn-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "vol-bootsn-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{imageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),

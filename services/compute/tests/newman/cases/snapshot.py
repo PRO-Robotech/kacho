@@ -20,7 +20,7 @@ _DISK_SIZE = 16106127360  # 15 GiB — отличный от 10 GiB чтобы �
 def _pre_disk(suffix="src"):
     return [
         Step(name=f"pre-disk-{suffix}", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteFolderId}}", "name": f"disk-snapsrc-{suffix}-{{{{runId}}}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": f"disk-snapsrc-{suffix}-{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}", "size": _DISK_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.diskId", "baseDiskId")]),
@@ -47,7 +47,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("crok"),
         Step(name="create", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-cr-{{runId}}", "diskId": "{{baseDiskId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-cr-{{runId}}", "diskId": "{{baseDiskId}}",
                    "description": "newman CRUD-OK", "labels": {"suite": "newman"}},
              test_script=[*assert_status(200), *assert_operation_envelope(),
                           *save_from_response("j.id", "opId"),
@@ -57,7 +57,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & fd8 prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('snapshotId')); pm.expect(j.id).to.match(/^fd8/); });",
-                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
                           "pm.test('sourceDiskId matches', () => pm.expect(j.sourceDiskId).to.eql(pm.environment.get('baseDiskId')));",
                           "pm.test('diskSize == disk.size', () => pm.expect(String(j.diskSize)).to.eql('" + str(_DISK_SIZE) + "'));",
@@ -69,7 +69,7 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="SNAP-CR-VAL-FOLDER-REQUIRED",
+    id="SNAP-CR-VAL-PROJECT-REQUIRED",
     title="Create snapshot без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL"], priority="P0",
     steps=[Step(name="cr-nf", method="POST", path=SNAPS, body={"name": "snap-nf-{{runId}}", "diskId": "{{garbageComputeId}}"},
@@ -80,7 +80,7 @@ CASES.append(Case(
     id="SNAP-CR-VAL-NO-DISK",
     title="Create snapshot без disk_id → 400 InvalidArgument (disk_id required)",
     classes=["VAL", "NEG"], priority="P0",
-    steps=[Step(name="cr-no-disk", method="POST", path=SNAPS, body={"projectId": "{{_suiteFolderId}}", "name": "snap-nd-{{runId}}"},
+    steps=[Step(name="cr-no-disk", method="POST", path=SNAPS, body={"projectId": "{{_suiteProjectId}}", "name": "snap-nd-{{runId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -90,7 +90,7 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         Step(name="cr-bad-disk", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-bd-{{runId}}", "diskId": "{{garbageComputeId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-bd-{{runId}}", "diskId": "{{garbageComputeId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         assert_op_error(5, "NOT_FOUND"),
@@ -98,13 +98,13 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="SNAP-CR-NEG-FOLDER-NOTFOUND",
+    id="SNAP-CR-NEG-PROJECT-NOTFOUND",
     title="Create snapshot в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
     classes=["NEG"], priority="P0",
     steps=[
         # # requires peer-validation enabled
         *_pre_disk("bf"),
-        Step(name="cr-bad-folder", method="POST", path=SNAPS,
+        Step(name="cr-bad-project", method="POST", path=SNAPS,
              body={"projectId": "{{garbageRmId}}", "name": "snap-bf-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -115,17 +115,17 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNAP-CR-NEG-DUP-NAME",
-    title="Create snapshot с дубликатом name в folder → async ALREADY_EXISTS",
+    title="Create snapshot с дубликатом name в проекте → async ALREADY_EXISTS",
     classes=["NEG", "CONC"], priority="P1",
     steps=[
         *_pre_disk("dup"),
         Step(name="cr-1", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-dup-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-dup-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
         Step(name="cr-2-dup", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-dup-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-dup-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         assert_op_error(6, "ALREADY_EXISTS"),
@@ -158,14 +158,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNAP-LST-CRUD-OK",
-    title="List snapshots в folder → snapshots array",
+    title="List snapshots в проекте → snapshots array",
     classes=["CRUD"], priority="P1",
-    steps=[Step(name="list", method="GET", path=f"{SNAPS}?projectId={{{{_suiteFolderId}}}}",
+    steps=[Step(name="list", method="GET", path=f"{SNAPS}?projectId={{{{_suiteProjectId}}}}",
                 test_script=[*assert_status(200), "pm.test('snapshots is array', () => pm.expect(pm.response.json().snapshots || []).to.be.an('array'));"])],
 ))
 
 CASES.append(Case(
-    id="SNAP-LST-VAL-FOLDER-REQUIRED",
+    id="SNAP-LST-VAL-PROJECT-REQUIRED",
     title="List snapshots без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"], priority="P0",
     steps=[Step(name="list-nf", method="GET", path=SNAPS,
@@ -183,7 +183,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("upd"),
         Step(name="cr", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-upd-{{runId}}", "diskId": "{{baseDiskId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-upd-{{runId}}", "diskId": "{{baseDiskId}}",
                    "description": "init", "labels": {"orig": "1"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
@@ -251,7 +251,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("empmask"),
         Step(name="cr", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-empm-{{runId}}", "diskId": "{{baseDiskId}}", "description": "init"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-empm-{{runId}}", "diskId": "{{baseDiskId}}", "description": "init"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
@@ -282,7 +282,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("delok"),
         Step(name="cr", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-delok-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-delok-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
@@ -310,7 +310,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("delafter"),
         Step(name="cr-snap", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-delafter-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-delafter-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
@@ -333,7 +333,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("delm"),
         Step(name="cr", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-delm-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-delm-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
@@ -361,7 +361,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("lop"),
         Step(name="cr", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-lop-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-lop-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
@@ -393,13 +393,13 @@ CASES.append(Case(
     steps=[
         *_pre_disk("life"),
         Step(name="cr", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-life-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-life-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-1", method="GET", path=f"{SNAPS}/{{{{snapshotId}}}}",
              test_script=[*assert_status(200), "pm.test('id', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('snapshotId')));"])),
-        retry_until_present(Step(name="lst-includes", method="GET", path=f"{SNAPS}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
+        retry_until_present(Step(name="lst-includes", method="GET", path=f"{SNAPS}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().snapshots || []).map(x => x.id);",
                           "pm.test('list contains', () => pm.expect(ids).to.include(pm.environment.get('snapshotId')));"]), "snapshotId"),
@@ -412,7 +412,7 @@ CASES.append(Case(
         Step(name="del", method="DELETE", path=f"{SNAPS}/{{{{snapshotId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="lst-excludes", method="GET", path=f"{SNAPS}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
+        Step(name="lst-excludes", method="GET", path=f"{SNAPS}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().snapshots || []).map(x => x.id);",
                           "pm.test('list does not contain', () => pm.expect(ids).to.not.include(pm.environment.get('snapshotId')));"]),
@@ -452,7 +452,7 @@ CASES.append(Case(
     steps=[
         *_pre_disk("idpfx"),
         Step(name="cr", method="POST", path=SNAPS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "snap-idpfx-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "snap-idpfx-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('operation.id epd...', () => pm.expect(j.id).to.match(/^epd[a-z0-9]{17}$/));",

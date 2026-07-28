@@ -88,8 +88,8 @@ sequenceDiagram
   participant DTR as DiskTypeRepo (disk_types table)
   participant DB as pg-compute
 
-  U->>S: Create(folder_id, zone_id, size, type_id?, image_id?|snapshot_id?, block_size?, ...)
-  S->>S: SYNC: folder_id/zone_id/size required;<br/>NameCompute(name); validateDiskSize (Create: 4194304..28587302322176);<br/>block_size whitelist; exactly-one source; kms_key_id → blocked:kacho-kms
+  U->>S: Create(project_id, zone_id, size, type_id?, image_id?|snapshot_id?, block_size?, ...)
+  S->>S: SYNC: project_id/zone_id/size required;<br/>NameCompute(name); validateDiskSize (Create: 4194304..28587302322176);<br/>block_size whitelist; exactly-one source; kms_key_id → blocked:kacho-kms
   S-->>U: Operation{id: epd..., metadata: CreateDiskMetadata{disk_id: epd...}}
 
   rect rgb(255,247,230)
@@ -107,7 +107,7 @@ sequenceDiagram
       S->>DB: SELECT snapshots WHERE id=$snapshot_id → NotFound;<br/>size >= snapshot.disk_size else InvalidArgument
     end
     S->>DB: BEGIN; INSERT disks (status='READY', source_*); INSERT compute_outbox (Disk, CREATED); COMMIT
-    alt UNIQUE violation disks_folder_name_uniq
+    alt UNIQUE violation disks_project_name_uniq
       DB-->>S: 23505 → mapRepoErr → ALREADY_EXISTS
       S->>DB: UPDATE operation error
     else success
@@ -134,13 +134,13 @@ sequenceDiagram
   participant RM as kacho-iam (projectClient)
   participant DB as pg-compute
 
-  U->>S: Create(folder_id, name?, family?, min_disk_size?, source{image_id|disk_id|snapshot_id|uri}, os?, ...)
-  S->>S: SYNC: folder_id required; exactly-one source; NameCompute; family pattern;<br/>min_disk_size 4194304..4398046511104; os_product_ids → blocked
+  U->>S: Create(project_id, name?, family?, min_disk_size?, source{image_id|disk_id|snapshot_id|uri}, os?, ...)
+  S->>S: SYNC: project_id required; exactly-one source; NameCompute; family pattern;<br/>min_disk_size 4194304..4398046511104; os_product_ids → blocked
   S-->>U: Operation{id: epd..., metadata: CreateImageMetadata{image_id: fd8...}}
 
   rect rgb(255,247,230)
   Note over S: async worker
-  S->>RM: projectClient.Exists(folder_id)
+  S->>RM: projectClient.Exists(project_id)
   alt source = image_id
     S->>DB: SELECT images WHERE id=$image_id → NotFound if absent; inherit os, family if not set
   else source = disk_id
@@ -155,7 +155,7 @@ sequenceDiagram
   end
 ```
 
-`GetLatestByFamily(folder_id, family)` — `SELECT * FROM images WHERE folder_id=$1
+`GetLatestByFamily(project_id, family)` — `SELECT * FROM images WHERE project_id=$1
 AND family=$2 ORDER BY created_at DESC LIMIT 1` (индекс `images_family_idx`); нет
 ни одного → `NotFound`.
 
@@ -171,13 +171,13 @@ sequenceDiagram
   participant RM as kacho-iam (projectClient)
   participant DB as pg-compute
 
-  U->>S: Create(folder_id, disk_id, name?, ...)
-  S->>S: SYNC: folder_id + disk_id required; NameCompute
+  U->>S: Create(project_id, disk_id, name?, ...)
+  S->>S: SYNC: project_id + disk_id required; NameCompute
   S-->>U: Operation{id: epd..., metadata: CreateSnapshotMetadata{snapshot_id: fd8..., disk_id}}
 
   rect rgb(255,247,230)
   Note over S: async worker
-  S->>RM: projectClient.Exists(folder_id)
+  S->>RM: projectClient.Exists(project_id)
   S->>DB: SELECT disks WHERE id=$disk_id
   alt disk not found
     S->>DB: UPDATE operation error=NotFound "Disk <X> not found"
@@ -212,13 +212,13 @@ sequenceDiagram
   participant ZR as ZoneRegistry
   participant DB as pg-compute
 
-  U->>S: Create(folder_id, zone_id, platform_id, resources_spec,<br/>boot_disk_spec{disk_id|disk_spec, auto_delete},<br/>secondary_disk_specs[≤3], metadata?, hostname?, ...)
-  S->>S: SYNC: folder_id/zone_id/platform_id/resources_spec/boot_disk_spec required;<br/>NameCompute(name); per-platform resources (platforms.go: cores set, memory range/multiple, core_fraction ∈ {0,5,20,50,100}, gpus per-platform);<br/>boot/secondary: exactly-one {disk_id, disk_spec}; metadata ≤256 KiB; filesystem_specs → blocked:kacho-filesystem
+  U->>S: Create(project_id, zone_id, platform_id, resources_spec,<br/>boot_disk_spec{disk_id|disk_spec, auto_delete},<br/>secondary_disk_specs[≤3], metadata?, hostname?, ...)
+  S->>S: SYNC: project_id/zone_id/platform_id/resources_spec/boot_disk_spec required;<br/>NameCompute(name); per-platform resources (platforms.go: cores set, memory range/multiple, core_fraction ∈ {0,5,20,50,100}, gpus per-platform);<br/>boot/secondary: exactly-one {disk_id, disk_spec}; metadata ≤256 KiB; filesystem_specs → blocked:kacho-filesystem
   S-->>U: Operation{id: epd..., metadata: CreateInstanceMetadata{instance_id: epd...}}
 
   rect rgb(255,247,230)
   Note over S: async worker
-  S->>RM: projectClient.Exists(folder_id) → NotFound if absent
+  S->>RM: projectClient.Exists(project_id) → NotFound if absent
   S->>ZR: zone existence (zones table)
   Note over S: NIC не создаётся и не валидируется (auto-NIC удалён в KAC-266)
   alt boot_disk_spec.disk_id
@@ -232,7 +232,7 @@ sequenceDiagram
   S->>DB: INSERT attached_disks (boot: is_boot=true; secondary: is_boot=false)
   S->>DB: INSERT compute_outbox (Instance, CREATED)
   S->>DB: COMMIT
-  alt UNIQUE violation (instances_folder_name_uniq / attached_disks_boot_uniq / device_uniq) or FK violation
+  alt UNIQUE violation (instances_project_name_uniq / attached_disks_boot_uniq / device_uniq) or FK violation
     DB-->>S: 23505/23503 → mapRepoErr → ALREADY_EXISTS / FailedPrecondition
     S->>DB: UPDATE operation error
   else success

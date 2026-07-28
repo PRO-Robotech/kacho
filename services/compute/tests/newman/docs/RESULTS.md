@@ -118,7 +118,7 @@ tests/newman/scripts/run-incremental.sh --cleanup-only           # стерет�
 **Деплоймент-замечания:**
 - Instance CRUD-кейсы (`INST-*-CRUD-*`, `INST-STATE-*`, `INST-AD/DD/NAT/UMETA-*`, `INST-DISK-DEL-WHILE-ATTACHED`)
   требуют поднятого `kacho-vpc` + seeded `existingNetworkId`/`existingSubnetId`/`existingSgId` в той же зоне (`existingZoneId`).
-- `*-NEG-SUBNET-NOTFOUND` / `*-NEG-FOLDER-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` требуют `KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true`
+- `*-NEG-SUBNET-NOTFOUND` / `*-NEG-PROJECT-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` требуют `KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true`
   (при `=true` cross-service existence-checks — no-op → эти кейсы краснеют; помечены `# requires peer-validation enabled` в cases).
 - `# probe-needed:` кейсы фиксируют наше текущее поведение там, где точный контракт ещё не verified (список — `REQUIREMENTS.md` §A);
   они написаны с `allow [200,400]` / substr-assert, чтобы не краснеть на любом разумном поведении — заменяются точными assert'ами после probe.
@@ -202,7 +202,7 @@ Attach-path уже конформен (`InstanceService.AttachDisk` вызыва
 |---|---|
 | §3.1 ECP | ✅ `name_validation_block`, `labels_validation_block`, `description_validation_block` |
 | §3.2 BVA | ✅ disk size 4MiB/below/26TiB/above, name len 63/64, pageSize 0/1/1000/1001, labels 64/65, cores set, core_fraction set |
-| §3.3 Decision Tables | ✅ required-field matrix (Instance: zone/platform/resources/bootdisk/nic/folder), UpdateMask (unknown/immutable/empty), error mapping |
+| §3.3 Decision Tables | ✅ required-field matrix (Instance: zone/platform/resources/bootdisk/nic/project), UpdateMask (unknown/immutable/empty), error mapping |
 | §3.4 State Transition | ✅ Instance state-машина (Start/Stop/Restart preconditions, AttachDisk/DetachDisk/NAT), immutable fields, Disk-delete-while-attached |
 | §3.5 Pairwise | partial (Disk size × type × source — частично; full pairwise — backlog) |
 | §3.7 Use-case | ✅ `*-LIFECYCLE-CONF` (полный CRUD-цикл; Instance — с Stop/Start) |

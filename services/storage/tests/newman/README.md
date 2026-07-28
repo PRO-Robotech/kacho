@@ -55,7 +55,7 @@ python3 scripts/gen.py                 # все ресурсы; или: python3 
 - **Black-box**: тестируем продукт через публичный REST api-gateway (external), не код.
 - **Источник истины**: acceptance-spec CS-1 + proto (`kacho-proto/.../storage/v1/`).
 - **Изоляция**: каждый case в своём `runId`; suite внутри pre-allocated
-  `existingProjectId` (`_suiteFolderId` из env), Org/Cloud/Project **не создаёт**;
+  `existingProjectId` (`_suiteProjectId` из env), Org/Cloud/Project **не создаёт**;
   имена суффиксуются `{{runId}}`.
 - **LRO-poll**: каждая мутация (`Volume`/`Snapshot` `Create/Update/Delete`) → `Operation`
   → poll `GET /operations/{sop-id}` (OpsProxy, retry до 8 раз через `setNextRequest`)

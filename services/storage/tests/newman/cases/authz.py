@@ -201,7 +201,7 @@ CASES.append(Case(
 #     первый доступ к СВОЕМУ свежему ресурсу).
 #   * pageSize=1000 — чтобы «не видно» не оказалось артефактом первой страницы.
 #   * seed/cleanup — дефолтным актором (jwtBootstrap), в изолированном проекте сюиты
-#     (_suiteFolderId), имена с {{runId}} (идемпотентность повторного прогона).
+#     (_suiteProjectId), имена с {{runId}} (идемпотентность повторного прогона).
 #   * seed завершается `assert_op_success` (done && response && !error) ПЕРЕД тем как
 #     id используется в листе/удалении. Operation несёт pre-allocated id в metadata
 #     даже на done+error, поэтому «прочитал id из Create-ответа и пошёл дальше» дал бы
@@ -232,7 +232,7 @@ def _seed_volume(name_suffix, id_var):
     """Создать READY-том дефолтным актором; id — только после assert !op.error."""
     return [
         Step(name=f"seed-vol-{name_suffix}", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}",
+             body={"projectId": "{{_suiteProjectId}}",
                    "name": f"vol-leak-{name_suffix}-{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}",
                    "diskTypeId": "{{existingDiskTypeId}}",
@@ -259,7 +259,7 @@ CASES.append(Case(
     steps=[
         *_seed_volume("vol", "leakVolumeId"),
         Step(name="list-as-pure-nob", method="GET",
-             path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&pageSize=1000", auth=_NOB,
+             path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&pageSize=1000", auth=_NOB,
              test_script=_assert_absent("AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD",
                                         "volumes", "leakVolumeId", "Volume")),
         *_delete(VOL, "leakVolumeId", "cleanup-vol"),
@@ -274,14 +274,14 @@ CASES.append(Case(
     steps=[
         *_seed_volume("snpsrc", "leakSnapSrcVolumeId"),
         Step(name="seed-snapshot", method="POST", path=SNP,
-             body={"projectId": "{{_suiteFolderId}}",
+             body={"projectId": "{{_suiteProjectId}}",
                    "sourceVolumeId": "{{leakSnapSrcVolumeId}}",
                    "name": "snap-leak-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "leakSnapshotId")]),
         poll_operation_until_done(), assert_op_success(),
         Step(name="list-as-pure-nob", method="GET",
-             path=f"{SNP}?projectId={{{{_suiteFolderId}}}}&pageSize=1000", auth=_NOB,
+             path=f"{SNP}?projectId={{{{_suiteProjectId}}}}&pageSize=1000", auth=_NOB,
              test_script=_assert_absent("AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD",
                                         "snapshots", "leakSnapshotId", "Snapshot")),
         *_delete(SNP, "leakSnapshotId", "cleanup-snapshot"),
@@ -297,14 +297,14 @@ CASES.append(Case(
     steps=[
         *_seed_volume("imgsrc", "leakImgSrcVolumeId"),
         Step(name="seed-image", method="POST", path=IMG,
-             body={"projectId": "{{_suiteFolderId}}", "regionId": "{{existingRegionId}}",
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
                    "name": "img-leak-{{runId}}",
                    "sourceVolumeId": "{{leakImgSrcVolumeId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "leakImageId")]),
         poll_operation_until_done(), assert_op_success(),
         Step(name="list-as-pure-nob", method="GET",
-             path=f"{IMG}?projectId={{{{_suiteFolderId}}}}&pageSize=1000", auth=_NOB,
+             path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&pageSize=1000", auth=_NOB,
              test_script=_assert_absent("AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD",
                                         "images", "leakImageId", "Image")),
         *_delete(IMG, "leakImageId", "cleanup-image"),

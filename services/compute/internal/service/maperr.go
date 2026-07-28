@@ -93,7 +93,7 @@ func crossProjectNotFound(resource, id string) error {
 // gRPC-status, сохраняя контракт compute: неизвестная зона → InvalidArgument
 // "Zone <id> not found". Транспортная ошибка к kacho-geo (Unavailable)
 // пробрасывается как Unavailable с opaque-текстом (без leak'а raw peer-ошибки,
-// зеркалит folder-check + mapRepoErr-дисциплину).
+// зеркалит project-check + mapRepoErr-дисциплину).
 func mapZoneRefErr(err error, zoneID string) error {
 	if err == nil {
 		return nil

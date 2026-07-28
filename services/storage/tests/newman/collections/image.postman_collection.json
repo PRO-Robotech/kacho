@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "800c55a8-c0b8-4c66-8a4e-3946c69895a3",
+    "_postman_id": "331a2728-89ed-424c-9bf1-4b3072764a87",
     "name": "kacho-storage / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
           "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
           "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
@@ -93,7 +93,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-crok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-crok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -192,7 +192,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-cr-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-cr-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -356,7 +356,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches & img prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('imageId')); pm.expect(j.id).to.match(/^img/); });",
-                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                   "pm.test('regionId matches', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));",
                   "pm.test('placementType REGIONAL (anycast const)', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
                   "pm.test('format STANDARD (native single-tier enum)', () => pm.expect(j.format).to.eql('STANDARD'));",
@@ -614,7 +614,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-crsnap-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-crsnap-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -713,7 +713,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-imgsrc-crsnap-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-imgsrc-crsnap-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -812,7 +812,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-crsnap-{{runId}}\", \"sourceSnapshotId\": \"{{sourceSnapshotId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-crsnap-{{runId}}\", \"sourceSnapshotId\": \"{{sourceSnapshotId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1266,7 +1266,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-both-{{runId}}\", \"sourceSnapshotId\": \"{{garbageSnapshotId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-both-{{runId}}\", \"sourceSnapshotId\": \"{{garbageSnapshotId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1320,7 +1320,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-none-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-none-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1374,7 +1374,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-bsnap-{{runId}}\", \"sourceSnapshotId\": \"{{garbageSnapshotId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-bsnap-{{runId}}\", \"sourceSnapshotId\": \"{{garbageSnapshotId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1510,7 +1510,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-bvol-{{runId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-bvol-{{runId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1685,7 +1685,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1784,7 +1784,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-dup-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-dup-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1918,7 +1918,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-dup-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-dup-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2371,7 +2371,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"img-nr-{{runId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"img-nr-{{runId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2424,7 +2424,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"region-9-none\", \"name\": \"img-breg-{{runId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"region-9-none\", \"name\": \"img-breg-{{runId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2528,7 +2528,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"Ubuntu_LTS\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"Ubuntu_LTS\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2582,7 +2582,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"образ\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"образ\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2636,7 +2636,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2689,7 +2689,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-d-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-d-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2742,7 +2742,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-l-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-l-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"sourceVolumeId\": \"{{garbageStorageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2834,7 +2834,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2933,7 +2933,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-upd-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-upd-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3599,14 +3599,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteFolderId}}",
+              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteProjectId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "images?projectId={{_suiteFolderId}}"
+                "images?projectId={{_suiteProjectId}}"
               ]
             }
           },
@@ -3686,14 +3686,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteFolderId}}&pageSize=1001",
+              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteProjectId}}&pageSize=1001",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "images?projectId={{_suiteFolderId}}&pageSize=1001"
+                "images?projectId={{_suiteProjectId}}&pageSize=1001"
               ]
             }
           },
@@ -3730,14 +3730,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteFolderId}}&pageSize=10&pageToken=!!!not-base64!!!",
+              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteProjectId}}&pageSize=10&pageToken=!!!not-base64!!!",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "images?projectId={{_suiteFolderId}}&pageSize=10&pageToken=!!!not-base64!!!"
+                "images?projectId={{_suiteProjectId}}&pageSize=10&pageToken=!!!not-base64!!!"
               ]
             }
           },
@@ -3825,7 +3825,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-flt-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-flt-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3924,7 +3924,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-flt-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-flt-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4011,14 +4011,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteFolderId}}&pageSize=1000&filter=name%3D%22img-flt-{{runId}}%22",
+              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteProjectId}}&pageSize=1000&filter=name%3D%22img-flt-{{runId}}%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "images?projectId={{_suiteFolderId}}&pageSize=1000&filter=name%3D%22img-flt-{{runId}}%22"
+                "images?projectId={{_suiteProjectId}}&pageSize=1000&filter=name%3D%22img-flt-{{runId}}%22"
               ]
             }
           },
@@ -4238,14 +4238,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteFolderId}}&filter=name%3D%22img-none-{{runId}}%22",
+              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteProjectId}}&filter=name%3D%22img-none-{{runId}}%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "images?projectId={{_suiteFolderId}}&filter=name%3D%22img-none-{{runId}}%22"
+                "images?projectId={{_suiteProjectId}}&filter=name%3D%22img-none-{{runId}}%22"
               ]
             }
           },
@@ -4330,7 +4330,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-cur-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-cur-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4429,7 +4429,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-cura-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-cura-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4528,7 +4528,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-curb-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-curb-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4615,14 +4615,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteFolderId}}&pageSize=1",
+              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteProjectId}}&pageSize=1",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "images?projectId={{_suiteFolderId}}&pageSize=1"
+                "images?projectId={{_suiteProjectId}}&pageSize=1"
               ]
             }
           },
@@ -4672,14 +4672,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteFolderId}}&pageSize=1&pageToken={{imgPageToken}}",
+              "raw": "{{baseUrl}}/storage/v1/images?projectId={{_suiteProjectId}}&pageSize=1&pageToken={{imgPageToken}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "images?projectId={{_suiteFolderId}}&pageSize=1&pageToken={{imgPageToken}}"
+                "images?projectId={{_suiteProjectId}}&pageSize=1&pageToken={{imgPageToken}}"
               ]
             }
           },
@@ -5019,7 +5019,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-lean-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-lean-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5118,7 +5118,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-lean-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-lean-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5488,7 +5488,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5587,7 +5587,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-delok-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-delok-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6120,7 +6120,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-bootsrc-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-bootsrc-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6219,7 +6219,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-boot-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-boot-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6353,7 +6353,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-boot-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{imageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-boot-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{imageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6801,7 +6801,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-xor-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{garbageImageId}}\", \"sourceSnapshotId\": \"{{garbageSnapshotId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-xor-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{garbageImageId}}\", \"sourceSnapshotId\": \"{{garbageSnapshotId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6855,7 +6855,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-badimg-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{garbageImageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-badimg-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{garbageImageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7216,7 +7216,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-altregion-{{runId}}\", \"zoneId\": \"qa-stor-{{runId}}-a\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-altregion-{{runId}}\", \"zoneId\": \"qa-stor-{{runId}}-a\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7350,7 +7350,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"qa-stor-{{runId}}\", \"name\": \"img-altregion-{{runId}}\", \"sourceVolumeId\": \"{{altSourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"qa-stor-{{runId}}\", \"name\": \"img-altregion-{{runId}}\", \"sourceVolumeId\": \"{{altSourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7484,7 +7484,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-bootxreg-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{altImageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-bootxreg-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{altImageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7892,7 +7892,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderCrossId}}\", \"name\": \"vol-crosssrc-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"name\": \"vol-crosssrc-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8026,7 +8026,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderCrossId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-cross-{{runId}}\", \"sourceVolumeId\": \"{{crossSourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectCrossId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-cross-{{runId}}\", \"sourceVolumeId\": \"{{crossSourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8160,7 +8160,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-bootxprj-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{crossImageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-bootxprj-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{crossImageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8507,7 +8507,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-setnull-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-setnull-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8606,7 +8606,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-setnull-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-setnull-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8740,7 +8740,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-bootsn-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{imageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-bootsn-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 21474836480, \"sourceImageId\": \"{{imageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9355,7 +9355,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9454,7 +9454,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-lop-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-lop-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9869,7 +9869,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-updbvad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-updbvad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9968,7 +9968,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-updbvad-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-updbvad-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10554,7 +10554,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-imgsrc-updbval-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-imgsrc-updbval-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10653,7 +10653,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-updbval-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{existingRegionId}}\", \"name\": \"img-updbval-{{runId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

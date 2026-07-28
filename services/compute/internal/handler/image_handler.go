@@ -76,7 +76,7 @@ func (h *ImageHandler) GetLatestByFamily(ctx context.Context, req *computev1.Get
 	return protoconv.Image(i), nil
 }
 
-// List возвращает список образов в folder.
+// List возвращает список образов в проекте.
 //
 // Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
 // iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.

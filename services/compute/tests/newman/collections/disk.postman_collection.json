@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "2b7a958c-411c-4c40-8be2-fea8212da45a",
+    "_postman_id": "51c47567-b956-4fc7-a351-f50530780312",
     "name": "kacho-compute / newman / disk",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "// internalBaseUrl fallback: CI-драйвер (newman-e2e.sh) прокидывает --env-var,",
           "// но для standalone-прогона деривируем cluster-internal listener из baseUrl",
           "// (публичный :8080/:18080 → internal-rest :8081/:18081). Internal*-шаги",
@@ -64,7 +64,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-cr-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-cr-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -192,7 +192,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches & has epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('diskId')); pm.expect(j.id).to.match(/^epd/); });",
-                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                   "pm.test('zoneId matches', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
                   "pm.test('size matches', () => pm.expect(String(j.size)).to.eql('10737418240'));",
                   "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
@@ -324,7 +324,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-ts-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"typeId\": \"{{existingDiskTypeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-ts-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"typeId\": \"{{existingDiskTypeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -539,11 +539,11 @@
       ]
     },
     {
-      "name": "DISK-CR-VAL-FOLDER-REQUIRED — Create без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
+      "name": "DISK-CR-VAL-PROJECT-REQUIRED — Create без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
       "description": "class:VAL | priority:P0",
       "item": [
         {
-          "name": "cr-no-folder",
+          "name": "cr-no-project",
           "request": {
             "method": "POST",
             "header": [
@@ -620,7 +620,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-nz-{{runId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-nz-{{runId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -673,7 +673,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-ns-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-ns-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -700,11 +700,11 @@
       ]
     },
     {
-      "name": "DISK-CR-NEG-FOLDER-NOTFOUND — Create в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
+      "name": "DISK-CR-NEG-PROJECT-NOTFOUND — Create в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
       "description": "class:NEG | priority:P0",
       "item": [
         {
-          "name": "cr-bad-folder",
+          "name": "cr-bad-project",
           "request": {
             "method": "POST",
             "header": [
@@ -862,7 +862,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-bz-{{runId}}\", \"zoneId\": \"ru-central1-zzz\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-bz-{{runId}}\", \"zoneId\": \"ru-central1-zzz\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -999,7 +999,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-bt-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"typeId\": \"garbage-disk-type\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-bt-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"typeId\": \"garbage-disk-type\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1109,7 +1109,7 @@
       ]
     },
     {
-      "name": "DISK-CR-NEG-DUP-NAME — Create disk с дубликатом name в folder → async ALREADY_EXISTS",
+      "name": "DISK-CR-NEG-DUP-NAME — Create disk с дубликатом name в проекте → async ALREADY_EXISTS",
       "description": "class:NEG | class:CONC | priority:P1",
       "item": [
         {
@@ -1135,7 +1135,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1234,7 +1234,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-dup-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1454,7 +1454,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-smin-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 4194304}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-smin-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 4194304}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1679,7 +1679,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-sbelow-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 4194303}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-sbelow-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 4194303}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1732,7 +1732,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-smax-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 28587302322176}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-smax-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 28587302322176}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1957,7 +1957,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-sabove-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 28587302322177}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-sabove-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 28587302322177}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2010,7 +2010,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-bi-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"imageId\": \"{{garbageImageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-bi-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"imageId\": \"{{garbageImageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2145,7 +2145,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-bs-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"snapshotId\": \"{{garbageImageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-bs-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"snapshotId\": \"{{garbageImageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2280,7 +2280,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-fidbase-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-fidbase-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2379,7 +2379,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"img-fid-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"img-fid-{{runId}}\", \"diskId\": \"{{baseDiskId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2478,7 +2478,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-fid-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"imageId\": \"{{imageId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-fid-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"imageId\": \"{{imageId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2991,7 +2991,7 @@
       ]
     },
     {
-      "name": "DISK-LST-CRUD-OK — List disks в folder → disks array",
+      "name": "DISK-LST-CRUD-OK — List disks в проекте → disks array",
       "description": "class:CRUD | priority:P1",
       "item": [
         {
@@ -3005,14 +3005,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}"
+                "disks?projectId={{_suiteProjectId}}"
               ]
             }
           },
@@ -3032,7 +3032,7 @@
       ]
     },
     {
-      "name": "DISK-LST-VAL-FOLDER-REQUIRED — List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
+      "name": "DISK-LST-VAL-PROJECT-REQUIRED — List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
       "description": "class:VAL | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -3104,7 +3104,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-flt-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-flt-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3191,14 +3191,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=1000&filter=name%3D%22disk-flt-{{runId}}%22",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=1000&filter=name%3D%22disk-flt-{{runId}}%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=1000&filter=name%3D%22disk-flt-{{runId}}%22"
+                "disks?projectId={{_suiteProjectId}}&pageSize=1000&filter=name%3D%22disk-flt-{{runId}}%22"
               ]
             }
           },
@@ -3362,7 +3362,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3752,7 +3752,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-inc-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-inc-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4123,7 +4123,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-dec-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 21474836480}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-dec-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 21474836480}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4445,7 +4445,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-emp-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"typeId\": \"{{existingDiskTypeId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-emp-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"typeId\": \"{{existingDiskTypeId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5025,7 +5025,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5305,7 +5305,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-delm-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-delm-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5593,7 +5593,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-rel-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-rel-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5964,7 +5964,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-relbad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-relbad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6285,7 +6285,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6569,7 +6569,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-life-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-life-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6707,14 +6707,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=1000",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=1000"
+                "disks?projectId={{_suiteProjectId}}&pageSize=1000"
               ]
             }
           },
@@ -6977,14 +6977,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=1000",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=1000"
+                "disks?projectId={{_suiteProjectId}}&pageSize=1000"
               ]
             }
           },
@@ -7058,14 +7058,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=0",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=0",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=0"
+                "disks?projectId={{_suiteProjectId}}&pageSize=0"
               ]
             }
           },
@@ -7098,14 +7098,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=1",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=1",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=1"
+                "disks?projectId={{_suiteProjectId}}&pageSize=1"
               ]
             }
           },
@@ -7139,14 +7139,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=1000",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=1000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=1000"
+                "disks?projectId={{_suiteProjectId}}&pageSize=1000"
               ]
             }
           },
@@ -7179,14 +7179,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=1001",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=1001",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=1001"
+                "disks?projectId={{_suiteProjectId}}&pageSize=1001"
               ]
             }
           },
@@ -7223,14 +7223,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&pageSize=10&pageToken=not-a-real-token",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&pageSize=10&pageToken=not-a-real-token"
+                "disks?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token"
               ]
             }
           },
@@ -7267,14 +7267,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&filter=name%3D%22foo%22",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&filter=name%3D%22foo%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&filter=name%3D%22foo%22"
+                "disks?projectId={{_suiteProjectId}}&filter=name%3D%22foo%22"
               ]
             }
           },
@@ -7307,14 +7307,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&filter=this%20is%20not%20valid%20syntax",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&filter=this%20is%20not%20valid%20syntax",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&filter=this%20is%20not%20valid%20syntax"
+                "disks?projectId={{_suiteProjectId}}&filter=this%20is%20not%20valid%20syntax"
               ]
             }
           },
@@ -7347,14 +7347,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&filter=nonexistent_field%3D%22x%22",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&filter=nonexistent_field%3D%22x%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&filter=nonexistent_field%3D%22x%22"
+                "disks?projectId={{_suiteProjectId}}&filter=nonexistent_field%3D%22x%22"
               ]
             }
           },
@@ -7399,7 +7399,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7499,7 +7499,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijab\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijab\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7599,7 +7599,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7652,7 +7652,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"InvalidUpper-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpper-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7705,7 +7705,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"9invalid-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"9invalid-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7758,7 +7758,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"-bad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"-bad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7811,7 +7811,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"name!@#-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"name!@#-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7864,7 +7864,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-descm-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-descm-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7964,7 +7964,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-d2-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-d2-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8017,7 +8017,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-lblup-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-lblup-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8070,7 +8070,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-lblbad-{{runId}}\", \"labels\": {\"bad key!\": \"v\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-lblbad-{{runId}}\", \"labels\": {\"bad key!\": \"v\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8123,7 +8123,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-lblm-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-lblm-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8223,7 +8223,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-lblo-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-lblo-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8276,7 +8276,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8469,7 +8469,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"test' OR 1=1--\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"test' OR 1=1--\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8521,7 +8521,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"x' UNION SELECT * FROM operations--\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"x' UNION SELECT * FROM operations--\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8573,7 +8573,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"<script>alert(1)</script>\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"<script>alert(1)</script>\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8625,7 +8625,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"; rm -rf / ;\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"; rm -rf / ;\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8677,7 +8677,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"../../etc/passwd\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"../../etc/passwd\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8729,7 +8729,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8769,14 +8769,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteFolderId}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{_suiteProjectId}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?projectId={{_suiteFolderId}}&filter=name%3D%22a%27%20OR%201%3D1--%22"
+                "disks?projectId={{_suiteProjectId}}&filter=name%3D%22a%27%20OR%201%3D1--%22"
               ]
             }
           },
@@ -8822,7 +8822,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"disk-idpfx-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"disk-idpfx-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240}",
               "options": {
                 "raw": {
                   "language": "json"

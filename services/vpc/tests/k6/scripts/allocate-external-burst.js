@@ -4,7 +4,7 @@
 // k6 scenario: AllocateExternalIP burst.
 // SLO: p99 < 600ms, ≥ 50 alloc/sec при < 80% utilization.
 
-import { FOLDER_ID, ZONE_ID, post, del, uid, expect200 } from './lib/client.js';
+import { PROJECT_ID, ZONE_ID, post, del, uid, expect200 } from './lib/client.js';
 import { pollOperation } from './lib/poll-op.js';
 
 export const options = {
@@ -22,7 +22,7 @@ export const options = {
 export default function () {
   const name = uid('adr');
   const res = post('/vpc/v1/addresses', {
-    folderId: FOLDER_ID,
+    projectId: PROJECT_ID,
     name,
     externalIpv4AddressSpec: { zoneId: ZONE_ID },
   });

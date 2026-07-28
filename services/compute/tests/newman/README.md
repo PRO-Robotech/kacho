@@ -69,7 +69,7 @@ python3 scripts/gen.py            # все ресурсы; или: python3 scrip
   SQLSTATE, имени constraint'а, конкретной БД.
 - **Источник истины**: acceptance-spec + proto-определения (`kacho-proto/.../compute/v1/`).
 - **Изоляция**: каждый case-сценарий внутри своего `runId`; suite внутри pre-allocated
-  `existingFolderId`/`existingFolderCrossId` (env), Org/Cloud/Folder **не создаёт**; имена суффиксуются `{{runId}}`.
+  `existingProjectId`/`existingProjectCrossId` (env), проектов **не создаёт**; имена суффиксуются `{{runId}}`.
 - **LRO-poll**: каждая мутация (`Create/Update/Delete/Move/Relocate/Start/Stop/Restart/Attach/Detach/NAT/UpdateMetadata`)
   → `Operation` → poll `GET /operations/{id}` (retry до 8 раз через `setNextRequest`) до `done=true` → assert `response`/`error`.
 - **Формальные техники**: ECP, BVA, decision tables, state transition, error guessing, security — все классы кейсов выводятся системно.
@@ -78,4 +78,4 @@ python3 scripts/gen.py            # все ресурсы; или: python3 scrip
 - **Risk-prioritization**: high-risk зоны (security, data-integrity FK, Instance state-машина, Disk-delete-while-attached) — P0, больше кейсов.
 
 См. подробности в `docs/TAXONOMY.md`. Cross-service зависимости (Instance NIC → kacho-vpc subnet/SG;
-folder → kacho-iam — legacy-имя колонки-владельца project_id) и флаг `KACHO_COMPUTE_SKIP_PEER_VALIDATION` — см. там же и в `docs/RESULTS.md` §«Деплоймент-замечания».
+`project_id` → kacho-iam) и флаг `KACHO_COMPUTE_SKIP_PEER_VALIDATION` — см. там же и в `docs/RESULTS.md` §«Деплоймент-замечания».

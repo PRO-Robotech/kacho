@@ -20,13 +20,13 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
 )
 
-func newImageSvc(t *testing.T, folderOK bool) (*ImageService, *portmock.ImageRepo, *portmock.DiskRepo, *portmock.SnapshotRepo, *portmock.OpsRepo) {
+func newImageSvc(t *testing.T, projectOK bool) (*ImageService, *portmock.ImageRepo, *portmock.DiskRepo, *portmock.SnapshotRepo, *portmock.OpsRepo) {
 	t.Helper()
 	imgRepo := portmock.NewImageRepo()
 	diskRepo := portmock.NewDiskRepo()
 	snapRepo := portmock.NewSnapshotRepo()
 	ops := portmock.NewOpsRepo()
-	return NewImageService(imgRepo, diskRepo, snapRepo, &portmock.ProjectClient{OK: folderOK}, ops), imgRepo, diskRepo, snapRepo, ops
+	return NewImageService(imgRepo, diskRepo, snapRepo, &portmock.ProjectClient{OK: projectOK}, ops), imgRepo, diskRepo, snapRepo, ops
 }
 
 func imageFromOp(t *testing.T, op *operations.Operation) *computev1.Image {
@@ -99,12 +99,12 @@ func TestImage_Delete_OK(t *testing.T) {
 
 // ---- Snapshot ----
 
-func newSnapshotSvc(t *testing.T, folderOK bool) (*SnapshotService, *portmock.SnapshotRepo, *portmock.DiskRepo, *portmock.OpsRepo) {
+func newSnapshotSvc(t *testing.T, projectOK bool) (*SnapshotService, *portmock.SnapshotRepo, *portmock.DiskRepo, *portmock.OpsRepo) {
 	t.Helper()
 	snapRepo := portmock.NewSnapshotRepo()
 	diskRepo := portmock.NewDiskRepo()
 	ops := portmock.NewOpsRepo()
-	return NewSnapshotService(snapRepo, diskRepo, &portmock.ProjectClient{OK: folderOK}, ops), snapRepo, diskRepo, ops
+	return NewSnapshotService(snapRepo, diskRepo, &portmock.ProjectClient{OK: projectOK}, ops), snapRepo, diskRepo, ops
 }
 
 func snapshotFromOp(t *testing.T, op *operations.Operation) *computev1.Snapshot {

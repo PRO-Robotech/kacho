@@ -37,7 +37,7 @@ def _pre_volume(suffix="src"):
     """Создать READY-том (source для снапшота); сохраняет sourceVolumeId."""
     return [
         Step(name=f"pre-vol-{suffix}", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": f"vol-snapsrc-{suffix}-{{{{runId}}}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": f"vol-snapsrc-{suffix}-{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _VOL_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
@@ -55,7 +55,7 @@ def _cleanup_source_volume():
 
 
 def _snap_body(suffix, **over):
-    b = {"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{sourceVolumeId}}",
+    b = {"projectId": "{{_suiteProjectId}}", "sourceVolumeId": "{{sourceVolumeId}}",
          "name": f"snap-{suffix}-{{{{runId}}}}"}
     b.update(over)
     return b
@@ -84,7 +84,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & snp prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('snapshotId')); pm.expect(j.id).to.match(/^snp/); });",
-                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('sourceVolumeId matches', () => pm.expect(j.sourceVolumeId).to.eql(pm.environment.get('sourceVolumeId')));",
                           "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
                           "pm.test('sizeBytes == source volume size (snapshotted)', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_VOL_SIZE) + "'));",
@@ -106,7 +106,7 @@ CASES.append(Case(
     # verifies CS1-S3-02 (from-MISSING branch; from-non-READY — integration-only, §0.1)
     steps=[
         Step(name="cr-bad-src", method="POST", path=SNP,
-             body={"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{garbageStorageId}}",
+             body={"projectId": "{{_suiteProjectId}}", "sourceVolumeId": "{{garbageStorageId}}",
                    "name": "snap-badsrc-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -134,7 +134,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P0",
     # verifies CS1-S3-03
     steps=[Step(name="cr-ns", method="POST", path=SNP,
-                body={"projectId": "{{_suiteFolderId}}", "name": "snap-ns-{{runId}}"},
+                body={"projectId": "{{_suiteProjectId}}", "name": "snap-ns-{{runId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -157,7 +157,7 @@ CASES.append(Case(
     classes=["VAL", "NEG", "CONF"], priority="P1",
     # verifies CS1-S3-03
     steps=[Step(name="cr-upper", method="POST", path=SNP,
-                body={"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{garbageStorageId}}", "name": "Bad_Name"},
+                body={"projectId": "{{_suiteProjectId}}", "sourceVolumeId": "{{garbageStorageId}}", "name": "Bad_Name"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("Illegal argument name")])],
 ))
@@ -168,7 +168,7 @@ CASES.append(Case(
     classes=["VAL", "NEG", "CONF"], priority="P1",
     # verifies CS1-S3-03
     steps=[Step(name="cr-unicode", method="POST", path=SNP,
-                body={"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{garbageStorageId}}", "name": "снимок"},
+                body={"projectId": "{{_suiteProjectId}}", "sourceVolumeId": "{{garbageStorageId}}", "name": "снимок"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("Illegal argument name")])],
 ))
@@ -202,7 +202,7 @@ CASES.append(Case(
     title="List snapshots в project → snapshots array (project-scoped)",
     classes=["CRUD"], priority="P1",
     # verifies CS1-S3-04
-    steps=[Step(name="list", method="GET", path=f"{SNP}?projectId={{{{_suiteFolderId}}}}",
+    steps=[Step(name="list", method="GET", path=f"{SNP}?projectId={{{{_suiteProjectId}}}}",
                 test_script=[*assert_status(200),
                              "pm.test('snapshots is array', () => pm.expect(pm.response.json().snapshots || []).to.be.an('array'));"])],
 ))
@@ -222,7 +222,7 @@ CASES.append(Case(
     classes=["PAGE", "VAL", "NEG"], priority="P1",
     # verifies CS1-S3-04
     steps=[Step(name="bad-token", method="GET",
-                path=f"{SNP}?projectId={{{{_suiteFolderId}}}}&pageSize=10&pageToken=not-a-real-token",
+                path=f"{SNP}?projectId={{{{_suiteProjectId}}}}&pageSize=10&pageToken=not-a-real-token",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -319,7 +319,7 @@ CASES.append(Case(
     title="List snapshots pageSize=5000 (> max 1000) -> 400 INVALID_ARGUMENT (validate.PageSize; парити с Volume/Image)",
     classes=["BVA", "VAL", "PAGE", "NEG"], priority="P1",
     # verifies CS1-S3-04
-    steps=[Step(name="ps-over", method="GET", path=f"{SNP}?projectId={{{{_suiteFolderId}}}}&pageSize=5000",
+    steps=[Step(name="ps-over", method="GET", path=f"{SNP}?projectId={{{{_suiteProjectId}}}}&pageSize=5000",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -375,7 +375,7 @@ CASES.append(Case(
     classes=["BVA", "VAL", "NEG", "CONF"], priority="P1",
     # verifies CS1-S3-03
     steps=[Step(name="cr-name64", method="POST", path=SNP,
-                body={"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{garbageStorageId}}",
+                body={"projectId": "{{_suiteProjectId}}", "sourceVolumeId": "{{garbageStorageId}}",
                       "name": "n" + "abcdefghij" * 6 + "abc"},  # 1+60+3 = 64
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("Illegal argument name")])],

@@ -2,7 +2,7 @@
 
 `kacho_compute` (`pg-compute` StatefulSet в helm umbrella). **Database-per-service**
 — никаких JOIN'ов с БД kacho-iam / vpc или внешними источниками
-(workspace `CLAUDE.md` §запрет 8). Все cross-service refs (folder_id, subnet_id,
+(workspace `CLAUDE.md` §запрет 8). Все cross-service refs (project_id, subnet_id,
 SG, address, source image/snapshot/disk) — НЕ FK, валидируются gRPC-вызовом /
 existence-check в БД в worker'е (см. [`02-data-flows.md`](02-data-flows.md)).
 
@@ -10,14 +10,14 @@ existence-check в БД в worker'е (см. [`02-data-flows.md`](02-data-flows.m
 
 - **Flat resources** — без K8s envelope (`resource_version` / `generation` /
   `deletion_timestamp` / `finalizers` / `spec` / `status` как JSONB). Только
-  domain-specific колонки + `id` / `folder_id` / `name` / `description` /
+  domain-specific колонки + `id` / `project_id` / `name` / `description` /
   `labels` / `created_at`. Зеркалит kacho-vpc 1.0.
 - **TEXT id columns** — YC-style `<prefix><17 base32>` (`epd...` / `fd8...`), не
   UUID. DiskType/Zone — литералы (`network-ssd`, `ru-central1-a`).
 - **Hard-delete, не soft-delete** — `DELETE FROM <table> WHERE id = $1`. Никаких
   tombstones.
-- **Partial UNIQUE** `(folder_id, name) WHERE name <> ''` для всех 4 мутируемых
-  ресурсов — дубль непустого `name` в folder → `23505` → `ALREADY_EXISTS`;
+- **Partial UNIQUE** `(project_id, name) WHERE name <> ''` для всех 4 мутируемых
+  ресурсов — дубль непустого `name` в проекте → `23505` → `ALREADY_EXISTS`;
   пустой `name` допускает несколько ресурсов (verbatim YC permissive).
 - **Optimistic concurrency** для read-modify-write (`UpdateNetworkInterface`-style)
   — Postgres system column `xmin::text` (txid версия row), без отдельной колонки
@@ -39,7 +39,7 @@ VPC FINDING-007); pgxpool — `cfg.DSN()` (с `pool_max_conns` если
 
 | # | Файл | Что |
 |---|---|---|
-| 0001 | `0001_initial.sql` | **squashed baseline** — `operations` (схема как у corelib `0001_operations.sql`), `zones`, `disk_types`, `disks`, `images`, `snapshots`, `instances`, `instance_network_interfaces`, `attached_disks`, `compute_outbox`, `compute_watch_cursors`; индексы; partial UNIQUE `(folder_id, name) WHERE name <> ''`; FK `attached_disks.disk_id` → disks RESTRICT, `.instance_id` → instances CASCADE; FK `instance_network_interfaces.instance_id` → instances CASCADE; outbox trigger `compute_outbox_notify_trg`; seed `disk_types` + `zones`. Id-колонки — `TEXT` |
+| 0001 | `0001_initial.sql` | **squashed baseline** — `operations` (схема как у corelib `0001_operations.sql`), `zones`, `disk_types`, `disks`, `images`, `snapshots`, `instances`, `instance_network_interfaces`, `attached_disks`, `compute_outbox`, `compute_watch_cursors`; индексы; partial UNIQUE `(project_id, name) WHERE name <> ''`; FK `attached_disks.disk_id` → disks RESTRICT, `.instance_id` → instances CASCADE; FK `instance_network_interfaces.instance_id` → instances CASCADE; outbox trigger `compute_outbox_notify_trg`; seed `disk_types` + `zones`. Id-колонки — `TEXT` |
 | 0002 | `0002_nic_ephemeral_address.sql` | поддержка эфемерных Address-аллокаций для NIC |
 | 0003 | `0003_geography_owner.sql` | **kacho-compute становится owner Geography** (эпик `KAC-15`): таблица `regions`(`id,name,created_at`), колонка `zones.name`, FK `zones.region_id → regions.id` RESTRICT, seed `ru-central1` + `ru-central1-{a,b,d}` здесь (больше не зеркалится из kacho-vpc) |
 | 0004 | `0004_hypervisors.sql` | (исторический footprint kube-ovn-эпохи; таблицы и связанный слой удалены миграцией 0006, KAC-36/79/80) |
@@ -133,7 +133,7 @@ created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
 
 ```
 id                    TEXT         PRIMARY KEY      -- "epd..."
-folder_id             TEXT         NOT NULL
+project_id             TEXT         NOT NULL
 created_at            TIMESTAMPTZ  NOT NULL DEFAULT now()
 name                  TEXT         NOT NULL DEFAULT ''
 description           TEXT         NOT NULL DEFAULT ''
@@ -150,16 +150,16 @@ disk_placement_policy JSONB                                    -- {placement_gro
 hardware_generation   JSONB                                    -- HardwareGeneration | null
 kms_key               JSONB                                    -- KMSKey | null (blocked:kacho-kms)
 
-INDEX disks_folder_idx     (folder_id)
+INDEX disks_project_idx     (project_id)
 INDEX disks_created_at_idx (created_at)
-UNIQUE INDEX disks_folder_name_uniq (folder_id, name) WHERE name <> ''
+UNIQUE INDEX disks_project_name_uniq (project_id, name) WHERE name <> ''
 ```
 
 ### `images`
 
 ```
 id                  TEXT         PRIMARY KEY      -- "fd8..."
-folder_id           TEXT         NOT NULL
+project_id           TEXT         NOT NULL
 created_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
 name                TEXT         NOT NULL DEFAULT ''
 description         TEXT         NOT NULL DEFAULT ''
@@ -180,17 +180,17 @@ source_snapshot_id  TEXT         NOT NULL DEFAULT ''
 source_disk_id      TEXT         NOT NULL DEFAULT ''
 source_uri          TEXT         NOT NULL DEFAULT ''
 
-INDEX images_folder_idx     (folder_id)
+INDEX images_project_idx     (project_id)
 INDEX images_created_at_idx (created_at)
-INDEX images_family_idx     (folder_id, family, created_at DESC) WHERE family <> ''   -- для GetLatestByFamily
-UNIQUE INDEX images_folder_name_uniq (folder_id, name) WHERE name <> ''
+INDEX images_family_idx     (project_id, family, created_at DESC) WHERE family <> ''   -- для GetLatestByFamily
+UNIQUE INDEX images_project_name_uniq (project_id, name) WHERE name <> ''
 ```
 
 ### `snapshots`
 
 ```
 id                  TEXT         PRIMARY KEY      -- "fd8..."
-folder_id           TEXT         NOT NULL
+project_id           TEXT         NOT NULL
 created_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
 name                TEXT         NOT NULL DEFAULT ''
 description         TEXT         NOT NULL DEFAULT ''
@@ -203,10 +203,10 @@ source_disk_id      TEXT         NOT NULL DEFAULT ''          -- НЕ FK (source
 hardware_generation JSONB                                     -- HardwareGeneration | null
 kms_key             JSONB                                     -- KMSKey | null (blocked:kacho-kms)
 
-INDEX snapshots_folder_idx      (folder_id)
+INDEX snapshots_project_idx      (project_id)
 INDEX snapshots_created_at_idx  (created_at)
 INDEX snapshots_source_disk_idx (source_disk_id) WHERE source_disk_id <> ''
-UNIQUE INDEX snapshots_folder_name_uniq (folder_id, name) WHERE name <> ''
+UNIQUE INDEX snapshots_project_name_uniq (project_id, name) WHERE name <> ''
 ```
 
 ### `instances`
@@ -218,7 +218,7 @@ JSONB; дети (`network_interfaces`, `boot_disk`/`secondary_disks`) — отд
 
 ```
 id                              TEXT         PRIMARY KEY      -- "epd..."
-folder_id                       TEXT         NOT NULL
+project_id                       TEXT         NOT NULL
 created_at                      TIMESTAMPTZ  NOT NULL DEFAULT now()
 name                            TEXT         NOT NULL DEFAULT ''
 description                     TEXT         NOT NULL DEFAULT ''
@@ -248,10 +248,10 @@ host_group_id                   TEXT         NOT NULL DEFAULT ''
 host_id                         TEXT         NOT NULL DEFAULT ''
 application                     JSONB                                        -- Application | null
 
-INDEX instances_folder_idx     (folder_id)
+INDEX instances_project_idx     (project_id)
 INDEX instances_created_at_idx (created_at)
 INDEX instances_zone_idx       (zone_id)
-UNIQUE INDEX instances_folder_name_uniq (folder_id, name) WHERE name <> ''
+UNIQUE INDEX instances_project_name_uniq (project_id, name) WHERE name <> ''
 ```
 
 ### `instance_network_interfaces`
@@ -381,7 +381,7 @@ INSERT INTO zones (id, region_id, status, name) VALUES
 | `zones.region_id` → `regions.id` | **FK RESTRICT** (same-DB; эпик `KAC-15`) | нельзя удалить регион пока есть зоны |
 | `instances.zone_id` / `disks.zone_id` → `zones.id` | **НЕ FK** | existence-check через `ZoneRegistry` на Create — локальная таблица `zones` (kacho-compute owns Geography, эпик `KAC-15`) |
 | `instance_network_interfaces.nic_id` → VPC `NetworkInterface` | **НЕ FK** (другая БД) | source of truth для интерфейса; на `Instance.Create` — attach/inline-create kacho-vpc NIC, на `Instance.Delete` — detach+delete (best-effort vpcClient) |
-| cross-service: `instance_network_interfaces.subnet_id` → VPC Subnet; `.security_group_ids[]` → VPC SG; NAT `address` → VPC Address; `instances.folder_id` / `disks.folder_id` / ... → RM Folder | **НЕ FK** (другая БД) | валидируются gRPC-вызовом к peer-сервису в worker'е (workspace `CLAUDE.md` §запрет 4: нельзя каскадить через границу сервиса) |
+| cross-service: `instance_network_interfaces.subnet_id` → VPC Subnet; `.security_group_ids[]` → VPC SG; NAT `address` → VPC Address; `instances.project_id` / `disks.project_id` / ... → kacho-iam Project | **НЕ FK** (другая БД) | валидируются gRPC-вызовом к peer-сервису в worker'е (workspace `CLAUDE.md` §запрет 4: нельзя каскадить через границу сервиса) |
 
 ## Connection / pooling
 

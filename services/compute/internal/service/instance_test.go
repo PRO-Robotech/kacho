@@ -38,15 +38,15 @@ const (
 	testMTRetired    = "mt-gone2"
 )
 
-func newInstanceSvc(t *testing.T, folderOK bool) instSvcKit {
+func newInstanceSvc(t *testing.T, projectOK bool) instSvcKit {
 	t.Helper()
-	return newInstanceSvcWithSubnets(t, folderOK, portmock.NewSubnetRegistry())
+	return newInstanceSvcWithSubnets(t, projectOK, portmock.NewSubnetRegistry())
 }
 
 // newInstanceSvcWithSubnets — тот же харнесс с явным реестром подсетей: зона
 // подсети NIC-спеки теперь сверяется с зоной инстанса, поэтому фикстура ОБЯЗАНА
 // её называть (регион/зона ниоткуда не выводятся).
-func newInstanceSvcWithSubnets(t *testing.T, folderOK bool, subnets *portmock.SubnetRegistry) instSvcKit {
+func newInstanceSvcWithSubnets(t *testing.T, projectOK bool, subnets *portmock.SubnetRegistry) instSvcKit {
 	t.Helper()
 	instanceRepo := portmock.NewInstanceRepo()
 	mtRepo := portmock.NewMachineTypeRepo()
@@ -55,7 +55,7 @@ func newInstanceSvcWithSubnets(t *testing.T, folderOK bool, subnets *portmock.Su
 	nic := portmock.NewNicClient()
 	ops := portmock.NewOpsRepo()
 	svc := NewInstanceService(instanceRepo, mtRepo, portmock.NewZoneRegistry(), subnets,
-		&portmock.ProjectClient{OK: folderOK}, nic, storage, ops)
+		&portmock.ProjectClient{OK: projectOK}, nic, storage, ops)
 	return instSvcKit{svc: svc, repo: instanceRepo, machineType: mtRepo, storage: storage, nic: nic, ops: ops}
 }
 

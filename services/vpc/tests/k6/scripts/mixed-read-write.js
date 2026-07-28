@@ -5,7 +5,7 @@
 // 60% Get/List + 30% Create + 10% Delete.
 
 import { sleep } from 'k6';
-import { FOLDER_ID, post, get, del, uid, expect200 } from './lib/client.js';
+import { PROJECT_ID, post, get, del, uid, expect200 } from './lib/client.js';
 import { pollOperation } from './lib/poll-op.js';
 
 export const options = {
@@ -29,10 +29,10 @@ export default function () {
   const r = Math.random();
   if (r < 0.6) {
     // READ — list или get
-    get(`/vpc/v1/networks?folderId=${FOLDER_ID}&pageSize=20`, { tags: { op: 'read' } });
+    get(`/vpc/v1/networks?projectId=${PROJECT_ID}&pageSize=20`, { tags: { op: 'read' } });
   } else if (r < 0.9) {
     // CREATE
-    const res = post('/vpc/v1/networks', { folderId: FOLDER_ID, name: uid('mix') });
+    const res = post('/vpc/v1/networks', { projectId: PROJECT_ID, name: uid('mix') });
     if (res.status === 200) {
       const op = pollOperation(res.json('id'));
       if (op.ok) {

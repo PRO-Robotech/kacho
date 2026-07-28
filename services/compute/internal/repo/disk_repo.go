@@ -43,7 +43,7 @@ func (r *DiskRepo) Get(ctx context.Context, id string) (*domain.Disk, error) {
 	return d, nil
 }
 
-// List возвращает диски по folder с cursor-pagination.
+// List возвращает диски по проекту с cursor-pagination.
 func (r *DiskRepo) List(ctx context.Context, f ports.DiskFilter, p ports.Pagination) ([]*domain.Disk, string, error) {
 	pageSize, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {

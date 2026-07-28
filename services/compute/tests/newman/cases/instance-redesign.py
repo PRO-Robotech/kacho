@@ -70,7 +70,7 @@ def _cleanup_mt(id_var="mtId", name="cleanup-mt"):
 
 
 def _vm_body(suffix, mt="{{mtId}}", name=None, ssh=True, boot=None, nic=True, extra=None):
-    b = {"projectId": "{{_suiteFolderId}}",
+    b = {"projectId": "{{_suiteProjectId}}",
          "name": name if name is not None else f"insvm{suffix}{{{{runId}}}}",
          "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": mt,
          "bootSource": dict(boot) if boot is not None else dict(_BOOT_STORAGE),
@@ -86,7 +86,7 @@ def _vm_body(suffix, mt="{{mtId}}", name=None, ssh=True, boot=None, nic=True, ex
 
 
 def _container_body(suffix, mt="{{mtId}}", name=None):
-    return {"projectId": "{{_suiteFolderId}}",
+    return {"projectId": "{{_suiteProjectId}}",
             "name": name if name is not None else f"insct{suffix}{{{{runId}}}}",
             "zoneId": "{{existingZoneId}}", "instanceKind": "CONTAINER", "machineTypeId": mt,
             "bootSource": dict(_BOOT_REGISTRY),
@@ -759,13 +759,13 @@ CASES.append(Case(
     steps=[
         *_seed_instance("lst", name="inslst{{runId}}"),
         retry_until_present(Step(name="list", method="GET",
-            path=INSTANCES + "?projectId={{_suiteFolderId}}&pageSize=1000",
+            path=INSTANCES + "?projectId={{_suiteProjectId}}&pageSize=1000",
             test_script=[*assert_status(200),
                          "pm.test('instances is array', () => pm.expect(pm.response.json().instances||[]).to.be.an('array'));",
                          "pm.test('contains own fresh instance', () => pm.expect((pm.response.json().instances||[]).map(x=>x.id)).to.include(pm.environment.get('instanceId')));"]),
             "instanceId"),
         retry_until_present(Step(name="list-filter-name", method="GET",
-            path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=name%3D%22inslst{{runId}}%22",
+            path=INSTANCES + "?projectId={{_suiteProjectId}}&filter=name%3D%22inslst{{runId}}%22",
             test_script=[*assert_status(200),
                          "pm.test('filter name= contains own instance', () => pm.expect((pm.response.json().instances||[]).map(x=>x.id)).to.include(pm.environment.get('instanceId')));"]),
             "instanceId"),
@@ -779,7 +779,7 @@ CASES.append(Case(
     title="COMP-1-35: List pageSize=1001 (>max 1000) → 400 INVALID_ARGUMENT (pagination-validate ДО listauthz "
           "empty-grant short-circuit; отвергается, не clamp). [verifies COMP-1-35 · BVA max+1]",
     classes=["BVA", "VAL", "PAGE"], priority="P1",
-    steps=[Step(name="ps-over", method="GET", path=INSTANCES + "?projectId={{_suiteFolderId}}&pageSize=1001",
+    steps=[Step(name="ps-over", method="GET", path=INSTANCES + "?projectId={{_suiteProjectId}}&pageSize=1001",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -789,7 +789,7 @@ CASES.append(Case(
           "[verifies COMP-1-35 · error-guessing garbage-token]",
     classes=["PAGE", "VAL"], priority="P1",
     steps=[Step(name="tok-garbage", method="GET",
-                path=INSTANCES + "?projectId={{_suiteFolderId}}&pageSize=10&pageToken=!!!not-base64!!!",
+                path=INSTANCES + "?projectId={{_suiteProjectId}}&pageSize=10&pageToken=!!!not-base64!!!",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -808,16 +808,16 @@ CASES.append(Case(
     classes=["FILTER", "VAL", "NEG"], priority="P1",
     steps=[
         Step(name="flt-kind-rejected", method="GET",
-             path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=instanceKind%3D%22CONTAINER%22",
+             path=INSTANCES + "?projectId={{_suiteProjectId}}&filter=instanceKind%3D%22CONTAINER%22",
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('message names the offending field', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"instanceKind\"'));",
                           "pm.test('no leak', () => { const b = JSON.stringify(pm.response.json()||{}).toLowerCase(); ['sqlstate','panic','goroutine','pgx'].forEach(t => pm.expect(b).to.not.include(t)); });"]),
         Step(name="flt-pg-rejected", method="GET",
-             path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=placementGroupId%3D%22plg-x%22",
+             path=INSTANCES + "?projectId={{_suiteProjectId}}&filter=placementGroupId%3D%22plg-x%22",
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('message names the offending field', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"placementGroupId\"'));"]),
         Step(name="flt-snake-kind-rejected", method="GET",
-             path=INSTANCES + "?projectId={{_suiteFolderId}}&filter=instance_kind%3D%22CONTAINER%22",
+             path=INSTANCES + "?projectId={{_suiteProjectId}}&filter=instance_kind%3D%22CONTAINER%22",
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('snake_case spelling rejected too', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"instance_kind\"'));"]),
     ],

@@ -42,7 +42,7 @@ func (r *SnapshotRepo) Get(ctx context.Context, id string) (*domain.Snapshot, er
 	return s, nil
 }
 
-// List возвращает снапшоты по folder с cursor-pagination.
+// List возвращает снапшоты по проекту с cursor-pagination.
 func (r *SnapshotRepo) List(ctx context.Context, f ports.SnapshotFilter, p ports.Pagination) ([]*domain.Snapshot, string, error) {
 	pageSize, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {

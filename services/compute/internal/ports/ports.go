@@ -87,7 +87,7 @@ type DiskRepo interface {
 // ImageRepo — port-интерфейс репозитория образов.
 type ImageRepo interface {
 	Get(ctx context.Context, id string) (*domain.Image, error)
-	GetLatestByFamily(ctx context.Context, folderID, family string) (*domain.Image, error)
+	GetLatestByFamily(ctx context.Context, projectID, family string) (*domain.Image, error)
 	List(ctx context.Context, f ImageFilter, p Pagination) ([]*domain.Image, string, error)
 	Insert(ctx context.Context, i *domain.Image) (*domain.Image, error)
 	// Update — emitLabelsRegister эмитит mirror.upsert при labels-в-маске (parity с Instance).
@@ -194,9 +194,8 @@ type DiskTypeRepo interface {
 }
 
 // ProjectClient — port для проверки существования Project в kacho-iam
-// (ProjectService.Get). Аргумент projectID — id владельца-проекта (в схеме
-// kacho-compute хранится в колонке `project_id`; переименована из legacy
-// `folder_id` миграцией 0009_rename_folder_to_project).
+// (ProjectService.Get). Аргумент projectID — id владельца-проекта; в схеме
+// kacho-compute он лежит в колонке `project_id`.
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)
 }

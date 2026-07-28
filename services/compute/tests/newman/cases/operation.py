@@ -20,7 +20,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P1",
     steps=[
         Step(name="create-trigger", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "disk-opget-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "disk-opget-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "size": _DISK_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.diskId", "diskId")]),
@@ -41,7 +41,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="OP-GET-CRUD-FAILED-OP",
-    title="Get завершённой failed-operation (Disk.Create в garbage folder) → done=true, has error code 5",
+    title="Get завершённой failed-operation (Disk.Create в garbage project) → done=true, has error code 5",
     classes=["CRUD", "NEG"], priority="P1",
     steps=[
         # # requires peer-validation enabled
@@ -97,7 +97,7 @@ CASES.append(Case(
     classes=["NEG", "STATE"], priority="P1",
     steps=[
         Step(name="create-trigger", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "disk-opcancel-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "disk-opcancel-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "size": _DISK_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.diskId", "diskId")]),

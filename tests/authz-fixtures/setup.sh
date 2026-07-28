@@ -1187,8 +1187,8 @@ fi
 
 # ---------------------------------------------------------------------------
 # 11) COMPUTE — real project + cross-project + network + subnet + sg.
-#     compute newman env references existingProjectId (→ _suiteFolderId),
-#     existingProjectCrossId (→ _suiteFolderCrossId), existingNetworkId,
+#     compute newman env references existingProjectId (→ _suiteProjectId),
+#     existingProjectCrossId (→ _suiteProjectCrossId), existingNetworkId,
 #     existingSubnetId (33× — instance NIC), existingSgId. existingZoneId
 #     stays ru-central1-a (real geo zone). Created as AAA (account-A owner);
 #     compute suite default-Bearer = jwtBootstrap (cluster-admin) may operate

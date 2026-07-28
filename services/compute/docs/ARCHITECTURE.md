@@ -14,7 +14,7 @@ API → операционные аспекты → тестирование →
 ## Часть I. Системный контекст
 
 `kacho-compute` — control-plane сервис управления вычислительными ресурсами
-платформы Kachō. Владеет жизненным циклом четырёх публичных folder-scoped
+платформы Kachō. Владеет жизненным циклом четырёх публичных project-scoped
 ресурсов — **Instance** (виртуальные машины), **Disk** (тома), **Image**
 (образы), **Snapshot** (снимки дисков) — и read-only справочников **DiskType**,
 **Region**, **Zone** (Geography — owner kacho-compute с эпика `KAC-15`).
@@ -54,7 +54,7 @@ Postgres-БД, шаринг через прямой SQL запрещён.
 | Сосед | Канал | Что делает |
 |---|---|---|
 | `kacho-api-gateway` | gRPC `:9090` → REST `/compute/v1/...` + opsproxy `/operations/{id}` | Маршрутизирует публичные RPC, преобразует ошибки в HTTP; internal mux на cluster-internal listener для `/compute/v1/diskTypes`,`/compute/v1/regions`,`/compute/v1/zones` (`Internal*` admin) — НЕ на external TLS endpoint |
-| `kacho-iam` | gRPC client | `projectClient.Exists(projectID)` — existence-check владельца-проекта в Create (`ProjectService.Get`; колонка-владелец в схеме — legacy-имя `folder_id`) |
+| `kacho-iam` | gRPC client | `projectClient.Exists(projectID)` — existence-check владельца-проекта в Create (`ProjectService.Get`; колонка-владелец в схеме — `project_id`) |
 | `kacho-vpc` | gRPC client | `vpcClient.{GetSubnet, GetSecurityGroup, GetAddress, NetworkInterfaceService.*, InternalAddressService}` — валидация ссылок Instance + delete kacho-vpc `NetworkInterface` при `Instance.Delete` (если у NIC есть `nic_id`) + IPAM эфемерных Address. ⚠️ авто-создание/привязка NIC при `Instance.Create` удалены в `KAC-266` (инстанс создаётся без сетевых интерфейсов; правильная сетевая модель — будущая переделка) |
 | Postgres (`kacho_compute`) | pgx + LISTEN/NOTIFY | Источник истины |
 | Внутренние подписчики на изменения | gRPC server-stream `:9091` | `InternalWatchService.Watch` — events из `compute_outbox` |
@@ -228,15 +228,15 @@ Instance (1) ──┬─ boot_disk / secondary_disks (через attached_disks
    │           └─ filesystem_specs[] → blocked:kacho-filesystem                  source_disk_id
    └─ status: state-машина
 
-Image (folder-level): family (GetLatestByFamily); source = image|snapshot|disk|uri
+Image (project-level): family (GetLatestByFamily); source = image|snapshot|disk|uri
 Disk  (zone-level): type_id → DiskType; source = image|snapshot; instance_ids derived
 DiskType — read-only справочник (id — литерал)
 Region / Zone — публичный read-only справочник Geography (owner kacho-compute, эпик KAC-15)
 ```
 
-Все мутируемые ресурсы — folder-level (`folder_id` в Create). Все таблицы flat
+Все мутируемые ресурсы — project-level (`project_id` в Create). Все таблицы flat
 (без K8s envelope). `cloud_id`/`organization_id` отсутствуют — фильтрация только
-по `folder_id`. Cross-resource links: boot/secondary disk → `attached_disks` →
+по `project_id`. Cross-resource links: boot/secondary disk → `attached_disks` →
 `disks` (FK `disk_id` RESTRICT, `instance_id` CASCADE); `boot_disk` = строка
 `attached_disks` с `is_boot=true`; NIC `nic_id` → kacho-vpc `NetworkInterface`
 (НЕ FK; denorm subnet/SG/NAT-address). ⚠️ **`Instance.Create` больше не создаёт и
@@ -259,7 +259,7 @@ seed `disk_types`); `0002_nic_ephemeral_address.sql`; `0003_geography_owner.sql`
 FK `zones.region_id → regions.id` RESTRICT, seed `ru-central1` + `ru-central1-{a,b,d}`
 здесь; эпик `KAC-15`); `0005_instance_nic_id.sql` (`instance_network_interfaces.nic_id`
 — id бэкующего kacho-vpc `NetworkInterface`, эпик `KAC-9`). Особенности: flat
-resources; TEXT id-колонки; hard-delete; partial UNIQUE `(folder_id, name) WHERE
+resources; TEXT id-колонки; hard-delete; partial UNIQUE `(project_id, name) WHERE
 name <> ''` (disks/images/snapshots/instances); FK `attached_disks.disk_id` →
 disks RESTRICT, `.instance_id` → instances CASCADE; FK
 `instance_network_interfaces.instance_id` → instances CASCADE; partial UNIQUE
@@ -297,7 +297,7 @@ CRUD справочников) → `/compute/v1/diskTypes`,`/compute/v1/regions`
 ## Часть VIII. Sequence-диаграммы (ключевые)
 
 См. [02-data-flows.md](architecture/02-data-flows.md): Operations LRO worker
-(общий шаблон); Disk.Create (folder/zone/type/source checks → INSERT READY →
+(общий шаблон); Disk.Create (project/zone/type/source checks → INSERT READY →
 outbox); Image.Create (source oneof resolve: image|snapshot|disk|uri, uri —
 мгновенный download-заглушка); Snapshot.Create (из Disk READY); Instance.Create
 (boot-disk resolve/inline-create → INSERT instance+attached_disks в одной TX →
@@ -339,7 +339,7 @@ dev; production — `verify-full`), `KACHO_COMPUTE_*_TLS` для cross-service g
 admin paths для будущего TLS-фильтра — `/compute/v1/diskTypes`,
 `/compute/v1/regions`, `/compute/v1/zones` (POST/PATCH/DELETE — GET публичен).
 **Gap** (как у VPC): полноценный IAM
-(claims-extraction / folder-membership через RM), mTLS на `:9091`, NetworkPolicy
+(claims-extraction / членство в проекте через kacho-iam), mTLS на `:9091`, NetworkPolicy
 для internal-port — scope.
 
 ---
@@ -351,7 +351,7 @@ admin paths для будущего TLS-фильтра — `/compute/v1/diskType
 worker'ы дожидаются через `portmock.AwaitOpDone`/`AwaitAllOpsDone`, не
 `time.Sleep`; `make test-short`); **integration** (`internal/repo/*integration_test.go`
 — testcontainers Postgres 16, локально `make test` + CI job `integration`:
-Repo CRUD, partial UNIQUE `(folder_id, name)`, FK `attached_disks` (attach/detach
+Repo CRUD, partial UNIQUE `(project_id, name)`, FK `attached_disks` (attach/detach
 + delete-blocked + Instance.Delete cascade), outbox emit транзакционность +
 LISTEN/NOTIFY, Instance NIC cascade delete, xmin OCC); **e2e/newman**
 (`tests/newman/` — black-box через api-gateway `localhost:18080`; декларативные
@@ -360,7 +360,7 @@ LISTEN/NOTIFY, Instance NIC cascade delete, xmin OCC); **e2e/newman**
 по сервису; новые кейсы: Region/Zone (list/get/admin-CRUD/del-restrict/not-in-vpc),
 Instance с `nic_id`. case-id `<DOMAIN>-<ACTION>-<DETAIL>`, напр. `DISK-CR-CRUD-OK`,
 `INST-START-NEG-NOT-STOPPED`;
-каждый case в своём `runId` внутри pre-allocated `existingFolderId`). **Критерий
+каждый case в своём `runId` внутри pre-allocated `existingProjectId`). **Критерий
 приёмки:** любой newman-кейс должен зеленеть и против реального YC Compute API.
 Найденные баги → GitHub Issues; by-design расхождения → [07-known-divergences.md](architecture/07-known-divergences.md).
 

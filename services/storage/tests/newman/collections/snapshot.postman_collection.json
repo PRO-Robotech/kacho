@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "dcc5caad-dc6b-457d-990e-be5cdc10889a",
+    "_postman_id": "22175fd8-135d-4c38-a7cc-e9db02687184",
     "name": "kacho-storage / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "const __defaultJwt = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
           "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
           "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
@@ -54,7 +54,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-snapsrc-crok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-snapsrc-crok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -153,7 +153,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-cr-{{runId}}\", \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-cr-{{runId}}\", \"description\": \"newman CRUD-OK\", \"labels\": {\"suite\": \"newman\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -318,7 +318,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches & snp prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('snapshotId')); pm.expect(j.id).to.match(/^snp/); });",
-                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                  "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                   "pm.test('sourceVolumeId matches', () => pm.expect(j.sourceVolumeId).to.eql(pm.environment.get('sourceVolumeId')));",
                   "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
                   "pm.test('sizeBytes == source volume size (snapshotted)', () => pm.expect(String(j.sizeBytes)).to.eql('16106127360'));",
@@ -533,7 +533,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"snap-badsrc-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"snap-badsrc-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -724,7 +724,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"snap-ns-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"snap-ns-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -831,7 +831,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"Bad_Name\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"Bad_Name\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -885,7 +885,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"снимок\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"снимок\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1019,14 +1019,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{_suiteFolderId}}",
+              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{_suiteProjectId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}"
+                "snapshots?projectId={{_suiteProjectId}}"
               ]
             }
           },
@@ -1106,14 +1106,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=10&pageToken=not-a-real-token",
+              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=10&pageToken=not-a-real-token"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=10&pageToken=not-a-real-token"
               ]
             }
           },
@@ -1217,7 +1217,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-snapsrc-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-snapsrc-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1316,7 +1316,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-upd-{{runId}}\", \"labels\": {\"orig\": \"1\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-upd-{{runId}}\", \"labels\": {\"orig\": \"1\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1774,7 +1774,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-snapsrc-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-snapsrc-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1873,7 +1873,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-delok-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-delok-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2354,14 +2354,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{_suiteFolderId}}&pageSize=5000",
+              "raw": "{{baseUrl}}/storage/v1/snapshots?projectId={{_suiteProjectId}}&pageSize=5000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "snapshots?projectId={{_suiteFolderId}}&pageSize=5000"
+                "snapshots?projectId={{_suiteProjectId}}&pageSize=5000"
               ]
             }
           },
@@ -2574,7 +2574,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{garbageStorageId}}\", \"name\": \"nabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2628,7 +2628,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-snapsrc-updbvad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-snapsrc-updbvad-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2727,7 +2727,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-updbvad-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-updbvad-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3274,7 +3274,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-snapsrc-updbval-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-snapsrc-updbval-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3373,7 +3373,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-updbval-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-updbval-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3884,7 +3884,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"vol-snapsrc-updname-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-snapsrc-updname-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 16106127360}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3983,7 +3983,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-updname-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sourceVolumeId\": \"{{sourceVolumeId}}\", \"name\": \"snap-updname-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

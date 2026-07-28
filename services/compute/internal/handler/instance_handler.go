@@ -59,7 +59,7 @@ func (h *InstanceHandler) Get(ctx context.Context, req *computev1.GetInstanceReq
 	return p, nil
 }
 
-// List возвращает список ВМ в folder.
+// List возвращает список ВМ в проекте.
 //
 // Страница читается из БД ПЕРВОЙ, затем per-object фильтруется через
 // iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см. list_filter.go.
