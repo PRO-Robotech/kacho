@@ -16,9 +16,9 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // comp1Instance — валидный redesign-Instance (COMP-1) для integration-сидов.
@@ -72,7 +72,7 @@ func TestIntegration_Instance_COMP_1_30_ConcurrentNameRace(t *testing.T) {
 			switch {
 			case ierr == nil:
 				successCnt.Add(1)
-			case errors.Is(ierr, service.ErrAlreadyExists):
+			case errors.Is(ierr, serviceerr.ErrAlreadyExists):
 				alreadyExists.Add(1)
 			default:
 				otherErr.Add(1)
@@ -119,12 +119,12 @@ func TestIntegration_Instance_COMP_1_37_DeleteNameRecycle(t *testing.T) {
 
 	// дубль до удаления → AlreadyExists (слот занят).
 	_, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, name))
-	require.ErrorIs(t, err, service.ErrAlreadyExists)
+	require.ErrorIs(t, err, serviceerr.ErrAlreadyExists)
 
 	// hard-delete → строка снята, слот освобождён.
 	require.NoError(t, instRepo.Delete(ctx, id1))
 	_, err = instRepo.Get(ctx, id1)
-	require.ErrorIs(t, err, service.ErrNotFound, "hard-delete, не tombstone")
+	require.ErrorIs(t, err, serviceerr.ErrNotFound, "hard-delete, не tombstone")
 
 	// name-recycle: тот же непустой name снова Create-able.
 	id2 := ids.NewHyphenID(ids.PrefixInstanceHyphen)

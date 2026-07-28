@@ -5,11 +5,10 @@
 // связанные value-объекты (Pagination, *Filter) для kacho-compute.
 //
 // Это leaf-пакет: импортирует только `internal/domain`. Импортируется
-// `internal/service` (use-cases — ре-экспортирует через type-alias'ы),
-// `internal/repo` / `internal/clients` (adapters реализуют эти интерфейсы) и
-// `internal/ports/portmock` (общие fake'и для unit-тестов). Так избегается
-// дублирование mock-реализаций и не создаётся import-cycle. Зеркалит
-// kacho-vpc/internal/ports.
+// use-case-пакетами `internal/apps/kacho/api/<resource>` (ре-экспортируют через
+// type-alias'ы), `internal/repo` / `internal/clients` (adapters реализуют эти
+// интерфейсы) и `internal/ports/portmock` (общие fake'и для unit-тестов). Так
+// избегается дублирование mock-реализаций и не создаётся import-cycle.
 package ports
 
 import (

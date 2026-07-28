@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package instance
 
 // An instance is created in its own zone and its interfaces must be in that same
 // zone. A REGIONAL (anycast) subnet is excluded from the zonal check by

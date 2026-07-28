@@ -1,15 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package serviceerr
 
 import "github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 
 // Sentinel-ошибки живут в leaf-пакете `internal/ports` — это позволяет общему
 // test-helper'у `internal/ports/portmock` возвращать их без зависимости от
-// `internal/service`. Здесь — ре-экспорт через `var`-alias'ы (те же
-// error-value, поэтому `errors.Is(err, service.ErrNotFound)` работает).
-// Зеркалит kacho-vpc/internal/service/errors.go.
+// use-case-пакетов. Здесь — ре-экспорт через `var`-alias'ы (те же error-value,
+// поэтому `errors.Is(err, serviceerr.ErrNotFound)` работает). Зеркалит
+// kacho-vpc/internal/apps/kacho/shared/serviceerr/errors.go.
 var (
 	// ErrNotFound возвращается, когда ресурс не найден.
 	ErrNotFound = ports.ErrNotFound

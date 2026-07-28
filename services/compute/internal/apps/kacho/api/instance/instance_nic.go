@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package instance
 
 import (
 	"context"
@@ -17,6 +17,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 )
@@ -44,12 +46,12 @@ func (s *InstanceService) AttachNetworkInterface(ctx context.Context, instanceID
 	if err := corevalidate.ResourceID(niResource, ids.PrefixNetworkInterface, nicID); err != nil {
 		return nil, err
 	}
-	return runOp(ctx, s.opsRepo, "Attach network interface to instance "+instanceID,
+	return lro.RunOp(ctx, s.opsRepo, "Attach network interface to instance "+instanceID,
 		&computev1.AttachInstanceNetworkInterfaceMetadata{InstanceId: instanceID, NicId: nicID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			in, err := s.repo.Get(ctx, instanceID)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			if in.Status != domain.InstanceStatusRunning && in.Status != domain.InstanceStatusStopped {
 				return nil, status.Error(codes.FailedPrecondition, "Instance is not running or stopped")
@@ -85,12 +87,12 @@ func (s *InstanceService) DetachNetworkInterface(ctx context.Context, instanceID
 			return nil, err
 		}
 	}
-	return runOp(ctx, s.opsRepo, "Detach network interface from instance "+instanceID,
+	return lro.RunOp(ctx, s.opsRepo, "Detach network interface from instance "+instanceID,
 		&computev1.DetachInstanceNetworkInterfaceMetadata{InstanceId: instanceID, NicId: nicID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			in, err := s.repo.Get(ctx, instanceID)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			if s.nicClient == nil {
 				return nil, status.Error(codes.Unavailable, "network interface service unavailable")

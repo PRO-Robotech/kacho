@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package machinetype
 
 import (
 	"context"
@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 )
@@ -65,7 +67,7 @@ func (s *MachineTypeService) Get(ctx context.Context, id string) (*domain.Machin
 	}
 	mt, err := s.repo.Get(ctx, id)
 	if err != nil {
-		return nil, mapRepoErr(err)
+		return nil, serviceerr.MapRepoErr(err)
 	}
 	return mt, nil
 }
@@ -82,10 +84,10 @@ func (s *MachineTypeService) Create(ctx context.Context, req CreateMachineTypeRe
 		return nil, err
 	}
 	if req.Name == "" {
-		return nil, invalidArg("name", "name is required")
+		return nil, serviceerr.InvalidArg("name", "name is required")
 	}
 	if !req.Family.Valid() {
-		return nil, invalidArg("family", "family is required (STANDARD, COMPUTE, MEMORY or GPU)")
+		return nil, serviceerr.InvalidArg("family", "family is required (STANDARD, COMPUTE, MEMORY or GPU)")
 	}
 	// status по умолчанию AVAILABLE, если не задан (proto-контракт).
 	st := req.Status
@@ -93,7 +95,7 @@ func (s *MachineTypeService) Create(ctx context.Context, req CreateMachineTypeRe
 		st = domain.MachineTypeStatusAvailable
 	}
 	if !st.Valid() {
-		return nil, invalidArg("status", "unknown status")
+		return nil, serviceerr.InvalidArg("status", "unknown status")
 	}
 	if err := validateEffectiveResources(req.EffectiveResources); err != nil {
 		return nil, err
@@ -113,12 +115,12 @@ func (s *MachineTypeService) Create(ctx context.Context, req CreateMachineTypeRe
 		Status:             st,
 		Labels:             req.Labels,
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Create machine type %s", req.Name),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Create machine type %s", req.Name),
 		&computev1.CreateMachineTypeMetadata{MachineTypeId: mtID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			created, err := s.repo.Insert(ctx, mt)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			return anypb.New(protoconv.MachineType(created))
 		})
@@ -133,17 +135,17 @@ func (s *MachineTypeService) Update(ctx context.Context, req UpdateMachineTypeRe
 	if err := s.validateUpdate(req); err != nil {
 		return nil, err
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Update machine type %s", req.ID),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update machine type %s", req.ID),
 		&computev1.UpdateMachineTypeMetadata{MachineTypeId: req.ID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			mt, err := s.repo.Get(ctx, req.ID)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			applyMachineTypeUpdate(mt, req)
 			updated, err := s.repo.Update(ctx, mt)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			return anypb.New(protoconv.MachineType(updated))
 		})
@@ -154,11 +156,11 @@ func (s *MachineTypeService) Delete(ctx context.Context, id string) (*operations
 	if err := corevalidate.ResourceID("machine type", ids.PrefixMachineTypeHyphen, id); err != nil {
 		return nil, err
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Delete machine type %s", id),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Delete machine type %s", id),
 		&computev1.DeleteMachineTypeMetadata{MachineTypeId: id},
 		func(ctx context.Context) (*anypb.Any, error) {
 			if err := s.repo.Delete(ctx, id); err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			return anypb.New(&emptypb.Empty{})
 		})
@@ -178,7 +180,7 @@ func (s *MachineTypeService) validateUpdate(req UpdateMachineTypeReq) error {
 	for _, f := range req.UpdateMask {
 		switch f {
 		case "name", "id", "created_at":
-			return invalidArg(f, f+" is immutable after MachineType.Create")
+			return serviceerr.InvalidArg(f, f+" is immutable after MachineType.Create")
 		}
 	}
 	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, machineTypeUpdateKnown); err != nil {
@@ -188,11 +190,11 @@ func (s *MachineTypeService) validateUpdate(req UpdateMachineTypeReq) error {
 		switch f {
 		case "family":
 			if !req.Family.Valid() {
-				return invalidArg("family", "family is required (STANDARD, COMPUTE, MEMORY or GPU)")
+				return serviceerr.InvalidArg("family", "family is required (STANDARD, COMPUTE, MEMORY or GPU)")
 			}
 		case "status":
 			if !req.Status.Valid() {
-				return invalidArg("status", "unknown status")
+				return serviceerr.InvalidArg("status", "unknown status")
 			}
 		case "effective_resources":
 			if err := validateEffectiveResources(req.EffectiveResources); err != nil {
@@ -236,13 +238,13 @@ func applyMachineTypeUpdate(mt *domain.MachineType, req UpdateMachineTypeReq) {
 // (память в MiB, human-scale). GPU-count = гранулярность каталога (не поле запроса).
 func validateEffectiveResources(r domain.EffectiveResources) error {
 	if r.VCPU <= 0 {
-		return invalidArg("effective_resources.v_cpu", "v_cpu must be > 0")
+		return serviceerr.InvalidArg("effective_resources.v_cpu", "v_cpu must be > 0")
 	}
 	if r.MemoryMiB <= 0 {
-		return invalidArg("effective_resources.memory_mib", "memory_mib must be > 0 (MiB)")
+		return serviceerr.InvalidArg("effective_resources.memory_mib", "memory_mib must be > 0 (MiB)")
 	}
 	if r.GPUs < 0 {
-		return invalidArg("effective_resources.gpus", "gpus must be >= 0")
+		return serviceerr.InvalidArg("effective_resources.gpus", "gpus must be >= 0")
 	}
 	return nil
 }

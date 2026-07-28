@@ -17,10 +17,10 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 func setupTestDB(t *testing.T) string {
@@ -111,7 +111,7 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.InstanceStatusStopped, updated.Status)
 	_, err = instRepo.SetStatusCAS(ctx, inID, domain.InstanceStatusRunning, domain.InstanceStatusStopped)
-	require.ErrorIs(t, err, service.ErrFailedPrecondition)
+	require.ErrorIs(t, err, serviceerr.ErrFailedPrecondition)
 
 	// GateForAttach всё ещё проходит (STOPPED ∈ {RUNNING, STOPPED}).
 	_, _, _, err = instRepo.GateForAttach(ctx, inID)
@@ -122,13 +122,13 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.InstanceStatusDeleting, di.Status)
 	_, _, _, err = instRepo.GateForAttach(ctx, inID)
-	require.ErrorIs(t, err, service.ErrFailedPrecondition)
+	require.ErrorIs(t, err, serviceerr.ErrFailedPrecondition)
 
 	// Delete (финальный row-delete) → NotFound на повторном Get.
 	require.NoError(t, instRepo.Delete(ctx, inID))
 	_, err = instRepo.Get(ctx, inID)
-	require.ErrorIs(t, err, service.ErrNotFound)
+	require.ErrorIs(t, err, serviceerr.ErrNotFound)
 	// GateForAttach на удалённом → NotFound.
 	_, _, _, err = instRepo.GateForAttach(ctx, inID)
-	require.ErrorIs(t, err, service.ErrNotFound)
+	require.ErrorIs(t, err, serviceerr.ErrNotFound)
 }

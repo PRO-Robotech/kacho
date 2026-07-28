@@ -16,9 +16,9 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // TestIntegration_MachineType_Delete_InUse_Restricted — within-service ссылка
@@ -61,7 +61,7 @@ func TestIntegration_MachineType_Delete_InUse_Restricted(t *testing.T) {
 	// Занятый тип удалить нельзя — FK RESTRICT.
 	err = mtRepo.Delete(ctx, inUse.ID)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, service.ErrFailedPrecondition, "delete занятого machine-type → FAILED_PRECONDITION")
+	assert.ErrorIs(t, err, serviceerr.ErrFailedPrecondition, "delete занятого machine-type → FAILED_PRECONDITION")
 	assert.Contains(t, err.Error(), "machine type "+inUse.ID+" is in use",
 		"конвенционный тон сообщения (не generic FK-текст, не raw pgx)")
 	// Каталожная запись на месте — dangling ref не образовался.
@@ -119,7 +119,7 @@ func TestIntegration_MachineType_InsertVsDelete_Race(t *testing.T) {
 			<-barrier
 			if _, ierr := instRepo.Insert(ctx, in); ierr == nil {
 				insertOK.Store(true)
-			} else if !errors.Is(ierr, service.ErrFailedPrecondition) {
+			} else if !errors.Is(ierr, serviceerr.ErrFailedPrecondition) {
 				unexpectedIn.Add(1)
 			}
 		}()
@@ -128,7 +128,7 @@ func TestIntegration_MachineType_InsertVsDelete_Race(t *testing.T) {
 			<-barrier
 			if derr := mtRepo.Delete(ctx, mt.ID); derr == nil {
 				deleteOK.Store(true)
-			} else if !errors.Is(derr, service.ErrFailedPrecondition) {
+			} else if !errors.Is(derr, serviceerr.ErrFailedPrecondition) {
 				unexpectedDe.Add(1)
 			}
 		}()

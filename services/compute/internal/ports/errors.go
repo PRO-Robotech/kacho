@@ -5,12 +5,12 @@ package ports
 
 import "errors"
 
-// Sentinel-ошибки слоя service/repo. Живут здесь (в leaf-пакете ports), а не в
-// `internal/service`, чтобы общий test-helper `internal/ports/portmock` мог их
-// возвращать без зависимости от `internal/service` (иначе — import-cycle с
-// white-box service-тестами). `internal/service` ре-экспортирует их через
-// type-alias'ы (`var ErrNotFound = ports.ErrNotFound` — тот же error-value, так
-// что `errors.Is` работает прозрачно). Зеркалит kacho-vpc/internal/ports.
+// Sentinel-ошибки слоя use-case/repo. Живут здесь (в leaf-пакете ports), а не в
+// use-case-пакете, чтобы общий test-helper `internal/ports/portmock` мог их
+// возвращать, не завися от use-case (иначе — import-cycle с white-box тестами
+// `apps/kacho/api/<resource>`). `apps/kacho/shared/serviceerr` ре-экспортирует их
+// через `var`-alias'ы (`var ErrNotFound = ports.ErrNotFound` — тот же
+// error-value, так что `errors.Is` работает прозрачно).
 var (
 	// ErrNotFound возвращается, когда ресурс не найден.
 	ErrNotFound = errors.New("not found")

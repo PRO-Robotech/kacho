@@ -19,9 +19,9 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ func TestInstanceList_UngrantedResourceStaysInvisible(t *testing.T) {
 func TestAllPublicLists_DoNotEnumerateUniverse(t *testing.T) {
 	t.Run("instance", func(t *testing.T) {
 		cli := newCappedAuthorizeClient()
-		insSvc := service.NewInstanceService(
+		insSvc := instance.NewInstanceService(
 			portmock.NewInstanceRepo(), portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
 			portmock.NewSubnetRegistry(), &portmock.ProjectClient{OK: true},
 			portmock.NewNicClient(), portmock.NewStorageClient(), portmock.NewOpsRepo(),

@@ -17,10 +17,10 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 func newMachineType(name string, family domain.MachineTypeFamily, gpus int32) *domain.MachineType {
@@ -67,7 +67,7 @@ func TestIntegration_MachineTypeRepo_CRUD(t *testing.T) {
 	// duplicate name → AlreadyExists (UNIQUE(name), 23505).
 	dup := newMachineType("std-v3-2", domain.MachineTypeFamilyStandard, 0)
 	_, err = r.Insert(ctx, dup)
-	require.ErrorIs(t, err, service.ErrAlreadyExists)
+	require.ErrorIs(t, err, serviceerr.ErrAlreadyExists)
 
 	// update: family + status (name immutable — not in SET).
 	got.Family = domain.MachineTypeFamilyCompute
@@ -80,9 +80,9 @@ func TestIntegration_MachineTypeRepo_CRUD(t *testing.T) {
 	// delete → Get NotFound.
 	require.NoError(t, r.Delete(ctx, mt.ID))
 	_, err = r.Get(ctx, mt.ID)
-	require.ErrorIs(t, err, service.ErrNotFound)
+	require.ErrorIs(t, err, serviceerr.ErrNotFound)
 	// delete of absent → NotFound.
-	require.ErrorIs(t, r.Delete(ctx, mt.ID), service.ErrNotFound)
+	require.ErrorIs(t, r.Delete(ctx, mt.ID), serviceerr.ErrNotFound)
 }
 
 // TestIntegration_MachineTypeRepo_ListFilterAndCursor — COMP-1-19: family=/minGpus=/
@@ -175,7 +175,7 @@ func TestIntegration_MachineTypeRepo_ConcurrentNameRace(t *testing.T) {
 			switch {
 			case ierr == nil:
 				successCnt.Add(1)
-			case errors.Is(ierr, service.ErrAlreadyExists):
+			case errors.Is(ierr, serviceerr.ErrAlreadyExists):
 				existsCnt.Add(1)
 			default:
 				otherErrsMu.Lock()

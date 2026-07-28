@@ -3,11 +3,12 @@
 
 // Package portmock содержит in-memory fake-реализации port-интерфейсов из
 // `internal/ports` плюс helper'ы для ожидания async-Operation'ов. Используется
-// unit-тестами `internal/service` и `internal/handler`.
+// unit-тестами use-case-пакетов (`internal/apps/kacho/api/<resource>`) и
+// `internal/handler`.
 //
 // Зависит только от `internal/ports`, `internal/domain` и `kacho-corelib/operations`
-// — НЕ от `internal/service`, поэтому white-box service-тесты (`package service`)
-// могут его импортировать без import-cycle. Зеркалит kacho-vpc/internal/ports/portmock.
+// — НЕ от use-case-пакетов, поэтому их white-box тесты могут его импортировать
+// без import-cycle.
 package portmock
 
 import (

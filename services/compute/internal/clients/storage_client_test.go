@@ -16,8 +16,8 @@ import (
 
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // fakeStorageClient — in-memory storagev1.InternalVolumeServiceClient for unit-testing
@@ -278,6 +278,6 @@ func TestNoopStorageClient_FailClosed(t *testing.T) {
 
 // staticAssertStorageClientPort — StorageClient impls must satisfy the use-case port.
 var (
-	_ service.StorageClient = (*StorageClient)(nil)
-	_ service.StorageClient = NoopStorageClient{}
+	_ instance.StorageClient = (*StorageClient)(nil)
+	_ instance.StorageClient = NoopStorageClient{}
 )

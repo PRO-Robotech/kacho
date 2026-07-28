@@ -15,10 +15,10 @@ import (
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // fakeGeoZoneCli — geov1.ZoneServiceClient под instance-use-case-тест (geo-validate).
@@ -34,7 +34,7 @@ func (f fakeGeoZoneCli) List(_ context.Context, _ *geov1.ListZonesRequest, _ ...
 	return nil, status.Error(codes.Unimplemented, "not used")
 }
 
-func newInstanceSvcGeo(t *testing.T, geoZones fakeGeoZoneCli) (*service.InstanceService, *portmock.OpsRepo) {
+func newInstanceSvcGeo(t *testing.T, geoZones fakeGeoZoneCli) (*instance.InstanceService, *portmock.OpsRepo) {
 	t.Helper()
 	instanceRepo := portmock.NewInstanceRepo()
 	ops := portmock.NewOpsRepo()
@@ -44,8 +44,8 @@ func newInstanceSvcGeo(t *testing.T, geoZones fakeGeoZoneCli) (*service.Instance
 		Status:             domain.MachineTypeStatusAvailable,
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 	})
-	geoReg := clients.NewGeoClientWith(geoZones) // GeoClient implements service.ZoneRegistry
-	svc := service.NewInstanceService(
+	geoReg := clients.NewGeoClientWith(geoZones) // GeoClient implements instance.ZoneRegistry
+	svc := instance.NewInstanceService(
 		instanceRepo, mtRepo, geoReg, portmock.NewSubnetRegistry(), &portmock.ProjectClient{OK: true}, portmock.NewNicClient(), portmock.NewStorageClient(), ops,
 	)
 	return svc, ops
@@ -54,15 +54,15 @@ func newInstanceSvcGeo(t *testing.T, geoZones fakeGeoZoneCli) (*service.Instance
 // geoInstanceReq — минимальный ВАЛИДНЫЙ Create-запрос (COMP-1 redesign): sync-
 // валидация проходит, machineTypeId резолвится в засеянном каталоге → doCreate
 // доходит до geo zone peer-validate (интент этого теста).
-func geoInstanceReq() service.CreateInstanceReq {
-	return service.CreateInstanceReq{
+func geoInstanceReq() instance.CreateInstanceReq {
+	return instance.CreateInstanceReq{
 		ProjectID:     "f",
 		Name:          "vm-geo",
 		ZoneID:        "ru-central1-a",
 		InstanceKind:  domain.InstanceKindVM,
 		MachineTypeID: "mt-std2",
 		BootSource:    domain.BootSource{Type: "storage.image", ID: "img-x:22.04"},
-		NetworkInterfaceSpecs: []service.NetworkInterfaceSpec{
+		NetworkInterfaceSpecs: []instance.NetworkInterfaceSpec{
 			{SubnetID: "sub-a", SecurityGroupIDs: []string{"scg-a"}},
 		},
 		SSHPublicKeys: []string{"ssh-ed25519 AAAA user@h"},

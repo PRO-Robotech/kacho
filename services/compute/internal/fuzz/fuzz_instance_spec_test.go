@@ -10,7 +10,7 @@
 //
 //	protojson → computev1.CreateInstanceRequest →
 //	handler.RejectUnsupportedCreateFields → handler.CreateReqFromProto →
-//	service.ValidateCreateInstanceReq
+//	instance.ValidateCreateInstanceReq
 //
 // Invariants asserted:
 //   - malformed input must NOT panic anywhere on that path (proto decode,
@@ -31,8 +31,8 @@ import (
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/handler"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 var instSpecTestSink error
@@ -85,7 +85,7 @@ func FuzzInstanceSpecValidate(f *testing.F) {
 		err := handler.RejectUnsupportedCreateFields(req)
 		if err == nil {
 			cr := handler.CreateReqFromProto(req)
-			err = service.ValidateCreateInstanceReq(cr)
+			err = instance.ValidateCreateInstanceReq(cr)
 		}
 		instSpecTestSink = err
 		if err == nil {
