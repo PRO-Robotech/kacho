@@ -550,17 +550,28 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
       return;
     }
 
+    // Тела собираются ДО перехода в submitting: buildCreateAccessBindingBody
+    // бросает на гранте, который нечем адресовать (нет субъекта / роли / anchor'а),
+    // и такой отказ должен стать видимым сообщением, а не зависшей кнопкой.
+    let addBodies: { roleId: string; body: Record<string, unknown> }[];
+    try {
+      addBodies = added.map((roleId) => ({
+        roleId,
+        body: buildCreateAccessBindingBody({ subjects, roleId, scopeTier, scopeId: anchorId, targetResources }),
+      }));
+    } catch (e) {
+      setInlineError({ type: "error", message: mapApiErrorToMessage(e) });
+      return;
+    }
+
     setSubmitting(true);
 
     type Op = { kind: "add" | "remove"; roleId: string; promise: Promise<unknown> };
     const ops: Op[] = [
-      ...added.map((roleId) => ({
+      ...addBodies.map(({ roleId, body }) => ({
         kind: "add" as const,
         roleId,
-        promise: api.create(
-          IAM.accessBindings,
-          buildCreateAccessBindingBody({ subjects, roleId, scopeTier, scopeId: anchorId, targetResources }),
-        ),
+        promise: api.create(IAM.accessBindings, body),
       })),
       ...removed.map((roleId) => ({
         kind: "remove" as const,
