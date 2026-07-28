@@ -128,14 +128,23 @@ func TestSECB16Unit_TLSPeerNoVerifiedCert_PrincipalNotTrusted(t *testing.T) {
 		gotCertID         string
 		gotVerified       bool
 		gotTrusted        = true
+		gotCarrierPresent = true
 		gotCarrierPrincID = "<unset>"
 	)
 	final := func(c context.Context, _ any) (any, error) {
 		gotCertID, gotVerified = grpcsrv.CertIdentityFromContext(c)
 		_, gotTrusted = grpcsrv.TrustedPrincipalFromContext(c)
 		// The standard carrier that use-cases consume must NOT be contaminated by
-		// an untrusted principal — it must still fall back to SystemPrincipal.
-		gotCarrierPrincID = operations.PrincipalFromContext(c).ID
+		// an untrusted principal — it must be scrubbed outright.
+		//
+		// Read through PrincipalFromContextOK, never PrincipalFromContext: the
+		// latter cannot express absence. Its contract returns SystemPrincipal for
+		// BOTH a scrubbed context and an explicitly set system principal, so an
+		// assertion built on it stays green when the untrusted branch hands the
+		// system identity out instead of dropping it — and that identity owns
+		// every system-written operation.
+		p, ok := operations.PrincipalFromContextOK(c)
+		gotCarrierPrincID, gotCarrierPresent = p.ID, ok
 		return nil, nil
 	}
 	chained := chainUnary(
@@ -154,8 +163,9 @@ func TestSECB16Unit_TLSPeerNoVerifiedCert_PrincipalNotTrusted(t *testing.T) {
 		"principal from unverified TLS peer must NOT be trusted")
 	// The untrusted principal must never reach the carrier use-cases read from —
 	// it stays the system fallback, not the metadata-supplied usr-mallory.
-	require.Equal(t, operations.SystemPrincipal().ID, gotCarrierPrincID,
-		"untrusted principal must not populate operations.PrincipalFromContext")
+	require.False(t, gotCarrierPresent,
+		"the identity carrier must be scrubbed for an untrusted peer, not merely read back "+
+			"as the system fallback")
 	require.NotEqual(t, "usr-mallory", gotCarrierPrincID,
 		"the metadata principal-id must not leak into the use-case principal carrier")
 }
@@ -185,10 +195,12 @@ func TestTrustedForwarders_NonForwarderVerifiedPeer_PrincipalDropped(t *testing.
 	ctx := verifiedTLSPeerCtx(t, otherSAN, "usr-mallory")
 
 	var gotTrusted = true
+	var gotCarrierPresent = true
 	var gotCarrierID = "<unset>"
 	final := func(c context.Context, _ any) (any, error) {
 		_, gotTrusted = grpcsrv.TrustedPrincipalFromContext(c)
-		gotCarrierID = operations.PrincipalFromContext(c).ID
+		p, ok := operations.PrincipalFromContextOK(c)
+		gotCarrierID, gotCarrierPresent = p.ID, ok
 		return nil, nil
 	}
 	chained := chainUnary(
@@ -199,8 +211,10 @@ func TestTrustedForwarders_NonForwarderVerifiedPeer_PrincipalDropped(t *testing.
 	require.NoError(t, err)
 	require.False(t, gotTrusted,
 		"verified peer не из allow-list форвардеров не должен быть доверенным")
-	require.Equal(t, operations.SystemPrincipal().ID, gotCarrierID,
-		"principal от не-форвардера обязан быть снят (scrub), не usr-mallory")
+	require.False(t, gotCarrierPresent,
+		"principal от не-форвардера обязан быть СНЯТ (scrub), а не прочитан как системный fallback")
+	require.NotEqual(t, "usr-mallory", gotCarrierID,
+		"forwarded principal-id не-форвардера не должен доехать до носителя")
 }
 
 // Verified peer, чей cert-identity В allow-list'е форвардеров (api-gateway),
