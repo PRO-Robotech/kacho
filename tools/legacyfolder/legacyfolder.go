@@ -196,7 +196,6 @@ var exemptFiles = map[string]string{
 	"services/iam/internal/migrations/0001_initial.sql":                           "applied migration: the baseline that created conditions.folder_id; applied migrations are never edited (ban #5)",
 	"services/iam/internal/migrations/0070_conditions_folder_to_project.sql":      "applied migration: the record of the last rename — it must keep naming what it renamed",
 	"services/compute/internal/handler/tenant_interceptor_project_header_test.go": "conformance test: it sends the retired header to prove the server does not honour it; removing the name would remove the proof",
-
 }
 
 // awaitingPass is the price of splitting this sweep across two passes: these
