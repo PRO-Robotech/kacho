@@ -2639,6 +2639,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           );
         },
       },
+      {
+        // Источник ОС — Instance.bootSource{type,id}. Заменяет прежнюю колонку
+        // «Загрузочный диск» (Instance.bootDisk — легаси-проекция, ведшая на
+        // ретайренный дубль compute-дисков).
+        header: "Образ",
+        path: "boot_source.id",
+        render: (row) => {
+          const bs = row.boot_source as { id?: string; name?: string } | undefined;
+          const label = bs?.name || bs?.id;
+          return label ? (
+            <span className="font-mono text-xs">{label}</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
+        },
+      },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",
