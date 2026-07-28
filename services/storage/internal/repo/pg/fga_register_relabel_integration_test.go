@@ -164,3 +164,71 @@ func TestImageUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.T
 	require.Equal(t, newLabels, p.Labels)
 	require.Equal(t, "storage_image:"+img.ID, p.Object)
 }
+
+// The CLEARING path is the revoke path, and it is the one that has to hold on
+// every label-carrying resource — not just on the volume. Clearing is worth its
+// own case per resource because "upsert an empty set" and "unregister" both make
+// the selector stop matching, so a wrong implementation still looks like a
+// working revoke from the outside; what separates them is that unregistering
+// also drops the owner tuple and takes the OWNER's own access away with it. The
+// volume has covered this since the emit-on-Update fix; snapshot and image had
+// only the relabel case, so the one wrong implementation they could grow was the
+// one no test would have caught.
+func TestSnapshotUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
+	pool := newTestPool(t)
+	vr := pg.NewVolumeRepo(pool)
+	sr := pg.NewSnapshotRepo(pool)
+
+	v := mkVolume(t, vr, "prj-relabel-sc", "vol-for-snap-clear", 10<<30)
+	s := mkSnapshot(t, sr, "prj-relabel-sc", "snap-clear", v.ID)
+
+	_, err := sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{
+		LabelsSet: true, Labels: map[string]string{"tier": "treska"},
+	})
+	require.NoError(t, err)
+
+	_, err = sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{LabelsSet: true, Labels: map[string]string{}})
+	require.NoError(t, err)
+
+	all := selectFGARows(t, pool)
+	for _, row := range all {
+		require.NotEqual(t, "fga.unregister", row.eventType,
+			"clearing labels must not unregister the snapshot — it still exists and keeps its owner tuple")
+	}
+
+	rows := registerRowsFor(t, all, "storage_snapshot", s.ID)
+	require.Len(t, rows, 3, "Create + two label changes")
+
+	p, err := fgaregister.Decode(rows[2].payload)
+	require.NoError(t, err)
+	require.Empty(t, p.Labels, "the mirror must be told the labels are gone, not left at the old set")
+}
+
+func TestImageUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
+	pool := newTestPool(t)
+	ir := pg.NewImageRepo(pool)
+
+	snapID := mkSnapshotRow(t, pool, "prj-relabel-ic", "snap-for-img-clear", 10<<30)
+	img := mkImageFromSnapshot(t, ir, "prj-relabel-ic", "img-clear", "reg-1", snapID)
+
+	_, err := ir.Update(t.Context(), img.ID, image.ImageUpdate{
+		LabelsSet: true, Labels: map[string]string{"tier": "treska"},
+	})
+	require.NoError(t, err)
+
+	_, err = ir.Update(t.Context(), img.ID, image.ImageUpdate{LabelsSet: true, Labels: map[string]string{}})
+	require.NoError(t, err)
+
+	all := selectFGARows(t, pool)
+	for _, row := range all {
+		require.NotEqual(t, "fga.unregister", row.eventType,
+			"clearing labels must not unregister the image — it still exists and keeps its owner tuple")
+	}
+
+	rows := registerRowsFor(t, all, "storage_image", img.ID)
+	require.Len(t, rows, 3, "Create + two label changes")
+
+	p, err := fgaregister.Decode(rows[2].payload)
+	require.NoError(t, err)
+	require.Empty(t, p.Labels, "the mirror must be told the labels are gone, not left at the old set")
+}
