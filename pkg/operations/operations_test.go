@@ -96,7 +96,7 @@ func setupPostgres(t *testing.T) *pgxpool.Pool {
 }
 
 // newRepo создает Repo для схемы public.
-func newRepo(pool *pgxpool.Pool) operations.Repo {
+func newRepo(pool *pgxpool.Pool) operations.FullRepo {
 	return operations.NewRepo(pool, "public")
 }
 
