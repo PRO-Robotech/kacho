@@ -98,7 +98,8 @@ External (project-scoped public IP) или internal (IP в Subnet).
 | `internal_ipv4` | jsonb | `{address, subnet_id}` |
 | `internal_ipv6` | jsonb | `{address, subnet_id}` (oneof `Address.internal_ipv6_address` — `{address, oneof scope{subnet_id}}`) |
 | `internal_subnet_id` | text computed | derived из `internal_ipv4->>'subnet_id'` **ИЛИ** `internal_ipv6->>'subnet_id'` — для UNIQUE per subnet + FK `addresses_internal_subnet_fkey` (и v4-, и v6-internal-адрес блокирует свою подсеть) |
-| `reserved`, `used` | bool | computed на сервис-стороне; `used=true` ⇔ есть referrer-row (см. `address_references`, ниже / NIC) |
+| `used` | bool | computed на сервис-стороне; `used=true` ⇔ есть referrer-row (см. `address_references`, ниже / NIC) |
+| `reserved` | bool | адрес удерживается **за проектом сам по себе** (тенант заказал именно адрес). `Create` ставит `true` — см. ниже |
 | `used_by` | Reference | денормализованная Reference кто использует адрес (flat-колонки `used_by_*`) |
 | `deletion_protection` | bool | sync-check перед Delete |
 
@@ -126,6 +127,38 @@ External (project-scoped public IP) или internal (IP в Subnet).
   Освободить — detach адреса от NIC / удаление NIC. Порядок снизу вверх: NIC → Address → Subnet → Network.
 
 **Allocate flow** см. [`02-data-flows.md`](02-data-flows.md#address-allocate-cascade).
+
+**`reserved` — что означает и чего НЕ делает.**
+
+`reserved` говорит: адрес удерживается **за проектом сам по себе** — тенант заказал
+именно адрес, поэтому адрес переживает любого потребителя, который его одалживает, и
+исчезает только по явному `Delete`. Противоположность — адрес, выделенный **побочным
+эффектом** создания чего-то другого, чья жизнь привязана к этому потребителю.
+
+- **Свежесозданный адрес зарезервирован.** `AddressService.Create` — это и есть заказ
+  адреса тенантом, и других способов родить адрес на публичной поверхности нет, поэтому
+  `doCreate` ставит `Reserved: true` безусловно. В `CreateAddressRequest` поля `reserved`
+  нет **потому, что выбирать нечего**, а не потому, что значение стартует с `false`.
+  То же с другой стороны: `InternalAddressService.MarkAddressEphemeralInUse` существует,
+  чтобы **снять** флаг с адреса, авто-выделенного под интерфейс, — снимать было бы нечего,
+  не поставь его `Create`. Исторический предок флага — `status.state = "RESERVED"`,
+  выставлявшийся при создании синхронно (acceptance sub-phase 0.3, F1); плоский редизайн
+  расщепил это состояние на пару `reserved`/`used`.
+- **Отказ от резерва — решение тенанта**, принимается через `AddressService.Update`
+  (`update_mask = "reserved"`). Это единственная дверь, через которую флаг двигается
+  наружу от `Create`.
+
+> [!warning] Флаг ничего не энфорсит — сегодня его никто не читает
+> Ни одна ветка, ни один SQL-предикат в сервисе не сверяется с `reserved`. Удаление
+> гейтится `used` + `deletion_protection` (`DELETE … WHERE id=$1 AND used=false AND
+> deletion_protection=false`), реклеймера / sweeper'а / lease-expiry для адресов в vpc
+> **не существует** вовсе (фоновых петель две — redrive FGA-outbox и LRO-recovery, обе
+> таблицу `addresses` не трогают). Поэтому «зарезервирован» = **правдивое утверждение о
+> происхождении** адреса, адресованное читающему его тенанту, а НЕ точка энфорсмента.
+> Не читать как защиту, пока защиту кто-нибудь не реализует. Прежняя формулировка
+> docs-site — «адрес зарезервирован (не освобождается автоматически)» — была верна лишь
+> потому, что автоматически не освобождается **ничто**; она обещала защиту от механизма,
+> которого нет, и заменена описанием происхождения.
 
 ### NetworkInterface (NIC)
 

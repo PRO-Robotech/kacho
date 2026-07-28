@@ -158,7 +158,31 @@ type Address struct {
 	//	*Address_InternalIpv6Address
 	//	*Address_ExternalIpv6Address
 	Address isAddress_Address `protobuf_oneof:"address"`
-	// Specifies if address is reserved or not.
+	// Whether the address is held by the project in its own right.
+	//
+	// Reserved means the tenant asked for the address itself, so it outlives every
+	// consumer that borrows it and goes away only on an explicit Delete. The
+	// opposite is an address allocated as a side effect of creating something else,
+	// whose life is tied to that consumer.
+	//
+	// A freshly created address is reserved. `AddressService.Create` is the tenant
+	// asking for an address, and it is the only way an address comes into being on
+	// the public surface, so `Create` sets this to true; `reserved` is deliberately
+	// absent from `CreateAddressRequest` because there is nothing to choose, not
+	// because the value starts out false. The RPC written to undo it says the same
+	// from the other side: `InternalAddressService.MarkAddressEphemeralInUse` exists
+	// to clear the flag on an address auto-allocated for an interface, which it
+	// could not do had `Create` not set it.
+	//
+	// Giving up the reservation is the tenant's decision and is taken through
+	// `AddressService.Update` (`update_mask = "reserved"`).
+	//
+	// What this flag does NOT do today: nothing consults it. Deletion is gated by
+	// `used` and `deletion_protection`, and no reclaimer, sweeper or lease expiry
+	// exists in this service — an address survives until someone deletes it whether
+	// reserved or not. So `reserved` is a truthful statement of how the address came
+	// to be, addressed to the tenant reading it, and not an enforcement point. Do not
+	// read it as protection until something enforces it.
 	Reserved bool `protobuf:"varint,15,opt,name=reserved,proto3" json:"reserved,omitempty"`
 	// Specifies if address is used or not.
 	Used bool `protobuf:"varint,16,opt,name=used,proto3" json:"used,omitempty"`
