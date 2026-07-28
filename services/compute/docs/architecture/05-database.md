@@ -46,9 +46,8 @@ VPC FINDING-007); pgxpool — `cfg.DSN()` (с `pool_max_conns` если
 | 0005 | `0005_instance_nic_id.sql` | `ALTER TABLE instance_network_interfaces ADD COLUMN nic_id TEXT NOT NULL DEFAULT ''` — id бэкующего kacho-vpc `NetworkInterface` (эпик `KAC-9`); `''` = legacy NIC / `SKIP_PEER_VALIDATION` синтетика |
 | 0006 | `0006_drop_hypervisors.sql` | удаление таблиц kube-ovn-эпохи (`hypervisors`, `hypervisor_node_index_seq`, `hypervisor_node_index_free`); inventory нод перешёл на k8s Node objects (KAC-36/79/80) |
 
-`migrations/` (корень репо) — staging для `make sync-migrations` (только
-`0001_operations.sql` от corelib; в `0001_initial.sql` схема `operations` уже
-включена). Source of truth — `internal/migrations/`.
+Source of truth — `internal/migrations/`; ничего, кроме него, не применяется.
+Таблица `operations` объявлена там же, в `0001_initial.sql`.
 
 ⚠️ Запреты (workspace `CLAUDE.md` §5):
 - НЕ редактировать применённую миграцию. Только новая.

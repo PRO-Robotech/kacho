@@ -104,7 +104,7 @@ gitignored root `go.work` (`use ./kacho-*`); CI его не видит → versi
 - Доменные миграции: `volumes` (FK `disk_type_id`, size increase-only CHECK,
   placement-coherence zone), `volume_attachments` (attach-CAS, FK RESTRICT к volumes),
   `snapshots` (FK `source_volume_id`), `disk_types`. + встроить corelib `operations`
-  (`make sync-migrations` → `internal/migrations/common/`, ревью `db-architect-reviewer`).
+  (ревью `db-architect-reviewer`).
 - Repo-логика: handwritten pgx + sqlc-gen (`internal/repo/pg/gen`, `queries/`),
   attach — атомарный CAS (data-integrity.md), НЕ software TOCTOU.
 - Use-case тела: LRO (`operations.Run` + writer в worker), update_mask discipline,

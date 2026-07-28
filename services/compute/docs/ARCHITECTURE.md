@@ -373,8 +373,9 @@ Repo + `Wait`), `validate` (`NameCompute`, `UpdateMask`, `PageSize`, ...),
 `filter` (Parse), `db` (pgxpool + transactor), `grpcsrv` (server bootstrap +
 interceptors), `grpcclient` (client factory), `outbox`, `observability` (slog),
 `config` (envconfig Load), `errors` (sentinel helpers), `retry` (gRPC retry на
-Unavailable), `shutdown` (graceful), `migrations/common` (`0001_operations.sql`,
-синхронизируется `make sync-migrations`). В compute-репо — ТОЛЬКО compute-доменная
+Unavailable), `shutdown` (graceful). Таблицу `operations` каждый сервис заводит сам, в
+собственной схеме (у compute — в `0001_initial.sql`): общего набора миграций,
+который бы кто-то применял, нет. В compute-репо — ТОЛЬКО compute-доменная
 логика; утилита, нужная 2+ сервисам, выносится в corelib.
 
 ---

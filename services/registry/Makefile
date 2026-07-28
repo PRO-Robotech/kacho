@@ -7,7 +7,7 @@ MIGRATOR_BIN   := kacho-migrator
 MIGRATOR_CMD   := ./cmd/migrator
 IMAGE          := kacho-registry:dev
 
-.PHONY: build build-migrator test test-short vet lint docker sync-migrations audit-list-filter
+.PHONY: build build-migrator test test-short vet lint docker audit-list-filter
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -31,15 +31,6 @@ lint:
 
 docker:
 	docker build -f Dockerfile -t $(IMAGE) .
-
-# sync-migrations — синхронизирует common-миграции из kacho-corelib (operations
-# table и т. п.), когда они выделены в общий набор. Текущий скелет держит
-# operations в 0001_init.sql; цель — анкер под переход на общий набор corelib.
-CORELIB_MIGRATIONS ?= ../kacho-corelib/migrations/common
-sync-migrations:
-	@test -d "$(CORELIB_MIGRATIONS)" || { echo "corelib common migrations не найдены: $(CORELIB_MIGRATIONS)"; exit 0; }
-	@mkdir -p internal/migrations/common
-	@cp -v "$(CORELIB_MIGRATIONS)"/* internal/migrations/common/ 2>/dev/null || true
 
 # audit-list-filter — CI-гейт listauthz: публичный List обязан отдавать только те
 # объекты, которые вызывающему видеть можно.
