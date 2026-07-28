@@ -45,7 +45,8 @@ type FGAReconcileAdapter struct {
 //
 // table is interpolated into SQL as an identifier, which no placeholder can carry,
 // so it MUST stay a compile-time constant — never config, env or request data.
-// Both call sites pass the nlbFGAOutboxTable const.
+// Both callers pass one: nlbFGAOutboxTable in the binary, a test-local const in
+// the integration test.
 func NewFGAReconcileAdapter(pool *pgxpool.Pool, table string) *FGAReconcileAdapter {
 	return &FGAReconcileAdapter{pool: pool, table: table}
 }
