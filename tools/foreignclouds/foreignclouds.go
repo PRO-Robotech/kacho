@@ -403,8 +403,13 @@ func sortFindings(findings []Finding) {
 }
 
 // readText returns the file's content, or "" when it is not text we can read.
+//
+// Every path reaching here was produced by this tool's own filepath.WalkDir of
+// the repository root — it is a file the walk already found, never a name taken
+// from a request, an argument, or a config value. This is a build-time gate over
+// the checked-out tree; it links into no server.
 func readText(path string) string {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- path comes from this tool's own WalkDir of the repo root, not from any input
 	if err != nil || !utf8.Valid(b) || strings.IndexByte(string(b), 0) >= 0 {
 		return ""
 	}

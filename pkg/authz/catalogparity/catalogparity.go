@@ -114,7 +114,13 @@ func LoadCatalog(dir string) (map[string]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(filepath.Join(root, CatalogPath))
+	// The read target is not caller-chosen: CatalogPath is a constant in this
+	// package and root is this module's own directory, located by walking up to
+	// the go.mod that declares it. `dir` only says where to start walking, so no
+	// value of it can name a different file. The package has no non-test
+	// importer either — every caller is a *_test.go parity check, so this never
+	// runs while a request is being served.
+	raw, err := os.ReadFile(filepath.Join(root, CatalogPath)) // #nosec G304 -- constant path under this module's own root; `dir` only picks the walk-up start
 	if err != nil {
 		return nil, fmt.Errorf("read permission catalog: %w", err)
 	}
