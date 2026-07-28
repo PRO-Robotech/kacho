@@ -409,6 +409,22 @@ var instanceStoppedGatedMask = map[string]struct{}{
 	"machine_type_id": {}, "cpu_guarantee_percent": {}, "placement_group_id": {},
 }
 
+// instanceFullPatchFields — поля, применяемые при ПУСТОЙ маске (full-object PATCH,
+// api-conventions): только LIVE-mutable — STOPPED-gated и next-boot поля меняются
+// лишь по явной маске. Один список на применение и на валидацию: разъехавшись, они
+// дают ровно тот дефект, ради которого список и заведён — поле применяется, но не
+// проверяется.
+var instanceFullPatchFields = []string{"name", "description", "labels", "service_account_id"}
+
+// instanceUpdatedFields — поля, которые ЭТОТ запрос изменит: замаскированные, а при
+// пустой маске — LIVE-mutable набор (full-object PATCH).
+func instanceUpdatedFields(mask []string) []string {
+	if len(mask) == 0 {
+		return instanceFullPatchFields
+	}
+	return mask
+}
+
 // Update обновляет Instance (COMP-1 mutability-классы, F10). immutable-reject и
 // Reinstall-only-reject срабатывают ДО UpdateMask; STOPPED-gate (sizing/placement) —
 // sync FAILED_PRECONDITION (в COMP-1 STOPPED недостижим ⇒ always-reject).
@@ -441,12 +457,9 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 			if err != nil {
 				return nil, serviceerr.MapRepoErr(err)
 			}
-			updates := req.UpdateMask
-			if len(updates) == 0 {
-				// пустая маска = full-object PATCH mutable-полей (LIVE-mutable only —
-				// STOPPED-gated/next-boot применяются лишь при явной маске).
-				updates = []string{"name", "description", "labels", "service_account_id"}
-			}
+			// пустая маска = full-object PATCH mutable-полей (LIVE-mutable only —
+			// STOPPED-gated/next-boot применяются лишь при явной маске).
+			updates := instanceUpdatedFields(req.UpdateMask)
 			labelsInMask := false
 			nextBoot := false
 			changed := make([]string, 0, len(updates)+1)
@@ -513,7 +526,12 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, instanceUpdateKnown); err != nil {
 		return err
 	}
-	for _, f := range req.UpdateMask {
+	// Проверяются именно ПРИМЕНЯЕМЫЕ поля, а не содержимое маски: при пустой маске
+	// маска пуста, а применяется весь LIVE-mutable набор, поэтому цикл по маске не
+	// проверял бы ничего из того, что запрос записывает. immutable-check и known-set
+	// выше остаются на самой маске — пустая маска не называет ни immutable-поля, ни
+	// неизвестного.
+	for _, f := range instanceUpdatedFields(req.UpdateMask) {
 		switch f {
 		case "name":
 			if err := corevalidate.NameCompute("name", req.Name); err != nil {

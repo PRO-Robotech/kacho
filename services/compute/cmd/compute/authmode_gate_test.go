@@ -429,3 +429,71 @@ func TestValidateAuthMode_Production_RejectsBlankOnlyTrustedForwarders(t *testin
 		})
 	}
 }
+
+// Стража list-фильтра обязана охранять НЕ ТОЛЬКО его наличие, но и его отказ.
+//
+// KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN=true переводит фильтр в degraded-режим:
+// на ЛЮБОЙ ошибке обращения к iam страница отдаётся НЕотфильтрованной
+// (authzfilter.handleErr → «return ids, nil»; поведение зафиксировано в
+// TestFGAFilter_FailOpenReturnsPage и TestInstanceHandler_List_IAMDown_FailOpen).
+// То есть при включённой ручке достаточно недоступности соседа, чтобы
+// principal с project-tier viewer увидел ВСЕ Instance/MachineType проекта —
+// ровно тот over-show, ради которого фильтр и требуется (CWE-862).
+//
+// Прежняя стража проверяла только master-switch и адрес endpoint'а, поэтому
+// конфигурация «фильтр включён, но открыт при отказе» проходила молча: контроль
+// присутствовал, а свойство, которое он охраняет, не гарантировалось.
+// Симметрично AUTHZ_BREAKGLASS — аварийный обход не живёт в production.
+func TestValidateAuthMode_Production_RejectsListFilterFailOpen(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  func() config.Config
+	}{
+		{"production", securedProduction},
+		{"production-strict", allEdgesSecured},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg()
+			cfg.ListFilterFailOpen = true
+			_, err := validateAuthMode(cfg, discardLogger())
+			if err == nil {
+				t.Fatal("a fail-open list filter passed the guard: on any authz error the page " +
+					"is returned unfiltered, so the per-object gate the guard exists to enforce " +
+					"is bypassed by an unreachable peer alone")
+			}
+			if !strings.Contains(err.Error(), "LIST_FILTER_FAIL_OPEN") {
+				t.Errorf("gate error must name the knob; got: %v", err)
+			}
+		})
+	}
+}
+
+// Обратная сторона той же стражи: fail-closed конфигурация (ручка выключена)
+// обязана стартовать. Без этого утверждения предыдущий тест удовлетворялся бы
+// стражей, отвергающей вообще всё.
+func TestValidateAuthMode_Production_AcceptsFailClosedListFilter(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  func() config.Config
+	}{
+		{"production", securedProduction},
+		{"production-strict", allEdgesSecured},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg()
+			cfg.ListFilterFailOpen = false
+			if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
+				t.Fatalf("fail-closed list filter must boot; got: %v", err)
+			}
+		})
+	}
+}
+
+// В dev аварийный degraded-режим остаётся доступен — там он и задуман
+// (паритет с AUTHZ_BREAKGLASS, который production отвергает, а dev допускает).
+func TestValidateAuthMode_Dev_AllowsListFilterFailOpen(t *testing.T) {
+	cfg := config.Config{AuthMode: "dev", ListFilterFailOpen: true}
+	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
+		t.Fatalf("dev must keep the emergency degraded mode available; got: %v", err)
+	}
+}

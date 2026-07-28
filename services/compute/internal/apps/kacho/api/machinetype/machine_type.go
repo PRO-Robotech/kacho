@@ -173,9 +173,32 @@ var machineTypeUpdateKnown = map[string]struct{}{
 	"available_zones": {}, "status": {}, "labels": {},
 }
 
+// machineTypeFullPatchFields — поля, применяемые при ПУСТОЙ маске (full-object
+// PATCH, api-conventions). Один список на применение и на валидацию: разъехавшись,
+// они дают ровно тот дефект, ради которого список и заведён — поле применяется,
+// но не проверяется.
+var machineTypeFullPatchFields = []string{
+	"description", "family", "effective_resources", "available_zones", "status", "labels",
+}
+
+// machineTypeUpdatedFields — поля, которые ЭТОТ запрос изменит: замаскированные,
+// а при пустой маске — весь mutable-набор (full-object PATCH).
+func machineTypeUpdatedFields(req UpdateMachineTypeReq) []string {
+	if len(req.UpdateMask) == 0 {
+		return machineTypeFullPatchFields
+	}
+	return req.UpdateMask
+}
+
 // validateUpdate — sync-валидация маски: immutable-check ДО UpdateMask (иначе
 // UpdateMask вернул бы generic "unknown field" вместо конвенционного immutable-текста),
-// затем known-set + field-validate замаскированных полей.
+// затем known-set + field-validate ПРИМЕНЯЕМЫХ полей.
+//
+// Проверяются именно применяемые поля, а не содержимое маски: при пустой маске
+// маска пуста, а применяется весь mutable-набор, поэтому цикл по маске не
+// проверял бы НИЧЕГО из того, что запрос записывает. immutable-check и known-set
+// остаются на самой маске — им нечего сказать про пустую (пустая маска не
+// называет ни immutable-поля, ни неизвестного).
 func (s *MachineTypeService) validateUpdate(req UpdateMachineTypeReq) error {
 	for _, f := range req.UpdateMask {
 		switch f {
@@ -186,7 +209,7 @@ func (s *MachineTypeService) validateUpdate(req UpdateMachineTypeReq) error {
 	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, machineTypeUpdateKnown); err != nil {
 		return err
 	}
-	for _, f := range req.UpdateMask {
+	for _, f := range machineTypeUpdatedFields(req) {
 		switch f {
 		case "family":
 			if !req.Family.Valid() {
@@ -212,11 +235,7 @@ func (s *MachineTypeService) validateUpdate(req UpdateMachineTypeReq) error {
 // applyMachineTypeUpdate применяет замаскированные (или все mutable при пустой
 // маске — full-object PATCH) поля к загруженному mt. name/id immutable — не трогаются.
 func applyMachineTypeUpdate(mt *domain.MachineType, req UpdateMachineTypeReq) {
-	updates := req.UpdateMask
-	if len(updates) == 0 {
-		updates = []string{"description", "family", "effective_resources", "available_zones", "status", "labels"}
-	}
-	for _, f := range updates {
+	for _, f := range machineTypeUpdatedFields(req) {
 		switch f {
 		case "description":
 			mt.Description = req.Description

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -633,4 +634,104 @@ func TestInstance_Legacy_Get_VolumeMirror(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got.AttachedDisks, 1)
 	require.Equal(t, "voldata1", got.AttachedDisks[0].DiskID)
+}
+
+// Пустая маска — full-object PATCH (api-conventions: «mask пустой → применяются все
+// mutable-поля»), поэтому проверяться обязаны ТЕ ЖЕ поля, которые PATCH применяет.
+// Раньше валидация шла циклом по самой маске, а применение при пустой маске
+// подставляло полный список LIVE-mutable полей — значит при пустой маске поля
+// применялись НЕВАЛИДИРОВАННЫМИ, и в машину уезжало имя, которое её собственный
+// Create отверг бы, а ссылка на служебную учётку принималась в любом виде.
+func TestInstance_EmptyMaskValidatesEveryAppliedField(t *testing.T) {
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name  string
+		req   UpdateInstanceReq
+		field string
+	}{
+		{
+			name:  "name",
+			req:   UpdateInstanceReq{InstanceID: seedID, Name: "ПлохоеИмя!"},
+			field: "name",
+		},
+		{
+			name:  "service_account_id",
+			req:   UpdateInstanceReq{InstanceID: seedID, ServiceAccountID: "not-an-id!!"},
+			field: "service account",
+		},
+		{
+			name:  "labels",
+			req:   UpdateInstanceReq{InstanceID: seedID, Labels: map[string]string{"ПЛОХОЙ КЛЮЧ": "v"}},
+			field: "labels",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := newInstanceSvc(t, true)
+			seeded := seedInst(k.repo, seedID, domain.InstanceStatusProvisioning)
+			seededName := seeded.Name
+
+			require.Empty(t, tc.req.UpdateMask, "фикстура обязана быть именно full-object PATCH")
+			_, err := k.svc.Update(ctx, tc.req)
+			require.Equal(t, codes.InvalidArgument, status.Code(err),
+				"full-object PATCH применяет это поле, значит обязан его и проверить")
+			require.True(t, rejectedField(t, err, tc.field),
+				"отказ обязан называть поле, из-за которого он произошёл; got: %v", err)
+
+			// Наблюдаемое следствие: машина не изменилась. Без этого утверждения тест
+			// удовлетворялся бы отказом, наступившим уже ПОСЛЕ записи.
+			after, gerr := k.svc.Get(ctx, seedID)
+			require.NoError(t, gerr)
+			require.Equal(t, seededName, after.Name)
+			require.Empty(t, after.ServiceAccountID)
+			require.Empty(t, after.Labels)
+		})
+	}
+}
+
+// Обратная сторона: валидный full-object PATCH обязан примениться целиком — иначе
+// предыдущий тест удовлетворялся бы валидацией, отвергающей пустую маску как таковую
+// (это сломало бы контракт full-object PATCH).
+func TestInstance_EmptyMaskAppliesValidFullObject(t *testing.T) {
+	k := newInstanceSvc(t, true)
+	seedInst(k.repo, seedID, domain.InstanceStatusProvisioning)
+
+	op, err := k.svc.Update(context.Background(), UpdateInstanceReq{
+		InstanceID: seedID, Name: "renamed", Description: "full patch",
+		Labels: map[string]string{"team": "ml"}, ServiceAccountID: "sva-4k8m2q9x1n7p3r5t",
+	})
+	require.NoError(t, err)
+	in := instanceFromOp(t, portmock.AwaitOpDone(t, k.ops, op.ID))
+	require.Equal(t, "renamed", in.Name)
+	require.Equal(t, "full patch", in.Description)
+	require.Equal(t, "ml", in.Labels["team"])
+
+	after, err := k.svc.Get(context.Background(), seedID)
+	require.NoError(t, err)
+	require.Equal(t, "sva-4k8m2q9x1n7p3r5t", after.ServiceAccountID)
+}
+
+// rejectedField — имя поля, названное отказом так, как его увидит клиент: либо в
+// google.rpc.BadRequest.field_violations (structured-форма corevalidate), либо в
+// тексте сообщения (форма serviceerr.InvalidArg). Утверждать «отказ назвал поле»
+// по одной лишь подстроке в сообщении нельзя — половина валидаторов Kachō кладёт
+// имя в details, и сообщение у них дословно «invalid argument».
+func rejectedField(t *testing.T, err error, field string) bool {
+	t.Helper()
+	st := status.Convert(err)
+	if strings.Contains(st.Message(), field) {
+		return true
+	}
+	for _, d := range st.Details() {
+		br, ok := d.(*errdetails.BadRequest)
+		if !ok {
+			continue
+		}
+		for _, v := range br.GetFieldViolations() {
+			if strings.Contains(v.GetField(), field) || strings.Contains(v.GetDescription(), field) {
+				return true
+			}
+		}
+	}
+	return false
 }
