@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "867d3b08-c848-419b-8843-5a5d0d039313",
+    "_postman_id": "967f2fa5-514d-4f85-9d1a-56024bd0086d",
     "name": "kacho-compute / newman / instance-redesign",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -96,7 +96,7 @@
           ]
         },
         {
-          "name": "poll-op-1",
+          "name": "poll-op-107",
           "request": {
             "method": "GET",
             "header": [
@@ -236,7 +236,7 @@
           ]
         },
         {
-          "name": "poll-op-2",
+          "name": "poll-op-108",
           "request": {
             "method": "GET",
             "header": [
@@ -317,7 +317,7 @@
           ]
         },
         {
-          "name": "get-rya1",
+          "name": "get-rya30",
           "request": {
             "method": "GET",
             "header": [
@@ -422,7 +422,7 @@
           ]
         },
         {
-          "name": "poll-op-3",
+          "name": "poll-op-109",
           "request": {
             "method": "GET",
             "header": [
@@ -508,7 +508,7 @@
           ]
         },
         {
-          "name": "poll-op-4",
+          "name": "poll-op-110",
           "request": {
             "method": "GET",
             "header": [
@@ -614,7 +614,7 @@
           ]
         },
         {
-          "name": "poll-op-5",
+          "name": "poll-op-111",
           "request": {
             "method": "GET",
             "header": [
@@ -754,7 +754,7 @@
           ]
         },
         {
-          "name": "poll-op-6",
+          "name": "poll-op-112",
           "request": {
             "method": "GET",
             "header": [
@@ -835,7 +835,7 @@
           ]
         },
         {
-          "name": "get-rya2",
+          "name": "get-rya31",
           "request": {
             "method": "GET",
             "header": [
@@ -930,7 +930,7 @@
           ]
         },
         {
-          "name": "poll-op-7",
+          "name": "poll-op-113",
           "request": {
             "method": "GET",
             "header": [
@@ -1016,7 +1016,7 @@
           ]
         },
         {
-          "name": "poll-op-8",
+          "name": "poll-op-114",
           "request": {
             "method": "GET",
             "header": [
@@ -1285,7 +1285,7 @@
           ]
         },
         {
-          "name": "poll-op-9",
+          "name": "poll-op-115",
           "request": {
             "method": "GET",
             "header": [
@@ -1425,7 +1425,7 @@
           ]
         },
         {
-          "name": "poll-op-10",
+          "name": "poll-op-116",
           "request": {
             "method": "GET",
             "header": [
@@ -1506,7 +1506,7 @@
           ]
         },
         {
-          "name": "get-rya3",
+          "name": "get-rya32",
           "request": {
             "method": "GET",
             "header": [
@@ -1596,7 +1596,7 @@
           ]
         },
         {
-          "name": "poll-op-11",
+          "name": "poll-op-117",
           "request": {
             "method": "GET",
             "header": [
@@ -1682,7 +1682,7 @@
           ]
         },
         {
-          "name": "poll-op-12",
+          "name": "poll-op-118",
           "request": {
             "method": "GET",
             "header": [
@@ -1944,7 +1944,7 @@
           ]
         },
         {
-          "name": "poll-op-13",
+          "name": "poll-op-119",
           "request": {
             "method": "GET",
             "header": [
@@ -2302,7 +2302,7 @@
           ]
         },
         {
-          "name": "poll-op-14",
+          "name": "poll-op-120",
           "request": {
             "method": "GET",
             "header": [
@@ -2442,7 +2442,7 @@
           ]
         },
         {
-          "name": "poll-op-15",
+          "name": "poll-op-121",
           "request": {
             "method": "GET",
             "header": [
@@ -2523,7 +2523,7 @@
           ]
         },
         {
-          "name": "get-rya4",
+          "name": "get-rya33",
           "request": {
             "method": "GET",
             "header": [
@@ -2614,7 +2614,7 @@
           ]
         },
         {
-          "name": "poll-op-16",
+          "name": "poll-op-122",
           "request": {
             "method": "GET",
             "header": [
@@ -2700,7 +2700,7 @@
           ]
         },
         {
-          "name": "poll-op-17",
+          "name": "poll-op-123",
           "request": {
             "method": "GET",
             "header": [
@@ -2914,7 +2914,7 @@
           ]
         },
         {
-          "name": "poll-op-18",
+          "name": "poll-op-124",
           "request": {
             "method": "GET",
             "header": [
@@ -3054,7 +3054,7 @@
           ]
         },
         {
-          "name": "poll-op-19",
+          "name": "poll-op-125",
           "request": {
             "method": "GET",
             "header": [
@@ -3135,7 +3135,7 @@
           ]
         },
         {
-          "name": "get-rya5",
+          "name": "get-rya34",
           "request": {
             "method": "GET",
             "header": [
@@ -3225,7 +3225,7 @@
           ]
         },
         {
-          "name": "poll-op-20",
+          "name": "poll-op-126",
           "request": {
             "method": "GET",
             "header": [
@@ -3311,7 +3311,7 @@
           ]
         },
         {
-          "name": "poll-op-21",
+          "name": "poll-op-127",
           "request": {
             "method": "GET",
             "header": [
@@ -3471,7 +3471,7 @@
           ]
         },
         {
-          "name": "poll-op-22",
+          "name": "poll-op-128",
           "request": {
             "method": "GET",
             "header": [
@@ -3611,7 +3611,7 @@
           ]
         },
         {
-          "name": "poll-op-23",
+          "name": "poll-op-129",
           "request": {
             "method": "GET",
             "header": [
@@ -3692,7 +3692,7 @@
           ]
         },
         {
-          "name": "get-rya6",
+          "name": "get-rya35",
           "request": {
             "method": "GET",
             "header": [
@@ -3782,7 +3782,7 @@
           ]
         },
         {
-          "name": "poll-op-24",
+          "name": "poll-op-130",
           "request": {
             "method": "GET",
             "header": [
@@ -3868,7 +3868,7 @@
           ]
         },
         {
-          "name": "poll-op-25",
+          "name": "poll-op-131",
           "request": {
             "method": "GET",
             "header": [
@@ -3962,6 +3962,432 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('text: sizeGiB must be > 0', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('sizegib must be > 0'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-NETWORK-SETTINGS — Create с networkSettings → sync 400 INVALID_ARGUMENT + fieldViolation 'network_settings'; сообщение обобщённое (имя поля живёт в details, не в тексте). compute не конфигурирует сетевое ускорение. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-network-settings",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmnetset{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"network_settings\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'network_settings');",
+                  "  pm.expect(fv, 'fieldViolation for network_settings').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-FILESYSTEM-SPECS — Create с filesystemSpecs → sync 400 INVALID_ARGUMENT + fieldViolation 'filesystem_specs'; сообщение обобщённое (имя поля живёт в details, не в тексте). домена Filesystem в compute нет (контракт FilesystemService удалён). [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-filesystem-specs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmfsspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"filesystem_specs\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'filesystem_specs');",
+                  "  pm.expect(fv, 'fieldViolation for filesystem_specs').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-LOCAL-DISK-SPECS — Create с localDiskSpecs → sync 400 INVALID_ARGUMENT + fieldViolation 'local_disk_specs'; сообщение обобщённое (имя поля живёт в details, не в тексте). compute не провижнит host-local диски. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-local-disk-specs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmlclspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"localDiskSpecs\": [{\"size\": \"107374182400\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"local_disk_specs\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'local_disk_specs');",
+                  "  pm.expect(fv, 'fieldViolation for local_disk_specs').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-MAINTENANCE-POLICY — Create с maintenancePolicy → sync 400 INVALID_ARGUMENT + fieldViolation 'maintenance_policy'; сообщение обобщённое (имя поля живёт в details, не в тексте). обслуживание хоста — не предмет control-plane. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-maintenance-policy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmmntpol{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"maintenancePolicy\": \"MIGRATE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"maintenance_policy\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'maintenance_policy');",
+                  "  pm.expect(fv, 'fieldViolation for maintenance_policy').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-MAINTENANCE-GRACE-PERIOD — Create с maintenanceGracePeriod → sync 400 INVALID_ARGUMENT + fieldViolation 'maintenance_grace_period'; сообщение обобщённое (имя поля живёт в details, не в тексте). обслуживание хоста — не предмет control-plane. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-maintenance-grace-period",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmmntgrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"maintenanceGracePeriod\": \"60s\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"maintenance_grace_period\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'maintenance_grace_period');",
+                  "  pm.expect(fv, 'fieldViolation for maintenance_grace_period').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-SERIAL-PORT-SETTINGS — Create с serialPortSettings → sync 400 INVALID_ARGUMENT + fieldViolation 'serial_port_settings'; сообщение обобщённое (имя поля живёт в details, не в тексте). compute не конфигурирует доступ к последовательному порту. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-serial-port-settings",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmserprt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"serial_port_settings\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'serial_port_settings');",
+                  "  pm.expect(fv, 'fieldViolation for serial_port_settings').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-ALL-SIX-AT-ONCE — Create со ВСЕМИ шестью непринимаемыми полями → одна 400 с шестью fieldViolations (легаси-клиент узнаёт про все за один заход, а не по одному на запрос); проверка идёт ПЕРВОЙ — instanceKind снят, но отвечают всё равно непринимаемые поля, не instance_kind. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-all-six",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmall6{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}], \"localDiskSpecs\": [{\"size\": \"107374182400\"}], \"maintenancePolicy\": \"MIGRATE\", \"maintenanceGracePeriod\": \"60s\", \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('all six unsupported fields reported at once, and nothing else', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const got = (det.fieldViolations || []).map(v => v.field).sort();",
+                  "  pm.expect(got).to.eql(['filesystem_specs','local_disk_specs','maintenance_grace_period','maintenance_policy','network_settings','serial_port_settings']);",
+                  "});"
                 ]
               }
             }
@@ -4111,7 +4537,7 @@
           ]
         },
         {
-          "name": "poll-op-26",
+          "name": "poll-op-132",
           "request": {
             "method": "GET",
             "header": [
@@ -4251,7 +4677,7 @@
           ]
         },
         {
-          "name": "poll-op-27",
+          "name": "poll-op-133",
           "request": {
             "method": "GET",
             "header": [
@@ -4380,7 +4806,7 @@
           ]
         },
         {
-          "name": "poll-op-28",
+          "name": "poll-op-134",
           "request": {
             "method": "GET",
             "header": [
@@ -4500,7 +4926,7 @@
           ]
         },
         {
-          "name": "poll-op-29",
+          "name": "poll-op-135",
           "request": {
             "method": "GET",
             "header": [
@@ -4586,7 +5012,7 @@
           ]
         },
         {
-          "name": "poll-op-30",
+          "name": "poll-op-136",
           "request": {
             "method": "GET",
             "header": [
@@ -4686,7 +5112,7 @@
           ]
         },
         {
-          "name": "poll-op-31",
+          "name": "poll-op-137",
           "request": {
             "method": "GET",
             "header": [
@@ -4829,7 +5255,7 @@
           ]
         },
         {
-          "name": "poll-op-32",
+          "name": "poll-op-138",
           "request": {
             "method": "GET",
             "header": [
@@ -4969,7 +5395,7 @@
           ]
         },
         {
-          "name": "poll-op-33",
+          "name": "poll-op-139",
           "request": {
             "method": "GET",
             "header": [
@@ -5050,7 +5476,7 @@
           ]
         },
         {
-          "name": "warm-upd-rya7",
+          "name": "warm-upd-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -5100,7 +5526,7 @@
           ]
         },
         {
-          "name": "patch-rya8",
+          "name": "patch-rya37",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5164,7 +5590,7 @@
           ]
         },
         {
-          "name": "poll-op-34",
+          "name": "poll-op-140",
           "request": {
             "method": "GET",
             "header": [
@@ -5322,7 +5748,7 @@
           ]
         },
         {
-          "name": "poll-op-35",
+          "name": "poll-op-141",
           "request": {
             "method": "GET",
             "header": [
@@ -5408,7 +5834,7 @@
           ]
         },
         {
-          "name": "poll-op-36",
+          "name": "poll-op-142",
           "request": {
             "method": "GET",
             "header": [
@@ -5514,7 +5940,7 @@
           ]
         },
         {
-          "name": "poll-op-37",
+          "name": "poll-op-143",
           "request": {
             "method": "GET",
             "header": [
@@ -5654,7 +6080,7 @@
           ]
         },
         {
-          "name": "poll-op-38",
+          "name": "poll-op-144",
           "request": {
             "method": "GET",
             "header": [
@@ -5735,7 +6161,7 @@
           ]
         },
         {
-          "name": "warm-imm-rya9",
+          "name": "warm-imm-rya38",
           "request": {
             "method": "GET",
             "header": [
@@ -6068,7 +6494,7 @@
           ]
         },
         {
-          "name": "poll-op-39",
+          "name": "poll-op-145",
           "request": {
             "method": "GET",
             "header": [
@@ -6154,7 +6580,7 @@
           ]
         },
         {
-          "name": "poll-op-40",
+          "name": "poll-op-146",
           "request": {
             "method": "GET",
             "header": [
@@ -6260,7 +6686,7 @@
           ]
         },
         {
-          "name": "poll-op-41",
+          "name": "poll-op-147",
           "request": {
             "method": "GET",
             "header": [
@@ -6400,7 +6826,7 @@
           ]
         },
         {
-          "name": "poll-op-42",
+          "name": "poll-op-148",
           "request": {
             "method": "GET",
             "header": [
@@ -6481,7 +6907,7 @@
           ]
         },
         {
-          "name": "warm-nb-rya10",
+          "name": "warm-nb-rya39",
           "request": {
             "method": "GET",
             "header": [
@@ -6531,7 +6957,7 @@
           ]
         },
         {
-          "name": "patch-ssh-rya11",
+          "name": "patch-ssh-rya40",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6595,7 +7021,7 @@
           ]
         },
         {
-          "name": "poll-op-43",
+          "name": "poll-op-149",
           "request": {
             "method": "GET",
             "header": [
@@ -6751,7 +7177,7 @@
           ]
         },
         {
-          "name": "poll-op-44",
+          "name": "poll-op-150",
           "request": {
             "method": "GET",
             "header": [
@@ -6837,7 +7263,7 @@
           ]
         },
         {
-          "name": "poll-op-45",
+          "name": "poll-op-151",
           "request": {
             "method": "GET",
             "header": [
@@ -6943,7 +7369,7 @@
           ]
         },
         {
-          "name": "poll-op-46",
+          "name": "poll-op-152",
           "request": {
             "method": "GET",
             "header": [
@@ -7083,7 +7509,7 @@
           ]
         },
         {
-          "name": "poll-op-47",
+          "name": "poll-op-153",
           "request": {
             "method": "GET",
             "header": [
@@ -7164,7 +7590,7 @@
           ]
         },
         {
-          "name": "warm-fa-rya12",
+          "name": "warm-fa-rya41",
           "request": {
             "method": "GET",
             "header": [
@@ -7295,7 +7721,7 @@
           ]
         },
         {
-          "name": "poll-op-48",
+          "name": "poll-op-154",
           "request": {
             "method": "GET",
             "header": [
@@ -7381,7 +7807,7 @@
           ]
         },
         {
-          "name": "poll-op-49",
+          "name": "poll-op-155",
           "request": {
             "method": "GET",
             "header": [
@@ -7487,7 +7913,7 @@
           ]
         },
         {
-          "name": "poll-op-50",
+          "name": "poll-op-156",
           "request": {
             "method": "GET",
             "header": [
@@ -7627,7 +8053,7 @@
           ]
         },
         {
-          "name": "poll-op-51",
+          "name": "poll-op-157",
           "request": {
             "method": "GET",
             "header": [
@@ -7708,7 +8134,7 @@
           ]
         },
         {
-          "name": "warm-lst-rya13",
+          "name": "warm-lst-rya42",
           "request": {
             "method": "GET",
             "header": [
@@ -7758,7 +8184,7 @@
           ]
         },
         {
-          "name": "list-lst14",
+          "name": "list-lst43",
           "request": {
             "method": "GET",
             "header": [
@@ -7811,7 +8237,7 @@
           ]
         },
         {
-          "name": "list-filter-name-lst15",
+          "name": "list-filter-name-lst44",
           "request": {
             "method": "GET",
             "header": [
@@ -7902,7 +8328,7 @@
           ]
         },
         {
-          "name": "poll-op-52",
+          "name": "poll-op-158",
           "request": {
             "method": "GET",
             "header": [
@@ -7988,7 +8414,7 @@
           ]
         },
         {
-          "name": "poll-op-53",
+          "name": "poll-op-159",
           "request": {
             "method": "GET",
             "header": [
@@ -8306,7 +8732,7 @@
           ]
         },
         {
-          "name": "poll-op-54",
+          "name": "poll-op-160",
           "request": {
             "method": "GET",
             "header": [
@@ -8446,7 +8872,7 @@
           ]
         },
         {
-          "name": "poll-op-55",
+          "name": "poll-op-161",
           "request": {
             "method": "GET",
             "header": [
@@ -8527,7 +8953,7 @@
           ]
         },
         {
-          "name": "warm-del-rya16",
+          "name": "warm-del-rya45",
           "request": {
             "method": "GET",
             "header": [
@@ -8616,7 +9042,7 @@
           ]
         },
         {
-          "name": "poll-op-56",
+          "name": "poll-op-162",
           "request": {
             "method": "GET",
             "header": [
@@ -8756,7 +9182,7 @@
           ]
         },
         {
-          "name": "poll-op-57",
+          "name": "poll-op-163",
           "request": {
             "method": "GET",
             "header": [
@@ -8876,7 +9302,7 @@
           ]
         },
         {
-          "name": "poll-op-58",
+          "name": "poll-op-164",
           "request": {
             "method": "GET",
             "header": [
@@ -8962,7 +9388,7 @@
           ]
         },
         {
-          "name": "poll-op-59",
+          "name": "poll-op-165",
           "request": {
             "method": "GET",
             "header": [
@@ -9151,7 +9577,7 @@
           ]
         },
         {
-          "name": "poll-op-60",
+          "name": "poll-op-166",
           "request": {
             "method": "GET",
             "header": [
@@ -9291,7 +9717,7 @@
           ]
         },
         {
-          "name": "poll-op-61",
+          "name": "poll-op-167",
           "request": {
             "method": "GET",
             "header": [
@@ -9372,7 +9798,7 @@
           ]
         },
         {
-          "name": "warm-mtfk-rya17",
+          "name": "warm-mtfk-rya46",
           "request": {
             "method": "GET",
             "header": [
@@ -9462,7 +9888,7 @@
           ]
         },
         {
-          "name": "poll-op-62",
+          "name": "poll-op-168",
           "request": {
             "method": "GET",
             "header": [
@@ -9619,7 +10045,7 @@
           ]
         },
         {
-          "name": "poll-op-63",
+          "name": "poll-op-169",
           "request": {
             "method": "GET",
             "header": [
@@ -9705,7 +10131,7 @@
           ]
         },
         {
-          "name": "poll-op-64",
+          "name": "poll-op-170",
           "request": {
             "method": "GET",
             "header": [

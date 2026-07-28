@@ -193,7 +193,7 @@ create/attach/detach + эфемерный Address IPAM).
 |---|---|---|---|
 | `Disk.Create` / `AttachedDiskSpec.DiskSpec` поле `kms_key_id`; `Disk/Image/Snapshot.kms_key` | `kacho-kms` | поле принимается синтаксически, но шифрование не реализовано; `kms_key` в ответе пуст. Попытка использовать → `blocked:kacho-kms` (либо игнор, либо `Unimplemented`) | реализовать `kacho-kms` → валидировать `kms_key_id` через kms-client, проставлять `kms_key` |
 | `Image.Create` поле `os_product_ids` (marketplace product IDs) | `kacho-marketplace` | `product_ids` хранятся как переданы (license IDs), но marketplace-семантика не реализована | реализовать `kacho-marketplace` → валидировать product IDs |
-| `Instance.filesystems[]` / `filesystem_specs[]` | `kacho-filesystem` (ресурса Filesystem нет) | `filesystem_specs[]` в `Instance.Create` отвергается; `filesystems[]` всегда пуст. RPC `AttachFilesystem`/`DetachFilesystem` и весь контракт `FilesystemService` **удалены** как мертворождённые (не были реализованы, зарегистрированы и не имели типа в модели прав) | реализовать `kacho-filesystem` + ресурс Filesystem → вернуть attach/detach контракт вместе с реализацией |
+| `Instance.filesystems[]` / `filesystem_specs[]` | `kacho-filesystem` (ресурса Filesystem нет) | `filesystem_specs[]` в `Instance.Create` отвергается синхронным `INVALID_ARGUMENT` (см. §7.1); `filesystems[]` всегда пуст. RPC `AttachFilesystem`/`DetachFilesystem` и весь контракт `FilesystemService` **удалены** как мертворождённые (не были реализованы, зарегистрированы и не имели типа в модели прав) | реализовать `kacho-filesystem` + ресурс Filesystem → вернуть attach/detach контракт вместе с реализацией |
 | `Disk.Create` поле `snapshot_schedule_ids` | `kacho-snapshot-schedule` | `snapshot_schedule_ids` игнорируется. RPC `Disk.ListSnapshotSchedules` и весь контракт `SnapshotScheduleService` **удалены** как мертворождённые (не были реализованы, зарегистрированы и не имели типа в модели прав) | реализовать `kacho-snapshot-schedule` + ресурс SnapshotSchedule → вернуть list-контракт вместе с реализацией |
 | `Disk.Relocate` (cross-zone disk move) | — (частично; нужен реальный cross-zone disk relocation pipeline) | меняет `zone_id` с проверкой «disk не attached»; cross-zone semantics simplified (нет реального переноса данных — control-plane) | по сути закрыто на control-plane уровне; «полное» закрытие требует data-plane (не делается) |
 | `Instance.Relocate` (cross-zone instance move) | `Disk.Relocate` + restart-семантика | `Unimplemented` / частично | реализовать cross-zone disk move для всех attached disks + restart-логику |
@@ -204,6 +204,60 @@ create/attach/detach + эфемерный Address IPAM).
 > `PRO-Robotech/kacho-compute` с меткой `blocked:<service>` и описанием «при
 > каких условиях браться». Этот файл — карта by-design состояния; Issues —
 > трекинг работы.
+
+### 7.1. Шесть легаси-полей `Instance.Create` — отвергаются, а не игнорируются
+
+`CreateInstanceRequest` несёт шесть полей, за которыми в compute нет **ни одной**
+подсистемы. До 2026-07-28 они принимались и молча выбрасывались: клиент получал
+`200` + `Operation`, инстанс создавался, а параметр не применялся нигде. Это
+запрещённый исход (workspace `.claude/rules/api-conventions.md`
+§«Принято-и-проигнорировано»): вызывающий уверен, что настройка сработала, и
+узнаёт правду только по последствиям. Теперь каждое из шести отвергается
+**синхронно, первым стейтментом `Create`** — до конвертации в use-case и до любой
+другой валидации (`handler.RejectUnsupportedCreateFields`).
+
+| Поле (proto № ) | Что было бы нужно, чтобы его реализовать | Почему отказ, а не реализация |
+|---|---|---|
+| `network_settings` (15) | ускорение NIC (`SOFTWARE_ACCELERATED`/`HARDWARE_ACCELERATED`) — свойство физического хоста и его сетевой карты | NIC — first-class ресурс `kacho-vpc`, а host-wiring по two-projection живёт только в `Internal*`. Публичного места под этот выбор в compute нет |
+| `filesystem_specs` (17) | домен `kacho-filesystem` + ресурс `Filesystem` (см. таблицу §7) | контракт `FilesystemService` уже удалён как мертворождённый с формулировкой «вернуть вместе с реализацией»; поле-спека шло тем же путём |
+| `local_disk_specs` (18) | провижининг host-local диска на выбранном хосте | host-local ёмкость выбирается **типом машины** (`MachineType`), а не массивом на каждом инстансе — это отдельный канал, а не поле в чужом сообщении |
+| `maintenance_policy` (21) | планировщик обслуживания хостов + живая миграция | data-plane; у control-plane нечего переселять (ср. §7: `SimulateMaintenanceEvent` — no-op ровно по этой причине) |
+| `maintenance_grace_period` (22) | то же + уведомление гостя через metadata-сервис | та же подсистема, что и (21) |
+| `serial_port_settings` (23) | домен авторизации в консоли (`INSTANCE_METADATA`/`OS_LOGIN`) | домена OS-Login нет; ключи задаются `sshPublicKeys`, а чтение консоли — отдельная read-поверхность, не настройка на `Create` |
+
+**Форма отказа** (часть контракта): `INVALID_ARGUMENT`, сообщение **обобщённое**
+(`"invalid argument"`), имена полей — в `google.rpc.BadRequest.field_violations[].field`
+(snake_case). Сообщаются **все** непринимаемые поля запроса разом, чтобы легаси-клиент
+узнал о них за один заход. Проверка идёт первой, поэтому запрос, невалидный и по другой
+причине, всё равно отвечает про непринимаемое поле.
+
+**Граница:** proto3 не отличает «поле не прислано» от «прислано нулевое значение» на
+non-optional enum и на пустом `repeated`, поэтому зацепка — **заданное** значение
+(непустой список / ненулевой enum / непустое вложенное сообщение). `maintenancePolicy:
+"MAINTENANCE_POLICY_UNSPECIFIED"` и `filesystemSpecs: []` проходят: вызывающий ничего
+не утверждал.
+
+**Почему поля не сняты с контракта.** Третий законный исход — удалить поле из proto с
+`reserved` номера и имени. Здесь он **не** выбран, и не «на будущее»: REST-край
+разбирает тело с `DiscardUnknown: true` (`gateway/internal/restmux/mux.go`, см. также
+`tests/newman/docs/RESULTS.md` §1 — наблюдалось на retired YC-полях), поэтому снятое
+поле снова даёт `200` с молча отброшенным ключом. Обещание исчезло бы из схемы, но
+обман вызывающего остался бы — и стал бы ненаблюдаемым для чёрного ящика. Отказ
+убирает и то, и другое. Снятие станет верным ходом, когда край перестанет
+отбрасывать неизвестные ключи молча; до тех пор это регресс, а не уборка.
+
+**Замки:** `internal/handler/instance_create_unsupported_fields_test.go` (по полю:
+код + имя в деталях + обобщённый текст + «Operation не создана»; первенство проверки;
+все шесть за один заход; нулевые значения проходят; разбор ровно тех REST-тел, что
+шлёт newman) и `tests/newman/cases/instance-redesign.py`
+(`INST-RD-CR-VAL-UNSUPPORTED-*`, шесть негативов + «все шесть разом»).
+
+> **Тот же класс живёт в `UpdateInstanceRequest`** (`network_settings` 10,
+> `maintenance_policy` 14, `maintenance_grace_period` 15, `serial_port_settings` 16):
+> читателей нет. Частично прикрыт `update_mask` — known-set (`instanceUpdateKnown`) их
+> не содержит, поэтому явное упоминание в маске уже даёт `400`. Но **пустая** маска =
+> full-object PATCH, и тогда эти поля тела снова принимаются и выбрасываются. Не
+> входило в объём правки Create; фиксируется здесь как известный остаток.
 
 ## 8. Instance NIC IPv4 — реальные адреса через эфемерные VPC `Address`-ресурсы
 

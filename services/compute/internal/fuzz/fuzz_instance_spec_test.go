@@ -8,7 +8,8 @@
 // container_spec). This target drives the SAME production path the RPC runs on
 // hostile input:
 //
-//	protojson → computev1.CreateInstanceRequest → handler.CreateReqFromProto →
+//	protojson → computev1.CreateInstanceRequest →
+//	handler.RejectUnsupportedCreateFields → handler.CreateReqFromProto →
 //	service.ValidateCreateInstanceReq
 //
 // Invariants asserted:
@@ -78,9 +79,14 @@ func FuzzInstanceSpecValidate(f *testing.F) {
 			return
 		}
 
-		// Same conversion + synchronous validation the RPC runs.
-		cr := handler.CreateReqFromProto(req)
-		err := service.ValidateCreateInstanceReq(cr)
+		// Same guard + conversion + synchronous validation the RPC runs, in the
+		// same order: unsupported legacy fields are rejected before conversion
+		// (they have no use-case counterpart to carry them).
+		err := handler.RejectUnsupportedCreateFields(req)
+		if err == nil {
+			cr := handler.CreateReqFromProto(req)
+			err = service.ValidateCreateInstanceReq(cr)
+		}
 		instSpecTestSink = err
 		if err == nil {
 			return

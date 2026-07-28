@@ -11,6 +11,7 @@ import (
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
@@ -92,11 +93,69 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 
 // Create инициирует создание Instance (COMP-1 redesign).
 func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInstanceRequest) (*operationpb.Operation, error) {
+	// Непринимаемые поля — ПЕРВЫМ стейтментом, до конвертации и до какой-либо
+	// другой валидации: они не доезжают до use-case, поэтому отвергнуть их можно
+	// только здесь (см. RejectUnsupportedCreateFields).
+	if err := RejectUnsupportedCreateFields(req); err != nil {
+		return nil, err
+	}
 	op, err := h.svc.Create(ctx, CreateReqFromProto(req))
 	if err != nil {
 		return nil, err
 	}
 	return operationToProto(op), nil
+}
+
+// RejectUnsupportedCreateFields отвергает поля CreateInstanceRequest, за которыми
+// в compute нет ни одной подсистемы: `network_settings`, `filesystem_specs`,
+// `local_disk_specs`, `maintenance_policy`, `maintenance_grace_period`,
+// `serial_port_settings`. Ни одно из них не читается нигде в services/compute:
+// раньше они принимались и молча выбрасывались, то есть вызывающий получал успех
+// и был уверен, что параметр применён. Решение и разбор по каждому полю (включая
+// то, почему они оставлены в контракте, а не сняты) —
+// `docs/architecture/07-known-divergences.md` §7.1.
+//
+// Форма отказа: код INVALID_ARGUMENT, сообщение обобщённое, имена полей — в
+// google.rpc.BadRequest.field_violations (машиночитаемо; текст сообщения — часть
+// стабильного контракта и полей не называет). Сообщаются ВСЕ непринимаемые поля
+// запроса сразу, чтобы легаси-клиент узнал о них за один заход.
+//
+// Граница: proto3 не отличает «поле не прислано» от «прислано нулевое значение»
+// на non-optional enum и на пустом repeated, поэтому зацепка — заданное значение
+// (непустой список / ненулевой enum / непустое вложенное сообщение).
+//
+// Живёт в transport-слое намеренно: у use-case-DTO этих полей нет и быть не должно
+// (шесть мёртвых полей ради отказа — тот самый vestigial-код), поэтому отвергнуть
+// их можно только там, где ещё виден сам proto-запрос.
+func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
+	b := coreerrors.InvalidArgument()
+	n := 0
+	add := func(field, desc string) {
+		b.AddFieldViolation(field, desc)
+		n++
+	}
+	if req.GetNetworkSettings() != nil {
+		add("network_settings", "networkSettings is not supported: compute does not configure network acceleration")
+	}
+	if len(req.GetFilesystemSpecs()) > 0 {
+		add("filesystem_specs", "filesystemSpecs is not supported: compute has no Filesystem domain")
+	}
+	if len(req.GetLocalDiskSpecs()) > 0 {
+		add("local_disk_specs", "localDiskSpecs is not supported: compute does not provision host-local disks")
+	}
+	if req.GetMaintenancePolicy() != computev1.MaintenancePolicy_MAINTENANCE_POLICY_UNSPECIFIED {
+		add("maintenance_policy", "maintenancePolicy is not supported: compute does not schedule host maintenance")
+	}
+	if req.GetMaintenanceGracePeriod() != nil {
+		add("maintenance_grace_period", "maintenanceGracePeriod is not supported: compute does not schedule host maintenance")
+	}
+	if req.GetSerialPortSettings() != nil {
+		add("serial_port_settings", "serialPortSettings is not supported: compute does not configure serial-port access")
+	}
+	if n == 0 {
+		return nil
+	}
+	return b.Err()
 }
 
 // CreateReqFromProto — чистая proto→use-case конвертация CreateInstanceRequest в
