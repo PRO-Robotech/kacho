@@ -240,3 +240,36 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 		}
 	}
 }
+
+// TestConsoleMutationCallSeesARawFetch pins what counts as "this place sends a
+// body to the server".
+//
+// The detector used to look only for the typed wrapper (`api.create`,
+// `api.update`, `api.post`). A raw `fetch` with a mutating method was invisible
+// to it — so a new hand-built call site could be added and the accounting guard
+// above would keep reporting a complete surface. The blind spot was the
+// detector's own, one level beneath the blind spot it exists to name.
+//
+// This is not hypothetical for this codebase: the console already carried raw
+// `fetch` calls on the access-binding pages, which bypassed case conversion and
+// did not even check whether the server had refused.
+func TestConsoleMutationCallSeesARawFetch(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"typed wrapper", `await api.update(path, body)`, true},
+		{"raw fetch with a body", "await fetch(`/vpc/v1/networks/${id}`, { method: \"PATCH\", body: JSON.stringify(b) })", true},
+		{"raw fetch, method on another line", "await fetch(url, {\n  method: \"POST\",\n  body: payload,\n})", true},
+		{"plain read is not a mutation", `const r = await fetch(url)`, false},
+		{"a word that merely contains fetch", `const prefetching = true`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := consoleMutationCall.MatchString(c.src); got != c.want {
+				t.Fatalf("detector saw %v, want %v for:\n%s", got, c.want, c.src)
+			}
+		})
+	}
+}

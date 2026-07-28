@@ -484,7 +484,21 @@ func setJSONPath(obj map[string]any, path string, value any) {
 }
 
 // consoleMutationCall — вызов, которым консоль отправляет краю тело.
-var consoleMutationCall = regexp.MustCompile(`\bapi\.(?:create|update|post)\(`)
+// consoleMutationCall — «здесь консоль отправляет серверу тело».
+//
+// Типизированная обёртка — не единственная форма: консоль уже носит сырые
+// `fetch` с мутирующим методом (страницы выдач ходили именно так, минуя
+// преобразование регистра и не проверяя, отказал ли сервер). Детектор, знающий
+// только обёртку, их не видел — и тогда учёт поверхности ниже сообщал бы о
+// полноте, которой нет. Это слепое пятно САМОГО детектора, на уровень глубже
+// того, которое он существует, чтобы называть.
+//
+// Сырой `fetch` считается мутирующим по наличию тела: `body:` в инициализаторе.
+// Чтение (`fetch(url)`) телом не сопровождается и сюда не попадает.
+var consoleMutationCall = regexp.MustCompile(
+	`\bapi\.(?:create|update|post|patch|put)\(` +
+		`|\bfetch\([^)]*\{(?s:.*?)\bbody\s*:` +
+		`|\bfetch\((?s:[^;]*?)\bbody\s*:`)
 
 // specDrivenFormComponent — общие формы, чьё тело собирает РЕЕСТР
 // (`spec.fields` / `spec.template` / `spec.sanitize`). Ровно их и проверяет гейт
@@ -526,13 +540,30 @@ var bespokeConsoleMutationSites = map[string]string{
 	"shared/src/components/organisms/InlineSubnetEditForm/InlineSubnetEditForm.tsx":                         "подсеть: собственная форма, тело из локального состояния",
 	"shared/src/components/organisms/RoutesPanel/RoutesPanel.tsx":                                           "маршруты таблицы маршрутизации: отдельный RPC, тело из локального состояния",
 	"shared/src/components/organisms/SgRulesPanel/SgRulesPanel.tsx":                                         "правила группы безопасности: отдельный RPC, тело из локального состояния",
-	"shared/src/api/cluster.ts":     "тонкая обёртка над кластерным RPC, тело — аргумент вызывающего",
-	"shared/src/api/iam.ts":         "тонкая обёртка над RPC IAM, тело — аргумент вызывающего",
-	"shared/src/api/tokens.ts":      "тонкая обёртка над RPC токенов, тело — аргумент вызывающего",
-	"compute/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"nlb/src/api/resources.ts":      "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"registry/src/api/resources.ts": "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"storage/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"shared/src/api/cluster.ts": "тонкая обёртка над кластерным RPC, тело — аргумент вызывающего",
+
+	// Транспорт. Он ВЫПОЛНЯЕТ запрос, который собрали типизированные обёртки, и
+	// тело получает аргументом (`opts.body`) — своего состава у него нет.
+	// Виден здесь только потому, что детектор теперь замечает и сырой fetch.
+	"compute/src/lib/api-client.ts":  "транспорт: выполняет запрос, тело — аргумент",
+	"nlb/src/lib/api-client.ts":      "транспорт: выполняет запрос, тело — аргумент",
+	"registry/src/lib/api-client.ts": "транспорт: выполняет запрос, тело — аргумент",
+	"storage/src/lib/api-client.ts":  "транспорт: выполняет запрос, тело — аргумент",
+
+	// Провайдер личности. Эти тела уезжают НЕ на наш REST-край, а в Kratos, и
+	// нашим контрактом не описаны — сверять их с нашими message нечем.
+	"compute/src/lib/kratos.ts":          "клиент провайдера личности, не наш край",
+	"nlb/src/lib/kratos.ts":              "клиент провайдера личности, не наш край",
+	"registry/src/lib/kratos.ts":         "клиент провайдера личности, не наш край",
+	"storage/src/lib/kratos.ts":          "клиент провайдера личности, не наш край",
+	"shared/src/lib/kratos.ts":           "клиент провайдера личности, не наш край",
+	"shared/src/pages/auth/Register.tsx": "регистрация идёт в провайдер личности (csrf+webauthn), не на наш край",
+	"shared/src/api/iam.ts":              "тонкая обёртка над RPC IAM, тело — аргумент вызывающего",
+	"shared/src/api/tokens.ts":           "тонкая обёртка над RPC токенов, тело — аргумент вызывающего",
+	"compute/src/api/resources.ts":       "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"nlb/src/api/resources.ts":           "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"registry/src/api/resources.ts":      "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"storage/src/api/resources.ts":       "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
 }
 
 // TestConsoleMutationSurfaceIsAccountedFor — каждая точка, из которой консоль
