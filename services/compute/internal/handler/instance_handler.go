@@ -113,7 +113,7 @@ func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInsta
 // раньше они принимались и молча выбрасывались, то есть вызывающий получал успех
 // и был уверен, что параметр применён. Решение и разбор по каждому полю (включая
 // то, почему они оставлены в контракте, а не сняты) —
-// `docs/architecture/07-known-divergences.md` §7.1.
+// `docs/architecture/07-known-divergences.md`, раздел 7.1.
 //
 // Форма отказа: код INVALID_ARGUMENT, сообщение обобщённое, имена полей — в
 // google.rpc.BadRequest.field_violations (машиночитаемо; текст сообщения — часть
