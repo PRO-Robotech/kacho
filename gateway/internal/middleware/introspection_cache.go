@@ -20,6 +20,24 @@
 // the result (under the same TTL) — repeated requests from a compromised
 // client shouldn't hammer Hydra.
 //
+// What a FAILING provider costs. Since the check moved onto the authN layer, it
+// runs on every authenticated request, so "how often do we ask" stopped being
+// free. An answer is amortised by the cache above, but a non-answer was not
+// cached and concurrent questions about one token were not shared — so an
+// unwell provider was asked once per request, each question holding a
+// request-handling goroutine and a connection for the whole per-call budget,
+// all of it aimed at something already struggling. Two mechanisms, because the
+// two shapes fail differently and neither covers the other:
+//
+//   - questions arriving ONE AFTER ANOTHER are answered from a briefly
+//     remembered failure (introspectionFailureWindow);
+//   - questions arriving TOGETHER on a cold entry are collapsed into one
+//     round-trip by the in-flight group — nothing is remembered yet, so a cache
+//     is no help to them at all.
+//
+// A wrong ADDRESS is remembered differently from an unreachable provider, and
+// deliberately so; see rememberMisconfigured.
+//
 // Invalidation: the TTL is what bounds how long a revocation goes unnoticed —
 // worst case one window (default 5s) — because NOTHING in this process calls
 // Invalidate today. The method and the write-after-invalidate guard in
@@ -46,7 +64,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/lrucache"
 )
@@ -79,6 +100,22 @@ var ErrIntrospectionMisconfigured = errors.New("introspection endpoint is miscon
 // gateway's capacity waiting on answers no caller is still there to receive.
 const defaultIntrospectionTimeout = time.Second
 
+// introspectionFailureWindow — how long a question the provider did not answer
+// is remembered, so the next one is answered without another round-trip.
+//
+// It is a SEPARATE window from the one for an answer the provider gave (5s by
+// default), and much shorter, because the two buy different things. The positive
+// window amortises a round-trip over a verdict we actually hold. This one holds
+// no verdict at all: every moment of it is a moment the check is not asking, laid
+// on top of a control that is already not enforcing, so it is kept to the least
+// that still removes the stampede.
+//
+// One second is the same order as the per-call budget: a stalled provider costs a
+// given token at most one held round-trip per second instead of one per request —
+// at any request rate — and a provider that comes back is noticed within a second
+// of doing so.
+const introspectionFailureWindow = time.Second
+
 // IntrospectionResult — minimal RFC 7662 section 2.2 response shape. Hydra returns
 // many more fields; we keep only what downstream needs.
 type IntrospectionResult struct {
@@ -108,6 +145,31 @@ type IntrospectionCache struct {
 	basicPass string
 
 	cache *lrucache.Cache[string, IntrospectionResult]
+
+	// failures — questions the provider did not answer, remembered briefly and
+	// PER TOKEN. Kept in its own cache rather than as a marker value in the one
+	// above: an answer and the absence of one expire on different clocks, and
+	// Len() must keep meaning "answers held" for the callers that read it.
+	//
+	// Per token, not per process, because this verdict PASSES the request.
+	// Widening it beyond the token that actually failed would stop the check
+	// asking about tokens it never tried — that is the opposite of what a
+	// stampede guard is for.
+	failures *lrucache.Cache[string, error]
+
+	// flight collapses concurrent questions about the SAME token into a single
+	// round-trip. It is not an alternative to the negative cache above: on a cold
+	// entry nothing has been remembered yet, so every member of a burst misses,
+	// and only in-flight sharing can help. Keyed on the token, so distinct
+	// credentials remain distinct questions and never serialise.
+	flight singleflight.Group
+
+	// misconfigured* — "what answered is not an introspection endpoint", held
+	// once for the whole process with an expiry. See rememberMisconfigured for
+	// why this one is NOT per token.
+	misMu    sync.Mutex
+	misErr   error
+	misUntil time.Time
 }
 
 // IntrospectionCacheConfig — construction parameters.
@@ -157,6 +219,7 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 		basicUser:  cfg.BasicAuthUser,
 		basicPass:  cfg.BasicAuthPass,
 		cache:      lrucache.New[string, IntrospectionResult](cfg.MaxEntries, cfg.TTL, now),
+		failures:   lrucache.New[string, error](cfg.MaxEntries, introspectionFailureWindow, now),
 	}, nil
 }
 
@@ -181,7 +244,7 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 		return IntrospectionResult{}, errors.New("introspect: raw token required")
 	}
 
-	// 1. Cache hit?
+	// 1. An answer we already hold.
 	if r, ok := c.cache.Get(jti); ok {
 		if !r.Active {
 			return r, ErrTokenInactive
@@ -189,22 +252,80 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 		return r, nil
 	}
 
-	// Snapshot the invalidation generation BEFORE the (slow) Hydra fetch. A
-	// force-logout revocation that calls Invalidate(jti) while this introspection
-	// is in flight bumps the generation, and the generation-checked store below
-	// is dropped — so a positive result computed against pre-revocation state can
-	// never re-populate the just-flushed jti and survive for the full TTL
-	// (write-after-invalidate guard; CWE-362 + CWE-613). Mirrors the sibling
-	// decision cache (authz_cache.go putIfGen).
-	gen := c.cache.Generation()
-
-	// 2. Fetch from Hydra.
-	res, err := c.fetchHydra(ctx, rawToken)
-	if err != nil {
+	// 2. The address itself is known to be wrong. Checked AFTER the answer cache
+	// on purpose: an answer the provider gave is still a genuine answer inside
+	// its own window, and refusing it would widen a configuration fault into an
+	// outage larger than the fault. Checked BEFORE asking, because asking again
+	// cannot change it — see rememberMisconfigured.
+	if err, ok := c.misconfiguredVerdict(); ok {
 		return IntrospectionResult{}, err
 	}
 
-	// 3. Store negative + positive — TTL bounded by exp.
+	// 3. This token asked a moment ago and the provider did not answer. Same
+	// verdict, no second round-trip to something already unwell.
+	if err, ok := c.failures.Get(jti); ok {
+		return IntrospectionResult{}, err
+	}
+
+	// 4. Ask — once per token, however many callers are waiting on the answer.
+	return c.ask(ctx, jti, rawToken)
+}
+
+// ask performs the round-trip, sharing it with every other caller asking about
+// the same token at the same moment.
+func (c *IntrospectionCache) ask(ctx context.Context, jti, rawToken string) (IntrospectionResult, error) {
+	// A caller that has already gone away starts nothing: the point of this file
+	// is to reduce the number of questions, not to keep asking on behalf of
+	// requests nobody is waiting for.
+	if err := ctx.Err(); err != nil {
+		return IntrospectionResult{}, err
+	}
+
+	ch := c.flight.DoChan(jti, func() (any, error) {
+		// The shared round-trip belongs to no single caller. Whoever happened to
+		// start it must not be able to cancel the answer everyone else is waiting
+		// for by walking away, so its cancellation is dropped here — the values
+		// (request-scoped correlation) are kept. It still cannot run long:
+		// fetchHydra applies the configured per-call budget on top.
+		return c.fetchAndRecord(context.WithoutCancel(ctx), jti, rawToken)
+	})
+
+	select {
+	case <-ctx.Done():
+		// This caller left. The shared question carries on for whoever is still
+		// waiting, and this caller gets its own cancellation — exactly what it
+		// got back when every request asked for itself.
+		return IntrospectionResult{}, ctx.Err()
+	case r := <-ch:
+		res, _ := r.Val.(IntrospectionResult)
+		return res, r.Err
+	}
+}
+
+// fetchAndRecord asks the provider once and files what came back.
+func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken string) (IntrospectionResult, error) {
+	// Snapshot the invalidation generations BEFORE the (slow) Hydra fetch. A
+	// force-logout revocation that calls Invalidate(jti) while this introspection
+	// is in flight bumps them, and the generation-checked stores below are
+	// dropped — so neither a positive result computed against pre-revocation
+	// state, nor a remembered non-answer that would let the next request past
+	// unasked, can re-populate the just-flushed jti and survive its window
+	// (write-after-invalidate guard; CWE-362 + CWE-613). Mirrors the sibling
+	// decision cache (authz_cache.go putIfGen).
+	gen := c.cache.Generation()
+	failGen := c.failures.Generation()
+
+	res, err := c.fetchHydra(ctx, rawToken)
+	if err != nil {
+		if errors.Is(err, ErrIntrospectionMisconfigured) {
+			c.rememberMisconfigured(err)
+			return IntrospectionResult{}, err
+		}
+		c.failures.PutIfGenWithTTL(jti, err, introspectionFailureWindow, failGen)
+		return IntrospectionResult{}, err
+	}
+
+	// Store negative + positive — TTL bounded by exp.
 	// If exp is already in the past we treat the token as inactive and skip
 	// caching the (stale) positive result. Defense: an attacker may not race
 	// past the introspection result before exp slips by; we re-introspect on
@@ -231,6 +352,41 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 	return res, nil
 }
 
+// rememberMisconfigured files "what answered is not an introspection endpoint"
+// ONCE FOR THE PROCESS, with an expiry.
+//
+// Not per token, because it is not a fact about a token. The address is the same
+// address whichever credential is offered, so asking again with a different one
+// cannot produce a different answer — a per-token memory would make every token
+// pay to learn the same thing. Holding it process-wide is safe in a way the
+// unanswered case is not: this verdict only ever REFUSES (the caller answers
+// Unavailable and serves nothing), so widening it can never let a request past
+// unchecked. Widening the unanswered verdict the same way would do exactly that,
+// which is why the two are remembered differently.
+//
+// With an expiry, because "does not heal by itself" means nobody here can heal
+// it — not that nothing can. A certificate rotated or a path restored on the
+// provider's side is a repair made without touching this process, and a refusal
+// that outlived it would be an outage of our own making. So the verdict lapses
+// and is re-established by one question, rather than sticking until a restart.
+func (c *IntrospectionCache) rememberMisconfigured(err error) {
+	c.misMu.Lock()
+	defer c.misMu.Unlock()
+	c.misErr = err
+	c.misUntil = c.now().Add(introspectionFailureWindow)
+}
+
+// misconfiguredVerdict reports the process-wide wrong-address verdict while it is
+// still live.
+func (c *IntrospectionCache) misconfiguredVerdict() (error, bool) {
+	c.misMu.Lock()
+	defer c.misMu.Unlock()
+	if c.misErr == nil || !c.now().Before(c.misUntil) {
+		return nil, false
+	}
+	return c.misErr, true
+}
+
 // Invalidate removes the cached entry for jti AND bumps the invalidation
 // generation. It is the hook a session_revocations LISTEN/NOTIFY handler would
 // use to honour a force-logout without waiting out the TTL; no such handler is
@@ -240,8 +396,13 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 // (revocation arrives while an introspection is still in flight), an in-flight
 // positive result for jti is dropped by the PutIfGenWithTTL guard in Introspect.
 // InvalidateWhere bumps the generation even when zero entries match.
+//
+// A remembered non-answer for the same jti is dropped too: it would let the next
+// request past without asking, which is precisely what a force-logout must not
+// permit.
 func (c *IntrospectionCache) Invalidate(jti string) {
 	c.cache.InvalidateWhere(func(k string) bool { return k == jti })
+	c.failures.InvalidateWhere(func(k string) bool { return k == jti })
 }
 
 // Len returns current cache size; used by tests / observability.
