@@ -257,7 +257,7 @@ CASES.append(Case(
 #
 # Что покрывает предмет после снятия:
 #   * `machineTypeId` — единственный канал sizing и он обязателен:
-#     INST-RD-CR-VAL-MT-REQUIRED (то же 400 + тот же текст; `machineTypeId: ""` и
+#     INST-RD-CR-VAL-MACHINETYPE-REQUIRED (то же 400 + тот же текст; `machineTypeId: ""` и
 #     полностью отсутствующий ключ на wire неразличимы — protojson даёт скаляру
 #     нулевое значение, так что отдельного класса ввода тут нет);
 #   * `platformId`/`resourcesSpec`/`bootDiskSpec` не вернутся в контракт:
