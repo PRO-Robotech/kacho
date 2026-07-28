@@ -49,6 +49,14 @@ describe("buildUpdateBody", () => {
     expect(buildUpdateBody({ size_gib: 20 }, ["size_gib"])!.update_mask).toBe("sizeGib");
   });
 
+  it("applies the labels/annotations carve-out to a masked map, same as a created body", () => {
+    // A masked `labels` is still an opaque tenant map — the carve-out must not
+    // depend on whether the map arrived as a whole body or as one masked field.
+    const labels = { _weird: "v", team: "core" };
+    expect(buildUpdateBody({ labels }, ["labels"])).toEqual({ labels, update_mask: "labels" });
+    expect(buildCreateBody({ labels })).toEqual({ labels });
+  });
+
   it("returns null for an empty mask — there is no request to send", () => {
     expect(buildUpdateBody(getProjection, [])).toBeNull();
   });

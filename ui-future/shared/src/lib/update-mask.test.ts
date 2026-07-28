@@ -1,4 +1,10 @@
-import { buildUpdateBody, computeUpdateMask, snakeToCamelPath, stripFormOnlyKeys } from "./update-mask";
+import {
+  buildCreateBody,
+  buildUpdateBody,
+  computeUpdateMask,
+  snakeToCamelPath,
+  stripFormOnlyKeys,
+} from "./update-mask";
 import type { FormField } from "./form-schema";
 
 const str = (name: string, extra: Partial<FormField> = {}): FormField =>
@@ -135,6 +141,16 @@ describe("buildUpdateBody", () => {
   it("strips form-only keys out of a masked value", () => {
     const body = buildUpdateBody({ nics: [{ _ext_mode: "auto", subnet_id: "sub1" }] }, ["nics"]);
     expect(body).toEqual({ nics: [{ subnet_id: "sub1" }], update_mask: "nics" });
+  });
+
+  it("applies the labels/annotations carve-out to a masked map, same as a created body", () => {
+    // A masked `labels` is still an opaque tenant map. The carve-out must not
+    // depend on whether the map arrived as a whole body or as one masked field —
+    // otherwise editing a resource silently drops a label that creating it keeps.
+    const labels = { _weird: "v", team: "core" };
+    expect(buildUpdateBody({ labels }, ["labels"])).toEqual({ labels, update_mask: "labels" });
+    expect(buildUpdateBody({ labels }, ["labels.env"])).not.toBeNull();
+    expect(buildCreateBody({ labels })).toEqual({ labels });
   });
 
   it("returns null for an empty mask — there is no request to send", () => {

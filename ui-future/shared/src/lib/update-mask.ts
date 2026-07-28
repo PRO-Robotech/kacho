@@ -93,10 +93,16 @@ function strip(value: unknown, opaque: boolean): unknown {
  */
 export function buildUpdateBody(current: Record<string, unknown>, mask: string[]): Record<string, unknown> | null {
   if (mask.length === 0) return null;
-  let body: Record<string, unknown> = {};
+  let picked: Record<string, unknown> = {};
   for (const path of mask) {
-    body = setByPath(body, path, stripFormOnlyKeys(getByPath(current, path)));
+    picked = setByPath(picked, path, getByPath(current, path));
   }
+  // Strip over the ASSEMBLED body, not over each value as it is picked: the
+  // labels/annotations carve-out is keyed by the field's own name, and a value
+  // handed over detached from its key has lost it — a masked `labels` would then
+  // have a tenant key dropped that the same map keeps when the resource is
+  // created.
+  const body = stripFormOnlyKeys(picked);
   body.update_mask = mask.map(snakeToCamelPath).join(",");
   return body;
 }
