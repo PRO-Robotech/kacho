@@ -13,7 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Alert } from "antd";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
-import { computeUpdateMask, snakeToCamelPath } from "@shared/lib/update-mask";
+import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { ApiError, api } from "@shared/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
@@ -93,14 +93,15 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
     let parsed: Record<string, unknown> = obj;
     if (spec.sanitize) parsed = spec.sanitize(parsed);
     const mask = computeUpdateMask(originalRef.current, parsed, fields);
-    if (mask.length === 0) {
+    // The body carries the masked fields and nothing else — the form was hydrated
+    // from a GET projection whose id/created_at/status/output-only mirrors are not
+    // fields of any Update* message.
+    const payload = buildUpdateBody(parsed, mask);
+    if (!payload) {
       onCancel();
       return;
     }
-    mutation.mutate({
-      ...parsed,
-      update_mask: mask.map(snakeToCamelPath).join(","),
-    });
+    mutation.mutate(payload);
   };
 
   if (!fields) {

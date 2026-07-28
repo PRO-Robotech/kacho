@@ -9,7 +9,7 @@ import { ArrowLeftOutlined } from "@ant-design/icons";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
-import { computeUpdateMask, snakeToCamelPath } from "@shared/lib/update-mask";
+import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { ApiError, api } from "@shared/api/client";
 import { applyFieldDefaults, editReadPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
@@ -157,14 +157,14 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
     let parsed: Record<string, unknown> = obj;
     if (spec.sanitize) parsed = spec.sanitize(parsed);
     const mask = computeUpdateMask(originalRef.current, parsed, fields);
-    if (mask.length === 0) {
+    // The body carries the masked fields and nothing else — the form was hydrated
+    // from a GET projection whose id/created_at/status/output-only mirrors are not
+    // fields of any Update* message.
+    const payload = buildUpdateBody(parsed, mask);
+    if (!payload) {
       navigate(backHref);
       return;
     }
-    const payload = {
-      ...parsed,
-      update_mask: mask.map(snakeToCamelPath).join(","),
-    };
     mutation.mutate(payload);
   };
 

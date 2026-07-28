@@ -10,6 +10,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { ApiError, api } from "@shared/api/client";
 import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
+import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { operationOutcome, operationWarnings, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
@@ -187,7 +188,11 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
   const submit = () => {
     let parsed: Record<string, unknown> = obj;
     if (spec.sanitize) parsed = spec.sanitize(parsed);
-    mutation.mutate(parsed);
+    // sanitize shapes the domain payload; this drops what only ever existed for the
+    // widget (`_`-prefixed discriminators, incl. inside array items) so it cannot
+    // reach the wire as `Placement` / `AddressKind` / `BootSource` and be discarded
+    // there in silence.
+    mutation.mutate(buildCreateBody(parsed));
   };
 
   const fields = spec.fields;

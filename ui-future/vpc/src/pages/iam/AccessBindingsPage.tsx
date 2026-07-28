@@ -39,6 +39,9 @@ import {
   type ServiceAccount,
   type Group,
   type Account,
+  buildCreateAccessBindingBody,
+  SUBJECT_TYPE_ENUM,
+  type AccessBindingScopeTier,
 } from "@shared/api/iam";
 import { useIamMutation, fmtTs, CopyableMonoId, groupedRoleOptions } from "@shared/components/organisms/iam/IamCommon";
 import { useAuth } from "@shared/contexts/AuthContext";
@@ -61,6 +64,13 @@ export const CLUSTER_RESOURCE_ID = "cluster_kacho_root";
 
 /** Cluster admin role id (для preset'ов / quick-grant link'ов). */
 export const CLUSTER_ADMIN_ROLE_ID = "roles/admin";
+
+/** Anchor-тир гранта по выбранному в форме типу ресурса. */
+const SCOPE_TIER_BY_RESOURCE_TYPE: Record<ResourceType, AccessBindingScopeTier> = {
+  account: "ACCOUNT",
+  project: "PROJECT",
+  cluster: "CLUSTER",
+};
 
 export function AccessBindingsPage() {
   const { user } = useAuth();
@@ -646,16 +656,20 @@ export function AccessBindingCreateModal({
   const onFinish = async (v: Record<string, string>) => {
     setSubmitting(true);
     setInlineError(null);
-    const body = {
-      subject_type: v.subject_type,
-      subject_id: v.subject_id,
-      role_id: v.role_id,
-      resource_type: v.resource_type,
-      // KAC item #5: для cluster — auto-fill cluster_kacho_root, если user не
-      // ввёл (Input может быть disabled = preset на cluster).
-      resource_id: v.resource_type === "cluster" ? v.resource_id || CLUSTER_RESOURCE_ID : v.resource_id,
-    };
+    // Anchor-тир формы (account|project|cluster) → dotted scope_type + scope_id.
+    // resource_type/resource_id — прежние имена этой пары, снятые редизайном
+    // («resource» закреплено за target'ом); край их выбрасывает, а обязательные
+    // scope_type/scope_id остаются пустыми.
+    const scopeTier = SCOPE_TIER_BY_RESOURCE_TYPE[(v.resource_type as ResourceType) ?? "account"];
     try {
+      const body = buildCreateAccessBindingBody({
+        subjects: [{ type: SUBJECT_TYPE_ENUM[v.subject_type as SubjectType], id: v.subject_id }],
+        roleId: v.role_id,
+        scopeTier,
+        // KAC item #5: для cluster — auto-fill cluster_kacho_root, если user не
+        // ввёл (Input может быть disabled = preset на cluster).
+        scopeId: v.resource_id,
+      });
       await api.create(IAM.accessBindings, body);
       // Sync success или Operation envelope — invalidate всё и закрываем.
       void qc.invalidateQueries({ queryKey: ["iam", "access-bindings"] });

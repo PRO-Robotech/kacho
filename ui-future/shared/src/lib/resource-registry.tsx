@@ -2569,6 +2569,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     }),
   },
 
+  // ====== compute: Instance (COMP-1 redesign) ======
+  // proto: kacho.cloud.compute.v1.InstanceService (/compute/v1/instances).
+  // CreateInstanceRequest RESERVES platform_id / resources_spec / boot_disk_spec —
+  // raw sizing and raw boot input are gone (ban #2). The single sizing channel is
+  // `machine_type_id` (MachineType catalog), the single OS entry is
+  // `boot_source{type,id}`, and both are gated by `instance_kind` (VM XOR
+  // CONTAINER). UpdateInstanceRequest reserves the same names again; its mutable
+  // set is name/description/labels/service_account_id plus the STOPPED-gated
+  // machine_type_id/cpu_guarantee_percent/placement_group_id and the next-boot
+  // deferred ssh_public_keys/vm_spec.
   "compute-instances": {
     id: "compute-instances",
     route: "instances",
@@ -2599,17 +2609,18 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       { header: "Статус", path: "status", format: "status" },
+      { header: "Тип", path: "instance_kind", format: "code" },
       { header: "Зона", path: "zone_id", format: "text" },
-      { header: "Платформа", path: "platform_id", format: "text" },
+      { header: "Тип машины", path: "machine_type_id", format: "code" },
       {
         header: "vCPU / RAM",
-        path: "resources",
+        path: "effective_resources",
         render: (row) => {
-          const r = row.resources as { cores?: string | number; memory?: string | number } | undefined;
+          const r = row.effective_resources as { v_cpu?: string | number; memory_mib?: string | number } | undefined;
           if (!r) return <span className="text-muted-foreground">—</span>;
           return (
             <span className="font-mono text-xs">
-              {r.cores ?? "?"} vCPU · {fmtBytesGiB(r.memory)}
+              {r.v_cpu ?? "?"} vCPU · {fmtMiBGiB(r.memory_mib)}
             </span>
           );
         },
@@ -2628,14 +2639,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           );
         },
       },
-      {
-        header: "Загрузочный диск",
-        path: "boot_disk.disk_id",
-        render: (row) => {
-          const bd = (row.boot_disk as { disk_id?: string } | undefined)?.disk_id;
-          return <RefNameLink specId="compute-disks" refId={bd} />;
-        },
-      },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",
@@ -2645,131 +2648,178 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     fields: [
       FIELD_NAME_COMPUTE,
+      FIELD_DESCRIPTION,
       {
         name: "zone_id",
-        label: "Зона",
+        label: "Зона доступности",
         type: "ref",
         refResource: "compute-zones",
         required: true,
         immutable: true,
+        description: "Зона размещения инстанса (immutable после Create). Cross-service ref → geo.Zone.",
       },
       {
-        name: "platform_id",
-        label: "Платформа",
+        name: "instance_kind",
+        label: "Тип инстанса",
         type: "enum",
         required: true,
-        default: "standard-v3",
-        options: [
-          { value: "standard-v1", label: "Intel Broadwell (standard-v1)" },
-          { value: "standard-v2", label: "Intel Cascade Lake (standard-v2)" },
-          { value: "standard-v3", label: "Intel Ice Lake (standard-v3)" },
-          {
-            value: "highfreq-v3",
-            label: "Intel Ice Lake, 3.1 GHz (highfreq-v3)",
-          },
-        ],
         immutable: true,
-        description: "Менять platform_id можно только когда ВМ остановлена.",
-      },
-      {
-        name: "resources_spec.cores",
-        label: "vCPU (cores)",
-        type: "int",
-        required: true,
-        default: 2,
-        min: 2,
-        description: "2,4,6,8,...; зависит от платформы. Менять только когда ВМ остановлена.",
-        editHidden: true,
-      },
-      {
-        name: "resources_spec.memory_gib",
-        label: "RAM (ГиБ)",
-        type: "int",
-        required: true,
-        default: 2,
-        min: 1,
-        description: "Кратно 1 ГиБ. Менять только когда ВМ остановлена.",
-        editHidden: true,
-      },
-      {
-        name: "resources_spec.core_fraction",
-        label: "Гарантированная доля vCPU, %",
-        type: "enum",
-        default: "100",
+        default: "VM",
         options: [
-          { value: "5", label: "5%" },
-          { value: "20", label: "20%" },
-          { value: "50", label: "50%" },
-          { value: "100", label: "100%" },
+          { value: "VM", label: "VM — виртуальная машина (ОС из storage.image)" },
+          { value: "CONTAINER", label: "CONTAINER — контейнер-джоба (образ из registry.image)" },
         ],
-        editHidden: true,
+        description:
+          "Сильный первый дискриминатор (immutable после Create): VM запускает ОС из storage.image; " +
+          "CONTAINER — эфемерный rootfs из OCI registry.image.",
       },
       {
-        name: "_boot_source",
-        label: "Загрузочный диск",
-        type: "enum",
-        default: "image",
+        name: "machine_type_id",
+        label: "Тип машины",
+        type: "ref",
+        refResource: "machine-types",
         required: true,
+        description:
+          "Единый канал размера инстанса (vCPU/память/GPU) — каталог MachineType. Сменить размер можно на " +
+          "остановленном (STOPPED) инстансе.",
+      },
+      {
+        name: "boot_source.type",
+        label: "Источник ОС",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "storage.image",
         options: [
-          { value: "image", label: "Создать из образа" },
-          { value: "disk", label: "Использовать существующий диск" },
+          { value: "storage.image", label: "storage.image — образ ОС (VM)" },
+          { value: "registry.image", label: "registry.image — OCI-образ (CONTAINER)" },
         ],
-        editHidden: true,
+        description:
+          "Владелец образа: storage.image (диск-образ kacho-storage, для VM) или registry.image " +
+          "(OCI-артефакт kacho-registry, для CONTAINER).",
       },
       {
-        name: "boot_disk_spec.disk_spec.image_id",
-        label: "Образ для загрузочного диска",
-        type: "ref",
-        refResource: "compute-images",
-        refProjectScoped: true,
-        visibleWhen: { field: "_boot_source", equals: "image" },
-        editHidden: true,
+        name: "boot_source.id",
+        label: "Образ",
+        type: "string",
+        required: true,
+        createOnly: true,
+        placeholder: "img-9k2m4x7q1n8p:22.04-lts   |   ml/bert-trainer:cu121",
+        description:
+          "Ссылка на образ с тегом/дайджестом внутри id: «img-<base32>:<tag>» / «img-<base32>@sha256:<hex>» " +
+          "(storage.image) либо «repo/name:tag» (registry.image).",
       },
       {
-        name: "boot_disk_spec.disk_spec.size_gib",
-        label: "Размер загрузочного диска (ГиБ)",
+        name: "cpu_guarantee_percent",
+        label: "Гарантия CPU, %",
         type: "int",
-        default: 10,
-        min: 4,
-        visibleWhen: { field: "_boot_source", equals: "image" },
-        editHidden: true,
+        min: 0,
+        max: 100,
+        default: 0,
+        description:
+          "Гарантированный baseline CPU на vCPU в процентах (0 — best-effort/burstable; 1..100 — гарантия). " +
+          "Меняется на STOPPED.",
       },
       {
-        name: "boot_disk_spec.disk_spec.type_id",
-        label: "Тип загрузочного диска",
-        type: "ref",
-        refResource: "disk-types",
-        placeholder: "network-ssd (по умолчанию)",
-        visibleWhen: { field: "_boot_source", equals: "image" },
-        editHidden: true,
+        name: "service_account_id",
+        label: "Сервисный аккаунт",
+        type: "string",
+        placeholder: "sva… (опционально)",
+        description: "Сервисный аккаунт (iam), доступный внутри инстанса. Для публичных образов можно не задавать.",
+      },
+      // --- VM-only (instance_kind = VM) ---
+      {
+        name: "vm_spec.user_data",
+        label: "user-data (cloud-init)",
+        type: "text",
+        rows: 4,
+        createOnly: true,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        placeholder: "#cloud-config\n…",
+        description: "cloud-config / cloud-init user-data для VM.",
       },
       {
-        name: "boot_disk_spec.disk_id",
-        label: "Существующий диск",
-        type: "ref",
-        refResource: "compute-disks",
-        refProjectScoped: true,
-        visibleWhen: { field: "_boot_source", equals: "disk" },
-        editHidden: true,
+        name: "vm_spec.metadata_options.metadata_endpoint",
+        label: "Metadata endpoint",
+        type: "enum",
+        createOnly: true,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        default: "ENABLED",
+        options: [
+          { value: "ENABLED", label: "ENABLED — доступен из гостя" },
+          { value: "DISABLED", label: "DISABLED — недоступен" },
+        ],
+        description: "Доступность metadata-эндпоинта из гостевой ОС.",
       },
       {
-        name: "boot_disk_spec.auto_delete",
-        label: "Удалять загрузочный диск вместе с ВМ",
+        name: "ssh_public_keys",
+        label: "SSH-ключи",
+        type: "text",
+        rows: 3,
+        createOnly: true,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        placeholder: "ssh-ed25519 AAAA… user@host\n(по одному ключу на строку)",
+        description:
+          "По одному ключу на строку. Без ssh-ключа и без внешнего адреса VM недостижима — включите внешний " +
+          "адрес или отметьте «допустить недостижимость».",
+      },
+      {
+        name: "assign_external_address",
+        label: "Внешний адрес",
         type: "bool",
-        default: true,
-        editHidden: true,
+        createOnly: true,
+        default: false,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        description: "Запросить внешний IP-адрес для VM.",
       },
+      {
+        name: "acknowledge_unreachable",
+        label: "Допустить недостижимость",
+        type: "bool",
+        createOnly: true,
+        default: false,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        description: "Подтвердить, что VM будет RUNNING, но недостижима (без ssh и без внешнего адреса).",
+      },
+      // --- CONTAINER-only (instance_kind = CONTAINER) ---
+      {
+        name: "container_spec.restart_policy",
+        label: "Restart policy",
+        type: "enum",
+        createOnly: true,
+        visibleWhen: { field: "instance_kind", equals: "CONTAINER" },
+        default: "NEVER",
+        options: [
+          { value: "NEVER", label: "NEVER — не перезапускать" },
+          { value: "ON_FAILURE", label: "ON_FAILURE — при ненулевом exit" },
+          { value: "ALWAYS", label: "ALWAYS — всегда" },
+        ],
+        description: "Политика перезапуска контейнер-джобы.",
+      },
+      {
+        name: "container_spec.working_dir",
+        label: "Рабочая директория",
+        type: "string",
+        createOnly: true,
+        visibleWhen: { field: "instance_kind", equals: "CONTAINER" },
+        placeholder: "/app",
+        description: "Рабочая директория внутри контейнера.",
+      },
+      // --- network ---
       {
         name: "network_interface_specs",
         label: "Сетевые интерфейсы",
         type: "array",
         itemLabel: "интерфейс",
         description:
-          "Минимум один сетевой интерфейс. Выберите сеть → подсеть → внутренний адрес (Cascader) и режим публичного IP (Segmented); либо переключитесь на «существующий NetworkInterface» (тогда подсеть/SG/адрес берутся из него). Подсеть должна быть в той же зоне, что и ВМ.",
+          "Минимум один сетевой интерфейс. Выберите сеть → подсеть → внутренний адрес (Cascader) и режим " +
+          "публичного IP (Segmented); либо переключитесь на «существующий NetworkInterface» (тогда подсеть/SG/" +
+          "адрес берутся из него). Подсеть должна быть в той же зоне, что и ВМ.",
         editHidden: true,
         // Дефолт NIC-айтема: пустой spec, external-IP = «без адреса».
-        // `_*`-поля — служебные UI-state (cascader path / external mode), их
-        // вычищает sanitizeInstanceCreate перед submit.
+        // `_*`-поля — служебные UI-state (cascader path / external mode); их
+        // вычищает sanitizeInstanceCreate, а транспортный buildCreateBody —
+        // повторно и рекурсивно, включая вложенные в айтемы.
         newItem: () => ({
           _addr_cascader: undefined,
           subnet_id: "",
@@ -2788,8 +2838,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             type: "custom",
             render: (p) => <NicSpecFields pathPrefix={p.pathPrefix} value={p.value} onChange={p.onChange} />,
           },
-          // Группы безопасности — generic ArrayField с inline-create «+ SG»
-          // (без изменений; на NIC-айтеме остаётся как было).
+          // Группы безопасности — generic ArrayField с inline-create «+ SG».
           {
             name: "security_group_ids",
             label: "Группы безопасности",
@@ -2820,27 +2869,24 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
         editHidden: true,
       },
-      {
-        name: "service_account_id",
-        label: "Service Account ID",
-        type: "string",
-        placeholder: "(опционально)",
-      },
       FIELD_LABELS,
-      FIELD_DESCRIPTION,
       FIELD_PROJECT_ID,
     ],
     template: ({ projectId }) => ({
       project_id: projectId ?? "",
       name: "",
+      description: "",
       zone_id: "",
-      platform_id: "standard-v3",
-      resources_spec: { cores: 2, memory_gib: 2, core_fraction: "100" },
-      _boot_source: "image",
-      boot_disk_spec: {
-        auto_delete: true,
-        disk_spec: { size_gib: 10, type_id: "" },
-      },
+      instance_kind: "VM",
+      machine_type_id: "",
+      boot_source: { type: "storage.image", id: "" },
+      cpu_guarantee_percent: 0,
+      service_account_id: "",
+      vm_spec: { user_data: "", metadata_options: { metadata_endpoint: "ENABLED" } },
+      container_spec: { restart_policy: "NEVER", working_dir: "" },
+      ssh_public_keys: "",
+      assign_external_address: false,
+      acknowledge_unreachable: false,
       network_interface_specs: [
         {
           _addr_cascader: undefined,
@@ -2852,10 +2898,60 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           security_group_ids: [],
         },
       ],
-      description: "",
       labels: {},
     }),
     sanitize: (obj) => sanitizeInstanceCreate(obj),
+    // wire → UI-форма (edit). service_account (Referrer) → service_account_id.
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const sa = obj.service_account as Record<string, unknown> | undefined;
+      if (sa && typeof sa.id === "string") out.service_account_id = sa.id;
+      return out;
+    },
+  },
+
+  // ====== compute: MachineType (read-only sizing catalog) ======
+  // proto: kacho.cloud.compute.v1.MachineTypeService (/compute/v1/machineTypes).
+  // Public read-only; admin-CRUD — InternalMachineTypeService (:9091, ban #6).
+  // Cluster-scoped; ref-цель для Instance.machine_type_id.
+  "machine-types": {
+    id: "machine-types",
+    route: "machine-types",
+    apiPath: "/compute/v1/machineTypes",
+    payloadKey: "machine_types",
+    singular: "Тип машины",
+    plural: "Типы машин",
+    genitive: "Типа машины",
+    serviceTitle: "Compute Cloud",
+    scope: "global",
+    ops: { create: false, update: false, delete: false },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      { header: "Семейство", path: "family", format: "code" },
+      { header: "vCPU", path: "effective_resources.v_cpu", format: "text" },
+      {
+        header: "Память",
+        path: "effective_resources.memory_mib",
+        render: (row) => (
+          <span className="font-mono text-xs">
+            {fmtMiBGiB((row.effective_resources as Record<string, unknown> | undefined)?.memory_mib)}
+          </span>
+        ),
+      },
+      { header: "GPU", path: "effective_resources.gpus", format: "text" },
+      { header: "Зоны", path: "available_zones", format: "list" },
+      { header: "Статус", path: "status", format: "status" },
+    ],
+    template: () => ({}),
   },
 
   // ====== Geography (kacho-geo): Region / Zone ====== + System AddressPool ======
@@ -3684,6 +3780,18 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
 // === compute byte/GiB helpers ===
 const GIB = 1024 * 1024 * 1024;
 
+/**
+ * fmtMiBGiB — память MachineType / EffectiveResources приходит в МиБ (int64
+ * строкой); показываем человекочитаемо. Отдельно от fmtBytesGiB, который читает
+ * БАЙТЫ: перепутать единицу — тихо показать в 1024 раза не то.
+ */
+export function fmtMiBGiB(v: unknown): string {
+  const mib = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+  if (!Number.isFinite(mib) || mib <= 0) return "—";
+  const gib = mib / 1024;
+  return `${gib >= 10 ? Math.round(gib) : Math.round(gib * 10) / 10} ГиБ`;
+}
+
 /** fmtBytesGiB — отображает число байт как "<N> ГиБ" (округление вверх до целых). */
 export function fmtBytesGiB(v: unknown): string {
   const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
@@ -3699,43 +3807,51 @@ export function gibToBytes(v: unknown): string | undefined {
   return String(Math.round(n * GIB));
 }
 
-/** sanitizeInstanceCreate — превращает form-internal представление CreateInstanceRequest
- *  в wire format: memory_gib→memory (байты), size_gib→size, core_fraction строка→число,
- *  boot_disk oneof (disk_spec vs disk_id), one-to-one NAT toggle → one_to_one_nat_spec,
- *  security_group_ids [{value}]→[ids]; вырезает _boot_source и пустые поля. */
+/**
+ * sanitizeInstanceCreate — form-internal → CreateInstanceRequest.
+ *
+ * COMP-1 retired the raw sizing/boot channels (platform_id / resources_spec /
+ * boot_disk_spec are RESERVED names on both Create and Update), so nothing is
+ * converted into them any more. What is left to do here is contract shaping:
+ *   - narrow boot_source to its two INPUT fields ({type,id}) — name /
+ *     resolved_digest / materialized_volume are output-only and rejected on input;
+ *   - keep exactly the `spec` oneof arm matching instance_kind, and drop the
+ *     VM-only inputs on a CONTAINER;
+ *   - ssh_public_keys: textarea → string[] (one key per line);
+ *   - NIC items: form-internal representation → NetworkInterfaceSpec;
+ *   - drop empty optional scalars rather than sending "".
+ * Form-only `_`-keys are removed here for the fields this function rebuilds, and
+ * again — recursively, at every depth — by buildCreateBody on the transport edge.
+ */
 export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<string, unknown> {
   const o = { ...obj } as Record<string, unknown>;
+  const kind = o["instance_kind"];
 
-  // resources_spec
-  const rs = { ...((o["resources_spec"] as Record<string, unknown>) ?? {}) };
-  if (rs["memory_gib"] !== undefined) {
-    rs["memory"] = gibToBytes(rs["memory_gib"]);
-    delete rs["memory_gib"];
-  }
-  if (rs["cores"] !== undefined && rs["cores"] !== "") rs["cores"] = Number(rs["cores"]);
-  if (rs["core_fraction"] !== undefined && rs["core_fraction"] !== "")
-    rs["core_fraction"] = Number(rs["core_fraction"]);
-  o["resources_spec"] = rs;
+  // boot_source: на вход принимаются только {type,id}.
+  const bs = (o["boot_source"] as Record<string, unknown> | undefined) ?? {};
+  o["boot_source"] = { type: bs["type"], id: bs["id"] };
 
-  // boot_disk_spec
-  const bootSource = o["_boot_source"];
-  const bds = { ...((o["boot_disk_spec"] as Record<string, unknown>) ?? {}) };
-  if (bootSource === "image") {
-    const ds = { ...((bds["disk_spec"] as Record<string, unknown>) ?? {}) };
-    if (ds["size_gib"] !== undefined) {
-      ds["size"] = gibToBytes(ds["size_gib"]);
-      delete ds["size_gib"];
-    }
-    if (ds["type_id"] === "" || ds["type_id"] === undefined) delete ds["type_id"];
-    if (ds["image_id"] === "" || ds["image_id"] === undefined) delete ds["image_id"];
-    bds["disk_spec"] = ds;
-    delete bds["disk_id"];
+  if (kind === "CONTAINER") {
+    delete o["vm_spec"];
+    delete o["ssh_public_keys"];
+    delete o["assign_external_address"];
+    delete o["acknowledge_unreachable"];
+    const cs = { ...((o["container_spec"] as Record<string, unknown> | undefined) ?? {}) };
+    if (!cs["working_dir"]) delete cs["working_dir"];
+    o["container_spec"] = cs;
   } else {
-    // existing disk
-    delete bds["disk_spec"];
+    delete o["container_spec"];
+    const raw = typeof o["ssh_public_keys"] === "string" ? (o["ssh_public_keys"] as string) : "";
+    const keys = raw
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (keys.length > 0) o["ssh_public_keys"] = keys;
+    else delete o["ssh_public_keys"];
+    const vs = { ...((o["vm_spec"] as Record<string, unknown> | undefined) ?? {}) };
+    if (!vs["user_data"]) delete vs["user_data"];
+    o["vm_spec"] = vs;
   }
-  o["boot_disk_spec"] = bds;
-  delete o["_boot_source"];
 
   // network_interface_specs — собираем wire-shape из form-internal представления
   // NIC-айтема (NicSpecFields.tsx). Возможные результаты на айтем:
@@ -3747,46 +3863,52 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
   const nics = Array.isArray(o["network_interface_specs"])
     ? (o["network_interface_specs"] as Record<string, unknown>[])
     : [];
-  o["network_interface_specs"] = nics.map((nic) => {
-    const out: Record<string, unknown> = {};
-    const sgs = Array.isArray(nic["security_group_ids"])
-      ? (nic["security_group_ids"] as unknown[])
-          .map((it) =>
-            typeof it === "object" && it !== null && "value" in (it as object)
-              ? (it as Record<string, unknown>)["value"]
-              : it,
-          )
-          .filter((v) => typeof v === "string" && v)
-      : [];
-    // Существующий NetworkInterface (nic_id) — отдаём только nic_id (+ SG, если заданы);
-    // подсеть/адрес берутся из самого NIC (см. compute.v1.NetworkInterfaceSpec.nic_id, KAC-5).
-    if (nic["_use_existing_nic"] === true && nic["nic_id"]) {
-      out["nic_id"] = nic["nic_id"];
+  const specs = nics
+    .map((nic) => {
+      const out: Record<string, unknown> = {};
+      const sgs = Array.isArray(nic["security_group_ids"])
+        ? (nic["security_group_ids"] as unknown[])
+            .map((it) =>
+              typeof it === "object" && it !== null && "value" in (it as object)
+                ? (it as Record<string, unknown>)["value"]
+                : it,
+            )
+            .filter((v) => typeof v === "string" && v)
+        : [];
+      // Существующий NetworkInterface (nic_id) — отдаём только nic_id (+ SG, если заданы);
+      // подсеть/адрес берутся из самого NIC (см. compute.v1.NetworkInterfaceSpec.nic_id).
+      if (nic["_use_existing_nic"] === true && nic["nic_id"]) {
+        out["nic_id"] = nic["nic_id"];
+        if (sgs.length > 0) out["security_group_ids"] = sgs;
+        return out;
+      }
+      if (nic["subnet_id"]) out["subnet_id"] = nic["subnet_id"];
       if (sgs.length > 0) out["security_group_ids"] = sgs;
+      const primaryAddr =
+        typeof nic["primary_v4_address_spec"] === "object" && nic["primary_v4_address_spec"] !== null
+          ? ((nic["primary_v4_address_spec"] as Record<string, unknown>)["address"] as string | undefined)
+          : undefined;
+      const pv4: Record<string, unknown> = {};
+      if (primaryAddr) pv4["address"] = primaryAddr;
+      const extMode = nic["_ext_mode"] as string | undefined;
+      if (extMode === "auto") {
+        pv4["one_to_one_nat_spec"] = { ip_version: "IPV4" };
+      } else if (extMode === "list") {
+        const ipVal = nic["_ext_addr_value"] as string | undefined;
+        // OneToOneNatSpec.address — это IP-строка (не Address-id), см. proto.
+        if (ipVal) pv4["one_to_one_nat_spec"] = { address: ipVal };
+      }
+      if (Object.keys(pv4).length > 0) out["primary_v4_address_spec"] = pv4;
       return out;
-    }
-    if (nic["subnet_id"]) out["subnet_id"] = nic["subnet_id"];
-    if (sgs.length > 0) out["security_group_ids"] = sgs;
-    const primaryAddr =
-      typeof nic["primary_v4_address_spec"] === "object" && nic["primary_v4_address_spec"] !== null
-        ? ((nic["primary_v4_address_spec"] as Record<string, unknown>)["address"] as string | undefined)
-        : undefined;
-    const pv4: Record<string, unknown> = {};
-    if (primaryAddr) pv4["address"] = primaryAddr;
-    const extMode = nic["_ext_mode"] as string | undefined;
-    if (extMode === "auto") {
-      pv4["one_to_one_nat_spec"] = { ip_version: "IPV4" };
-    } else if (extMode === "list") {
-      const ipVal = nic["_ext_addr_value"] as string | undefined;
-      // OneToOneNatSpec.address — это IP-строка (не Address-id), см. proto.
-      if (ipVal) pv4["one_to_one_nat_spec"] = { address: ipVal };
-    }
-    if (Object.keys(pv4).length > 0) out["primary_v4_address_spec"] = pv4;
-    return out;
-  });
+    })
+    // Айтем, в котором не выбрано ни подсети, ни NIC, не является
+    // NetworkInterfaceSpec — отправлять его нечем.
+    .filter((spec) => spec["subnet_id"] || spec["nic_id"]);
+  if (specs.length > 0) o["network_interface_specs"] = specs;
+  else delete o["network_interface_specs"];
 
   // strip optional empties
-  for (const k of ["hostname", "service_account_id"]) {
+  for (const k of ["hostname", "service_account_id", "machine_type_id"]) {
     if (o[k] === "" || o[k] === undefined) delete o[k];
   }
   return o;

@@ -11,6 +11,7 @@ import { useBreadcrumb, useHeaderRight } from "@/components/molecules/PageHeader
 import { ApiError, api } from "@/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@/lib/resource-registry";
 import { setByPath } from "@/lib/path";
+import { buildCreateBody } from "@/components/organisms/ResourceFormDialog";
 import { useInvalidateResourceList, useOperation } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 
@@ -179,7 +180,11 @@ export function ResourceCreatePage({ spec, parentField, parentParam }: Props) {
       }
     }
     if (spec.sanitize) parsed = spec.sanitize(parsed);
-    mutation.mutate(parsed);
+    // sanitize shapes the domain payload; this drops what only ever existed for the
+    // widget (`_`-prefixed discriminators, incl. inside array items) so it cannot
+    // reach the wire as `Placement` / `AddressKind` / `BootSource` and be discarded
+    // there in silence.
+    mutation.mutate(buildCreateBody(parsed));
   };
 
   const fields = spec.fields;

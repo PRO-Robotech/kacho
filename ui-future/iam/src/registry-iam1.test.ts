@@ -10,7 +10,23 @@ import { fileURLToPath } from "node:url";
 
 import { REGISTRY } from "@shared/lib/resource-registry";
 import type { FormField } from "@shared/lib/form-schema";
-import { roleIsSystem, roleDefinitionTier, targetKind, SYSTEM_ROLE_CANON_ORDER, type Role } from "@shared/api/iam";
+import {
+  buildCreateAccessBindingBody,
+  roleIsSystem,
+  roleDefinitionTier,
+  targetKind,
+  SYSTEM_ROLE_CANON_ORDER,
+  type CreateAccessBindingInput,
+  type Role,
+} from "@shared/api/iam";
+
+/** Минимальный валидный грант — база для проверки арма target'а. */
+const grantInput: CreateAccessBindingInput = {
+  subjects: [{ type: "SUBJECT_TYPE_USER", id: "usr-1" }],
+  roleId: "rol-1",
+  scopeTier: "ACCOUNT",
+  scopeId: "acc-1",
+};
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fieldByName = (fields: FormField[] | undefined, name: string) => (fields ?? []).find((f) => f.name === name);
@@ -120,15 +136,23 @@ describe("IAM-1 — bespoke forms conformance", () => {
   });
 
   it("AccessBinding create несёт target-дискриминатор allInScope|resources[] (F8)", () => {
+    // Форма даёт дискриминатор и набор объектов; САМО тело собирает
+    // buildCreateAccessBindingBody — его форма зафиксирована на уровне провода в
+    // shared/src/api/iam.wire.test.ts (там же, что и оба арма target'а).
     expect(bindingCreate).toContain("_target_kind");
-    expect(bindingCreate).toContain("all_in_scope");
-    expect(bindingCreate).toContain("resources: rows");
-    // target включён в отправляемое тело.
-    expect(bindingCreate).toMatch(/target,/);
+    expect(bindingCreate).toContain("targetResources");
+    expect(bindingCreate).toContain("buildCreateAccessBindingBody");
+    expect(buildCreateAccessBindingBody({ ...grantInput, targetResources: undefined }).target).toEqual({
+      all_in_scope: {},
+    });
+    expect(
+      buildCreateAccessBindingBody({ ...grantInput, targetResources: [{ type: "compute.instance", id: "ins-1" }] })
+        .target,
+    ).toEqual({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } });
   });
 
   it("AccessBinding create требует непустой resources при target=resources (least-priv)", () => {
-    expect(bindingCreate).toContain("rows.length === 0");
+    expect(bindingCreate).toContain("targetResources.length === 0");
   });
 
   it("detail-extension: Role definitionTier + честные verb-наборы (F4/F6)", () => {
